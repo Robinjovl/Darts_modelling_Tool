@@ -33,11 +33,9 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
         import os
 
         if os.path.isfile(cache_filename):
-            print(
-                "Reading %s from %s..." % (keyword, cache_filename), end='', flush=True
-            )
+            print(f"Reading {keyword} from {cache_filename}...", end='', flush=True)
             a = np.fromfile(cache_filename)
-            print(" %d values have been read." % len(a))
+            print(f" {len(a):d} values have been read.")
             return a
 
     # start with specified (or default) array length
@@ -59,7 +57,7 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                     # requested keyword is now detected
                     read_data_mode = 1
                     print(
-                        "Reading %s from %s..." % (keyword, osp.abspath(file_name)),
+                        f"Reading {keyword} from {osp.abspath(file_name)}...",
                         end='',
                         flush=True,
                     )
@@ -117,9 +115,9 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
     if cache:
         # if caching is enabled, save to cache file
         a.tofile(cache_filename)
-        print(" %d values have been read and cached." % pos)
+        print(f" {pos:d} values have been read and cached.")
     else:
-        print(" %d values have been read." % pos)
+        print(f" {pos:d} values have been read.")
 
     return a
 
@@ -134,7 +132,7 @@ def save_few_keywords(fname, keys, data):
             if not isinstance(val, float):
                 f.write(str(val))
             else:
-                f.write("%12.10f" % val)
+                f.write(f"{val:12.10f}")
             f.write('\t')
         f.write('\n' + '/' + '\n')
     f.close()

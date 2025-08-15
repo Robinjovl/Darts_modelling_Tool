@@ -405,9 +405,11 @@ class WellData:
         bhp_constraint=None,
         temperature=None,
         phase_name=None,
-        inj_composition=[],
+        inj_composition=None,
         time=0,
     ):
+        if inj_composition is None:
+            inj_composition = []
         wctrl = WellControl()
         wctrl.inj_rate_control(
             rate=rate,
@@ -419,8 +421,10 @@ class WellData:
         self.wells[name].controls.append((time, wctrl))
 
     def add_inj_bhp_control(
-        self, name, bhp, temperature=None, phase_name=None, inj_composition=[], time=0
+        self, name, bhp, temperature=None, phase_name=None, inj_composition=None, time=0
     ):
+        if inj_composition is None:
+            inj_composition = []
         wctrl = WellControl()
         wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, phase_name=phase_name)
         self.wells[name].controls.append((time, wctrl))
@@ -523,7 +527,7 @@ class InputData:
                         k2,
                         'is not initialized!',
                     )
-                    assert False
+                    raise AssertionError()
 
     def make_prop_arrays(self):
         """

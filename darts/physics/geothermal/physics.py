@@ -139,7 +139,7 @@ class Geothermal(PhysicsBase):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph))()
+        return eval(f"engine_nce_g_{platform}{self.nc:d}_{self.nph:d}")()
 
     def set_initial_conditions_from_depth_table(
         self,
@@ -165,7 +165,7 @@ class Geothermal(PhysicsBase):
         input_depth = (
             input_depth if not np.isscalar(input_depth) else np.array([input_depth])
         )
-        for key, input_values in input_distribution.values():
+        for _key, input_values in input_distribution.values():
             input_values = (
                 input_values
                 if not np.isscalar(input_values)

@@ -26,7 +26,7 @@ try:
     import vtk
     import vtk.util.numpy_support as ns
 except ImportError:
-    warnings.warn("No vtk module loaded.")
+    warnings.warn("No vtk module loaded.", stacklevel=2)
 
 
 # from GRDECL_CADExporter import *

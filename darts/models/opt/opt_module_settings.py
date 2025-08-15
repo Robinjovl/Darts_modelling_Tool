@@ -154,8 +154,8 @@ class OptModuleSettings:
         # sorting the perforation index for adjoint gradient
         # `self.col_idx` will be passed into C++ `col_dT_du`
         self.perforation_idx = []
-        for i, w in enumerate(self.reservoir.wells):
-            for p, per in enumerate(w.perforations):
+        for _i, w in enumerate(self.reservoir.wells):
+            for _p, per in enumerate(w.perforations):
                 self.perforation_idx.append(per[1])
 
         self.sort_perforation_idx = np.zeros(np.size(self.perforation_idx))
@@ -189,7 +189,7 @@ class OptModuleSettings:
         # self.modifier.set_x(self, x)
 
         self.physics.engine.opt_history_matching = True
-        if type(self.modifier.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
+        if isinstance(self.modifier.modifiers[0], flux_multiplier_modifier):  # for MPFA
             self.physics.engine.is_mp = True
 
         # 2. Reset
@@ -233,7 +233,7 @@ class OptModuleSettings:
         # 5. If simulation has not finished, rerun it to save the logs.
         if self.save_unfinished_runs:
             if obj == 1000:
-                log_fname = 'terminated_run_%d' % self.terminated_runs
+                log_fname = f'terminated_run_{self.terminated_runs:d}'
 
                 with open(log_fname + '.x', 'w') as log:
                     log.write('Problem occurred with: \n')
@@ -253,8 +253,7 @@ class OptModuleSettings:
         self.n_opt_steps += 1
 
         print(
-            '\r Run %d: %f s/forward_obj'
-            % (self.n_opt_steps, self.opt_step_time / self.n_opt_steps),
+            f"\r Run {self.n_opt_steps:d}: {self.opt_step_time / self.n_opt_steps:f} s/forward_obj",
             end='',
             flush=True,
         )
@@ -317,7 +316,7 @@ class OptModuleSettings:
         # 5. If simulation has not finished, rerun it to save the logs
         if self.save_unfinished_runs:
             if obj == 1000:
-                log_fname = 'terminated_run_%d' % self.terminated_runs
+                log_fname = f'terminated_run_{self.terminated_runs:d}'
 
                 with open(log_fname + '.x', 'w') as log:
                     log.write('Problem occurred with: \n')
@@ -337,8 +336,7 @@ class OptModuleSettings:
         self.n_opt_steps += 1
 
         print(
-            '\r Run %d: %f s/forward_obj'
-            % (self.n_opt_steps, self.opt_step_time / self.n_opt_steps),
+            f"\r Run {self.n_opt_steps:d}: {self.opt_step_time / self.n_opt_steps:f} s/forward_obj",
             end='',
             flush=True,
         )
@@ -391,7 +389,7 @@ class OptModuleSettings:
         # 5. If simulation has not finished, rerun it to save the logs
         if self.save_unfinished_runs:
             if obj == 1000:
-                log_fname = 'terminated_run_%d' % self.terminated_runs
+                log_fname = f'terminated_run_{self.terminated_runs:d}'
 
                 with open(log_fname + '.x', 'w') as log:
                     log.write('Problem occurred with: \n')
@@ -410,8 +408,7 @@ class OptModuleSettings:
         self.n_opt_steps += 1
 
         print(
-            '\r Run %d: %f s/forward_obj'
-            % (self.n_opt_steps, self.opt_step_time / self.n_opt_steps),
+            f"\r Run {self.n_opt_steps:d}: {self.opt_step_time / self.n_opt_steps:f} s/forward_obj",
             end='',
             flush=True,
         )
@@ -453,7 +450,7 @@ class OptModuleSettings:
         # self.modifier.set_x(self, x)
 
         # self.set_boundary_conditions()
-        for i, w in enumerate(self.reservoir.wells):
+        for _i, w in enumerate(self.reservoir.wells):
             if "I" in w.name:
                 w.control = self.physics.new_rate_water_inj(
                     0
@@ -484,7 +481,7 @@ class OptModuleSettings:
             for w in self.reservoir.wells:
                 if 'I' in w.name:
                     col = w.name + ' : water rate (m3/day)'
-                    if type(w.control) == rate_inj_well_control:
+                    if isinstance(w.control, rate_inj_well_control):
                         c = w.control
                     else:
                         c = w.constraint
@@ -494,7 +491,7 @@ class OptModuleSettings:
                         c.target_rate = 0
                 else:
                     col = w.name + ' : oil rate (m3/day)'
-                    if type(w.control) == rate_prod_well_control:
+                    if isinstance(w.control, rate_prod_well_control):
                         c = w.control
                     else:
                         c = w.constraint
@@ -583,7 +580,7 @@ class OptModuleSettings:
 
         self.physics.engine.observation_rate_type = self.observation_rate_type
 
-        if type(self.modifier.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
+        if isinstance(self.modifier.modifiers[0], flux_multiplier_modifier):  # for MPFA
             self.col_idx = list(range(self.n_fm))
         else:
             # sorting the perforation index for adjoint gradient
@@ -593,8 +590,8 @@ class OptModuleSettings:
             self.col_idx = self.col_idx_original
 
             self.perforation_idx = []
-            for i, w in enumerate(self.reservoir.wells):
-                for p, per in enumerate(w.perforations):
+            for _i, w in enumerate(self.reservoir.wells):
+                for _p, per in enumerate(w.perforations):
                     self.perforation_idx.append(per[1])
 
             self.sort_perforation_idx = np.zeros(np.size(self.perforation_idx))
@@ -621,7 +618,7 @@ class OptModuleSettings:
         The settings of the measurement time (report time) point array "t_Q" for generating Dirac function
         :param data: observation data
         '''
-        assert type(data) == pd.core.frame.DataFrame
+        assert isinstance(data, pd.core.frame.DataFrame)
         self.observation_data_report = data.set_index('time', drop=False)
         self.observation_last_date_report = data['time'][len(data['time']) - 1]
         self.t_Q = self.observation_data_report['time']
@@ -632,7 +629,7 @@ class OptModuleSettings:
         :param data: observation data based on simulation time steps
         '''
         # verify pandas format
-        assert type(data) == pd.core.frame.DataFrame
+        assert isinstance(data, pd.core.frame.DataFrame)
         self.observation_data = data.set_index('time', drop=False)
         self.observation_last_date = data['time'][len(data['time']) - 1]
 
@@ -668,7 +665,7 @@ class OptModuleSettings:
             # Q_w_o_total = []
             self.prod_cov_mat_inv = []
 
-            for n, well in enumerate(self.prod_well_name):
+            for _n, well in enumerate(self.prod_well_name):
                 # phase rate
                 if self.opt_phase_rate:
                     gaussian_noise_list = []
@@ -676,7 +673,7 @@ class OptModuleSettings:
                     std_dev_list = []
 
                     # for i in range(self.physics.n_phases):
-                    for i in range(np.size(self.prod_phase_name)):
+                    for _i in range(np.size(self.prod_phase_name)):
                         gaussian_noise_list.append(0)
                         rate_list.append(0)
                         std_dev_list.append(0)
@@ -739,13 +736,13 @@ class OptModuleSettings:
             self.Q_inj_list_temp = []
             self.inj_cov_mat_inv = []
 
-            for n, well in enumerate(self.inj_well_name):
+            for _n, well in enumerate(self.inj_well_name):
                 # phase rate
                 gaussian_noise_list = []
                 rate_list = []
                 std_dev_list = []
                 # for i in range(self.physics.n_phases):
-                for i in range(np.size(self.inj_phase_name)):
+                for _i in range(np.size(self.inj_phase_name)):
                     gaussian_noise_list.append(0)
                     rate_list.append(0)
                     std_dev_list.append(0)
@@ -796,7 +793,7 @@ class OptModuleSettings:
             self.BHP_list_temp = []
             self.BHP_cov_mat_inv = []
 
-            for n, well in enumerate(self.BHP_well_name):
+            for _n, well in enumerate(self.BHP_well_name):
                 std_dev_list = []
                 BHP_string = well + " : BHP (bar)"
                 BHP_serie = self.BHP_report_data.get(BHP_string)
@@ -836,7 +833,7 @@ class OptModuleSettings:
             self.well_tempr_list_temp = []
             self.well_tempr_cov_mat_inv = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 std_dev_list = []
                 well_tempr_string = well + " : temperature (K)"
                 well_tempr_serie = self.well_tempr_report_data.get(well_tempr_string)
@@ -967,7 +964,7 @@ class OptModuleSettings:
             self.well_tempr_list_temp = []
             self.well_tempr_cov_mat_inv = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 std_dev_list = []
                 well_tempr_string = well + " : temperature (K)"
                 well_tempr_serie = self.well_tempr_report_data.get(well_tempr_string)
@@ -1281,14 +1278,12 @@ class OptModuleSettings:
         if self.objfun_prod_phase_rate:
             q_separate = []
 
-            for n, well in enumerate(self.prod_well_name):
-                q_w_o = 0
-
+            for _n, well in enumerate(self.prod_well_name):
                 # phase rate
                 if self.opt_phase_rate:
                     rate_list = []
                     # for i in range(self.physics.n_phases):
-                    for i in range(np.size(self.prod_phase_name)):
+                    for _i in range(np.size(self.prod_phase_name)):
                         rate_list.append(0)
 
                     for p, phase in enumerate(self.prod_phase_name):
@@ -1298,7 +1293,7 @@ class OptModuleSettings:
                             * self.phase_relative_density[p]
                         )
                         if phase == 'oil':
-                            q_w_o = -response.get(rate_string).values
+                            -response.get(rate_string).values
 
                 q_separate.append(rate_list)
 
@@ -1353,11 +1348,11 @@ class OptModuleSettings:
         if self.objfun_inj_phase_rate:
             q_inj_separate = []
 
-            for n, well in enumerate(self.inj_well_name):
+            for _n, well in enumerate(self.inj_well_name):
                 # phase rate
                 rate_list = []
                 # for i in range(self.physics.n_phases):
-                for i in range(np.size(self.inj_phase_name)):
+                for _i in range(np.size(self.inj_phase_name)):
                     rate_list.append(0)
 
                 for p, phase in enumerate(self.inj_phase_name):
@@ -1414,7 +1409,7 @@ class OptModuleSettings:
         if self.objfun_BHP:
             bhp_separate = []
 
-            for n, well in enumerate(self.BHP_well_name):
+            for _n, well in enumerate(self.BHP_well_name):
                 BHP_string = well + " : BHP (bar)"
                 bhp_separate.append(response.get(BHP_string).values)
 
@@ -1466,7 +1461,7 @@ class OptModuleSettings:
         if self.objfun_well_tempr:
             well_tempr_separate = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 well_tempr_string = well + " : temperature (K)"
                 well_tempr_separate.append(response.get(well_tempr_string).values)
 
@@ -1690,9 +1685,7 @@ class OptModuleSettings:
                 self.objfun_dict['customized_op'] = np.sum(op_OP_temp)
                 self.objfun_list.append(np.sum(op_OP_temp))
                 if self.save_error:
-                    np.save(
-                        '%s_%s.npy' % (self.label, self.job_id), np.array(op_OP_temp)
-                    )
+                    np.save(f'{self.label}_{self.job_id}.npy', np.array(op_OP_temp))
 
         # add saturation data in objective function---------------------------------------------
         if self.objfun_saturation:
@@ -1735,7 +1728,7 @@ class OptModuleSettings:
 
             well_tempr_separate = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 well_tempr_string = well + " : temperature (K)"
                 well_tempr_separate.append(response.get(well_tempr_string).values)
 
@@ -1792,8 +1785,8 @@ class OptModuleSettings:
                 ksi_diff = self.ksi - self.ksi_ref * self.norm_ksi
                 R = self.alpha * ksi_diff.dot(ksi_diff.transpose())
 
-                print('misfit: %s' % self.fval_temp)
-                print('R: %s' % R)
+                print(f'misfit: {self.fval_temp}')
+                print(f'R: {R}')
                 self.fval_temp = self.fval_temp + R
             else:
                 u = (
@@ -1808,7 +1801,7 @@ class OptModuleSettings:
                             R
                             + np.sum(
                                 self.x_diff
-                                * np.load(self.Cv_path + "/%s_Cv.npy" % idx_Cv)
+                                * np.load(self.Cv_path + f"/{idx_Cv}_Cv.npy")
                             )
                             * self.x_diff[idx_Cv]
                         )
@@ -1819,8 +1812,8 @@ class OptModuleSettings:
                     )
                 # self.fval_temp = self.fval_temp + R[0][0]
 
-                print('misfit: %s' % self.fval_temp)
-                print('R: %s' % abs(float(R)))
+                print(f'misfit: {self.fval_temp}')
+                print(f'R: {abs(float(R))}')
                 self.fval_temp = self.fval_temp + abs(float(R))
 
         if (
@@ -1832,11 +1825,11 @@ class OptModuleSettings:
             self.x_diff = np.array([u]) - np.array([self.x_ref])
             R = self.alpha * np.sum((self.x_diff**2) * self.Cm_inv_diagonal)
 
-            print('misfit: %s' % self.fval_temp)
-            print('R: %s' % R)
+            print(f'misfit: {self.fval_temp}')
+            print(f'R: {R}')
             self.fval_temp = self.fval_temp + R
 
-        print(' fval: %s' % self.fval_temp)
+        print(f' fval: {self.fval_temp}')
         return self.fval_temp
 
     def fval_nonlinear_FDM(self, x_eps: np.array) -> float:
@@ -1933,9 +1926,7 @@ class OptModuleSettings:
                 if self.read_Cm_inv_vector:
                     R_vector[idx] = (
                         2
-                        * np.sum(
-                            self.x_diff * np.load(self.Cv_path + "/%s_Cv.npy" % idx)
-                        )
+                        * np.sum(self.x_diff * np.load(self.Cv_path + f"/{idx}_Cv.npy"))
                         * self.modifier.modifiers[0].norms
                     )
                 else:
@@ -1964,7 +1955,7 @@ class OptModuleSettings:
         # save the best optimized result and some history matching logs
         self.fval_list.append(self.fval_temp)
         if self.fval_temp < self.objfunval:
-            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            filename = f'{self.job_id}_Optimized_parameters_best.pkl'
             with open(filename, "wb") as fp:
                 # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
                 pickle.dump(
@@ -2059,9 +2050,7 @@ class OptModuleSettings:
                 if self.read_Cm_inv_vector:
                     R_vector[idx] = (
                         2
-                        * np.sum(
-                            self.x_diff * np.load(self.Cv_path + "/%s_Cv.npy" % idx)
-                        )
+                        * np.sum(self.x_diff * np.load(self.Cv_path + f"/{idx}_Cv.npy"))
                         * self.modifier.modifiers[0].norms
                     )
                 else:
@@ -2090,7 +2079,7 @@ class OptModuleSettings:
         # save the best optimized result and some history matching logs
         self.fval_list.append(self.fval_temp)
         if self.fval_temp < self.objfunval:
-            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            filename = f'{self.job_id}_Optimized_parameters_best.pkl'
             with open(filename, "wb") as fp:
                 # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
                 pickle.dump(
@@ -2205,7 +2194,7 @@ class OptModuleSettings:
         self.fval_list.append(self.fval_temp)
         self.misfit_watch_list.append(self.misfit_value)
         if self.fval_temp < self.objfunval:
-            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            filename = f'{self.job_id}_Optimized_parameters_best.pkl'
             with open(filename, "wb") as fp:
                 # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
                 pickle.dump(
@@ -2278,7 +2267,7 @@ class OptModuleSettings:
                     rate_list_Q = []
                     std_dev_list = []
                     # for i in range(self.physics.n_phases):
-                    for i in range(np.size(self.prod_phase_name)):
+                    for _i in range(np.size(self.prod_phase_name)):
                         gaussian_noise_list.append(0)
                         rate_list.append(0)
                         rate_list_Q.append(0)
@@ -2440,7 +2429,7 @@ class OptModuleSettings:
                 rate_list_inj_Q = []
                 std_dev_list = []
 
-                for i in range(np.size(self.inj_phase_name)):
+                for _i in range(np.size(self.inj_phase_name)):
                     gaussian_noise_list.append(0)
                     rate_list_inj_q.append(0)
                     rate_list_inj_Q.append(0)
@@ -3158,13 +3147,13 @@ class OptModuleSettings:
             q_separate = []
             Q_separate = []
 
-            for n, well in enumerate(self.prod_well_name):
+            for _n, well in enumerate(self.prod_well_name):
                 # phase rate
                 if self.opt_phase_rate:
                     rate_list = []
                     rate_list_Q = []
                     # for i in range(self.physics.n_phases):
-                    for i in range(np.size(self.prod_phase_name)):
+                    for _i in range(np.size(self.prod_phase_name)):
                         rate_list.append(0)
                         rate_list_Q.append(0)
 
@@ -3254,11 +3243,11 @@ class OptModuleSettings:
             q_inj_separate = []
             Q_inj_separate = []
 
-            for n, well in enumerate(self.inj_well_name):
+            for _n, well in enumerate(self.inj_well_name):
                 rate_list_inj_q = []
                 rate_list_inj_Q = []
 
-                for i in range(np.size(self.inj_phase_name)):
+                for _i in range(np.size(self.inj_phase_name)):
                     rate_list_inj_q.append(0)
                     rate_list_inj_Q.append(0)
 
@@ -3348,7 +3337,7 @@ class OptModuleSettings:
             bhp_separate = []
             BHP_separate = []
 
-            for n, well in enumerate(self.BHP_well_name):
+            for _n, well in enumerate(self.BHP_well_name):
                 BHP_string = well + " : BHP (bar)"
                 bhp_serie = opt_df.get(BHP_string)
                 BHP_serie = truth_df_BT.get(BHP_string)
@@ -3426,7 +3415,7 @@ class OptModuleSettings:
             wt_separate = []
             WT_separate = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 well_tempr_string = well + " : temperature (K)"
                 wt_serie = opt_df.get(well_tempr_string)
                 WT_serie = truth_df_BT.get(well_tempr_string)
@@ -3811,9 +3800,9 @@ class model_modifier_aggregator:
         self, model, rel_distance=0.1
     ) -> list[tuple]:
         x0 = self.get_x0(model)
-        l = list(x0 * (1 - rel_distance))
-        h = list(x0 * (1 + rel_distance))
-        bounds = list(zip(l, h, strict=False))
+        low = list(x0 * (1 - rel_distance))
+        high = list(x0 * (1 + rel_distance))
+        bounds = list(zip(low, high, strict=False))
         return bounds
 
     def get_bounds(self, model) -> list[tuple]:
@@ -3829,7 +3818,7 @@ class model_modifier_aggregator:
 
     def get_x(self, model) -> np.array:
         x = np.array([])
-        for i, m in enumerate(self.modifiers):
+        for _i, m in enumerate(self.modifiers):
             x = np.append(x, m.get_x(model))
         return x
 
@@ -3869,14 +3858,14 @@ class model_modifier_aggregator:
         grad = np.zeros(0)
 
         for i, m in enumerate(self.modifiers):
-            if (
-                type(m) == transmissibility_modifier or type(m) == well_index_modifier
+            if isinstance(m, transmissibility_modifier) or isinstance(
+                m, well_index_modifier
             ):  # linear modifiers
                 left_idx = x_idx[i]
                 right_idx = x_idx[i + 1]
                 temp_grad = m.set_grad(grad_original[left_idx:right_idx])
                 grad = np.append(grad, temp_grad)
-            if type(m) == flux_multiplier_modifier:
+            if isinstance(m, flux_multiplier_modifier):
                 temp_grad = m.set_grad(grad_original)
                 grad = np.append(grad, temp_grad)
 
@@ -3889,30 +3878,28 @@ class model_modifier_aggregator:
         :param x: updated control variables
         '''
         self.x = x
-        if type(self.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
+        if isinstance(self.modifiers[0], flux_multiplier_modifier):  # for MPFA
             x_linear = x[: self.mod_x_idx[1]]
 
             for i, m in enumerate(self.modifiers):
-                if (
-                    type(self.modifiers[0]) == flux_multiplier_modifier
+                if isinstance(
+                    self.modifiers[0], flux_multiplier_modifier
                 ):  # linear modifiers
                     m.set_x(model, x_linear[self.mod_x_idx[i] : self.mod_x_idx[i + 1]])
                 else:  # nonlinear modifiers
                     m.set_x(model, x[self.mod_x_idx[i] : self.mod_x_idx[i + 1]])
         else:
             # prepare x_linear by du_dT
-            if (
-                type(self.modifiers[0]) == transmissibility_modifier
-                and type(self.modifiers[1]) == well_index_modifier
+            if isinstance(self.modifiers[0], transmissibility_modifier) and isinstance(
+                self.modifiers[1], well_index_modifier
             ):
                 # x_temp = x[:self.mod_x_idx[2]]
                 # x_linear = np.dot(x_temp, model.du_dT)
                 x_linear = x[: self.mod_x_idx[2]]
 
             for i, m in enumerate(self.modifiers):
-                if (
-                    type(m) == transmissibility_modifier
-                    or type(m) == well_index_modifier
+                if isinstance(m, transmissibility_modifier) or isinstance(
+                    m, well_index_modifier
                 ):  # linear modifiers
                     m.set_x(model, x_linear[self.mod_x_idx[i] : self.mod_x_idx[i + 1]])
                 else:  # nonlinear modifiers

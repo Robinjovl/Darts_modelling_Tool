@@ -178,7 +178,8 @@ class DartsModel:
             warnings.warn(
                 'The number of cells looks too big to use a direct linear solver: '
                 + str(self.reservoir.mesh.n_res_blocks)
-                + ' > 30000'
+                + ' > 30000',
+                stacklevel=2,
             )
 
     def reset(self):
@@ -470,14 +471,7 @@ class DartsModel:
                 ts += 1
                 if verbose:
                     print(
-                        "# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
-                        % (
-                            ts,
-                            t,
-                            dt,
-                            self.physics.engine.n_newton_last_dt,
-                            self.physics.engine.n_linear_last_dt,
-                        )
+                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}"
                     )
 
                 dt = min(dt * self.data_ts.dt_mult, self.data_ts.dt_max)
@@ -495,7 +489,7 @@ class DartsModel:
             else:
                 dt /= self.data_ts.dt_mult
                 if verbose:
-                    print("Cut timestep to %2.10f" % dt)
+                    print(f"Cut timestep to {dt:2.10f}")
                 if dt < self.data_ts.dt_min:
                     break
 
@@ -504,15 +498,7 @@ class DartsModel:
 
         if verbose:
             print(
-                "TS = %d(%d), NI = %d(%d), LI = %d(%d)"
-                % (
-                    self.physics.engine.stat.n_timesteps_total,
-                    self.physics.engine.stat.n_timesteps_wasted,
-                    self.physics.engine.stat.n_newton_total,
-                    self.physics.engine.stat.n_newton_wasted,
-                    self.physics.engine.stat.n_linear_total,
-                    self.physics.engine.stat.n_linear_wasted,
-                )
+                f"TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d})"
             )
 
     def run(
@@ -594,16 +580,7 @@ class DartsModel:
 
                 if verbose:
                     print(
-                        "# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%4s"
-                        % (
-                            ts,
-                            t,
-                            dt,
-                            self.physics.engine.n_newton_last_dt,
-                            self.physics.engine.n_linear_last_dt,
-                            dt_mult_new,
-                            np.round(max_dx, 3),
-                        )
+                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={np.round(max_dx, 3)}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -623,7 +600,7 @@ class DartsModel:
             else:
                 dt /= data_ts.dt_mult
                 if verbose:
-                    print("Cut timestep to %2.10f" % dt)
+                    print(f"Cut timestep to {dt:2.10f}")
                 assert dt > data_ts.dt_min, (
                     'Stop simulation. Reason: reached min. timestep '
                     + str(data_ts.dt_min)
@@ -644,15 +621,7 @@ class DartsModel:
 
         if verbose:
             print(
-                "TS = %d(%d), NI = %d(%d), LI = %d(%d)"
-                % (
-                    self.physics.engine.stat.n_timesteps_total,
-                    self.physics.engine.stat.n_timesteps_wasted,
-                    self.physics.engine.stat.n_newton_total,
-                    self.physics.engine.stat.n_newton_wasted,
-                    self.physics.engine.stat.n_linear_total,
-                    self.physics.engine.stat.n_linear_wasted,
-                )
+                f"TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d})"
             )
 
         return 0
@@ -745,7 +714,7 @@ class DartsModel:
                         print("Stationary point detected!")
                     break
             else:
-                r_code = self.physics.engine.solve_linear_equation()
+                self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
@@ -794,39 +763,43 @@ class DartsModel:
             )
         res_history = np.array([history[0][0], history[1][0]])
 
-        for iter in range(5):
+        for _iter in range(5):
             if coef.size > 2:
-                id = res_history.argmin()
-                closest_left = np.where(coef < coef[id])[0]
-                closest_right = np.where(coef > coef[id])[0]
+                idx_min = res_history.argmin()
+                closest_left = np.where(coef < coef[idx_min])[0]
+                closest_right = np.where(coef > coef[idx_min])[0]
                 if closest_left.size and closest_right.size:
                     left = closest_left[coef[closest_left].argmax()]
                     right = closest_right[coef[closest_right].argmin()]
-                    if res_history[left] < res_history[id]:
-                        coef = np.append(coef, (coef[id] + coef[left]) / 2)
-                    elif res_history[right] < res_history[id]:
-                        coef = np.append(coef, (coef[id] + coef[right]) / 2)
+                    if res_history[left] < res_history[idx_min]:
+                        coef = np.append(coef, (coef[idx_min] + coef[left]) / 2)
+                    elif res_history[right] < res_history[idx_min]:
+                        coef = np.append(coef, (coef[idx_min] + coef[right]) / 2)
                     else:
                         if res_history[left] < res_history[right]:
                             coef = np.append(
-                                coef, coef[id] - (coef[id] - coef[left]) / 4
+                                coef, coef[idx_min] - (coef[idx_min] - coef[left]) / 4
                             )
                         else:
                             coef = np.append(
-                                coef, coef[id] + (coef[right] - coef[id]) / 4
+                                coef, coef[idx_min] + (coef[right] - coef[idx_min]) / 4
                             )
                 elif closest_left.size:
                     left = closest_left[coef[closest_left].argmax()]
-                    if res_history[left] < res_history[id]:
-                        coef = np.append(coef, (coef[id] + coef[left]) / 2)
+                    if res_history[left] < res_history[idx_min]:
+                        coef = np.append(coef, (coef[idx_min] + coef[left]) / 2)
                     else:
-                        coef = np.append(coef, coef[id] + (coef[id] - coef[left]) / 2)
+                        coef = np.append(
+                            coef, coef[idx_min] + (coef[idx_min] - coef[left]) / 2
+                        )
                 elif closest_right.size:
                     right = closest_right[coef[closest_right].argmin()]
-                    if res_history[right] < res_history[id]:
-                        coef = np.append(coef, (coef[id] + coef[right]) / 2)
+                    if res_history[right] < res_history[idx_min]:
+                        coef = np.append(coef, (coef[idx_min] + coef[right]) / 2)
                     else:
-                        coef = np.append(coef, coef[id] - (coef[right] - coef[id]) / 2)
+                        coef = np.append(
+                            coef, coef[idx_min] - (coef[right] - coef[idx_min]) / 2
+                        )
                 if coef[-1] <= 0:
                     coef[-1] = self.data_ts.min_line_search_update
                 if coef[-1] >= 1:

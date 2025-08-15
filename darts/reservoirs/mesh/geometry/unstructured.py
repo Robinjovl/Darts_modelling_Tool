@@ -264,7 +264,7 @@ class Unstructured(Geometry):
             )
 
         c0_index = len(self.curves) + 1
-        for i, a in enumerate(angles[:-1]):
+        for i, _a in enumerate(angles[:-1]):
             self.curves.append(
                 Curve(
                     c0_index + i,
@@ -294,7 +294,7 @@ class Unstructured(Geometry):
         for i, p in enumerate(points):
             self.points.append(Point(p0_index + i, p, lc=lc))
 
-        for i, p in enumerate(points[:-1]):
+        for i, _p in enumerate(points[:-1]):
             self.curves.append(
                 Curve(
                     c0_index + i,
@@ -321,8 +321,8 @@ class Unstructured(Geometry):
         # Create geo-file:
         f = open(filename + '.geo', "w+")
 
-        for i, l in enumerate(self.lc):
-            f.write(f'lc_{i:d} = {l:f};\n')
+        for i, lc in enumerate(self.lc):
+            f.write(f'lc_{i:d} = {lc:f};\n')
         f.write('\n')
 
         """Write all points"""
@@ -404,7 +404,7 @@ class Unstructured(Geometry):
                 # Write Physical Volume: out[1]
                 # Write Physical Curve: out[0], out[2], ...
                 # Physical Point: ??
-                for i, (name, idxs) in enumerate(self.physical_points.items()):
+                for i, (name, _idxs) in enumerate(self.physical_points.items()):
                     # self.physical_groups['edge'][name] = i + self.tags[0]
                     f.write(
                         f'Physical Point("{name:s}", {i + self.tags[0]:d}) = {{}};\n'
@@ -515,7 +515,7 @@ class Unstructured(Geometry):
                 f.write(local_text)
 
             # Add Volumes
-            for i, volume in enumerate(self.volumes):
+            for _i, volume in enumerate(self.volumes):
                 surfaces = volume.surfaces
                 local_text = f'Surface Loop({volume.idx:d}) = {{'
                 for surface in surfaces:

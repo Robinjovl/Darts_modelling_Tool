@@ -138,16 +138,14 @@ class Compositional(PhysicsBase):
         """
         if discr_type == 'mpfa':
             if self.thermal:
-                return eval(
-                    "engine_super_mp_%s%d_%d_t" % (platform, self.nc, self.nph)
-                )()
+                return eval(f"engine_super_mp_{platform}{self.nc:d}_{self.nph:d}_t")()
             else:
-                return eval("engine_super_mp_%s%d_%d" % (platform, self.nc, self.nph))()
+                return eval(f"engine_super_mp_{platform}{self.nc:d}_{self.nph:d}")()
         else:
             if self.thermal:
-                return eval("engine_super_%s%d_%d_t" % (platform, self.nc, self.nph))()
+                return eval(f"engine_super_{platform}{self.nc:d}_{self.nph:d}_t")()
             else:
-                return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
+                return eval(f"engine_super_{platform}{self.nc:d}_{self.nph:d}")()
 
     def set_operators(self):
         """

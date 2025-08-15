@@ -414,16 +414,9 @@ class THMCModel(DartsModel):
             ):
                 fail += 1
                 print(
-                    '#%d solution check failed for variable %d %s (range %.2E): max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E'
-                    % (
-                        fail,
-                        v,
-                        vars[v],
-                        sol_range,
-                        diff_abs_max_normalized,
-                        diff_max_normalized_tol,
-                        diff_max_abs,
-                    )
+                    f"#{fail} solution check failed for variable {v} {vars[v]} "
+                    f"(range {sol_range:.2E}): max(abs(diff))/range {diff_abs_max_normalized:.2E} "
+                    f"(tol {diff_max_normalized_tol:.2E}), max(abs(diff)) = {diff_max_abs:.2E}"
                 )
             if plot:
                 # plot two solutions and difference between them
@@ -441,20 +434,19 @@ class THMCModel(DartsModel):
                 plt.close()
 
         for key, value in sorted(cur_data.items()):
-            if key == 'solution' or type(value) != int:
+            if key == 'solution' or not isinstance(value, int):
                 continue
             reference = ref_data[key]
 
             if reference == 0:
                 if value != 0:
-                    print('#%d parameter %s is %d (was 0)' % (fail, key, value))
+                    print(f"#{fail} parameter {key} is {value:d} (was 0)")
                     fail += 1
             else:
                 rel_diff = (value - ref_data[key]) / reference * 100
                 if abs(rel_diff) > rel_diff_tol:
                     print(
-                        '#%d parameter %s is %d (was %d, %+.2f%%)'
-                        % (fail, key, value, reference, rel_diff)
+                        f"#{fail} parameter {key} is {value:d} (was {reference:d}, {rel_diff:+.2f}%)"
                     )
                     fail += 1
 

@@ -199,7 +199,7 @@ class Output:
                     algorithm='multilinear',
                     mode='adaptive',
                     precision='d',
-                    timer_name='property %d interpolation' % region,
+                    timer_name=f'property {region:d} interpolation',
                     region=str(region),
                 )
 
@@ -226,7 +226,7 @@ class Output:
                 temp_dict = {}
 
                 # add temperature
-                temp_dict['temperature'] = lambda: pc.temperature
+                temp_dict['temperature'] = lambda container=pc: container.temperature
 
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
@@ -251,7 +251,7 @@ class Output:
                     algorithm='multilinear',
                     mode='adaptive',
                     precision='d',
-                    timer_name='property %d interpolation' % region,
+                    timer_name=f'property {region:d} interpolation',
                     region=str(region),
                 )
 
@@ -305,7 +305,7 @@ class Output:
                 algorithm='multilinear',
                 mode='adaptive',
                 precision='d',
-                timer_name='property %d interpolation' % region,
+                timer_name=f'property {region:d} interpolation',
                 region=str(region),
             )
             self.properties = list(output_dictionary.keys())
@@ -325,10 +325,10 @@ class Output:
         """
         output_directory = os.path.join(self.output_folder, filename)
         with h5py.File(output_directory, "w") as h5f:
-            for key, array in array.items():
+            for key, arr in array.items():
                 h5f.create_dataset(
                     key,
-                    data=array,
+                    data=arr,
                     compression='gzip',
                     compression_opts=compression_level,
                 )
@@ -461,12 +461,12 @@ class Output:
                 for key in h5f.keys():
                     if key != "time_vector":  # Skip time vector in property dictionary
                         property_array[key] = np.array(h5f[key])
-        except:
+        except Exception as _err:
             with h5py.File(self.sol_filepath, 'r') as f:
                 if 'properties' not in f:
                     raise KeyError(
                         "No 'properties' group found in the reservoir.h5 file."
-                    )
+                    ) from _err
 
                 time_vector = np.array(f['dynamic/time'][:])
                 prop_group = f['properties']
@@ -769,16 +769,16 @@ class Output:
                             1, len(cell_id), len(var_names)
                         )
 
-                    except IndexError:
+                    except IndexError as err:
                         raise IndexError(
                             f"Timestep {timestep} does not exist in {filename}."
-                        )
+                        ) from err
 
             for i, name in enumerate(var_names):
                 var_names[i] = name.decode()
 
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File not found: {filename}.")
+        except FileNotFoundError as err:
+            raise FileNotFoundError(f"File not found: {filename}.") from err
 
         return time, cell_id, X, var_names
 
@@ -874,7 +874,7 @@ class Output:
         }
 
         # Loop over available timesteps
-        for k, t in enumerate(timesteps):
+        for k, _t in enumerate(timesteps):
             # Extract primary properties from X vector
             for var_name, var_idx in primary_prop_idxs.items():
                 if engine is False:
@@ -962,7 +962,7 @@ class Output:
         # units to prop names
         self.set_units()
         prop_names = {}
-        for i, name in enumerate(property_array.keys()):
+        for _i, name in enumerate(property_array.keys()):
             if name in self.properties + self.physics.vars:
                 prop_names[name] = name + self.variable_units[name]
             else:
@@ -1100,33 +1100,36 @@ class Output:
         )
 
         var_names = list(xarray_data.data_vars)
-        for i, var in enumerate(var_names):
+        for _i, var in enumerate(var_names):
             plt.figure()
             if z is not None:
                 assert z < len(xarray_data['z']), (
-                    'z-level step should be less than %d' % len(xarray_data['z'])
+                    f"z-level step should be less than {len(xarray_data['z']):d}"
                 )
                 xarray_data[var].isel(time=timestep, z=z).plot()
-                plt.savefig(output_directory + '/%s ts%d z%d.png' % (var, timestep, z))
+                plt.savefig(output_directory + f'/{var} ts{timestep:d} z{z:d}.png')
 
             elif y is not None:
                 assert y < len(xarray_data['y']), (
-                    'y-level step should be less than %d' % len(xarray_data['y'])
+                    f"y-level step should be less than {len(xarray_data['y']):d}"
                 )
                 xarray_data[var].isel(time=timestep, y=y).plot()
-                plt.savefig(output_directory + '/%s ts%d y%d.png' % (var, timestep, y))
+                plt.savefig(output_directory + f'/{var} ts{timestep:d} y{y:d}.png')
 
             elif x is not None:
                 assert x < len(xarray_data['x']), (
-                    'x-level step should be less than %d' % len(xarray_data['x'])
+                    f"x-level step should be less than {len(xarray_data['x']):d}"
                 )
                 xarray_data[var].isel(time=timestep, x=x).plot()
-                plt.savefig(output_directory + '/%s ts%d zx%d.png' % (var, timestep, z))
+                plt.savefig(
+                    output_directory
+                    + f'/{var} ts{timestep:d} zx{z if z is not None else 0:d}.png'
+                )
 
             else:
                 # model is a 1D reservoir
                 xarray_data[var].isel(time=timestep).plot()
-                plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
+                plt.savefig(output_directory + f'/{var} ts{timestep:d}.png')
         plt.close('all')
 
     def store_well_time_data(

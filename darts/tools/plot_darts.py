@@ -230,9 +230,9 @@ def plot_oil_rate_rate_vs_obsrate(
         y=abs(truth_df[[col for col in truth_df.columns if search_str in col]]),
         marker=marker,
     )
-    min_oil_rate_sim = min(abs(darts_df[search_str + ' (m3/day)'].values))
+    min(abs(darts_df[search_str + ' (m3/day)'].values))
     min_oil_rate_truth = min(abs(truth_df[search_str + ' (m3/day)'].values))
-    max_oil_rate_sim = max(abs(darts_df[search_str + ' (m3/day)'].values))
+    max(abs(darts_df[search_str + ' (m3/day)'].values))
     max_oil_rate_truth = max(abs(truth_df[search_str + ' (m3/day)'].values))
     plt.plot(
         [max_oil_rate_truth, min_oil_rate_truth],
