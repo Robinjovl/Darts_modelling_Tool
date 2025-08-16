@@ -851,10 +851,10 @@ class StructDiscretizer:
             act_t += tran_thermal > self.min_tran_tranD
             print(
                 "Inactive connections due to transmissibility: ",
-                act_t[not act_t].size,
+                np.count_nonzero(~act_t),
             )
             act_conn = act_m * act_p * act_t
-            print("Inactive connections total: ", act_conn[not act_conn].size)
+            print("Inactive connections total: ", np.count_nonzero(~act_conn))
 
             # now figure which local cells (including inactive) do not participate in active connections...
             m = set(cell_m[act_conn])
