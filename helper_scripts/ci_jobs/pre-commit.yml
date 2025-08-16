@@ -14,17 +14,16 @@ pre-commit:
         - pip install pre-commit
     script:
         - echo 'Running pre-commit checks (Python, YAML, TOML)...'
-        - FILES="$(git ls-files -- \
-            ':(glob)darts/**/*.py' \
-            ':(glob)tests/**/*.py' \
-            ':(glob)helper_scripts/**/*.py' \
-            ':(glob)helper_scripts/**/*.yml' \
-            ':(glob).cicd/**/*.yml' \
-            ':(glob).gitlab-ci.yml' \
-            ':(glob)*.toml' \
-            || true)"
-        - echo $FILES
         - |
+          set -eu
+          FILES="$(
+            {
+              git ls-files -- 'darts' 'tests' 'helper_scripts' '.cicd' '.gitlab-ci.yml' 2>/dev/null || true
+            } | grep -E '\.(py|ya?ml|toml)$' || true
+          )"
+          : > linting_output.log
+
+          echo $FILES
           if [ -n "$FILES" ]; then
             pre-commit run --files $FILES --show-diff-on-failure --color always 2>&1 | tee linting_output.log
           else
