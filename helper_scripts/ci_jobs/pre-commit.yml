@@ -23,6 +23,7 @@ pre-commit:
             ':(glob).gitlab-ci.yml' \
             ':(glob)*.toml' \
             || true)"
+        - echo $FILES
         - |
           if [ -n "$FILES" ]; then
             pre-commit run --files $FILES --show-diff-on-failure --color always 2>&1 | tee linting_output.log
