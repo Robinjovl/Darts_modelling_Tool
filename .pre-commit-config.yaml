@@ -24,3 +24,7 @@ repos:
       - id: check-toml
         files: ^[^/]+\.toml$
       - id: mixed-line-ending
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
