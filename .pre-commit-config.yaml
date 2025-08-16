@@ -10,9 +10,9 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix, --show-fixes]
-        files: ^(darts|tests)/.*\.py$
+        files: ^(darts|tests|helper_scripts|\.cicd)/.*\.py$
       - id: ruff-format
-        files: ^(darts|tests)/.*\.py$
+        files: ^(darts|tests|helper_scripts|\.cicd)/.*\.py$
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -20,5 +20,7 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: check-yaml
+        files: ^((.cicd|helper_scripts)/.*\.ya?ml|\.gitlab-ci\.ya?ml)$
       - id: check-toml
+        files: ^[^/]+\.toml$
       - id: mixed-line-ending
