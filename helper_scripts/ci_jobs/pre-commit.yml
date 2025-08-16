@@ -14,7 +14,7 @@ pre-commit:
         - pip install pre-commit
     script:
         - echo 'Running pre-commit checks (Python, YAML, TOML)...'
-        - FILES="$(git ls-files \
+        - FILES="$(git ls-files -- \
             ':(glob)darts/**/*.py' \
             ':(glob)tests/**/*.py' \
             ':(glob)helper_scripts/**/*.py' \
