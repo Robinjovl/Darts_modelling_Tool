@@ -24,6 +24,14 @@ apptainer-image-builder:
     - linux_tahiti_gpu
   needs:
     - job: lint-python
+  variables:
+    # Put all heavy I/O on the large /data mount
+    APPTAINER_TMPDIR: "/data/gitlab-runner/apptainer-tmp"
+    APPTAINER_CACHEDIR: "/data/gitlab-runner/apptainer-cache"
+    TMPDIR: "/data/gitlab-runner/apptainer-tmp"
+  before_script:
+    - set -euo pipefail
+    - mkdir -p /data/gitlab-runner/apptainer-tmp /data/gitlab-runner/apptainer-cache /data/gitlab-runner/apptainer-images
   script:
     # hash image config
     - DEF_SHA="$(sha256sum .cicd/build-linux/singularity.def | awk '{print $1}')"
@@ -34,8 +42,10 @@ apptainer-image-builder:
     # combine into BUILD_KEY
     - BUILD_KEY="$(printf '%s\n%s\n%s\n' "$DEF_SHA" "$BLD_FILES_SHA" "$DLS_SHA" | sha256sum | awk '{print $1}')"
     - echo "BUILD_KEY=$BUILD_KEY"
-    - IMG_DIR="/data/gitlab-runner"
+    - IMG_DIR="/data/gitlab-runner/apptainer-images"
     - IMG="$IMG_DIR/open-darts-${BUILD_KEY}.sif"
+    # (Optional) quick visibility of space before building
+    - df -h "$IMG_DIR" "$(pwd)" /tmp || true
     # build only if not already present (cache/artifacts from previous runs)
     - |    
       if [ -f "$IMG" ]; then
@@ -44,8 +54,7 @@ apptainer-image-builder:
         apptainer build --fakeroot \
           --build-arg DLS_TOKEN="${DLS_TOKEN}" \
           --build-arg CUDA_ARCH="70" \
-          singularity.sif .cicd/build-linux/singularity.def;
-        mv singularity.sif "$IMG";
+          "$IMG" .cicd/build-linux/singularity.def;
       fi
     - ln -sf "$(basename "$IMG")" "$IMG_DIR/open-darts-latest.sif"
   cache:

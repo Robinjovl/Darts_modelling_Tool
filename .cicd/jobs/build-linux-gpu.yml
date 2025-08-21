@@ -61,7 +61,7 @@ build-linux-tahiti-image-3.10-gpu:
         - job: lint-python
         - job: apptainer-image-builder
     variables:
-        APPTAINER_IMAGE: "/data/gitlab-runner/open-darts-latest.sif"
+        APPTAINER_IMAGE: "/data/gitlab-runner/apptainer-images/open-darts-latest.sif"
         CONDA_ENV: "tahiti-gpu"
         PY_VER: "3.10"
     before_script:
