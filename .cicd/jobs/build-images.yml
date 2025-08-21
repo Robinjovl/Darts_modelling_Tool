@@ -28,7 +28,6 @@ apptainer-image-builder:
     # Put all heavy I/O on the large /data mount
     APPTAINER_TMPDIR: "/data/gitlab-runner/apptainer-tmp"
     APPTAINER_CACHEDIR: "/data/gitlab-runner/apptainer-cache"
-    TMPDIR: "/data/gitlab-runner/apptainer-tmp"
   before_script:
     - set -euo pipefail
     - mkdir -p /data/gitlab-runner/apptainer-tmp /data/gitlab-runner/apptainer-cache /data/gitlab-runner/apptainer-images
