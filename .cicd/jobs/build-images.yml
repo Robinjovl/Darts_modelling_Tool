@@ -44,10 +44,6 @@ apptainer-image-builder:
         mv singularity.sif "$IMG";
       fi
     - ln -sf "$(basename "$IMG")" "$IMG_DIR/open-darts-latest.sif"
-  artifacts:
-    paths:
-      - "$IMG"
-    expire_in: 14 days
   cache:
     key: "$BUILD_KEY"
     paths:
