@@ -44,7 +44,7 @@
       expire_in: 1 day
       when: always
 
-test-linux-3.10-gpu:
+.test-linux-oahu-3.10-gpu:
     tags:
         - linux_gpu
     extends: .test-linux-gpu
