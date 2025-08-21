@@ -20,6 +20,8 @@
         - '*.log'
       expire_in: 1 day
       when: always
+    needs:
+    - job: lint-python
 
 .build-linux-oahu-3.10-gpu:
     tags:
@@ -56,7 +58,8 @@ build-linux-tahiti-image-3.10-gpu:
         name: "apptainer"
         entrypoint: [""]
     needs:
-        - apptainer-image-builder
+        - job: lint-python
+        - job: apptainer-image-builder
     variables:
         APPTAINER_IMAGE: "/data/gitlab-runner/open-darts-latest.sif"
         CONDA_ENV: "tahiti-gpu"

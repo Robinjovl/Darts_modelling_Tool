@@ -5,6 +5,8 @@ docker-image-builder:
   image: 
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
+  needs:
+    - job: lint-python
   script:
     - /kaniko/executor 
       --context "${CI_PROJECT_DIR}/.cicd/build-linux"
@@ -20,6 +22,8 @@ apptainer-image-builder:
   stage: build_images
   tags:
     - linux_tahiti_gpu
+  needs:
+    - job: lint-python
   script:
     # hash image config
     - DEF_SHA="$(sha256sum .cicd/build-linux/singularity.def | awk '{print $1}')"
