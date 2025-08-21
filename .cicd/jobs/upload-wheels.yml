@@ -18,7 +18,7 @@ upload_wheels:
         - build-linux-3.10
         - build-windows-3.10
 
-upload_wheels_gse:
+.upload_wheels_oahu:
     stage: deploy
     image: python:3.10
     rules:
@@ -32,6 +32,21 @@ upload_wheels_gse:
     dependencies:
         # get the wheels from the build stage
         - build-linux-oahu-3.10-gpu
+
+upload_wheels_tahiti:
+    stage: deploy
+    image: python:3.10
+    rules:
+        - if: $UPLOAD_WHEELS == "1"
+    tags:
+        - linux_tahiti_gpu
+    script:
+        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
+        - export wheel=`ls ./dist/*linux*`
+        - cp $wheel $TAHITIWHEELSPATH
+    dependencies:
+        # get the wheels from the build stage
+        - build-linux-tahiti-3.10-gpu
 
 upload_wheels_odls:
     stage: deploy
