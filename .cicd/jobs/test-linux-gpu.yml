@@ -87,7 +87,23 @@ test-linux-tahiti-image-3.10-gpu:
             # make sure pip is fresh and reinstall your wheel
             python -m pip install --upgrade pip && \
             pip uninstall open-darts-flash --yes && \
-            pip install ./dist/*.whl
+            pip install ./dist/*.whl --force-reinstall
+            "
+    script:
+        - |
+          apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+            set -euxo pipefail && \
+            eval \"\$(conda shell.bash hook)\" && \
+            conda activate ${CONDA_ENV} && \
+            cd models && \
+            systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG && \
+            echo 'run_test_suite2 returned' $? && \
+            cd .. && \
+            # test discretizer
+            cd discretizer/tests/compare_discretizers && \
+            python main.py && \
+            cd ../../.. && \
+            echo 'test finished'
             "
     variables:
         PY_VER: '3.10'
