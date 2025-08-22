@@ -91,7 +91,7 @@ test-linux-tahiti-image-3.10-gpu:
             "
     variables:
         PY_VER: '3.10'
-        APPTAINER_IMAGE: "/data/gitlab-runner/open-darts-latest.sif"
+        APPTAINER_IMAGE: "/data/gitlab-runner/apptainer-images/open-darts-latest.sif"
         CONDA_ENV: "tahiti-gpu"
     needs:
         - build-linux-tahiti-image-3.10-gpu
