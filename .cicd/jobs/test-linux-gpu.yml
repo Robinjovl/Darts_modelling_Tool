@@ -96,7 +96,6 @@ test-linux-tahiti-image-3.10-gpu:
             eval \"\$(conda shell.bash hook)\" && \
             conda activate ${CONDA_ENV} && \
             cd models && \
-            # systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG && \
             darts run_test_suite2.py LOG && \
             echo 'run_test_suite2 returned' $? && \
             cd .. && \
