@@ -535,6 +535,113 @@ class Model(CICDModel):
         self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, is_inj=False,
                                        target=self.pressure_init)
 
+    def run(self, days: float = None, restart_dt: float = 0., verbose: bool = True):
+        """
+        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
+
+        :param days: Time increment [days]
+        :type days: float
+        :param restart_dt: Restart value for timestep size [days, optional]
+        :type restart_dt: float
+        :param verbose: Switch for verbose, default is True
+        :type verbose: bool
+        """
+        assert hasattr(self, 'output'), "self.output does not exist, please call m.set_output() after m.init()"
+        days = days if days is not None else self.runtime
+        data_ts = self.data_ts
+
+        # get current engine time
+        t = self.physics.engine.t
+        stop_time = t + days
+
+        # same logic as in engine.run
+        if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
+            dt = data_ts.dt_first
+        elif restart_dt > 0.:
+            dt = restart_dt
+        else:
+            dt = min(self.prev_dt*data_ts.dt_mult, days, data_ts.dt_max)
+
+        self.prev_dt = dt
+
+        ts = 0
+
+        nc = self.physics.n_vars
+        nb = self.reservoir.mesh.n_res_blocks
+        max_dx = np.zeros(nc)
+
+        n_good_steps = 0
+
+        if np.fabs(data_ts.dt_mult - 1) < 1e-10:
+            omega = 0.
+        else:
+            omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
+
+        while t < stop_time:
+            xn = np.array(self.physics.engine.Xn, copy=True)[:nb * nc]  # need to copy since Xn will be updated Xn = X
+            converged = self.run_timestep(dt, t, verbose)
+
+            if converged:
+                t += dt
+                self.physics.engine.t = t
+                ts += 1
+
+                x = np.array(self.physics.engine.X, copy=False)[:nb * nc]
+                dt_mult_new = data_ts.dt_mult
+                for i in range(nc):
+                    max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
+                    mult = ((1 + omega) * data_ts.eta[i]) / (max_dx[i] + omega * data_ts.eta[i])
+                    if mult < dt_mult_new:
+                        dt_mult_new = mult
+
+                if verbose:
+                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%4s"
+                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
+                             dt_mult_new, np.round(max_dx, 3)))
+
+                if fabs(dt - data_ts.dt_max) < 1.e-10 and self.physics.engine.n_newton_last_dt < self.ni_dt_increase_cutoff:
+                    n_good_steps += 1
+                else:
+                    n_good_steps = 0
+
+                if self.physics.engine.n_newton_last_dt > self.ni_dt_decrease_cutoff:
+                    data_ts.dt_max /= 2 * data_ts.dt_mult
+                    n_good_steps = 0
+
+                if n_good_steps > self.n_good_ts:
+                    data_ts.dt_max *= 2 * data_ts.dt_mult
+                    n_good_steps = 0
+
+                dt = min(dt * dt_mult_new, data_ts.dt_max)
+
+                if np.fabs(t + dt - stop_time) < data_ts.dt_min:
+                    dt = stop_time - t
+
+                if t + dt > stop_time:
+                    dt = stop_time - t
+                else:
+                    self.prev_dt = dt
+
+            else:
+                dt /= data_ts.dt_mult
+                n_good_steps = 0
+
+                if verbose:
+                    print("Cut timestep to %2.10f" % dt)
+                assert dt > data_ts.dt_min, ('Stop simulation. Reason: reached min. timestep '
+                                                 + str(data_ts.dt_min) + ' dt=' + str(dt))
+
+        # update current engine time
+        self.physics.engine.t = stop_time
+
+        if verbose:
+            print("TS = %d(%d), NI = %d(%d), LI = %d(%d)"
+                  % (self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
+                     self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
+                     self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
+
+        return 0
+
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, nc_sol=0, np_sol=0, 
                  min_z=1e-11, rate_ann_mat=None, temperature=None, fc_mask=None, is_gas_spec=False):
