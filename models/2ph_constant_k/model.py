@@ -82,12 +82,24 @@ class Model(DartsModel):
             dx, dy, dz = Lx / self.nx, Ly / self.ny, Lz / self.nz
             depth = 12000 * foot2meter# + Lz
 
-            self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=self.ny, nz=self.nz,
-                                                         dx=dx, dy=dy, dz=dz,
-                                                         permx=permeability[:,:,:,0],
-                                                         permy=permeability[:,:,:,1],
-                                                         permz=permeability[:,:,:,2],
-                                                         poro=porosity, start_z=depth)
+            if len(self.components) > 14:
+                layer_id = 0
+                p_init = np.flip(np.swapaxes(load_single_keyword(os.path.join(input_folder, 'ref_pres.txt'), 'REF_PRESSURE', cache=0).reshape(self.nz, self.ny, self.nx), 0, 2), axis=2)
+                self.p_init = p_init[:,:,layer_id]
+                self.nz = 1
+                self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=self.ny, nz=self.nz,
+                                                            dx=dx, dy=dy, dz=dz,
+                                                            permx=permeability[:,:,layer_id:layer_id + 1,0],
+                                                            permy=permeability[:,:,layer_id:layer_id + 1,1],
+                                                            permz=permeability[:,:,layer_id:layer_id + 1,2],
+                                                            poro=porosity[:,:,layer_id:layer_id + 1], start_z=depth)
+            else:
+                self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=self.ny, nz=self.nz,
+                                                            dx=dx, dy=dy, dz=dz,
+                                                            permx=permeability[:,:,:,0],
+                                                            permy=permeability[:,:,:,1],
+                                                            permz=permeability[:,:,:,2],
+                                                            poro=porosity, start_z=depth)
 
 
             # find well cells
@@ -264,9 +276,9 @@ class Model(DartsModel):
         return
 
     def set_initial_conditions(self):
-        if self.reservoir_type == '1D' or self.reservoir_type == '2D':
+        if self.reservoir_type == '1D' or self.reservoir_type == '2D' or len(self.components) > 14:
             input_distribution = {'pressure': self.p_init}
-            input_distribution.update({comp: self.ini_comp[i] for i, comp in self.physics.components[:-1]})
+            input_distribution.update({comp: self.ini_comp[i] for i, comp in enumerate(self.physics.components[:-1])})
             # if self.physics.thermal:
             #     input_distribution['temperature'] = self.init_temp
 
