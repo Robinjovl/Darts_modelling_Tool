@@ -121,7 +121,7 @@ class PropertyContainer(PropertyBase):
         zc = np.append(
             vec_state_as_np[1 : self.nc], 1 - np.sum(vec_state_as_np[1 : self.nc])
         )
-        if zc[-1] < self.eps_z:
+        if zc[-1] < 0.99 * self.eps_z:
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:
@@ -138,12 +138,12 @@ class PropertyContainer(PropertyBase):
         check_vec = np.zeros((len(vec_composition),))
 
         for ith_comp, zi in enumerate(vec_composition):
-            if zi < self.eps_z:
+            if zi < 0.99 * self.eps_z:
                 # print(vec_composition)
                 vec_composition[ith_comp] = self.eps_z
                 count_corr += 1
                 check_vec[ith_comp] = 1
-            elif zi > 1 - (self.nc-1) * self.eps_z:
+            elif zi > 1 - (self.nc-1) * self.eps_z - 1e-15:
                 # print(vec_composition)
                 vec_composition[ith_comp] = 1 - (self.nc-1) * self.eps_z
                 temp_sum += vec_composition[ith_comp]
