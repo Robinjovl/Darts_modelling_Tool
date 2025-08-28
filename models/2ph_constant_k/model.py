@@ -104,7 +104,7 @@ class Model(DartsModel):
 
             # find well cells
             eps = 0.1 * dx
-            self.pt_wells = [[Lx / 2 + eps, Ly / 2 + 200], [Lx / 2 + eps, Ly / 2 - 200]]
+            self.pt_wells = {"INJ": [Lx / 2 + eps, Ly / 2 + 200], "PRD": [Lx / 2 + eps, Ly / 2 - 200]}
 
             # extend initial pressure array for well bodies/heads
             # n_wells = len(self.well_cell_id)
@@ -130,13 +130,13 @@ class Model(DartsModel):
         dz = np.unique(self.reservoir.global_data['dz'])[0]
         k_poiselle = rw ** 2 / 8 / 0.9869e-15
 
-        self.well_ids = []
-        for pt in self.pt_wells:
+        self.well_ids = {}
+        for well_name, pt in self.pt_wells.items():
             # find well cells
             dist = np.linalg.norm(self.reservoir.discretizer.centroids_all_cells[:, :2] - pt, axis=1)
             id_dist_sort = np.argsort(dist)
             id_closest_cells = id_dist_sort[:self.reservoir.nz]
-            self.well_ids.append(id_closest_cells)
+            self.well_ids[well_name] = id_closest_cells
 
             # find connections
             mask_m = np.isin(cell_m, id_closest_cells)
@@ -340,15 +340,35 @@ class Model(DartsModel):
 
     def set_rhs_flux(self, t: float = None):
         nv = self.physics.n_vars
+        n_jac_block_size = nv * nv
         nb = self.reservoir.mesh.n_res_blocks
         rhs_flux = np.zeros(nb * nv)
 
         if self.reservoir_type != '1D' and self.reservoir_type != '2D':
             self.inj_rate = [-10., 10.]
             Mw = self.physics.property_containers[0].Mw
-            for k, ids in enumerate(self.well_ids):
-                for c in range(len(self.components)):
-                    rhs_flux[ids * nv + c] += self.inj_rate[k] * self.inj_comp[c] / Mw[c]
+            well_counter = 0
+            for well_name, ids in self.well_ids.items():
+                if well_name == "PRD":
+                    jac_vals = self.physics.engine.jac_vals
+                    jac_diags = self.physics.engine.jac_diags
+                    X = np.asarray(self.physics.engine.X)
+                    base = ids * nv
+                    offs = np.arange(1, nv, dtype=np.int64)               # 1..nv-1
+                    z_non_last = X[base[:, None] + offs[None, :]]         # shape (n_ids, nv-1)
+                    z_last     = 1.0 - z_non_last.sum(axis=1)             # shape (n_ids,)
+                    z = np.empty((ids.size, nv), dtype=X.dtype)
+                    z[:, :nv-1] = z_non_last
+                    z[:,  nv-1] = z_last
+                    
+                    # filling for all well cells at once
+                    for c in range(len(self.components)):
+                        rhs_flux[ids * nv + c] += self.inj_rate[well_counter] * z[:, c] / Mw[c]
+                        jac_vals[jac_diags[ids] * n_jac_block_size + nv * c + c] += self.inj_rate[well_counter] / Mw[c] 
+                else:
+                    for c in range(len(self.components)):
+                        rhs_flux[ids * nv + c] += self.inj_rate[well_counter] * self.inj_comp[c] / Mw[c]
+                well_counter += 1
         return rhs_flux
 
 
