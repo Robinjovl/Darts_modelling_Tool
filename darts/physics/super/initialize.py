@@ -180,25 +180,26 @@ class Initialize:
                     "Length of " + spec + " not compatible"
                 )
         for i in range(nb):
-            assert (
-                int(
-                    np.sum(
-                        [
-                            not np.isnan(np.float64(spec[i]))
-                            for spec in self.primary_specs.values()
-                        ]
+            if i != bc_idx:
+                assert (
+                    int(
+                        np.sum(
+                            [
+                                not np.isnan(np.float64(spec[i]))
+                                for spec in self.primary_specs.values()
+                            ]
+                        )
+                        + np.sum(
+                            [
+                                not np.isnan(np.float64(spec[i]))
+                                for spec in self.secondary_specs.values()
+                            ]
+                        )
                     )
-                    + np.sum(
-                        [
-                            not np.isnan(np.float64(spec[i]))
-                            for spec in self.secondary_specs.values()
-                        ]
-                    )
+                    == self.nv - 1 - self.thermal
+                ), "Not the right number of variables specified for well-defined system of equations in block {}, need {}".format(
+                    i, self.nv - 1 - self.thermal
                 )
-                == self.nv - 1 - self.thermal
-            ), "Not the right number of variables specified for well-defined system of equations in block {}, need {}".format(
-                i, self.nv - 1 - self.thermal
-            )
 
         # Define thermal gradient
         if self.thermal:
@@ -301,11 +302,14 @@ class Initialize:
 
             # Solve Newton step
             dX = np.linalg.solve(Jac, res)
-            Xi -= dX
 
-            nT = np.sum(Xi[1 : self.nc])
-            if nT >= 1.0:
-                Xi[1 : self.nc] /= nT
+            # Calculate damping factor to remain within all positive mole fractions
+            betas_min = np.array([Xi[i] / dX[i] for i in range(1, self.nc)])
+            betas_max = np.array([-(1. - Xi[i]) / dX[i] for i in range(1, self.nc)])
+            beta = min(1, min(np.amin(betas_min[betas_min > 0]) if len(betas_min[betas_min > 0]) > 0 else 1,
+                              np.amin(betas_max[betas_max > 0]) if len(betas_max[betas_max > 0]) > 0 else 1))
+
+            Xi -= beta * dX
 
             if np.linalg.norm(res) < 1e-10:
                 return Xi
@@ -381,8 +385,16 @@ class Initialize:
                         Jac[res_idx, jj] = derivs1[prop_idx * self.nv + jj]
                     j2 += 1
 
+            # Solve Newton step
             dX = np.linalg.solve(Jac, res)
-            X[cell_idx, :n_vars] -= dX
+
+            # Calculate damping factor to remain within all positive mole fractions
+            betas_min = np.array([X[cell_idx, i] / dX[i] for i in range(1, self.nc)])
+            betas_max = np.array([-(1. - X[cell_idx, i]) / dX[i] for i in range(1, self.nc)])
+            beta = min(1, min(np.amin(betas_min[betas_min > 0]) if len(betas_min[betas_min > 0]) > 0 else 1,
+                              np.amin(betas_max[betas_max > 0]) if len(betas_max[betas_max > 0]) > 0 else 1))
+
+            X[cell_idx, :n_vars] -= beta * dX
 
             if np.linalg.norm(res) < 1e-10:
                 return X
