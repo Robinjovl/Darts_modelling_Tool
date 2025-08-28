@@ -15,8 +15,8 @@ class FluidFlowerStruct(StructReservoir):
         str_mesh.add_shape(spe11b)
         # str_mesh.add_shape(FluidFlower(lc=[0.1]))
 
-
-        nx, ny, nz = model_specs['nx'], 1, model_specs['nz']
+        self.specs= model_specs
+        nx, ny, nz = self.specs['nx'], 1, self.specs['nz']
         x, y, z, cell_to_layer, actnum = str_mesh.generate_mesh2(nx=nx, ny=ny, nz=nz)
 
         dx, dy, dz = x[1] - x[0], 1.0, z[1] - z[0]
@@ -79,7 +79,36 @@ class FluidFlowerStruct(StructReservoir):
         pass
 
     def set_wells(self, verbose: bool = False):
-        for name, center in self.well_centers.items():
-            cell_index = self.find_cell_index(center)
-            self.well_cells.append(cell_index)
+        from darts.engines import value_vector
+        
+        if self.specs['RHS']:
+            for name, center in self.well_centers.items():
+                cell_index = self.find_cell_index(center)
+                self.well_cells.append(cell_index)
+
+        else:
+            self.well_cells = []
+            for name, center in self.well_centers.items():
+                cell_index = self.find_cell_index(center)
+                self.well_cells.append(cell_index)
+
+            for well_nr in range(2):
+                k = int(self.well_cells[well_nr] / (self.nx * self.ny) - 1)
+                i = int(np.abs(self.nx - (self.well_cells[well_nr] - k * (self.nx * self.ny))))
+                j = 1
+
+                try:
+                    assert k * self.nx * self.ny + j * self.nx + i == self.well_cells[well_nr]
+                except:
+                    print(f"Assertion Failed: (i={i}, j={j}, k={k})")
+                    print(f"Computed Index: {k * self.nx * self.ny + j * self.nx + i}")
+                    print(f"Expected Index: {self.well_cells[well_nr]}")
+                    raise
+
+                self.add_well("I%d" % well_nr)
+                self.add_perforation("I%d" % well_nr, cell_index=(i, j, k), well_indexD=0, verbose=True)
+                
+                # well_idx = self.wells[well_nr].well_body_idx 
+                # self.mesh.op_num[well_idx] = self.mesh.op_num[self.well_cells[well_nr]]
+                
         return

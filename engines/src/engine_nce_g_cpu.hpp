@@ -30,6 +30,10 @@ using namespace opendarts::linear_solvers;
 template <uint8_t NC, uint8_t NP>
 class engine_nce_g_cpu : public engine_base
 {
+private:
+  // utilities for scaling and better conditionining of Jacobian
+  void make_dimensionless();
+  void dimensionalize_unknowns();
 
 public:
   // number of components
@@ -87,5 +91,9 @@ public:
   double calc_well_residual_Linf();
 
   double H2O_MW = 18.01528;
+
+  int solve_linear_equation();
+
+  void enable_flux_output();
 };
 #endif

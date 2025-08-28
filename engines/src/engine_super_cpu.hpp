@@ -58,7 +58,7 @@ public:
   // extra operators
   const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE;
   const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + NP;
-  const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP;
+  const static uint8_t MULT_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP;
   const static uint8_t ENTH_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1;
   const static uint8_t TEMP_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
   const static uint8_t PRES_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + 1;
@@ -96,6 +96,8 @@ public:
   //double calc_newton_residual();
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
+
+  void enable_flux_output();
 };
 
 #include "engine_super_cpu.tpp"

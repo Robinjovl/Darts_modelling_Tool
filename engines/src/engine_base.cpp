@@ -10,6 +10,7 @@
 
 #include "engine_base.h"
 
+
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
 #include "openDARTS/linear_solvers/linsolv_iface.hpp"
@@ -25,17 +26,9 @@ using namespace opendarts::linear_solvers;
 
 int engine_base::print_header()
 {
-	std::cout << engine_name << "\nSim params: \n"
-			  << "\tFirst ts: \t" << params->first_ts << std::endl;
-	std::cout << "\tMax ts: \t" << params->max_ts << std::endl;
-	std::cout << "\tMult ts: \t" << params->mult_ts << std::endl;
-
-	std::cout << "\tMax i newton: \t" << params->max_i_newton << std::endl;
-	std::cout << "\tMax i linear: \t" << params->max_i_linear << std::endl;
-	std::cout << "\tTol newton: \t" << params->tolerance_newton << std::endl;
-	std::cout << "\tTol linear: \t" << params->tolerance_linear << std::endl;
+	std::cout << "Engine: \t" << engine_name << "\n";
 #ifdef _OPENMP
-	std::cout << "\tOpenMP threads: \t" << omp_get_max_threads() << std::endl;
+	std::cout << "OpenMP threads: \t" << omp_get_max_threads() << std::endl;
 #endif
 	//  std::cout << "\tResolution: \t" << acc_flux_op_set->axis_points[0] << std::endl;
 
@@ -969,7 +962,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	Temp_dj_du = sub2;
 
 
-
     
     if (objfun_prod_phase_rate)
     {
@@ -1012,10 +1004,17 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
             std::vector<value_t> rates;
             std::vector<value_t> rates_derivs;
 
-            rates.resize(w->n_phases);
-            rates_derivs.resize(w->n_phases * n_vars);
+            //rates.resize(w->n_phases);
+            //rates_derivs.resize(w->n_phases * n_vars);
 
-            state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
+
+			index_t n_ops_well = w->control.get_well_n_ops();
+			index_t n_vars_well = w->control.get_well_n_vars();
+
+			rates.resize(n_ops_well);
+			rates_derivs.resize(n_ops_well * n_vars_well);
+
+            state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars_well);
             w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
 
 
@@ -1023,12 +1022,12 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
             //uint8_t c = component_index[0];
             double ders_term, vals_term;
-            for (uint8_t v = 0; v < n_vars; v++)
+            for (uint8_t v = 0; v < n_vars_well; v++)
             {
                 ders_term = 0.0;
                 vals_term = 0.0;
 
-                index_t p_idx = 0;  // the index of the phase in DARTS model definition
+                index_t p_idx = observation_rate_type * w->n_phases;  // by default it is volumetric rate
                 for (std::string phase : w->phase_names)
                 {
                     index_t p = 0;  // the index of the phase in observation data set
@@ -1037,7 +1036,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                         if (opt_phase == phase)
                         {
                             // adding minus sign on "q_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-                            ders_term += rates_derivs[p_idx * n_vars + v] * p_diff * w->segment_transmissibility * (-q_Q[ww][p]);
+                            ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->segment_transmissibility * (-q_Q[ww][p]);
                             vals_term += rates[p_idx] * w->segment_transmissibility * (-q_Q[ww][p]);
                         }
                         p++;
@@ -1048,23 +1047,23 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 
                 // corresponding to ms_well::check_constraints
-                if (w->control->name.find("BHP") != std::string::npos)  // BHP control
+				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
                 {
-                    Temp_dj_dx[upstream_idx * n_vars + v] += -ders_term;
+                    Temp_dj_dx[upstream_idx * n_vars_well + v] += -ders_term;
                     if (v == 0)  // derivatives w.r.t. pressure
                     {
-                        Temp_dj_dx[w->well_body_idx * n_vars + v] += vals_term;
+                        Temp_dj_dx[w->well_body_idx * n_vars_well + v] += vals_term;
                     }
                 }
                 else  // rate control
                 {
                     //;  // all zero
 
-                    Temp_dj_dx[upstream_idx * n_vars + v] += -ders_term;
+                    Temp_dj_dx[upstream_idx * n_vars_well + v] += -ders_term;
                     if (v == 0)  // derivatives w.r.t. pressure
                     {
-                        Temp_dj_dx[w->well_body_idx * n_vars + v] += vals_term;
-                        Temp_dj_dx[w->well_head_idx * n_vars + v] += -vals_term; // add extra term on well head
+                        Temp_dj_dx[w->well_body_idx * n_vars_well + v] += vals_term;
+                        Temp_dj_dx[w->well_head_idx * n_vars_well + v] += -vals_term; // add extra term on well head
                     }
                 }
 
@@ -1120,10 +1119,16 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			std::vector<value_t> rates;
 			std::vector<value_t> rates_derivs;
 
-			rates.resize(w->n_phases);
-			rates_derivs.resize(w->n_phases * n_vars);
+			//rates.resize(w->n_phases);
+			//rates_derivs.resize(w->n_phases * n_vars);
 
-			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
+			index_t n_ops_well = w->control.get_well_n_ops();
+			index_t n_vars_well = w->control.get_well_n_vars();
+
+			rates.resize(n_ops_well);
+			rates_derivs.resize(n_ops_well* n_vars_well);
+
+			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars_well);
 			w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
 
 
@@ -1131,12 +1136,12 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 			//uint8_t c = component_index[0];
 			double ders_term, vals_term;
-			for (uint8_t v = 0; v < n_vars; v++)
+			for (uint8_t v = 0; v < n_vars_well; v++)
 			{
 				ders_term = 0.0;
 				vals_term = 0.0;
 
-                index_t p_idx = 0;  // the index of the phase in DARTS model definition
+				index_t p_idx = observation_rate_type * w->n_phases;  // by default it is volumetric rate
 				for (std::string phase : w->phase_names)
 				{
                     index_t p = 0;  // the index of the phase in observation data set
@@ -1145,7 +1150,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 						if (opt_phase == phase)
 						{
                             // adding minus sign on "q_inj_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-							ders_term += rates_derivs[p_idx * n_vars + v] * p_diff * w->segment_transmissibility * (-q_inj_Q[ww][p]);
+							ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->segment_transmissibility * (-q_inj_Q[ww][p]);
 							vals_term += rates[p_idx] * w->segment_transmissibility * (-q_inj_Q[ww][p]);
 						}
                         p++;
@@ -1153,24 +1158,23 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                     p_idx++;
 				}
 
-				// corresponding to ms_well::check_constraints
-				if (w->control->name.find("BHP") != std::string::npos)  // BHP control
+				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
 				{
-					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
+					Temp_dj_dx[upstream_idx * n_vars_well + v] += ders_term;
 					if (v == 0)  // derivatives w.r.t. pressure
 					{
-						Temp_dj_dx[w->well_body_idx * n_vars + v] += -vals_term;
+						Temp_dj_dx[w->well_body_idx * n_vars_well + v] += -vals_term;
 					}
 				}
 				else  // rate control
 				{
 					//;  // all zero
 
-					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
+					Temp_dj_dx[upstream_idx * n_vars_well + v] += ders_term;
 					if (v == 0)  // derivatives w.r.t. pressure
 					{
-						Temp_dj_dx[w->well_body_idx * n_vars + v] += -vals_term;
-						Temp_dj_dx[w->well_head_idx * n_vars + v] += vals_term;
+						Temp_dj_dx[w->well_body_idx * n_vars_well + v] += -vals_term;
+						Temp_dj_dx[w->well_head_idx * n_vars_well + v] += vals_term;
 					}
 				}
 			}
@@ -1208,7 +1212,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
             // adding minus sign on "bhp_BHP" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
 			// corresponding to ms_well::check_constraints
-			if (w->control->name.find("BHP") != std::string::npos)  // BHP control
+			if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
 			{
 				index_t v = 0;  // derivatives w.r.t. pressure
 				Temp_dj_dx[w->well_head_idx * n_vars + v] += 0 * (-bhp_BHP[ww]);
@@ -1806,39 +1810,53 @@ int engine_base::apply_newton_update(value_t dt)
 	timer->node["newton update"].node["composition correction"].start();
 	if (nc > 1)
 	{
-		if (params->log_transform == 1)
-		{
-			apply_composition_correction_new(X, dX);
-		}
-		else
-		{
-			apply_composition_correction(X, dX);
-		}
+	  if (params->log_transform == 1)
+	  {
+		apply_composition_correction_new(X, dX);
+	  }
+	  else
+	  {
+		apply_composition_correction(X, dX);
+	  }
 	}
 	timer->node["newton update"].node["composition correction"].stop();
 
 	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
 	{
+	  if (n_solid > 0)
+	  {
+		apply_local_chop_correction_with_solid(X, dX);
+	  }
+	  else
+	  {
 		if (params->log_transform == 1)
 		{
-			apply_global_chop_correction_new(X, dX);
+		  apply_global_chop_correction_new(X, dX);
 		}
 		else
 		{
-			apply_global_chop_correction(X, dX);
+		  apply_global_chop_correction(X, dX);
 		}
+	  }
 	}
 	// apply local chop only if number of components is 2 and more
 	else if (params->newton_type == sim_params::NEWTON_LOCAL_CHOP && nc > 1)
 	{
+	  if (n_solid > 0)
+	  {
+		apply_local_chop_correction_with_solid(X, dX);
+	  }
+	  else
+	  {
 		if (params->log_transform == 1)
 		{
-			apply_local_chop_correction_new(X, dX);
+		  apply_local_chop_correction_new(X, dX);
 		}
 		else
 		{
-			apply_local_chop_correction(X, dX);
+		  apply_local_chop_correction(X, dX);
 		}
+	  }
 	}
 
 	// apply only if interpolation is used for derivatives
@@ -1847,7 +1865,13 @@ int engine_base::apply_newton_update(value_t dt)
 		apply_obl_axis_local_correction(X, dX);
 
 	// make newton update
-	std::transform(X.begin(), X.end(), dX.begin(), X.begin(), std::minus<double>());
+	auto newton_update_coefficient_copy = this->newton_update_coefficient;
+	std::transform(X.begin(), X.end(), dX.begin(), X.begin(), 
+	  [newton_update_coefficient_copy](double x, double dx) {
+		return x - newton_update_coefficient_copy * dx;
+	  });
+	this->newton_update_coefficient = 1.0;
+
 	return 0;
 }
 
@@ -1856,15 +1880,59 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 	double sum_z, new_z;
 	index_t nb = mesh->n_blocks;
 	bool z_corrected;
-	index_t n_corrected = 0;
+	index_t n_solid_corrected = 0, n_fluid_corrected = 0;
 
 	for (index_t i = 0; i < nb; i++)
 	{
+		/* ---- check solid compositions ---- */
 		sum_z = 0;
 		z_corrected = false;
+		for (char c = 0; c < n_solid; c++)
+		{
+			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
-		// check all but one composition in grid block
-		for (char c = 0; c < nc - 1; c++)
+			if (new_z < min_zc)
+			{
+			  new_z = min_zc;
+			  z_corrected = true;
+			}
+			else if (new_z > 1 - min_zc)
+			{
+			  new_z = 1 - min_zc;
+			  z_corrected = true;
+			}
+			sum_z += new_z;
+		}
+		// check the last composition
+		new_z = 1 - sum_z;
+		if (new_z < min_zc)
+		{
+		  new_z = min_zc;
+		  z_corrected = true;
+		}
+		sum_z += new_z;
+		// correction
+		if (z_corrected)
+		{
+		  // normalize compositions and set appropriate update
+		  for (char c = 0; c < n_solid; c++)
+		  {
+			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+
+			new_z = std::max(min_zc, new_z);
+			new_z = std::min(1 - min_zc, new_z);
+
+			new_z = new_z / sum_z;
+			dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
+		  }
+		  n_solid_corrected++;
+		}
+		/* ---- end check solid compositions ---- */
+
+		/* ---- check fluid compositions ---- */ 		
+		sum_z = 0;
+		z_corrected = false;
+		for (char c = n_solid; c < nc - 1; c++)
 		{
 			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 			if (new_z < min_zc)
@@ -1887,11 +1955,11 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 			z_corrected = true;
 		}
 		sum_z += new_z;
-
+		// correction
 		if (z_corrected)
 		{
 			// normalize compositions and set appropriate update
-			for (char c = 0; c < nc - 1; c++)
+			for (char c = n_solid; c < nc - 1; c++)
 			{
 				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
@@ -1901,13 +1969,14 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 				new_z = new_z / sum_z;
 				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
 			}
-			n_corrected++;
+			n_fluid_corrected++;
 		}
+		/* ---- end check fluid compositions ---- */
 	}
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_solid_corrected || n_fluid_corrected)
+		std::cout << "Composition correction applied to solid in " << n_solid_corrected << 
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
 }
-
 
 void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
@@ -2134,63 +2203,6 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
 }
 
-void engine_base::apply_composition_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX)
-{
-	double sum_z, new_z;
-	index_t nb = mesh->n_blocks;
-	bool z_corrected;
-	index_t n_corrected = 0;
-
-	for (index_t i = 0; i < nb; i++)
-	{
-		sum_z = 0;
-		z_corrected = false;
-
-		// check all but one composition in grid block
-		for (char c = 0; c < nc_fl - 1; c++)
-		{
-			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-			if (new_z < min_zc)
-			{
-				new_z = min_zc;
-				z_corrected = true;
-			}
-			else if (new_z > 1 - min_zc)
-			{
-				new_z = 1 - min_zc;
-				z_corrected = true;
-			}
-			sum_z += new_z;
-		}
-		// check the last composition
-		new_z = 1 - sum_z;
-		if (new_z < min_zc)
-		{
-			new_z = min_zc;
-			z_corrected = true;
-		}
-		sum_z += new_z;
-
-		if (z_corrected)
-		{
-			// normalize compositions and set appropriate update
-			for (char c = 0; c < nc_fl - 1; c++)
-			{
-				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-
-				new_z = std::max(min_zc, new_z);
-				new_z = std::min(1 - min_zc, new_z);
-
-				new_z = new_z / sum_z;
-				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
-			}
-			n_corrected++;
-		}
-	}
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
-}
-
 void engine_base::apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
 	double max_ratio = 0;
@@ -2319,6 +2331,7 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 	value_t max_dx = params->newton_params[0];
 	value_t ratio, dx;
 	index_t n_corrected = 0;
+	uint8_t nc_fl = nc - n_solid;
 
 	for (int i = 0; i < mesh->n_blocks; i++)
 	{
@@ -2327,9 +2340,9 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 		new_z_fl[nc_fl - 1] = 1.0;
 		for (int j = 0; j < nc_fl - 1; j++)
 		{
-			old_z_fl[j] = X[i * n_vars + j + z_var];
+			old_z_fl[j] = X[i * n_vars + j + z_var + n_solid];
 			old_z_fl[nc_fl - 1] -= old_z_fl[j];
-			new_z_fl[j] = old_z[j] - dX[i * n_vars + j + z_var];
+			new_z_fl[j] = old_z_fl[j] - dX[i * n_vars + j + z_var + n_solid];
 			new_z_fl[nc_fl - 1] -= new_z_fl[j];
 		}
 
@@ -2345,7 +2358,7 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 		if (ratio < 1.0) // perform chopping if ratio is below 1.0
 		{
 			n_corrected++;
-			for (int j = z_var; j < z_var + nc_fl - 1; j++)
+			for (int j = z_var + n_solid; j < z_var + nc - 1; j++)
 			{
 				dX[i * n_vars + j] *= ratio;
 			}

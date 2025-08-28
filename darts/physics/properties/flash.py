@@ -1,5 +1,7 @@
 import abc
+
 import numpy as np
+from numba import jit
 
 
 class Flash:
@@ -26,7 +28,7 @@ class SinglePhase(Flash):
         super().__init__(nph=1, nc=nc)
 
     def evaluate(self, pressure, temperature, zc):
-        self.nu, self.X = np.array([1.]), np.array([zc])
+        self.nu, self.X = np.array([1.0]), np.array([zc])
         self.temperature = temperature
         return 0
 
@@ -44,7 +46,6 @@ class ConstantK(Flash):
         return 0
 
 
-from numba import jit
 @jit(nopython=True)
 def RR2(k, zc, eps):
 
@@ -72,11 +73,13 @@ def RR2(k, zc, eps):
     x = zc / (V * k_minus_1 + 1)
     y = k * x
 
-    return [V, 1-V], [y, x]
+    return [V, 1 - V], [y, x]
 
 
 class IonFlash(Flash):
-    def __init__(self, flash_ev: Flash, nph: int, nc: int, ni: int, combined_ions: list = None):
+    def __init__(
+        self, flash_ev: Flash, nph: int, nc: int, ni: int, combined_ions: list = None
+    ):
         super().__init__(nph, nc, ni)
         self.flash_ev = flash_ev
         self.combined_ions = combined_ions
@@ -92,18 +95,23 @@ class IonFlash(Flash):
         error_output = self.flash_ev.evaluate(pressure, temperature, zc)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
-        self.X = np.empty((self.nph, self.nc + 1 if self.combined_ions is not None else self.nc + self.ni))
+        self.X = np.empty(
+            (
+                self.nph,
+                self.nc + 1 if self.combined_ions is not None else self.nc + self.ni,
+            )
+        )
         self.temperature = flash_results.temperature
 
         for j in range(self.nph):
-            Xj = flash_results.X[j * nc_tot:(j + 1) * nc_tot]
+            Xj = flash_results.X[j * nc_tot : (j + 1) * nc_tot]
 
             if self.combined_ions is not None:
                 # Normal components +
-                self.X[j, :self.nc] = Xj[:self.nc]
+                self.X[j, : self.nc] = Xj[: self.nc]
 
                 # Sum ions
-                self.X[j, self.nc] = np.sum(ion_weights * Xj[self.nc:])
+                self.X[j, self.nc] = np.sum(ion_weights * Xj[self.nc :])
             else:
                 self.X[j, :] = Xj
 

@@ -30,11 +30,11 @@ linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_ba
         for (int dim_i = vertex_i; dim_i < N_DIMS; dim_i++)
             standard_simplex[vertex_i][dim_i] = 1;
 
-    double int64_max = static_cast<double>(std::numeric_limits<index_t>::max());
-    if (n_points_total_fp > int64_max)
+    double int_type_max = static_cast<double>(std::numeric_limits<index_t>::max());
+    if (n_points_total_fp > int_type_max)
     {
         std::string error = "Error: The total requested amount of points (" + std::to_string(n_points_total_fp) +
-                            ") exceeds the limit in index type (" + std::to_string(int64_max) + ")\n";
+                            ") exceeds the limit in index type (" + std::to_string(int_type_max) + ")\n";
         throw std::range_error(error);
     }
 
@@ -238,7 +238,10 @@ int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate(const std:
         weights[i] += mat(i, N_DIMS);
 
         // check consistency
-        assert(weights[i] >= 0.0 && weights[i] < 1.0 + EQUALITY_TOLERANCE);
+        if (weights[i] < -EQUALITY_TOLERANCE || weights[i] > 1.0 + EQUALITY_TOLERANCE)
+          printf("%d-th barycentric coordinate %f lies outside unit interval", i, weights[i]);
+
+        assert(weights[i] > -EQUALITY_TOLERANCE && weights[i] < 1.0 + EQUALITY_TOLERANCE);
       }
 
       // estimate points comprising the simplex

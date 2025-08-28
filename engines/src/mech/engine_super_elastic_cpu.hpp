@@ -82,8 +82,8 @@ public:
   // extra operators
   const static uint8_t GRAV_OP = KIN_OP + NE;
   const static uint8_t PC_OP = GRAV_OP + NP;
-  const static uint8_t PORO_OP = PC_OP + NP;
-  const static uint8_t ENTH_OP = PORO_OP + 1;
+  const static uint8_t MULT_OP = PC_OP + NP;
+  const static uint8_t ENTH_OP = MULT_OP + 1;
   const static uint8_t TEMP_OP = ENTH_OP + NP;
   const static uint8_t PRES_OP = TEMP_OP + 1;
   const static uint8_t ROCK_DENS = PRES_OP + 1;
@@ -149,7 +149,6 @@ public:
 
   value_t dev_u,		dev_p,		dev_e,		dev_z[NC], dev_g;
   value_t dev_u_prev,	dev_p_prev, dev_e_prev, dev_z_prev[NC], dev_g_prev, well_residual_prev_dt;
-  value_t newton_update_coefficient;
   
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 

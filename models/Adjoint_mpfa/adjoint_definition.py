@@ -83,8 +83,12 @@ def prepare_synthetic_observation_data():
         true_model = Model(discr_type=discr_type, mesh_file=mesh_file, T=T, report_step=report_step,
                            customize_new_operator=customize_new_operator)
         true_model.init(discr_type=discr_type)
+        true_model.set_output(save_initial=False)
 
-        true_model.run(export_to_vtk=True)
+        true_model.run(export_to_vtk=True,
+                       # save_well_data=False,
+                       # save_reservoir_data=False
+                       )
 
 
         true_model.print_timers()
@@ -175,6 +179,7 @@ def process_adjoint(history_matching=False):
 
 
     proxy_model.init(discr_type=discr_type)
+    proxy_model.set_output(save_initial=False)
 
 
     # scale_function_value = 1e-5

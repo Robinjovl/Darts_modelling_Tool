@@ -6,14 +6,14 @@ from copy import deepcopy
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.kinetics import KineticBasic
 
-from darts.physics.super.operator_evaluator import ReservoirOperators, RateOperators
+from darts.physics.super.operator_evaluator import ReservoirOperators
 
 import matplotlib.pyplot as plt
 
@@ -61,12 +61,12 @@ class Model(CICDModel):
 
     def set_reservoir(self, grid_1D: bool, res: int, solid_init):
         """Reservoir"""
-        trans_exp = 3
-        self.params.trans_mult_exp = trans_exp
+        self.permporo = PermPoroRelationship()
+        self.params.enable_permporo = True
         if self.grid_1D:
             self.dx = 1
             self.dy = 1
-            perm = 100 / (1 - solid_init) ** trans_exp
+            perm = 100 / self.permporo.evaluate(1 - solid_init)
             (self.nx, self.ny) = (1000, 1)
             self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=1, dx=self.dx, dy=self.dy, dz=1,
                                              permx=perm, permy=perm, permz=perm / 10, poro=1, depth=1000)
@@ -81,7 +81,7 @@ class Model(CICDModel):
 
             self.map = create_map(Lx, Ly, self.nx, self.ny)
 
-            perm = np.ones(self.nx * self.ny) * 100 / (1 - solid_init) ** trans_exp
+            perm = np.ones(self.nx * self.ny) * 100 / self.permporo.evaluate(1 - solid_init)
 
             # Add inclination in y-direction:
             self.depth = np.ones((self.nx * self.ny,)) * 1000
@@ -118,8 +118,6 @@ class Model(CICDModel):
         self.physics_type = 'kin'  # equi or kin
 
         """Reservoir"""
-        trans_exp = 3
-        self.params.trans_mult_exp = trans_exp
         if grid_1D:
             self.inj_gas_rate = 0.2
 
@@ -153,19 +151,19 @@ class Model(CICDModel):
         nc = len(components)
 
         if self.combined_ions:
-            zc_fl_inj_stream_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
-            zc_fl_inj_stream_liq = [2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
+            zc_fl_inj_composition_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
+            zc_fl_inj_composition_liq = [2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
         else:
-            zc_fl_inj_stream_gas = [1 - 3 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject), self.zero
+            zc_fl_inj_composition_gas = [1 - 3 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject), self.zero
                                     / (1 - solid_inject)]
-            zc_fl_inj_stream_liq = [3 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject),
+            zc_fl_inj_composition_liq = [3 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject),
                                     self.zero / (1 - solid_inject)]
 
-        zc_fl_inj_stream_gas = zc_fl_inj_stream_gas + [1 - sum(zc_fl_inj_stream_gas)]
-        self.inj_stream_gas = [x * (1 - solid_inject) for x in zc_fl_inj_stream_gas]
+        zc_fl_inj_composition_gas = zc_fl_inj_composition_gas + [1 - sum(zc_fl_inj_composition_gas)]
+        self.inj_composition_gas = [x * (1 - solid_inject) for x in zc_fl_inj_composition_gas]
 
-        zc_fl_inj_stream_liq = zc_fl_inj_stream_liq + [1 - sum(zc_fl_inj_stream_liq)]
-        self.inj_stream_wat = [x * (1 - solid_inject) for x in zc_fl_inj_stream_liq]
+        zc_fl_inj_composition_liq = zc_fl_inj_composition_liq + [1 - sum(zc_fl_inj_composition_liq)]
+        self.inj_composition_wat = [x * (1 - solid_inject) for x in zc_fl_inj_composition_liq]
 
         thermal = 0
         ne = nc + thermal
@@ -216,6 +214,7 @@ class Model(CICDModel):
             property_container.rel_perm_ev = rel_perm_ev
             property_container.diffusion_ev = diffusion_ev
             property_container.kinetic_rate_ev = deepcopy(kinetic_rate_ev)  # deepcopy because mass source BC doesn't work otherwise
+            property_container.permporo_mult_ev = self.permporo
 
             if not custom_physics:
                 if mass_sources[i] is not None:
@@ -255,15 +254,20 @@ class Model(CICDModel):
         return
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if "INJ_GAS" in w.name:
-                w.control = self.physics.new_rate_inj(self.inj_gas_rate, self.inj_stream_gas, 0)
-                # w.control = self.physics.new_bhp_inj(125, self.inj_stream_gas)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, phase_name='gas', target=self.inj_gas_rate,
+                                               inj_composition=self.inj_composition_gas)
             elif "INJ_WAT" in w.name:
-                w.control = self.physics.new_rate_inj(self.inj_wat_rate, self.inj_stream_wat, 1)
-                # w.control = self.physics.new_bhp_inj(125, self.inj_stream_wat)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, phase_name='wat', target=self.inj_wat_rate,
+                                               inj_composition=self.inj_composition_wat,
+                                               )
             else:
-                w.control = self.physics.new_bhp_prod(95)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=95.)
 
     def set_op_list(self):
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
@@ -484,7 +488,7 @@ class CustomPhysics(Compositional):
                                                                    num_well_blocks=self.num_well_blocks)
         self.property_operators[2] = PropertyOperators(self.property_containers[0], self.thermal)
 
-        self.rate_operators = RateOperators(self.property_containers[0])
+        self.rate_operators = WellControlOperators(self.property_containers[0], self.thermal)
 
         return
 
@@ -524,3 +528,7 @@ class ReservoirWithSourceOperators(ReservoirOperators):
                                        * self.property.density_ev['wat'].evaluate(pressure, 0) / 18.015
 
         return 0
+
+class PermPoroRelationship:
+    def evaluate(self, poro):
+        return poro ** 3

@@ -1,5 +1,7 @@
-import numpy as np
 import math
+
+import numpy as np
+
 from darts.reservoirs.mesh.geometry.shapes import *
 
 
@@ -17,29 +19,52 @@ class WellCell(Well):
     def __init__(self, center: list, lc: float, orientation: str, in_surfaces: list):
         self.lc = [lc]
 
-        re = lc/np.sqrt(3) * 0.999  # The radius of the circumscribed circle is R = side/sqrt(3)
+        re = (
+            lc / np.sqrt(3) * 0.999
+        )  # The radius of the circumscribed circle is R = side/sqrt(3)
 
-        self.points = [Point(1, center),
-                       Point(2, self.calc_radial_points(center, re, orientation, math.radians(60)), embed=in_surfaces),
-                       Point(3, self.calc_radial_points(center, re, orientation, math.radians(180)), embed=in_surfaces),
-                       Point(4, self.calc_radial_points(center, re, orientation, math.radians(300)), embed=in_surfaces),
-                       ]
+        self.points = [
+            Point(1, center),
+            Point(
+                2,
+                self.calc_radial_points(center, re, orientation, math.radians(60)),
+                embed=in_surfaces,
+            ),
+            Point(
+                3,
+                self.calc_radial_points(center, re, orientation, math.radians(180)),
+                embed=in_surfaces,
+            ),
+            Point(
+                4,
+                self.calc_radial_points(center, re, orientation, math.radians(300)),
+                embed=in_surfaces,
+            ),
+        ]
 
 
 class CircularWell(Well):
-    def __init__(self, center: list, re: float, lc: float, orientation: str, in_surfaces: list):
+    def __init__(
+        self, center: list, re: float, lc: float, orientation: str, in_surfaces: list
+    ):
         self.lc = [lc]
 
-        self.points = [Point(1, center),
-                       Point(2, self.calc_radial_points(center, re, orientation, math.radians(0))),
-                       Point(3, self.calc_radial_points(center, re, orientation, math.radians(120))),
-                       Point(4, self.calc_radial_points(center, re, orientation, math.radians(240))),
-                       ]
+        self.points = [
+            Point(1, center),
+            Point(2, self.calc_radial_points(center, re, orientation, math.radians(0))),
+            Point(
+                3, self.calc_radial_points(center, re, orientation, math.radians(120))
+            ),
+            Point(
+                4, self.calc_radial_points(center, re, orientation, math.radians(240))
+            ),
+        ]
 
-        self.curves = [Curve(1, curve_type='circle', points=[2, 1, 3], embed=in_surfaces),
-                       Curve(2, curve_type='circle', points=[3, 1, 4], embed=in_surfaces),
-                       Curve(3, curve_type='circle', points=[4, 1, 2], embed=in_surfaces),
-                       ]
+        self.curves = [
+            Curve(1, curve_type='circle', points=[2, 1, 3], embed=in_surfaces),
+            Curve(2, curve_type='circle', points=[3, 1, 4], embed=in_surfaces),
+            Curve(3, curve_type='circle', points=[4, 1, 2], embed=in_surfaces),
+        ]
 
         self.surfaces = [Surface(1, points=[2, 3, 4, 2], curves=[1, 2, 3])]
 
