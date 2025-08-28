@@ -305,9 +305,22 @@ class Initialize:
 
             # Calculate damping factor to remain within all positive mole fractions
             betas_min = np.array([Xi[i] / dX[i] for i in range(1, self.nc)])
-            betas_max = np.array([-(1. - Xi[i]) / dX[i] for i in range(1, self.nc)])
-            beta = min(1, min(np.amin(betas_min[betas_min > 0]) if len(betas_min[betas_min > 0]) > 0 else 1,
-                              np.amin(betas_max[betas_max > 0]) if len(betas_max[betas_max > 0]) > 0 else 1))
+            betas_max = np.array([-(1.0 - Xi[i]) / dX[i] for i in range(1, self.nc)])
+            beta = min(
+                1,
+                min(
+                    (
+                        np.amin(betas_min[betas_min > 0])
+                        if len(betas_min[betas_min > 0]) > 0
+                        else 1
+                    ),
+                    (
+                        np.amin(betas_max[betas_max > 0])
+                        if len(betas_max[betas_max > 0]) > 0
+                        else 1
+                    ),
+                ),
+            )
 
             Xi -= beta * dX
 
@@ -390,9 +403,24 @@ class Initialize:
 
             # Calculate damping factor to remain within all positive mole fractions
             betas_min = np.array([X[cell_idx, i] / dX[i] for i in range(1, self.nc)])
-            betas_max = np.array([-(1. - X[cell_idx, i]) / dX[i] for i in range(1, self.nc)])
-            beta = min(1, min(np.amin(betas_min[betas_min > 0]) if len(betas_min[betas_min > 0]) > 0 else 1,
-                              np.amin(betas_max[betas_max > 0]) if len(betas_max[betas_max > 0]) > 0 else 1))
+            betas_max = np.array(
+                [-(1.0 - X[cell_idx, i]) / dX[i] for i in range(1, self.nc)]
+            )
+            beta = min(
+                1,
+                min(
+                    (
+                        np.amin(betas_min[betas_min > 0])
+                        if len(betas_min[betas_min > 0]) > 0
+                        else 1
+                    ),
+                    (
+                        np.amin(betas_max[betas_max > 0])
+                        if len(betas_max[betas_max > 0]) > 0
+                        else 1
+                    ),
+                ),
+            )
 
             X[cell_idx, :n_vars] -= beta * dX
 

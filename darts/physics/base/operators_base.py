@@ -60,12 +60,8 @@ class OperatorsBase(operator_set_evaluator_iface):
             p = vec[0]
             z = vec[1:].copy()
 
-        zero_comps = [
-            i for i in range(self.nc - 1) if z[i] <= 2*self.eps_z
-        ]
-        nonzero_comps = [
-            1 if z[i] > 2*self.eps_z else 0 for i in range(self.nc - 1)
-        ]
+        zero_comps = [i for i in range(self.nc - 1) if z[i] <= 2 * self.eps_z]
+        nonzero_comps = [1 if z[i] > 2 * self.eps_z else 0 for i in range(self.nc - 1)]
         d = np.sum(nonzero_comps)
         last_z = 1.0 - np.sum(z)
 

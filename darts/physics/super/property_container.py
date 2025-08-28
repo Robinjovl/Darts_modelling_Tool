@@ -143,9 +143,9 @@ class PropertyContainer(PropertyBase):
                 vec_composition[ith_comp] = self.eps_z
                 count_corr += 1
                 check_vec[ith_comp] = 1
-            elif zi > 1 - (self.nc-1) * self.eps_z - 1e-15:
+            elif zi > 1 - (self.nc - 1) * self.eps_z - 1e-15:
                 # print(vec_composition)
-                vec_composition[ith_comp] = 1 - (self.nc-1) * self.eps_z
+                vec_composition[ith_comp] = 1 - (self.nc - 1) * self.eps_z
                 temp_sum += vec_composition[ith_comp]
             else:
                 temp_sum += vec_composition[ith_comp]
