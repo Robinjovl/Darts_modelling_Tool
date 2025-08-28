@@ -1,12 +1,30 @@
 import numpy as np
-from darts.engines import conn_mesh, index_vector, value_vector, timer_node
+
+from darts.engines import conn_mesh, index_vector, timer_node, value_vector
 from darts.reservoirs.struct_reservoir import StructReservoir
 
 
 class RadialStruct(StructReservoir):
-    def __init__(self, timer: timer_node, nr: int, nz: int, dr, dz, permr, permz, poro, logspace: bool = False,
-                 R0: float = 0., R1: float = None, angle: float = 360., depth=0, rcond=181.44, hcap=2200, op_num=0,
-                 boundary_volume: float = None):
+    def __init__(
+        self,
+        timer: timer_node,
+        nr: int,
+        nz: int,
+        dr,
+        dz,
+        permr,
+        permz,
+        poro,
+        logspace: bool = False,
+        R0: float = 0.0,
+        R1: float = None,
+        angle: float = 360.0,
+        depth=0,
+        rcond=181.44,
+        hcap=2200,
+        op_num=0,
+        boundary_volume: float = None,
+    ):
         """
         Structured radial reservoir class (1D/2D). Has option to create logarithmically increasing element size.
 
@@ -42,7 +60,11 @@ class RadialStruct(StructReservoir):
             '''
             # Find dr distribution such that outer radius is R1
             from scipy.optimize import fsolve
-            f = lambda dr1: np.sum(np.logspace(np.log10(dr), np.log10(dr1), num=nr)) - R1
+
+            f = (
+                lambda dr1: np.sum(np.logspace(np.log10(dr), np.log10(dr1), num=nr))
+                - R1
+            )
             dr1 = fsolve(f, dr)[0]
 
             dr = np.logspace(start=np.log10(dr), stop=np.log10(dr1), num=nr)
@@ -53,7 +75,7 @@ class RadialStruct(StructReservoir):
             dr = np.ones(nr) * dr
         else:
             '''
-            Pre-defined cell sizes 
+            Pre-defined cell sizes
             '''
             assert nr == len(dr)
         R1 = R0 + np.sum(dr)
@@ -61,11 +83,16 @@ class RadialStruct(StructReservoir):
         # Calculate distance in radial direction
         r = [R0 + 0.5 * dr[0]]
         for i in range(1, nr):
-            r.append(r[i-1] + 0.5*dr[i-1] + 0.5*dr[i])
+            r.append(r[i - 1] + 0.5 * dr[i - 1] + 0.5 * dr[i])
 
         # Calculate area and corresponding dy for approximation of radial grid
-        A_r = np.pi * np.array([np.abs((r[i] + 0.5 * dr[i]) ** 2 - (r[i] - 0.5 * dr[i]) ** 2) for i in range(nr)])
-        dy = angle / (360. * dr) * A_r
+        A_r = np.pi * np.array(
+            [
+                np.abs((r[i] + 0.5 * dr[i]) ** 2 - (r[i] - 0.5 * dr[i]) ** 2)
+                for i in range(nr)
+            ]
+        )
+        dy = angle / (360.0 * dr) * A_r
 
         # If number of cells in vertical direction is larger than 1, adjust arrays of dr, dy, dz and r
         if nz > 1:
@@ -76,7 +103,7 @@ class RadialStruct(StructReservoir):
                 dz = np.ones(nz) * dz
             else:
                 '''
-                Pre-defined cell sizes 
+                Pre-defined cell sizes
                 '''
                 assert nz == len(dz)
 
@@ -91,16 +118,33 @@ class RadialStruct(StructReservoir):
 
             depth = np.cumsum(dz, axis=2) + depth - 0.5 * dz[0, ...]
 
-        super().__init__(timer, nx=nr, ny=1, nz=nz, dx=dr, dy=dy, dz=dz, permx=permr, permy=permr, permz=permz,
-                         poro=poro, depth=depth, rcond=rcond, hcap=hcap, op_num=op_num)
+        super().__init__(
+            timer,
+            nx=nr,
+            ny=1,
+            nz=nz,
+            dx=dr,
+            dy=dy,
+            dz=dz,
+            permx=permr,
+            permy=permr,
+            permz=permz,
+            poro=poro,
+            depth=depth,
+            rcond=rcond,
+            hcap=hcap,
+            op_num=op_num,
+        )
 
         # Fill boundary cells
         self.boundary_cells = {'top': [], 'bottom': [], 'inner': [], 'outer': []}
         self.boundary_cells['top'] = [i for i in range(self.nx)]
-        self.boundary_cells['bottom'] = [(self.nz-1) * self.nx + i for i in range(self.nx)]
+        self.boundary_cells['bottom'] = [
+            (self.nz - 1) * self.nx + i for i in range(self.nx)
+        ]
 
         self.boundary_cells['inner'] = [k * self.nx for k in range(self.nz)]
-        self.boundary_cells['outer'] = [(k+1) * self.nx - 1 for k in range(self.nz)]
+        self.boundary_cells['outer'] = [(k + 1) * self.nx - 1 for k in range(self.nz)]
 
         self.boundary_volumes['yz_plus'] = boundary_volume
         self.boundary_volumes['xy_plus'] = boundary_volume
@@ -111,9 +155,11 @@ class RadialStruct(StructReservoir):
         if len(dr.shape) == 1:
             r_vertices[1:] = R0 + np.cumsum(dr[:nr])
         else:
-            r_vertices[1:] = R0 +np.cumsum(dr[:nr, 0, 0])
+            r_vertices[1:] = R0 + np.cumsum(dr[:nr, 0, 0])
         z_vertices[1:] = depth_upper + np.cumsum(dz[0, 0, :])
-        self.generate_quarter_radial_grid(r_vert=r_vertices, z_vert=z_vertices, filename='quater_radial_grid')
+        self.generate_quarter_radial_grid(
+            r_vert=r_vertices, z_vert=z_vertices, filename='quater_radial_grid'
+        )
 
     def set_wells(self, verbose: bool = False):
         for well_name, cell_idxs in self.well_dict.items():
@@ -138,7 +184,7 @@ class RadialStruct(StructReservoir):
         phi, z, r = np.meshgrid(phi_vert, z_vert, r_vert, indexing='ij')
 
         cells = []
-        cell_data = { 'cell_id': [np.zeros((nr - 1) * (nz - 1) * (nphi - 1))]}
+        cell_data = {'cell_id': [np.zeros((nr - 1) * (nz - 1) * (nphi - 1))]}
         for k in range(nphi - 1):
             for j in range(nz - 1):
                 for i in range(nr - 1):
@@ -151,7 +197,9 @@ class RadialStruct(StructReservoir):
                     pt7 = i + nr * (j + 1 + (k + 1) * nz) + 1
                     pt8 = i + nr * (j + 1 + (k + 1) * nz)
                     cells.append([pt1, pt2, pt3, pt4, pt5, pt6, pt7, pt8])
-                    cell_data['cell_id'][0][i + j * (nr - 1)] = i + j * (nr - 1) + k * (nr - 1) * (nz - 1)
+                    cell_data['cell_id'][0][i + j * (nr - 1)] = (
+                        i + j * (nr - 1) + k * (nr - 1) * (nz - 1)
+                    )
 
         cells = [('hexahedron', np.array(cells))]
 
@@ -178,14 +226,22 @@ class RadialStruct(StructReservoir):
         n_cells = self.reservoir.mesh.n_res_blocks
         for i, var in enumerate(self.physics.vars):
             # write r-z data
-            data[var] = X[i:self.physics.n_vars * n_cells:self.physics.n_vars]
+            data[var] = X[i : self.physics.n_vars * n_cells : self.physics.n_vars]
             # populate r-z data to all angles
             data[var] = np.tile(data[var], self.reservoir.nphi)
 
         return data
 
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
+    def output_to_vtk(
+        self,
+        ith_step: int,
+        t: float,
+        output_directory: str,
+        prop_names: list,
+        data: dict,
+    ):
         import os
+
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
 
@@ -195,5 +251,8 @@ class RadialStruct(StructReservoir):
             cell_data[prop][0] += data[prop][0].tolist()
 
         import meshio
-        mesh = meshio.Mesh(points=self.output_points, cells=self.output_cells, cell_data=cell_data)
+
+        mesh = meshio.Mesh(
+            points=self.output_points, cells=self.output_cells, cell_data=cell_data
+        )
         meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)

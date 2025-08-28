@@ -1,14 +1,25 @@
 import numpy as np
-from darts.engines import conn_mesh, index_vector, value_vector, timer_node
-from darts.reservoirs.unstruct_reservoir import UnstructReservoir
-from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
+
+from darts.engines import conn_mesh, index_vector, timer_node, value_vector
+from darts.reservoirs.mesh.geometry.shapes import Circle, MeshProperties, Square
 from darts.reservoirs.mesh.geometry.unstructured import Unstructured
-from darts.reservoirs.mesh.geometry.shapes import Square, Circle, MeshProperties
+from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
+from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 
 
 class RadialUnstruct(UnstructReservoir):
-    def __init__(self, timer: timer_node, mesh_properties: MeshProperties, angle: float,
-                 permx, permy, permz, poro, hcap=2200, rcond=181.44):
+    def __init__(
+        self,
+        timer: timer_node,
+        mesh_properties: MeshProperties,
+        angle: float,
+        permx,
+        permy,
+        permz,
+        poro,
+        hcap=2200,
+        rcond=181.44,
+    ):
         """
         Class constructor for NearWellboreReservoir class
 
@@ -22,39 +33,79 @@ class RadialUnstruct(UnstructReservoir):
 
         m = Unstructured(dim=2, axs=[0, 1])
         if mesh_properties.square:
-            m.add_shape(Square(center=mesh_properties.center, xlen=mesh_properties.xlen, ylen=mesh_properties.ylen,
-                               zlen=mesh_properties.zlen, orientation=mesh_properties.orientation,
-                               lc=mesh_properties.lc, radii=mesh_properties.radii, hole=mesh_properties.hole))
+            m.add_shape(
+                Square(
+                    center=mesh_properties.center,
+                    xlen=mesh_properties.xlen,
+                    ylen=mesh_properties.ylen,
+                    zlen=mesh_properties.zlen,
+                    orientation=mesh_properties.orientation,
+                    lc=mesh_properties.lc,
+                    radii=mesh_properties.radii,
+                    hole=mesh_properties.hole,
+                )
+            )
         else:
-            m.add_shape(Circle(center=mesh_properties.center, orientation=mesh_properties.orientation, angle=angle,
-                               lc=mesh_properties.lc, radii=mesh_properties.radii, hole=mesh_properties.hole))
+            m.add_shape(
+                Circle(
+                    center=mesh_properties.center,
+                    orientation=mesh_properties.orientation,
+                    angle=angle,
+                    lc=mesh_properties.lc,
+                    radii=mesh_properties.radii,
+                    hole=mesh_properties.hole,
+                )
+            )
 
         if mesh_properties.extrude:
-            m.extrude_mesh(length=mesh_properties.extrude_length, layers=mesh_properties.extrude_layers,
-                           axis=mesh_properties.extrude_axis, recombine=mesh_properties.extrude_recombine)
+            m.extrude_mesh(
+                length=mesh_properties.extrude_length,
+                layers=mesh_properties.extrude_layers,
+                axis=mesh_properties.extrude_axis,
+                recombine=mesh_properties.extrude_recombine,
+            )
 
         m.write_geo(filename)
         m.generate_msh(filename)
 
         self.physical_groups = m.physical_groups
 
-        self.physical_tags['matrix'] += [tag for name, tag in m.physical_groups['matrix'].items()]
-        self.physical_tags['boundary'] += [tag for name, tag in m.physical_groups['boundary'].items()]
+        self.physical_tags['matrix'] += [
+            tag for name, tag in m.physical_groups['matrix'].items()
+        ]
+        self.physical_tags['boundary'] += [
+            tag for name, tag in m.physical_groups['boundary'].items()
+        ]
 
         self.r = []
 
-        super().__init__(timer=timer, mesh_file=filename + '.msh',
-                         permx=permx, permy=permy, permz=permz, poro=poro, hcap=hcap, rcond=rcond)
+        super().__init__(
+            timer=timer,
+            mesh_file=filename + '.msh',
+            permx=permx,
+            permy=permy,
+            permz=permz,
+            poro=poro,
+            hcap=hcap,
+            rcond=rcond,
+        )
 
     def discretize(self, verbose: bool = False):
         # Construct instance of Unstructured Discretization class:
-        self.discretizer = UnstructDiscretizer(mesh_file=self.mesh_file, physical_tags=self.physical_tags,
-                                               verbose=verbose)
+        self.discretizer = UnstructDiscretizer(
+            mesh_file=self.mesh_file, physical_tags=self.physical_tags, verbose=verbose
+        )
 
         self.discretizer.n_dim = 3
 
         # Use class method load_mesh to load the GMSH file specified above:
-        self.discretizer.load_mesh(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0, cache=False)
+        self.discretizer.load_mesh(
+            permx=self.permx,
+            permy=self.permy,
+            permz=self.permz,
+            frac_aper=0,
+            cache=False,
+        )
 
         # Store volumes and depth to single numpy arrays:
         self.discretizer.store_volume_all_cells()
@@ -65,12 +116,18 @@ class RadialUnstruct(UnstructReservoir):
         self.set_layer_properties()
 
         # Perform discretization:
-        self.cell_m, self.cell_p, self.tran, self.tran_thermal = self.discretizer.calc_connections_all_cells()
+        self.cell_m, self.cell_p, self.tran, self.tran_thermal = (
+            self.discretizer.calc_connections_all_cells()
+        )
 
         # Initialize mesh using built connection list
         self.mesh = conn_mesh()
-        self.mesh.init(index_vector(self.cell_m), index_vector(self.cell_p),
-                       value_vector(self.tran), value_vector(self.tran_thermal))
+        self.mesh.init(
+            index_vector(self.cell_m),
+            index_vector(self.cell_p),
+            value_vector(self.tran),
+            value_vector(self.tran_thermal),
+        )
 
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
         np.array(self.mesh.poro, copy=False)[:] = self.poro
@@ -92,9 +149,13 @@ class RadialUnstruct(UnstructReservoir):
         self.add_well(well_name="P1")
 
         # Perforate all boundary cells:
-        boundary_cells = self.discretizer.find_cells(self.physical_groups['boundary']['inner'], 'face')
+        boundary_cells = self.discretizer.find_cells(
+            self.physical_groups['boundary']['inner'], 'face'
+        )
         for nth_perf, cell_index in enumerate(boundary_cells):
-            self.add_perforation(well_name="P1", cell_index=cell_index, well_index=100, well_indexD=100)
+            self.add_perforation(
+                well_name="P1", cell_index=cell_index, well_index=100, well_indexD=100
+            )
 
         return
 
