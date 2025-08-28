@@ -84,6 +84,7 @@ class RadialStruct(StructReservoir):
         r = [R0 + 0.5 * dr[0]]
         for i in range(1, nr):
             r.append(r[i - 1] + 0.5 * dr[i - 1] + 0.5 * dr[i])
+        self.r = r
 
         # Calculate area and corresponding dy for approximation of radial grid
         A_r = np.pi * np.array(
@@ -116,7 +117,11 @@ class RadialStruct(StructReservoir):
             dy = dy.reshape(nr, 1, nz)
             dz = dz.reshape(nr, 1, nz)
 
+            self.z = np.cumsum(dz[0, 0, :]) + depth - 0.5 * dz[0, 0, 0]
+
             depth = np.cumsum(dz, axis=2) + depth - 0.5 * dz[0, ...]
+        else:
+            self.z = np.array([depth])
 
         super().__init__(
             timer,
@@ -151,14 +156,20 @@ class RadialStruct(StructReservoir):
         self.boundary_volumes['xy_minus'] = boundary_volume
 
         # radial mesh generation for VTK output
-        r_vertices, z_vertices = R0 * np.ones(nr + 1), depth_upper * np.ones(nz + 1)
+        self.r_vertices, self.z_vertices = R0 * np.ones(nr + 1), depth_upper * np.ones(
+            nz + 1
+        )
         if len(dr.shape) == 1:
-            r_vertices[1:] = R0 + np.cumsum(dr[:nr])
+            self.r_vertices[1:] = R0 + np.cumsum(dr[:nr])
         else:
-            r_vertices[1:] = R0 + np.cumsum(dr[:nr, 0, 0])
-        z_vertices[1:] = depth_upper + np.cumsum(dz[0, 0, :])
+            self.r_vertices[1:] = R0 + np.cumsum(dr[:nr, 0, 0])
+        self.z_vertices[1:] = (
+            depth_upper + np.cumsum(dz[0, 0, :]) if nz > 1 else depth_upper + dz
+        )
         self.generate_quarter_radial_grid(
-            r_vert=r_vertices, z_vert=z_vertices, filename='quater_radial_grid'
+            r_vert=self.r_vertices,
+            z_vert=self.z_vertices,
+            filename='quater_radial_grid',
         )
 
     def set_wells(self, verbose: bool = False):
