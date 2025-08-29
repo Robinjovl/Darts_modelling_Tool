@@ -62,8 +62,5 @@ apptainer-image-builder:
       - "$IMG"
   rules:
     # if any tracked file changes -> run
-    - changes:
-        - .cicd/build-linux/singularity.def
-        - .cicd/jobs/build-images.yml
     - when: always
   
