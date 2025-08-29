@@ -505,11 +505,12 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
               itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
     n.init(itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
     n.set_output(output_folder=output_folder)
+    out_props = n.physics.vars + ['satV']
 
     n_months = 2 * 12
     if reservoir_type != '1D':
         if vtk_output:
-            n.output.output_to_vtk(ith_step=0)
+            n.output.output_to_vtk(ith_step=0, output_properties=out_props)
         if reservoir_type != '2D':
             n.set_wells_spe10()
             n_months = 10 * 12
@@ -532,7 +533,7 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
         print(f'dt_max = {n.data_ts.dt_max}') 
         n.run(30.5)
         if reservoir_type != '1D' and vtk_output:
-            n.output.output_to_vtk(ith_step=i + 1)
+            n.output.output_to_vtk(ith_step=i + 1, output_properties=out_props)
 
     n.timer.stop()
     n.print_timers()

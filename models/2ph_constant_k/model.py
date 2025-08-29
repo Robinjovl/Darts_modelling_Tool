@@ -28,6 +28,7 @@ class Model(DartsModel):
         self.itor_type = itor_type
         self.itor_mode = itor_mode
         self.is_barycentric = is_barycentric
+        self.well_controls = {'INJ': 'rate', 'PRD': 'pressure'}
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -131,12 +132,37 @@ class Model(DartsModel):
         k_poiselle = rw ** 2 / 8 / 0.9869e-15
 
         self.well_ids = {}
+        self.p_init_well = {}
+        self.wis = {}
         for well_name, pt in self.pt_wells.items():
             # find well cells
             dist = np.linalg.norm(self.reservoir.discretizer.centroids_all_cells[:, :2] - pt, axis=1)
             id_dist_sort = np.argsort(dist)
             id_closest_cells = id_dist_sort[:self.reservoir.nz]
             self.well_ids[well_name] = id_closest_cells
+
+            # well indices for pressure well controls
+            wis = []
+            self.p_init_well[well_name] = []
+            for idx in id_closest_cells:
+                # transform plain index to (i,j,k)
+                i = idx % self.nx
+                j = (idx // self.nx) % self.ny
+                k = idx // (self.nx * self.ny)  
+                res_block_local, wi, _ = self.reservoir.discretizer.calc_well_index(i + 1, j + 1, k + 1)
+                assert(idx == res_block_local)
+                wis.append(wi)
+
+                # initial pressures needed for pressure well controls
+                if np.isscalar(self.p_init):
+                    self.p_init_well[well_name].append(self.p_init)
+                elif self.p_init.ndim == 2:
+                    self.p_init_well[well_name].append(self.p_init[i,j])
+                elif self.p_init.ndim == 3:
+                    self.p_init_well[well_name].append(self.p_init[i,j,k])
+
+            self.wis[well_name] = np.array(wis)
+            self.p_init_well[well_name] = np.array(self.p_init_well[well_name])
 
             # find connections
             mask_m = np.isin(cell_m, id_closest_cells)
@@ -243,7 +269,7 @@ class Model(DartsModel):
                                                 ('oil', ConstFunc(1.0))])
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
                                                ('oil', PhaseRelPerm("oil"))])
-
+        property_container.output_props = {'satV': lambda: property_container.sat[0]}
         """ Activate physics """
         max_p = 500.
         if n_comps != 20:
@@ -338,7 +364,7 @@ class Model(DartsModel):
             self.physics.set_well_controls(wctrl=producer.control, is_control=True, control_type=well_control_iface.BHP,
                                            is_inj=False, target=50.)
 
-    def set_rhs_flux(self, t: float = None):
+    def set_rhs_flux(self, t: float = None, dt: float = None):
         nv = self.physics.n_vars
         n_jac_block_size = nv * nv
         nb = self.reservoir.mesh.n_res_blocks
@@ -354,23 +380,66 @@ class Model(DartsModel):
                     jac_diags = self.physics.engine.jac_diags
                     X = np.asarray(self.physics.engine.X)
                     base = ids * nv
-                    offs = np.arange(1, nv, dtype=np.int64)               # 1..nv-1
-                    z_non_last = X[base[:, None] + offs[None, :]]         # shape (n_ids, nv-1)
-                    z_last     = 1.0 - z_non_last.sum(axis=1)             # shape (n_ids,)
-                    z = np.empty((ids.size, nv), dtype=X.dtype)
-                    z[:, :nv-1] = z_non_last
-                    z[:,  nv-1] = z_last
                     
-                    # filling for all well cells at once
-                    for c in range(len(self.components)):
-                        rhs_flux[ids * nv + c] += self.inj_rate[well_counter] * z[:, c] / Mw[c]
-                        jac_vals[jac_diags[ids] * n_jac_block_size + nv * c + c] += self.inj_rate[well_counter] / Mw[c] 
+                    if self.well_controls[well_name] == 'rate': # rate control
+                        offs = np.arange(1, nv, dtype=np.int64)               # 1..nv-1
+                        z_non_last = X[base[:, None] + offs[None, :]]         # shape (n_ids, nv-1)
+                        z_last     = 1.0 - z_non_last.sum(axis=1)             # shape (n_ids,)
+                        z = np.empty((ids.size, nv), dtype=X.dtype)
+                        z[:, :nv-1] = z_non_last
+                        z[:,  nv-1] = z_last
+                        
+                        # filling for all well cells at once
+                        for c in range(nv - 1):
+                            rhs_flux[base + c] += self.inj_rate[well_counter] * z[:, c] / Mw[c] * dt
+                            jac_vals[jac_diags[ids] * n_jac_block_size + nv * c + c + 1] += self.inj_rate[well_counter] / Mw[c] * dt
+                        # last component 1 - sum(zi)
+                        rhs_flux[base + nv - 1] += self.inj_rate[well_counter] * z[:, nv - 1] / Mw[nv - 1] * dt
+                        for c in range(nv - 1):
+                            jac_vals[jac_diags[ids] * n_jac_block_size + nv * (nv - 1) + c + 1] -= self.inj_rate[well_counter] / Mw[nv - 1] * dt
+                    elif self.well_controls[well_name] == 'pressure': # pressure control
+                        op_vals = np.asarray(self.physics.engine.op_vals_arr)
+                        op_ders = np.asarray(self.physics.engine.op_ders_arr)
+                        n_ops = self.physics.n_ops
+                        p_cell = X[ids * nv]
+                        p_control = self.p_init_well[well_name] - 50.0
+                        wis = self.wis[well_name]
+                        for c in range(nv):
+                            acc = op_vals[n_ops * ids + c]
+                            rhs_flux[base + c] += acc * wis * (p_cell - p_control)
+                            # pressure derivative
+                            jac_vals[jac_diags[ids] * n_jac_block_size + nv * c] += acc * wis
+                            # operator derivative
+                            for v in range(nv):
+                                acc_ders = op_ders[n_ops * nv * ids + c * nv + v]
+                                jac_vals[jac_diags[ids] * n_jac_block_size + nv * c + v] += acc_ders * wis * (p_cell - p_control)
+                    else:
+                        print('Unknown well control type!')
+                        exit(1)
                 else:
-                    for c in range(len(self.components)):
-                        rhs_flux[ids * nv + c] += self.inj_rate[well_counter] * self.inj_comp[c] / Mw[c]
+                    for c in range(nv):
+                        rhs_flux[ids * nv + c] += self.inj_rate[well_counter] * self.inj_comp[c] / Mw[c] * dt
                 well_counter += 1
         return rhs_flux
 
+    def apply_rhs_flux(self, dt: float, t: float):
+        """
+        Function to apply modifications to RHS vector.
+
+        If self.set_rhs_flux() is defined in Model, this function will add its values to rhs
+
+        :param dt: timestep [days]
+        :type dt: float
+        :param t: current time [days]
+        :type t: float
+        """
+        if type(self).set_rhs_flux is DartsModel.set_rhs_flux:
+            # If the function has not been overloaded, pass
+            return
+        rhs = np.array(self.physics.engine.RHS, copy=False)
+        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
+        rhs[:n_res] += self.set_rhs_flux(t, dt)
+        return
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11, temperature = 1.):
