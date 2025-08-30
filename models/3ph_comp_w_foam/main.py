@@ -56,8 +56,16 @@ if __name__ == '__main__':
     n.init()
     n.set_output()
 
-    if True:
-        n.run(4000)
+    if 1:
+        from darts.engines import well_control_iface
+        w = n.reservoir.wells[0]
+        n.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE, is_inj=True,
+                                    target=200, phase_name='wat', inj_composition=[n.zero, 0.8, 0.2 - 2 * n.zero])
+        n.run(1000)
+        n.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE, is_inj=True,
+                                    target=20, phase_name='gas', inj_composition=[1.0 - 3 * n.zero, n.zero, n.zero])
+        n.run(1000, restart_dt=1e-8)
+
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run(300, restart_dt=1e-3)
         n.print_timers()
@@ -75,7 +83,7 @@ if __name__ == '__main__':
 
     else:
         # n.load_restart_data()
-        n.load_restart_data('output/solution.h5')
+        n.load_restart_data('output/reservoir_solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
 
     if True:
@@ -84,8 +92,8 @@ if __name__ == '__main__':
         nb = n.reservoir.mesh.n_res_blocks
 
         plt.figure(num=1, figsize=(12, 8), dpi=100)
-        for i in range(3):
-            plt.subplot(310 + (i + 1))
+        for i in range(4):
+            plt.subplot(410 + (i + 1))
             plt.plot(Xn[i:nb*nc:nc])
         plt.savefig('out.png')
     else:
