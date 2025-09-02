@@ -63,6 +63,7 @@ ignore = [
   "E722", "E731",           # bare except / lambda assignment, you ignored before
   "C901",                   # complexity; we'll cap via mccabe below like flake8
 ]
+unfixable = ["F841"]
 
 [tool.ruff.format]
 quote-style = "preserve"
