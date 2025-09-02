@@ -32,7 +32,7 @@ def valid_path(string):
 
 def get_lib_var():
     if sys.platform == 'linux':
-        return 'LD_LIBRARY_PATH'
+        return 'LD_PRELOAD'
     elif sys.platform == 'darwin':
         return 'DYLD_LIBRARY_PATH'
     elif sys.platform.startswith('win'):
@@ -133,7 +133,7 @@ def main():
     lib_var = get_lib_var()
 
     if lib_var:
-        os.environ[lib_var] = str(get_darts_path()) + ":" + os.environ.get(lib_var, "")
+        os.environ[lib_var] = str(get_darts_path()) + "/libstdc++.so.6:" + os.environ.get(lib_var, "")
 
     res = subprocess.run(python_args)
     sys.exit(res.returncode)
