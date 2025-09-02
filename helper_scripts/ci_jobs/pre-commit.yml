@@ -15,6 +15,7 @@ pre-commit:
     script:
         - echo 'Running pre-commit checks (Python, YAML, TOML)...'
         - |
+          # locating the files to be checked
           set -eu
           FILES="$(
             {
@@ -22,6 +23,7 @@ pre-commit:
             } | grep -E '\.(py|ya?ml|toml)$' || true
           )"
           echo $FILES
+          # if FILES is not empty, run pre-commit checks
           if [ -n "$FILES" ]; then
             pre-commit run --files $FILES --show-diff-on-failure --color always 2>&1 | tee linting_output.log
           else
