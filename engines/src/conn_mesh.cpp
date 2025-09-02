@@ -10,18 +10,20 @@
 
 using namespace std;
 int 
-conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, std::vector<value_t>& tran, std::vector<value_t>& tranD)
+conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, std::vector<value_t>& tran, std::vector<value_t>& tranD, std::vector<value_t>& cell_half_length, std::vector<value_t>& connection_area)
 {
   int diff_trans;
 
   diff_trans = tranD.size();
   n_conns = tran.size();
-  
+
   one_way_block_m = block_m;
   one_way_block_p = block_p;
   one_way_tran = tran;
   one_way_tranD = tranD;
-  
+  one_way_cell_half_length = cell_half_length;
+  one_way_connection_area = connection_area;
+
   n_res_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
   n_res_blocks = std::max(n_res_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
 
@@ -30,12 +32,14 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   n_one_way_conns_res = n_conns;
 
   poro.resize(n_res_blocks);
+  permx.resize(n_res_blocks);
   volume.resize(n_res_blocks);
   initial_state.resize(n_res_blocks * n_vars);
   op_num.assign(n_res_blocks, 0);
   depth.assign(n_res_blocks, 0);
   heat_capacity.assign(n_res_blocks, 0);
   rock_cond.assign(n_res_blocks, 0);
+  forchheimer_coefficient.assign(n_res_blocks, 0);
 
   // kinetic property
   kin_factor.assign(n_res_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
@@ -533,6 +537,9 @@ conn_mesh::add_conn (index_t block_m, index_t block_p, value_t trans, value_t tr
   if (one_way_tranD.size())
     one_way_tranD.push_back (transD);
 
+  one_way_cell_half_length.push_back(0.);
+  one_way_connection_area.push_back(0.);
+
   n_conns++;
   return 0;
 }
@@ -541,7 +548,7 @@ int
 conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value_t transD, const uint8_t P_VAR)
 {
   // for pm_discretizer output
-  vector<value_t> tblock_pos(n_vars * n_vars, 0.0), tblock_neg(n_vars * n_vars, 0.0), 
+  vector<value_t> tblock_pos(n_vars * n_vars, 0.0), tblock_neg(n_vars * n_vars, 0.0),
 				trhs(n_vars, 0.0), tblock_zero(n_vars * n_vars, 0.0);
   tblock_pos[P_VAR * n_vars + P_VAR] = trans;
   tblock_neg[P_VAR * n_vars + P_VAR] = -trans;
@@ -560,7 +567,7 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
 	one_way_tran.insert(one_way_tran.end(), tblock_neg.begin(), tblock_neg.end());
 	one_way_tran.insert(one_way_tran.end(), tblock_pos.begin(), tblock_pos.end());
 	one_way_rhs.insert(one_way_rhs.end(), trhs.begin(), trhs.end());
-  }	
+  }
   if (one_way_flux.size()) one_way_flux.insert(one_way_flux.end(), trhs.begin(), trhs.end());
   if (one_way_gravity_flux.size()) one_way_gravity_flux.insert(one_way_gravity_flux.end(), trhs.begin(), trhs.end());
 
@@ -699,6 +706,8 @@ conn_mesh::reverse_and_sort()
   tran.resize(2 * n_conns);
   if (diff_trans)
     tranD.resize(2 * n_conns);
+  cell_half_length.resize(2 * n_conns);
+  connection_area.resize(2 * n_conns);
   grav_coef.assign(2 * n_conns, 0);
 
   one_way_to_conn_index_forward.resize(n_conns);
@@ -737,6 +746,8 @@ conn_mesh::reverse_and_sort()
     tran[idx] = one_way_tran[j];
     if (diff_trans)
       tranD[idx] = one_way_tranD[j];
+	cell_half_length[idx] = one_way_cell_half_length[j];
+	connection_area[idx] = one_way_connection_area[j];
 
 
     if (!need_sort && idx > 0 && block_m[idx] == block_m[idx - 1] && block_p[idx] < block_p[idx - 1])
@@ -747,11 +758,13 @@ conn_mesh::reverse_and_sort()
     }
 
     // reverse
-    
+
     idx = tmp_index[one_way_block_p[j]]++;
     block_m[idx] = one_way_block_p[j];
     block_p[idx] = one_way_block_m[j];
     tran[idx] = one_way_tran[j];
+	cell_half_length[idx] = one_way_cell_half_length[j];
+	connection_area[idx] = one_way_connection_area[j];
     one_way_to_conn_index_reverse[j] = idx;
     conn_index_to_one_way[idx] = j;
     if (diff_trans)
@@ -807,6 +820,14 @@ conn_mesh::reverse_and_sort()
               tranD[k] = tranD[j];
               tranD[j] = v_tmp;
             }
+
+			v_tmp = cell_half_length[k];
+			cell_half_length[k] = cell_half_length[j];
+			cell_half_length[j] = v_tmp;
+
+			v_tmp = connection_area[k];
+			connection_area[k] = connection_area[j];
+			connection_area[j] = v_tmp;
           }
         }
       j++;

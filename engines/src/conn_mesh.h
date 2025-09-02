@@ -52,7 +52,9 @@ public:
   int init(std::vector<index_t> &block_m,
     std::vector<index_t> &block_p,
     std::vector<value_t> &tran,
-    std::vector<value_t> &tranD);                    
+    std::vector<value_t> &tranD,
+	std::vector<value_t> &cell_half_length,
+	std::vector<value_t> &connection_area);
 
   /// @brief init mesh by reading MPFA connections
   /*int init_mpfa(std::vector<index_t>& block_m,
@@ -208,6 +210,10 @@ public:
   std::vector<value_t> velocity;
   /// [n_conns] array of temporary const transmissibilities                       
   std::vector<value_t> tran_const;
+  /// [n_conns] array of half of cell lengths
+  std::vector<value_t> cell_half_length;
+  /// [n_conns] array of connections areas
+  std::vector<value_t> connection_area;
   /*
   * Multi-point stuff
   */
@@ -260,7 +266,9 @@ public:
   /// [n_blocks] array of volumes of mesh blocks 
   std::vector<value_t> volume;          
   /// [n_blocks] array of porosities of mesh blocks                        
-  std::vector<value_t> poro;            
+  std::vector<value_t> poro;
+  /// [n_blocks] array of permeabilities of mesh blocks in the x direction
+  std::vector<value_t> permx;
   /// [n_blocks] array of depths                        
   std::vector<value_t> depth;           
   /// [n_blocks] array of heat capacity of rock                        
@@ -271,6 +279,8 @@ public:
   std::vector<value_t> kin_factor;
   /// [np * n_blocks] array of phase mobility multiplier (dependent on phase index!);                       
   std::vector<value_t> mob_multiplier;
+  /// [n_blocks] Forchheimer doefficient
+  std::vector<value_t> forchheimer_coefficient;
                                         
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;
@@ -342,6 +352,8 @@ private:
   std::vector <value_t> one_way_tran_heat_cond;
   std::vector <value_t> one_way_tranD;
   std::vector <value_t> one_way_tran_th_expn;
+  std::vector <value_t> one_way_cell_half_length;
+  std::vector <value_t> one_way_connection_area;
   // arrays for multi-point approximation
   std::vector<index_t> one_way_stencil;
   std::vector<index_t> one_way_offset;                 

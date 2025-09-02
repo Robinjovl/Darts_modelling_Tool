@@ -92,6 +92,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     const std::vector<index_t>& op_num = mesh->op_num;
 
+    if (darcy_forchheimer_volumetric_rate.empty())
+        darcy_forchheimer_volumetric_rate.resize(n_conns);
+    if (darcy_forchheimer_velocities_n.empty())
+        darcy_forchheimer_velocities_n.resize(n_conns);
+
     value_t* Jac = jacobian->get_values();
     index_t* diag_ind = jacobian->get_diag_ind();
     index_t* rows = jacobian->get_rows_ptr();
@@ -276,43 +281,99 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 value_t grav_pc_der_j[N_VARS];
                 for (uint8_t v = 0; v < N_VARS; v++)
                 {
-                    grav_pc_der_i[v] = -(op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
-                    grav_pc_der_j[v] = -(op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
+                    grav_pc_der_i[v] = (op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
+                    grav_pc_der_j[v] = (op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
                 }
 
                 phase_fluxes[p] = 0.0;
 
-                double phase_gamma_p_diff = trans_mult * tran[conn_idx] * dt * phase_p_diff;
+                value_t darcy_forchheimer_trans;
+                value_t darcy_forch_trans_der_i[N_VARS];
+                value_t darcy_forch_trans_der_j[N_VARS];
+                value_t C1 = 0.0085267146719160104986876640419948;
+                value_t C2 = 1.142 * 1e-17;
+                if (1)   // Only for reservoir connections
+                {
+                    std::vector<value_t> forch_coef = mesh->forchheimer_coefficient;
+
+                    value_t a = C2 * op_vals_arr[i * N_OPS + GRAV_OP + p] * forch_coef[i] * mesh->permx[i] * std::abs(darcy_forchheimer_velocities_n[conn_idx]) / op_vals_arr[i * N_OPS + VIS_OP + p];
+                    value_t b = C2 * op_vals_arr[j * N_OPS + GRAV_OP + p] * forch_coef[j] * mesh->permx[j] * std::abs(darcy_forchheimer_velocities_n[conn_idx]) / op_vals_arr[j * N_OPS + VIS_OP + p];
+                    value_t fi = mesh->connection_area[conn_idx] * mesh->permx[i] / (mesh->cell_half_length[conn_idx] * op_vals_arr[i * N_OPS + VIS_OP + p]) / (1 + a);
+                    value_t fj = mesh->connection_area[conn_idx] * mesh->permx[j] / (mesh->cell_half_length[conn_idx] * op_vals_arr[j * N_OPS + VIS_OP + p]) / (1 + b);
+                    darcy_forchheimer_trans = fi * fj / (fi + fj);
+                    if (std::isnan(darcy_forchheimer_trans))
+                        darcy_forchheimer_trans = 0.;
+                    darcy_forchheimer_volumetric_rate[conn_idx] = C1 * darcy_forchheimer_trans * phase_p_diff;
+
+                    for (uint8_t v = 0; v < N_VARS; v++)
+                    {
+                        value_t fi_der_i = -mesh->connection_area[conn_idx] * mesh->permx[i] / mesh->cell_half_length[conn_idx] * (op_ders_arr[(i * N_OPS + VIS_OP + p) * N_VARS + v] + C2 * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v] * forch_coef[i] * mesh->permx[i] * std::abs(darcy_forchheimer_velocities_n[conn_idx])) / (std::pow(op_vals_arr[i * N_OPS + VIS_OP + p] + C2 * op_vals_arr[i * N_OPS + GRAV_OP + p] * forch_coef[i] * mesh->permx[i] * std::abs(darcy_forchheimer_velocities_n[conn_idx]), 2));
+                        value_t fj_der_j = -mesh->connection_area[conn_idx] * mesh->permx[j] / mesh->cell_half_length[conn_idx] * (op_ders_arr[(j * N_OPS + VIS_OP + p) * N_VARS + v] + C2 * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v] * forch_coef[j] * mesh->permx[j] * std::abs(darcy_forchheimer_velocities_n[conn_idx])) / (std::pow(op_vals_arr[j * N_OPS + VIS_OP + p] + C2 * op_vals_arr[j * N_OPS + GRAV_OP + p] * forch_coef[j] * mesh->permx[j] * std::abs(darcy_forchheimer_velocities_n[conn_idx]), 2));
+
+                        darcy_forch_trans_der_i[v] = fi_der_i * fj * fj / ((fi + fj) * (fi + fj));
+                        darcy_forch_trans_der_j[v] = fi * fi * fj_der_j / ((fi + fj) * (fi + fj));
+                    }
+                }
 
                 if (phase_p_diff < 0)
                 {
+                    // calculate phase volumetric rate
+                    value_t phase_volumetric_rate;
+                    if (darcy_forchheimer_volumetric_rate.empty())
+                        phase_volumetric_rate = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * phase_p_diff;
+                    if (1)   // Only for reservoir connections
+                    {
+                        if (!darcy_forchheimer_volumetric_rate.empty())
+                            phase_volumetric_rate = darcy_forchheimer_volumetric_rate[conn_idx];
+                    }
+
+                    // calculate partial derivatives for phase volumetric rates
+                    value_t phase_vol_rate_der_i[N_VARS];
+                    value_t phase_vol_rate_der_j[N_VARS];
+                    for (uint8_t v = 0; v < N_VARS; v++)
+                    {
+                        if (darcy_forchheimer_volumetric_rate.empty())
+                        {
+                            phase_vol_rate_der_i[v] = tran[conn_idx] * (op_ders_arr[(i * N_OPS + LAMBDA_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[i * N_OPS + LAMBDA_OP + p] * grav_pc_der_i[v]);
+                            phase_vol_rate_der_j[v] = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * grav_pc_der_j[v];
+                        }
+                        if (1)   // Only for reservoir connections
+                        {
+                            if (!darcy_forchheimer_volumetric_rate.empty())
+                            {
+                                phase_vol_rate_der_i[v] = C1 * (darcy_forch_trans_der_i[v] * phase_p_diff + darcy_forchheimer_trans * grav_pc_der_i[v]);
+                                phase_vol_rate_der_j[v] = C1 * (darcy_forch_trans_der_j[v] * phase_p_diff + darcy_forchheimer_trans * grav_pc_der_j[v]);
+                            }
+                        }
+                    }
+
                     // mass and energy outflow with effect of gravity and capillarity
                     for (uint8_t c = 0; c < NE; c++)
                     {
-                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
+                        value_t c_flux_coef = trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                         if (c < NC)
                         {
-                            CFL_out[c] -= phase_p_diff * c_flux; // subtract negative value of flux
+                            CFL_out[c] -= phase_volumetric_rate * c_flux_coef; // subtract negative value of flux
                             if (!molar_weights.empty())
                             phase_fluxes[p] += op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[i] + c];
-                            if (enabled_flux_output) cur_darcy_fluxes[p * NC + c] = -phase_p_diff * c_flux / dt;
+                            if (enabled_flux_output) cur_darcy_fluxes[p * NC + c] = -phase_volumetric_rate * c_flux_coef / dt;
                         }
                         else
-                          if (enabled_flux_output) cur_heat_darcy_advection_fluxes[p] = -phase_p_diff * c_flux / dt;
+                          if (enabled_flux_output) cur_heat_darcy_advection_fluxes[p] = -phase_volumetric_rate * c_flux_coef / dt;
 
-                        RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators 
+                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators 
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
-                            Jac[diag_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
-                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c]);
-                            Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
-                            Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
+                            Jac[diag_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
+                                phase_volumetric_rate * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt);
+                            Jac[diag_idx + c * N_VARS + v] -= phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
+                            Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                             if (v == 0)
                             {
-                                Jac[jac_idx + c * N_VARS + v] -= c_flux;
-                                Jac[diag_idx + c * N_VARS + v] += c_flux;
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
+                                Jac[diag_idx + c * N_VARS + v] += c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
                             }
                         }
                     }
@@ -321,32 +382,63 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
                 else
                 {
+
+                    // calculate phase volumetric rate
+                    value_t phase_volumetric_rate;
+                    if (darcy_forchheimer_volumetric_rate.empty())
+                        phase_volumetric_rate = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * phase_p_diff;
+                    if (1)   // Only for reservoir connections
+                    {
+                        if (!darcy_forchheimer_volumetric_rate.empty())
+                            phase_volumetric_rate = darcy_forchheimer_volumetric_rate[conn_idx];
+                    }
+
+                    // calculate partial derivatives for phase volumetric rates
+                    value_t phase_vol_rate_der_i[N_VARS];
+                    value_t phase_vol_rate_der_j[N_VARS];
+                    for (uint8_t v = 0; v < N_VARS; v++)
+                    {
+                        if (darcy_forchheimer_volumetric_rate.empty())
+                        {
+                            phase_vol_rate_der_i[v] = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * grav_pc_der_i[v];
+                            phase_vol_rate_der_j[v] = tran[conn_idx] * (op_ders_arr[(j * N_OPS + LAMBDA_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[j * N_OPS + LAMBDA_OP + p] * grav_pc_der_j[v]);
+                        }
+                        if (1)   // Only for reservoir connections
+                        {
+                            if (!darcy_forchheimer_volumetric_rate.empty())
+                            {
+                                phase_vol_rate_der_i[v] = C1 * (darcy_forch_trans_der_i[v] * phase_p_diff + darcy_forchheimer_trans * grav_pc_der_i[v]);
+                                phase_vol_rate_der_j[v] = C1 * (darcy_forch_trans_der_j[v] * phase_p_diff + darcy_forchheimer_trans * grav_pc_der_j[v]);
+                            }
+                        }
+                    }
+
                     // mass and energy inflow with effect of gravity and capillarity
                     for (uint8_t c = 0; c < NE; c++)
                     {
-                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
+                        value_t c_flux_coef = trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                         if (c < NC)
                         {
-                          CFL_in[c] += phase_p_diff * c_flux;
-                          if (!molar_weights.empty())
+                            CFL_in[c] += phase_volumetric_rate * c_flux_coef;
+                            if (!molar_weights.empty())
                             phase_fluxes[p] += op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[j] + c];
-                          if (enabled_flux_output) cur_darcy_fluxes[p * NC + c] = -phase_p_diff * c_flux / dt;
+                          if (enabled_flux_output) cur_darcy_fluxes[p * NC + c] = -phase_volumetric_rate * c_flux_coef / dt;
                         }
                         else
-                          if (enabled_flux_output) cur_heat_darcy_advection_fluxes[p] = -phase_p_diff * c_flux / dt;
+                          if (enabled_flux_output) cur_heat_darcy_advection_fluxes[p] = -phase_volumetric_rate * c_flux_coef / dt;
 
-                        RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
+                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators only
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
-                            Jac[jac_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
-                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c]);
-                            Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
-                            Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
+                            Jac[jac_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
+                                phase_volumetric_rate * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt);
+                            Jac[diag_idx + c * N_VARS + v] -= phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+                            Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
                             if (v == 0)
                             {
-                                Jac[diag_idx + c * N_VARS + v] += c_flux; //-= Jac[jac_idx + c * N_VARS];
-                                Jac[jac_idx + c * N_VARS + v] -= c_flux;  // -tran[conn_idx] * dt * op_vals[NC + c];
+                                Jac[diag_idx + c * N_VARS + v] += c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
                             }
                         }
                     }
