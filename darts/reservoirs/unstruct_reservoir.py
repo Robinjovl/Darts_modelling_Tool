@@ -4,7 +4,7 @@ from typing import Union
 import meshio
 import numpy as np
 
-from darts.engines import conn_mesh, index_vector, ms_well, timer_node, value_vector
+from darts.engines import conn_mesh, index_vector, timer_node, value_vector
 from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
 

@@ -1,10 +1,6 @@
-import math
-import warnings
-
-import matplotlib.pyplot as plt
 import numba
 import numpy as np
-from numba import jit, njit
+from numba import jit
 
 from darts.reservoirs.mesh.geometry.geometry import Geometry
 

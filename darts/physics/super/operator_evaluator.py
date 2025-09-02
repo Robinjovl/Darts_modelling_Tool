@@ -1,6 +1,5 @@
 import numpy as np
 
-from darts.engines import operator_set_evaluator_iface
 from darts.physics.base.operators_base import OperatorsBase
 from darts.physics.super.property_container import PropertyContainer
 
@@ -198,7 +197,6 @@ class ReservoirOperators(OperatorsSuper):
         :return: updated value for operators, stored in values
         """
         pressure = state[0]
-        temperature = state[-1]
 
         # Evaluate thermal properties at current state
         self.property.evaluate_thermal(state)
@@ -237,7 +235,7 @@ class ReservoirOperators(OperatorsSuper):
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
         values[self.GRAD_OP + self.property.ph * self.ne + self.nc] = (
-            temperature * self.property.cond[self.property.ph]
+            self.property.temperature * self.property.cond[self.property.ph]
         )
 
         """ Delta operator for reaction """
@@ -250,7 +248,7 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Additional energy operators """
         # Temperature operator
-        values[self.TEMP_OP] = temperature
+        values[self.TEMP_OP] = self.property.temperature
 
         return 0
 
@@ -380,7 +378,7 @@ class WellOperators(OperatorsSuper):
         return 0
 
     def evaluate_thermal(self, state, values):
-        values[self.TEMP_OP] = state[-1]
+        values[self.TEMP_OP] = self.property.temperature
         return
 
 

@@ -108,20 +108,20 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         accepted_dirs_adjoint += ['Adjoint_mpfa']
 
     # RUN
-    n_failed = n_total = 0
+    failed_models_m = []
+    n_total = 0
     # run tests accepted_dirs/model.py with comparison of pkl files
-    n_failed_m = 0
     if len(accepted_dirs):
-        n_failed_m = for_each_model(model_dir, check_performance, accepted_dirs)
+        failed_models_m = for_each_model(model_dir, check_performance, accepted_dirs)
     n_total_m = len(accepted_dirs)
-    n_failed += n_failed_m
     n_total += n_total_m
 
     # check main.py files runs, without comparison of pkl files
+    failed_models_main = []
     accepted_dirs += ['CCS']
     if iter_solvers:  # run this case only for the build with iterative solvers
         accepted_dirs += [ 'SPE11b']
-    n_failed_mainpy = n_total_mainpy = 0
+    n_total_mainpy = 0
     for mdir in accepted_dirs:
         print('running main.py for model', mdir)
         n_total_mainpy += 1
@@ -129,57 +129,57 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         import subprocess
         mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
         rcode = mrun.returncode
-        n_failed_mainpy += rcode
         if not rcode:
             print('OK')
         else:
             print('FAIL')
+            failed_models_main += [mdir + ' (main.py)']
         os.chdir('..')
-    n_failed += n_failed_mainpy
     n_total += n_total_mainpy
 
     # discretizer tests
     print('\nDiscretizer tests:')
-    n_total_discr = n_failed_discr = 0
-    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
-    n_failed += n_failed_discr
+    n_total_discr, failed_models_cpg = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
     n_total += n_total_discr
 
     # fracture network tests
     print('\nFracture network tests:')
-    n_total_dfn = n_failed_dfn = 0
-    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
-    n_failed += n_failed_dfn
+    n_total_dfn, failed_models_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_total += n_total_dfn
 
     # poromechanic tests
     print('\nPoromechanics tests:')
-    n_total_mech = n_failed_mech = 0
+    n_total_mech = 0
+    failed_models_mech = []
     if platform == 'cpu':  # mech code is excluded from gpu build due to compilation issues (c++ std 20)
-        n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
-    n_failed += n_failed_mech
+        n_total_mech, failed_models_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
     n_total += n_total_mech
 
     # test for adjoint ------------------start---------------------------------
     print('\nAdjoint tests:')
-    n_failed_adj = n_total_adj = 0
-    import time
     if len(accepted_dirs_adjoint):
-        n_failed_adj = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
+        failed_models_adj = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
     n_total_adj = len(accepted_dirs_adjoint)
-    n_failed += n_failed_adj
     n_total += n_total_adj
     # test for adjoint ------------------end---------------------------------
 
+    failed_models = failed_models_m + failed_models_main + failed_models_cpg + failed_models_dfn + \
+                    failed_models_mech + failed_models_adj
+    print('Failed models   :\n\t', '\n\t'.join(failed_models))
+
+    n_failed =  len(failed_models)
     n_passed = n_total - n_failed
+
+    print('Number of failed models by types:')
+    print('\tmodel.py', len(failed_models_m))
+    print('\tmain.py', len(failed_models_main))
+    print('\tcpg', len(failed_models_cpg))
+    print('\tdfn', len(failed_models_dfn))
+    print('\tmech', len(failed_models_mech))
+    print('\tadj', len(failed_models_adj))
+
     print("Passed", n_passed, "of", n_total, "tests ")
-    print('n_failed_model=', n_failed_m)
-    print('n_failed_mainpy=', n_failed_mainpy)
-    print('n_failed_discr=', n_failed_discr)
-    print('n_failed_dfn=', n_failed_dfn)
-    print('n_failed_mech=', n_failed_mech)
-    print('n_failed_adj=', n_failed_adj)
-    
+
     if len(sys.argv) == 1 or sys.argv[1] != 'LOG':
         input("Press Enter to continue...") # pause the screen
     else:

@@ -1,6 +1,3 @@
-import numpy as np
-
-
 # Table0-based interpolation procedure
 class TableInterpolation:
     def LinearInterP(self, table, x_val, x_index, y_index):

@@ -1,6 +1,5 @@
 import abc
 import atexit
-import pickle
 from math import pi
 from typing import Union
 
