@@ -44,7 +44,7 @@ if __name__ == "__main__":
     # Results
 
     ## Screen
-    
+
         screen only
         screen and log file
         screen only
