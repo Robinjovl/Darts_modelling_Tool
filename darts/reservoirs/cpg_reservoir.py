@@ -80,9 +80,7 @@ class CPG_Reservoir(ReservoirBase):
         ]  # dimensions, array of 3 integer elements: nx, ny ,nz
         self.coord = arrays['COORD']  # grid pillars, array of (nx+1)*(ny+1)*6 elements
         self.zcorn = arrays['ZCORN']  # grid nodes depths, array of nx*ny*nz*8 elements
-        self.actnum = arrays[
-            'ACTNUM'
-        ]  # integer array of nx*ny*nz elements, 0 - inactive cell, 1 - active cell
+        self.actnum = arrays['ACTNUM']  # integer array of nx*ny*nz elements, 0 - inactive cell, 1 - active cell
         self.poro = arrays['PORO']  # porosity array, nx*ny*nz elements
         # permeability arrays, nx*ny*nz elements
         self.permx = arrays['PERMX']
