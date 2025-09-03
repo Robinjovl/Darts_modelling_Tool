@@ -1203,10 +1203,12 @@ class DartsModel:
         # Monitor residual
         if print_level >= 2:
             args += "-ksp_monitor_short "
+        if print_level >= 5:
+            args += "-omp_view " # print number of OpenMP threads
         # Right preconditioner
         args += "-ksp_pc_side right "
         # Iteration limit and tolerance 
-        args += "-ksp_max_it 100 -ksp_rtol 1e-10 "
+        args += "-ksp_max_it 1 -ksp_rtol 1e-5 " #TODO pass the tolerance from data_ts
         # Setting up CPR as a composite pc. 1st stage - fieldsplit, 2nd stage - ilu
         args += "-pc_type composite -pc_composite_type multiplicative -pc_composite_pcs fieldsplit,ilu "
         # 1st stage will do AMG on pressure block and "nothing" on transport block
@@ -1279,7 +1281,7 @@ class DartsModel:
 
         petsc_ksp.solve(petsc_rhs, petsc_sol)
 
-        sol = petsc_sol.getArray()
+        sol[:] = petsc_sol.getArray()
 
         if print_level >= 1:
             print('PETSC: True residual =', np.linalg.norm(mat.dot(sol) - rhs))
@@ -1299,6 +1301,8 @@ class DartsModel:
         # Monitor residual
         if print_level >= 2:
             args += "-ksp_monitor_short "
+        if print_level >= 5:
+            args += "-omp_view " # print number of OpenMP threads
         # Right preconditioner
         args += "-ksp_pc_side right "
         # Iteration limit and tolerance
@@ -1313,7 +1317,6 @@ class DartsModel:
         # pressure subsolver
         args += "-fieldsplit_pressure_ksp_type preonly "
         args += "-fieldsplit_pressure_pc_type gamg "
-        
 
         petsc4py.init(args)
         # Important to import PETSc after petsc4py.init
@@ -1375,7 +1378,7 @@ class DartsModel:
 
         petsc_ksp.solve(petsc_rhs, petsc_sol)
 
-        sol = petsc_sol.getArray()
+        sol[:] = petsc_sol.getArray()
 
         if print_level >= 1:
             print("PETSC: True residual:", np.linalg.norm(mat.dot(sol) - rhs))
