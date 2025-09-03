@@ -8,7 +8,7 @@ from opmcpg._cpggrid import value_vector as value_vector_cpggrid
 from pyevtk.hl import pointsToVTK
 
 import darts
-from darts.discretizer import ()))
+from darts.discretizer import (
     BoundaryCondition,
     Discretizer,
     Mesh,
@@ -21,7 +21,7 @@ from darts.discretizer import ()))
 from darts.discretizer import index_vector as index_vector_discr
 from darts.discretizer import value_vector as value_vector_discr
 from darts.engines import conn_mesh, timer_node
-from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
 
 try:
@@ -80,7 +80,9 @@ class CPG_Reservoir(ReservoirBase):
         ]  # dimensions, array of 3 integer elements: nx, ny ,nz
         self.coord = arrays['COORD']  # grid pillars, array of (nx+1)*(ny+1)*6 elements
         self.zcorn = arrays['ZCORN']  # grid nodes depths, array of nx*ny*nz*8 elements
-        self.actnum = arrays['ACTNUM']  # integer array of nx*ny*nz elements, 0 - inactive cell, 1 - active cell
+        self.actnum = arrays[
+            'ACTNUM'
+        ]  # integer array of nx*ny*nz elements, 0 - inactive cell, 1 - active cell
         self.poro = arrays['PORO']  # porosity array, nx*ny*nz elements
         # permeability arrays, nx*ny*nz elements
         self.permx = arrays['PERMX']
@@ -193,7 +195,7 @@ class CPG_Reservoir(ReservoirBase):
         self.ny = self.discr_mesh.ny = self.dims[1]
         self.nz = self.discr_mesh.nz = self.dims[2]
         self.nb = self.mesh.n_res_blocks
-        self.discr_mesh.n_cells = unstr_grid.number_of_cells + s
+        self.discr_mesh.n_cells = unstr_grid.number_of_cells
         # cells + boundary_faces, approximate
         self.discr_mesh.num_of_elements = self.discr_mesh.n_cells + 2 * (
             self.nx * self.ny + self.ny * self.nz + self.nx * self.nz
@@ -277,7 +279,7 @@ class CPG_Reservoir(ReservoirBase):
 
         self.discr_mesh.generate_adjacency_matrix()
 
-        self.discretizer = Discretizer()[
+        self.discretizer = Discretizer()
         self.cpp_bc = self.set_boundary_conditions(displaced_tags)
         self.discretizer.set_mesh(self.discr_mesh)
 
@@ -305,7 +307,7 @@ class CPG_Reservoir(ReservoirBase):
         return
 
     def calc_well_index(
-        self, i, j, k, well_radius=0.0762, segment_direction='z_a"xis', skin=0
+        self, i, j, k, well_radius=0.0762, segment_direction='z_axis', skin=0
     ):
         """
         Class method which construct the well index for each well segment/perforation
@@ -416,7 +418,7 @@ class CPG_Reservoir(ReservoirBase):
                 )
                 conduction_rad = 0.28 * np.sqrt(dz**2 + dx**2) / 2.0
                 well_indexD = (
-                    2 * np.pi * dy / (np.log(conduction_rad / well_radius) + skin) 88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
+                    2 * np.pi * dy / (np.log(conduction_rad / well_radius) + skin)
                 )
                 if kx == 0 or kz == 0:
                     well_index = 0.0
@@ -489,7 +491,7 @@ class CPG_Reservoir(ReservoirBase):
                     j = self.ny - 1
                     while j >= 0 and actnum3d[i, j, k] == 0:
                         j -= 1
-                    if j >= 0 ()())))):
+                    if j >= 0:
                         volume[i, j, k] = xz_plus
         volume_1d = np.reshape(
             volume,
@@ -507,8 +509,8 @@ class CPG_Reservoir(ReservoirBase):
 
         boundary_range = self.discr_mesh.region_ranges[elem_loc.BOUNDARY]
         a = np.zeros(boundary_range[1] - boundary_range[0])
-             b = np.zeros(boundary_range[1] - boundary_range[0])
-        r = np. zeros(boundary_range[1] - boundary_range[0])
+        b = np.zeros(boundary_range[1] - boundary_range[0])
+        r = np.zeros(boundary_range[1] - boundary_range[0])
 
         # no-flow (impermeable) bc
         a[:] = 0.0
