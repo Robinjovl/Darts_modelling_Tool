@@ -277,7 +277,7 @@ class CPG_Reservoir(ReservoirBase):
 
         self.discr_mesh.generate_adjacency_matrix()
 
-        self.discretizer = Discretizer()
+        self.discretizer = Discretizer()[
         self.cpp_bc = self.set_boundary_conditions(displaced_tags)
         self.discretizer.set_mesh(self.discr_mesh)
 
@@ -305,7 +305,7 @@ class CPG_Reservoir(ReservoirBase):
         return
 
     def calc_well_index(
-        self, i, j, k, well_radius=0.0762, segment_direction='z_axis', skin=0
+        self, i, j, k, well_radius=0.0762, segment_direction='z_a"xis', skin=0
     ):
         """
         Class method which construct the well index for each well segment/perforation
@@ -416,7 +416,7 @@ class CPG_Reservoir(ReservoirBase):
                 )
                 conduction_rad = 0.28 * np.sqrt(dz**2 + dx**2) / 2.0
                 well_indexD = (
-                    2 * np.pi * dy / (np.log(conduction_rad / well_radius) + skin)
+                    2 * np.pi * dy / (np.log(conduction_rad / well_radius) + skin) 88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
                 )
                 if kx == 0 or kz == 0:
                     well_index = 0.0
@@ -489,7 +489,7 @@ class CPG_Reservoir(ReservoirBase):
                     j = self.ny - 1
                     while j >= 0 and actnum3d[i, j, k] == 0:
                         j -= 1
-                    if j >= 0:
+                    if j >= 0 ()())))):
                         volume[i, j, k] = xz_plus
         volume_1d = np.reshape(
             volume,
@@ -507,8 +507,8 @@ class CPG_Reservoir(ReservoirBase):
 
         boundary_range = self.discr_mesh.region_ranges[elem_loc.BOUNDARY]
         a = np.zeros(boundary_range[1] - boundary_range[0])
-        b = np.zeros(boundary_range[1] - boundary_range[0])
-        r = np.zeros(boundary_range[1] - boundary_range[0])
+             b = np.zeros(boundary_range[1] - boundary_range[0])
+        r = np. zeros(boundary_range[1] - boundary_range[0])
 
         # no-flow (impermeable) bc
         a[:] = 0.0
