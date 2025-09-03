@@ -1,7 +1,11 @@
-from typing import Union
-
+from typing import Dict, List, Union
 import numpy as np
+from enum import Enum
 
+# set PETSC solver types with negative values to easily distinguish c++ solvers and PETSC 
+class linear_solver_types(Enum):
+    CPU_PETSC_CPR = -1
+    CPU_PETSC_FS  = -2  # fixed stress for poromechanics
 
 class RockProps:
     """
@@ -73,7 +77,7 @@ class InitialSolution:
             self.reference_depth_for_pressure = None  # [m]
             self.pressure_gradient = None  # [bar/km]
             self.pressure_at_ref_depth = None  # [bars]
-        self.initial_displacements = None  # [U_x, U_y, U_z] [m]
+        self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
 
@@ -146,7 +150,7 @@ class WellControl:
         self.inj_bht = temperature  # K
         # if Compositional
         self.phase_name = phase_name  # injected phase name, [str]
-        self.inj_composition = inj_composition  # 0 < injected composition < 1
+        self.inj_composition = inj_composition  #  0 < injected composition < 1
 
     def inj_bhp_control(
         self, bhp, temperature=None, phase_name=None, inj_composition=None
@@ -159,7 +163,7 @@ class WellControl:
         self.inj_bht = temperature  # K
         # if Compositional
         self.phase_name = phase_name  # injected phase name, [str]
-        self.inj_composition = inj_composition  # 0 < injected composition < 1
+        self.inj_composition = inj_composition  #  0 < injected composition < 1
 
 
 class WellLocIJK:
@@ -294,6 +298,7 @@ class WellData:
         well_radius = well_diam / 2.0
 
         keep_reading = True
+        prev_well_name = ''
         with open(sch_fname) as f:
             while keep_reading:
                 buff = f.readline()
@@ -492,7 +497,7 @@ class InputData:
             k
         ) in (
             self.__dict__.keys()
-        ):  # loop over the attributes (self.rock, self.fluid, ..)
+        ):  #  loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
@@ -503,7 +508,9 @@ class InputData:
                 'other',
             ]:  # do not check initial currently #TODO
                 continue
-            for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
+            for (
+                k2
+            ) in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     # either perm or permx+permy+permx should be specified
@@ -539,13 +546,15 @@ class InputData:
         array_obj = ['rock']  # list of items which can be defined by regons
         # count number of regions (one value per region)
         max_n_regions = 1
-        for k in self.__dict__.keys():  # loop over the attributes (self.rock, ..)
+        for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
             if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
-            for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
+            for (
+                k2
+            ) in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     continue

@@ -1,7 +1,7 @@
 import numpy as np
 import os
 
-from darts.input.input_data import InputData
+from darts.input.input_data import InputData, linear_solver_types
 from darts.models.darts_model import DataTS
 from darts.engines import sim_params
 
@@ -33,6 +33,8 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.DataTS.linear_tol = 1e-4
     # use direct linear solver:
     #idata.sim.DataTS.linear_type = sim_params.linear_solver_t.cpu_superlu
+    idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_CPR
+    idata.sim.DataTS.linear_print_level = 0
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()

@@ -281,8 +281,8 @@ if __name__ == '__main__':
 
     well_controls = []
     #well_controls += ['wrate']
-    #well_controls += ['wbhp']
-    well_controls += ['wperiodic']
+    well_controls += ['wbhp']
+    #well_controls += ['wperiodic']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

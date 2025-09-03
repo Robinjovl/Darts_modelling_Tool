@@ -147,7 +147,15 @@ def run_timestep_python(m, dt, t):
                     converged = 0
                 break
 
-        r_code = self.e.solve_linear_equation()
+        from darts.input.input_data import linear_solver_types
+        if type(self.idata.sim.DataTS.linear_type) == linear_solver_types:
+            if self.idata.sim.DataTS.linear_type == linear_solver_types.CPU_PETSC_FS:
+                r_code = self.petsc_solve_linear_equation_poromech()
+            else:
+                assert False, 'Unknown linear solver type for PETSC'
+        else:
+            r_code = self.e.solve_linear_equation()
+  
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)
         self.timer.node["newton update"].stop()
@@ -613,7 +621,7 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
 
 if __name__ == '__main__':
     # Rectangular grid, comparison to analytics
-    #run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
     #run_and_plot(case='terzaghi', discretizer='pm_discretizer', mesh='rect')
     #run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect')
     #run_and_plot(case='mandel', discretizer='pm_discretizer', mesh='rect')
@@ -635,8 +643,8 @@ if __name__ == '__main__':
     # run(case='mandel', discretizer='pm_discretizer', mesh='hex')
     # run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
-    #test_all = False
-    test_all = True
+    test_all = False
+    #test_all = True
     cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
     if test_all:
         for case in cases_list:
