@@ -58,7 +58,6 @@ class StructDiscretizer:
         self.is_cpg = is_cpg
         if self.is_cpg:
             print("Calculating CPG grid...", end='', flush=True)
-            # self.vectorized_cpg(coord, zcorn)
             plain_points_num = (nx + 1) * (ny + 1)
             cells_num = nx * ny * nz
             assert zcorn.size == 8 * cells_num
@@ -99,7 +98,7 @@ class StructDiscretizer:
                     )
                     zero_ids = np.argwhere(z_bot - z_top == 0)[:, 0]
                     for k in range(nz):
-                        id = i + nx * (j + k * ny)
+                        i + nx * (j + k * ny)
                         z_cur = np.concatenate(
                             (
                                 zcorn[2 * k, 2 * j, 2 * i : 2 * i + 2],
@@ -310,70 +309,6 @@ class StructDiscretizer:
                 self.nodes_tot, dtype=np.int32
             )
 
-    def vectorized_cpg(self, coord, zcorn):
-        coord = np.reshape(coord, (int(coord.size / 6), 6))
-        zcorn = zcorn.reshape((2 * self.nz, 2 * self.ny, 2 * self.nx))
-
-        i_ids = np.arange(self.nx, dtype=np.intp)
-        j_ids = np.arange(self.ny, dtype=np.intp)
-        k_ids = np.arange(self.nz, dtype=np.intp)
-        i = np.lib.stride_tricks.as_strided(
-            i_ids, (self.nz, self.ny, self.nx), (0, 0, i_ids.strides[0])
-        ).flatten()
-        j = np.lib.stride_tricks.as_strided(
-            j_ids, (self.nz, self.ny, self.nx), (0, j_ids.strides[0], 0)
-        ).flatten()
-        k = np.lib.stride_tricks.as_strided(
-            k_ids, (self.nz, self.ny, self.nx), (k_ids.strides[0], 0, 0)
-        ).flatten()
-        i2d = i[: self.nx * self.ny]
-        j2d = j[: self.nx * self.ny]
-        # i = np.tile(np.arange(self.nx, dtype=np.intp), (self.ny,1))
-        # j = np.tile(np.array([np.arange(self.ny, dtype=np.intp)]).transpose(), (1, self.nx))
-        xm_ym = i2d + j2d * (self.nx + 1)
-        xp_ym = i2d + 1 + j2d * (self.nx + 1)
-        xm_yp = i2d + (j2d + 1) * (self.nx + 1)
-        xp_yp = i2d + 1 + (j2d + 1) * (self.nx + 1)
-        v2d = np.swapaxes(
-            np.array([coord[xm_ym], coord[xp_ym], coord[xm_yp], coord[xp_yp]]), 0, 1
-        )
-        z_top = np.array(
-            [
-                zcorn[0, 2 * j2d, 2 * i2d],
-                zcorn[0, 2 * j2d, 2 * i2d + 1],
-                zcorn[0, 2 * j2d + 1, 2 * i2d],
-                zcorn[0, 2 * j2d + 1, 2 * i2d + 1],
-            ]
-        ).T
-        z_bot = np.array(
-            [
-                zcorn[-1, 2 * j2d, 2 * i2d],
-                zcorn[-1, 2 * j2d, 2 * i2d + 1],
-                zcorn[-1, 2 * j2d + 1, 2 * i2d],
-                zcorn[-1, 2 * j2d + 1, 2 * i2d + 1],
-            ]
-        ).T
-        zero_ids = np.argwhere(z_bot - z_top == 0)
-        z_cur = np.array(
-            [
-                zcorn[2 * k, 2 * j, 2 * i],
-                zcorn[2 * k, 2 * j, 2 * i + 1],
-                zcorn[2 * k, 2 * j + 1, 2 * i],
-                zcorn[2 * k, 2 * j + 1, 2 * i + 1],
-                zcorn[2 * k + 1, 2 * j, 2 * i],
-                zcorn[2 * k + 1, 2 * j, 2 * i + 1],
-                zcorn[2 * k + 1, 2 * j + 1, 2 * i],
-                zcorn[2 * k + 1, 2 * j + 1, 2 * i + 1],
-            ]
-        ).T
-
-        # v_top = v2d[:, 0] + (v2d[:, 1] - v2d[:, 0]) * ((z_cur[:4] - z_top)
-        #                                               / (self.eps_div + z_bot - z_top))[:, np.newaxis]
-        # v_bot = v2d[:, 1] + (v2d[:, 1] - v2d[:, 0]) * ((z_cur[4:] - z_top)
-        #                                               / (self.eps_div + z_bot - z_top))[:, np.newaxis]
-
-        return 0
-
     def calc_area_and_centroid(self, pts):
         # point must be in circular order
         n_pts = pts.shape[0]
@@ -450,19 +385,13 @@ class StructDiscretizer:
                 data = data * np.ones(self.arr_shape)
         else:
             if data.ndim == 1:
-                assert data.size == self.nodes_tot, "size of %s is %s instead of %s" % (
-                    data_name,
-                    data.size,
-                    self.nodes_tot,
+                assert data.size == self.nodes_tot, (
+                    f"size of {data_name} is {data.size} instead of {self.nodes_tot}"
                 )
                 data = np.reshape(data, (self.nx, self.ny, self.nz), order='F')
             else:
-                assert (
-                    data.shape == self.arr_shape
-                ), "shape of %s is %s instead of %s" % (
-                    data_name,
-                    data.shape,
-                    self.arr_shape,
+                assert data.shape == self.arr_shape, (
+                    f"shape of {data_name} is {data.shape} instead of {self.arr_shape}"
                 )
         return data
 
@@ -478,20 +407,14 @@ class StructDiscretizer:
             data = data * np.ones(self.nodes_tot, dtype=type(data))
         else:
             if data.ndim == 3:
-                assert (
-                    data.shape == self.arr_shape
-                ), "shape of %s is %s instead of %s" % (
-                    data_name,
-                    data.shape,
-                    self.arr_shape,
+                assert data.shape == self.arr_shape, (
+                    f"shape of {data_name} is {data.shape} instead of {self.arr_shape}"
                 )
 
                 data = np.reshape(data, self.nodes_tot, order='F')
             elif data.ndim == 1:
-                assert data.size == self.nodes_tot, "size of %s is %s instead of %s" % (
-                    data_name,
-                    data.size,
-                    self.nodes_tot,
+                assert data.size == self.nodes_tot, (
+                    f"size of {data_name} is {data.size} instead of {self.nodes_tot}"
                 )
         return data
 
@@ -928,10 +851,10 @@ class StructDiscretizer:
             act_t += tran_thermal > self.min_tran_tranD
             print(
                 "Inactive connections due to transmissibility: ",
-                act_t[act_t == False].size,
+                np.count_nonzero(~act_t),
             )
             act_conn = act_m * act_p * act_t
-            print("Inactive connections total: ", act_conn[act_conn == False].size)
+            print("Inactive connections total: ", np.count_nonzero(~act_conn))
 
             # now figure which local cells (including inactive) do not participate in active connections...
             m = set(cell_m[act_conn])
@@ -975,7 +898,7 @@ class StructDiscretizer:
 
         # Apply actnum filter, if any, and global_to_local indexing to arrays
         arrays_local = []
-        for i, a in enumerate(arrays):
+        for _i, a in enumerate(arrays):
             a = self.convert_to_flat_array(a, 'Unknown')
             arrays_local.append(a[self.local_to_global])
         np.seterr(**old_settings)
@@ -998,15 +921,15 @@ class StructDiscretizer:
         assert i > 0, "Perforation block coordinate should be positive"
         assert j > 0, "Perforation block coordinate should be positive"
         assert k > 0, "Perforation block coordinate should be positive"
-        assert (
-            i <= self.nx
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            j <= self.ny
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            k <= self.nz
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert i <= self.nx, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert j <= self.ny, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert k <= self.nz, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
         i -= 1
         j -= 1
         k -= 1
@@ -1018,7 +941,6 @@ class StructDiscretizer:
 
         # check if target grid block is active
         if self.global_to_local[res_block] > -1:
-
             # Store grid-dimensions of segmet and permeability:
             if self.is_cpg:
                 dx, dy, dz = self.calc_cell_dimensions(i, j, k)
@@ -1105,8 +1027,8 @@ class StructDiscretizer:
         """
         with open(filename, 'w') as f:
             f.write('TPFACONNS\n')
-            f.write('%d\n' % cell_m.size)
+            f.write(f'{cell_m.size:d}\n')
             for i, m in enumerate(cell_m):
-                f.write('%d\t%d\t%.15f\n' % (m, cell_p[i], conn[i]))
-            f.write('/' % cell_m.size)
+                f.write(f'{m:d}\t{cell_p[i]:d}\t{conn[i]:.15f}\n')
+            f.write('/')
         return 0
