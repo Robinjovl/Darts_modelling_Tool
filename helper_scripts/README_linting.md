@@ -1,169 +1,116 @@
-# Python Linting Setup
+## Python Linting and Formatting with Pre-commit and Ruff
 
-This document describes the Python linting setup for the DARTS project.
+This document describes the updated linting and formatting setup for the DARTS project.
 
-## Overview
+### Highlights
+- Pre-commit hooks run automatically on `git commit` / `git push` to enforce formatting, linting, and basic validations.
+- Ruff replaces black, isort, and flake8. Do not use `--unsafe-fixes` with Ruff.
+- CI runs the same checks using `pre-commit`.
+- No separate Python linting script is needed anymore.
 
-The project uses three main linting tools to ensure code quality:
+---
 
-1. **flake8** - For syntax checking and style enforcement
-2. **black** - For automatic code formatting
-3. **isort** - For import sorting
+## Purpose of `.pre-commit-config.yaml`
+Defines the set of checks ("hooks") that run automatically on `git commit` and `git push`. Each hook references a repository and version, and may have per-hook options (e.g., file globs, arguments). This file is the single source of truth for which validations we run locally and in CI.
 
-## CI Pipeline Integration
+## Hooks configured in `.pre-commit-config.yaml`
 
-The linting is integrated into the GitLab CI pipeline as a `pre_commit` stage. The linting job will run on:
-- Merge requests
-- Main branch commits
-- Tagged releases
-- When `RUN_LINTING=1` environment variable is set
+Ruff hooks (from `astral-sh/ruff-pre-commit`):
+- `ruff-check` (with `--fix`, `--show-fixes`): Lints Python and applies safe, non-breaking fixes. Avoid `--unsafe-fixes`.
+- `ruff-format`: Formats Python code (Ruff formatter), analogous to Black but configured via Ruff.
 
-## Local Development
+General quality and hygiene (from `pre-commit/pre-commit-hooks`):
+- `end-of-file-fixer`: Ensures files end with a single newline.
+- `trailing-whitespace`: Removes stray trailing whitespace.
+- `check-yaml`: Validates YAML syntax for selected files.
+- `check-toml`: Validates TOML syntax (e.g., `pyproject.toml`).
+- `mixed-line-ending`: Normalizes line endings; prevents mixed CRLF/LF.
+- `detect-private-key`: Detects accidentally committed private keys.
+- `check-added-large-files --maxkb=500`: Prevents committing very large files to the repo.
+- `check-merge-conflict`: Detects unresolved merge conflict markers.
 
-### Prerequisites
+Notes:
+- Hook environments are downloaded and cached automatically on first use by pre-commit (into `.cache/pre-commit`).
+- The config schedules auto-updates quarterly (see `ci.autoupdate_schedule`). Maintainers can run `pre-commit autoupdate` to bump hook versions.
 
-Install the required linting tools:
+## Ruff configuration location
+Ruff is configured in `pyproject.toml` under:
+- `[tool.ruff]`, `[tool.ruff.lint]`, `[tool.ruff.format]`, `[tool.ruff.lint.mccabe]`
 
+---
+
+## Preparing your development environment
+Choose one of the following:
+
+Option A (recommended, includes project dev extras):
 ```bash
-pip install flake8 black isort
-```
-
-Or install the development dependencies:
-
-```bash
-pip install -e .[dev]
-```
-
-## Cross-Platform Linting Script
-
-The project provides a single Python-based linting script that works on Linux, Windows, and macOS:
-
-### Python Script (Cross-Platform)
-
-The `lint_python.py` script works on all platforms:
-
-```bash
-# Check for linting issues (no fixes)
-python helper_scripts/lint_python.py
-
-# Check and automatically fix formatting issues
-python helper_scripts/lint_python.py --fix
-
-# Verbose output with fixes
-python helper_scripts/lint_python.py --verbose --fix
-
-# Check a specific directory
-python helper_scripts/lint_python.py --dir path/to/darts
-```
-For running in PyCharm, set the working directory to open-darts root folder.
-
-**Advantages:**
-- Works on Linux, Windows, and macOS
-- Better error handling and output formatting
-- More maintainable code
-- Consistent behavior across platforms
-- No shell dependencies
-- Used by both local development and CI pipeline
-
-### Command Line Options
-
-- `-f, --fix`: Automatically fix formatting issues (black and isort)
-- `-v, --verbose`: Enable verbose output
-- `-d, --dir DIR`: Specify darts directory (default: darts)
-- `-h, --help`: Show help message
-
-## Manual Tool Usage
-
-You can also run the tools individually:
-
-```bash
-# Run flake8
-flake8 darts/
-
-# Check formatting with black
-black --check --diff darts/
-
-# Fix formatting with black
-black darts/
-
-# Check import sorting with isort
-isort --check-only --diff darts/
-
-# Fix import sorting with isort
-isort darts/
-```
-
-## Configuration Files
-
-### .flake8
-Contains flake8 configuration with:
-- Maximum line length: 88 characters
-- Maximum complexity: 10
-- Excluded directories and files
-- Ignored error codes
-
-### pyproject.toml
-Contains configuration for:
-- **black**: Line length 88, Python 3.10+ target
-- **isort**: Black-compatible profile, known package categorization
-
-## Pre-commit Hook (Optional)
-
-You can set up a pre-commit hook to automatically run linting before each commit:
-
-1. Install pre-commit:
-```bash
-pip install pre-commit
-```
-
-2. Create `.pre-commit-config.yaml`:
-```yaml
-repos:
-  - repo: https://github.com/psf/black
-    rev: 23.3.0
-    hooks:
-      - id: black
-        language_version: python3
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
-    hooks:
-      - id: isort
-  - repo: https://github.com/pycqa/flake8
-    rev: 6.0.0
-    hooks:
-      - id: flake8
-```
-
-3. Install the hook:
-```bash
+python -m pip install -e .[dev]
 pre-commit install
 ```
 
-## Platform-Specific Notes
+Option B (manual, if you don't want all dev extras):
+```bash
+python -m pip install --upgrade ruff pre-commit
+pre-commit install
+```
+---
 
-### All Platforms
-- Use `lint_python.py` - the single cross-platform solution
-- Ensure Python is in your PATH
-- The script works identically across all operating systems
+## Local usage of pre-commit
 
-### Cross-Platform Development
-- The Python script (`lint_python.py`) is used by both local development and CI pipeline
-- Configuration files (`.flake8`, `pyproject.toml`) work identically across platforms
-- No platform-specific setup required
+Automatic, on commit or push:
+```bash
+git commit -m "..."   # hooks run automatically
+git push -m "..."     # hooks run automatically
+```
+
+Manually, mirror the CI job's file selection (Python, YAML, TOML in selected paths):
+```bash
+# From repo root
+FILES="$(
+  {
+    git ls-files -- 'darts' 'tests' 'helper_scripts' '.cicd' '.gitlab-ci.yml' '.pre-commit-config.yaml' 'pyproject.toml' 2>/dev/null || true
+  } | grep -E '\\.(py|ya?ml|toml)$' || true
+)"
+pre-commit run --files $FILES --show-diff-on-failure --color always
+```
+
+Skip hooks for a single commit (use sparingly):
+```bash
+git commit --no-verify -m "commit message"
+```
+
+---
+
+## Which files are checked
+
+Local pre-commit (via hooks) uses the `files` patterns defined in `.pre-commit-config.yaml`:
+- Ruff hooks (`ruff-check`, `ruff-format`): `^(darts|tests|helper_scripts|\.cicd)/.*\.py$`
+- YAML check: `^((.cicd|helper_scripts)/.*\.ya?ml|\.gitlab-ci\.ya?ml)$`
+- TOML check: `^[^/]+\.toml$`
+- Other general hooks apply to all files unless restricted by the hook.
+
+---
+
+## CI Pipeline Integration
+The pre-commit job runs in the `pre_commit` stage using `python:3.10`, installs `pre-commit`, selects target files (Python, YAML, TOML in `darts`, `tests`, `helper_scripts`, `.cicd`, plus `pyproject.toml` and `.gitlab-ci.yml`), and executes:
+
+```bash
+pre-commit run --files $FILES --show-diff-on-failure --color always
+```
+
+The job currently allows failure (`allow_failure: true`) to ease adoption; aim to fix issues proactively.
+
+
+## Tips, recommendations, and gotchas
+- Do not use `ruff --unsafe-fixes` (or `--unsafe-fixes` via pre-commit). Only safe fixes are enabled.
+- To update hook versions: `pre-commit autoupdate` (we also auto-update quarterly).
+- Hook environments are cached under `.cache/pre-commit`.
+- If a new directory is added for Python code, update the `files` glob for Ruff in `.pre-commit-config.yaml`.
+- In CI, failures in the pre-commit job currently do not fail the pipeline; treat them as warnings to be fixed.
+
+---
 
 ## Troubleshooting
-
-### Common Issues
-
-1. **Line length errors**: The project uses 88 characters as the maximum line length (compatible with black)
-2. **Import sorting issues**: Use `isort` to automatically sort imports
-3. **Formatting issues**: Use `black` to automatically format code
-4. **Python not found**: Ensure Python is installed and in your PATH
-
-### Getting Help
-
-- Run `python helper_scripts/lint_python.py --help` for usage information
-- Check the tool documentation:
-  - [flake8](https://flake8.pycqa.org/)
-  - [black](https://black.readthedocs.io/)
-  - [isort](https://pycqa.github.io/isort/) 
+- "Command not found" for `pre-commit` or `ruff`: install via `python -m pip install -e .[dev]` or `python -m pip install pre-commit ruff` and `pre-commit install` in the project folder.
+- Pre-commit keeps re-downloading hooks: check write access to `.cache/` and that your home or repo cache is not cleaned between runs.
+- Formatting/linting behaves differently locally vs CI: ensure you are running the same hook versions (`pre-commit autoupdate`), and use the same file selection as CI when comparing runs (see examples above).
