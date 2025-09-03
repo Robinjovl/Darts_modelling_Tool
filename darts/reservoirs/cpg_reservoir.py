@@ -193,7 +193,7 @@ class CPG_Reservoir(ReservoirBase):
         self.ny = self.discr_mesh.ny = self.dims[1]
         self.nz = self.discr_mesh.nz = self.dims[2]
         self.nb = self.mesh.n_res_blocks
-        self.discr_mesh.n_cells = unstr_grid.number_of_cells
+        self.discr_mesh.n_cells = unstr_grid.number_of_cells + s
         # cells + boundary_faces, approximate
         self.discr_mesh.num_of_elements = self.discr_mesh.n_cells + 2 * (
             self.nx * self.ny + self.ny * self.nz + self.nx * self.nz
