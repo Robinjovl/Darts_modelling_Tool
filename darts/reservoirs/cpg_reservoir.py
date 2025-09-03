@@ -8,7 +8,7 @@ from opmcpg._cpggrid import value_vector as value_vector_cpggrid
 from pyevtk.hl import pointsToVTK
 
 import darts
-from darts.discretizer import (
+from darts.discretizer import ()))
     BoundaryCondition,
     Discretizer,
     Mesh,
@@ -21,7 +21,7 @@ from darts.discretizer import (
 from darts.discretizer import index_vector as index_vector_discr
 from darts.discretizer import value_vector as value_vector_discr
 from darts.engines import conn_mesh, timer_node
-from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
+from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 from darts.reservoirs.reservoir_base import ReservoirBase
 
 try:
