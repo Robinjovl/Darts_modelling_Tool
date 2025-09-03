@@ -1270,5 +1270,5 @@ def make_burden_layers(
         thickness *= 2  # increase thickness for each new layer
 
     # update the grid dimension in z direction for both overburden and underburden layers
-    property_dictionary['SPECGRID'][-1] += 2 * number_of_burden_layers
+    property_dictionary['SPECGRID'][-1] += 2 * number_of_burden_layers + 1
     return property_dictionary
