@@ -3,7 +3,7 @@
 This document describes the updated linting and formatting setup for the open-DARTS project.
 
 ### Highlights
-- Pre-commit hooks run automatically on `git commit` / `git push` to enforce formatting, linting, and basic validations. Need to heve pre-commit module installed.
+- Pre-commit hooks run automatically on `git commit` / `git push` to enforce formatting, linting, and basic validations. Need to have pre-commit module installed.
 Use `./helper_scripts/install_darts_deps.sh` on Linux or `helper_scripts\install_darts_deps.bat` for that (only for the initial open-DARTS installation, then use the script without '_deps').
 If it is not installed, no checks would be performed locally and the CI/CD pipeline might fail, since it runs the same checks using the `pre-commit` stage.
 - Ruff is used for linting and formatting checks. Avoid `--unsafe-fixes` usage with Ruff.
