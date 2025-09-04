@@ -149,10 +149,7 @@ def run_timestep_python(m, dt, t):
 
         from darts.input.input_data import linear_solver_types
         if type(self.idata.sim.DataTS.linear_type) == linear_solver_types: # if PETSc
-            if self.idata.sim.DataTS.linear_type == linear_solver_types.CPU_PETSC_FS:
-                r_code = self.petsc_solve_linear_equation_poromech()
-            else:
-                raise AssertionError('Unknown linear solver type for PETSC')
+            r_code = self.petsc_solve_linear_equation()
         else:
             r_code = self.e.solve_linear_equation()
   

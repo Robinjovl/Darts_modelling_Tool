@@ -28,6 +28,8 @@ class Model(THMCModel):
             self.params.linear_type = linear_type
         elif self.discretizer_name == 'pm_discretizer':
             self.physics.engine.ls_params[-1].linear_type = linear_type
+            
+        self.data_ts = self.idata.sim.DataTS  # since mech models have they own run_python implementation, data_ts is used only for linear solver params for PETSc
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,

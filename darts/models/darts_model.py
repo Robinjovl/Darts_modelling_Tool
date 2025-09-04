@@ -718,12 +718,7 @@ class DartsModel:
             else:
                 if type(self.data_ts.linear_type) == linear_solver_types:
                     #TODO: automatically choose a proper solver depending on physics
-                    if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
-                        self.petsc_solve_linear_equation_flow()
-                    elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
-                        self.petsc_solve_linear_equation_poromech()
-                    else:
-                        raise AssertionError('Unknown linear solver type for PETSC')
+                    self.petsc_solve_linear_equation()
                 else:
                     self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
@@ -1153,7 +1148,8 @@ class DartsModel:
 
         return mat_csr, rhs, sol
 
-    def petsc_solve_linear_equation_flow(self):
+
+    def petsc_solve_linear_equation(self):
 
         print_level = self.data_ts.linear_print_level
 
@@ -1176,18 +1172,33 @@ class DartsModel:
         # Iteration limit and tolerance 
         args += "-ksp_max_it " + str(self.data_ts.linear_max_iter) + " "
         args += "-ksp_rtol " + str(self.data_ts.linear_tol) + " "
-        # Setting up CPR as a composite pc. 1st stage - fieldsplit, 2nd stage - ilu
-        args += "-pc_type composite -pc_composite_type multiplicative -pc_composite_pcs fieldsplit,ilu "
-        # 1st stage will do AMG on pressure block and "nothing" on transport block
-        args += "-sub_0_pc_fieldsplit_type schur -sub_0_pc_fieldsplit_schur_fact_type upper "
-        # We build a schur complement diagonal approximation to "decouple" pressure from transport
-        args += "-sub_0_pc_fieldsplit_schur_precondition selfp "
-        # transport subsolver (for some reason "do nothing" does not work, so do one jacobi iteration)
-        args += "-sub_0_fieldsplit_transport_ksp_type preonly "
-        args += "-sub_0_fieldsplit_transport_pc_type jacobi "
-        # # pressure subsolver (do AMG)
-        args += "-sub_0_fieldsplit_pressure_ksp_type preonly "
-        args += "-sub_0_fieldsplit_pressure_pc_type gamg "
+        
+        if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
+	        # Setting up CPR as a composite pc. 1st stage - fieldsplit, 2nd stage - ilu
+	        args += "-pc_type composite -pc_composite_type multiplicative -pc_composite_pcs fieldsplit,ilu "
+	        # 1st stage will do AMG on pressure block and "nothing" on transport block
+	        args += "-sub_0_pc_fieldsplit_type schur -sub_0_pc_fieldsplit_schur_fact_type upper "
+	        # We build a schur complement diagonal approximation to "decouple" pressure from transport
+	        args += "-sub_0_pc_fieldsplit_schur_precondition selfp "
+	        # transport subsolver (for some reason "do nothing" does not work, so do one jacobi iteration)
+	        args += "-sub_0_fieldsplit_transport_ksp_type preonly "
+	        args += "-sub_0_fieldsplit_transport_pc_type jacobi "
+	        # # pressure subsolver (do AMG)
+	        args += "-sub_0_fieldsplit_pressure_ksp_type preonly "
+	        args += "-sub_0_fieldsplit_pressure_pc_type gamg "
+        elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
+	        # Use U^-1 D^-1 as a preconditioner in block LDU factorization
+	        args += "-pc_type fieldsplit -pc_fieldsplit_type schur -pc_fieldsplit_schur_fact_type upper "
+	        # Use diagonal to approximate S. This should be replaced by the fixed stress approx.
+	        args += "-pc_fieldsplit_schur_precondition selfp "
+	        # displacement subsolver
+	        args += "-fieldsplit_displacement_ksp_type preonly "
+	        args += "-fieldsplit_displacement_pc_type gamg "
+	        # pressure subsolver
+	        args += "-fieldsplit_pressure_ksp_type preonly "
+	        args += "-fieldsplit_pressure_pc_type gamg "
+         else:
+            raise AssertionError('Unknown linear solver type for PETSC')
 
         petsc4py.init(args)
         # Important to import PETSc after petsc4py.init
@@ -1215,27 +1226,49 @@ class DartsModel:
         petsc_ksp.setFromOptions()
         petsc_ksp.setOperators(petsc_mat, petsc_mat)
 
-        # Informing petsc about our fields
-        pressure_idx = np.arange(0, mat.shape[0], 2)
-        transport_idx = np.arange(1, mat.shape[0], 2)
-        petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
-        petsc_is_transport = PETSc.IS().createGeneral(transport_idx.astype("int32"))
+        # Inform petsc about our fields
+        if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
+	        pressure_idx = np.arange(0, mat.shape[0], 2)
+	        transport_idx = np.arange(1, mat.shape[0], 2)
+        	petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
+        	petsc_is_transport = PETSc.IS().createGeneral(transport_idx.astype("int32"))
 
-        # Getting Composite PC
-        petsc_pc = petsc_ksp.getPC()
-        petsc_pc.setUp()
-        # Getting the 1st stage (fieldsplit)
-        petsc_pc_1st_stage = petsc_pc.getCompositePC(0)
-        petsc_pc_1st_stage.setFieldSplitIS(
-            ("transport", petsc_is_transport), ("pressure", petsc_is_pressure)
-        )
+	        # Getting Composite PC
+	        petsc_pc = petsc_ksp.getPC()
+	        petsc_pc.setUp()
+	        # Getting the 1st stage (fieldsplit)
+	        petsc_pc_1st_stage = petsc_pc.getCompositePC(0)
+	        petsc_pc_1st_stage.setFieldSplitIS(
+	            ("transport", petsc_is_transport), ("pressure", petsc_is_pressure)
+	        )
+	
+	        # Here, AMG setup happens
+	        petsc_pc_1st_stage.setOperators(petsc_mat, petsc_mat)
+	        petsc_pc_1st_stage.setUp()
+	        # ILU setup
+	        petsc_pc_2nd_stage = petsc_pc.getCompositePC(1)
+	        petsc_pc_2nd_stage.setUp()
+        elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
+	        pressure_idx = np.arange(0, mat.shape[0], 4)
+	        displacement_idx = np.stack(
+	            [
+	                np.arange(1, mat.shape[0], 4),
+	                np.arange(2, mat.shape[0], 4),
+	                np.arange(3, mat.shape[0], 4),
+	            ]
+	        ).ravel(order="F")
+	        petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
+	        petsc_is_displacement = PETSc.IS().createGeneral(displacement_idx.astype("int32"))
+	        # Displacement is a vector problem
+	        petsc_is_displacement.setBlockSize(3)
+	
+	        # Setting fieldsplit fields
+	        petsc_pc = petsc_ksp.getPC()
+	        petsc_pc.setFromOptions()
+	        petsc_pc.setFieldSplitIS(
+	            ("displacement", petsc_is_displacement), ("pressure", petsc_is_pressure)
+	        )
 
-        # Here, AMG setup happens
-        petsc_pc_1st_stage.setOperators(petsc_mat, petsc_mat)
-        petsc_pc_1st_stage.setUp()
-        # ILU setup
-        petsc_pc_2nd_stage = petsc_pc.getCompositePC(1)
-        petsc_pc_2nd_stage.setUp()
 
         petsc_ksp.setUp()
 
@@ -1251,100 +1284,4 @@ class DartsModel:
         if print_level >= 1:
             print('PETSC: True residual =', np.linalg.norm(mat.dot(sol) - rhs))
 
-        return 0 #TODO check when solver fails https://petsc.org/main/petsc4py/reference/petsc4py.PETSc.KSP.html#petsc4py.PETSc.KSP.solve
-
-    def petsc_solve_linear_equation_poromech(self):
-
-        print_level = self.idata.sim.DataTS.linear_print_level
-
-        mat, rhs, sol = self.get_linear_system()
-
-        import petsc4py
-
-        # Petsc Command-Line arguments, there are different ways to pass them as well
-        args = ""
-        # Monitor residual
-        if print_level >= 2:
-            args += "-ksp_monitor_short "
-        if print_level >= 5:
-            args += "-omp_view " # print number of OpenMP threads
-        # Right preconditioner
-        args += "-ksp_pc_side right "
-        # Iteration limit and tolerance
-        args += "-ksp_max_it " + str(self.idata.sim.DataTS.linear_max_iter) + " "
-        args += "-ksp_rtol " + str(self.idata.sim.DataTS.linear_tol) + " "
-        # Use U^-1 D^-1 as a preconditioner in block LDU factorization
-        args += "-pc_type fieldsplit -pc_fieldsplit_type schur -pc_fieldsplit_schur_fact_type upper "
-        # Use diagonal to approximate S. This should be replaced by the fixed stress approx.
-        args += "-pc_fieldsplit_schur_precondition selfp "
-        # displacement subsolver
-        args += "-fieldsplit_displacement_ksp_type preonly "
-        args += "-fieldsplit_displacement_pc_type gamg "
-        # pressure subsolver
-        args += "-fieldsplit_pressure_ksp_type preonly "
-        args += "-fieldsplit_pressure_pc_type gamg "
-
-        petsc4py.init(args)
-        # Important to import PETSc after petsc4py.init
-        from petsc4py import PETSc
-
-        # Create matrix
-        petsc_mat = PETSc.Mat().createAIJ(
-            size=mat.shape, csr=(mat.indptr, mat.indices, mat.data)
-        )
-        petsc_mat.setFromOptions()
-        petsc_mat.setUp()
-
-        # Create rhs
-        petsc_rhs = PETSc.Vec().createWithArray(rhs, rhs.size)
-        petsc_rhs.setFromOptions()
-        petsc_rhs.setUp()
-
-        # Create sol
-        petsc_sol = PETSc.Vec().createWithArray(sol, sol.size)
-        petsc_sol.setFromOptions()
-        petsc_sol.setUp()
-
-        # Create petsc linear solver
-        petsc_ksp = PETSc.KSP().create()
-        petsc_ksp.setFromOptions()
-        petsc_ksp.setOperators(petsc_mat, petsc_mat)
-
-        # Informing petsc about our fields
-        pressure_idx = np.arange(0, mat.shape[0], 4)
-        displacement_idx = np.stack(
-            [
-                np.arange(1, mat.shape[0], 4),
-                np.arange(2, mat.shape[0], 4),
-                np.arange(3, mat.shape[0], 4),
-            ]
-        ).ravel(order="F")
-        petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
-        petsc_is_displacement = PETSc.IS().createGeneral(displacement_idx.astype("int32"))
-        # Displacement is a vector problem
-        petsc_is_displacement.setBlockSize(3)
-
-        # Setting fieldsplit fields
-        petsc_pc = petsc_ksp.getPC()
-        petsc_pc.setFromOptions()
-        petsc_pc.setFieldSplitIS(
-            ("displacement", petsc_is_displacement), ("pressure", petsc_is_pressure)
-        )
-
-        # Here, AMG setup happens
-        petsc_pc.setUp()
-        petsc_ksp.setUp()
-
-        # This prints the solver information to stdout
-        if print_level >= 4:
-            petsc_ksp.view()
-
-        if print_level >= 1:
-            print("PETSC: start solving")
-
-        petsc_ksp.solve(petsc_rhs, petsc_sol)
-
-        if print_level >= 1:
-            print("PETSC: True residual:", np.linalg.norm(mat.dot(sol) - rhs))
-
-        return 0 #TODO check when solver fails https://petsc.org/main/petsc4py/reference/petsc4py.PETSc.KSP.html#petsc4py.PETSc.KSP.solve
+        #TODO check when solver fails https://petsc.org/main/petsc4py/reference/petsc4py.PETSc.KSP.html#petsc4py.PETSc.KSP.solve
