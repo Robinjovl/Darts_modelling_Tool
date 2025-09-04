@@ -1,10 +1,8 @@
 import os
-import pickle
 import warnings
 from math import fabs
 
 import numpy as np
-from scipy.interpolate import interp1d
 
 from darts.models.output import Output
 from darts.physics.base.physics_base import PhysicsBase
@@ -17,24 +15,19 @@ except ImportError:
 
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
-    index_vector,
     ms_well_vector,
     op_vector,
-)
-from darts.engines import print_build_info as engines_pbi
-from darts.engines import (
     sim_params,
     timer_node,
-    value_vector,
 )
+from darts.engines import print_build_info as engines_pbi
 from darts.print_build_info import print_build_info as package_pbi
 from darts.input.input_data import linear_solver_types
 
 class DataTS:
-
     def __init__(self, n_vars):
-        self.eta = 1e20 * np.ones(
-            n_vars
+        self.eta = (
+            1e20 * np.ones(n_vars)
         )  # controls the timestep by the variable change from the previous newton iteration
         # dX = Xn - X . Eta has a size of number of DOFs per cell. It set to a large value by default, so doesn't affect the timestep choice
 
@@ -186,7 +179,8 @@ class DartsModel:
             warnings.warn(
                 'The number of cells looks too big to use a direct linear solver: '
                 + str(self.reservoir.mesh.n_res_blocks)
-                + ' > 30000'
+                + ' > 30000',
+                stacklevel=2,
             )
 
     def reset(self):
@@ -236,7 +230,7 @@ class DartsModel:
         self.physics.engine.t = time_res[0]
 
         # save initial conditions to *.h5 file
-        print(fr'Restarting model from {reservoir_filename} at day {time_res[0]}.')
+        print(rf'Restarting model from {reservoir_filename} at day {time_res[0]}.')
         self.output.save_data_to_h5(kind='reservoir')
 
         return
@@ -440,7 +434,7 @@ class DartsModel:
             if type(self.data_ts.linear_type) != linear_solver_types:  # it's not needed to copy it to params for PETSC option
                 self.params.linear_type = self.data_ts.linear_type
 
-    def run_simple(self, physics, data_ts, days):
+    def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
@@ -479,14 +473,7 @@ class DartsModel:
                 ts += 1
                 if verbose:
                     print(
-                        "# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
-                        % (
-                            ts,
-                            t,
-                            dt,
-                            self.physics.engine.n_newton_last_dt,
-                            self.physics.engine.n_linear_last_dt,
-                        )
+                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}"
                     )
 
                 dt = min(dt * self.data_ts.dt_mult, self.data_ts.dt_max)
@@ -504,7 +491,7 @@ class DartsModel:
             else:
                 dt /= self.data_ts.dt_mult
                 if verbose:
-                    print("Cut timestep to %2.10f" % dt)
+                    print(f"Cut timestep to {dt:2.10f}")
                 if dt < self.data_ts.dt_min:
                     break
 
@@ -513,15 +500,7 @@ class DartsModel:
 
         if verbose:
             print(
-                "TS = %d(%d), NI = %d(%d), LI = %d(%d)"
-                % (
-                    self.physics.engine.stat.n_timesteps_total,
-                    self.physics.engine.stat.n_timesteps_wasted,
-                    self.physics.engine.stat.n_newton_total,
-                    self.physics.engine.stat.n_newton_wasted,
-                    self.physics.engine.stat.n_linear_total,
-                    self.physics.engine.stat.n_linear_wasted,
-                )
+                f"TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d})"
             )
 
     def run(
@@ -547,9 +526,9 @@ class DartsModel:
         :param save_solution_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
         :type save_solution_data: bool
         """
-        assert hasattr(
-            self, 'output'
-        ), "self.output does not exist, please call m.set_output() after m.init()"
+        assert hasattr(self, 'output'), (
+            "self.output does not exist, please call m.set_output() after m.init()"
+        )
         days = days if days is not None else self.runtime
         data_ts = self.data_ts
 
@@ -603,16 +582,7 @@ class DartsModel:
 
                 if verbose:
                     print(
-                        "# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%4s"
-                        % (
-                            ts,
-                            t,
-                            dt,
-                            self.physics.engine.n_newton_last_dt,
-                            self.physics.engine.n_linear_last_dt,
-                            dt_mult_new,
-                            np.round(max_dx, 3),
-                        )
+                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={np.round(max_dx, 3)}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -632,7 +602,7 @@ class DartsModel:
             else:
                 dt /= data_ts.dt_mult
                 if verbose:
-                    print("Cut timestep to %2.10f" % dt)
+                    print(f"Cut timestep to {dt:2.10f}")
                 assert dt > data_ts.dt_min, (
                     'Stop simulation. Reason: reached min. timestep '
                     + str(data_ts.dt_min)
@@ -653,15 +623,7 @@ class DartsModel:
 
         if verbose:
             print(
-                "TS = %d(%d), NI = %d(%d), LI = %d(%d)"
-                % (
-                    self.physics.engine.stat.n_timesteps_total,
-                    self.physics.engine.stat.n_timesteps_wasted,
-                    self.physics.engine.stat.n_newton_total,
-                    self.physics.engine.stat.n_newton_wasted,
-                    self.physics.engine.stat.n_linear_total,
-                    self.physics.engine.stat.n_linear_wasted,
-                )
+                f"TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d})"
             )
 
         return 0
@@ -761,7 +723,7 @@ class DartsModel:
                     elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
                         r_code = self.petsc_solve_linear_equation_poromech()
                     else:
-                        assert False, 'Unknown linear solver type for PETSC'
+                        raise AssertionError('Unknown linear solver type for PETSC')
                 else:
                     r_code = self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
@@ -812,39 +774,43 @@ class DartsModel:
             )
         res_history = np.array([history[0][0], history[1][0]])
 
-        for iter in range(5):
+        for _iter in range(5):
             if coef.size > 2:
-                id = res_history.argmin()
-                closest_left = np.where(coef < coef[id])[0]
-                closest_right = np.where(coef > coef[id])[0]
+                idx_min = res_history.argmin()
+                closest_left = np.where(coef < coef[idx_min])[0]
+                closest_right = np.where(coef > coef[idx_min])[0]
                 if closest_left.size and closest_right.size:
                     left = closest_left[coef[closest_left].argmax()]
                     right = closest_right[coef[closest_right].argmin()]
-                    if res_history[left] < res_history[id]:
-                        coef = np.append(coef, (coef[id] + coef[left]) / 2)
-                    elif res_history[right] < res_history[id]:
-                        coef = np.append(coef, (coef[id] + coef[right]) / 2)
+                    if res_history[left] < res_history[idx_min]:
+                        coef = np.append(coef, (coef[idx_min] + coef[left]) / 2)
+                    elif res_history[right] < res_history[idx_min]:
+                        coef = np.append(coef, (coef[idx_min] + coef[right]) / 2)
                     else:
                         if res_history[left] < res_history[right]:
                             coef = np.append(
-                                coef, coef[id] - (coef[id] - coef[left]) / 4
+                                coef, coef[idx_min] - (coef[idx_min] - coef[left]) / 4
                             )
                         else:
                             coef = np.append(
-                                coef, coef[id] + (coef[right] - coef[id]) / 4
+                                coef, coef[idx_min] + (coef[right] - coef[idx_min]) / 4
                             )
                 elif closest_left.size:
                     left = closest_left[coef[closest_left].argmax()]
-                    if res_history[left] < res_history[id]:
-                        coef = np.append(coef, (coef[id] + coef[left]) / 2)
+                    if res_history[left] < res_history[idx_min]:
+                        coef = np.append(coef, (coef[idx_min] + coef[left]) / 2)
                     else:
-                        coef = np.append(coef, coef[id] + (coef[id] - coef[left]) / 2)
+                        coef = np.append(
+                            coef, coef[idx_min] + (coef[idx_min] - coef[left]) / 2
+                        )
                 elif closest_right.size:
                     right = closest_right[coef[closest_right].argmin()]
-                    if res_history[right] < res_history[id]:
-                        coef = np.append(coef, (coef[id] + coef[right]) / 2)
+                    if res_history[right] < res_history[idx_min]:
+                        coef = np.append(coef, (coef[idx_min] + coef[right]) / 2)
                     else:
-                        coef = np.append(coef, coef[id] - (coef[right] - coef[id]) / 2)
+                        coef = np.append(
+                            coef, coef[idx_min] - (coef[right] - coef[idx_min]) / 2
+                        )
                 if coef[-1] <= 0:
                     coef[-1] = self.data_ts.min_line_search_update
                 if coef[-1] >= 1:
@@ -1381,4 +1347,4 @@ class DartsModel:
         if print_level >= 1:
             print("PETSC: True residual:", np.linalg.norm(mat.dot(sol) - rhs))
 
-        return 0 #TODO
+        return 0 #TODO check when solver fails https://petsc.org/main/petsc4py/reference/petsc4py.PETSc.KSP.html#petsc4py.PETSc.KSP.solve

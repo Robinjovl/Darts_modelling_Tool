@@ -1,4 +1,3 @@
-from typing import Dict, List, Union
 import numpy as np
 from enum import Enum
 
@@ -77,7 +76,7 @@ class InitialSolution:
             self.reference_depth_for_pressure = None  # [m]
             self.pressure_gradient = None  # [bar/km]
             self.pressure_at_ref_depth = None  # [bars]
-        self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
+        self.initial_displacements = None  # [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
 
@@ -150,7 +149,7 @@ class WellControl:
         self.inj_bht = temperature  # K
         # if Compositional
         self.phase_name = phase_name  # injected phase name, [str]
-        self.inj_composition = inj_composition  #  0 < injected composition < 1
+        self.inj_composition = inj_composition  # 0 < injected composition < 1
 
     def inj_bhp_control(
         self, bhp, temperature=None, phase_name=None, inj_composition=None
@@ -163,7 +162,7 @@ class WellControl:
         self.inj_bht = temperature  # K
         # if Compositional
         self.phase_name = phase_name  # injected phase name, [str]
-        self.inj_composition = inj_composition  #  0 < injected composition < 1
+        self.inj_composition = inj_composition  # 0 < injected composition < 1
 
 
 class WellLocIJK:
@@ -208,7 +207,7 @@ class Well:
 class WellPerforation:
     def __init__(
         self,
-        loc_ijk: Union[int, tuple],
+        loc_ijk: int | tuple,
         status: str,
         well_radius: float,
         well_index: float,
@@ -235,8 +234,8 @@ class WellData:
         self,
         name: str,
         loc_type: str,
-        loc_ijk: Union[int, tuple] = None,
-        loc_xyz: Union[float, tuple] = None,
+        loc_ijk: int | tuple = None,
+        loc_xyz: float | tuple = None,
     ):
         assert name not in self.wells, 'The well ' + name + ' has been already added!'
         w = Well(loc_type=loc_type)
@@ -253,7 +252,7 @@ class WellData:
         self,
         name: str,
         time: float,
-        loc_ijk: Union[int, tuple],
+        loc_ijk: int | tuple,
         status: str,
         well_radius: float,
         well_index: float,
@@ -298,7 +297,6 @@ class WellData:
         well_radius = well_diam / 2.0
 
         keep_reading = True
-        prev_well_name = ''
         with open(sch_fname) as f:
             while keep_reading:
                 buff = f.readline()
@@ -412,9 +410,11 @@ class WellData:
         bhp_constraint=None,
         temperature=None,
         phase_name=None,
-        inj_composition=[],
+        inj_composition=None,
         time=0,
     ):
+        if inj_composition is None:
+            inj_composition = []
         wctrl = WellControl()
         wctrl.inj_rate_control(
             rate=rate,
@@ -426,8 +426,10 @@ class WellData:
         self.wells[name].controls.append((time, wctrl))
 
     def add_inj_bhp_control(
-        self, name, bhp, temperature=None, phase_name=None, inj_composition=[], time=0
+        self, name, bhp, temperature=None, phase_name=None, inj_composition=None, time=0
     ):
+        if inj_composition is None:
+            inj_composition = []
         wctrl = WellControl()
         wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, phase_name=phase_name)
         self.wells[name].controls.append((time, wctrl))
@@ -493,11 +495,9 @@ class InputData:
             'thermoporoelasticity',
             'none',
         ], 'input_data: Unknown type_mech'
-        for (
-            k
-        ) in (
+        for k in (
             self.__dict__.keys()
-        ):  #  loop over the attributes (self.rock, self.fluid, ..)
+        ):  # loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
@@ -508,9 +508,7 @@ class InputData:
                 'other',
             ]:  # do not check initial currently #TODO
                 continue
-            for (
-                k2
-            ) in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
+            for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     # either perm or permx+permy+permx should be specified
@@ -534,7 +532,7 @@ class InputData:
                         k2,
                         'is not initialized!',
                     )
-                    assert False
+                    raise AssertionError()
 
     def make_prop_arrays(self):
         """
@@ -546,24 +544,20 @@ class InputData:
         array_obj = ['rock']  # list of items which can be defined by regons
         # count number of regions (one value per region)
         max_n_regions = 1
-        for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
+        for k in self.__dict__.keys():  # loop over the attributes (self.rock, ..)
             if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
-            for (
-                k2
-            ) in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
+            for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     continue
                 if not np.isscalar(value):  # if np.array
                     max_n_regions = value.size
         # make arrays from scalar fields
-        for (
-            k
-        ) in (
+        for k in (
             self.__dict__.keys()
         ):  # loop over the attributes (self.rock, self.fluid, ..)
             if k not in array_obj:

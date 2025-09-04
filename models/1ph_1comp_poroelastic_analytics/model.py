@@ -229,11 +229,11 @@ class Model(THMCModel):
             max_dt = 30  # timestep length, days
             self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
 
-        # PETSC
-        from darts.models.darts_model import DataTS
-        self.idata.sim.DataTS = DataTS(n_vars=0)
-        self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
-        self.idata.sim.DataTS.linear_print_level = 0
+        # optional: use PETSc linear solver
+        #from darts.models.darts_model import DataTS
+        #self.idata.sim.DataTS = DataTS(n_vars=0)
+        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
+        #self.idata.sim.DataTS.linear_print_level = 0
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
