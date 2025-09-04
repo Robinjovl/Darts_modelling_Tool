@@ -1197,7 +1197,7 @@ class DartsModel:
             # pressure subsolver
             args += "-fieldsplit_pressure_ksp_type preonly "
             args += "-fieldsplit_pressure_pc_type gamg "
-         else:
+        else:
             raise AssertionError('Unknown linear solver type for PETSC')
 
         petsc4py.init(args)

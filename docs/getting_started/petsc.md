@@ -6,7 +6,7 @@ PETSc is available only on Linux, but WSL could be used to make it run on Window
 
 Please check these models to get how to enable PETSc:
 - cpg_sloping_fault (`case_base.py`)
-- 1ph_1comp_poroelastic_analytics
+- 1ph_1comp_poroelastic_analytics (`model.py`)
 
 ### 
 
