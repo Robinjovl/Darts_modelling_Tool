@@ -1174,29 +1174,29 @@ class DartsModel:
         args += "-ksp_rtol " + str(self.data_ts.linear_tol) + " "
         
         if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
-	        # Setting up CPR as a composite pc. 1st stage - fieldsplit, 2nd stage - ilu
-	        args += "-pc_type composite -pc_composite_type multiplicative -pc_composite_pcs fieldsplit,ilu "
-	        # 1st stage will do AMG on pressure block and "nothing" on transport block
-	        args += "-sub_0_pc_fieldsplit_type schur -sub_0_pc_fieldsplit_schur_fact_type upper "
-	        # We build a schur complement diagonal approximation to "decouple" pressure from transport
-	        args += "-sub_0_pc_fieldsplit_schur_precondition selfp "
-	        # transport subsolver (for some reason "do nothing" does not work, so do one jacobi iteration)
-	        args += "-sub_0_fieldsplit_transport_ksp_type preonly "
-	        args += "-sub_0_fieldsplit_transport_pc_type jacobi "
-	        # # pressure subsolver (do AMG)
-	        args += "-sub_0_fieldsplit_pressure_ksp_type preonly "
-	        args += "-sub_0_fieldsplit_pressure_pc_type gamg "
+            # Setting up CPR as a composite pc. 1st stage - fieldsplit, 2nd stage - ilu
+            args += "-pc_type composite -pc_composite_type multiplicative -pc_composite_pcs fieldsplit,ilu "
+            # 1st stage will do AMG on pressure block and "nothing" on transport block
+            args += "-sub_0_pc_fieldsplit_type schur -sub_0_pc_fieldsplit_schur_fact_type upper "
+            # We build a schur complement diagonal approximation to "decouple" pressure from transport
+            args += "-sub_0_pc_fieldsplit_schur_precondition selfp "
+            # transport subsolver (for some reason "do nothing" does not work, so do one jacobi iteration)
+            args += "-sub_0_fieldsplit_transport_ksp_type preonly "
+            args += "-sub_0_fieldsplit_transport_pc_type jacobi "
+            # # pressure subsolver (do AMG)
+            args += "-sub_0_fieldsplit_pressure_ksp_type preonly "
+            args += "-sub_0_fieldsplit_pressure_pc_type gamg "
         elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
-	        # Use U^-1 D^-1 as a preconditioner in block LDU factorization
-	        args += "-pc_type fieldsplit -pc_fieldsplit_type schur -pc_fieldsplit_schur_fact_type upper "
-	        # Use diagonal to approximate S. This should be replaced by the fixed stress approx.
-	        args += "-pc_fieldsplit_schur_precondition selfp "
-	        # displacement subsolver
-	        args += "-fieldsplit_displacement_ksp_type preonly "
-	        args += "-fieldsplit_displacement_pc_type gamg "
-	        # pressure subsolver
-	        args += "-fieldsplit_pressure_ksp_type preonly "
-	        args += "-fieldsplit_pressure_pc_type gamg "
+            # Use U^-1 D^-1 as a preconditioner in block LDU factorization
+            args += "-pc_type fieldsplit -pc_fieldsplit_type schur -pc_fieldsplit_schur_fact_type upper "
+            # Use diagonal to approximate S. This should be replaced by the fixed stress approx.
+            args += "-pc_fieldsplit_schur_precondition selfp "
+            # displacement subsolver
+            args += "-fieldsplit_displacement_ksp_type preonly "
+            args += "-fieldsplit_displacement_pc_type gamg "
+            # pressure subsolver
+            args += "-fieldsplit_pressure_ksp_type preonly "
+            args += "-fieldsplit_pressure_pc_type gamg "
          else:
             raise AssertionError('Unknown linear solver type for PETSC')
 
@@ -1228,46 +1228,46 @@ class DartsModel:
 
         # Inform petsc about our fields
         if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
-	        pressure_idx = np.arange(0, mat.shape[0], 2)
-	        transport_idx = np.arange(1, mat.shape[0], 2)
-        	petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
-        	petsc_is_transport = PETSc.IS().createGeneral(transport_idx.astype("int32"))
-
-	        # Getting Composite PC
-	        petsc_pc = petsc_ksp.getPC()
-	        petsc_pc.setUp()
-	        # Getting the 1st stage (fieldsplit)
-	        petsc_pc_1st_stage = petsc_pc.getCompositePC(0)
-	        petsc_pc_1st_stage.setFieldSplitIS(
-	            ("transport", petsc_is_transport), ("pressure", petsc_is_pressure)
-	        )
-	
-	        # Here, AMG setup happens
-	        petsc_pc_1st_stage.setOperators(petsc_mat, petsc_mat)
-	        petsc_pc_1st_stage.setUp()
-	        # ILU setup
-	        petsc_pc_2nd_stage = petsc_pc.getCompositePC(1)
-	        petsc_pc_2nd_stage.setUp()
+            pressure_idx = np.arange(0, mat.shape[0], 2)
+            transport_idx = np.arange(1, mat.shape[0], 2)
+            petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
+            petsc_is_transport = PETSc.IS().createGeneral(transport_idx.astype("int32"))
+    
+            # Getting Composite PC
+            petsc_pc = petsc_ksp.getPC()
+            petsc_pc.setUp()
+            # Getting the 1st stage (fieldsplit)
+            petsc_pc_1st_stage = petsc_pc.getCompositePC(0)
+            petsc_pc_1st_stage.setFieldSplitIS(
+                ("transport", petsc_is_transport), ("pressure", petsc_is_pressure)
+            )
+    
+            # Here, AMG setup happens
+            petsc_pc_1st_stage.setOperators(petsc_mat, petsc_mat)
+            petsc_pc_1st_stage.setUp()
+            # ILU setup
+            petsc_pc_2nd_stage = petsc_pc.getCompositePC(1)
+            petsc_pc_2nd_stage.setUp()
         elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
-	        pressure_idx = np.arange(0, mat.shape[0], 4)
-	        displacement_idx = np.stack(
-	            [
-	                np.arange(1, mat.shape[0], 4),
-	                np.arange(2, mat.shape[0], 4),
-	                np.arange(3, mat.shape[0], 4),
-	            ]
-	        ).ravel(order="F")
-	        petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
-	        petsc_is_displacement = PETSc.IS().createGeneral(displacement_idx.astype("int32"))
-	        # Displacement is a vector problem
-	        petsc_is_displacement.setBlockSize(3)
-	
-	        # Setting fieldsplit fields
-	        petsc_pc = petsc_ksp.getPC()
-	        petsc_pc.setFromOptions()
-	        petsc_pc.setFieldSplitIS(
-	            ("displacement", petsc_is_displacement), ("pressure", petsc_is_pressure)
-	        )
+            pressure_idx = np.arange(0, mat.shape[0], 4)
+            displacement_idx = np.stack(
+                [
+                    np.arange(1, mat.shape[0], 4),
+                    np.arange(2, mat.shape[0], 4),
+                    np.arange(3, mat.shape[0], 4),
+                ]
+            ).ravel(order="F")
+            petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
+            petsc_is_displacement = PETSc.IS().createGeneral(displacement_idx.astype("int32"))
+            # Displacement is a vector problem
+            petsc_is_displacement.setBlockSize(3)
+    
+            # Setting fieldsplit fields
+            petsc_pc = petsc_ksp.getPC()
+            petsc_pc.setFromOptions()
+            petsc_pc.setFieldSplitIS(
+                ("displacement", petsc_is_displacement), ("pressure", petsc_is_pressure)
+            )
 
 
         petsc_ksp.setUp()
