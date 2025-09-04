@@ -1192,7 +1192,7 @@ class DartsModel:
         print_level = self.data_ts.linear_print_level
 
         mat, rhs, sol = self.get_linear_system()
-        
+
         #TODO the variable might be used somewhere, but could not set it here since it was not exposed to python
         #self.physics.engine.linear_solver_error_last_dt = 0
 
@@ -1208,7 +1208,8 @@ class DartsModel:
         # Right preconditioner
         args += "-ksp_pc_side right "
         # Iteration limit and tolerance 
-        args += "-ksp_max_it 1 -ksp_rtol 1e-5 " #TODO pass the tolerance from data_ts
+        args += "-ksp_max_it " + str(self.data_ts.linear_max_iter) + " "
+        args += "-ksp_rtol " + str(self.data_ts.linear_tol) + " "
         # Setting up CPR as a composite pc. 1st stage - fieldsplit, 2nd stage - ilu
         args += "-pc_type composite -pc_composite_type multiplicative -pc_composite_pcs fieldsplit,ilu "
         # 1st stage will do AMG on pressure block and "nothing" on transport block
@@ -1306,7 +1307,8 @@ class DartsModel:
         # Right preconditioner
         args += "-ksp_pc_side right "
         # Iteration limit and tolerance
-        args += "-ksp_max_it 100 -ksp_rtol 1e-6 "
+        args += "-ksp_max_it " + str(self.idata.sim.DataTS..linear_max_iter) + " "
+        args += "-ksp_rtol " + str(self.idata.sim.DataTS.linear_tol) + " "
         # Use U^-1 D^-1 as a preconditioner in block LDU factorization
         args += "-pc_type fieldsplit -pc_fieldsplit_type schur -pc_fieldsplit_schur_fact_type upper "
         # Use diagonal to approximate S. This should be replaced by the fixed stress approx.
