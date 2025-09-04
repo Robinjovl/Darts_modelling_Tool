@@ -51,11 +51,11 @@ test-windows-3.12:
     extends: .test-windows
     variables:
         PY_VER: '3.12'
-        PYTHONPATH: 'D:\Python312' 
+        PYTHONPATH: 'D:\Python312'
         ODLS: '-a'
     needs:
         - build-windows-3.12
-        
+
 test-windows-3.11:
     rules:
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
@@ -63,11 +63,11 @@ test-windows-3.11:
     extends: .test-windows
     variables:
         PY_VER: '3.11'
-        PYTHONPATH: 'D:\Python311' 
+        PYTHONPATH: 'D:\Python311'
         ODLS: '-a'
     needs:
         - build-windows-3.11
-     
+
 test-windows-3.10:
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
@@ -90,7 +90,7 @@ test-windows-3.9:
     extends: .test-windows
     variables:
         PY_VER: '3.9'
-        PYTHONPATH: 'D:\Python39' 
+        PYTHONPATH: 'D:\Python39'
         ODLS: '-a'
     needs:
         - build-windows-3.9
@@ -106,7 +106,7 @@ test-windows-3.12-ODLS:
         ODLS: ''
     needs:
         - build-windows-3.12-ODLS
-        
+
 test-windows-3.11-ODLS:
     rules:
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
@@ -118,7 +118,7 @@ test-windows-3.11-ODLS:
         ODLS: ''
     needs:
         - build-windows-3.11-ODLS
-     
+
 test-windows-3.10-ODLS:
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
@@ -144,4 +144,4 @@ test-windows-3.9-ODLS:
         PYTHONPATH: 'D:\Python39'
         ODLS: ''
     needs:
-        - build-windows-3.9-ODLS 
+        - build-windows-3.9-ODLS

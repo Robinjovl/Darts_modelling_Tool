@@ -719,13 +719,13 @@ class DartsModel:
                 if type(self.data_ts.linear_type) == linear_solver_types:
                     #TODO: automatically choose a proper solver depending on physics
                     if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
-                        r_code = self.petsc_solve_linear_equation_flow()
+                        self.petsc_solve_linear_equation_flow()
                     elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
-                        r_code = self.petsc_solve_linear_equation_poromech()
+                        self.petsc_solve_linear_equation_poromech()
                     else:
                         raise AssertionError('Unknown linear solver type for PETSC')
                 else:
-                    r_code = self.physics.engine.solve_linear_equation()
+                    self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()

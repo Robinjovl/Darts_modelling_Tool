@@ -29,4 +29,4 @@ build-linux-3.10-gpu:
         GIT_SUBMODULE_STRATEGY: recursive
         PY_VER: '3.10'       # for python image selection in .build-linux
         ODLS: '-a'
-        TEST_GPU: '1' 
+        TEST_GPU: '1'
