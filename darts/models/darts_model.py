@@ -1282,8 +1282,6 @@ class DartsModel:
 
         petsc_ksp.solve(petsc_rhs, petsc_sol)
 
-        sol[:] = petsc_sol.getArray()
-
         if print_level >= 1:
             print('PETSC: True residual =', np.linalg.norm(mat.dot(sol) - rhs))
 
@@ -1307,7 +1305,7 @@ class DartsModel:
         # Right preconditioner
         args += "-ksp_pc_side right "
         # Iteration limit and tolerance
-        args += "-ksp_max_it " + str(self.idata.sim.DataTS..linear_max_iter) + " "
+        args += "-ksp_max_it " + str(self.idata.sim.DataTS.linear_max_iter) + " "
         args += "-ksp_rtol " + str(self.idata.sim.DataTS.linear_tol) + " "
         # Use U^-1 D^-1 as a preconditioner in block LDU factorization
         args += "-pc_type fieldsplit -pc_fieldsplit_type schur -pc_fieldsplit_schur_fact_type upper "
@@ -1379,8 +1377,6 @@ class DartsModel:
             print("PETSC: start solving")
 
         petsc_ksp.solve(petsc_rhs, petsc_sol)
-
-        sol[:] = petsc_sol.getArray()
 
         if print_level >= 1:
             print("PETSC: True residual:", np.linalg.norm(mat.dot(sol) - rhs))
