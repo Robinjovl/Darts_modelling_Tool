@@ -163,6 +163,7 @@ class ReservoirOperators(OperatorsSuper):
             self.property.ph
         ]
 
+        """ Permeability multiplier k/kmax """
         # E5_> permeability multiplier due to permporo relationship
         vec_values_as_np[self.MULT_OP] = self.property.permporo_mult_ev.evaluate(
             self.phi_f
@@ -172,14 +173,16 @@ class ReservoirOperators(OperatorsSuper):
         vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
 
         """ Lambda operator for velocity calculations """
-        for j in self.property.ph:
-            # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
-            vec_values_as_np[self.LAMBDA_OP + j] = (
-                self.property.kr[j] / self.property.mu[j]
-            )
+        # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
+        vec_values_as_np[self.LAMBDA_OP + self.property.ph] = (
+            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        )
 
-        """ Saturation operator for phase volumetric calculations in the wellbore """
-        # Not used for reservoir
+        """ Saturation operator """
+        # phase saturation: s_j [-]
+        vec_values_as_np[self.SAT_OP + self.property.ph] = self.property.sat[
+            self.property.ph
+        ]
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
@@ -352,20 +355,21 @@ class WellOperators(OperatorsSuper):
             self.property.ph
         ]
 
+        """ Permeability multiplier k/kmax """
         # E5_> permeability multiplier due to permporo relationship
         vec_values_as_np[self.MULT_OP] = 1.0
 
         """ Lambda operator for velocity calculations """
-        for j in self.property.ph:
-            # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
-            vec_values_as_np[self.LAMBDA_OP + j] = (
-                self.property.kr[j] / self.property.mu[j]
-            )
+        # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
+        vec_values_as_np[self.LAMBDA_OP + self.property.ph] = (
+            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        )
 
         """ Saturation operator for phase volumetric calculations in the wellbore """
-        for j in self.property.ph:
-            # phase saturation: s_j [-]
-            vec_values_as_np[self.SAT_OP + j] = self.property.sat[j]
+        # phase saturation: s_j [-]
+        vec_values_as_np[self.SAT_OP + self.property.ph] = self.property.sat[
+            self.property.ph
+        ]
 
         # Pressure operator
         vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
