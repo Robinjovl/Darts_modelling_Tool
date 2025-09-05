@@ -21,8 +21,9 @@ from darts.engines import (
     timer_node,
 )
 from darts.engines import print_build_info as engines_pbi
-from darts.print_build_info import print_build_info as package_pbi
 from darts.input.input_data import linear_solver_types
+from darts.print_build_info import print_build_info as package_pbi
+
 
 class DataTS:
     def __init__(self, n_vars):
@@ -431,7 +432,9 @@ class DartsModel:
         self.params.tolerance_linear = self.data_ts.linear_tol
         self.params.max_i_linear = self.data_ts.linear_max_iter
         if self.data_ts.linear_type is not None:
-            if type(self.data_ts.linear_type) != linear_solver_types:  # it's not needed to copy it to params for PETSC option
+            if (
+                type(self.data_ts.linear_type) is not linear_solver_types
+            ):  # it's not needed to copy it to params for PETSC option
                 self.params.linear_type = self.data_ts.linear_type
 
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
@@ -716,8 +719,8 @@ class DartsModel:
                         print("Stationary point detected!")
                     break
             else:
-                if type(self.data_ts.linear_type) == linear_solver_types:
-                    #TODO: automatically choose a proper solver depending on physics
+                if type(self.data_ts.linear_type) is linear_solver_types:
+                    # TODO: automatically choose a proper solver depending on physics
                     self.petsc_solve_linear_equation()
                 else:
                     self.physics.engine.solve_linear_equation()
@@ -1126,12 +1129,12 @@ class DartsModel:
     def get_linear_system(self):
         # returns scipy sparce matrix and pointers to RHS and dX
         from scipy.sparse import bsr_matrix
+
         # get current jacobian and rhs from the engine
         indptr = np.asarray(self.physics.engine.jac_rows)
         indices = np.asarray(self.physics.engine.jac_cols)
         data = np.asarray(self.physics.engine.jac_vals)
 
-        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
         rhs = np.array(self.physics.engine.RHS, copy=False)
         sol = np.array(self.physics.engine.dX, copy=False)
 
@@ -1141,22 +1144,20 @@ class DartsModel:
 
         mat = bsr_matrix((data, indices, indptr))
 
-        mat_csr = mat.tocsr() #TODO  avoid this conversion to non-blocked matrix
+        mat_csr = mat.tocsr()  # TODO  avoid this conversion to non-blocked matrix
 
-        #print('mat', mat)
-        #print('mat_csr', mat_csr)
+        # print('mat', mat)
+        # print('mat_csr', mat_csr)
 
         return mat_csr, rhs, sol
 
-
     def petsc_solve_linear_equation(self):
-
         print_level = self.data_ts.linear_print_level
 
         mat, rhs, sol = self.get_linear_system()
 
-        #TODO the variable might be used somewhere, but could not set it here since it was not exposed to python
-        #self.physics.engine.linear_solver_error_last_dt = 0
+        # TODO the variable might be used somewhere, but could not set it here since it was not exposed to python
+        # self.physics.engine.linear_solver_error_last_dt = 0
 
         import petsc4py
 
@@ -1166,13 +1167,13 @@ class DartsModel:
         if print_level >= 2:
             args += "-ksp_monitor_short "
         if print_level >= 5:
-            args += "-omp_view " # print number of OpenMP threads
+            args += "-omp_view "  # print number of OpenMP threads
         # Right preconditioner
         args += "-ksp_pc_side right "
-        # Iteration limit and tolerance 
+        # Iteration limit and tolerance
         args += "-ksp_max_it " + str(self.data_ts.linear_max_iter) + " "
         args += "-ksp_rtol " + str(self.data_ts.linear_tol) + " "
-        
+
         if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
             # Setting up CPR as a composite pc. 1st stage - fieldsplit, 2nd stage - ilu
             args += "-pc_type composite -pc_composite_type multiplicative -pc_composite_pcs fieldsplit,ilu "
@@ -1232,7 +1233,7 @@ class DartsModel:
             transport_idx = np.arange(1, mat.shape[0], 2)
             petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
             petsc_is_transport = PETSc.IS().createGeneral(transport_idx.astype("int32"))
-    
+
             # Getting Composite PC
             petsc_pc = petsc_ksp.getPC()
             petsc_pc.setUp()
@@ -1241,7 +1242,7 @@ class DartsModel:
             petsc_pc_1st_stage.setFieldSplitIS(
                 ("transport", petsc_is_transport), ("pressure", petsc_is_pressure)
             )
-    
+
             # Here, AMG setup happens
             petsc_pc_1st_stage.setOperators(petsc_mat, petsc_mat)
             petsc_pc_1st_stage.setUp()
@@ -1258,17 +1259,18 @@ class DartsModel:
                 ]
             ).ravel(order="F")
             petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
-            petsc_is_displacement = PETSc.IS().createGeneral(displacement_idx.astype("int32"))
+            petsc_is_displacement = PETSc.IS().createGeneral(
+                displacement_idx.astype("int32")
+            )
             # Displacement is a vector problem
             petsc_is_displacement.setBlockSize(3)
-    
+
             # Setting fieldsplit fields
             petsc_pc = petsc_ksp.getPC()
             petsc_pc.setFromOptions()
             petsc_pc.setFieldSplitIS(
                 ("displacement", petsc_is_displacement), ("pressure", petsc_is_pressure)
             )
-
 
         petsc_ksp.setUp()
 
@@ -1284,4 +1286,4 @@ class DartsModel:
         if print_level >= 1:
             print('PETSC: True residual =', np.linalg.norm(mat.dot(sol) - rhs))
 
-        #TODO check when solver fails https://petsc.org/main/petsc4py/reference/petsc4py.PETSc.KSP.html#petsc4py.PETSc.KSP.solve
+        # TODO check when solver fails https://petsc.org/main/petsc4py/reference/petsc4py.PETSc.KSP.html#petsc4py.PETSc.KSP.solve
