@@ -7,7 +7,7 @@ from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus, bound_cond
 from darts.input.input_data import InputData, linear_solver_types
- 
+
 
 class Model(THMCModel):
     def __init__(self, discretizer='mech_discretizer', case='mandel', mesh='rect'):
@@ -28,8 +28,9 @@ class Model(THMCModel):
             self.params.linear_type = linear_type
         elif self.discretizer_name == 'pm_discretizer':
             self.physics.engine.ls_params[-1].linear_type = linear_type
-            
-        self.data_ts = self.idata.sim.DataTS  # since mech models have they own run_python implementation, data_ts is used only for linear solver params for PETSc
+
+        if hasattr(self.idata.sim, 'DataTS'): # data_ts is used only for linear solver params for PETSc
+            self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -232,10 +233,11 @@ class Model(THMCModel):
             self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
 
         # optional: use PETSc linear solver
-        #from darts.models.darts_model import DataTS
-        #self.idata.sim.DataTS = DataTS(n_vars=0)
-        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
-        #self.idata.sim.DataTS.linear_print_level = 0
+        if self.discretizer_name == 'mech_discretizer':  # it's not working properly for pm_discretizer, need to debug and fix
+            from darts.models.darts_model import DataTS
+            self.idata.sim.DataTS = DataTS(n_vars=0)
+            self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
+            self.idata.sim.DataTS.linear_print_level = 0
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
@@ -247,6 +249,3 @@ class Model(THMCModel):
         self.idata.obl.max_z = 1 - self.idata.obl.zero
 
         super().set_input_data()  # check
-
-
-

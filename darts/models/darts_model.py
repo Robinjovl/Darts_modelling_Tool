@@ -720,7 +720,6 @@ class DartsModel:
                     break
             else:
                 if type(self.data_ts.linear_type) is linear_solver_types:
-                    # TODO: automatically choose a proper solver depending on physics
                     self.petsc_solve_linear_equation()
                 else:
                     self.physics.engine.solve_linear_equation()
@@ -1139,6 +1138,14 @@ class DartsModel:
         sol = np.array(self.physics.engine.dX, copy=False)
 
         nonzeros = indices.size
+
+        if nonzeros == 0:
+            print(f'linear solver type is {self.data_ts.linear_type}')
+
+        assert nonzeros > 0, (
+            'Jacobian is not exposed to python! Probably superlu set as a linear solver!'
+        )
+
         b = int(np.sqrt(data.size / nonzeros))
         data = data.reshape(nonzeros, b, b)
 
