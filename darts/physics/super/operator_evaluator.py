@@ -58,11 +58,11 @@ class OperatorsSuper(OperatorsBase):
         print("ALPHA (accumulation)", values[self.ACC_OP : self.FLUX_OP])
         for j in range(self.nph):
             idx0, idx1 = self.FLUX_OP + j * self.ne, self.FLUX_OP + (j + 1) * self.ne
-            print("BETA (flux) {}".format(j), values[idx0:idx1])
+            print(f"BETA (flux) {j}", values[idx0:idx1])
         print("GAMMA (diffusion)", values[self.UPSAT_OP : self.GRAD_OP])
         for j in range(self.nph):
             idx0, idx1 = self.GRAD_OP + j * self.ne, self.GRAD_OP + (j + 1) * self.ne
-            print("CHI (diffusion) {}".format(j), values[idx0:idx1])
+            print(f"CHI (diffusion) {j}", values[idx0:idx1])
         print("DELTA (reaction)", values[self.KIN_OP : self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP : self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP : self.MULT_OP])
@@ -132,7 +132,7 @@ class ReservoirOperators(OperatorsSuper):
         # solid diffusive flux sat: c_r z_s* (-)
         vec_values_as_np[
             self.UPSAT_OP + self.np_fl : self.UPSAT_OP + self.np_fl + self.ns
-        ] = (self.compr * zc[self.nc_fl : self.nc_fl + self.ns])
+        ] = self.compr * zc[self.nc_fl : self.nc_fl + self.ns]
 
         """ Chi operator for diffusion """
         for j in self.property.ph:
