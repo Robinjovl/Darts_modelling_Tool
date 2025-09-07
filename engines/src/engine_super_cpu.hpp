@@ -45,8 +45,8 @@ public:
   const static uint8_t T_VAR = NC;
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient,
-  //                      NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP enthalpy,
-  //                      2 temperature and pressure
+  //                      NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP phase mobility,
+  //                      NP saturation, NP enthalpy, 2 temperature and pressure
   const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
                                NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
                                NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
