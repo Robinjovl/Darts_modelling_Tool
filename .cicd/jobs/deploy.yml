@@ -94,3 +94,46 @@ pages:
         - public
     dependencies:
         - build-linux-3.10-ODLS
+
+deploy-apptainer-image:
+    stage: deploy
+    tags:
+        - linux_tahiti_gpu
+    needs:
+        - job: apptainer-image-builder
+    variables:
+        IMAGE_PREFIX: "open-darts"
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "pipeline" && $RUN_DEVTOOLS == "1"'
+          when: never
+        - when: always
+    script:
+        # hash image config
+        - DEF_SHA="$(sha256sum .cicd/build-linux/singularity.def | awk '{print $1}')"
+        # hash other inputs that should trigger rebuild
+        - BLD_FILES_SHA="$(sha256sum .cicd/jobs/build-images.yml .gitlab-ci.yml | awk '{print $1}' | sha256sum | awk '{print $1}')"
+        # commit hash of darts-linear-solvers
+        - DLS_SHA="$(git ls-remote https://oauth2:${DLS_TOKEN}@gitlab.tudelft.nl/dvoskov/darts-linear-solvers.git HEAD | awk '{print $1}')"
+        # combine into BUILD_KEY
+        - BUILD_KEY="$(printf '%s\n%s\n%s\n' "$DEF_SHA" "$BLD_FILES_SHA" "$DLS_SHA" | sha256sum | awk '{print $1}')"
+        - echo "BUILD_KEY=$BUILD_KEY"
+        # target repo and existing tag check (skip if tag already present)
+        - REPO="$CI_REGISTRY_IMAGE"
+        - REGISTRY_CHECK_URL="https://${CI_REGISTRY}/v2/${CI_PROJECT_PATH}/manifests/${BUILD_KEY}"
+        - |
+          if curl -fsS -u "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" \
+               -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+               "$REGISTRY_CHECK_URL" >/dev/null; then
+            echo "Image $REPO:$BUILD_KEY already exists. Skipping deploy.";
+            exit 0;
+          fi
+        # Locate built image (from shared /data path)
+        - IMG_DIR="/data/gitlab-runner/apptainer-images"
+        - IMG="$IMG_DIR/${IMAGE_PREFIX}-${BUILD_KEY}.sif"
+        - 'if [ ! -r "$IMG" ]; then IMG="$IMG_DIR/${IMAGE_PREFIX}-latest.sif"; fi'
+        - 'test -r "$IMG" || { echo "Apptainer image not found: $IMG" >&2; exit 2; }'
+        # Authenticate and push via ORAS (GitLab Container Registry)
+        - export APPTAINER_DOCKER_USERNAME="$CI_REGISTRY_USER"
+        - export APPTAINER_DOCKER_PASSWORD="$CI_REGISTRY_PASSWORD"
+        - apptainer push "$IMG" "oras://$REPO:$BUILD_KEY"
+        - apptainer push "$IMG" "oras://$REPO:latest"
