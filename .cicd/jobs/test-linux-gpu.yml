@@ -3,7 +3,7 @@
     before_script:
         - module load cuda/23.5
         - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
-        - conda create -n darts_gitlab_gpu_test python=${PY_VER} --yes 
+        - conda create -n darts_gitlab_gpu_test python=${PY_VER} --yes
         - conda activate darts_gitlab_gpu_test
         # upgrade pip package first
         - python -m pip install --upgrade pip
@@ -69,7 +69,7 @@ test-linux-tahiti-3.10-gpu:
     variables:
         PY_VER: '3.10'
     needs:
-        - build-linux-tahiti-3.10-gpu 
+        - build-linux-tahiti-3.10-gpu
 
 test-linux-tahiti-image-3.10-gpu:
     tags:
