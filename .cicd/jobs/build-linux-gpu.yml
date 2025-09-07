@@ -10,7 +10,7 @@
         GIT_SUBMODULE_STRATEGY: recursive
         PY_VER: '3.10'       # for python image selection in .build-linux
         ODLS: '-a'
-        TEST_GPU: '1' 
+        TEST_GPU: '1'
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
         - ./helper_scripts/build_install_darts_gpu.sh -c -p
@@ -21,7 +21,7 @@
       expire_in: 1 day
       when: always
     needs:
-    - job: lint-python
+    - job: pre-commit
 
 .build-linux-oahu-3.10-gpu:
     tags:
@@ -49,16 +49,16 @@ build-linux-tahiti-3.10-gpu:
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
         - if: $TEST_CUSTOM_BRANCH == "1"
         - if: $TEST_GPU_LINUX == "1"
-    extends: .build-linux-gpu 
+    extends: .build-linux-gpu
 
 build-linux-tahiti-image-3.10-gpu:
     tags:
         - linux_tahiti_gpu
-    image: 
+    image:
         name: "apptainer"
         entrypoint: [""]
     needs:
-        - job: lint-python
+        - job: pre-commit
         - job: apptainer-image-builder
     variables:
         APPTAINER_IMAGE: "/data/gitlab-runner/apptainer-images/open-darts-latest.sif"
