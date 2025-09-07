@@ -6,7 +6,7 @@ stages:
     - deploy
 
 include:
-  - local: '.cicd/jobs/lint-python.yml'
+  - local: '.cicd/jobs/pre-commit.yml'
   - local: '.cicd/jobs/build-images.yml'
   - local: '.cicd/jobs/build-linux.yml'
   - local: '.cicd/jobs/build-windows.yml'
