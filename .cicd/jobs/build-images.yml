@@ -6,7 +6,7 @@ docker-image-builder:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
   needs:
-    - job: lint-python
+    - job: pre-commit
   script:
     - /kaniko/executor
       --context "${CI_PROJECT_DIR}/.cicd/build-linux"
@@ -23,7 +23,7 @@ docker-image-builder:
   tags:
     - linux_tahiti_gpu
   needs:
-    - job: lint-python
+    - job: pre-commit
   variables:
     # Put all heavy I/O on the large /data mount
     APPTAINER_TMPDIR: "/data/gitlab-runner/apptainer-tmp"

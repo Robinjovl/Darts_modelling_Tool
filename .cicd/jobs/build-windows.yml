@@ -4,7 +4,7 @@
     tags:
         - windows-shell
     needs:
-    - job: lint-python
+    - job: pre-commit
     script:
         # Load MS Build Tools environment to the powershell
         - D:\BuildTools\build_vars.ps1

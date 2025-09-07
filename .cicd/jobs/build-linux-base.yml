@@ -32,6 +32,6 @@
         - yum install -y -q samba-client libjpeg-turbo-devel
         - export PATH="/opt/python/$PY_SUF/bin:$PATH"
     needs:
-    - job: lint-python
+    - job: pre-commit
     - job: docker-image-builder
       optional: true
