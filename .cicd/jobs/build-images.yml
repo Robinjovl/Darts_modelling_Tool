@@ -18,7 +18,7 @@ docker-image-builder:
     #    - .cicd/build-linux/Dockerfile
     #    - .cicd/build-linux/Toolchain.cmake
 
-apptainer-image-builder:
+.apptainer-image-builder-base:
   stage: build_images
   tags:
     - linux_tahiti_gpu
@@ -28,6 +28,9 @@ apptainer-image-builder:
     # Put all heavy I/O on the large /data mount
     APPTAINER_TMPDIR: "/data/gitlab-runner/apptainer-tmp"
     APPTAINER_CACHEDIR: "/data/gitlab-runner/apptainer-cache"
+    # defaults; override in derived jobs
+    IMAGE_PREFIX: "open-darts"
+    GITLAB_CI_TOOLS: "0"
   before_script:
     - set -euo pipefail
     - mkdir -p /data/gitlab-runner/apptainer-tmp /data/gitlab-runner/apptainer-cache /data/gitlab-runner/apptainer-images
@@ -42,25 +45,40 @@ apptainer-image-builder:
     - BUILD_KEY="$(printf '%s\n%s\n%s\n' "$DEF_SHA" "$BLD_FILES_SHA" "$DLS_SHA" | sha256sum | awk '{print $1}')"
     - echo "BUILD_KEY=$BUILD_KEY"
     - IMG_DIR="/data/gitlab-runner/apptainer-images"
-    - IMG="$IMG_DIR/open-darts-${BUILD_KEY}.sif"
+    - IMG="$IMG_DIR/${IMAGE_PREFIX}-${BUILD_KEY}.sif"
     # (Optional) quick visibility of space before building
     - df -h "$IMG_DIR" "$(pwd)" /tmp || true
     # build only if not already present (cache/artifacts from previous runs)
-    - |    
+    - |
       if [ -f "$IMG" ]; then
         echo "Reusing cached image $IMG";
       else
         apptainer build --fakeroot \
           --build-arg DLS_TOKEN="${DLS_TOKEN}" \
-          --build-arg CUDA_ARCH="70" \
+          --build-arg CUDA_ARCH="${CUDA_ARCH:-70}" \
+          --build-arg GITLAB_CI_TOOLS="${GITLAB_CI_TOOLS:-0}" \
           "$IMG" .cicd/build-linux/singularity.def;
       fi
-    - ln -sf "$(basename "$IMG")" "$IMG_DIR/open-darts-latest.sif"
+    - ln -sf "$(basename "$IMG")" "$IMG_DIR/${IMAGE_PREFIX}-latest.sif"
   cache:
     key: "$BUILD_KEY"
     paths:
       - "$IMG"
+
+apptainer-image-builder:
+  extends: .apptainer-image-builder-base
+  variables:
+    IMAGE_PREFIX: "open-darts"
+    GITLAB_CI_TOOLS: "0"
   rules:
-    # if any tracked file changes -> run
     - when: always
-  
+
+apptainer-image-builder-devtools:
+  extends: .apptainer-image-builder-base
+  variables:
+    IMAGE_PREFIX: "open-darts-devtools"
+    GITLAB_CI_TOOLS: "1"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "pipeline" && $RUN_DEVTOOLS == "1"'
+      when: always
+    - when: never
