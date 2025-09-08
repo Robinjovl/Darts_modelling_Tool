@@ -29,8 +29,8 @@ class Model(THMCModel):
         elif self.discretizer_name == 'pm_discretizer':
             self.physics.engine.ls_params[-1].linear_type = linear_type
 
-        if hasattr(self.idata.sim, 'DataTS'): # data_ts is used only for linear solver params for PETSc
-            self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
+        # data_ts is used only for linear solver params for PETSc
+        self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -233,11 +233,10 @@ class Model(THMCModel):
             self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
 
         # optional: use PETSc linear solver
-        if self.discretizer_name == 'mech_discretizer':  # it's not working properly for pm_discretizer, need to debug and fix
-            from darts.models.darts_model import DataTS
-            self.idata.sim.DataTS = DataTS(n_vars=0)
-            self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
-            self.idata.sim.DataTS.linear_print_level = 0
+        from darts.models.darts_model import DataTS
+        self.idata.sim.DataTS = DataTS(n_vars=0)
+        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
+        #self.idata.sim.DataTS.linear_print_level = 0
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
