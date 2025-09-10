@@ -126,9 +126,12 @@ class ReservoirOperators(OperatorsSuper):
             )
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
-        # fluid diffusive flux sat: c_r phi_f s_j (-)
+        # fluid diffusive flux sat: c_r phi_f s_j rho_mj [kmol/m3] (kmol/m3)
         vec_values_as_np[self.UPSAT_OP + self.property.ph] = (
-            self.compr * self.phi_f * self.property.sat[self.property.ph]
+            self.compr
+            * self.phi_f
+            * self.property.sat[self.property.ph]
+            * self.property.dens_m[self.property.ph]
         )
         # solid diffusive flux sat: c_r z_s* (-)
         vec_values_as_np[
@@ -138,14 +141,10 @@ class ReservoirOperators(OperatorsSuper):
         """ Chi operator for diffusion """
         for j in self.property.ph:
             D = self.property.diffusion_ev[self.property.phases_name[j]].evaluate()
-            # fluid diffusive flux: D_cj [m2/day] x_cj [-] rho_mj [kmol/m3] (kmol/m.day)
+            # fluid diffusive flux: D_cj [m2/day] x_cj [-] (m2/day)
             vec_values_as_np[
                 self.GRAD_OP + j * self.ne : self.GRAD_OP + j * self.ne + self.nc_fl
-            ] = (
-                D[: self.nc_fl]
-                * self.property.x[j][: self.nc_fl]
-                * self.property.dens_m[j]
-            )
+            ] = D[: self.nc_fl] * self.property.x[j][: self.nc_fl]
 
         """ Delta operator for reaction """
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
