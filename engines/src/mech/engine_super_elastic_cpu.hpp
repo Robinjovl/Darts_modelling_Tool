@@ -73,7 +73,7 @@ public:
   //                      NP saturation, NP enthalpy, 2 temperature and pressure
   const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
                                NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
-                               NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
+                               NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/ + 1 /*rock density*/;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -91,6 +91,7 @@ public:
   const static uint8_t ENTH_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
   const static uint8_t TEMP_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
   const static uint8_t PRES_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
+  const static uint8_t ROCK_DENS = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 2;
 
   // mapping
   // from transmissibility order of unknowns
