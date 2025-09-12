@@ -163,7 +163,6 @@ class DartsModel:
         # Initialize well objects
         self.reservoir.init_wells()
         self.physics.init_wells(self.reservoir.wells)
-        self.init_well_rates()
 
         self.set_op_list()
         self.set_boundary_conditions()
@@ -275,8 +274,6 @@ class DartsModel:
             self.physics,
             self.op_list,
             self.params,
-            self.well_head_conn_id,
-            self.well_perf_conn_ids,
             self.output_folder,
             self.sol_filename,
             self.well_filename,
@@ -963,41 +960,6 @@ class DartsModel:
         Function to print the statistics information, including total timesteps, Newton iteration, linear iteration, etc..
         """
         self.physics.engine.print_stat()
-
-    def init_well_rates(self):
-        """
-        Function that prepare data for the calculation of well rates (in Python)
-        """
-        block_m = np.array(self.reservoir.mesh.block_m, copy=False)
-        block_p = np.array(self.reservoir.mesh.block_p, copy=False)
-        self.well_perf_conn_ids = {}
-        self.well_head_conn_id = {}
-        for well in self.reservoir.wells:
-            res_cell_ids = [perf[1] for perf in well.perforations]
-
-            # find ids of those connections which 1. block_p is in res_cell_ids, 2. block_m is well cell
-            conn_ids = np.nonzero(
-                np.logical_and(
-                    np.isin(block_p, res_cell_ids),
-                    block_m >= self.reservoir.mesh.n_res_blocks,
-                )
-            )
-            self.well_perf_conn_ids[well.name] = conn_ids[0]
-            assert (
-                self.well_perf_conn_ids[well.name].size == len(well.perforations)
-                and (
-                    block_m[self.well_perf_conn_ids[well.name]]
-                    > self.reservoir.mesh.n_res_blocks
-                ).all()
-            )
-            # find id of well_head -> well_body connection in the connection list
-            well_head_conn_id = np.where(
-                np.logical_and(
-                    block_m == well.well_head_idx, block_p == well.well_body_idx
-                )
-            )[0]
-            assert len(well_head_conn_id) == 1
-            self.well_head_conn_id[well.name] = well_head_conn_id[0]
 
     def reconstruct_velocities(self):
         # velocity discretization
