@@ -104,9 +104,11 @@ deploy-apptainer-image:
     variables:
         IMAGE_PREFIX: "open-darts"
     rules:
-        - if: '$CI_PIPELINE_SOURCE == "pipeline" && $RUN_DEVTOOLS == "1"'
-          when: never
-        - when: always
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     script:
         # Derive BUILD_KEY from the latest symlinked image name
         - IMG_DIR="/data/gitlab-runner/apptainer-images"
