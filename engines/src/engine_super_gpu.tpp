@@ -112,7 +112,7 @@ reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permpo
       if (phase_p_diff < 0)
       {
         for (uint8_t c = 0; c < NC; c++)
-          phase_flux += op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * molar_weights[NC * op_num[i] + c];
+          phase_flux += op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[i] + c];
 
         if (phase_flux != 0.0)
             phase_flux *= -trans_mult * tran[conn_idx] * phase_p_diff / op_vals_arr[i * N_OPS + GRAV_OP + p];
@@ -120,7 +120,7 @@ reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permpo
       else
       {
         for (uint8_t c = 0; c < NC; c++)
-          phase_flux += op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * molar_weights[NC * op_num[j] + c];
+          phase_flux += op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[j] + c];
 
         if (phase_flux != 0.0)
           phase_flux *= -trans_mult * tran[conn_idx] * phase_p_diff / op_vals_arr[j * N_OPS + GRAV_OP + p];
