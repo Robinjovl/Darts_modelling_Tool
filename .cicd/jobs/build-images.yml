@@ -72,7 +72,11 @@ apptainer-image-builder:
     IMAGE_PREFIX: "open-darts"
     ENABLE_AGENT_TOOLS: "0"
   rules:
-    - when: always
+      - if: $CI_COMMIT_REF_PROTECTED == "true"
+      - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+      - if: $TEST_CUSTOM_BRANCH == "1"
+      - if: $TEST_ALL_PYTHONS == "1"
 
 apptainer-image-builder-devtools:
   extends: .apptainer-image-builder-base
@@ -80,6 +84,8 @@ apptainer-image-builder-devtools:
     IMAGE_PREFIX: "open-darts-agents"
     ENABLE_AGENT_TOOLS: "1"
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "pipeline" && $RUN_DEVTOOLS == "1"'
-      when: always
-    - when: never
+      - if: $CI_COMMIT_REF_PROTECTED == "true"
+      - if: $CI_PIPELINE_SOURCE == "pipeline" && $RUN_DEVTOOLS == "1"
+      - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+      - if: $TEST_CUSTOM_BRANCH == "1"
+      - if: $TEST_ALL_PYTHONS == "1"

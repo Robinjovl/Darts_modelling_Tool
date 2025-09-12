@@ -38,11 +38,11 @@ build-linux-tahiti-3.10-gpu:
         - linux_tahiti_gpu
     before_script:
         - spack env activate open_darts_gcc134
-        - eval "$(conda shell.bash hook)"
-        - conda create -n darts_gpu python=${PY_VER} --yes
+        - CONDA_BASE="/data/gitlab-runner/miniconda3"
+        - . "${CONDA_BASE}/etc/profile.d/conda.sh"
+        - conda create -n darts_gpu python=${PY_VER} -q -y
         - conda activate darts_gpu
         - export GSELINSOLVERSPATH=/data/$(id -un)/darts-linear-solvers/build
-        - export GPU_DEVICE=0
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -69,7 +69,7 @@ build-linux-tahiti-image-3.10-gpu:
         - |
           apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
             eval \"\$(conda shell.bash hook)\" \
-            && conda create -n ${CONDA_ENV} python=${PY_VER} --yes \
+            && conda create -n ${CONDA_ENV} python=${PY_VER} -q -y \
             && conda clean -afy
           "
     script:
