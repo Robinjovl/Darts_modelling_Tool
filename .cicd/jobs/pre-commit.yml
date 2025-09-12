@@ -2,7 +2,7 @@ pre-commit:
     stage: pre_commit
     image: "python:3.10"
     tags:
-        - linux_tahiti_gpu
+        - linux
     cache:
       key: pre-commit
       paths:
