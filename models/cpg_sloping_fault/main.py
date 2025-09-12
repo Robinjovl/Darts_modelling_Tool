@@ -56,7 +56,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.init(platform=platform)
     #m.reservoir.mesh.init_grav_coef(0)
-    m.set_output(output_folder=out_dir, 
+    m.set_output(output_folder=out_dir,
                  all_phase_props = False if m.idata.supress_all_output else True, # find this flag in case_base.py
                  verbose = True)
     # m.output.save_data_to_h5(kind='reservoir')
@@ -64,9 +64,9 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
 
-    # ---- run simulation    
+    # ---- run simulation
     ret = m.run_simulation()
-    
+
     if ret != 0:
         exit(1)
 
@@ -98,9 +98,9 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
                     )
                 m.output.save_property_array(timesteps, property_array, f'property_arrays/property_array_ts{ith_step}.h5')
             else:
-                # append properties to reservoir.h5 
-                m.output.save_property_array(timesteps, property_array) 
-                
+                # append properties to reservoir.h5
+                m.output.save_property_array(timesteps, property_array)
+
             m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
 
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
@@ -122,12 +122,12 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data.xlsx'))
         time_data.to_excel(writer, sheet_name='time_data')
         writer.close()
-    
+
         # COMPUTE TIME DATA AT FIXED REPORTING STEPS
         time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
         add_columns_time_data(time_data_report)
         time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
-        
+
         # filter time_data_report and write to xlsx
         # list the column names that should be removed
         press_gridcells = time_data_report.filter(like='reservoir').columns.tolist()
@@ -139,11 +139,11 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data_report.xlsx'))
         time_data_report.to_excel(writer, sheet_name='time_data_report')
         writer.close()
-    
-        # m.output.store_well_time_data(save_output_files=True)
+
+        m.output.store_well_time_data(save_output_files=True)
         m.output.plot_well_time_data()
-    
-    m.print_timers() 
+
+    m.print_timers()
 
 
     if compare_with_ref:
@@ -286,7 +286,7 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
-    
+
     # physics_list += ['CCS']
     #physics_list += ['deadoil']
 
@@ -313,7 +313,7 @@ if __name__ == '__main__':
                                                                                         case=case, out_dir=out_dir,
                                                                                         redirect_log=False,
                                                                                         platform=platform,
-                                                                                        export_vtk = True, 
+                                                                                        export_vtk = True,
                                                                                         )
 
                 # one can read well results from pkl file to add/change well plots without re-running the model
