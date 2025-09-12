@@ -124,11 +124,18 @@ deploy-apptainer-image:
         - REPO="$CI_REGISTRY_IMAGE"
         - echo "REPO=$REPO"
         # Normalize registry host and construct base URL
+        - echo "CI_REGISTRY=$CI_REGISTRY"
         - REGISTRY_HOST="${CI_REGISTRY:-}"
         - 'if [ -z "$REGISTRY_HOST" ]; then REGISTRY_HOST="${CI_REGISTRY_IMAGE%%/*}"; fi'
         - REGISTRY_HOST="${REGISTRY_HOST#http://}"
         - REGISTRY_HOST="${REGISTRY_HOST#https://}"
+        - REGISTRY_HOST="${REGISTRY_HOST%%/*}"
+        - REGISTRY_HOST="${REGISTRY_HOST%:}"
+        - REGISTRY_HOST_CLEAN="$(printf '%s' "$REGISTRY_HOST" | tr -d '[:space:]')"
+        - REGISTRY_HOST="${REGISTRY_HOST_CLEAN}"
+        - 'test -n "$REGISTRY_HOST" || { echo "Registry host is empty. Cannot build BASE_URL." >&2; exit 2; }'
         - BASE_URL="https://${REGISTRY_HOST}"
+        - echo "BASE_URL=$BASE_URL"
         - REGISTRY_CHECK_URL="${BASE_URL}/v2/${CI_PROJECT_PATH}/manifests/${BUILD_KEY}"
         - |
           AUTH_CHALLENGE=$(curl -sI "${BASE_URL}/v2/" | tr -d '\r' | awk -F': ' '/WWW-Authenticate:/ {print $2}')
