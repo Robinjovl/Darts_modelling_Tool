@@ -74,7 +74,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.print_timers()
 
     # post-processing: read h5 file and write vtk with properties
-    if export_vtk and not(m.idata.supress_all_output):
+    if export_vtk:
         print('Post processing properties and vtk output...')
 
         output_properties_main = m.physics.vars  # only main variables
@@ -313,7 +313,7 @@ if __name__ == '__main__':
                                                                                         case=case, out_dir=out_dir,
                                                                                         redirect_log=False,
                                                                                         platform=platform,
-                                                                                        export_vtk = False, 
+                                                                                        export_vtk = True, 
                                                                                         )
 
                 # one can read well results from pkl file to add/change well plots without re-running the model
