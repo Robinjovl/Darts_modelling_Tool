@@ -29,6 +29,7 @@
  * @tparam GRAV_OP Index for gravity operators.
  * @tparam PC_OP Index for capillary pressure operators.
  * @tparam MULT_OP Index for permeability multiplier due to permeability-porosity relationship.
+ * @tparam LAMBDA_OP Index for phase mobility operators.
  *
  * @param[in] n_res_blocks Number of reservoir blocks.
  * @param[in] enable_permporo Flag to activate permeability multiplier due to permeability-porosity relationship.
@@ -296,6 +297,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  * @tparam GRAV_OP Index for gravity operators.
  * @tparam PC_OP Index for capillary pressure operators.
  * @tparam MULT_OP Index for permeability multiplier due to permeability-porosity relationship.
+ * @tparam LAMBDA_OP Index for phase mobility operators.
  * @tparam ENTH_OP Index for enthalpy operators.
  * @tparam TEMP_OP Index for temperature operators.
  * @tparam PRES_OP Index for pressure operators.
