@@ -117,7 +117,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         # COMPUTE TIME DATA
         td = m.output.store_well_time_data()
         time_data = pd.DataFrame.from_dict(td)
-        add_columns_time_data(time_data)
+        # add_columns_time_data(time_data)
         time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
         writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data.xlsx'))
         time_data.to_excel(writer, sheet_name='time_data')
@@ -287,7 +287,7 @@ if __name__ == '__main__':
     physics_list = []
     physics_list += ['geothermal']
     
-	#physics_list += ['CCS']
+    # physics_list += ['CCS']
     #physics_list += ['deadoil']
 
     cases_list = []
