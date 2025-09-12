@@ -131,6 +131,8 @@ deploy-apptainer-image:
         # Authenticate and push via ORAS (GitLab Container Registry)
         - export APPTAINER_DOCKER_USERNAME="$CI_REGISTRY_USER"
         - export APPTAINER_DOCKER_PASSWORD="$CI_REGISTRY_PASSWORD"
+        - echo "Logging into registry $CI_REGISTRY with Apptainer"
+        - apptainer registry login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "oras://$CI_REGISTRY" || echo "Apptainer registry login warning; continuing"
         # Try push; if tag exists, do not fail the job
         - |
           if apptainer push "$IMG" "oras://$REPO:latest"; then
