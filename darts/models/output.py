@@ -694,56 +694,8 @@ class Output:
         if self.verbose:
             mode = "batch" if is_batch else "single"
             print(
-                f"[{mode}] Saved {n_new} entry(ies) to {filename} at t={times if is_batch else times[0]}"
+                f"[{mode}] Saved {n_new} entry(ies) to {filename}"
             )
-
-    # def save_specific_data(self, filename, X_data = None):
-    #     """
-    #     Function to write output to *.h5 file
-    #
-    #     :param filename: path to *.h5 filename to append data to
-    #     :type filename: str
-    #     """
-    #
-    #     if X_data is None:
-    #         X = np.array(
-    #             self.physics.engine.X, copy=False
-    #         )
-    #         dim_expansion = 1
-    #     else:
-    #         well_time_labels_np = np.array(X_data[0])
-    #         well_data_np = np.array(X_data[1])
-    #         dim_expansion = len(X_data[0])
-    #
-    #     # Open the HDF5 file in append mode
-    #     with h5py.File(filename, "a") as f:
-    #         # Append to time dataset under the dynamic group
-    #         time_dataset = f["dynamic/time"]
-    #         og_length = time_dataset.shape[0]
-    #         time_dataset.resize((time_dataset.shape[0] + dim_expansion,))
-    #
-    #         if dim_expansion == 1:
-    #             time_dataset[-1] = self.physics.engine.t
-    #         else:
-    #             time_dataset[og_length:dim_expansion] = well_time_labels_np
-    #
-    #         cell_id = f["dynamic/cell_id"][:]
-    #
-    #         x_dataset = f["dynamic/X"]
-    #
-    #         x_dataset.resize(
-    #             (x_dataset.shape[0] + dim_expansion, x_dataset.shape[1], x_dataset.shape[2])
-    #         )
-    #
-    #         if dim_expansion == 1:
-    #             x_dataset[x_dataset.shape[0] - 1, :, :] = X.reshape(
-    #                 (self.reservoir.mesh.n_blocks, self.physics.n_vars)
-    #             )[cell_id]
-    #         else:
-    #             x_dataset[og_length:dim_expansion, :, :] = well_data_np
-    #
-    #     if self.verbose:
-    #         print(f'Saving data to {filename} at time = {self.physics.engine.t}')
 
     def save_data_to_h5(self, kind):
         """
@@ -874,6 +826,9 @@ class Output:
         :raises KeyError: If specified property in `output_properties` is not found in any property container
         :raises TypeError: If output_properties is not a list
         """
+        
+        if self.verbose: 
+            print(f'Processing properties {output_properties} at timestep {timestep}')
 
         if output_properties is not None and not isinstance(output_properties, list):
             raise TypeError(
