@@ -123,9 +123,15 @@ deploy-apptainer-image:
         # target repo and existing tag check (skip if tag already present)
         - REPO="$CI_REGISTRY_IMAGE"
         - echo "REPO=$REPO"
-        - REGISTRY_CHECK_URL="https://${CI_REGISTRY}/v2/${CI_PROJECT_PATH}/manifests/${BUILD_KEY}"
+        # Normalize registry host and construct base URL
+        - REGISTRY_HOST="${CI_REGISTRY:-}"
+        - 'if [ -z "$REGISTRY_HOST" ]; then REGISTRY_HOST="${CI_REGISTRY_IMAGE%%/*}"; fi'
+        - REGISTRY_HOST="${REGISTRY_HOST#http://}"
+        - REGISTRY_HOST="${REGISTRY_HOST#https://}"
+        - BASE_URL="https://${REGISTRY_HOST}"
+        - REGISTRY_CHECK_URL="${BASE_URL}/v2/${CI_PROJECT_PATH}/manifests/${BUILD_KEY}"
         - |
-          AUTH_CHALLENGE=$(curl -sI "https://${CI_REGISTRY}/v2/" | tr -d '\r' | awk -F': ' '/WWW-Authenticate:/ {print $2}')
+          AUTH_CHALLENGE=$(curl -sI "${BASE_URL}/v2/" | tr -d '\r' | awk -F': ' '/WWW-Authenticate:/ {print $2}')
           REALM=$(echo "$AUTH_CHALLENGE" | sed -n 's/.*realm="\([^\"]*\)".*/\1/p')
           SERVICE=$(echo "$AUTH_CHALLENGE" | sed -n 's/.*service="\([^\"]*\)".*/\1/p')
           SCOPE="repository:${CI_PROJECT_PATH}:pull"
