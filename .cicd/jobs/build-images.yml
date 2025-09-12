@@ -26,8 +26,10 @@ docker-image-builder:
     # Put all heavy I/O on the large /data mount
     APPTAINER_TMPDIR: "/data/gitlab-runner/apptainer-tmp"
     APPTAINER_CACHEDIR: "/data/gitlab-runner/apptainer-cache"
+    IMG_DIR: "/data/gitlab-runner/apptainer-images"
     # defaults; override in derived jobs
     IMAGE_PREFIX: "open-darts"
+    MAX_IMAGE_NUM: "5"
     GITLAB_CI_TOOLS: "0"
   before_script:
     - set -euo pipefail
@@ -42,10 +44,7 @@ docker-image-builder:
     # combine into BUILD_KEY
     - BUILD_KEY="$(printf '%s\n%s\n%s\n' "$DEF_SHA" "$BLD_FILES_SHA" "$DLS_SHA" | sha256sum | awk '{print $1}')"
     - echo "BUILD_KEY=$BUILD_KEY"
-    - IMG_DIR="/data/gitlab-runner/apptainer-images"
     - IMG="$IMG_DIR/${IMAGE_PREFIX}-${BUILD_KEY}.sif"
-    # (Optional) quick visibility of space before building
-    - df -h "$IMG_DIR" "$(pwd)" /tmp || true
     # build only if not already present (cache/artifacts from previous runs)
     - |
       if [ -f "$IMG" ]; then
@@ -59,6 +58,31 @@ docker-image-builder:
           "$IMG" .cicd/build-linux/singularity.def;
       fi
     - ln -sf "$(basename "$IMG")" "$IMG_DIR/${IMAGE_PREFIX}-latest.sif"
+  after_script:
+    - |
+      set -euo pipefail
+      PREFIX="${IMAGE_PREFIX:-open-darts}"
+      echo "Checking for old ${PREFIX} images in ${IMG_DIR}..."
+      # Build a list of matching regular files (excluding the 'latest' symlink), oldest first
+      TMP_LIST="$(mktemp)"
+      find "$IMG_DIR" -maxdepth 1 -type f -name "${PREFIX}-*.sif" ! -name "${PREFIX}-latest.sif" -printf '%T@ %p\n' | sort -n | awk '{ $1=""; sub(/^ /,""); print }' > "$TMP_LIST"
+      TOTAL="$(wc -l < "$TMP_LIST" | tr -d ' ')"
+      MAX="${MAX_IMAGE_NUM:-5}"
+      if [ "${TOTAL:-0}" -le "$MAX" ]; then
+        echo "No pruning needed: $TOTAL image(s) present (<= $MAX)."
+      else
+        TO_DELETE="$(( TOTAL - MAX ))"
+        echo "Pruning $TO_DELETE oldest image(s) with prefix ${PREFIX}"
+        i=0
+        while IFS= read -r IMG_PATH; do
+          i=$(( i + 1 ))
+          if [ "$i" -le "$TO_DELETE" ]; then
+            echo "Removing $IMG_PATH"
+            rm -f -- "$IMG_PATH" || true
+          fi
+        done < "$TMP_LIST"
+      fi
+      rm -f "$TMP_LIST" || true
   cache:
     key: "$BUILD_KEY"
     paths:
