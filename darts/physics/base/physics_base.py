@@ -5,7 +5,6 @@ import os
 import pickle
 from enum import Enum
 from functools import total_ordering
-from typing import Union
 
 import numpy as np
 
@@ -247,7 +246,7 @@ class PhysicsBase:
                 algorithm=itor_type,
                 mode=itor_mode,
                 precision=itor_precision,
-                timer_name='reservoir %d interpolation' % region,
+                timer_name=f'reservoir {region:d} interpolation',
                 region=str(region),
                 is_barycentric=is_barycentric,
             )
@@ -261,7 +260,7 @@ class PhysicsBase:
                 algorithm=itor_type,
                 mode=itor_mode,
                 precision=itor_precision,
-                timer_name='property %d interpolation' % region,
+                timer_name=f'property {region:d} interpolation',
                 region=str(region),
             )
 
@@ -335,7 +334,7 @@ class PhysicsBase:
                 + str(i - etor.op_names[op_type_idx][0])
             )
             operator_array[op_name] = values_numpy[i :: self.n_ops]
-            operator_array[op_name][physical_points == False] = np.nan
+            operator_array[op_name][~physical_points] = np.nan
 
         return operator_array
 
@@ -410,16 +409,17 @@ class PhysicsBase:
         :param max_t: Maximum temperature [K]
         :param state_spec: StateSpecification, P, PT or PH
         """
-        assert (
-            np.isscalar(min_z) or len(min_z) == self.nc - 1
-        ), "min_z must be a scalar or a vector of length nc-1."
-        assert (
-            np.isscalar(max_z) or len(max_z) == self.nc - 1
-        ), "max_z must be a scalar or a vector of length nc-1."
+        assert np.isscalar(min_z) or len(min_z) == self.nc - 1, (
+            "min_z must be a scalar or a vector of length nc-1."
+        )
+        assert np.isscalar(max_z) or len(max_z) == self.nc - 1, (
+            "max_z must be a scalar or a vector of length nc-1."
+        )
 
         if state_spec <= PhysicsBase.StateSpecification.PT:
-            axes_min, axes_max = value_vector(self.PT_axes_min), value_vector(
-                self.PT_axes_max
+            axes_min, axes_max = (
+                value_vector(self.PT_axes_min),
+                value_vector(self.PT_axes_max),
             )
 
         elif state_spec == PhysicsBase.StateSpecification.PH:
@@ -460,7 +460,7 @@ class PhysicsBase:
         self,
         mesh: conn_mesh,
         input_distribution: dict,
-        input_depth: Union[list, np.ndarray],
+        input_depth: list | np.ndarray,
         global_to_local=None,
     ):
         """
@@ -568,14 +568,7 @@ class PhysicsBase:
 
         # calculate object name using 32 bit index type (i)
         n_dims = self.n_vars
-        itor_name = "%s_%s_%s_interpolator_i_%s_%d_%d" % (
-            algorithm,
-            mode,
-            platform,
-            precision,
-            n_dims,
-            n_ops,
-        )
+        itor_name = f"{algorithm}_{mode}_{platform}_interpolator_i_{precision}_{n_dims:d}_{n_ops:d}"
         itor = None
         general = False
         cache_loaded = 0
@@ -612,10 +605,10 @@ class PhysicsBase:
                     itor = eval(itor_name)(
                         evaluator, self.n_axes_points, axes_min, axes_max
                     )
-            except (ValueError, NameError):
+            except (ValueError, NameError) as err:
                 raise ValueError(
                     "Number of operators is incorrect, no templatized interpolator exists"
-                )
+                ) from err
                 # if 64-bit index also failed, probably the combination of required n_ops and n_dims
                 # was not instantiated/exposed. In this case substitute general implementation of interpolator
                 itor = eval("multilinear_adaptive_cpu_interpolator_general")(
@@ -625,22 +618,13 @@ class PhysicsBase:
 
         if self.cache:
             # create unique signature for interpolator
-            itor_cache_signature = "%s_%s_%s_%d_%d_%s" % (
-                type(evaluator).__name__,
-                mode,
-                precision,
-                n_dims,
-                n_ops,
-                region,
-            )
+            itor_cache_signature = f"{type(evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{n_ops:d}_{region}"
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
             for dim in range(n_dims):
-                itor_cache_signature += "_%d_%e_%e" % (
-                    self.n_axes_points[dim],
-                    axes_min[dim],
-                    axes_max[dim],
+                itor_cache_signature += (
+                    f"_{self.n_axes_points[dim]:d}_{axes_min[dim]:e}_{axes_max[dim]:e}"
                 )
             # compute signature hash to uniquely identify itor parameters and load correct cache
             itor_cache_signature_hash = str(
@@ -739,13 +723,7 @@ class PhysicsBase:
             self.processed_body_idxs = set()
             for id in range(self.n_vars):
                 fp.write(
-                    '%d %lf %lf %s\n'
-                    % (
-                        self.n_axes_points[id],
-                        self.axes_min[id],
-                        self.axes_max[id],
-                        self.vars[id],
-                    )
+                    f"{self.n_axes_points[id]:d} {self.axes_min[id]:f} {self.axes_max[id]:f} {self.vars[id]}\n"
                 )
             fp.write('Body Index Data\n')
 
@@ -757,12 +735,12 @@ class PhysicsBase:
         :param time: current time
         """
         with open(os.path.join(output_folder, 'body_path.txt'), "a") as fp:
-            fp.write('T=%lf\n' % time)
+            fp.write(f'T={time:f}\n')
             itor = self.acc_flux_itor[0]
             all_idxs = set(itor.get_hypercube_indexes())
             new_idxs = all_idxs - self.processed_body_idxs
             for i in new_idxs:
-                fp.write('%d\n' % i)
+                fp.write(f'{i:d}\n')
             self.processed_body_idxs = all_idxs
 
     def __del__(self):

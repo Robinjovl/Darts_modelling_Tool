@@ -9,6 +9,7 @@ from darts.tools.logging import redirect_all_output, abort_redirection
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
+from model_CO2 import ModelCCS
 
 
 def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=True):
@@ -31,6 +32,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         m = ModelGeothermal(iapws_physics=True)
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
+    elif physics_type == 'CCS':
+        m = ModelCCS(['CO2', 'H2O'])
     else:
         print('Error: wrong physics specified:', physics_type)
         exit(1)
@@ -283,6 +286,8 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
+    
+	#physics_list += ['CCS']
     #physics_list += ['deadoil']
 
     cases_list = []

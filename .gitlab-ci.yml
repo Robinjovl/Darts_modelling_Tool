@@ -6,7 +6,7 @@ stages:
     - deploy
 
 include:
-  - local: 'helper_scripts/ci_jobs/lint-python.yml'
+  - local: 'helper_scripts/ci_jobs/pre-commit.yml'
   - local: 'helper_scripts/ci_jobs/build-images.yml'
   - local: 'helper_scripts/ci_jobs/build-linux.yml'
   - local: 'helper_scripts/ci_jobs/build-windows.yml'
