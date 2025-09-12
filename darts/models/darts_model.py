@@ -180,7 +180,6 @@ class DartsModel:
                 + str(self.reservoir.mesh.n_res_blocks)
                 + ' > 30000',
                 stacklevel=2,
-                + " > 30000"
             )
 
     def reset(self):

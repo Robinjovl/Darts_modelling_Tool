@@ -688,9 +688,7 @@ class Output:
 
         if self.verbose:
             mode = "batch" if is_batch else "single"
-            print(
-                f"[{mode}] Saved {n_new} entry(ies) to {filename}"
-            )
+            print(f"[{mode}] Saved {n_new} entry(ies) to {filename}")
 
     def save_data_to_h5(self, kind):
         """
@@ -821,8 +819,8 @@ class Output:
         :raises KeyError: If specified property in `output_properties` is not found in any property container
         :raises TypeError: If output_properties is not a list
         """
-        
-        if self.verbose: 
+
+        if self.verbose:
             print(f'Processing properties {output_properties} at timestep {timestep}')
 
         if output_properties is not None and not isinstance(output_properties, list):
@@ -1276,18 +1274,35 @@ class Output:
             res_cell_ids = [perf[1] for perf in well.perforations]
 
             # Find ids of those connections which 1. block_p is in res_cell_ids, 2. block_m is in the desired well
-            if idx + 1 < len(self.reservoir.wells):   # If there is a next well
+            if idx + 1 < len(self.reservoir.wells):  # If there is a next well
                 next_well = self.reservoir.wells[idx + 1]
-                mask = np.logical_and(np.isin(block_p, res_cell_ids), np.logical_and(block_m >= well.well_head_idx, block_m < next_well.well_head_idx))
-            else:   # If there is no next well
-                mask = np.logical_and(np.isin(block_p, res_cell_ids), block_m >= well.well_head_idx)
+                mask = np.logical_and(
+                    np.isin(block_p, res_cell_ids),
+                    np.logical_and(
+                        block_m >= well.well_head_idx, block_m < next_well.well_head_idx
+                    ),
+                )
+            else:  # If there is no next well
+                mask = np.logical_and(
+                    np.isin(block_p, res_cell_ids), block_m >= well.well_head_idx
+                )
 
             conn_ids = np.nonzero(mask)
             well_perf_conn_ids[well.name] = conn_ids[0]
-            assert (well_perf_conn_ids[well.name].size == len(well.perforations) and (block_m[well_perf_conn_ids[well.name]] > self.reservoir.mesh.n_res_blocks).all())
+            assert (
+                well_perf_conn_ids[well.name].size == len(well.perforations)
+                and (
+                    block_m[well_perf_conn_ids[well.name]]
+                    > self.reservoir.mesh.n_res_blocks
+                ).all()
+            )
 
             # Find id of well_head -> well_body connection in the connection list
-            wh_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_body_idx))[0]
+            wh_conn_id = np.where(
+                np.logical_and(
+                    block_m == well.well_head_idx, block_p == well.well_body_idx
+                )
+            )[0]
             assert len(wh_conn_id) == 1
             well_head_conn_id[well.name] = wh_conn_id[0]
 
