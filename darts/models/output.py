@@ -34,8 +34,6 @@ class Output:
         physics,
         op_list,
         params,
-        well_head_conn_id,
-        well_perf_conn_ids,
         output_folder: str,
         sol_filename: str,
         well_filename: str,
@@ -47,20 +45,18 @@ class Output:
     ):
         """
         Class constructor method for output related functionalities including saving primary variables (state variables),
-        evaulating secondary variables (properties) and creating visualizations.
+        evaluating secondary variables (properties) and creating visualizations.
 
-        :param timer: timer object to measure time spent saviving data, and evaluating properties
+        :param timer: timer object to measure time spent saving data, and evaluating properties
         :reservoir: reservoir object
         :param physics: physics object
         :param op_list: list of operator interpolators
         :param params: engine params
-        :param well_head_conn_id: dictionary of wellhead indices of wells (values are integers)
-        :param well_perf_conn_ids: dictionary of perforation indices of wells (values are lists)
         :param output_folder: output folder for saved data and figures
         :param sol_filename: hdf5 filename for saving reservoir solution
         :param well_filename: hdf5 filename for saving well solution
         :param save_initial: boolean flag to save initial conditions of reservoir
-        :param all_phase_props: boolean flag to define properties (secondary variables) aaccording to a predefined list.
+        :param all_phase_props: boolean flag to define properties (secondary variables) according to a predefined list.
         :param compression: boolean flag to enable compression of hdf5 data
         :param verbose: boolean flag to enable verbose output
         """
@@ -72,8 +68,6 @@ class Output:
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
 
         self.params = params
-        self.well_head_conn_id = well_head_conn_id
-        self.well_perf_conn_ids = well_perf_conn_ids
         self.verbose = verbose
 
         self.master_timer = timer
@@ -1191,7 +1185,7 @@ class Output:
             well_head_conn_ids,
             geometric_WI,
             well_head_conn_trans,
-        ) = self.get_connection_info()
+        ) = self.get_wellhead_perf_connection_info()
 
         if types_of_well_rates is None:
             types_of_well_rates = [
@@ -1267,17 +1261,44 @@ class Output:
             pc.components_name = ["H2O"]
             self.physics.thermal = True
 
-    def get_connection_info(self):
+    def get_wellhead_perf_connection_info(self):
         """
         This function gives information of the connections, including perforations and wellhead, for evaluation of
         perforation and wellhead rates in the method store_well_time_data of the current class.
         """
-        perfs_conn_ids = [
-            item for sublist in self.well_perf_conn_ids.values() for item in sublist
-        ]
-        well_head_conn_ids = list(self.well_head_conn_id.values())
+        block_m = np.array(self.reservoir.mesh.block_m, copy=False)
+        block_p = np.array(self.reservoir.mesh.block_p, copy=False)
+        # Create a dictionary containing connection indices of perforations for each well (values are lists)
+        well_perf_conn_ids = {}
+        # Create a dictionary containing connection index of wellhead for each well (values are integers)
+        well_head_conn_id = {}
+        for idx, well in enumerate(self.reservoir.wells):
+            res_cell_ids = [perf[1] for perf in well.perforations]
 
-        # Get well indices for each perforation
+            # Find ids of those connections which 1. block_p is in res_cell_ids, 2. block_m is in the desired well
+            if idx + 1 < len(self.reservoir.wells):   # If there is a next well
+                next_well = self.reservoir.wells[idx + 1]
+                mask = np.logical_and(np.isin(block_p, res_cell_ids), np.logical_and(block_m >= well.well_head_idx, block_m < next_well.well_head_idx))
+            else:   # If there is no next well
+                mask = np.logical_and(np.isin(block_p, res_cell_ids), block_m >= well.well_head_idx)
+
+            conn_ids = np.nonzero(mask)
+            well_perf_conn_ids[well.name] = conn_ids[0]
+            assert (well_perf_conn_ids[well.name].size == len(well.perforations) and (block_m[well_perf_conn_ids[well.name]] > self.reservoir.mesh.n_res_blocks).all())
+
+            # Find id of well_head -> well_body connection in the connection list
+            wh_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_body_idx))[0]
+            assert len(wh_conn_id) == 1
+            well_head_conn_id[well.name] = wh_conn_id[0]
+
+        # Get perforation connection indices for all wells
+        perfs_conn_ids = [
+            item for sublist in well_perf_conn_ids.values() for item in sublist
+        ]
+        # Get wellhead connection indices for all wells
+        well_head_conn_ids = list(well_head_conn_id.values())
+
+        # Get well indices (WI) for each perforation
         geometric_WI = np.array(
             [p[2] for well in self.reservoir.wells for p in well.perforations]
         )
