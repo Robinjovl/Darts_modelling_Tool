@@ -602,7 +602,7 @@ class DartsModel:
 
                 if verbose:
                     print(
-                        f"# {ts_counter:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={np.round(max_dx, 3)}"
+                        f"T={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tMULT={dt_mult_new:3.3g}\tdX={np.round(max_dx, 3)}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -643,7 +643,9 @@ class DartsModel:
 
         if verbose:
             print(
-                f"TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d})"
+                f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
+                f"NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), "
+                f"LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d}) -----"
             )
 
         return 0
