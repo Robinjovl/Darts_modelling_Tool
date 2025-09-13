@@ -1,5 +1,3 @@
-from typing import Union
-
 import numpy as np
 
 from darts.engines import *
@@ -118,14 +116,14 @@ class Poroelasticity(Compositional):
         if discretizer == "mech_discretizer":
             if self.thermal:
                 return eval(
-                    "engine_super_elastic_%s%d_%d_t" % (platform, self.nc, self.nph)
+                    f"engine_super_elastic_{platform}{self.nc:d}_{self.nph:d}_t"
                 )()
             else:
                 return eval(
-                    "engine_super_elastic_%s%d_%d" % (platform, self.nc, self.nph)
+                    f"engine_super_elastic_{platform}{self.nc:d}_{self.nph:d}"
                 )()
         else:  # discretizer == 'pm_discretizer':
-            return eval("engine_pm_%s" % (platform))()
+            return eval(f"engine_pm_{platform}")()
 
     def set_operators(self):
         """
@@ -190,7 +188,7 @@ class Poroelasticity(Compositional):
         self,
         mesh: conn_mesh,
         input_distribution: dict,
-        input_depth: Union[list, np.ndarray],
+        input_depth: list | np.ndarray,
         input_displacement: list,
     ):
         """

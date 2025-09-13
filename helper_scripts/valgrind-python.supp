@@ -30,3 +30,36 @@
    fun:_dl_catch_exception
    fun:dl_open_worker
 }
+{
+   python-Init-wcscat-Cond
+   Memcheck:Cond
+   fun:__wcscat_avx2
+   ...
+   fun:config_init_pathconfig
+   fun:_PyConfig_InitPathConfig
+   fun:init_interp_main
+   fun:pyinit_main
+   fun:Py_InitializeFromConfig
+   fun:pymain_init
+   fun:pymain_main
+   fun:Py_BytesMain
+   fun:(below main)
+}
+{
+   python_getpath_wcscat_1
+   Memcheck:Addr32
+   fun:__wcscat_avx2
+   ...
+   fun:_PyConfig_InitPathConfig
+   ...
+   fun:Py_BytesMain
+}
+{
+   python_getpath_wcscat_2
+   Memcheck:Addr32
+   fun:__wcscat_avx2
+   ...
+   fun:config_init_pathconfig
+   ...
+   fun:Py_BytesMain
+}

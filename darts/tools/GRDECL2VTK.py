@@ -26,7 +26,7 @@ try:
     import vtk
     import vtk.util.numpy_support as ns
 except ImportError:
-    warnings.warn("No vtk module loaded.")
+    warnings.warn("No vtk module loaded.", stacklevel=2)
 
 
 # from GRDECL_CADExporter import *
@@ -72,8 +72,7 @@ class GeologyModel:
         # * Convert corner point grid/cartesian grid into VTK unstructure grid
         print("[Geometry] Converting GRDECL to Paraview Hexahedron mesh data....")
         NX, NY, NZ = self.GRDECL_Data.NX, self.GRDECL_Data.NY, self.GRDECL_Data.NZ
-        if self.GRDECL_Data.GRID_type == "CornerPoint":
-
+        if self.GRDECL_Data.GRID_type == 'CornerPoint':
             # 1.Collect Points from the raw CornerPoint data [ZCORN]&[COORD]
             # X,Y has to be interpolated from [ZCORN]
             Points = vtk.vtkPoints()

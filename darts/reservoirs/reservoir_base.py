@@ -1,7 +1,6 @@
 import abc
 import atexit
 from math import pi
-from typing import Union
 
 import numpy as np
 
@@ -159,7 +158,7 @@ class ReservoirBase:
     def add_perforation(
         self,
         well_name: str,
-        res_cell_idx: Union[int, tuple],
+        res_cell_idx: int | tuple,
         well_seg_idx: int = None,
         well_ID: float = 0.3048,
         well_index: float = None,
@@ -189,7 +188,7 @@ class ReservoirBase:
         pass
 
     @abc.abstractmethod
-    def find_cell_index(self, coord: Union[list, np.ndarray]) -> int:
+    def find_cell_index(self, coord: list | np.ndarray) -> int:
         """
         Function to find index of cell centre closest to given xyz-coordinates.
 
@@ -221,7 +220,7 @@ class ReservoirBase:
         """
         for w in self.wells:
             assert len(w.perforations) > 0, (
-                "Well %s does not perforate any active reservoir blocks" % w.name
+                f"Well {w.name} does not perforate any active reservoir blocks"
             )
         self.mesh.add_wells(ms_well_vector(self.wells))
 

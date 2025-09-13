@@ -171,7 +171,6 @@ class BlackOilProperties(PropertyContainer):
         return
 
     def evaluate_at_cond(self, pressure, zc):
-
         self.sat[:] = 0
 
         if zc[-1] < 0:

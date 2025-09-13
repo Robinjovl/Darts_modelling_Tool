@@ -49,7 +49,7 @@ deploy-testpypi:
         - build-windows-3.10-ODLS
         - build-windows-3.11-ODLS
         - build-windows-3.12-ODLS
-        
+
 deploy-zenodo:
     stage: deploy
     rules:

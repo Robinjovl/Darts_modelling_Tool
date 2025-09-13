@@ -1,5 +1,4 @@
 import os
-from typing import Union
 
 import numpy as np
 from scipy.interpolate import griddata
@@ -211,7 +210,7 @@ class StructReservoir(ReservoirBase):
     def add_perforation(
         self,
         well_name: str,
-        res_cell_idx: Union[int, tuple],
+        res_cell_idx: int | tuple,
         well_seg_idx: int = None,
         well_ID: float = 0.1524,
         well_index: float = None,
@@ -305,8 +304,7 @@ class StructReservoir(ReservoirBase):
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
                     print(
-                        "Neglected duplicate perforation for well %s to block [%d, %d, %d]"
-                        % (well.name, i, j, k)
+                        f'Neglected duplicate perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}]'
                     )
                     return
             well.perforations = well.perforations + [
@@ -314,14 +312,13 @@ class StructReservoir(ReservoirBase):
             ]
             if verbose:
                 print(
-                    "Added perforation for well %s to block %d [%d, %d, %d] with WI=%f and WID=%f"
-                    % (well.name, res_block_local, i, j, k, well_index, well_indexD)
+                    f'Added perforation for well {well.name} to block {res_block_local:d} '
+                    f'[{i:d}, {j:d}, {k:d}] with WI={well_index:f} and WID={well_indexD:f}'
                 )
         else:
             if verbose:
                 print(
-                    "Neglected perforation for well %s to block [%d, %d, %d] (inactive block)"
-                    % (well.name, i, j, k)
+                    f'Neglected perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}] (inactive block)'
                 )
             return
 
@@ -330,7 +327,7 @@ class StructReservoir(ReservoirBase):
 
         return
 
-    def find_cell_index(self, coord: Union[list, np.ndarray]) -> int:
+    def find_cell_index(self, coord: list | np.ndarray) -> int:
         """
         Function to find nearest cell to specified coordinate
 
@@ -362,7 +359,6 @@ class StructReservoir(ReservoirBase):
                 data = data * np.ones((self.nx, self.ny, self.nz))
         else:
             if data.ndim == 1:
-
                 # make 3d array if 1d array is passed with lenght nx or ny or nz
                 data_array = np.zeros((self.nx, self.ny, self.nz))
                 if data.size == self.nz:
@@ -378,9 +374,8 @@ class StructReservoir(ReservoirBase):
                         data_array[i, :, :] = data[i]
                     data = data_array
                 else:
-                    assert data.size == self.n, "size is %s instead of %s" % (
-                        data.size,
-                        self.n,
+                    assert data.size == self.n, (
+                        f"size is {data.size} instead of {self.n}"
                     )
                 data = np.reshape(data, (self.nx, self.ny, self.nz), order="F")
             else:
@@ -388,10 +383,7 @@ class StructReservoir(ReservoirBase):
                     self.nx,
                     self.ny,
                     self.nz,
-                ), "shape is %s instead of %s" % (
-                    data.shape,
-                    (self.nx, self.ny, self.nz),
-                )
+                ), f"shape is {data.shape} instead of {(self.nx, self.ny, self.nz)}"
         return data
 
     def get_cell_cpg_widths(self):
@@ -413,7 +405,7 @@ class StructReservoir(ReservoirBase):
         return dx, dy, dz
 
     def get_cell_cpg_widths_new(self):
-        assert self.discretizer.is_cpg == True
+        assert self.discretizer.is_cpg
         dx = self.discretizer.convert_to_flat_array(
             np.fabs(
                 self.discretizer.cell_data["faces"][:, :, :, 1, 1]
@@ -551,12 +543,12 @@ class StructReservoir(ReservoirBase):
                     axs[j].set_aspect(aspect_ratio)
 
                 divider = make_axes_locatable(axs[j])
-                if colorbar_loc == "right":
-                    cax = divider.append_axes("right", size="5%", pad=0.05)
-                    cbar = fig.colorbar(im, cax=cax, orientation="vertical")
+                if colorbar_loc == 'right':
+                    cax = divider.append_axes('right', size='5%', pad=0.05)
+                    fig.colorbar(im, cax=cax, orientation='vertical')
                 else:
-                    cax = divider.append_axes("bottom", size="15%", pad=0.3)
-                    cbar = fig.colorbar(im, cax=cax, orientation="horizontal")
+                    cax = divider.append_axes('bottom', size='15%', pad=0.3)
+                    fig.colorbar(im, cax=cax, orientation='horizontal')
                 # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
                 # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
             plt.tight_layout()
@@ -622,7 +614,7 @@ class StructReservoir(ReservoirBase):
             mesh_filename = output_directory + "/mesh"
 
             if self.vtk_grid_type == 0:
-                vtk_file_name = gridToVTK(
+                gridToVTK(
                     mesh_filename,
                     self.vtk_x,
                     self.vtk_y,
@@ -630,14 +622,14 @@ class StructReservoir(ReservoirBase):
                     cellData=cell_data,
                 )
             else:
-                for key, value in cell_data.items():
+                for key, _value in cell_data.items():
                     self.vtkobj.AppendScalarData(
                         key, cell_data[key][self.global_data["actnum"] == 1]
                     )
 
-                vtk_file_name = self.vtkobj.Write2VTU(mesh_filename)
+                self.vtkobj.Write2VTU(mesh_filename)
                 if len(self.vtk_filenames_and_times) == 0:
-                    for key, data in self.global_data.items():
+                    for key, _data in self.global_data.items():
                         self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray("cellNormals")
         return
@@ -672,7 +664,7 @@ class StructReservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        vtk_file_name = output_directory + "/solution_ts{}".format(ith_step)
+        vtk_file_name = output_directory + f'/solution_ts{ith_step}'
 
         cell_data = {}
         for i, name in enumerate(prop_names):
@@ -688,14 +680,14 @@ class StructReservoir(ReservoirBase):
                 vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data
             )
         else:
-            for key, value in cell_data.items():
+            for key, _value in cell_data.items():
                 self.vtkobj.AppendScalarData(
                     key, cell_data[key][self.global_data["actnum"] == 1]
                 )
 
             vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
             if len(self.vtk_filenames_and_times) == 0:
-                for key, data in self.global_data.items():
+                for key, _data in self.global_data.items():
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
                 self.vtkobj.VTK_Grids.GetCellData().RemoveArray("cellNormals")
 
@@ -744,11 +736,11 @@ class StructReservoir(ReservoirBase):
                 # slice array over third dimension
                 for k in range(array_3d.shape[2]):
                     array = array_3d[:, :, k]
-                    if array[np.isnan(array) == False].size > 3:
+                    if array[not np.isnan(array)].size > 3:
                         # stage 1 - fill in interior data using cubic interpolation
                         array = interpolate_slice(xx, yy, array, "cubic")
 
-                    if array[np.isnan(array) == False].size > 0:
+                    if array[not np.isnan(array)].size > 0:
                         # stage 2 - fill exterior data using nearest
                         array_3d[:, :, k] = interpolate_slice(xx, yy, array, "nearest")
                     else:
