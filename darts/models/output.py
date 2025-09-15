@@ -226,7 +226,7 @@ class Output:
                 temp_dict = {}
 
                 # add temperature
-                temp_dict['temperature'] = lambda container=pc: container.temperature
+                # temp_dict['temperature'] = lambda container=pc: container.temperature
 
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
