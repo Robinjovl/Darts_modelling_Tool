@@ -8,7 +8,7 @@ import numpy as np
 
 # Define our own operator evaluator class
 class PhreeqcDissolution(Compositional):
-    def __init__(self, timer, elements, n_points, axes_min, axes_max, input_data_struct, properties,
+    def __init__(self, timer, elements, n_points, axes_min, axes_max, eps_z, input_data_struct, properties,
                  platform='cpu', itor_type='multilinear', itor_mode='adaptive', itor_precision='d', cache=True):
         # Obtain properties from user input during initialization:
         self.input_data_struct = input_data_struct
@@ -19,9 +19,9 @@ class PhreeqcDissolution(Compositional):
         self.initial_operators = {}
 
         super().__init__(components=elements, phases=phases, n_points=n_points,
-                         min_p=axes_min[0], max_p=axes_max[0], min_z=axes_min[1], max_z=1-axes_min[1],
+                         min_p=axes_min[0], max_p=axes_max[0], min_z=axes_min[1], max_z=axes_max[1],
                          axes_min=axes_min, axes_max=axes_max, n_axes_points=n_points,
-                         timer=timer, cache=cache)
+                         epsilon_z=eps_z, timer=timer, cache=cache)
         self.vars = vars
 
     def set_operators(self):
@@ -31,12 +31,12 @@ class PhreeqcDissolution(Compositional):
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         for region in self.regions:
-            self.reservoir_operators[region] = my_own_acc_flux_etor(self.input_data_struct, self.property_containers[region])
-            self.initial_operators[region] = my_own_comp_etor(self.input_data_struct, self.property_containers[region])
-            self.property_operators[region] = my_own_property_evaluator(self.input_data_struct, self.property_containers[region])
+            self.reservoir_operators[region] = my_own_acc_flux_etor(self.input_data_struct, self.property_containers[region], extrapolation_flag=False)
+            self.initial_operators[region] = my_own_comp_etor(self.input_data_struct, self.property_containers[region], extrapolation_flag=False)
+            self.property_operators[region] = my_own_property_evaluator(self.input_data_struct, self.property_containers[region], extrapolation_flag=False)
 
-        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
-        self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,
+        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal, extrapolation_flag=False)
+        self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal, extrapolation_flag=False,
                                                      is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT))
 
     def set_interpolators(self, platform='cpu', itor_type='multilinear', itor_mode='adaptive',

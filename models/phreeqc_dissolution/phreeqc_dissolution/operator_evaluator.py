@@ -10,8 +10,8 @@ class my_own_acc_flux_etor(OperatorsBase):
     Reservoir operators working with the following state:
     state: (pressure, overall mineral molar fractions, overall fluid molar fractions)
     """
-    def __init__(self, input_data, properties):
-        super().__init__(properties, thermal=properties.thermal)
+    def __init__(self, input_data, properties, extrapolation_flag: bool = False, dz: float = None):
+        super().__init__(properties, thermal=properties.thermal, extrapolation_flag=extrapolation_flag, dz=dz)
         # Store your input parameters in self here, and initialize other parameters here in self
         self.input_data = input_data
         self.min_z = input_data.min_z
@@ -141,8 +141,8 @@ class my_own_comp_etor(my_own_acc_flux_etor):
     Operator required for initialization, to convert given volume fraction to molar one
     DIFFERENT state: (pressure, overall mineral volume fractions, fluid molar fractions)
     """
-    def __init__(self, input_data, properties):
-        super().__init__(input_data, properties)  # Initialize base-class
+    def __init__(self, input_data, properties, extrapolation_flag: bool = False, dz: float = None):
+        super().__init__(input_data, properties, extrapolation_flag=extrapolation_flag, dz=dz)  # Initialize base-class
         self.fluid_mole = self.property.flash_ev.total_moles / 1000 # mol to kmol
         self.counter = 0
         self.props_name = ['z_solid']
@@ -168,7 +168,7 @@ class my_own_comp_etor(my_own_acc_flux_etor):
         return 0
 
 class my_own_property_evaluator(operator_set_evaluator_iface):
-    def __init__(self, input_data, properties):
+    def __init__(self, input_data, properties, extrapolation_flag: bool = False, dz: float = None):
         # Initialize base-class
         super().__init__()
         self.input_data = input_data

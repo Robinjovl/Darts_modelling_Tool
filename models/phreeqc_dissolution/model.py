@@ -196,7 +196,7 @@ class Model(CICDModel):
             Mw = {'Solid_CaCO3': 100.0869, 'Ca': 40.078, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
             self.n_points = list(self.n_obl_mult * np.array([101, 201, 101, 101, 101], dtype=np.intp))
             self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.3]
-            self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.01, 0.02, 0.37]
+            self.axes_max = [self.pressure_init + 2] + [1, 0.01, 0.02, 0.37]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                                [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
@@ -222,10 +222,10 @@ class Model(CICDModel):
             self.n_points = list(self.n_obl_mult * np.array([101, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.2, 0.01, 0.001, 0.02, 0.37]
+                self.axes_max = [self.pressure_init + 2] + [1, 0.2, 0.01, 0.001, 0.02, 0.37]
             else:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.25]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.2, 0.01, 0.001, 0.07, 0.37]
+                self.axes_max = [self.pressure_init + 2] + [1, 0.2, 0.01, 0.001, 0.07, 0.37]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],    # Solid_CaCO3
                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],    # Solid_CaMg(CO3)2
@@ -254,7 +254,7 @@ class Model(CICDModel):
                     'Ca': 40.078, 'Mg': 24.305, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
             self.n_points = list(self.n_obl_mult * np.array([101, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
-            self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.2, 0.01, 0.01, 0.001, 0.02, 0.37]
+            self.axes_max = [self.pressure_init + 2] + [1, 0.2, 0.01, 0.01, 0.001, 0.02, 0.37]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],    # Solid_CaCO3
                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],    # Solid_CaMg(CO3)2
@@ -302,7 +302,7 @@ class Model(CICDModel):
 
         # Create instance of (own) physics class:
         self.physics = PhreeqcDissolution(timer=self.timer, elements=self.elements, n_points=self.n_points, 
-                                          axes_min=self.axes_min, axes_max=self.axes_max,
+                                          axes_min=self.axes_min, axes_max=self.axes_max, eps_z=self.obl_min,
                                           input_data_struct=input_data_struct, properties=property_container, cache=False)
 
         self.physics.add_property_region(property_container, 0)
@@ -558,11 +558,11 @@ class ModelProperties(PropertyContainer):
         # Define custom evaluators
         self.rock_density_ev = {}
         self.rock_compr_ev = {}
-        self.flash_ev = self.Flash(min_z=self.min_z, fc_mask=self.fc_mask, fc_idx=self.fc_idx,
+        self.flash_ev = self.Flash(min_z=self.eps_z, fc_mask=self.fc_mask, fc_idx=self.fc_idx,
                                    f_mask_state=self.f_mask_state, temperature=self.temperature,
                                    minerals=self.minerals, is_gas_spec=is_gas_spec)
 
-        self.kinetic_rate_ev = {m: self.CustomKineticRate(self.temperature, self.min_z, m.split('_', 1)[1], kinetic_mechanisms) for m in self.minerals}
+        self.kinetic_rate_ev = {m: self.CustomKineticRate(self.temperature, self.eps_z, m.split('_', 1)[1], kinetic_mechanisms) for m in self.minerals}
         self.rel_perm_ev = {ph: self.CustomRelPerm(2) for ph in phases_name[:2]}  # Relative perm for first two phases
         self.viscosity_ev = { phases_name[0]: self.GasViscosity(), phases_name[1]: self.LiquidViscosity() }
 
