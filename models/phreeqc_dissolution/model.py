@@ -49,14 +49,14 @@ class MyOwnDataStruct:
         self.n_prop_ops = n_prop_ops
 
 class MyOutput(Output):
-    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, well_head_conn_id, well_perf_conn_ids,
-                 output_folder: str, sol_filename: str, well_filename: str, save_initial: bool,
-                 all_phase_props: bool, precision: str, compression: str, verbose: bool):
+    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder: str, sol_filename: str,
+                 well_filename: str, save_initial: bool, all_phase_props: bool, precision: str, compression: str,
+                 verbose: bool):
 
         super().__init__(timer=timer, reservoir=reservoir, physics=physics, op_list=op_list, params=params,
-                         well_head_conn_id=well_head_conn_id, well_perf_conn_ids=well_perf_conn_ids, output_folder=output_folder,
-                         sol_filename=sol_filename, well_filename=well_filename, save_initial=False,
-                         all_phase_props=all_phase_props, precision=precision, compression=compression, verbose=verbose)
+                         output_folder=output_folder, sol_filename=sol_filename, well_filename=well_filename,
+                         save_initial=save_initial, all_phase_props=all_phase_props, precision=precision,
+                         compression=compression, verbose=verbose)
 
         # prepare arrays for evaluation of properties
         n_prop_ops = self.physics.input_data_struct.n_prop_ops
@@ -131,9 +131,9 @@ class MyOutput(Output):
 
 # Actual Model class creation here!
 class Model(CICDModel):
-    def __init__(self, domain: str = '1D', nx: int = 200, mesh_filename: str = None, 
-                 poro_filename: str = None, minerals: list = ['calcite'], 
-                 kinetic_mechanisms=['acidic', 'neutral', 'carbonate'], 
+    def __init__(self, domain: str = '1D', nx: int = 200, mesh_filename: str = None,
+                 poro_filename: str = None, minerals: list = ['calcite'],
+                 kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
                  n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
                  inj_rate: float = None, perm_poro: str = 'power_8'):
         # Call base class constructor
@@ -170,8 +170,8 @@ class Model(CICDModel):
         self.sol_filepath  = os.path.join(self.output_folder, self.sol_filename)
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
 
-        self.output = MyOutput(self.timer, self.reservoir, self.physics, self.op_list, self.params, self.well_head_conn_id, self.well_perf_conn_ids,
-                             self.output_folder, self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
+        self.output = MyOutput(self.timer, self.reservoir, self.physics, self.op_list, self.params, self.output_folder,
+                               self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
 
     def set_physics(self):
         # some properties
@@ -310,7 +310,7 @@ class Model(CICDModel):
                                             kin_fact=self.kin_fact, n_init_ops=n_init_ops, n_prop_ops=n_prop_ops)
 
         # Create instance of (own) physics class:
-        self.physics = PhreeqcDissolution(timer=self.timer, elements=self.elements, n_points=self.n_points, 
+        self.physics = PhreeqcDissolution(timer=self.timer, elements=self.elements, n_points=self.n_points,
                                           axes_min=self.axes_min, axes_max=self.axes_max,
                                           input_data_struct=input_data_struct, properties=property_container, cache=False)
 
@@ -330,7 +330,7 @@ class Model(CICDModel):
 
     def set_reservoir(self, domain, nx, mesh_filename, poro_filename):
         self.domain = domain
-        
+
         # permporo relationship
         self.params.enable_permporo = True
         true_initial_mean_poro = 0.3
@@ -643,7 +643,7 @@ class Model(CICDModel):
         return 0
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, nc_sol=0, np_sol=0, 
+    def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, nc_sol=0, np_sol=0,
                  min_z=1e-11, rate_ann_mat=None, temperature=None, fc_mask=None, is_gas_spec=False):
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, nc_sol=nc_sol, np_sol=np_sol,
                          min_z=min_z, rate_ann_mat=rate_ann_mat, temperature=temperature)
@@ -736,7 +736,7 @@ class ModelProperties(PropertyContainer):
 
     # default flash working with molar fractions
     class Flash:
-        def __init__(self, min_z, fc_mask, fc_idx, f_mask_state, minerals, temperature=None, 
+        def __init__(self, min_z, fc_mask, fc_idx, f_mask_state, minerals, temperature=None,
                     is_gas_spec=False):
             """
             :param min_z: minimal composition value
@@ -784,40 +784,40 @@ class ModelProperties(PropertyContainer):
                 species_headings = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
                 species_punch = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
                 self.phreeqc_template = f"""
-                    USER_PUNCH            
+                    USER_PUNCH
                     -headings   Ca(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR            ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
                     10 PUNCH    TOTMOLE("Ca") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
-        
+
                     SELECTED_OUTPUT
                     -selected_out    true
                     -user_punch      true
                     -reset           false
                     -high_precision  true
                     -gases           CO2(g) H2O(g)
-        
+
                     SOLUTION 1
                     temp      {{temperature:.2f}}
                     pressure  {{pressure:.4f}}
                     pH        7 charge
                     -water    {{water_mass:.10f}} # kg
-        
+
                     REACTION 1
                     Ca        {{calcium:.10f}}
                     C         {{carbon:.10f}}
                     O         {{oxygen:.10f}}
                     H         {{hydrogen:.10f}}
                     1
-        
+
                     KNOBS
                     -convergence_tolerance  1e-10
-        
+
                     GAS_PHASE 1
                     -fixed_pressure
-                    -pressure       {{pressure:.4f}}       
-                    -temperature    {{temperature:.2f}}  
+                    -pressure       {{pressure:.4f}}
+                    -temperature    {{temperature:.2f}}
                     CO2(g)    {{co2_pressure:.4f}}
                     H2O(g)    {{h2o_pressure:.4f}}
-        
+
                     END
                     """
             elif set(self.minerals) == {'Solid_CaCO3', 'Solid_CaMg(CO3)2'}: # calcite and dolomite
@@ -830,7 +830,7 @@ class ModelProperties(PropertyContainer):
                 species_punch = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
                 if is_gas_spec:
                     self.phreeqc_template = f"""
-                        USER_PUNCH            
+                        USER_PUNCH
                         -headings    Ca(mol)      Mg(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR_Calcite    SR_Dolomite    ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
                         10 PUNCH    TOTMOLE("Ca") TOTMOLE("Mg") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") SR("Dolomite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
 
@@ -859,8 +859,8 @@ class ModelProperties(PropertyContainer):
                         -convergence_tolerance  1e-10
 
                         GAS_PHASE 1
-                        pressure  {{pressure:.4f}}       
-                        temp      {{temperature:.2f}}  
+                        pressure  {{pressure:.4f}}
+                        temp      {{temperature:.2f}}
                         CO2(g)    {{co2_pressure:.4f}}
                         H2O(g)    {{h2o_pressure:.4f}}
 
@@ -868,7 +868,7 @@ class ModelProperties(PropertyContainer):
                         """
                 else:
                     self.phreeqc_template = f"""
-                        USER_PUNCH            
+                        USER_PUNCH
                         -headings    Ca(mol)      Mg(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR_Calcite    SR_Dolomite    ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
                         10 PUNCH    TOTMOLE("Ca") TOTMOLE("Mg") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") SR("Dolomite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
 
@@ -897,8 +897,8 @@ class ModelProperties(PropertyContainer):
                         -convergence_tolerance  1e-10
 
                         GAS_PHASE 1
-                        pressure  {{pressure:.4f}}       
-                        temp      {{temperature:.2f}}  
+                        pressure  {{pressure:.4f}}
+                        temp      {{temperature:.2f}}
                         CO2(g)    0#{{co2_pressure:.4f}}
                         #H2O(g)    {{h2o_pressure:.4f}}
 
@@ -913,7 +913,7 @@ class ModelProperties(PropertyContainer):
                 species_headings = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
                 species_punch = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
                 self.phreeqc_template = f"""
-                    USER_PUNCH            
+                    USER_PUNCH
                     -headings    Ca(mol)      Mg(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR_Calcite    SR_Dolomite    SR_Magnesite    ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
                     10 PUNCH    TOTMOLE("Ca") TOTMOLE("Mg") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") SR("Dolomite") SR("Magnesite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
 
@@ -942,8 +942,8 @@ class ModelProperties(PropertyContainer):
                     -convergence_tolerance  1e-10
 
                     GAS_PHASE 1
-                    pressure  {{pressure:.4f}}       
-                    temp      {{temperature:.2f}}  
+                    pressure  {{pressure:.4f}}
+                    temp      {{temperature:.2f}}
                     CO2(g)     0
 
                     END

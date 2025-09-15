@@ -9,6 +9,7 @@ from darts.tools.logging import redirect_all_output, abort_redirection
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
+from model_CO2 import ModelCCS
 
 
 def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=True):
@@ -31,6 +32,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         m = ModelGeothermal(iapws_physics=True)
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
+    elif physics_type == 'CCS':
+        m = ModelCCS(['CO2', 'H2O'])
     else:
         print('Error: wrong physics specified:', physics_type)
         exit(1)
@@ -53,24 +56,52 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.init(platform=platform)
     #m.reservoir.mesh.init_grav_coef(0)
-    m.set_output(output_folder=out_dir, all_phase_props=True)
+    m.set_output(output_folder=out_dir,
+                 all_phase_props = False if m.idata.supress_all_output else True, # find this flag in case_base.py
+                 verbose = True)
     # m.output.save_data_to_h5(kind='reservoir')
     m.set_well_controls_idata()
 
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
 
+    # ---- run simulation
     ret = m.run_simulation()
+
     if ret != 0:
         exit(1)
 
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
     m.print_timers()
 
+    # post-processing: read h5 file and write vtk with properties
     if export_vtk:
-        # read h5 file and write vtk
+        print('Post processing properties and vtk output...')
+
+        output_properties_main = m.physics.vars  # only main variables
+        output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
         m.reservoir.create_vtk_wells(output_directory=out_dir)
-        for ith_step in range(len(m.idata.sim.time_steps)+1):
-            m.output.output_to_vtk(ith_step=ith_step, output_properties=m.physics.vars + m.output.properties)
+        n_timesteps = len(m.idata.sim.time_steps)
+        for ith_step in range(n_timesteps + 1):
+            # compute additional properties only for the first and for the last timestep:
+            output_properties = output_properties_full if ith_step in [0, n_timesteps] else output_properties_main
+            #print('timestep', ith_step, 'output_properties:', output_properties)
+            timesteps, property_array = m.output.output_properties(output_properties=output_properties, timestep=ith_step, engine=False)
+            if ith_step == 0:
+                centers_x, centers_y, centers_z = m.reservoir.get_centers()
+                property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})
+
+            if 0:
+                # save properties in its own *.h5 file
+                os.makedirs(
+                    os.path.join(m.output_folder, 'property_arrays'),
+                    exist_ok = True
+                    )
+                m.output.save_property_array(timesteps, property_array, f'property_arrays/property_array_ts{ith_step}.h5')
+            else:
+                # append properties to reservoir.h5
+                m.output.save_property_array(timesteps, property_array)
+
+            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
 
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
 
@@ -82,34 +113,38 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
                 time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
                 time_data.drop(columns=k, inplace=True)
 
-    # COMPUTE TIME DATA
-    td = m.output.store_well_time_data()
-    time_data = pd.DataFrame.from_dict(td)
-    add_columns_time_data(time_data)
-    time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
+    if not(m.idata.supress_all_output):
+        # COMPUTE TIME DATA
+        td = m.output.store_well_time_data()
+        time_data = pd.DataFrame.from_dict(td)
+        # add_columns_time_data(time_data)
+        time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
+        writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data.xlsx'))
+        time_data.to_excel(writer, sheet_name='time_data')
+        writer.close()
 
-    # COMPUTE TIME DATA AT FIXED REPORTING STEPS
-    time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
-    add_columns_time_data(time_data_report)
-    time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
-    writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data.xlsx'))
-    time_data.to_excel(writer, sheet_name='time_data')
-    writer.close()
+        # COMPUTE TIME DATA AT FIXED REPORTING STEPS
+        time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
+        add_columns_time_data(time_data_report)
+        time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
 
-    # filter time_data_report and write to xlsx
-    # list the column names that should be removed
-    press_gridcells = time_data_report.filter(like='reservoir').columns.tolist()
-    chem_cols = time_data_report.filter(like='Kmol').columns.tolist()
-    # remove columns from data
-    time_data_report.drop(columns=press_gridcells + chem_cols, inplace=True)
-    # add time in years
-    time_data_report['Time (years)'] = time_data_report['time'] / 365.25
-    writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data_report.xlsx'))
-    time_data_report.to_excel(writer, sheet_name='time_data_report')
-    writer.close()
+        # filter time_data_report and write to xlsx
+        # list the column names that should be removed
+        press_gridcells = time_data_report.filter(like='reservoir').columns.tolist()
+        chem_cols = time_data_report.filter(like='Kmol').columns.tolist()
+        # remove columns from data
+        time_data_report.drop(columns=press_gridcells + chem_cols, inplace=True)
+        # add time in years
+        time_data_report['Time (years)'] = time_data_report['time'] / 365.25
+        writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data_report.xlsx'))
+        time_data_report.to_excel(writer, sheet_name='time_data_report')
+        writer.close()
 
-    m.output.store_well_time_data(save_output_files=True)
-    m.output.plot_well_time_data()
+        m.output.store_well_time_data(save_output_files=True)
+        m.output.plot_well_time_data()
+
+    m.print_timers()
+
 
     if compare_with_ref:
         failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
@@ -251,7 +286,9 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
-    physics_list += ['deadoil']
+
+    # physics_list += ['CCS']
+    #physics_list += ['deadoil']
 
     cases_list = []
     cases_list += ['generate_5x3x4']
@@ -261,8 +298,8 @@ if __name__ == '__main__':
     #cases_list += ['case_40x40x10']
 
     well_controls = []
-    well_controls += ['wrate']
-    well_controls += ['wbhp']
+    #well_controls += ['wrate']
+    #well_controls += ['wbhp']
     well_controls += ['wperiodic']
 
     for physics_type in physics_list:
@@ -275,7 +312,9 @@ if __name__ == '__main__':
                 failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
                                                                                         case=case, out_dir=out_dir,
                                                                                         redirect_log=False,
-                                                                                        platform=platform)
+                                                                                        platform=platform,
+                                                                                        export_vtk = True,
+                                                                                        )
 
                 # one can read well results from pkl file to add/change well plots without re-running the model
                 pkl1_dir = '.'

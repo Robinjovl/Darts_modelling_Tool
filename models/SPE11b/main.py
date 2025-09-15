@@ -26,8 +26,11 @@ def output(m, ts):
     m.output.save_data_to_h5('reservoir')
 
     # evaluate base properties
-    time_vector, property_array = m.output.output_properties(output_properties=m.physics.vars + m.output.properties,
-                                                             timestep=-1)
+    time_vector, property_array = m.output.output_properties(
+        output_properties=m.physics.vars + m.output.properties,
+        timestep=-1
+    )
+    m.output.output_to_vtk(ith_step = ts, output_data = [time_vector, property_array])
 
     # compute mass per component
     mass_per_component, mass_vapor, mass_aqueous = m.get_mass_components(property_array)
@@ -52,8 +55,8 @@ def output(m, ts):
             property_array[f'vel_{ph}'] = np.sqrt(np.square(property_array[f'vel_{ph}_x']) \
                                                     + np.square(property_array[f'vel_{ph}_y']) \
                                                         + np.square(property_array[f'vel_{ph}_z']))
-        
-        if m.specs['platform']=='cpu': # flux output is only enabled for CPU platform 
+
+        if m.specs['platform'] == 'cpu': # flux output is only enabled for CPU platform
             # store and plot fluxes
             diff = np.asarray(m.physics.engine.diffusion_fluxes) # array containing diffusive fluxes per component and phase
             disp = np.asarray(m.physics.engine.dispersion_fluxes) # array containing dispersion fluxes per component and phase
@@ -74,8 +77,12 @@ def output(m, ts):
     if m.specs['platform']=='cpu':
         m.plot_fluxes(property_array, time_vector, ts)  # plot fluxes
     m.plot_properties(property_array, time_vector, ts)  # plot properties
-    # m.my_output_to_vtk(property_array=property_array, timesteps=time_vector, ith_step=ts)  # output to vtk
+
+    # export properties
+    m.output.save_property_array(time_vector, property_array)
     m.output.save_property_array(time_vector, property_array, f'property_array_ts{ts}.h5')
+
+
 
 def post_process(m, specs):
 
@@ -183,7 +190,7 @@ nz = 120
 zero = 1e-10
 
 
-# cpu/gpu based on platform 
+# cpu/gpu based on platform
 platform = 'cpu'
 if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
     platform = 'gpu'
@@ -221,7 +228,7 @@ if __name__ == '__main__':
 
             if specs['dispersion']:
                 m.init_dispersion()
-            
+
             if specs['platform'] == 'cpu':
                 m.physics.engine.enable_flux_output()
                 m.map_mesh_faces()
@@ -237,6 +244,9 @@ if __name__ == '__main__':
             m.output.verbose = False
 
             avg_rates = run(m, specs)
+
+            # time_vector, property_array = m.output.load_property_array('reservoir_solution.h5')
+            # time_vector1, property_array1 = m.output.load_property_array('property_array_ts3.h5')
 
             if specs['RHS'] is False:
                 time_data = m.output.store_well_time_data(["components_mass_rates"])
@@ -272,7 +282,7 @@ if __name__ == '__main__':
 
             if specs['dispersion']:
                 m.init_dispersion()
-                
+
             if specs['platform'] == 'cpu':
                 m.physics.engine.enable_flux_output()
                 m.map_mesh_faces()
@@ -281,6 +291,3 @@ if __name__ == '__main__':
 
         m.print_timers()
         m.print_stat()
-
-
-
