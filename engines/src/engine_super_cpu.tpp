@@ -29,7 +29,7 @@
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS    
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
@@ -150,7 +150,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     value_t phase_presence_mult;
     index_t cell_conn_idx, cell_conn_num;
     std::array<value_t, NP> phase_fluxes;
-    
+
     // fluxes for output
     value_t *cur_darcy_fluxes = 0, *cur_diffusion_fluxes = 0, *cur_dispersion_fluxes = 0;
     value_t *cur_heat_darcy_advection_fluxes = 0, *cur_heat_diffusion_advection_fluxes = 0,
@@ -309,7 +309,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         else
                           if (enabled_flux_output) cur_heat_darcy_advection_fluxes[p] = -phase_volumetric_rate * c_flux_coef / dt;
 
-                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators 
+                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[diag_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
@@ -676,7 +676,7 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
 
   index_t j, diag_idx, jac_idx;
   value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, mult_i, mult_j;
-  value_t phase_presence_mult;
+  value_t phase_presence_mult = 0.0;
 
   memset(Jac_n, 0, (n_conns + n_blocks) * N_VARS_SQ * sizeof(value_t));
   memset(value_dg_dT, 0, n_conns * N_VARS * sizeof(value_t));
@@ -859,7 +859,13 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
             // mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
             // RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
 
-            value_g_u = grad_con * dt * phase_presence_mult * 
+            // Determine phase presence multiplier as in the forward assembly
+            if (op_vals_arr[i * N_OPS + UPSAT_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p] > params->phase_existence_tolerance)
+              phase_presence_mult = 1.0;
+            else
+              phase_presence_mult = 0.0;
+
+            value_g_u = grad_con * dt * phase_presence_mult *
               (mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] + mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
             idx = count + c * N_element + temp_num[k_count];
             value_dg_dT[idx] -= value_g_u;
@@ -919,12 +925,12 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
 
 
   } // end of loop over grid blocks
-  
+
 
 
 //  value_t CFL_max_local = 0;
 //#ifdef _OPENMP
-//#pragma omp critical 
+//#pragma omp critical
 //  {
 //    if (CFL_max < CFL_max_local)
 //      CFL_max = CFL_max_local;
