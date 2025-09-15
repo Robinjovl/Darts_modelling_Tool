@@ -190,22 +190,24 @@ class Output:
                 self.physics.property_operators[region] = PropertyOperators(
                     pc, self.physics.thermal, temp_dict
                 )
-                self.physics.property_itor[region] = self.physics.create_interpolator(
-                    self.physics.property_operators[region],
-                    n_ops=self.physics.n_ops,
-                    axes_min=self.physics.axes_min,
-                    axes_max=self.physics.axes_max,
-                    platform='cpu',
-                    algorithm='multilinear',
-                    mode='adaptive',
-                    precision='d',
-                    timer_name=f'property {region:d} interpolation',
-                    region=str(region),
+                self.physics.property_itor[region], n_ops = (
+                    self.physics.create_interpolator(
+                        self.physics.property_operators[region],
+                        n_ops=self.physics.n_ops,
+                        axes_min=self.physics.axes_min,
+                        axes_max=self.physics.axes_max,
+                        platform='cpu',
+                        algorithm='multilinear',
+                        mode='adaptive',
+                        precision='d',
+                        timer_name=f'property {region:d} interpolation',
+                        region=str(region),
+                    )
                 )
 
                 # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
-                self.n_ops = self.physics.n_ops
+                self.n_ops = n_ops
 
         elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
             phase_props_labels = [
@@ -298,18 +300,21 @@ class Output:
                 self.physics.thermal,
                 output_dictionary,
             )
-            self.physics.property_itor[region] = self.physics.create_interpolator(
-                self.physics.property_operators[region],
-                n_ops=self.physics.n_ops,
-                axes_min=self.physics.axes_min,
-                axes_max=self.physics.axes_max,
-                platform='cpu',
-                algorithm='multilinear',
-                mode='adaptive',
-                precision='d',
-                timer_name=f'property {region:d} interpolation',
-                region=str(region),
+            self.physics.property_itor[region], n_ops = (
+                self.physics.create_interpolator(
+                    self.physics.property_operators[region],
+                    n_ops=self.physics.n_ops,
+                    axes_min=self.physics.axes_min,
+                    axes_max=self.physics.axes_max,
+                    platform='cpu',
+                    algorithm='multilinear',
+                    mode='adaptive',
+                    precision='d',
+                    timer_name=f'property {region:d} interpolation',
+                    region=str(region),
+                )
             )
+            self.n_ops = n_ops
             self.properties = list(output_dictionary.keys())
 
         return
