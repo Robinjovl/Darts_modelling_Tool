@@ -23,7 +23,7 @@ m.inj_stream += [350.] if m.physics.thermal else []
 m.p_inj = 100.
 m.p_prod = 50.
 
-m.set_sim_params(first_ts=1e-3, mult_ts=1.5, max_ts=5, tol_newton=1e-3, tol_linear=1e-5, it_newton=10, it_linear=50)
+m.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3, tol_linear=1e-5, it_newton=10, it_linear=50)
 
 # init the model
 m.init()
@@ -69,5 +69,5 @@ for t in range(2):
 
     plt.savefig('step' + str(t+1) + '.png', format='png')
 
-    # compute and save well time data in m.output_folder 
+    # compute and save well time data in m.output_folder
     time_data_dict = m.output.store_well_time_data()
