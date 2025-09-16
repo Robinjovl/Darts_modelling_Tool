@@ -60,13 +60,11 @@ gitingest-digest:
         - |
           if command -v gitingest >/dev/null 2>&1; then
             echo "Running gitingest CLI..."
-            gitingest --root "${GITINGEST_OUT_DIR}/src" --output "${GITINGEST_OUTPUT}" > "${GITINGEST_OUT_DIR}/gitingest-output.txt" 2>"${GITINGEST_OUT_DIR}/gitingest-stderr.txt" || true
+            # Capture stderr to a log and pipe stdout to both a log and the digest file
+            gitingest "${GITINGEST_OUT_DIR}/src" 2> "${GITINGEST_OUT_DIR}/gitingest-stderr.txt" | tee "${GITINGEST_OUT_DIR}/gitingest-output.txt" > "${GITINGEST_OUTPUT}" || true
           else
             echo "gitingest CLI not found; skipping digest generation." >&2
           fi
-        - |
-          # Always package the selected sources as a tarball for convenience
-          tar -C "${GITINGEST_OUT_DIR}/src" -czf "${GITINGEST_OUT_DIR}/src.tar.gz" .
         - echo "Digest preparation completed."
     rules:
         - if: $RUN_GITINGEST == "1"
@@ -76,6 +74,5 @@ gitingest-digest:
             - "${GITINGEST_OUTPUT}"
             - "${GITINGEST_OUT_DIR}/gitingest-output.txt"
             - "${GITINGEST_OUT_DIR}/gitingest-stderr.txt"
-            - "${GITINGEST_OUT_DIR}/src.tar.gz"
         when: always
         expire_in: 1 week
