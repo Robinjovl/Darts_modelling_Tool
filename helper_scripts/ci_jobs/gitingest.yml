@@ -25,18 +25,8 @@ gitingest-digest:
     script:
         - set -euo pipefail
         - mkdir -p "${GITINGEST_OUT_DIR}" "${GITINGEST_OUT_DIR}/src"
-          # Read paths directly from manifest (no temp include list)
-        - |
-          if [ ! -f "${GITINGEST_MANIFEST}" ]; then
-            echo "Manifest not found: ${GITINGEST_MANIFEST}" >&2
-            exit 1
-          fi
-          if ! grep -vE '^(#|[[:space:]]*$)' "${GITINGEST_MANIFEST}" | grep -q .; then
-            echo "No files specified in ${GITINGEST_MANIFEST}." >&2
-            exit 1
-          fi
-          echo "Resolved include list:"
-          grep -vE '^(#|[[:space:]]*$)' "${GITINGEST_MANIFEST}" | sort -u
+        - echo "Resolved include list:"
+        - grep -vE '^(#|[[:space:]]*$)' "${GITINGEST_MANIFEST}" | sort -u
           # Validate and copy files preserving directory structure
         - MISSING=0
         - |
@@ -60,8 +50,22 @@ gitingest-digest:
         - |
           if command -v gitingest >/dev/null 2>&1; then
             echo "Running gitingest CLI..."
-            # Capture stderr to a log and pipe stdout to both a log and the digest file
-            gitingest "${GITINGEST_OUT_DIR}/src" 2> "${GITINGEST_OUT_DIR}/gitingest-stderr.txt" | tee "${GITINGEST_OUT_DIR}/gitingest-output.txt" > "${GITINGEST_OUTPUT}" || true
+            gitingest "${GITINGEST_OUT_DIR}/src" > "${GITINGEST_OUT_DIR}/gitingest-output.txt" 2> "${GITINGEST_OUT_DIR}/gitingest-stderr.txt" || true
+            OUT_FILE=""
+            if [ -f "digest.txt" ]; then
+              OUT_FILE="digest.txt"
+            else
+              OUT_FILE="$(sed -n 's/^.*Output written to:[[:space:]]*//p' \"${GITINGEST_OUT_DIR}/gitingest-output.txt\" | head -n1 | tr -d '\r')"
+            fi
+            if [ -n "${OUT_FILE}" ] && [ -f "${OUT_FILE}" ]; then
+              mkdir -p "$(dirname \"${GITINGEST_OUTPUT}\")"
+              cp -f "${OUT_FILE}" "${GITINGEST_OUTPUT}"
+              # Also preserve the original file name for consumers that expect the default naming
+              mkdir -p "${GITINGEST_OUT_DIR}/original"
+              cp -f "${OUT_FILE}" "${GITINGEST_OUT_DIR}/original/$(basename \"${OUT_FILE}\")"
+            else
+              echo "WARN: Could not locate gitingest output file; leaving ${GITINGEST_OUTPUT} absent." >&2
+            fi
           else
             echo "gitingest CLI not found; skipping digest generation." >&2
           fi
@@ -74,5 +78,6 @@ gitingest-digest:
             - "${GITINGEST_OUTPUT}"
             - "${GITINGEST_OUT_DIR}/gitingest-output.txt"
             - "${GITINGEST_OUT_DIR}/gitingest-stderr.txt"
+            - "${GITINGEST_OUT_DIR}/original"
         when: always
         expire_in: 1 week
