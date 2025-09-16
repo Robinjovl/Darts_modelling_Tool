@@ -8,9 +8,9 @@ gitingest-digest:
         PY_VER: "3.10"
         # Optional manifest file (one path per line; lines starting with # are comments)
         GITINGEST_MANIFEST: "helper_scripts/gitingest-include.txt"
-        # Output directory and file for the digest
+        # Output directory and filename prefix for the digest
         GITINGEST_OUT_DIR: "digest"
-        GITINGEST_OUTPUT: "digest/gitingest-digest.json"
+        GITINGEST_OUTPUT_PREFIX: "open-darts-digest"
     before_script:
         - set -euo pipefail
         # Prepare Python env on Tahiti runner (same pattern as GPU tests)
@@ -25,6 +25,10 @@ gitingest-digest:
     script:
         - set -euo pipefail
         - mkdir -p "${GITINGEST_OUT_DIR}" "${GITINGEST_OUT_DIR}/src"
+        - |
+          COMMIT_HASH="${CI_COMMIT_SHORT_SHA:-${CI_COMMIT_SHA:-local}}"
+          GITINGEST_OUTPUT="${GITINGEST_OUT_DIR}/${GITINGEST_OUTPUT_PREFIX}-${COMMIT_HASH}.json"
+          export GITINGEST_OUTPUT
         - echo "Resolved include list:"
         - grep -vE '^(#|[[:space:]]*$)' "${GITINGEST_MANIFEST}" | sort -u
           # Validate and copy files preserving directory structure
@@ -60,9 +64,6 @@ gitingest-digest:
             if [ -n "${OUT_FILE}" ] && [ -f "${OUT_FILE}" ]; then
               mkdir -p "$(dirname \"${GITINGEST_OUTPUT}\")"
               cp -f "${OUT_FILE}" "${GITINGEST_OUTPUT}"
-              # Also preserve the original file name for consumers that expect the default naming
-              mkdir -p "${GITINGEST_OUT_DIR}/original"
-              cp -f "${OUT_FILE}" "${GITINGEST_OUT_DIR}/original/$(basename \"${OUT_FILE}\")"
             else
               echo "WARN: Could not locate gitingest output file; leaving ${GITINGEST_OUTPUT} absent." >&2
             fi
@@ -75,9 +76,8 @@ gitingest-digest:
         - when: manual
     artifacts:
         paths:
-            - "${GITINGEST_OUTPUT}"
+            - "digest/open-darts-digest-*.json"
             - "${GITINGEST_OUT_DIR}/gitingest-output.txt"
             - "${GITINGEST_OUT_DIR}/gitingest-stderr.txt"
-            - "${GITINGEST_OUT_DIR}/original"
         when: always
         expire_in: 1 week
