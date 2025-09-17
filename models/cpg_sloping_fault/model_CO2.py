@@ -66,7 +66,7 @@ class ModelCCS(Model_CPG):
                              p_entry=2, pcmax=300, c2=1.5)
         self.salinity = 0
 
-        self.ini = value_vector([1 - self.zero * 100])
+        self.ini = value_vector([1 - self.zero])
 
         # Fluid components, ions and solid
         comp_data = CompData(self.components, setprops=True)
@@ -81,10 +81,7 @@ class ModelCCS(Model_CPG):
         pr = flash_params.eos_params["PR"].eos
         aq = flash_params.eos_params["AQ"].eos
         flash_params.eos_order = ["PR", "AQ"]
-        phases = ["V", "Aq"]
-
-        # Flash-related parameters
-        # flash_params.split_switch_tol = 1e-3
+        phases = ["gas", "wat"]
 
         state_spec = Compositional.StateSpecification.P
 
@@ -103,18 +100,18 @@ class ModelCCS(Model_CPG):
 
         # property_container.flash_ev = ConstantK(nc=2, ki=[0.001, 100])
         property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
-        property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw)),
-                                              ('Aq', Garcia2001(self.components)), ])
-        property_container.viscosity_ev = dict([('V', Fenghour1998()),
-                                                ('Aq', Islam2012(self.components)), ])
-        property_container.diffusion_ev = dict([('V', ConstFunc(np.ones(nc) * diff_g)),
-                                                ('Aq', ConstFunc(np.ones(nc) * diff_w))])
-        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=pr)),
-                                               ('Aq', EoSEnthalpy(eos=aq)), ])
-        property_container.conductivity_ev = dict([('V', ConstFunc(8.4)),
-                                                   ('Aq', ConstFunc(170.)), ])
-        property_container.rel_perm_ev = dict([('V', ModBrooksCorey(corey_params, 'V')),
-                                               ('Aq', ModBrooksCorey(corey_params, 'Aq'))])
+        property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw)),
+                                              ('wat', Garcia2001(self.components)), ])
+        property_container.viscosity_ev = dict([('gas', Fenghour1998()),
+                                                ('wat', Islam2012(self.components)), ])
+        property_container.diffusion_ev = dict([('gas', ConstFunc(np.ones(nc) * diff_g)),
+                                                ('wat', ConstFunc(np.ones(nc) * diff_w))])
+        property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(eos=pr)),
+                                               ('wat', EoSEnthalpy(eos=aq)), ])
+        property_container.conductivity_ev = dict([('gas', ConstFunc(8.4)),
+                                                   ('wat', ConstFunc(170.)), ])
+        property_container.rel_perm_ev = dict([('gas', ModBrooksCorey(corey_params, 'gas')),
+                                               ('wat', ModBrooksCorey(corey_params, 'wat'))])
         property_container.capillary_pressure_ev = ModCapillaryPressure(corey_params)
 
         i = 0
@@ -127,7 +124,7 @@ class ModelCCS(Model_CPG):
 
         for j, phase_name in enumerate(phases):
             for c, component_name in enumerate(self.components):
-                key = f"x{component_name}" if phase_name == 'Aq' else f"y{component_name}"
+                key = f"x{component_name}" if phase_name == 'wat' else f"y{component_name}"
                 property_container.output_props[key] = lambda ii=i, jj=j, cc=c: \
                 self.physics.property_containers[ii].x[jj, cc]
 
@@ -206,31 +203,12 @@ class ModelCCS(Model_CPG):
         return a
 
     def print_well_rate(self):
-        inj_well = None
-        for i, w in enumerate(self.reservoir.wells):
-            if self.well_is_inj(w.name):
-                inj_well = w
-            else:
-                prod_well = w
-        time_data = pd.DataFrame.from_dict(self.physics.engine.time_data)
-        years = np.array(time_data['time'])[-1] / 365.
-        pr_col_name = time_data.filter(like=prod_well.name + ' : oil rate').columns.to_list()
-        pp_col_name = time_data.filter(like=prod_well.name + ' : BHP').columns.to_list()
-        rate_prod = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
-        bhp_prod = np.array(time_data[pp_col_name])[-1][0]  # pick the last timestep value
-        if inj_well is not None:
-            ir_col_name = time_data.filter(like=inj_well.name + ' : water rate').columns.to_list()
-            ip_col_name = time_data.filter(like=inj_well.name + ' : BHP').columns.to_list()
-            bhp_inj = np.array(time_data[ip_col_name])[-1][0]  # pick the last timestep value
-            rate_inj = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
-        else:
-            bhp_inj = rate_inj = 0.
-        print(fmt(years), 'years:', 'OIL RATE_prod =', fmt(rate_prod), ' WATER RATE_inj =', fmt(rate_inj), 'BHP_prod =',
-              fmt(bhp_prod), 'BHP_inj =', fmt(bhp_inj))
+        return
 
     def set_input_data(self, case=''):
         self.idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
         set_input_data(self.idata, case)
+        self.idata.sim.DataTS.dt_first = 1e-5
 
         self.idata.geom.burden_layers = 0
 
@@ -243,12 +221,12 @@ class ModelCCS(Model_CPG):
         wdata = self.idata.well_data
         wells = wdata.wells  # short name
         # set default injection composition
-        inj_comp = value_vector([self.zero * 100])  # injection composition - water
+        inj_comp = value_vector([self.zero])  # injection composition - water
 
         if 'wbhp' in case:
             for w in wells:
                 if self.well_is_inj(w):
-                    wdata.add_inj_bhp_control(name=w, bhp=250, phase_name='Aq',
+                    wdata.add_inj_bhp_control(name=w, bhp=250, phase_name='gas',
                                               inj_composition=inj_comp, temperature=350)  # kmol/day | bars | K
                 else:  # prod
                     wdata.add_prd_bhp_control(name=w, bhp=100)  # kmol/day | bars
@@ -256,23 +234,26 @@ class ModelCCS(Model_CPG):
             for w in wells:
                 if self.well_is_inj(w): # inject water
                     wdata.add_inj_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
-                                               phase_name='Aq', inj_composition=inj_comp, bhp_constraint=250)  # kmol/day | bars | K
+                                               phase_name='wat', inj_composition=inj_comp, bhp_constraint=250)  # kmol/day | bars | K
                 else:  # prod
                     wdata.add_prd_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
-                                               phase_name='V', bhp_constraint=100)  # kmol/day | bars
+                                               phase_name='gas', bhp_constraint=100)  # kmol/day | bars
         elif 'wperiodic' in case:
-            y2d = 365.25
+            y2d = 2*365.25
+            nper = 4
             for w in wells:
-                if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE,
-                                               phase_name='Aq', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
-                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
-                                               phase_name='Aq', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
+                if self.well_is_inj(w):  # inject water
+                    for y in range(nper):
+                        wdata.add_inj_rate_control(time=2*y*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE,
+                                                   phase_name='wat', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
+                        wdata.add_inj_rate_control(time=(2*y+1)*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
+                                                   phase_name='wat', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE,
-                                               phase_name='V', bhp_constraint=70)  # kmol/day | bars
-                    wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
-                                               phase_name='V', bhp_constraint=70)  # kmol/day | bars
+                    for y in range(nper):
+                        wdata.add_prd_rate_control(time=2*y*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE,
+                                                   phase_name='gas', bhp_constraint=70)  # kmol/day | bars
+                        wdata.add_prd_rate_control(time=(2*y+1)*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
+                                                   phase_name='gas', bhp_constraint=70)  # kmol/day | bars
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13
@@ -289,7 +270,7 @@ class ModBrooksCorey:
 
         self.phase = phase
 
-        if self.phase == "Aq":
+        if self.phase == "wat":
             self.k_rw_e = corey.krwe
             self.swc = corey.swc
             self.sgc = 0
@@ -301,7 +282,7 @@ class ModBrooksCorey:
             self.ng = corey.ng
 
     def evaluate(self, sat):
-        if self.phase == "Aq":
+        if self.phase == "wat":
             Se = (sat - self.swc)/(1 - self.swc - self.sgc)
             if Se > 1:
                 Se = 1
@@ -330,16 +311,12 @@ class ModCapillaryPressure:
 
     def evaluate(self, sat):
         sat_w = sat[1]
-        # sat_w = sat
         Se = (sat_w - self.swc)/(1 - self.swc)
         if Se < self.eps:
             Se = self.eps
-        # pc = self.p_entry * self.eps ** (1/self.labda) * Se ** (-1/self.labda)  # for p_entry to non-wetting phase
+
         pc_b = self.p_entry * Se ** (-1/self.c2) # basic capillary pressure
         pc = self.pcmax * erf((pc_b * np.sqrt(np.pi)) / (self.pcmax * 2)) # smoothened capillary pressure
-        # if Se > 1 - self.eps:
-        #     pc = 0
 
-        # pc = self.p_entry
         Pc = np.array([0, pc], dtype=object)  # V, Aq
         return Pc
