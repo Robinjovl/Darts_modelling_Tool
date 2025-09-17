@@ -71,6 +71,3 @@ for t in range(2):
 
     # compute and save well time data in m.output_folder
     time_data_dict = m.output.store_well_time_data()
-
-m.print_timers()
-m.print_stat()
