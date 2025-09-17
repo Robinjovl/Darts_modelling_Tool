@@ -10,6 +10,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
         pipe_geometry: PipeGeometry,
         earth_thermal_props: dict,
         outermost_layer_OD: float,
+        perforated_segments: list = None,
         Ui: float = None,
         well_layers_props: dict = None,
         time_function_name: str = "Chiu&Thakur",
@@ -31,6 +32,12 @@ class SemiAnalyticalWellLateralHeatTransfer:
         "K": Earth thermal conductivity (float or list)
         "rho": Earth density (float or list)
         :type earth_thermal_props: dict
+        :param outermost_layer_OD: The outside diameter of the outermost layer of the wellbore before the formation, so
+        it could be a casing, a cement sheath, etc.
+        :type outermost_layer_OD: float
+        :param perforated_segments: The list of the indices of the segments which are perforated. If not specified,
+        it is assumed that the pipe has no perforated segments.
+        :type perforated_segments: list
         :param Ui: Overall heat transfer coefficient based on the inner pipe diameter. If Ui is not specified,
         well_layers_props must be specified.
         :type Ui: float
@@ -43,9 +50,9 @@ class SemiAnalyticalWellLateralHeatTransfer:
         :param verbose: Whether to display extra info about SemiAnalyticalWellLateralHeatTransfer
         :type verbose: boolean
         """
-        assert (
-            pipe_geometry.pipe_name == pipe_name
-        ), "The names of the pipes in PipeGeometry and SemiAnalyticalWellLateralHeatTransfer are not identical!"
+        assert pipe_geometry.pipe_name == pipe_name, (
+            "The names of the pipes in PipeGeometry and SemiAnalyticalWellLateralHeatTransfer are not identical!"
+        )
         self.well_name = pipe_name
 
         T_earth = earth_thermal_props["T"]
@@ -83,6 +90,13 @@ class SemiAnalyticalWellLateralHeatTransfer:
         self.time_function_name = time_function_name
         self.outermost_layer_OD = outermost_layer_OD
 
+        assert isinstance(perforated_segments, list), (
+            "perforated_segments must be a list!"
+        )
+        self.perforated_segments = (
+            [] if perforated_segments is None else perforated_segments
+        )
+
         self.segments_lengths = pipe_geometry.segments_lengths
 
         self.q_lateral_heat = []
@@ -100,8 +114,6 @@ class SemiAnalyticalWellLateralHeatTransfer:
         """
         simulation_timer = simulation_timer * 24 * 60 * 60
         # Time function evaluation
-        # outermost_layer_OD is the outside diameter of the outermost layer of the wellbore before the formation, so
-        # it could be a casing, a cement sheath, etc.
         if self.time_function_name == "Ramey":
             # Ramey's time function: Gives reasonably good results for long times but fails for times less than seven days.
             f_t = 1 / (
@@ -148,6 +160,9 @@ class SemiAnalyticalWellLateralHeatTransfer:
                 / (f_t + self.K_earth / (r_to * U_to))
             )
 
+        # Set the lateral heat rate of the perforated well segments to zero
+        self.q_lateral_heat[self.perforated_segments] = 0
+
         return (
             self.q_lateral_heat * 24 * 60 * 60 / 1000
         )  # Multiplying the heat rate by 24 * 60 * 60 / 1000 converts the unit from Joule/second to kJ/day
@@ -161,6 +176,7 @@ class NumericalWellLateralHeatTransfer:
         pipe_wall_cells_idx: np.ndarray,
         pipe_wall_thickness: float,
         pipe_wall_cond: float,
+        perforated_segments: list = None,
         verbose: bool = False,
     ):
         """
@@ -172,45 +188,56 @@ class NumericalWellLateralHeatTransfer:
         :type pipe_name: str
         :param pipe_geometry: The geometry of the pipe (well) for which lateral heat transfer is intended to be defined
         :type pipe_geometry: PipeGeometry
-        :param pipe_wall_cells_idx: Indices of the cells of the pipe wall that are to be considered for lateral heat
-                                    transfer. The number of these indices must be equal to the number of pipe wall
-                                    cells, except the perforation. These indices need to be retrieved from reservoir
-                                    cell indices.
+        :param pipe_wall_cells_idx: Indices of all the cells of the pipe wall. The number of these indices must be equal
+        to the number of the pipe segments. These indices need to be retrieved from reservoir cell indices.
         :type pipe_wall_cells_idx: np.ndarray of integers
         :param pipe_wall_thickness: Thickness of the pipe wall [meters]
         :type pipe_wall_thickness: float
         :param pipe_wall_cond: Thermal conductivity of the pipe wall [kJ/m.K.day]
         :type pipe_wall_cond: float
+        :param perforated_segments: The list of the indices of the segments which are perforated. If not specified,
+        it is assumed that the pipe has no perforated segments.
+        :type perforated_segments: list
         :param verbose: Whether to display extra info about NumericalWellLateralHeatTransfer
         :type verbose: boolean
         """
-        assert (
-            pipe_geometry.pipe_name == pipe_name
-        ), "The names of the pipes in PipeGeometry and NumericalWellLateralHeatTransfer are not identical!"
+        assert pipe_geometry.pipe_name == pipe_name, (
+            "The names of the pipes in PipeGeometry and NumericalWellLateralHeatTransfer are not identical!"
+        )
         self.well_name = pipe_name
 
-        assert isinstance(
-            pipe_wall_cells_idx, np.ndarray
-        ), "pipe_wall_cells_idx must be a numpy array!"
+        assert isinstance(pipe_wall_cells_idx, np.ndarray), (
+            "pipe_wall_cells_idx must be a numpy array!"
+        )
+        assert len(pipe_wall_cells_idx) == pipe_geometry.num_segments, (
+            "The number of pipe_wall_cells_idx must be equal to the number of the pipe segments!"
+        )
         self.pipe_wall_cells_idx = pipe_wall_cells_idx
 
         # Thermal transmissibility simply equals geom_coef = A / L
-        assert isinstance(
-            pipe_geometry.pipe_IR, float
-        ), "Pipe radius must be a float; otherwise, it's not supported!"
+        assert isinstance(pipe_geometry.pipe_IR, float), (
+            "Pipe radius must be a float; otherwise, it's not supported!"
+        )
         pipe_perimeter = 2 * np.pi * pipe_geometry.pipe_IR
-        A = pipe_perimeter * pipe_geometry.segments_lengths[:-1]
-        assert isinstance(
-            pipe_wall_thickness, float
-        ), "Pipe wall thickness must be a float; otherwise, it's not supported!"
+        A = pipe_perimeter * pipe_geometry.segments_lengths
+        assert isinstance(pipe_wall_thickness, float), (
+            "Pipe wall thickness must be a float; otherwise, it's not supported!"
+        )
         L = (pipe_geometry.pipe_ID + pipe_wall_thickness) / 2
         geom_coef = A / L
         self.tran_thermal = geom_coef
 
-        assert isinstance(
-            pipe_wall_cond, float
-        ), "Pipe wall conductivity must be a float; otherwise, it's not supported!"
+        assert isinstance(pipe_wall_cond, float), (
+            "Pipe wall conductivity must be a float; otherwise, it's not supported!"
+        )
         self.pipe_wall_cond = pipe_wall_cond
+
+        assert isinstance(perforated_segments, list), (
+            "perforated_segments must be a list!"
+        )
+        self.perforated_segments = (
+            [] if perforated_segments is None else perforated_segments
+        )
 
         self.q_lateral_heat = []
 
@@ -230,5 +257,8 @@ class NumericalWellLateralHeatTransfer:
         gamma_t_i = self.tran_thermal * well_fluid_conductivity
         gamma_t_j = self.tran_thermal * self.pipe_wall_cond
         self.q_lateral_heat = t_diff * (gamma_t_i + gamma_t_j) / 2
+
+        # Set the lateral heat rate of the perforated well segments to zero
+        self.q_lateral_heat[self.perforated_segments] = 0
 
         return self.q_lateral_heat

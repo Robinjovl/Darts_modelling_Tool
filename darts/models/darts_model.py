@@ -15,7 +15,6 @@ except ImportError:
 
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
-    index_vector,
     ms_well,
     ms_well_vector,
     op_vector,
@@ -23,11 +22,11 @@ from darts.engines import (
     timer_node,
     value_vector,
 )
+from darts.engines import print_build_info as engines_pbi
 from darts.pipes.add_lateral_heat_exchange import (
     NumericalWellLateralHeatTransfer,
     SemiAnalyticalWellLateralHeatTransfer,
 )
-from darts.engines import print_build_info as engines_pbi
 from darts.print_build_info import print_build_info as package_pbi
 
 
@@ -802,7 +801,11 @@ class DartsModel:
                 if self.physics.state_spec == self.physics.StateSpecification.PT:
                     T_segments = self.physics.engine.X[
                         well.well_head_idx * self.physics.n_vars
-                        + (self.physics.n_vars - 1) :: self.physics.n_vars
+                        + (self.physics.n_vars - 1) : (
+                            well.well_head_idx + well.num_segments
+                        )
+                        * self.physics.n_vars
+                        + (self.physics.n_vars - 1) : self.physics.n_vars
                     ]
                     if isinstance(
                         self.wells[well.name].lateral_heat_rate_eval,
@@ -819,8 +822,9 @@ class DartsModel:
                     T_segments = np.zeros(well.num_segments)
                     for i in range(well.num_segments):
                         state = self.physics.engine.X[
-                            (well.well_head_idx + i)
-                            * self.physics.n_vars : (well.well_head_idx + i + 1)
+                            (well.well_head_idx + i) * self.physics.n_vars : (
+                                well.well_head_idx + i + 1
+                            )
                             * self.physics.n_vars
                         ]
                         self.physics.property_containers[0].evaluate(state)
@@ -836,8 +840,7 @@ class DartsModel:
                         T_pipe_wall_cells = np.zeros(len(pipe_wall_cells_idx))
                         for i, value in enumerate(pipe_wall_cells_idx):
                             state = self.physics.engine.X[
-                                value
-                                * self.physics.n_vars : (value + 1)
+                                value * self.physics.n_vars : (value + 1)
                                 * self.physics.n_vars
                             ]
                             self.physics.property_containers[0].evaluate(state)
@@ -856,20 +859,16 @@ class DartsModel:
                     rhs = np.array(self.physics.engine.RHS, copy=False)
                     rhs[
                         well.well_head_idx * self.physics.n_vars
-                        + (self.physics.n_vars - 1) :: self.physics.n_vars
-                    ] -= (well_lateral_heat_rate * dt)
+                        + (self.physics.n_vars - 1) : (
+                            well.well_head_idx + well.num_segments
+                        )
+                        * self.physics.n_vars
+                        + (self.physics.n_vars - 1) : self.physics.n_vars
+                    ] -= well_lateral_heat_rate * dt
                 elif isinstance(
                     self.wells[well.name].lateral_heat_rate_eval,
                     NumericalWellLateralHeatTransfer,
                 ):
-                    well_cell_indices = list(
-                        range(
-                            well.well_head_idx, well.well_head_idx + well.num_segments
-                        )
-                    )[
-                        :-1
-                    ]  # Exclude last one for perforation
-                    T_segments_exc = T_segments[:-1]  # Exclude last one for perforation
                     # TODO: This must be written for conductivities of both phases
                     # TODO: Corrected temperature operator must be used, now it gives enthalpy instead of temp
                     # well_fluid_conductivity = [(self.physics.engine.op_vals_arr[i * self.physics.well_operators.n_ops + self.physics.well_operators.GRAD_OP+1] / T_segments[i-well.well_head_idx]) for i in well_cell_indices]
@@ -877,22 +876,21 @@ class DartsModel:
                     well_lateral_heat_rate = self.wells[
                         well.name
                     ].lateral_heat_rate_eval.evaluate(
-                        T_segments_exc, T_pipe_wall_cells, well_fluid_conductivity
+                        T_segments, T_pipe_wall_cells, well_fluid_conductivity
                     )
-                    well_lateral_heat_rate = np.append(
-                        well_lateral_heat_rate, 0.0
-                    )  # Add zero lateral heat rate for perforation
                     rhs = np.array(self.physics.engine.RHS, copy=False)
                     rhs[
                         well.well_head_idx * self.physics.n_vars
-                        + (self.physics.n_vars - 1) :: self.physics.n_vars
-                    ] -= (well_lateral_heat_rate * dt)
+                        + (self.physics.n_vars - 1) : (
+                            well.well_head_idx + well.num_segments
+                        )
+                        * self.physics.n_vars
+                        + (self.physics.n_vars - 1) : self.physics.n_vars
+                    ] -= well_lateral_heat_rate * dt
                     rhs[
                         pipe_wall_cells_idx * self.physics.n_vars
                         + (self.physics.n_vars - 1)
-                    ] += (
-                        well_lateral_heat_rate[:-1] * dt
-                    )  # Exclude last lateral heat rate for perforation
+                    ] += well_lateral_heat_rate * dt
                 else:
                     raise TypeError(
                         f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
