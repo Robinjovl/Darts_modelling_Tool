@@ -100,7 +100,7 @@ apptainer-image-builder:
       - if: $TEST_CUSTOM_BRANCH == "1"
       - if: $TEST_ALL_PYTHONS == "1"
 
-apptainer-image-builder-devtools:
+apptainer-image-builder-agents:
   extends: .apptainer-image-builder-base
   variables:
     IMAGE_PREFIX: "open-darts-agents"
