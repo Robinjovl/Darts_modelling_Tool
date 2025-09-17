@@ -95,7 +95,7 @@ pages:
     dependencies:
         - build-linux-3.10-ODLS
 
-deploy-apptainer-image:
+.deploy-apptainer-image:
     stage: deploy
     tags:
         - linux_tahiti_gpu
@@ -111,7 +111,7 @@ deploy-apptainer-image:
         - if: $TEST_ALL_PYTHONS == "1"
     script:
         # Derive BUILD_KEY from the latest symlinked image name
-        - IMG_DIR="/data/gitlab-runner/apptainer-images"
+        - IMG_DIR="/data/open-darts-apptainer-images"
         - LINK="$IMG_DIR/${IMAGE_PREFIX}-latest.sif"
         - TARGET="$(readlink -f "$LINK" || echo "$LINK")"
         - BASENAME="$(basename "$TARGET")"

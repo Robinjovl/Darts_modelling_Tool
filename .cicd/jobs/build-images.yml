@@ -26,14 +26,14 @@ docker-image-builder:
     # Put all heavy I/O on the large /data mount
     APPTAINER_TMPDIR: "/data/gitlab-runner/apptainer-tmp"
     APPTAINER_CACHEDIR: "/data/gitlab-runner/apptainer-cache"
-    IMG_DIR: "/data/gitlab-runner/apptainer-images"
+    IMG_DIR: "/data/open-darts-apptainer-images"
     # defaults; override in derived jobs
     IMAGE_PREFIX: "open-darts"
     MAX_IMAGE_NUM: "5"
     GITLAB_CI_TOOLS: "0"
   before_script:
     - set -euo pipefail
-    - mkdir -p /data/gitlab-runner/apptainer-tmp /data/gitlab-runner/apptainer-cache /data/gitlab-runner/apptainer-images
+    - mkdir -p /data/gitlab-runner/apptainer-tmp /data/gitlab-runner/apptainer-cache /data/open-darts-apptainer-images
   script:
     # hash image config
     - DEF_SHA="$(sha256sum .cicd/build-linux/singularity.def | awk '{print $1}')"
