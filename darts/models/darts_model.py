@@ -2,6 +2,7 @@ import os
 import warnings
 from math import fabs
 
+# import h5py
 import numpy as np
 
 from darts.models.output import Output
@@ -48,10 +49,10 @@ class DataTS:
         self.min_line_search_update = 1e-4
 
     def print(self):
-        print('Simulation parameters:')
+        print("Simulation parameters:")
         for k in self.__dict__.keys():
             value = self.__getattribute__(k)
-            print('\t', k, '=', value)
+            print("\t", k, "=", value)
 
 
 class DartsModel:
@@ -105,12 +106,12 @@ class DartsModel:
 
     def init(
         self,
-        discr_type: str = 'tpfa',
-        platform: str = 'cpu',
+        discr_type: str = "tpfa",
+        platform: str = "cpu",
         restart: bool = False,
         verbose: bool = False,
-        itor_mode: str = 'adaptive',
-        itor_type: str = 'multilinear',
+        itor_mode: str = "adaptive",
+        itor_type: str = "multilinear",
         is_barycentric: bool = False,
     ):
         """
@@ -153,13 +154,12 @@ class DartsModel:
             itor_type=itor_type,
             is_barycentric=is_barycentric,
         )
-        if platform == 'gpu':
+        if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
 
         # Initialize well objects
         self.reservoir.init_wells()
         self.physics.init_wells(self.reservoir.wells)
-        self.init_well_rates()
 
         self.set_op_list()
         self.set_boundary_conditions()
@@ -176,7 +176,7 @@ class DartsModel:
             and self.reservoir.mesh.n_res_blocks > 30000
         ):
             warnings.warn(
-                'The number of cells looks too big to use a direct linear solver: '
+                "The number of cells looks too big to use a direct linear solver: "
                 + str(self.reservoir.mesh.n_res_blocks)
                 + ' > 30000',
                 stacklevel=2,
@@ -236,13 +236,13 @@ class DartsModel:
 
     def set_output(
         self,
-        output_folder: str = 'output',
-        sol_filename: str = 'reservoir_solution.h5',
-        well_filename: str = 'well_data.h5',
+        output_folder: str = "output",
+        sol_filename: str = "reservoir_solution.h5",
+        well_filename: str = "well_data.h5",
         save_initial: bool = True,
         all_phase_props: bool = False,
-        precision: str = 'd',
-        compression: str = 'gzip',
+        precision: str = "d",
+        compression: str = "gzip",
         verbose: bool = False,
     ):
         """
@@ -272,8 +272,6 @@ class DartsModel:
             self.physics,
             self.op_list,
             self.params,
-            self.well_head_conn_id,
-            self.well_perf_conn_ids,
             self.output_folder,
             self.sol_filename,
             self.well_filename,
@@ -305,7 +303,7 @@ class DartsModel:
         2) Depth table -> specify depth table with depths and initial distributions of unknowns over depth
                           to self.physics.set_initial_conditions_by_depth_table()
         """
-        raise NotImplementedError('Model.set_initial_conditions() not implemented.')
+        raise NotImplementedError("Model.set_initial_conditions() not implemented.")
 
     def set_boundary_conditions(self):
         """
@@ -339,7 +337,7 @@ class DartsModel:
         self.data_ts = DataTS(self.physics.n_vars)
         # copy attributes except eta
         for k in data_ts.__dict__.keys():
-            if k == 'eta':
+            if k == "eta":
                 continue
             value = data_ts.__getattribute__(k)
             self.data_ts.__setattr__(k, value)
@@ -506,7 +504,7 @@ class DartsModel:
         days: float = None,
         restart_dt: float = 0.0,
         save_well_data: bool = True,
-        save_well_data_after_run: bool = False,
+        save_well_data_after_run: bool = True,
         save_reservoir_data: bool = True,
         verbose: bool = True,
     ):
@@ -530,12 +528,24 @@ class DartsModel:
         days = days if days is not None else self.runtime
         data_ts = self.data_ts
 
+        self.output.save_well_after_run = save_well_data_after_run
+
+        if save_well_data_after_run:
+            if not hasattr(self, "_well_output_configured"):
+                self.output.configure_output(kind="well")
+                self._well_output_configured = True
+            else:
+                pass
+
+            self.output.well_time_labels = []
+            self.output.well_data = []
+
         # get current engine time
         t = self.physics.engine.t
         stop_time = t + days
 
         # same logic as in engine.run
-        if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
+        if fabs(t) < 1e-15 or not hasattr(self, "prev_dt"):
             dt = data_ts.dt_first
         elif restart_dt > 0.0:
             dt = restart_dt
@@ -580,7 +590,7 @@ class DartsModel:
 
                 if verbose:
                     print(
-                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={np.round(max_dx, 3)}"
+                        f"T={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tMULT={dt_mult_new:3.3g}\tdX={np.round(max_dx, 3)}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -595,16 +605,25 @@ class DartsModel:
 
                 # save well data at every converged time step
                 if save_well_data and save_well_data_after_run is False:
-                    self.output.save_data_to_h5(kind='well')
+                    self.output.save_data_to_h5(kind="well")
+                else:
+                    self.output.well_time_labels.append(self.physics.engine.t)
+                    X = np.array(self.physics.engine.X, copy=False)
+
+                    self.output.well_data.append(
+                        X.reshape(self.reservoir.mesh.n_blocks, self.physics.n_vars)[
+                            self.output.id_well_data
+                        ]
+                    )
 
             else:
                 dt /= data_ts.dt_mult
                 if verbose:
                     print(f"Cut timestep to {dt:2.10f}")
                 assert dt > data_ts.dt_min, (
-                    'Stop simulation. Reason: reached min. timestep '
+                    "Stop simulation. Reason: reached min. timestep "
                     + str(data_ts.dt_min)
-                    + ' dt='
+                    + " dt="
                     + str(dt)
                 )
 
@@ -613,15 +632,25 @@ class DartsModel:
 
         # save well data after run
         if save_well_data and save_well_data_after_run is True:
-            self.output.save_data_to_h5(kind='well')
+            path = os.path.join(self.output_folder, self.well_filename)
+
+            self.output.timer.start()
+            self.output.timer.node["saving_well_data"].start()
+            self.output.save_specific_data(
+                path, [self.output.well_time_labels, self.output.well_data]
+            )
+            self.output.timer.node["saving_well_data"].stop()
+            self.output.timer.stop()
 
         # save solution vector
         if save_reservoir_data:
-            self.output.save_data_to_h5(kind='reservoir')
+            self.output.save_data_to_h5(kind="reservoir")
 
         if verbose:
             print(
-                f"TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d})"
+                f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
+                f"NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), "
+                f"LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d}) -----"
             )
 
         return 0
@@ -640,14 +669,14 @@ class DartsModel:
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
-        self.timer.node['simulation'].start()
+        self.timer.node["simulation"].start()
         residual_history = []
         for i in range(max_newt + 1):
             self.physics.engine.assemble_linear_system(
                 dt
             )  # assemble Jacobian and residual of reservoir and well blocks
             self.apply_rhs_flux(dt, t)  # apply RHS flux
-            if self.platform == 'gpu':
+            if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
@@ -723,7 +752,7 @@ class DartsModel:
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 
-        self.timer.node['simulation'].stop()
+        self.timer.node["simulation"].stop()
         return converged
 
     def line_search(self, dt, t, coef, history, verbose: bool = False):
@@ -746,21 +775,21 @@ class DartsModel:
 
         if verbose:
             print(
-                'LS: '
+                "LS: "
                 + str(coef[0])
-                + '\t'
-                + 'r_mat = '
+                + "\t"
+                + "r_mat = "
                 + str(history[0][0])
-                + '\tr_well = '
+                + "\tr_well = "
                 + str(history[0][1])
             )
             print(
-                'LS: '
+                "LS: "
                 + str(coef[1])
-                + '\t'
-                + 'r_mat = '
+                + "\t"
+                + "r_mat = "
                 + str(history[1][0])
-                + '\tr_well = '
+                + "\tr_well = "
                 + str(history[1][1])
             )
         res_history = np.array([history[0][0], history[1][0]])
@@ -815,7 +844,7 @@ class DartsModel:
             self.timer.node["newton update"].stop()
             self.physics.engine.assemble_linear_system(dt)
             self.apply_rhs_flux(dt, t)
-            if self.platform == 'gpu':
+            if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
@@ -826,12 +855,12 @@ class DartsModel:
             res_history = np.append(res_history, res[0])
             if verbose:
                 print(
-                    'LS: '
+                    "LS: "
                     + str(coef[-1])
-                    + '\t'
-                    + 'r_mat = '
+                    + "\t"
+                    + "r_mat = "
                     + str(res[0])
-                    + '\tr_well = '
+                    + "\tr_well = "
                     + str(res[1])
                 )
 
@@ -844,9 +873,9 @@ class DartsModel:
         return res_history[final_id], 0.0, coef[final_id]
 
     def do_after_step(self):
-        '''
+        """
         can be overrided by an user to be executed in the 'run_simulation()'
-        '''
+        """
         pass
 
     def run_simulation(self):
@@ -855,7 +884,7 @@ class DartsModel:
             self.set_well_controls_idata(time=time)
             ret = self.run(dt)
             if ret != 0:
-                print('run() failed for the step=', ith_step, 'dt=', dt)
+                print("run() failed for the step=", ith_step, "dt=", dt)
                 return 1
             self.do_after_step()
             time += dt
@@ -906,41 +935,6 @@ class DartsModel:
         """
         self.physics.engine.print_stat()
 
-    def init_well_rates(self):
-        """
-        Function that prepare data for the calculation of well rates (in Python)
-        """
-        block_m = np.array(self.reservoir.mesh.block_m, copy=False)
-        block_p = np.array(self.reservoir.mesh.block_p, copy=False)
-        self.well_perf_conn_ids = {}
-        self.well_head_conn_id = {}
-        for well in self.reservoir.wells:
-            res_cell_ids = [perf[1] for perf in well.perforations]
-
-            # find ids of those connections which 1. block_p is in res_cell_ids, 2. block_m is well cell
-            conn_ids = np.nonzero(
-                np.logical_and(
-                    np.isin(block_p, res_cell_ids),
-                    block_m >= self.reservoir.mesh.n_res_blocks,
-                )
-            )
-            self.well_perf_conn_ids[well.name] = conn_ids[0]
-            assert (
-                self.well_perf_conn_ids[well.name].size == len(well.perforations)
-                and (
-                    block_m[self.well_perf_conn_ids[well.name]]
-                    > self.reservoir.mesh.n_res_blocks
-                ).all()
-            )
-            # find id of well_head -> well_body connection in the connection list
-            well_head_conn_id = np.where(
-                np.logical_and(
-                    block_m == well.well_head_idx, block_p == well.well_body_idx
-                )
-            )[0]
-            assert len(well_head_conn_id) == 1
-            self.well_head_conn_id[well.name] = well_head_conn_id[0]
-
     def reconstruct_velocities(self):
         # velocity discretization
         values, offset = self.reservoir.discretizer.discretize_velocities(
@@ -972,7 +966,7 @@ class DartsModel:
         )
 
         # allocate & transfer data to device
-        if self.platform == 'gpu':
+        if self.platform == "gpu":
             from darts.engines import allocate_device_data, copy_data_to_device
 
             # velocity_appr
@@ -1003,14 +997,14 @@ class DartsModel:
             delattr(self, name)
 
     def set_well_controls_idata(self, time: float = 0.0, verbose=True):
-        '''
+        """
         :param time: simulation time, [days]
         :return:
-        '''
+        """
         from darts.engines import well_control_iface
 
         # store next control index for each well in idata.well_data.wells_next_control_idx
-        if not hasattr(self.idata.well_data, 'wells_next_control_idx'):
+        if not hasattr(self.idata.well_data, "wells_next_control_idx"):
             self.idata.well_data.wells_next_control_idx = dict()
             for w in self.reservoir.wells:
                 self.idata.well_data.wells_next_control_idx[w.name] = 0
@@ -1027,9 +1021,9 @@ class DartsModel:
                     break
             if wctrl is None:  # no control is defined for the current timestep
                 continue
-            if wctrl.type == 'inj':  # INJ well
+            if wctrl.type == "inj":  # INJ well
                 inj_temp = wctrl.inj_bht if self.physics.thermal else None
-                if wctrl.mode == 'rate':  # rate control
+                if wctrl.mode == "rate":  # rate control
                     # Control
                     self.physics.set_well_controls(
                         wctrl=w.control,
@@ -1050,7 +1044,7 @@ class DartsModel:
                             inj_composition=wctrl.inj_composition,
                             inj_temp=inj_temp,
                         )
-                elif wctrl.mode == 'bhp':  # BHP control
+                elif wctrl.mode == "bhp":  # BHP control
                     self.physics.set_well_controls(
                         wctrl=w.control,
                         control_type=well_control_iface.BHP,
@@ -1060,10 +1054,10 @@ class DartsModel:
                         inj_temp=inj_temp,
                     )
                 else:
-                    print('Unknown well ctrl.mode', wctrl.mode)
+                    print("Unknown well ctrl.mode", wctrl.mode)
                     exit(1)
-            elif wctrl.type == 'prod':  # PROD well
-                if wctrl.mode == 'rate':  # rate control
+            elif wctrl.type == "prod":  # PROD well
+                if wctrl.mode == "rate":  # rate control
                     # Control
                     self.physics.set_well_controls(
                         wctrl=w.control,
@@ -1080,7 +1074,7 @@ class DartsModel:
                             is_inj=False,
                             target=wctrl.bhp_constraint,
                         )
-                elif wctrl.mode == 'bhp':  # BHP control
+                elif wctrl.mode == "bhp":  # BHP control
                     self.physics.set_well_controls(
                         wctrl=w.control,
                         control_type=well_control_iface.BHP,
@@ -1088,33 +1082,33 @@ class DartsModel:
                         target=wctrl.bhp,
                     )
                 else:
-                    print('Unknown well ctrl.mode', wctrl.mode)
+                    print("Unknown well ctrl.mode", wctrl.mode)
                     exit(1)
             else:
-                print('Unknown well ctrl.type', wctrl.type)
+                print("Unknown well ctrl.type", wctrl.type)
                 exit(1)
             if verbose:
                 print(
-                    'set_well_controls_idata: time=',
+                    "set_well_controls_idata: time=",
                     time,
-                    'well',
+                    "well",
                     w.name,
-                    'control=[',
+                    "control=[",
                     w.control.get_well_control_type_str(),
-                    '],',
-                    'constraint=[',
+                    "],",
+                    "constraint=[",
                     w.constraint.get_well_control_type_str(),
-                    ']',
+                    "]",
                 )
 
         # check
         for w in self.reservoir.wells:
             assert w.control.get_well_control_type() != well_control_iface.NONE, (
-                'well control is not initialized for the well ' + w.name
+                "well control is not initialized for the well " + w.name
             )
             if (
                 verbose
                 and w.constraint.get_well_control_type() == well_control_iface.NONE
-                and 'rate' in w.control.get_well_control_type_str()
+                and "rate" in w.control.get_well_control_type_str()
             ):
-                print('A constraint for the well ' + w.name + ' is not initialized!')
+                print("A constraint for the well " + w.name + " is not initialized!")
