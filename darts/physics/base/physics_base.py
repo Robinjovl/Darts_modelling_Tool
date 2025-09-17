@@ -619,6 +619,7 @@ class PhysicsBase:
                     engines_module = importlib.import_module("darts.engines")
                     base_prefix = itor_name.rsplit('_', 1)[0]
                     pattern = rf"^{re.escape(base_prefix)}_(\d+)$"
+                    # Find candidates with higher n_ops
                     candidates = []
                     for attr_name in dir(engines_module):
                         match = re.match(pattern, attr_name)
@@ -626,21 +627,23 @@ class PhysicsBase:
                             available_n_ops = int(match.group(1))
                             if available_n_ops > n_ops:
                                 candidates.append((available_n_ops, attr_name))
+
                     if candidates:
+                        # Sort candidates by n_ops in ascending order
                         candidates.sort(key=lambda x: x[0])
                         selected_n_ops, selected_name = candidates[0]
                         selected_cls = getattr(engines_module, selected_name)
-                        if algorithm == 'linear':
+                        if algorithm == 'multilinear':
+                            itor = selected_cls(
+                                evaluator, self.n_axes_points, axes_min, axes_max
+                            )
+                        else:
                             itor = selected_cls(
                                 evaluator,
                                 self.n_axes_points,
                                 axes_min,
                                 axes_max,
                                 is_barycentric,
-                            )
-                        else:
-                            itor = selected_cls(
-                                evaluator, self.n_axes_points, axes_min, axes_max
                             )
                         signature_n_ops = selected_n_ops
                         print(
