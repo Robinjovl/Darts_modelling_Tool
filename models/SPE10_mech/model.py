@@ -117,8 +117,9 @@ class Model(THMCModel):
         self.idata.obl.max_p = 1000.
         self.idata.obl.min_t = 273.15 + 20
         self.idata.obl.max_t = 273.15 + 200
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
+        self.idata.obl.min_z = 0.
+        self.idata.obl.max_z = 1.
+        self.idata.obl.eps_z = self.idata.obl.zero/10
         super().set_input_data()
 
     def set_physics(self):
@@ -130,7 +131,7 @@ class Model(THMCModel):
             components = ['H2O']
             phases = ['wat']
             property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, min_z=self.idata.obl.min_z, temperature=t_ref)
+                                                   Mw=Mw, eps_z=self.idata.obl.eps_z, temperature=t_ref)
 
             """ properties correlations """
             property_container.flash_ev = SinglePhase(nc=1)
@@ -148,7 +149,7 @@ class Model(THMCModel):
             Mw = [self.idata.fluid.Mw]
 
             property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, min_z=self.idata.obl.min_z)
+                                                   Mw=Mw, eps_z=self.idata.obl.eps_z)
 
             """ properties correlations """
             property_container.flash_ev = SinglePhase(nc=1)
@@ -169,7 +170,7 @@ class Model(THMCModel):
             phases = ['wat', 'oil']
             self.cell_property = ['pressure'] + ['water']
 
-            property_container = ModelProperties(phases_name=phases, components_name=components, min_z=self.idata.obl.min_z)
+            property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=self.idata.obl.eps_z)
 
             # Define property evaluators based on custom properties
             property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
@@ -190,6 +191,7 @@ class Model(THMCModel):
         self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec, n_points=self.idata.obl.n_points,
                                       min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
                                       min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
+                                      epsilon_z=self.idata.obl.eps_z,
                                       min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
                                       discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
@@ -301,11 +303,11 @@ class Model(THMCModel):
         return 0
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
+    def __init__(self, phases_name, components_name, eps_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z, temperature=None)
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=None)
 
     def evaluate(self, state):
         """
