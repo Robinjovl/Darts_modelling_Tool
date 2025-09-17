@@ -637,7 +637,7 @@ class PhysicsBase:
                             itor = selected_cls(
                                 evaluator, self.n_axes_points, axes_min, axes_max
                             )
-                        else:
+                        elif algorithm == 'linear':
                             itor = selected_cls(
                                 evaluator,
                                 self.n_axes_points,
@@ -645,6 +645,8 @@ class PhysicsBase:
                                 axes_max,
                                 is_barycentric,
                             )
+                        else:
+                            raise ValueError("Invalid algorithm: " + algorithm)
                         signature_n_ops = selected_n_ops
                         print(
                             "Falling back to interpolator with higher n_ops:",
