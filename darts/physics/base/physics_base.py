@@ -460,8 +460,7 @@ class PhysicsBase:
         self,
         mesh: conn_mesh,
         input_distribution: dict,
-        input_depth: list | np.ndarray,
-        global_to_local=None,
+        input_depth: list | np.ndarray
     ):
         """
         Function to set initial conditions from given distribution of properties over depth.
