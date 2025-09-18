@@ -1404,7 +1404,10 @@ class Output:
             elif rate_type.startswith("component_"):
                 for c_idx in range(pc.nc_fl):
                     total = sum(
-                        np.sum(rates_perfs[:, total_perf_idx + j, c_idx :: pc.nc_fl], axis=1)
+                        np.sum(
+                            rates_perfs[:, total_perf_idx + j, c_idx :: pc.nc_fl],
+                            axis=1,
+                        )
                         for j in range(len(well.perforations))
                     )
                     time_data_dict[
