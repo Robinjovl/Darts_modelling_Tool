@@ -22,7 +22,7 @@
       when: always
     needs: []
 
-.build-linux-oahu-3.10-gpu:
+build-linux-oahu-3.10-gpu:
     tags:
         - linux_gpu
     before_script:
