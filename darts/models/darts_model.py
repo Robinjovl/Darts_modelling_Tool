@@ -158,6 +158,7 @@ class DartsModel:
         )
         if platform == 'gpu':
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
+        self.params.sim_eps = self.physics.sim_eps
 
         # Initialize well objects
         self.reservoir.init_wells()

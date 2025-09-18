@@ -332,7 +332,11 @@ public:
 	// number of mineral/solid species
 	uint8_t n_solid;
 	double min_zc;
+	double min_axis_z;
+	double min_sim_z;
 	double max_zc;
+	double max_axis_z;
+	double max_sim_z;
 	std::vector<value_t> old_z, new_z; // [NC] array for local chop
 	std::vector<value_t> old_z_fl, new_z_fl; // [NC_FLUID] array for local chop
 
@@ -958,9 +962,11 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	if (params->log_transform == 0)
 	{
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var);
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+		min_sim_z = min_axis_z + params->sim_eps;
 		// max_zc = 1 - min_zc * params->obl_min_fac;
-		max_zc = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		max_sim_z = max_axis_z - params->sim_eps;
 		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
 	}
 	else if (params->log_transform == 1)

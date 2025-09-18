@@ -69,6 +69,7 @@ class PhysicsBase:
         axes_max: value_vector,
         n_axes_points: index_vector,
         timer: timer_node,
+        sim_eps: float = None,
         cache: bool = False,
     ):
         """
@@ -110,6 +111,7 @@ class PhysicsBase:
         self.PT_axes_min = axes_min
         self.PT_axes_max = axes_max
         self.n_axes_points = n_axes_points
+        self.sim_eps = sim_eps
 
         # Initialize timer for simulation and caching
         self.timer = timer.node["simulation"]

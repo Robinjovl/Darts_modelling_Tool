@@ -228,7 +228,8 @@ public:
     log_transform = 0;
     interface_avg_tmult = 0;
     enable_permporo = false;
-    obl_min_fac = 10;
+    // obl_min_fac = 10;
+    sim_eps = 1e-12;
     assembly_kernel = 0;
 
     finalize_mpi = 1;
@@ -256,6 +257,7 @@ public:
   index_t interface_avg_tmult; // 0 => normal trans-multiplier (in operator), 1 => interface weighted trans-multiplier (in engine)
   bool enable_permporo;        // flag enabling transmissibility multiplier in assembly
   value_t obl_min_fac;         // factor used to determine z_min --> usually taken around 10, such that z_min = 10*z_OBL_min
+  value_t sim_eps;             // offset from axes that solution should remain inside
   int assembly_kernel;         // select non-default assebly kernel (for GPU)
 
   newton_solver_t newton_type;          // Newton solver type (more precisely, nonlinear update type - chopping strategies)

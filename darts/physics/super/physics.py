@@ -36,6 +36,7 @@ class Compositional(PhysicsBase):
         min_z: float,
         max_z: float,
         epsilon_z: float = 1e-13,
+        sim_eps: float = None,
         min_t: float = None,
         max_t: float = None,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
@@ -122,6 +123,8 @@ class Compositional(PhysicsBase):
             else:
                 axes_max = [max_p] + axz_max
 
+        sim_eps = sim_eps if sim_eps is not None else epsilon_z * 10
+
         # n_axes_points
         if n_axes_points is None:
             n_axes_points = index_vector([n_points] * n_vars)
@@ -141,6 +144,7 @@ class Compositional(PhysicsBase):
             n_ops=n_ops,
             axes_min=axes_min,
             axes_max=axes_max,
+            sim_eps=sim_eps,
             n_axes_points=n_axes_points,
             timer=timer,
             cache=cache,
