@@ -96,3 +96,5 @@ def input_data_base(idata: InputData, case: str):
     # the cells with lower poro will be treated as shale when setting the rock thermal properties
     idata.rock.poro_shale_threshold = 1e-3
     ############################################################################
+    
+    idata.supress_all_output = False

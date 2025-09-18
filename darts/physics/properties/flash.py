@@ -13,7 +13,7 @@ class Flash:
 
         self.nu = []
         self.X = []
-        self.temperature: float = 0.
+        self.temperature: float = 0.0
 
     @abc.abstractmethod
     def evaluate(self, pressure, temperature, zc):
@@ -48,7 +48,6 @@ class ConstantK(Flash):
 
 @jit(nopython=True)
 def RR2(k, zc, eps):
-
     a = 1 / (1 - np.max(k)) + eps
     b = 1 / (1 - np.min(k)) - eps
     k_minus_1 = k - 1
@@ -56,7 +55,7 @@ def RR2(k, zc, eps):
     max_iter = 200  # use enough iterations for V to converge
     tol = 1e-12  # convergence tolerance
 
-    for i in range(1, max_iter):
+    for _i in range(1, max_iter):
         V = 0.5 * (a + b)
         r = np.sum(zc * k_minus_1 / (V * k_minus_1 + 1))
         if abs(r) < tol:
@@ -67,7 +66,7 @@ def RR2(k, zc, eps):
         else:
             b = V
 
-    if i >= max_iter:
+    if _i >= max_iter:
         print("Flash warning!!!")
 
     x = zc / (V * k_minus_1 + 1)
@@ -77,7 +76,15 @@ def RR2(k, zc, eps):
 
 
 class SolidFlash(Flash):
-    def __init__(self, flash: Flash, nc_fl: int, np_fl: int, ni: int = 0, nc_sol: int = 0, np_sol: int = 0):
+    def __init__(
+        self,
+        flash: Flash,
+        nc_fl: int,
+        np_fl: int,
+        ni: int = 0,
+        nc_sol: int = 0,
+        np_sol: int = 0,
+    ):
         super().__init__(np_fl, nc_fl, ni)
         self.flash = flash
 
@@ -89,9 +96,9 @@ class SolidFlash(Flash):
     def evaluate(self, pressure, temperature, zc):
         """Evaluate flash normalized for solids"""
         # Normalize compositions
-        zc_sol = zc[self.nc_fl:]
+        zc_sol = zc[self.nc_fl :]
         zc_sol_tot = np.sum(zc_sol)
-        zc_norm = zc[:self.nc_fl]/(1.-zc_sol_tot)
+        zc_norm = zc[: self.nc_fl] / (1.0 - zc_sol_tot)
 
         # Evaluate flash for normalized composition
         error_output = self.flash.evaluate(pressure, temperature, zc_norm)
@@ -107,12 +114,12 @@ class SolidFlash(Flash):
         NU = np.zeros(self.np_fl + self.np_sol)
         X = np.zeros((self.np_fl + self.np_sol, self.nc_fl + self.nc_sol))
         for j in range(self.np_fl):
-            NU[j] = nu[j] * (1.-zc_sol_tot)
-            X[j, :self.nc_fl] = x[j, :]
+            NU[j] = nu[j] * (1.0 - zc_sol_tot)
+            X[j, : self.nc_fl] = x[j, :]
 
         for j in range(self.np_sol):
-            NU[self.np_fl+j] = zc_sol[j]
-            X[self.np_fl+j, self.nc_fl+j] = 1.
+            NU[self.np_fl + j] = zc_sol[j]
+            X[self.np_fl + j, self.nc_fl + j] = 1.0
 
         self.nu = NU
         self.X = X
@@ -137,7 +144,7 @@ class IonFlash(Flash):
         nc_tot = len(zc)
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
-        error_output = self.flash_ev.evaluate(pressure, temperature, zc)
+        self.flash_ev.evaluate(pressure, temperature, zc)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.X = np.empty(

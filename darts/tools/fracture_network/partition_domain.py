@@ -98,7 +98,6 @@ def partition_domain(
     ii = -1
 
     for ii_frac in part_frac_sys:
-
         ii += 1
 
         # The subdomains of points in this fracture
@@ -130,7 +129,6 @@ def partition_domain(
             if (t >= (0 - tolerance_intersect) and t <= (1 + tolerance_intersect)) and (
                 s >= (0 - tolerance_intersect) and s <= (1 + tolerance_intersect)
             ):
-
                 # Only store intersections of segments that don't already share a node:
                 if not (
                     np.linalg.norm(ii_frac[:2] - jj_part[:2]) < tolerance_intersect
@@ -138,20 +136,17 @@ def partition_domain(
                     or np.linalg.norm(ii_frac[2:] - jj_part[:2]) < tolerance_intersect
                     or np.linalg.norm(ii_frac[2:] - jj_part[2:]) < tolerance_intersect
                 ):
-
                     # Store the intersection coordinates in part_int
                     part_int[int_counter, :] = np.array([int_coord[0], int_coord[1]])
                     int_counter += 1
 
         # y partitions
         for jj_part in partitions[partition_ids[2] : partition_ids[3]]:
-
             t, s, int_coord = find_parametric_intersect(ii_frac, jj_part)
 
             if (t >= (0 - tolerance_intersect) and t <= (1 + tolerance_intersect)) and (
                 s >= (0 - tolerance_intersect) and s <= (1 + tolerance_intersect)
             ):
-
                 # Only store intersections of segments that don't already share a node:
                 if not (
                     np.linalg.norm(ii_frac[:2] - jj_part[:2]) < tolerance_intersect
@@ -159,7 +154,6 @@ def partition_domain(
                     or np.linalg.norm(ii_frac[2:] - jj_part[:2]) < tolerance_intersect
                     or np.linalg.norm(ii_frac[2:] - jj_part[2:]) < tolerance_intersect
                 ):
-
                     # Store the intersection coordinates in part_int
                     part_int[int_counter, :] = np.array([int_coord[0], int_coord[1]])
                     int_counter += 1

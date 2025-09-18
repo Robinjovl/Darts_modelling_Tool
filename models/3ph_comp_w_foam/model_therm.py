@@ -10,10 +10,11 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from properties import GasFoamRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
+from darts.physics.properties.enthalpy import EnthalpyBasic
 
 import numpy as np
 
-class Model(CICDModel):
+class Model_therm(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -32,7 +33,7 @@ class Model(CICDModel):
     def set_reservoir(self):
         nx = 1000
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=10, dz=10, permx=100, permy=100,
-                                         permz=10, poro=0.3, depth=1000)
+                                         permz=10, poro=0.3, depth=1000, hcap=2200, rcond=181.44)
 
         return
 
@@ -63,16 +64,26 @@ class Model(CICDModel):
         property_container.viscosity_ev = dict([('gas', ConstFunc(0.2611)),
                                                 ('oil', ConstFunc(0.9)),
                                                 ('wat', ConstFunc(0.511))])
+        property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18)),
+                                               ('oil', EnthalpyBasic(hcap=1.0)),
+                                               ('gas', EnthalpyBasic(hcap=0.01))])
+        property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
+
+        property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
+                                                   ('oil', ConstFunc(1.)),
+                                                   ('gas', ConstFunc(1.)),])
+
         pfoam = np.array([100, 0.35, 1000])
         property_container.rel_perm_ev = dict([('gas', GasFoamRelPerm("gas", pfoam, swc=0.2, sgr=0.2, n=1.3, kre=0.94)),
                                                ('oil', PhaseRelPerm("oil", swc=0.2, sgr=0.2, n=1.3, kre=0.94)),
                                                ('wat', PhaseRelPerm("wat", swc=0.2, sgr=0.2, n=4.2, kre=0.2))])
 
         """ Activate physics """
-        thermal = False
+        thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=1000, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10)
+                                     n_points=1000, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
+                                     min_t=273.15 + 20, max_t=273.15 + 200)
         self.physics.add_property_region(property_container)
 
         return
@@ -82,6 +93,7 @@ class Model(CICDModel):
                               self.physics.vars[1]: self.ini_stream[0],
                               self.physics.vars[2]: self.ini_stream[1],
                               self.physics.vars[3]: self.ini_stream[2],
+                              self.physics.vars[4]: 350,
                               }
         return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
                                                               input_distribution=input_distribution)
@@ -99,7 +111,7 @@ class Model(CICDModel):
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
 
     def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
         # evaluate_PT argument is required in PropertyContainer but is not needed in this model

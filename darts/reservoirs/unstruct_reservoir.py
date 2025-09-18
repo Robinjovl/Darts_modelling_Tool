@@ -1,5 +1,4 @@
 import os
-from typing import Union
 
 import meshio
 import numpy as np
@@ -133,9 +132,7 @@ class UnstructReservoir(ReservoirBase):
 
     def set_boundary_volume(self, boundary_volumes: dict):
         # Set-up dictionary with data for boundary cells:
-        boundary_data = (
-            dict()
-        )  # Dictionary containing boundary condition data (coordinate and value of boundary):
+        boundary_data = dict()  # Dictionary containing boundary condition data (coordinate and value of boundary):
         boundary_data['first_boundary_dir'] = (
             'X'  # Indicates the boundary is located at constant X (in this case!)
         )
@@ -227,12 +224,11 @@ class UnstructReservoir(ReservoirBase):
 
         if verbose:
             print(
-                'Added perforation for well %s to block %d with WI=%f, WID=%f'
-                % (well.name, cell_index, well_index, well_indexD)
+                f'Added perforation for well {well.name} to block {cell_index:d} with WI={well_index:f}, WID={well_indexD:f}'
             )
         return
 
-    def find_cell_index(self, coord: Union[list, np.ndarray]) -> int:
+    def find_cell_index(self, coord: list | np.ndarray) -> int:
         """
         Function to find nearest cell to specified coordinate
 
@@ -309,11 +305,11 @@ class UnstructReservoir(ReservoirBase):
                 ith_geometry = 0
 
                 # Fill fracture cells with zeros
-                for geometry, cell_idxs in output_idxs['fracture'].items():
+                for _geometry, cell_idxs in output_idxs['fracture'].items():
                     cell_data[prop][ith_geometry] += [0.0] * len(cell_idxs)
                     ith_geometry += 1
                 # Fill matrix cells with data
-                for geometry, cell_idxs in output_idxs['matrix'].items():
+                for _geometry, cell_idxs in output_idxs['matrix'].items():
                     if np.isscalar(data):
                         if type(data) is int:
                             cell_data[prop][ith_geometry] += (
@@ -333,7 +329,7 @@ class UnstructReservoir(ReservoirBase):
                     ith_geometry = 0
 
                     # Fill fracture cells with data
-                    for geometry, cell_idxs in output_idxs['fracture'].items():
+                    for _geometry, cell_idxs in output_idxs['fracture'].items():
                         if np.isscalar(data):
                             if type(data) is int:
                                 cell_data[prop][ith_geometry] += (
@@ -348,21 +344,21 @@ class UnstructReservoir(ReservoirBase):
                             cell_data[prop][ith_geometry] += data[cell_idxs].tolist()
                         ith_geometry += 1
                     # Fill matrix cells with zeros
-                    for geometry, cell_idxs in output_idxs['matrix'].items():
+                    for _geometry, cell_idxs in output_idxs['matrix'].items():
                         cell_data[prop][ith_geometry] += [0.0] * len(cell_idxs)
                         ith_geometry += 1
 
             # Distinguish fracture cells from matrix cells
             cell_data['matrix_cell_bool'] = [[] for geometry in geometries]
             ith_geometry = 0
-            for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
+            for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
                 'fracture'
             ].items():
                 cell_data['matrix_cell_bool'][ith_geometry] += np.zeros(
                     len(cell_idxs)
                 ).tolist()  # fill fracture cells with zeros
                 ith_geometry += 1
-            for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
+            for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
                 'matrix'
             ].items():
                 cell_data['matrix_cell_bool'][ith_geometry] += np.ones(
@@ -378,7 +374,7 @@ class UnstructReservoir(ReservoirBase):
             )
 
             print('Writing mesh data to VTK file')
-            meshio.write("{:s}/mesh.vtk".format(output_directory), mesh)
+            meshio.write(f"{output_directory:s}/mesh.vtk", mesh)
 
     def output_to_vtk(
         self,
@@ -435,14 +431,14 @@ class UnstructReservoir(ReservoirBase):
         # Distinguish fracture cells from matrix cells
         cell_data['matrix_cell_bool'] = [[] for geometry in geometries]
         ith_geometry = 0
-        for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
+        for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
             'fracture'
         ].items():
             cell_data['matrix_cell_bool'][ith_geometry] += np.zeros(
                 len(cell_idxs)
             ).tolist()  # fill fracture cells with zeros
             ith_geometry += 1
-        for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
+        for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
             'matrix'
         ].items():
             cell_data['matrix_cell_bool'][ith_geometry] += np.ones(
@@ -450,12 +446,12 @@ class UnstructReservoir(ReservoirBase):
             ).tolist()  # fill matrix cells with ones
             ith_geometry += 1
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step) + ".vtu"
+        vtk_file_name = output_directory + f'/solution_ts{ith_step}' + ".vtu"
 
         # Loop over output properties
         for i, prop in enumerate(prop_names):
             # Loop over fracture and matrix cells (in that order)
-            for ith_geometry, (geometry, cell_idxs) in enumerate(output_idxs.items()):
+            for ith_geometry, (_geometry, cell_idxs) in enumerate(output_idxs.items()):
                 cell_data[prop_names[prop]][ith_geometry] = data[i][cell_idxs]
 
         # Temporarily store mesh_data in copy:
@@ -466,7 +462,7 @@ class UnstructReservoir(ReservoirBase):
             cell_data=cell_data,
         )
 
-        print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
+        print(f'Writing data to VTK file for {ith_step:d}-th reporting step')
         meshio.write(vtk_file_name, mesh)
 
         self.vtk_filenames_and_times[vtk_file_name] = t

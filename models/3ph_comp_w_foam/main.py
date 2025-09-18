@@ -3,94 +3,44 @@ import pandas as pd
 import os
 
 from model import Model
+from model_therm import Model_therm
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
 
-
-def plot_sol(n):
-    Xn = np.array(n.physics.engine.X, copy=False)
-    nc = n.property_container.nc + n.thermal
-    nb = n.reservoir.mesh.n_res_blocks
-
-    P = Xn[0:nb * nc:nc]
-    z = np.ones((nc, nb))
-    phi = np.ones(nb)
-    sat_ev = props(n.property_container)
-    prop = np.zeros(2*n.property_container.nph)
-
-    plt.figure(num=1, figsize=(12, 8), dpi=100)
-    for i in range(nc-1):
-        z[i][:] = Xn[i + 1:nb * nc:nc]
-        z[-1][:] -= z[i][:]
-
-    for i in range(nb):
-        state = Xn[i*nc:(i+1)*nc]
-        sat_ev.evaluate(state, prop)
-        density_tot = np.sum(prop[0:3] * prop[3:6])
-        phi[i] -= prop[2]  # (z[-1, i] * density_tot / prop[-1])
-
-    for i in range(3):
-        plt.subplot(330 + (i + 1))
-        plt.plot(z[i]/(1-z[3]))
-        plt.title('Composition' + str(i + 1), y=1)
-
-    i = 3
-    plt.subplot(330 + (i + 1))
-    plt.plot(phi)
-    plt.title('Porosity', y=1)
-
-    i = 4
-    plt.subplot(330 + (i + 1))
-    plt.plot(P)
-    plt.title('Pressure', y=1)
-
-    plt.show()
-
-
 if __name__ == '__main__':
 
     redirect_darts_output('run.log')
-    n = Model()
-    # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
+    from darts.engines import well_control_iface
+
+    if 1:
+        n = Model()
+    else:
+        n = Model_therm()
+
     n.init()
     n.set_output()
+    w = n.reservoir.wells[0]
+    n.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE, is_inj=True,
+                                target=200, phase_name='wat', inj_composition=[n.zero, 0.8, 0.2 - 2 * n.zero],
+                                inj_temp=300)
+    n.run(1000)
+    n.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE, is_inj=True,
+                                target=20, phase_name='gas', inj_composition=[1.0 - 3 * n.zero, n.zero, n.zero],
+                                inj_temp=350)
+    n.run(1000, restart_dt=1e-8)
 
-    if True:
-        n.run(4000)
-        # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
-        # n.run(300, restart_dt=1e-3)
-        n.print_timers()
-        n.print_stat()
 
-        # compute well time data
-        time_data_dict = n.output.store_well_time_data()
+    Xn = np.array(n.physics.engine.X, copy=False)
+    nc = n.physics.nc + n.physics.thermal
+    nb = n.reservoir.mesh.n_res_blocks
 
-        # save well time data
-        time_data_df = pd.DataFrame.from_dict(time_data_dict)
-        time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
-        writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
-        time_data_df.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
-
-    else:
-        # n.load_restart_data()
-        n.load_restart_data('output/solution.h5')
-        time_data = pd.read_pickle("darts_time_data.pkl")
-
-    if True:
-        Xn = np.array(n.physics.engine.X, copy=False)
-        nc = n.physics.nc + n.physics.thermal
-        nb = n.reservoir.mesh.n_res_blocks
-
-        plt.figure(num=1, figsize=(12, 8), dpi=100)
-        for i in range(3):
-            plt.subplot(310 + (i + 1))
-            plt.plot(Xn[i:nb*nc:nc])
-        plt.savefig('out.png')
-    else:
-        #plot_sol(n)
-        n.print_and_plot('sim_data')
+    plt.figure(num=1, figsize=(12, 8), dpi=100)
+    for i in range(n.physics.n_vars):
+        num = n.physics.n_vars * 100 + 10 + (i + 1)
+        plt.subplot(num)
+        plt.plot(Xn[i:nb*nc:nc])
+    plt.savefig('out.png')
 
 # nb = n.reservoir.mesh.n_res_blocks
 # P = Xn[0:nb*nc:nc]
