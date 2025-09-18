@@ -12,21 +12,9 @@ filename = 'out'
 
 # define the model
 m = Model()
-
-m.set_reservoir()
-
-zero = 1e-10
-m.set_physics(zero, n_points=1001, temperature=None)
-
-m.inj_stream = [0.00005]
-m.inj_stream += [350.] if m.physics.thermal else []
-m.p_inj = 100.
-m.p_prod = 50.
-
-m.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3, tol_linear=1e-5, it_newton=10, it_linear=50)
-
 # init the model
 m.init()
+# set the output
 m.set_output()
 
 x = np.cumsum(m.x_axes)
@@ -51,10 +39,6 @@ plt.savefig('step0.png', format='png')
 
 for t in range(2):
     m.run(200)
-    m.print_timers()
-    m.print_stat()
-
-    #m.params.max_ts = 0.5
 
     timesteps, output = m.output.output_properties(output_properties=print_props, timestep=t+1)
 
