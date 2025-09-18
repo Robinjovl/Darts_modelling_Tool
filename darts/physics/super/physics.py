@@ -182,10 +182,7 @@ class Compositional(PhysicsBase):
         return
 
     def set_initial_conditions_from_depth_table(
-        self,
-        mesh: conn_mesh,
-        input_distribution: dict,
-        input_depth: list | np.ndarray
+        self, mesh: conn_mesh, input_distribution: dict, input_depth: list | np.ndarray
     ):
         """
         Function to set initial conditions from given distribution of properties over depth.

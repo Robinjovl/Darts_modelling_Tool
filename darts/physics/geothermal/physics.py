@@ -142,10 +142,7 @@ class Geothermal(PhysicsBase):
         return eval(f"engine_nce_g_{platform}{self.nc:d}_{self.nph:d}")()
 
     def set_initial_conditions_from_depth_table(
-        self,
-        mesh: conn_mesh,
-        input_distribution: dict,
-        input_depth: list | np.ndarray
+        self, mesh: conn_mesh, input_distribution: dict, input_depth: list | np.ndarray
     ):
         """
         Function to set initial conditions from given distribution of properties over depth.
