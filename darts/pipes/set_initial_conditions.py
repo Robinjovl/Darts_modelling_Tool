@@ -75,7 +75,7 @@ class SingleAmbientTemperature:
 
         if verbose:
             print(
-                f'** Initial conditions (SingleAmbientTemperature) of the pipe {pipe_name} are set!'
+                f'** Initial conditions (SingleAmbientTemperature) of the pipe "{pipe_name}" are set!'
             )
 
     def check_initial_fluid_conditions(self, initial_conditions_dict):
@@ -268,7 +268,7 @@ class LinearAmbientTemperature:
 
         if verbose:
             print(
-                f'** Initial conditions (LinearAmbientTemperature) of the pipe {pipe_name} are set!'
+                f'** Initial conditions (LinearAmbientTemperature) of the pipe "{pipe_name}" are set!'
             )
 
     def check_initial_fluid_conditions(self, initial_conditions_dict):

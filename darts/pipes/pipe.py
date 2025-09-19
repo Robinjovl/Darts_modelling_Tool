@@ -152,7 +152,7 @@ class Pipe:
         self.lateral_heat_rate_eval = None
 
         if verbose:
-            print(f'** Model of the pipe {self.geometry.pipe_name} is created!')
+            print(f'** Model of the pipe "{self.geometry.pipe_name}" is created!')
 
     def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, iter_counter, flag):
         """

@@ -31,17 +31,17 @@ class IFT_multicomponent_MCM:
         for i in range(num_components):
             try:
                 self.MW[i] = library.components_molecular_weights[components_names[i]]
-            except:
-                raise Exception(
+            except KeyError as err:
+                raise KeyError(
                     f"Molecular weight of {components_names[i]} is not in the library!"
-                )
+                ) from err
 
             try:
                 self.parachor[i] = library.components_parachors[components_names[i]]
-            except:
-                raise Exception(
+            except KeyError as err:
+                raise KeyError(
                     f"Parachor of {components_names[i]} is not in the library!"
-                )
+                ) from err
 
     def evaluate(self, rhoG, rhoL, xG_mass, xL_mass):
         """

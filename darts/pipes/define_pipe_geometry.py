@@ -48,7 +48,7 @@ class PipeGeometry:
 
         if isinstance(inclination_angle, list):
             self.inclination_angle = np.array(inclination_angle)
-        elif isinstance(inclination_angle, (float, numpy.ndarray)):
+        elif isinstance(inclination_angle, float | numpy.ndarray):
             self.inclination_angle = inclination_angle
         else:
             raise TypeError(
@@ -117,7 +117,7 @@ class PipeGeometry:
         self.TVD_seg_interfaces[1::2] = self.TVD_interfaces
 
         if verbose:
-            print('** Geometry of the pipe "%s" is defined!' % self.pipe_name)
+            print(f'** Geometry of the pipe "{self.pipe_name}" is defined!')
 
 
 class PETREL_PipeGeometry(PipeGeometry):

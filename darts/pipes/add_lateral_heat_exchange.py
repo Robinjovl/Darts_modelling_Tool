@@ -108,7 +108,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
 
         if verbose:
             print(
-                f"** SemiAnalyticalWellLateralHeatTransfer for the well {pipe_name} is added!"
+                f'** SemiAnalyticalWellLateralHeatTransfer for the well "{pipe_name}" is added!'
             )
 
     def evaluate(self, T_segments, simulation_timer):
@@ -253,7 +253,7 @@ class NumericalWellLateralHeatTransfer:
 
         if verbose:
             print(
-                f"** NumericalWellLateralHeatTransfer for the well {pipe_name} is added!"
+                f'** NumericalWellLateralHeatTransfer for the well "{pipe_name}" is added!'
             )
 
     def evaluate(
