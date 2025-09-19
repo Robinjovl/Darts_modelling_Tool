@@ -49,14 +49,14 @@ class MyOwnDataStruct:
         self.n_prop_ops = n_prop_ops
 
 class MyOutput(Output):
-    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, well_head_conn_id, well_perf_conn_ids,
-                 output_folder: str, sol_filename: str, well_filename: str, save_initial: bool,
-                 all_phase_props: bool, precision: str, compression: str, verbose: bool):
+    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder: str, sol_filename: str,
+                 well_filename: str, save_initial: bool, all_phase_props: bool, precision: str, compression: str,
+                 verbose: bool):
 
         super().__init__(timer=timer, reservoir=reservoir, physics=physics, op_list=op_list, params=params,
-                         well_head_conn_id=well_head_conn_id, well_perf_conn_ids=well_perf_conn_ids, output_folder=output_folder,
-                         sol_filename=sol_filename, well_filename=well_filename, save_initial=save_initial,
-                         all_phase_props=all_phase_props, precision=precision, compression=compression, verbose=verbose)
+                         output_folder=output_folder, sol_filename=sol_filename, well_filename=well_filename,
+                         save_initial=save_initial, all_phase_props=all_phase_props, precision=precision,
+                         compression=compression, verbose=verbose)
 
         # prepare arrays for evaluation of properties
         n_prop_ops = self.physics.input_data_struct.n_prop_ops
@@ -167,8 +167,8 @@ class Model(CICDModel):
         self.sol_filepath  = os.path.join(self.output_folder, self.sol_filename)
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
 
-        self.output = MyOutput(self.timer, self.reservoir, self.physics, self.op_list, self.params, self.well_head_conn_id, self.well_perf_conn_ids,
-                             self.output_folder, self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
+        self.output = MyOutput(self.timer, self.reservoir, self.physics, self.op_list, self.params, self.output_folder,
+                               self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
 
     def set_physics(self):
         # some properties
