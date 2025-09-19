@@ -25,8 +25,8 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
     dnf -y install epel-release dnf-plugins-core
     dnf -y install --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
         jq patchelf wget git ca-certificates which tar xz bzip2 make cmake \
-        python3 python3-pip libjpeg-turbo-devel \
-        gcc-toolset-13-gcc-c++ mesa-libGLU libXrender
+        python3 python3-pip libjpeg-turbo-devel gcc-toolset-13-gcc-c++ \
+        mesa-libGLU libXrender libXcursor
     echo 'source /opt/rh/gcc-toolset-13/enable' >> /etc/profile.d/gcc13.sh
 
     # miniconda installation (quiet; keep errors visible)
