@@ -10,8 +10,8 @@ class SemiAnalyticalWellLateralHeatTransfer:
         pipe_geometry: PipeGeometry,
         earth_thermal_props: dict,
         outermost_layer_OD: float,
-        perforated_segments: list = None,
         Ui: float = None,
+        perforated_segments: list = None,
         well_layers_props: dict = None,
         time_function_name: str = "Chiu&Thakur",
         verbose: bool = False,
@@ -90,11 +90,16 @@ class SemiAnalyticalWellLateralHeatTransfer:
         self.time_function_name = time_function_name
         self.outermost_layer_OD = outermost_layer_OD
 
-        assert isinstance(perforated_segments, list), (
-            "perforated_segments must be a list!"
-        )
         self.perforated_segments = (
             [] if perforated_segments is None else perforated_segments
+        )
+        assert isinstance(self.perforated_segments, list), (
+            "perforated_segments must be a list!"
+        )
+        assert all(
+            [perf_idx < pipe_geometry.num_segments for perf_idx in perforated_segments]
+        ), (
+            "Indices of perforated segments must be smaller than the number of well segments!"
         )
 
         self.segments_lengths = pipe_geometry.segments_lengths
@@ -232,11 +237,16 @@ class NumericalWellLateralHeatTransfer:
         )
         self.pipe_wall_cond = pipe_wall_cond
 
-        assert isinstance(perforated_segments, list), (
-            "perforated_segments must be a list!"
-        )
         self.perforated_segments = (
             [] if perforated_segments is None else perforated_segments
+        )
+        assert isinstance(self.perforated_segments, list), (
+            "perforated_segments must be a list!"
+        )
+        assert all(
+            [perf_idx < pipe_geometry.num_segments for perf_idx in perforated_segments]
+        ), (
+            "Indices of perforated segments must be smaller than the number of well segments!"
         )
 
         self.q_lateral_heat = []
