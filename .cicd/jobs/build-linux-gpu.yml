@@ -25,6 +25,8 @@
 build-linux-oahu-3.10-gpu:
     tags:
         - linux_gpu
+    variables:
+        CUDA_ARCH: "80"
     before_script:
         - module load cuda/23.5
         - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
@@ -35,6 +37,8 @@ build-linux-oahu-3.10-gpu:
 build-linux-tahiti-3.10-gpu:
     tags:
         - linux_tahiti_gpu
+    variables:
+        CUDA_ARCH: "70"
     before_script:
         - spack env activate open_darts_gcc134
         - CONDA_BASE="/data/gitlab-runner/miniconda3"
@@ -62,6 +66,7 @@ build-linux-tahiti-image-3.10-gpu:
         APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
         CONDA_ENV: "tahiti-gpu"
         PY_VER: "3.10"
+        CUDA_ARCH: "70"
     before_script:
         - echo "🔧 Creating Conda env '${CONDA_ENV}' inside the Apptainer image…"
         - |
