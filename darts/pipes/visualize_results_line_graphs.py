@@ -155,7 +155,6 @@ def visualize_results_line_graphs(
     figure_counter += 1
     # Temperature profile is plotted if the system is non-isothermal.
     if coupled_model.physics.property_containers[0].thermal:
-
         # Initialize the plot
         plt.figure(figsize=(12, 6))
 

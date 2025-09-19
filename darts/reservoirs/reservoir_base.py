@@ -110,9 +110,9 @@ class ReservoirBase:
         well.ms_type = ms_well_type
 
         if well.ms_type == ms_well.MS_Type.EPM:
-            assert (
-                well_geometry is None
-            ), "For EPM, well_geometry must not be specified!"
+            assert well_geometry is None, (
+                "For EPM, well_geometry must not be specified!"
+            )
             # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
             # the segment in front of the reservoir cell which is perforated.
             well.segment_volume = pi / 4 * well_ID**2
@@ -122,9 +122,9 @@ class ReservoirBase:
             well.segment_depth_increment = 0
 
         elif well.ms_type == ms_well.MS_Type.DFM:
-            assert (
-                well_geometry is not None
-            ), "For DFM, well_geometry must be specified!"
+            assert well_geometry is not None, (
+                "For DFM, well_geometry must be specified!"
+            )
             # segments_volumes are the volumes of all the segments of the wellbore from the wellhead segment to
             # the lowermost perforated or non-perforated segment.
             well.segments_volumes = value_vector(well_geometry.segments_volumes)

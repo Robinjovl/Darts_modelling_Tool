@@ -45,9 +45,9 @@ class SingleAmbientTemperature:
         :type verbose: boolean
         :return: Initial pressure and temperature profile along the pipe
         """
-        assert (
-            pipe_name == pipe_geom.pipe_name
-        ), "Pipe names for PipeGeometry and SingleAmbientTemperature are not identical!"
+        assert pipe_name == pipe_geom.pipe_name, (
+            "Pipe names for PipeGeometry and SingleAmbientTemperature are not identical!"
+        )
         self.pipe_name = pipe_name
         self.pipe_geom = pipe_geom
         self.physics = physics
@@ -56,7 +56,9 @@ class SingleAmbientTemperature:
         assert pipe_head_segment_index in (
             0,
             self.pipe_geom.num_segments - 1,
-        ), f"The specified pipe_head_segment_index is neither 0 nor {self.pipe_geom.num_segments - 1}"
+        ), (
+            f"The specified pipe_head_segment_index is neither 0 nor {self.pipe_geom.num_segments - 1}"
+        )
         self.pipe_head_segment_index = pipe_head_segment_index
 
         self.check_initial_fluid_conditions(initial_conditions_dict)
@@ -73,26 +75,25 @@ class SingleAmbientTemperature:
 
         if verbose:
             print(
-                '** Initial conditions (SingleAmbientTemperature) of the pipe "%s" are set!'
-                % pipe_name
+                f'** Initial conditions (SingleAmbientTemperature) of the pipe {pipe_name} are set!'
             )
 
     def check_initial_fluid_conditions(self, initial_conditions_dict):
         for phase_composition in initial_conditions_dict["phases_compositions"]:
-            assert np.isclose(
-                sum(phase_composition), 1, atol=1e-12, rtol=1e-12
-            ), "Summation of initial fluid mole fractions must be equal to 1!"
-            assert (
-                len(phase_composition) == self.physics.property_containers[0].nc
-            ), "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
+            assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), (
+                "Summation of initial fluid mole fractions must be equal to 1!"
+            )
+            assert len(phase_composition) == self.physics.property_containers[0].nc, (
+                "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
+            )
 
         num_phase_compositions = len(initial_conditions_dict["phases_compositions"])
         num_phase_names = len(initial_conditions_dict["phases_names"])
         num_pipe_intervals = len(initial_conditions_dict["pipe_intervals"])
 
-        assert (
-            num_pipe_intervals == num_phase_names == num_phase_compositions
-        ), "Number of the specified pipe intervals and their corresponding fluid properties must be equal!"
+        assert num_pipe_intervals == num_phase_names == num_phase_compositions, (
+            "Number of the specified pipe intervals and their corresponding fluid properties must be equal!"
+        )
 
     def get_initial_temperature_profile(self):
         num_segments = self.pipe_geom.num_segments
@@ -153,7 +154,7 @@ class SingleAmbientTemperature:
             p_seg_interfaces = p_seg_interfaces[::-1]
 
         self.p_init_segments = p_seg_interfaces[0::2] * 1e-5  # Convert Pa to bar
-        p_init_interfaces = (
+        _p_init_interfaces = (
             p_seg_interfaces[1::2] * 1e-5
         )  # Convert Pa to bar   # Pressures at interfaces are calculated. Maybe, they'll be used later.
 
@@ -173,9 +174,7 @@ class SingleAmbientTemperature:
                             self.physics.n_vars * segment_idx + var_idx + 1
                         ] = self.initial_conditions_dict["phases_compositions"][
                             interval_idx
-                        ][
-                            var_idx
-                        ]
+                        ][var_idx]
 
         if self.physics.thermal:
             self.initial_conditions_vector[
@@ -238,9 +237,9 @@ class LinearAmbientTemperature:
         :type verbose: boolean
         :return: Initial pressure and temperature profile along the pipe
         """
-        assert (
-            pipe_name == pipe_geom.pipe_name
-        ), "Pipe names for PipeGeometry and LinearAmbientTemperature are not identical!"
+        assert pipe_name == pipe_geom.pipe_name, (
+            "Pipe names for PipeGeometry and LinearAmbientTemperature are not identical!"
+        )
         self.pipe_name = pipe_name
         self.pipe_geom = pipe_geom
         self.physics = physics
@@ -250,7 +249,9 @@ class LinearAmbientTemperature:
         assert pipe_head_segment_index in (
             0,
             self.pipe_geom.num_segments - 1,
-        ), f"The specified pipe_head_segment_index is neither 0 nor {self.pipe_geom.num_segments - 1}"
+        ), (
+            f"The specified pipe_head_segment_index is neither 0 nor {self.pipe_geom.num_segments - 1}"
+        )
         self.pipe_head_segment_index = pipe_head_segment_index
 
         self.check_initial_fluid_conditions(initial_conditions_dict)
@@ -267,26 +268,25 @@ class LinearAmbientTemperature:
 
         if verbose:
             print(
-                '** Initial conditions (LinearAmbientTemperature) of the pipe "%s" are set!'
-                % pipe_name
+                f'** Initial conditions (LinearAmbientTemperature) of the pipe {pipe_name} are set!'
             )
 
     def check_initial_fluid_conditions(self, initial_conditions_dict):
         for phase_composition in initial_conditions_dict["phases_compositions"]:
-            assert np.isclose(
-                sum(phase_composition), 1, atol=1e-12, rtol=1e-12
-            ), "Summation of initial fluid mole fractions must be equal to 1!"
-            assert (
-                len(phase_composition) == self.physics.property_containers[0].nc
-            ), "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
+            assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), (
+                "Summation of initial fluid mole fractions must be equal to 1!"
+            )
+            assert len(phase_composition) == self.physics.property_containers[0].nc, (
+                "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
+            )
 
         num_phase_compositions = len(initial_conditions_dict["phases_compositions"])
         num_phase_names = len(initial_conditions_dict["phases_names"])
         num_pipe_intervals = len(initial_conditions_dict["pipe_intervals"])
 
-        assert (
-            num_pipe_intervals == num_phase_names == num_phase_compositions
-        ), "Number of the specified pipe intervals and their corresponding fluid properties must be equal!"
+        assert num_pipe_intervals == num_phase_names == num_phase_compositions, (
+            "Number of the specified pipe intervals and their corresponding fluid properties must be equal!"
+        )
 
     def get_initial_temperature_profile(self):
         print(
@@ -372,7 +372,7 @@ class LinearAmbientTemperature:
             p_seg_interfaces = p_seg_interfaces[::-1]
 
         self.p_init_segments = p_seg_interfaces[0::2] * 1e-5  # Convert Pa to bar
-        p_init_interfaces = (
+        _p_init_interfaces = (
             p_seg_interfaces[1::2] * 1e-5
         )  # Convert Pa to bar   # Pressures at interfaces are calculated. Maybe, they'll be used later.
 
@@ -392,9 +392,7 @@ class LinearAmbientTemperature:
                             self.physics.n_vars * segment_idx + var_idx + 1
                         ] = self.initial_conditions_dict["phases_compositions"][
                             interval_idx
-                        ][
-                            var_idx
-                        ]
+                        ][var_idx]
 
         if self.physics.thermal:
             self.initial_conditions_vector[

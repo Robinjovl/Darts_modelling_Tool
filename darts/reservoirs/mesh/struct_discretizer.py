@@ -1042,15 +1042,15 @@ class StructDiscretizer:
         assert i > 0, "Perforation block coordinate should be positive"
         assert j > 0, "Perforation block coordinate should be positive"
         assert k > 0, "Perforation block coordinate should be positive"
-        assert (
-            i <= self.nx
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            j <= self.ny
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            k <= self.nz
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert i <= self.nx, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert j <= self.ny, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert k <= self.nz, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
         i -= 1
         j -= 1
         k -= 1
@@ -1073,7 +1073,7 @@ class StructDiscretizer:
                 )
             kx = self.perm_x_cell[i, j, k]
             ky = self.perm_y_cell[i, j, k]
-            kz = self.perm_z_cell[i, j, k]
+            _kz = self.perm_z_cell[i, j, k]
 
             well_radius = well_ID / 2
 
@@ -1104,9 +1104,9 @@ class StructDiscretizer:
                         )
                 elif not with_peaceman:
                     # assert dx == dy, "dx and dy of the reservoir block in which the perforation is located should be equal!"
-                    assert (
-                        skin == 0
-                    ), "Skin factor can be applied only when the Peaceman model is used!"
+                    assert skin == 0, (
+                        "Skin factor can be applied only when the Peaceman model is used!"
+                    )
                     geom_coef = (
                         2 * np.pi * dz / np.log((dx / 2 + well_radius) / well_radius)
                     )

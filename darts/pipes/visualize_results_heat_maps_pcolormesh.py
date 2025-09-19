@@ -75,9 +75,9 @@ def visualize_results_heat_maps_pcolormesh(
     )  # Initial conditions of sG is not stored.
     if max_ts_idx is None:
         max_ts_idx = num_ts
-    assert (
-        max_ts_idx <= num_ts
-    ), f"max_ts_idx is larger than the total number of time steps, which is {num_ts}!"
+    assert max_ts_idx <= num_ts, (
+        f"max_ts_idx is larger than the total number of time steps, which is {num_ts}!"
+    )
 
     if x_axis == "simulation_time":
         simulation_time = (

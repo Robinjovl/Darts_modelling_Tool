@@ -10,6 +10,7 @@ c: Heat capacity of the material in J/kg-C
 K: Thermal conductivity of the material in W/m-C
 rho: Material density in kg/m3
 """
+
 mats_thermal_props = {
     "Bitumen Enamel": {"c": 1300, "K": 0.7, "rho": 1325},
     "Carbon Steel": {"c": 470, "K": 45, "rho": 7850},

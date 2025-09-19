@@ -14,7 +14,6 @@ Notes:
 """
 
 import math
-from typing import Union
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import (
@@ -34,7 +33,7 @@ class Pipe:
         pipe_name: str,
         pipe_geometry: PipeGeometry,
         physics,
-        initial_conditions: Union[SingleAmbientTemperature, LinearAmbientTemperature],
+        initial_conditions: SingleAmbientTemperature | LinearAmbientTemperature,
         Cmax: float = 1.2,
         Fv: float = 1,
         eps_p: float = 1e-4,
@@ -67,9 +66,9 @@ class Pipe:
         :param verbose: Whether to display extra info about PipeModel
         :type verbose: boolean
         """
-        assert (
-            pipe_name == pipe_geometry.pipe_name
-        ), "Pipe names in pipe_name and pipe_geometry are not identical!"
+        assert pipe_name == pipe_geometry.pipe_name, (
+            "Pipe names in pipe_name and pipe_geometry are not identical!"
+        )
         self.name = pipe_name
         self.geometry = pipe_geometry
         self.physics = physics
@@ -79,13 +78,13 @@ class Pipe:
         self.initial_conditions = initial_conditions
 
         if self.isothermal:
-            assert (
-                self.physics.property_containers[0].temperature is not None
-            ), "If model is isothermal, system_temperature must be specified!"
+            assert self.physics.property_containers[0].temperature is not None, (
+                "If model is isothermal, system_temperature must be specified!"
+            )
         elif not self.isothermal:
-            assert (
-                self.physics.property_containers[0].temperature is None
-            ), "If model is non-isothermal, system_temperature must not be specified!"
+            assert self.physics.property_containers[0].temperature is None, (
+                "If model is non-isothermal, system_temperature must not be specified!"
+            )
         self.system_temperature = self.physics.property_containers[0].temperature
 
         self.Cmax = Cmax
@@ -153,7 +152,7 @@ class Pipe:
         self.lateral_heat_rate_eval = None
 
         if verbose:
-            print('** Model of the pipe "%s" is created!' % self.geometry.pipe_name)
+            print(f'** Model of the pipe {self.geometry.pipe_name} is created!')
 
     def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, iter_counter, flag):
         """
@@ -834,7 +833,7 @@ class Pipe:
         #     vD0 = np.zeros(self.geometry.num_interfaces)
         # else:
         if any(0 < sG < 1 for sG in self.iter_phases_props0_face[2]):
-            pg = self.geometry
+            # pg = self.geometry
             [_, _, sG0_face, rhoG0_face, rhoL0_face] = self.iter_phases_props0_face
             [_, vM0, _, _] = self.velocities0
 
@@ -887,8 +886,8 @@ class Pipe:
                     + (1 - sG0_face_filtered) * rhoL0_face_filtered
                 )
             )  # gas mass fraction [dimensionless]
-            G0 = rhoM0_face_filtered * abs(
-                vM0_filtered
+            G0 = (
+                rhoM0_face_filtered * abs(vM0_filtered)
             )  # Total mass flux (or total mass flow rate per unit cross-sectional area) [kg/m2/s]
             numerator = np.zeros(len(X0))
             for i in range(len(X0)):
@@ -931,9 +930,7 @@ class Pipe:
                 # vD0[value] = (1 - self.C00_filtered[index] * sG0_face_filtered[index]) * self.vC0_filtered[index] * K0_filtered[index] * self.m[value] / (self.C00_filtered[index] * sG0_face_filtered[index] * np.sqrt(rhoG0_face_filtered[index] / rhoL0_face_filtered[index]) + 1 - self.C00_filtered[index] * sG0_face_filtered[index])
         else:
             vD0 = np.zeros(self.geometry.num_interfaces)
-        self.vD0 = (
-            -vD0
-        )  # I multiplied the drift velocity by -1 because I changed the positive direction of the well from top to bottom.
+        self.vD0 = -vD0  # I multiplied the drift velocity by -1 because I changed the positive direction of the well from top to bottom.
 
     def evaluate_phase_velocities_and_derivatives(
         self, Xn_ms_well, X_ms_well, dt, iter_counter

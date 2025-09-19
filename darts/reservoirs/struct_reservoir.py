@@ -229,19 +229,19 @@ class StructReservoir(ReservoirBase):
         # calculate well index and get local index of reservoir block
         i, j, k = res_cell_idx
         if well.ms_type == ms_well.MS_Type.EPM:
-            assert (
-                well_seg_idx is None
-            ), "If the well is of the EPM type, well_seg_idx must not be specified!"
+            assert well_seg_idx is None, (
+                "If the well is of the EPM type, well_seg_idx must not be specified!"
+            )
             res_block_local, wi, wid = self.discretizer.calc_well_index(
                 i, j, k, well_ID=well_ID, segment_direction=segment_direction, skin=skin
             )
         elif well.ms_type == ms_well.MS_Type.DFM:
-            assert (
-                well_seg_idx is not None
-            ), "If the well is of the DFM type, well_seg_idx must be specified!"
-            assert (
-                multi_segment is None
-            ), "If the well is of the DFM type, multi_segment must not be specified!"
+            assert well_seg_idx is not None, (
+                "If the well is of the DFM type, well_seg_idx must be specified!"
+            )
+            assert multi_segment is None, (
+                "If the well is of the DFM type, multi_segment must not be specified!"
+            )
             res_block_local, wi, wid = (
                 self.discretizer.calc_well_index_for_coupled_well_reservoir(
                     i,

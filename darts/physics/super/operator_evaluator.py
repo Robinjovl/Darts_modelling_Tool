@@ -119,11 +119,10 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Beta operator represents flux term: """
         for j in self.property.ph:
-
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             vec_values_as_np[
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
-            ] = (self.property.x[j][: self.nc_fl] * self.property.dens_m[j])
+            ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
         """ Gamma operator for diffusion (same for heat conduction and molecular diffusion) """
         # fluid diffusive flux sat: c_r phi_f s_j (-)
@@ -333,7 +332,7 @@ class WellOperators(OperatorsSuper):
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             vec_values_as_np[
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
-            ] = (self.property.x[j][: self.nc_fl] * self.property.dens_m[j])
+            ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
 
@@ -385,7 +384,7 @@ class WellOperators(OperatorsSuper):
         :return: updated value for operators, stored in values
         """
         pressure = state[0]
-        temperature = state[-1]
+        # temperature = state[-1]
 
         # Evaluate thermal properties at current state
         self.property.evaluate_thermal(state)

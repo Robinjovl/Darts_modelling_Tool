@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
 
-from darts.models.darts_model import DartsModel
-
 
 def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     """
@@ -20,7 +18,7 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
 
     p = np.zeros(num_segments)
     z = np.zeros((num_segments, property_container.nc))
-    T = np.zeros((num_segments))
+    T = np.zeros(num_segments)
 
     sG = np.zeros(num_segments)
     if property_container.nph == 2:
@@ -157,7 +155,7 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
                 [
                     data_frame,
                     pd.DataFrame(
-                        list(zip(*ts_primary_vars_and_phases_props)),
+                        list(zip(*ts_primary_vars_and_phases_props, strict=False)),
                         columns=[
                             "Pressure",
                             "Overall mole fractions",
@@ -200,7 +198,7 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
                 [
                     data_frame,
                     pd.DataFrame(
-                        list(zip(*ts_primary_vars_and_phases_props)),
+                        list(zip(*ts_primary_vars_and_phases_props, strict=False)),
                         columns=[
                             "Pressure",
                             "Overall mole fractions",
