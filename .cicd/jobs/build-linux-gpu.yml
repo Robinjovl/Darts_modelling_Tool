@@ -85,8 +85,6 @@ build-linux-tahiti-image-3.10-gpu:
                 source /opt/conda/etc/profile.d/conda.sh && \
                 # activate your env
                 conda activate ${CONDA_ENV} && \
-                # install gmsh
-                conda install -n ${CONDA_ENV} -c conda-forge gmsh
                 # _this_ is your real build
                 ./helper_scripts/build_install_darts_gpu.sh -c -p
             "
