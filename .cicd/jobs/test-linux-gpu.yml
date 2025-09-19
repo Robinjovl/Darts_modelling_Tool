@@ -53,7 +53,7 @@ test-linux-oahu-3.10-gpu:
     needs:
         - build-linux-oahu-3.10-gpu
 
-test-linux-tahiti-3.10-gpu:
+.test-linux-tahiti-3.10-gpu:
     tags:
         - linux_tahiti_gpu
     extends: .test-linux-gpu
@@ -82,7 +82,7 @@ test-linux-tahiti-image-3.10-gpu:
             # exit on any error, print commands as you go
             set -euxo pipefail && \
             # enable Conda in this shell
-            eval \"\$(conda shell.bash hook)\" && \
+            source /opt/conda/etc/profile.d/conda.sh && \
             # activate your env
             conda activate ${CONDA_ENV} && \
             # make sure pip is fresh and reinstall your wheel
@@ -94,7 +94,7 @@ test-linux-tahiti-image-3.10-gpu:
         - |
           apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
             set -euxo pipefail && \
-            eval \"\$(conda shell.bash hook)\" && \
+            source /opt/conda/etc/profile.d/conda.sh && \
             conda activate ${CONDA_ENV} && \
             cd models && \
             darts run_test_suite2.py LOG && \
