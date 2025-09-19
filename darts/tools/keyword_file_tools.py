@@ -1,4 +1,6 @@
+import gzip
 import os.path as osp
+import shutil
 
 import numpy as np
 
@@ -136,3 +138,43 @@ def save_few_keywords(fname, keys, data):
             f.write('\t')
         f.write('\n' + '/' + '\n')
     f.close()
+
+
+def compressed_file(fname, verbose=False):
+    '''
+    Creates a compressed file or uncompresses an archived file
+    '''
+    fname_gz = fname + '.gz'
+    if osp.exists(fname):
+        if not osp.exists(fname_gz):
+            compress_file(fname, fname_gz, verbose=verbose)
+    else:
+        if osp.exists(fname_gz):
+            decompress_file(fname, fname_gz, verbose=verbose)
+        else:
+            raise Exception(
+                'Cannot find either uncompressed or compressed file: '
+                + fname
+                + ' or '
+                + fname_gz
+            )
+
+
+def compress_file(fname, fname_gz, verbose=False, compresslevel=9):
+    if verbose:
+        print('Compressing', fname, 'to', fname_gz, '...')
+    with open(fname, 'rb') as f_in:
+        with gzip.open(fname_gz, 'wb', compresslevel=compresslevel) as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    if verbose:
+        print('Done')
+
+
+def decompress_file(fname, fname_gz, verbose=False):
+    if verbose:
+        print('Uncompressing', fname_gz, 'to', fname, '...')
+    with gzip.open(fname_gz, 'rb') as f_in:
+        with open(fname, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    if verbose:
+        print('Done')
