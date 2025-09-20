@@ -106,8 +106,6 @@ apptainer-image-builder-agents:
     IMAGE_PREFIX: "open-darts-agents"
     ENABLE_AGENT_TOOLS: "1"
   rules:
-      - if: $CI_COMMIT_REF_PROTECTED == "true"
-      - if: $CI_PIPELINE_SOURCE == "pipeline" && $RUN_DEVTOOLS == "1"
-      - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-      - if: $TEST_CUSTOM_BRANCH == "1"
-      - if: $TEST_ALL_PYTHONS == "1"
+    - if: '$RUN_DEVTOOLS == "1"'
+      when: on_success
+    - when: manual

@@ -134,8 +134,8 @@ deploy-apptainer-image:
         - apptainer registry login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "oras://$CI_REGISTRY" || echo "Apptainer registry login warning; continuing"
         # Try push; if tag exists, do not fail the job
         - |
-          if apptainer push "$IMG" "oras://${CI_REGISTRY}/$REPO/apptainer:$BUILD_KEY"; then
-            echo "Pushed $REPO/apptainer:$BUILD_KEY"
+          if apptainer push "$IMG" "oras://${CI_REGISTRY}/$REPO/apptainer:latest"; then
+            echo "Pushed $REPO/apptainer:latest"
           else
             echo "Push failed"; exit 1;
           fi
