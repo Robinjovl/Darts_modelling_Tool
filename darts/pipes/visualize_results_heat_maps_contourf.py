@@ -1407,7 +1407,7 @@ def visualize_results_heat_maps_contourf(
     # Initialize the gas viscosity matrix
     miuG_matrix = np.zeros((num_segments, num_selected_ts))
 
-    # Fill the liquid density matrix
+    # Fill the gas viscosity matrix
     for ts_idx, ts_counter in enumerate(time_step_idx_range):
         miuG = data_frame["miuG"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -1488,7 +1488,7 @@ def visualize_results_heat_maps_contourf(
         # Initialize the liquid viscosity matrix
         miuL_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid density matrix
+        # Fill the liquid viscosity matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
             miuL = data_frame["miuL"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -1573,7 +1573,7 @@ def visualize_results_heat_maps_contourf(
         # Initialize the liquid L_a viscosity matrix
         miuL_a_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_a density matrix
+        # Fill the liquid L_a viscosity matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
             miuL_a = data_frame["miuL_a"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -1668,7 +1668,7 @@ def visualize_results_heat_maps_contourf(
         # Initialize the liquid L_b viscosity matrix
         miuL_b_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_b density matrix
+        # Fill the liquid L_b viscosity matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
             miuL_b = data_frame["miuL_b"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
