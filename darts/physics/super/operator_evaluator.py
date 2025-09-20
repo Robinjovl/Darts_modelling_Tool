@@ -119,7 +119,7 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         # fluid diffusive flux sat: c_r phi_f s_j rho_mj [kmol/m3] (kmol/m3)
-        vec_values_as_np[self.UPSAT_OP + self.property.ph] = (
+        values_np[self.UPSAT_OP + self.property.ph] = (
             self.compr
             * self.phi_f
             * self.property.sat[self.property.ph]
@@ -134,7 +134,7 @@ class ReservoirOperators(OperatorsSuper):
         for j in self.property.ph:
             D = self.property.diffusion_ev[self.property.phases_name[j]].evaluate()
             # fluid diffusive flux: D_cj [m2/day] x_cj [-] (m2/day)
-            vec_values_as_np[
+            values_np[
                 self.GRAD_OP + j * self.ne : self.GRAD_OP + j * self.ne + self.nc_fl
             ] = D[: self.nc_fl] * self.property.x[j][: self.nc_fl]
 
