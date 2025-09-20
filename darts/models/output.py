@@ -972,12 +972,41 @@ class Output:
         else:
             timesteps, property_array = output_data[0], output_data[1]
 
-            expected_shape = (len(timesteps), self.reservoir.mesh.n_res_blocks)
-            for key, array in property_array.items():
-                if array.shape[1] != self.reservoir.mesh.n_res_blocks:
+        non_conform = (
+            1
+            if hasattr(self.reservoir.discretizer, "frac_cells_tot")
+            and self.reservoir.discretizer.frac_cells_tot > 0
+            else 0
+        )
+
+        if non_conform:
+            n = int(self.reservoir.mesh.n_res_blocks)
+            n_frac = int(self.reservoir.discretizer.frac_cells_tot)
+
+            frac_property_array = {}
+            to_drop = []
+
+            for k, v in list(property_array.items()):
+                arr = np.asarray(v)
+
+                if arr.shape == (1, n_frac):
+                    frac_property_array[k] = arr
+                    to_drop.append(k)
+
+                elif arr.shape == (1, n):
+                    pass
+
+                else:
                     raise ValueError(
-                        f"Property '{key}' has shape {array.shape}, expected {expected_shape}."
+                        f"Property '{k}' has an invalid shape {arr.shape}, "
+                        f"expected (1, {n}) or (1, {n_frac}) in case of fracture-property-arrays."
+                        f"WARNING: Multiple timesteps are not supported when using fracture-property-arrays."
                     )
+
+            for k in to_drop:
+                property_array.pop(k, None)
+        else:
+            frac_property_array = {}
 
         # units to prop names
         self.set_units()
@@ -989,18 +1018,19 @@ class Output:
                 prop_names[name] = name
 
         for t, time in enumerate(timesteps):
-            data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
-            for i, name in enumerate(property_array.keys()):
-                data[i, :] = property_array[name][t]
+            data = np.array([property_array[name][t] for name in property_array])
 
-            if ith_step is None:
-                self.reservoir.output_to_vtk(
-                    t, time, output_directory, prop_names, data
-                )
-            else:
-                self.reservoir.output_to_vtk(
-                    ith_step, time, output_directory, prop_names, data
-                )
+            self.reservoir.frac_property_array = (
+                frac_property_array  # fracture-property-array
+            )
+
+            self.reservoir.output_to_vtk(
+                t if ith_step is None else ith_step,
+                time,
+                output_directory,
+                prop_names,
+                data,  # this array only contains reservoir properties
+            )
 
         self.timer.node["vtk_output"].stop()
         self.timer.stop()

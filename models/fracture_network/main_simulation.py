@@ -17,14 +17,7 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
 
     output_directory = 'sol_' + idata.geom['case_name']
 
-    # rename output dir if exists
-    if os.path.exists(output_directory):
-        ren_fname = output_directory + '_prev'
-        if os.path.exists(ren_fname):
-            shutil.rmtree(ren_fname)
-        os.renames(output_directory, ren_fname)
-
-    os.makedirs(output_directory)
+    os.makedirs(output_directory, exist_ok=True)
 
     redirect_darts_output(os.path.join(output_directory, 'simulation.log'))
 
@@ -34,12 +27,27 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
     m.set_output(output_folder = output_directory)
 
     # Specify some other time-related properties (NOTE: all time parameters are in [days])
-    size_report_step = 60  # Size of the reporting step 
+    size_report_step = 60  # Size of the reporting step
     num_report_steps = 12*5   # Number of reporting steps (see above)
     output_vtk_period = 12  # output each output_vtk_period-th step results to tk
 
+    output_properties_main = m.physics.vars  # only main variables
+    output_properties_with_temperature = output_properties_main + ['temperature']
+
+    timesteps, property_array = m.output.output_properties(output_properties=output_properties_with_temperature,
+                                                           timestep=0, engine=True)
+
+    # add custom arrays to property_array: fracture index and fracture aperture to be saved to vtk files
+    n_fracs = m.reservoir.discretizer.frac_cells_tot
+    #frac_index = np.arange(n_fracs).reshape((1, n_fracs))
+    frac_aper = m.reservoir.frac_aper if not np.isscalar(m.reservoir.frac_aper) else np.zeros((1, n_fracs)) + m.reservoir.frac_aper
+    custom_arrays = {'frac_aperture': frac_aper} #'frac_index': frac_index
+    property_array.update(custom_arrays)
+
+    m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=0, output_directory=output_directory)
+
     # m.output.save_data_to_h5(kind = 'reservoir')
-    m.output.output_to_vtk(ith_step=0, output_directory=output_directory)
+    ###m.output.output_to_vtk(ith_step=0, output_directory=output_directory)
 
     sim_time = 0.
     m.print_range(sim_time, part='cells')
