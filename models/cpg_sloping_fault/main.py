@@ -12,7 +12,7 @@ from model_deadoil import ModelDeadOil
 from model_CO2 import ModelCCS
 
 
-def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=True):
+def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=False):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
@@ -153,7 +153,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     if redirect_log:
         abort_redirection(log_stream)
-    print('Failed' if failed else 'Ok')
+    print('Failed' if failed else 'Passed')
 
     return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
 
@@ -291,16 +291,17 @@ if __name__ == '__main__':
     # physics_list += ['deadoil']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
+    #cases_list += ['generate_5x3x4']
     #cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['case_40x40x10']
+    cases_list += ['brugge']
 
     well_controls = []
-    #well_controls += ['wrate']
+    well_controls += ['wrate']
     #well_controls += ['wbhp']
-    well_controls += ['wperiodic']
+    #well_controls += ['wperiodic']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

@@ -89,9 +89,11 @@ class Compositional(PhysicsBase):
 
         n_vars = len(variables)
         # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
-        # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/
-        # = NE * (2 * nph + 2) + 4 * nph + 3
-        n_ops = n_vars * (2 * nph + 2) + 4 * nph + 3
+        # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*LAMBDA*/ + NP /*SAT*/ + NP /*enthalpy*/
+        # + 2 /*temperature and pressure*/
+        # = NE * (2 * nph + 2) + 6 * nph + 3
+
+        n_ops = n_vars * (2 * nph + 2) + 6 * nph + 3
 
         # axes_min
         if axes_min is None:
@@ -182,11 +184,7 @@ class Compositional(PhysicsBase):
         return
 
     def set_initial_conditions_from_depth_table(
-        self,
-        mesh: conn_mesh,
-        input_distribution: dict,
-        input_depth: list | np.ndarray,
-        global_to_local=None,
+        self, mesh: conn_mesh, input_distribution: dict, input_depth: list | np.ndarray
     ):
         """
         Function to set initial conditions from given distribution of properties over depth.
@@ -223,8 +221,6 @@ class Compositional(PhysicsBase):
 
         # Get depths and primary variable arrays from mesh object
         depths = np.asarray(mesh.depth)[: mesh.n_res_blocks]
-        if global_to_local is not None:
-            depths = depths[global_to_local]
 
         # adjust the size of initial_state array in c++
         mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)
