@@ -95,10 +95,11 @@ class Poroelasticity(Compositional):
         self.discretizer_name = discretizer
 
         if self.discretizer_name == 'mech_discretizer':
-            # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
-            # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/ + 1 /*rock density*/
-            # = NE * (2 * nph + 2) + 4 * nph + 4
-            self.n_ops = self.n_vars * (2 * self.nph + 2) + 4 * self.nph + 4
+            # number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient,
+            # NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP phase mobility,
+            # NP saturation, NP enthalpy, 2 temperature and pressure
+            # n_ops = NE * (2 * nph + 2) + 6 * nph + 4
+            self.n_ops = self.n_vars * (2 * self.nph + 2) + 6 * self.nph + 4
         else:  # if self.discretizer_name == 'pm_discretizer':
             self.n_ops = 2 * self.n_vars
             assert not self.thermal
