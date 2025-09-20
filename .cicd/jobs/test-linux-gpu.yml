@@ -97,7 +97,7 @@ test-linux-tahiti-image-3.10-gpu:
             source /opt/conda/etc/profile.d/conda.sh && \
             conda activate ${CONDA_ENV} && \
             # install gmsh
-            conda install -n ${CONDA_ENV} -c conda-forge gmsh && \
+            conda install -n ${CONDA_ENV} -c conda-forge xorg-libxrender && \
             cd models && \
             darts run_test_suite2.py LOG && \
             echo 'run_test_suite2 returned' $? && \
