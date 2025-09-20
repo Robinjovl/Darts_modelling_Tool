@@ -5,6 +5,11 @@ stages:
     - test
     - deploy
 
+default:
+  rules:
+    - if: '$RUN_APPTAINER_DEPLOY == "1"'
+      when: never
+
 include:
   - local: '.cicd/jobs/pre-commit.yml'
   - local: '.cicd/jobs/build-images.yml'
