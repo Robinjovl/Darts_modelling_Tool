@@ -688,8 +688,9 @@ class DartsModel:
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
             for j in range(i):
+                denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
                 if (
-                    abs(max_residual[i] - max_residual[j]) / max_residual[i]
+                    abs(max_residual[i] - max_residual[j]) / denom
                     < self.data_ts.newton_tol_stationary
                 ):
                     counter += 1
@@ -733,8 +734,9 @@ class DartsModel:
                 # check stationary point after line search
                 counter = 0
                 for j in range(i):
+                    denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
                     if (
-                        abs(max_residual[i] - max_residual[j]) / max_residual[i]
+                        abs(max_residual[i] - max_residual[j]) / denom
                         < self.data_ts.newton_tol_stationary
                     ):
                         counter += 1
