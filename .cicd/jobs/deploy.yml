@@ -120,7 +120,7 @@ deploy-apptainer-image:
         - 'test -n "$BUILD_KEY" || { echo "Unable to determine BUILD_KEY from $LINK or $IMG_DIR" >&2; exit 2; }'
         - echo "BUILD_KEY=$BUILD_KEY"
         # target repo and existing tag check (skip if tag already present)
-        - REPO="open-darts/open-darts"
+        - REPO="$CI_REGISTRY_IMAGE"
         - echo "REPO=$REPO"
         - echo "Skipping remote manifest pre-check; proceeding to push"
         # Locate built image (from shared /data path)
@@ -134,7 +134,7 @@ deploy-apptainer-image:
         - apptainer registry login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "oras://$CI_REGISTRY" || echo "Apptainer registry login warning; continuing"
         # Try push; if tag exists, do not fail the job
         - |
-          if apptainer push "$IMG" "oras://${CI_REGISTRY}/$REPO/apptainer:latest"; then
+          if apptainer push "$IMG" "oras://$REPO/apptainer:latest"; then
             echo "Pushed $REPO/apptainer:latest"
           else
             echo "Push failed"; exit 1;
