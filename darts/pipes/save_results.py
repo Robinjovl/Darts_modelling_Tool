@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 
@@ -222,4 +224,9 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
                 ]
             )
 
-    data_frame.to_pickle("output/stored_primary_vars_and_phase_props.pkl")
+    data_frame.to_pickle(
+        os.path.join(
+            coupled_model.output.output_folder,
+            "stored_primary_vars_and_phase_props.pkl",
+        )
+    )
