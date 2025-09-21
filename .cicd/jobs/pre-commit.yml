@@ -2,10 +2,6 @@ pre-commit:
     stage: pre_commit
     tags:
         - linux_tahiti_gpu
-    cache:
-      key: "pre-commit-${CI_PROJECT_ID}-${CI_COMMIT_REF_SLUG}"
-      paths:
-        - .cache/pre-commit
     variables:
         PRE_COMMIT_HOME: ".cache/pre-commit"
     before_script:
@@ -40,7 +36,6 @@ pre-commit:
     artifacts:
         paths:
             - linting_output.log
-            - .cache/pre-commit/pre-commit.log
         expire_in: 1 week
         when: always
     rules:
