@@ -336,8 +336,8 @@ class Model(CICDModel):
 
         fig, ax = plt.subplots(3, 2, figsize=(8, 5), dpi=200, facecolor='w', edgecolor='k')
         names = ['z_co2', 'z_h2o', 'z_inert', 'P', 'Sg', 'phi']
-        titles = ['$z_{CO_2}$ [-]', '$z_{H_2O}$ [-]', '$z_{w, Ca} + z_{w, CO_3}$ [-]',
-                  '$P$ [bars]', '$s_g$ [-]', '$\phi$ [-]']
+        titles = [r'$z_{CO_2}$ [-]', r'$z_{H_2O}$ [-]', r'$z_{w, Ca} + z_{w, CO_3}$ [-]',
+                  r'$P$ [bars]', r'$s_g$ [-]', r'$\phi$ [-]']
         for i in range(3):
             for j in range(2):
                 n = i + j * 3
@@ -398,8 +398,8 @@ class Model(CICDModel):
         fig, ax = plt.subplots(3, 2, figsize=(10, 6), dpi=200, facecolor='w', edgecolor='k')
         plt.set_cmap('jet')
         names = ['z_co2', 'z_h2o', 'z_inert', 'P', 'Sg', 'phi']
-        titles = ['$z_{CO_2}$ [-]', '$z_{H_2O}$ [-]', '$z_{w, Ca} + z_{w, CO_3}$ [-]',
-                  '$P$ [bars]', '$s_g$ [-]', '$\phi$ [-]']
+        titles = [r'$z_{CO_2}$ [-]', r'$z_{H_2O}$ [-]', r'$z_{w, Ca} + z_{w, CO_3}$ [-]',
+                  r'$P$ [bars]', r'$s_g$ [-]', r'$\phi$ [-]']
         for i in range(3):
             for j in range(2):
                 n = i + j * 3

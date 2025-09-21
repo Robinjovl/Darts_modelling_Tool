@@ -28,6 +28,7 @@ Help_Info()
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
   echo "   -p        : Enable building & installing IPhreeqc (third-party)  (OFF by default)"
   echo "   -v        : Enable build with valgrind support (OFF by default)"
+  echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
 }
 ################################################################################
 # Main program                                                                 #
@@ -47,6 +48,7 @@ NT=8              # Number of threads by default 8
 gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 valgrind=false    # Whether support valgrind profiling or not
+CUDA_ARCH="${CUDA_ARCH:-}"
 
 while getopts ":chtwmrab:d:j:g:Gpv" option; do
     case "$option" in
@@ -72,7 +74,7 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
         d) # Select a mode
            config=${OPTARG};;
         j) # Number of threads
-           NT=${OPTARG};; 
+           NT=${OPTARG};;
         g) # gpp version
            special_gpp=true
            gpp_version=${OPTARG};;
@@ -104,7 +106,7 @@ fi
 # ------------------------------------------------------------------------------
 
 # Amend the path if necessary --------------------------------------------------
-# If the script is called from inside the folder helper_scripts, then place us 
+# If the script is called from inside the folder helper_scripts, then place us
 # at the root directory open-darts.
 if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
     cd ../
@@ -157,9 +159,13 @@ if [[ "$skip_req" == false ]]; then
     echo -e "\n-- Install Hypre: START\n"
     cd hypre/src/cmbuild
     # Setup hypre build with no MPI support (we only use single processor)
-    # Request build of tests and examples just to be sure everything is fine in the build 
+    # Request build of tests and examples just to be sure everything is fine in the build
     # For debugging: -DHYPRE_ENABLE_PRINT
-    cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. &> ../../../../make_hypre.log
+    cmake -D HYPRE_BUILD_TESTS=ON \
+          -D HYPRE_BUILD_EXAMPLES=ON \
+          -D HYPRE_WITH_MPI=OFF \
+          -D CMAKE_INSTALL_PREFIX=../../../install \
+          .. &> ../../../../make_hypre.log
     make install -j $NT &>> ../../../../make_hypre.log
     cd ../../../
     echo -e "\n--- Building Hypre: DONE!\n"
@@ -238,7 +244,7 @@ if [[ "$special_gpp" == true ]]; then
     cmake_options+=" -D CMAKE_CXX_COMPILER=${gpp_version}"
 fi
 
-build=ST    
+build=ST
 if [[ "$GPU" == true ]]; then
   build=GPU
 elif [[ "$MT" == true ]]; then
@@ -256,6 +262,10 @@ if [[ "$phreeqc" == true ]]; then
     echo "Phreeqc support: ENABLED"
 else
     echo "Phreeqc support: DISABLED"
+fi
+
+if [[ ! -z "$CUDA_ARCH" ]]; then
+    cmake_options+=" -D CUDA_ARCH=${CUDA_ARCH}"
 fi
 
 echo -e "CMake options: $cmake_options\n" # Report to user the CMake options

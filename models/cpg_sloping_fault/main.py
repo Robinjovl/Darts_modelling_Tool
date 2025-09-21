@@ -286,8 +286,9 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
-    #physics_list += ['CCS']
-    #physics_list += ['deadoil']
+
+    # physics_list += ['CCS']
+    # physics_list += ['deadoil']
 
     cases_list = []
     #cases_list += ['generate_5x3x4']
