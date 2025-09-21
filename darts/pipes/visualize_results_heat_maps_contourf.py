@@ -19,7 +19,8 @@ def visualize_results_heat_maps_contourf(
     x_axis: str = "simulation_time",
     y_axis: str = "segments_MD",
     cmap_color: str = "jet",
-    save_as='png',
+    save_as: str = 'pdf',
+    show_plot: bool = True,
     y_axis_tick_interval=50.0,
     n_cmap_bins_p: int = 10,
     n_cmap_bins_comp: int = 10,
@@ -50,6 +51,8 @@ def visualize_results_heat_maps_contourf(
     :param y_axis: "segments_MD" or "segments_TVD" or "segment_index"
     :param save_as: The extension of the image files that will be saved
     :type save_as: str
+    :param show_plot: Whether or not to show the plot
+    :type show_plot: bool
     :param y_axis_tick_interval: The interval of the ticks of the y axis.
     :type y_axis_tick_interval: float
     :param n_cmap_bins_p: Number of bins of the colorbar and colormap of pressure
@@ -97,6 +100,28 @@ def visualize_results_heat_maps_contourf(
 
     # Load primary vars and phase props
     data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+
+    """ Save BHP time series in a text file """
+    BHP = data_frame["Pressure"][num_segments - 1]
+    if not os.path.exists(os.path.join(coupled_model.output_folder, 'BHP.txt')):
+        np.savetxt(os.path.join(coupled_model.output_folder, 'BHP.txt'), BHP)
+    elif os.path.exists(os.path.join(coupled_model.output_folder, 'BHP.txt')):
+        prev_BHP_array = np.loadtxt(
+            os.path.join(coupled_model.output_folder, 'BHP.txt')
+        )
+        new_BHP_array = np.column_stack((prev_BHP_array, BHP))
+        np.savetxt(os.path.join(coupled_model.output_folder, 'BHP.txt'), new_BHP_array)
+
+    """ Save BHT time series in a text file """
+    BHT = data_frame["Temperature"][num_segments - 1] - 273.15
+    if not os.path.exists(os.path.join(coupled_model.output_folder, 'BHT.txt')):
+        np.savetxt(os.path.join(coupled_model.output_folder, 'BHT.txt'), BHT)
+    elif os.path.exists(os.path.join(coupled_model.output_folder, 'BHT.txt')):
+        prev_BHT_array = np.loadtxt(
+            os.path.join(coupled_model.output_folder, 'BHT.txt')
+        )
+        new_BHT_array = np.column_stack((prev_BHT_array, BHT))
+        np.savetxt(os.path.join(coupled_model.output_folder, 'BHT.txt'), new_BHT_array)
 
     num_ts = int(
         len(data_frame["sG"]) / num_segments
@@ -218,7 +243,8 @@ def visualize_results_heat_maps_contourf(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Pressure." + save_as)
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Overall mole fraction profiles
 
@@ -316,7 +342,8 @@ def visualize_results_heat_maps_contourf(
             + save_as,
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Temperature profile
 
@@ -400,7 +427,8 @@ def visualize_results_heat_maps_contourf(
             main_dir, f"{figure_counter}- Temperature." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Gas saturation profile
 
@@ -478,7 +506,8 @@ def visualize_results_heat_maps_contourf(
         main_dir, f"{figure_counter}- Gas saturation." + save_as
     )
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid L_a saturation profile
 
@@ -560,7 +589,8 @@ def visualize_results_heat_maps_contourf(
             f"{figure_counter}- Liquid L_a saturation." + save_as,
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_b saturation profile
 
@@ -641,7 +671,8 @@ def visualize_results_heat_maps_contourf(
             main_dir, f"{figure_counter}- Liquid L_b saturation." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Profile/profiles of components mole fractions in the gaseous phase
 
@@ -735,7 +766,8 @@ def visualize_results_heat_maps_contourf(
             + save_as,
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Profile/profiles of components mole fractions in the liquid phase
 
@@ -837,7 +869,8 @@ def visualize_results_heat_maps_contourf(
                 + save_as,
             )
             plt.savefig(file_address)
-            plt.show()
+            if show_plot:
+                plt.show()
 
         # %% Profile/profiles of components mole fractions in the liquid phase L_a
 
@@ -940,7 +973,8 @@ def visualize_results_heat_maps_contourf(
                     + save_as,
                 )
                 plt.savefig(file_address)
-                plt.show()
+                if show_plot:
+                    plt.show()
 
         # %% Profile/profiles of components mole fractions in the liquid phase L_b
 
@@ -1043,7 +1077,8 @@ def visualize_results_heat_maps_contourf(
                     + save_as,
                 )
                 plt.savefig(file_address)
-                plt.show()
+                if show_plot:
+                    plt.show()
 
     # %% Gas density profile
 
@@ -1123,7 +1158,8 @@ def visualize_results_heat_maps_contourf(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas density." + save_as)
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid density profile
 
@@ -1208,7 +1244,8 @@ def visualize_results_heat_maps_contourf(
             main_dir, f"{figure_counter}- Liquid density." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_a density profile
 
@@ -1303,7 +1340,8 @@ def visualize_results_heat_maps_contourf(
             main_dir, f"{figure_counter}- Liquid L_a density." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_b density profile
 
@@ -1398,7 +1436,8 @@ def visualize_results_heat_maps_contourf(
             main_dir, f"{figure_counter}- Liquid L_b density." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Gas viscosity profile
 
@@ -1478,7 +1517,8 @@ def visualize_results_heat_maps_contourf(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity." + save_as)
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid viscosity profile
 
@@ -1563,7 +1603,8 @@ def visualize_results_heat_maps_contourf(
             main_dir, f"{figure_counter}- Liquid viscosity." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_a viscosity profile
 
@@ -1658,7 +1699,8 @@ def visualize_results_heat_maps_contourf(
             main_dir, f"{figure_counter}- Liquid L_a viscosity." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_b viscosity profile
 
@@ -1753,7 +1795,8 @@ def visualize_results_heat_maps_contourf(
             main_dir, f"{figure_counter}- Liquid L_b viscosity." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Gas velocity profile
 
@@ -1833,7 +1876,8 @@ def visualize_results_heat_maps_contourf(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity." + save_as)
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid velocity profile
 
@@ -1915,4 +1959,5 @@ def visualize_results_heat_maps_contourf(
         main_dir, f"{figure_counter}- Liquid velocity." + save_as
     )
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()

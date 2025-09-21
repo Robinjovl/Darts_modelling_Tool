@@ -14,12 +14,15 @@ def visualize_results_line_graphs(
     h5_well_data: dict,
     coupled_model: DartsModel,
     time_step_increment: int = 1,
+    show_plot: bool = True,
 ):
     """
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
     :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
     :param coupled_model: An instance of DartsModel
+    :param show_plot: Whether or not to show the plot
+    :type show_plot: bool
     """
     main_dir = os.path.join(coupled_model.output_folder, "line_graphs")
 
@@ -91,7 +94,8 @@ def visualize_results_line_graphs(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Pressure.png")
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Component/components overall mole fraction profile
 
@@ -147,7 +151,8 @@ def visualize_results_line_graphs(
             f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.png",
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Temperature profile
 
@@ -196,7 +201,8 @@ def visualize_results_line_graphs(
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Temperature.png")
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Gas saturation profile
 
@@ -230,7 +236,8 @@ def visualize_results_line_graphs(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas saturation.png")
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Profile/profiles of components mole fractions in the gaseous phase
 
@@ -270,7 +277,8 @@ def visualize_results_line_graphs(
             f"{figure_counter}- {comp_name} mole fraction in the gaseous phase.png",
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Profile/profiles of components mole fractions in the liquid phase
 
@@ -310,7 +318,8 @@ def visualize_results_line_graphs(
             f"{figure_counter}- {comp_name} mole fraction in the liquid phase.png",
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Gas density profile
 
@@ -353,7 +362,8 @@ def visualize_results_line_graphs(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas density.png")
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid density profile
 
@@ -396,7 +406,8 @@ def visualize_results_line_graphs(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Liquid density.png")
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Gas viscosity profile
 
@@ -439,7 +450,8 @@ def visualize_results_line_graphs(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity.png")
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid viscosity profile
 
@@ -482,4 +494,5 @@ def visualize_results_line_graphs(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Liquid viscosity.png")
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()

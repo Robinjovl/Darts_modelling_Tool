@@ -17,7 +17,8 @@ def visualize_results_heat_maps_pcolormesh(
     x_axis: str = "simulation_time",
     y_axis: str = "segments_MD",
     cmap_color: str = "jet",
-    save_as: str = "png",
+    save_as: str = "pdf",
+    show_plot: bool = True,
     font_size: float = 14,
     with_title: bool = True,
 ):
@@ -38,6 +39,8 @@ def visualize_results_heat_maps_pcolormesh(
     :type y_axis: str
     :param save_as: The extension of the image files that will be saved
     :type save_as: str
+    :param show_plot: Whether or not to show the plot
+    :type show_plot: bool
     :param font_size: Size of the fonts
     :type font_size: float
     :param with_title: If you want the figure to have a title or not
@@ -161,7 +164,8 @@ def visualize_results_heat_maps_pcolormesh(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Pressure." + save_as)
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Overall mole fraction profiles
 
@@ -228,7 +232,8 @@ def visualize_results_heat_maps_pcolormesh(
             + save_as,
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Temperature profile
 
@@ -287,7 +292,8 @@ def visualize_results_heat_maps_pcolormesh(
             main_dir, f"{figure_counter}- Temperature." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Gas saturation profile
 
@@ -342,7 +348,8 @@ def visualize_results_heat_maps_pcolormesh(
         main_dir, f"{figure_counter}- Gas saturation." + save_as
     )
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid L_a saturation profile
 
@@ -399,7 +406,8 @@ def visualize_results_heat_maps_pcolormesh(
             f"{figure_counter}- Liquid L_a saturation." + save_as,
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_b saturation profile
 
@@ -455,7 +463,8 @@ def visualize_results_heat_maps_pcolormesh(
             main_dir, f"{figure_counter}- Liquid L_b saturation." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Profile/profiles of components mole fractions in the gaseous phase
 
@@ -526,7 +535,8 @@ def visualize_results_heat_maps_pcolormesh(
             + save_as,
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Profile/profiles of components mole fractions in the liquid phase
 
@@ -600,7 +610,8 @@ def visualize_results_heat_maps_pcolormesh(
                 + save_as,
             )
             plt.savefig(file_address)
-            plt.show()
+            if show_plot:
+                plt.show()
 
         # %% Profile/profiles of components mole fractions in the liquid phase L_a
 
@@ -675,7 +686,8 @@ def visualize_results_heat_maps_pcolormesh(
                     + save_as,
                 )
                 plt.savefig(file_address)
-                plt.show()
+                if show_plot:
+                    plt.show()
 
         # %% Profile/profiles of components mole fractions in the liquid phase L_b
 
@@ -750,7 +762,8 @@ def visualize_results_heat_maps_pcolormesh(
                     + save_as,
                 )
                 plt.savefig(file_address)
-                plt.show()
+                if show_plot:
+                    plt.show()
 
     # %% Gas density profile
 
@@ -807,7 +820,8 @@ def visualize_results_heat_maps_pcolormesh(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas density." + save_as)
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid density profile
 
@@ -869,7 +883,8 @@ def visualize_results_heat_maps_pcolormesh(
             main_dir, f"{figure_counter}- Liquid density." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_a density profile
 
@@ -933,7 +948,8 @@ def visualize_results_heat_maps_pcolormesh(
             main_dir, f"{figure_counter}- Liquid L_a density." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_b density profile
 
@@ -997,7 +1013,8 @@ def visualize_results_heat_maps_pcolormesh(
             main_dir, f"{figure_counter}- Liquid L_b density." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Gas viscosity profile
 
@@ -1054,7 +1071,8 @@ def visualize_results_heat_maps_pcolormesh(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity." + save_as)
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid viscosity profile
 
@@ -1116,7 +1134,8 @@ def visualize_results_heat_maps_pcolormesh(
             main_dir, f"{figure_counter}- Liquid viscosity." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_a viscosity profile
 
@@ -1180,7 +1199,8 @@ def visualize_results_heat_maps_pcolormesh(
             main_dir, f"{figure_counter}- Liquid L_a viscosity." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Liquid L_b viscosity profile
 
@@ -1244,7 +1264,8 @@ def visualize_results_heat_maps_pcolormesh(
             main_dir, f"{figure_counter}- Liquid L_b viscosity." + save_as
         )
         plt.savefig(file_address)
-        plt.show()
+        if show_plot:
+            plt.show()
 
     # %% Gas velocity profile
 
@@ -1301,7 +1322,8 @@ def visualize_results_heat_maps_pcolormesh(
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity." + save_as)
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
 
     # %% Liquid velocity profile
 
@@ -1360,4 +1382,5 @@ def visualize_results_heat_maps_pcolormesh(
         main_dir, f"{figure_counter}- Liquid velocity." + save_as
     )
     plt.savefig(file_address)
-    plt.show()
+    if show_plot:
+        plt.show()
