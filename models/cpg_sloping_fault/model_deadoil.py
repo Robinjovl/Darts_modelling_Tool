@@ -43,7 +43,7 @@ class ModelDeadOil(Model_CPG):
                 for z in z_range:
                     # state is pressure and 1 molar fractions out of 2
                     state = [p, z]
-                    sat = self.physics.property_containers[0].compute_saturation_full(state)
+                    sat = self.physics.property_containers[0].compute_saturation_full(state, evaluate_PT_from_PHflash=True)
                     if sat > s:
                         break
                 return z

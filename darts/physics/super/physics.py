@@ -315,48 +315,57 @@ class Compositional(PhysicsBase):
                 np.asarray(mesh.initial_state)[(self.n_vars - 1) :: self.n_vars] = (
                     input_distribution['temperature']
                 )
-            else:
-                # interpolate pressure and temperature to compute enthalpies
-                enthalpy = np.empty(mesh.n_res_blocks)
-                if not np.isscalar(input_distribution['pressure']):
-                    # Pressure specified as an array
-                    for j in range(mesh.n_res_blocks):
-                        composition = [
-                            (
-                                input_distribution[component][j]
-                                if not np.isscalar(input_distribution[component])
-                                else input_distribution[component]
+            elif self.state_spec == PhysicsBase.StateSpecification.PH:
+                if 'enthalpy' in input_distribution.keys():
+                    enthalpy = input_distribution["enthalpy"]
+                elif 'temperature' in input_distribution.keys():
+                    # interpolate pressure and temperature to compute enthalpies
+                    enthalpy = np.empty(mesh.n_res_blocks)
+                    if not np.isscalar(input_distribution['pressure']):
+                        # Pressure specified as an array
+                        for j in range(mesh.n_res_blocks):
+                            composition = [
+                                (
+                                    input_distribution[component][j]
+                                    if not np.isscalar(input_distribution[component])
+                                    else input_distribution[component]
+                                )
+                                for component in self.property_containers[
+                                    0
+                                ].components_name[:-1]
+                            ]
+                            temp = (
+                                input_distribution['temperature'][j]
+                                if not np.isscalar(input_distribution['temperature'])
+                                else input_distribution['temperature']
                             )
+
+                            state = np.array(
+                                [input_distribution['pressure'][j]]
+                                + composition
+                                + [temp]
+                            )
+                            enthalpy[j] = self.property_containers[
+                                0
+                            ].compute_total_enthalpy(state)
+                    else:
+                        composition = [
+                            input_distribution[component]
                             for component in self.property_containers[
                                 0
                             ].components_name[:-1]
                         ]
-                        temp = (
-                            input_distribution['temperature'][j]
-                            if not np.isscalar(input_distribution['temperature'])
-                            else input_distribution['temperature']
-                        )
-
-                        state = np.array(
-                            [input_distribution['pressure'][j]] + composition + [temp]
-                        )
-                        enthalpy[j] = self.property_containers[
-                            0
-                        ].compute_total_enthalpy(state)
+                        state = value_vector(
+                            [input_distribution['pressure']]
+                            + composition
+                            + [input_distribution['temperature']]
+                        )  # enthalpy is dummy variable
+                        enth = self.property_containers[0].compute_total_enthalpy(state)
+                        enthalpy[:] = enth
                 else:
-                    composition = [
-                        input_distribution[component]
-                        for component in self.property_containers[0].components_name[
-                            :-1
-                        ]
-                    ]
-                    state = value_vector(
-                        [input_distribution['pressure']]
-                        + composition
-                        + [input_distribution['temperature']]
-                    )  # enthalpy is dummy variable
-                    enth = self.property_containers[0].compute_total_enthalpy(state)
-                    enthalpy[:] = enth
+                    raise KeyError(
+                        'Initial state must specify either temperature or enthalpy, but neither was provided!'
+                    )
 
                 np.asarray(mesh.initial_state)[(self.n_vars - 1) :: self.n_vars] = (
                     enthalpy
