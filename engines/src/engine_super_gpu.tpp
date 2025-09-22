@@ -146,6 +146,7 @@ reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permpo
  * @tparam NE Number of equations.
  * @tparam N_VARS Number of variables per block.
  * @tparam N_OPS Number of operators.
+ * @tparam FLUX_OP Index for flux operators.
  * @tparam GRAD_OP Index for gradient operators.
  * @tparam ENTH_OP Index for enthalpy operators.
  * @tparam THERMAL Enable or disable thermal effects.
@@ -165,8 +166,8 @@ reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permpo
  * @param[in] op_num Array of region per block.
  * @param[in] dt Time step size.
  */
-template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t N_OPS, uint8_t GRAD_OP, uint8_t ENTH_OP,
-          bool THERMAL>
+template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t N_OPS, uint8_t FLUX_OP, uint8_t GRAD_OP,
+          uint8_t ENTH_OP, bool THERMAL>
 __global__ void
 assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, value_t *op_vals_arr,
                     value_t *op_ders_arr, index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind,
@@ -183,7 +184,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
   const int N_VARS_SQ = N_VARS * N_VARS;
   const int ND = 3;
   value_t jac_diag = 0, jac_offd, rhs = 0, avg_dispersivity, avg_enthalpy, grad_con,
-          vel_norm, arith_mean_dispersivity, disp;
+          vel_norm, arith_mean_dispersivity, disp, molar_density;
   value_t avg_velocity[ND];
 
   // index of diagonal block entry for block i in CSR values array
@@ -224,6 +225,11 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
       for (uint8_t d = 0; d < ND; d++)
           avg_velocity[d] = 0.5 * (darcy_velocities[vel_idx_i + p * ND + d] + darcy_velocities[vel_idx_j + p * ND + d]);
 
+      // phase molar density
+      molar_density = 0.0;
+      for (uint8_t k = 0; k < NC; k++)
+          molar_density += (op_vals_arr[i * N_OPS + FLUX_OP + p * NE + k] + op_vals_arr[j * N_OPS + FLUX_OP + p * NE + k]) / 2;
+
       grad_con = op_vals_arr[j * N_OPS + GRAD_OP + p * NE + c] - op_vals_arr[i * N_OPS + GRAD_OP + p * NE + c];
 
       // Diffusion flows from cell i to j (high to low), use upstream quantity from cell i for compressibility and saturation (mass or energy):
@@ -235,16 +241,23 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
       else
           avg_dispersivity = 0.0;
 
-      disp = dt * avg_dispersivity * tranD[conn_idx] * vel_norm;
+      disp = dt * avg_dispersivity * tranD[conn_idx] * vel_norm * molar_density;
 
       if (v == 0)
       {
         rhs -= disp * grad_con;
       }
 
-      // Add diffusion terms to Jacobian:
+      // fraction gradient derivatives
       jac_diag += disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
       jac_offd -= disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+
+      // molar density derivatives
+      for (uint8_t k = 0; k < NC; k++)
+      {
+          jac_diag += -dt * avg_dispersivity * tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + k) * N_VARS + v] / 2;
+          jac_offd += -dt * avg_dispersivity * tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + k) * N_VARS + v] / 2;
+      }
 
       // respective heat fluxes
       if constexpr (THERMAL)
@@ -255,9 +268,18 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
           atomicAdd(&RHS[i * N_VARS + NC], -avg_enthalpy * disp * grad_con);
         }
 
+          // fraction gradient derivatives
           atomicAdd(&Jac[diag_idx + NC * N_VARS + v], avg_enthalpy * disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v]);
           atomicAdd(&Jac[jac_idx + NC * N_VARS + v], -avg_enthalpy * disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v]);
 
+          // molar density derivatives
+          for (uint8_t k = 0; k < NC; k++)
+          {
+            atomicAdd(&Jac[diag_idx + NC * N_VARS + v], -avg_enthalpy * dt * avg_dispersivity * tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + k) * N_VARS + v] / 2);
+            atomicAdd(&Jac[jac_idx + NC * N_VARS + v], -avg_enthalpy * dt * avg_dispersivity * tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + k) * N_VARS + v] / 2);
+          }
+
+          // enhtalpy derivatives
           atomicAdd(&Jac[diag_idx + NC * N_VARS + v], -op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2);
           atomicAdd(&Jac[jac_idx + NC * N_VARS + v], -op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2);
       }
@@ -651,7 +673,7 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     if (!dispersivity.empty())
     {
-      assemble_dispersion<NC, NP, NE, N_VARS, N_OPS, GRAD_OP, ENTH_OP, THERMAL>
+      assemble_dispersion<NC, NP, NE, N_VARS, N_OPS, FLUX_OP, GRAD_OP, ENTH_OP, THERMAL>
         KERNEL_1D(mesh->n_res_blocks, NC * N_VARS, 64)(mesh->n_res_blocks, X_d, RHS_d, op_vals_arr_d,
                                                     op_ders_arr_d, jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
                                                     mesh_tranD_d, darcy_velocities_d, dispersivity_d, mesh_op_num_d, dt);
