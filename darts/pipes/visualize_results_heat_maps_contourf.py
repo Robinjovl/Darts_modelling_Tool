@@ -100,29 +100,6 @@ def visualize_results_heat_maps_contourf(
 
     # Load primary vars and phase props
     data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
-
-    """ Save BHP time series in a text file """
-    BHP = data_frame["Pressure"][num_segments - 1]
-    if not os.path.exists(os.path.join(coupled_model.output_folder, 'BHP.txt')):
-        np.savetxt(os.path.join(coupled_model.output_folder, 'BHP.txt'), BHP)
-    elif os.path.exists(os.path.join(coupled_model.output_folder, 'BHP.txt')):
-        prev_BHP_array = np.loadtxt(
-            os.path.join(coupled_model.output_folder, 'BHP.txt')
-        )
-        new_BHP_array = np.column_stack((prev_BHP_array, BHP))
-        np.savetxt(os.path.join(coupled_model.output_folder, 'BHP.txt'), new_BHP_array)
-
-    """ Save BHT time series in a text file """
-    BHT = data_frame["Temperature"][num_segments - 1] - 273.15
-    if not os.path.exists(os.path.join(coupled_model.output_folder, 'BHT.txt')):
-        np.savetxt(os.path.join(coupled_model.output_folder, 'BHT.txt'), BHT)
-    elif os.path.exists(os.path.join(coupled_model.output_folder, 'BHT.txt')):
-        prev_BHT_array = np.loadtxt(
-            os.path.join(coupled_model.output_folder, 'BHT.txt')
-        )
-        new_BHT_array = np.column_stack((prev_BHT_array, BHT))
-        np.savetxt(os.path.join(coupled_model.output_folder, 'BHT.txt'), new_BHT_array)
-
     num_ts = int(
         len(data_frame["sG"]) / num_segments
     )  # Initial conditions of sG is not stored.
