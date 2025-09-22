@@ -17,7 +17,7 @@ valgrind_models = [
     '3ph_bo',
     'Uniform_Brugge',
     'Chem_benchmark_new',
-    #'CO2_foam_CCS',
+    'CCS',
     'GeoRising',
     'CoaxWell',
     'phreeqc_dissolution',
