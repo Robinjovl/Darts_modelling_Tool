@@ -1,7 +1,7 @@
 import numpy as np
 import os
 
-from darts.input.input_data import InputData
+from darts.input.input_data import InputData, linear_solver_types
 from darts.models.darts_model import DataTS
 from darts.engines import sim_params
 
@@ -14,9 +14,12 @@ def get_case_files(case: str):
     grid_file = os.path.join(prefix, 'grid.grdecl')
     prop_file = os.path.join(prefix, 'reservoir.in')
     sch_file = os.path.join(prefix, 'sch.inc')
-    assert os.path.exists(grid_file), 'cannot open' + grid_file
-    assert os.path.exists(prop_file), 'cannot open' + prop_file
-    assert os.path.exists(sch_file), 'cannot open' + sch_file
+    from darts.tools.keyword_file_tools import compressed_file
+    for fname in [grid_file, prop_file]:
+        compressed_file(fname, verbose=True)
+    assert os.path.exists(grid_file), 'cannot open ' + grid_file
+    assert os.path.exists(prop_file), 'cannot open ' + prop_file
+    assert os.path.exists(sch_file), 'cannot open ' + sch_file
     return grid_file, prop_file, sch_file
 
 def input_data_base(idata: InputData, case: str):
@@ -33,6 +36,9 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.DataTS.linear_tol = 1e-4
     # use direct linear solver:
     #idata.sim.DataTS.linear_type = sim_params.linear_solver_t.cpu_superlu
+    # optional: use PETSc linear solver
+    #idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_CPR
+    #idata.sim.DataTS.linear_print_level = 0
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()
@@ -96,5 +102,5 @@ def input_data_base(idata: InputData, case: str):
     # the cells with lower poro will be treated as shale when setting the rock thermal properties
     idata.rock.poro_shale_threshold = 1e-3
     ############################################################################
-    
+
     idata.supress_all_output = False

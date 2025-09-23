@@ -75,7 +75,7 @@ def test_interpolator_convergence(
     itor_type, itor_mode, n_dim, is_barycentric: bool = None, norm=None
 ):
     zero = 1.0e-9
-    n_ops = 6 * n_dim + 12
+    n_ops = 6 * n_dim + 15
     axes_min = n_dim * [-1 - zero]
     axes_max = n_dim * [1 + zero]
     evaluator = Nonlinear(n_dim, n_ops)
@@ -171,7 +171,7 @@ def test_linearity_preservation(
     itor_type, itor_mode, n_dim, is_barycentric: bool = None
 ):
     zero = 1.0e-9
-    n_ops = 6 * n_dim + 12
+    n_ops = 6 * n_dim + 15
     n_axes_points = n_dim * [128]
     axes_min = [1] + (n_dim - 1) * [zero]
     axes_max = [300] + (n_dim - 1) * [1.0 - zero]
