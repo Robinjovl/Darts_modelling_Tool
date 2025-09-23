@@ -56,7 +56,12 @@ docker-image-builder:
           --build-arg CUDA_ARCH="${CUDA_ARCH:-70}" \
           "$IMG" .cicd/build-linux/singularity.def;
       fi
-    - ln -sf "$(basename "$IMG")" "$IMG_DIR/${IMAGE_PREFIX}-latest.sif"
+    - |
+      if [ "${CI_COMMIT_BRANCH:-}" = "development" ]; then
+        ln -sf "$(basename "$IMG")" "$IMG_DIR/${IMAGE_PREFIX}-latest.sif"
+      else
+        echo "Skipping latest symlink (branch: ${CI_COMMIT_BRANCH:-})"
+      fi
   after_script:
     - |
       set -euo pipefail
