@@ -425,6 +425,7 @@ def visualize_results_heat_maps_contourf(
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create a discrete colorbar and colormap
+    # sg_min, sg_max = 0, 1
     sg_min, sg_max = np.min(sG_matrix), np.max(sG_matrix)
     levels = np.linspace(sg_min, sg_max, n_cmap_bins_s + 1)
     cmap = plt.get_cmap(cmap_color, n_cmap_bins_s)
@@ -505,6 +506,7 @@ def visualize_results_heat_maps_contourf(
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create a discrete colorbar and colormap
+        # sla_min, sla_max = 0, 1
         sla_min, sla_max = np.min(sL_a_matrix), np.max(sL_a_matrix)
         levels = np.linspace(sla_min, sla_max, n_cmap_bins_s + 1)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_s)
@@ -588,6 +590,7 @@ def visualize_results_heat_maps_contourf(
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create a discrete colorbar and colormap
+        # slb_min, slb_max = 0, 1
         slb_min, slb_max = np.min(sL_b_matrix), np.max(sL_b_matrix)
         levels = np.linspace(slb_min, slb_max, n_cmap_bins_s + 1)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_s)
