@@ -109,8 +109,9 @@ gitingest-digest:
             echo "WARN: 'models' directory not found; skipping models digest generation." >&2
           fi
     rules:
-        - if: $RUN_GITINGEST == "1"
-        - when: manual
+        - if: '$RUN_GITINGEST == "1" && $CI_COMMIT_BRANCH == "development"'
+          when: on_success
+        - when: never
     artifacts:
         paths:
             - "digest/open-darts-digest-*.json"

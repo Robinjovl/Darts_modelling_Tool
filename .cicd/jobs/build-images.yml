@@ -54,7 +54,6 @@ docker-image-builder:
           --build-arg ENABLE_DLS="${ENABLE_DLS:-1}" \
           --build-arg DLS_TOKEN="${DLS_TOKEN}" \
           --build-arg CUDA_ARCH="${CUDA_ARCH:-70}" \
-          --build-arg ENABLE_AGENT_TOOLS="${ENABLE_AGENT_TOOLS:-0}" \
           "$IMG" .cicd/build-linux/singularity.def;
       fi
     - ln -sf "$(basename "$IMG")" "$IMG_DIR/${IMAGE_PREFIX}-latest.sif"
