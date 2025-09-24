@@ -45,7 +45,7 @@ desired_well_segment_idx = (
 y_min = -30
 y_max = 80
 y_tick_increment = 10
-y_label = r"BHT [\u00b0C]"
+y_label = "BHT [\u00b0C]"
 output_name = "BHT_time_series_ramp_up_time_sens_ana"
 
 
