@@ -7,9 +7,9 @@
 
 /**
  * @brief  Piecewise mulitlinear GPU interpolator base class
- * 
+ *
  * Introduces and initialize basic interpolation data on GPU device
- * 
+ *
  * @tparam index_t type used for indexing of supporting points and hypercubes
  * @tparam value_t value type used for supporting point storage, hypercube storage and interpolation
  * @tparam N_DIMS The number of dimensions in paramter space
@@ -19,7 +19,7 @@ template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 class multilinear_gpu_interpolator_base : public operator_set_gradient_evaluator_gpu
 {
 public:
-   const static uint16_t N_VERTS = (1 << N_DIMS); ///< number of vertexes in interpolation hypercube - N_DIMS-th power of 2
+   const static uint32_t N_VERTS = (1 << N_DIMS); ///< number of vertexes in interpolation hypercube - N_DIMS-th power of 2
 
    typedef typename std::array<value_t, N_OPS> point_data_t;               ///< values of all operators at a given (supporting) point
    typedef typename std::vector<double> point_coordinates_t;               ///< coordinates of a given point in N_DIMS-dimensional space
@@ -27,7 +27,7 @@ public:
 
    /**
      * @brief Construct the interpolator with specified parametrization space
-     * 
+     *
      * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
      * @param[in] axes_points               Number of supporting points (minimum 2) along axes
      * @param[in] axes_min                  Minimum value for each axis
@@ -74,13 +74,13 @@ public:
    /**
      * @brief Get the number of supporting points used (evaluated through supporting_point_evaluator)
      *        The number is equal to n_points_total for static interpolation methods
-     * 
+     *
      * @return the number of supporting points used
      */
    uint64_t get_n_points_used() const;
    /**
    * @brief Compute operators values for specified state on device
-   * 
+   *
    * @param state Coordinates in parameter space, where operators to be evaluated
    * @param values Evaluated operators values
    * @return int 0 if evaluation is successful
@@ -90,7 +90,7 @@ public:
 protected:
    /**
     * @brief Get point coordinates in space for given point index
-    * 
+    *
     * @param[in] point_index index of the point
     * @param[out] coordinates coordinates along all axes
     */
@@ -99,7 +99,7 @@ protected:
    // calculate point indexes for given hypercube
    /**
    * @brief Get indexes of all vertices for given hypercube
-   * 
+   *
    * @param[in] index index of the hyporcube
    * @param[out] hypercube_points indexes of all vertices of hypercube
    */

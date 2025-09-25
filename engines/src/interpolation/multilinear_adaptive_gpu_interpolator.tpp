@@ -498,7 +498,7 @@ multilinear_adaptive_interpolate_thread_per_operator_stages_kernel(const unsigne
   if (state_idx_idx > n_states_idxs - 1)
     return;
 
-  
+
 
   if (FIRST_STAGE)
   {
@@ -512,7 +512,7 @@ multilinear_adaptive_interpolate_thread_per_operator_stages_kernel(const unsigne
     if (state_markers[state_idx_idx] == -1)
       return;
   }
-  
+
   index_t state_idx = states_idxs_d[state_idx_idx];
   index_t hypercube_idx = 0;
   value_t axis_low[N_DIMS];
@@ -558,7 +558,7 @@ add_hypercubes_to_hashmap(const unsigned int n_new_hypercubes, const index_t *ne
                           gpu_hashmap_async::gpu_hash_map<value_t, (1 << N_DIMS) * N_OPS> *hypercube_data_d)
 {
   const unsigned i = blockIdx.x * blockDim.x + threadIdx.x; // global thread index
-  static const uint16_t N_VERTS = 1 << N_DIMS;
+  static const uint32_t N_VERTS = 1 << N_DIMS;
 
   const unsigned hypercube_index = i / (N_OPS * N_VERTS);
 

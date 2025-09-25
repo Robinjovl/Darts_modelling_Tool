@@ -17,11 +17,11 @@
 
 /**
  * @brief  Piecewise mulitlinear interpolator for GPU with adaptive storage
- * 
- * Two-level storage is used: 
+ *
+ * Two-level storage is used:
  * with operator data at every computed supporting point (on host and on device) and with operator data at all vertices of every requested hypercube (on device only)
  * point data may be assigned externally after construction and before init() call to save time
- * 
+ *
  * @tparam index_t type used for indexing of supporting points and hypercubes
  * @tparam value_t value type used for supporting point storage, hypercube storage and interpolation
  * @tparam N_DIMS The number of dimensions in paramter space
@@ -32,7 +32,7 @@ template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 class multilinear_adaptive_gpu_interpolator : public multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>
 {
 public:
-  const static uint16_t N_VERTS = (1 << N_DIMS); ///< number of vertexes in interpolation hypercube - N_DIMS-th power of 2
+  const static uint32_t N_VERTS = (1 << N_DIMS); ///< number of vertexes in interpolation hypercube - N_DIMS-th power of 2
 
   using typename multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::point_coordinates_t;
   using typename multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::point_data_t;
@@ -52,7 +52,7 @@ public:
   #endif
   /**
      * @brief Construct the interpolator with specified parametrization space
-     * 
+     *
      * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
      * @param[in] axes_points               Number of supporting points (minimum 2) along axes
      * @param[in] axes_min                  Minimum value for each axis
@@ -66,7 +66,7 @@ public:
   ~multilinear_adaptive_gpu_interpolator();
   /**
      * @brief Initialize the interpolator, if point_data storage was already initialized from Python
-     * 
+     *
      * @return int 0 if successful
      */
   int init();
@@ -81,7 +81,7 @@ public:
 
   /**
    * @brief adaptive point storage on host: the values of operators at specific points
-   * 
+   *
    * Used to store all computed supporting points and to initialize point_data_d
    * Can be initialized externally from Python
    */
@@ -89,21 +89,21 @@ public:
 
 protected:
   /**
-     * @brief Get values of operators at a given point 
-     * Provide a reference to correct location in the adaptive point storage. 
+     * @brief Get values of operators at a given point
+     * Provide a reference to correct location in the adaptive point storage.
      * If the point is not found, compute it first, and then return the reference.
      *
-     * @param[in] point_index index of point 
+     * @param[in] point_index index of point
      * @return operator values at given point
      */
   const point_data_t &get_point_data(const index_t point_index);
 
   /**
-    * @brief Generate hypercube data 
-    * 
-    * @param[in] hypercube_idx 
+    * @brief Generate hypercube data
+    *
+    * @param[in] hypercube_idx
     * @param[out] new_hypercube operator values at all vertices of generated hypercube
-    * @return 0 if success 
+    * @return 0 if success
     */
   int generate_hypercube(index_t hypercube_idx, value_t *new_hypercube);
 
@@ -123,7 +123,7 @@ protected:
   // **** HOST DATA ****
   /**
    * @brief adaptive hypercube index storage on host: indexes of already generated hypercubes
-   * 
+   *
    * Used to check if a hypercube was already computed
    */
   std::unordered_set<index_t> generated_hypercubes;
@@ -139,8 +139,8 @@ protected:
   // **** DEVICE DATA ****
   /**
    * @brief adaptive hypercube storage on device
-   * 
-   * In fact it is an excess storage used to reduce memory accesses during interpolation. 
+   *
+   * In fact it is an excess storage used to reduce memory accesses during interpolation.
    * Here, all values of all vertexes of every stored hypercube are stored consecutevely and are accessed via a single index
    * Usage of point_data for interpolation directly would require N_VERTS memory accesses (>1000 accesses for 10-dimensional space)
    */
