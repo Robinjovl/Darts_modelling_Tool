@@ -52,8 +52,13 @@ class CICDModel(DartsModel):
                 sol_range = np.max(sol_et) - np.min(sol_et)
                 diff_abs = np.abs(diff)
                 diff_norm = np.linalg.norm(diff)
-                diff_norm_normalized = diff_norm / len(sol_et) / sol_range
-                diff_abs_max_normalized = np.max(diff_abs) / sol_range
+                denom = (
+                    sol_range
+                    if np.isfinite(sol_range) and sol_range != 0
+                    else np.finfo(float).eps
+                )
+                diff_norm_normalized = diff_norm / (len(sol_et) * denom)
+                diff_abs_max_normalized = np.max(diff_abs) / denom
                 if (
                     diff_norm_normalized > diff_norm_normalized_tol
                     or diff_abs_max_normalized > diff_abs_max_normalized_tol

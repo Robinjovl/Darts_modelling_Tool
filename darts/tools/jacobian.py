@@ -25,6 +25,9 @@ def check_jacobian(m: DartsModel):
     assert not has_nan, 'jac_vals has nan'
 
     has_nan = np.isnan(rhs).any()
+    if has_nan:
+        nan_indices = np.where(np.isnan(rhs))
+        print("rhs indices with nan values:", nan_indices)
     assert not has_nan, 'rhs has nan'
 
 

@@ -6,7 +6,8 @@ from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus, bound_cond
-from darts.input.input_data import InputData
+from darts.input.input_data import InputData, linear_solver_types
+
 
 class Model(THMCModel):
     def __init__(self, discretizer='mech_discretizer', case='mandel', mesh='rect'):
@@ -27,6 +28,9 @@ class Model(THMCModel):
             self.params.linear_type = linear_type
         elif self.discretizer_name == 'pm_discretizer':
             self.physics.engine.ls_params[-1].linear_type = linear_type
+
+        # data_ts is used only for linear solver params for PETSc
+        self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -227,6 +231,12 @@ class Model(THMCModel):
             nt = 60  # number of timesteps
             max_dt = 30  # timestep length, days
             self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
+
+        # optional: use PETSc linear solver
+        from darts.models.darts_model import DataTS
+        self.idata.sim.DataTS = DataTS(n_vars=0)
+        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
+        #self.idata.sim.DataTS.linear_print_level = 0
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9

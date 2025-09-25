@@ -13,10 +13,6 @@ from model_b import Model, PorPerm, Corey, layer_props
 from darts.engines import redirect_darts_output, sim_params
 from darts.engines import well_control_iface
 
-try:
-    from darts.engines import set_gpu_device
-except ImportError:
-    pass
 from fluidflower_str_b import FluidFlowerStruct
 
 #%%
