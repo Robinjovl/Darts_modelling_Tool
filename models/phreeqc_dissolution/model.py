@@ -127,6 +127,20 @@ class MyOutput(Output):
                 var_names = f["dynamic"].create_dataset('properties_name', (new_vars_num,), dtype=datatype)
                 var_names[:] = new_keys
 
+        # locate tip of wormhole
+        ids = np.where(property_array['porosity'][0] > 0.95)[0]
+        if ids.size:
+            if hasattr(self.reservoir.discretizer, 'centroids_all_cells'):
+                id = np.argmax(self.reservoir.discretizer.centroids_all_cells[ids, 0])
+                max_propagation = self.reservoir.discretizer.centroids_all_cells[:, 0].max()
+                self.reservoir.wh_propagation_ratio = self.reservoir.discretizer.centroids_all_cells[ids, 0][id] / max_propagation
+            else:
+                warnings.warn("Centroids not available, setting wh_propagation_ratio to 0.0")
+                self.reservoir.wh_propagation_ratio = 0.0
+        else:
+            self.reservoir.wh_propagation_ratio = 0.0
+        print('WH propagation ratio:', self.reservoir.wh_propagation_ratio)
+
         return timesteps, property_array
 
 # Actual Model class creation here!
@@ -156,6 +170,7 @@ class Model(CICDModel):
 
         self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=200)
         self.params.newton_type = sim_params.newton_local_chop
+        # self.params.linear_type = sim_params.cpu_superlu
         self.params.newton_params[0] = 0.2
         self.runtime = 1
 
@@ -311,9 +326,8 @@ class Model(CICDModel):
 
         # Create instance of (own) physics class:
         self.physics = PhreeqcDissolution(timer=self.timer, elements=self.elements, n_points=self.n_points,
-        self.physics = PhreeqcDissolution(timer=self.timer, elements=self.elements, n_points=self.n_points,
                                           axes_min=self.axes_min, axes_max=self.axes_max,
-                                          input_data_struct=input_data_struct, properties=property_container, cache=False)
+                                          input_data_struct=input_data_struct, properties=property_container, cache=True)
 
         self.physics.add_property_region(property_container, 0)
 
@@ -646,7 +660,6 @@ class Model(CICDModel):
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, nc_sol=0, np_sol=0,
-    def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, nc_sol=0, np_sol=0,
                  min_z=1e-11, rate_ann_mat=None, temperature=None, fc_mask=None, is_gas_spec=False):
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, nc_sol=nc_sol, np_sol=np_sol,
                          min_z=min_z, rate_ann_mat=rate_ann_mat, temperature=temperature)
@@ -739,7 +752,6 @@ class ModelProperties(PropertyContainer):
 
     # default flash working with molar fractions
     class Flash:
-        def __init__(self, min_z, fc_mask, fc_idx, f_mask_state, minerals, temperature=None,
         def __init__(self, min_z, fc_mask, fc_idx, f_mask_state, minerals, temperature=None,
                     is_gas_spec=False):
             """
