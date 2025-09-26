@@ -671,6 +671,7 @@ class DartsModel:
         :param verbose: Switch for verbose, default is True
         :type verbose: bool
         """
+        assert dt > 0, "Time step size must be a positive value!"
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
