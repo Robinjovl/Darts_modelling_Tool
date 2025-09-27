@@ -270,7 +270,7 @@ class UnstructReservoir:
 
         return bc_flow, bc_heat
 
-    def add_well(self, name, depth, wellbore_diameter=0.15):
+    def add_well(self, name, ms_well_type, depth, wellbore_diameter=0.15):
         """
         Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
         :param name:
@@ -279,6 +279,7 @@ class UnstructReservoir:
         """
         well = ms_well()
         well.name = name
+        well.ms_type = ms_well_type
         well.segment_volume =  pi * wellbore_diameter ** 2 / 4
         well.well_head_depth = depth
         well.well_body_depth = depth

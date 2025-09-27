@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params, value_vector, operator_set_evaluator_iface
+from darts.engines import sim_params, value_vector, operator_set_evaluator_iface, ms_well
 import numpy as np
 from copy import deepcopy
 
@@ -94,18 +94,19 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
+        well_type = ms_well.MS_Type.EPM
         if self.grid_1D:
             """well location"""
-            self.reservoir.add_well("INJ_GAS")
-            self.reservoir.add_perforation("INJ_GAS", cell_index=(1, 1, 1))
+            self.reservoir.add_well("INJ_GAS", well_type)
+            self.reservoir.add_perforation("INJ_GAS", res_cell_idx=(1, 1, 1))
 
-            self.reservoir.add_well("PROD")
-            self.reservoir.add_perforation("PROD", cell_index=(self.reservoir.nx, 1, 1))
+            self.reservoir.add_well("PROD", well_type)
+            self.reservoir.add_perforation("PROD", res_cell_idx=(self.reservoir.nx, 1, 1))
 
         else:
-            self.reservoir.add_well("PROD_" + str(1))
+            self.reservoir.add_well("PROD_" + str(1), well_type)
             for k in range(self.reservoir.ny):
-                self.reservoir.add_perforation("PROD_" + str(1), cell_index=(self.reservoir.nx, 1, k + 1))
+                self.reservoir.add_perforation("PROD_" + str(1), res_cell_idx=(self.reservoir.nx, 1, k + 1))
 
     def set_physics(self, grid_1D: bool, solid_init: float, custom_physics: bool):
         """PHYSICS AND RESERVOIR"""

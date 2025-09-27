@@ -739,12 +739,12 @@ class DartsModel:
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
 
-            if not self.physics.engine.has_DFM:
+            if not self.is_coupled_well_res_model:
                 self.physics.engine.newton_residual_last_dt = (
                     self.physics.engine.calc_newton_residual()
                 )  # calc norm of residual
             elif (
-                self.physics.engine.has_DFM
+                self.is_coupled_well_res_model
             ):  # TODO Function line_search is not updated for the coupled model.
                 # Method is either 1 or 2
                 self.physics.engine.newton_residual_last_dt = (

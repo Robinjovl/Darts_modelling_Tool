@@ -307,14 +307,14 @@ class CPG_Reservoir(ReservoirBase):
         return
 
     def calc_well_index(
-        self, i, j, k, well_radius=0.0762, segment_direction="z_axis", skin=0
+        self, i, j, k, well_ID=0.1524, segment_direction="z_axis", skin=0
     ):
         """
         Class method which construct the well index for each well segment/perforation
         :param i: "human" counting of x-location coordinate of perforation
         :param j: "human" counting of y-location coordinate of perforation
         :param k: "human" counting of z-location coordinate of perforation
-        :param well_radius: radius of the well-bore
+        :param well_ID: internal diameter of the wellbore
         :param segment_direction: direction in which the segment perforates the reservoir block
         :param skin: skin factor for pressure loss around well-bore due to formation damage
         :return well_index: well-index of particular perforation
@@ -348,7 +348,7 @@ class CPG_Reservoir(ReservoirBase):
         if local_block > -1:
             dx, dy, dz = self.discr_mesh.calc_cell_sizes(i, j, k)
 
-            well_diam = 2 * well_radius
+            well_radius = well_ID / 2
 
             eps = 1e-6  # to avoid divizion by zero
             kx = self.permx[res_block] + eps
@@ -356,8 +356,8 @@ class CPG_Reservoir(ReservoirBase):
             kz = self.permz[res_block] + eps
 
             if segment_direction == 'z_axis':
-                assert well_diam < dx and well_diam < dy, (
-                    f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dy}, cell({i + 1},{j + 1},{k + 1})'
+                assert well_ID < dx and well_ID < dy, (
+                    f'well diameter {well_ID} should be less than the cell size dx={dx} dy={dy}, cell({i + 1},{j + 1},{k + 1})'
                 )
 
                 peaceman_rad = (
@@ -379,8 +379,8 @@ class CPG_Reservoir(ReservoirBase):
                 if kx == 0 or ky == 0:
                     well_index = 0.0
             elif segment_direction == 'x_axis':
-                assert well_diam < dz and well_diam < dy, (
-                    f'well diameter {well_diam} should be less than the cell size dx={dz} dy={dy}, cell({i + 1},{j + 1},{k + 1})'
+                assert well_ID < dz and well_ID < dy, (
+                    f'well diameter {well_ID} should be less than the cell size dx={dz} dy={dy}, cell({i + 1},{j + 1},{k + 1})'
                 )
                 peaceman_rad = (
                     0.28
@@ -401,8 +401,8 @@ class CPG_Reservoir(ReservoirBase):
                 if kz == 0 or ky == 0:
                     well_index = 0.0
             elif segment_direction == 'y_axis':
-                assert well_diam < dx and well_diam < dz, (
-                    f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dz}, cell({i + 1},{j + 1},{k + 1})'
+                assert well_ID < dx and well_ID < dz, (
+                    f'well diameter {well_ID} should be less than the cell size dx={dx} dy={dz}, cell({i + 1},{j + 1},{k + 1})'
                 )
                 peaceman_rad = (
                     0.28
@@ -526,8 +526,9 @@ class CPG_Reservoir(ReservoirBase):
     def add_perforation(
         self,
         well_name: str,
-        cell_index: int | tuple,
-        well_radius: float = 0.1524,
+        res_cell_idx: int | tuple,
+        well_segment_idx: int = None,
+        well_ID: float = 0.3048,
         well_index: float = None,
         well_indexD: float = 0.0,
         segment_direction: str = "z_axis",
@@ -542,12 +543,12 @@ class CPG_Reservoir(ReservoirBase):
 
         # calculate well index and get local index of reservoir block
         # ijk indices are is 1-based (starts from 1)
-        i, j, k = cell_index
+        i, j, k = res_cell_idx
         res_block_local, wi, wiD = self.calc_well_index(
             i,
             j,
             k,
-            well_radius=well_radius,
+            well_ID=well_ID,
             segment_direction=segment_direction,
             skin=skin,
         )

@@ -1,6 +1,6 @@
 from darts.models.cicd_model import CICDModel
 from darts.models.darts_model import DartsModel
-from darts.engines import value_vector
+from darts.engines import value_vector, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -88,10 +88,11 @@ class Model(CICDModel):
             y0 = 0.9 * Ly
             self.id2 = ((c[:,0] - x0) ** 2 + (c[:,1] - y0) ** 2 + c[:,2] ** 2).argmin()
 
-        self.reservoir.add_well("PROD001", depth=0)
+        well_type = ms_well.MS_Type.EPM
+        self.reservoir.add_well("PROD001", well_type, depth=0)
         self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id1), well_index=self.reservoir.well_index)
 
-        self.reservoir.add_well("INJ001", depth=0)
+        self.reservoir.add_well("INJ001", well_type, depth=0)
         self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id2), well_index=self.reservoir.well_index)
 
     def set_physics(self):

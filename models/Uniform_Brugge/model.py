@@ -1,5 +1,5 @@
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params
+from darts.engines import sim_params, ms_well
 import numpy as np
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -85,9 +85,10 @@ class Model(CICDModel):
             else:
                 name = "P" + str(i + 1 - n_injector)
 
-            self.reservoir.add_well(name)
+            well_type = ms_well.MS_Type.EPM
+            self.reservoir.add_well(name, well_type)
             idx = self.reservoir.find_cell_index(wc)
-            self.reservoir.add_perforation(name, cell_index=idx, well_index=well_index_list[i], well_indexD=0)
+            self.reservoir.add_perforation(name, res_cell_idx=idx, well_index=well_index_list[i], well_indexD=0)
 
     def set_physics(self):
         """Physical properties"""
