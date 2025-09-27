@@ -10,7 +10,7 @@ namespace py = pybind11;
 
 // Define a structure to hold A and B values
 template<int AVal, int BVal>
-struct ABPair 
+struct ABPair
 {
   static constexpr int A = AVal;
   static constexpr int B = BVal;
@@ -56,13 +56,13 @@ void pybind_operator_set_interpolator_super(py::module &m)
     ABPair<2, 0>,     // poroelasticity, pm engine
 
     /*  engine_super_elastic_*
-        N_OPS = NC * (2 * NP + 2) + 4 * NP + 4
+        N_OPS = (2 * NP + 2) * NC + 6 * NP + 4
     */
     // NP = 1: A =  4, B =  8
-    ABPair<4, 8>,     // poroelasticity, single-phase
+    ABPair<4, 10>,     // poroelasticity, single-phase
 
     // NP = 1: A =  6, B =  12
-    ABPair<6, 12>     // poroelasticity, two-phase
+    ABPair<6, 16>     // poroelasticity, two-phase
   >(m);
 }
 

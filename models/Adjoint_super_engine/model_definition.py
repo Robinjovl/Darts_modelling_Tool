@@ -142,7 +142,7 @@ class Model(CICDModel, OptModuleSettings):
             customized_component_etor = customized_etor_specific_component()
             axes_min = self.physics.axes_min
             axes_max = self.physics.axes_max
-            customized_component_itor = self.physics.create_interpolator(customized_component_etor,
+            customized_component_itor, _ = self.physics.create_interpolator(customized_component_etor,
                                                                          axes_min=self.physics.axes_min,
                                                                          axes_max=self.physics.axes_max,
                                                                          n_ops=1,

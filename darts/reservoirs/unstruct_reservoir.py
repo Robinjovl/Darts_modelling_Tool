@@ -279,11 +279,13 @@ class UnstructReservoir(ReservoirBase):
             # order of values in volume_all_cells: FRACTURE MATRIX
             matrix_props["volume"] = np.array(self.mesh.volume, copy=False)
             # order of values in depth_all_cells: FRACTURE MATRIX BOUNDARY
-            matrix_props["depth"] = np.array(self.mesh.depth, copy=False)
-            matrix_props["center_x"] = self.discretizer.centroid_all_cells[:, 0]
-            matrix_props["center_y"] = self.discretizer.centroid_all_cells[:, 1]
-            matrix_props["center_z"] = self.discretizer.centroid_all_cells[:, 2]
-            frac_props = {"frac_aper": self.frac_aper}
+            matrix_props['depth'] = np.array(self.mesh.depth, copy=False)
+            matrix_props['center_x'] = self.discretizer.centroid_all_cells[:, 0]
+            matrix_props['center_y'] = self.discretizer.centroid_all_cells[:, 1]
+            matrix_props['center_z'] = self.discretizer.centroid_all_cells[:, 2]
+            frac_props = (
+                self.frac_property_array
+            )  # filled in output.py by checking array's dimensions
 
             # Create empty lists for each geometry type - {**{}} operator merges dictionaries
             output_nodes = (
@@ -344,7 +346,9 @@ class UnstructReservoir(ReservoirBase):
                                     * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)
                                 ).tolist()
                         else:
-                            cell_data[prop][ith_geometry] += data[cell_idxs].tolist()
+                            cell_data[prop][ith_geometry] += data.flatten()[
+                                cell_idxs
+                            ].tolist()
                         ith_geometry += 1
                     # Fill matrix cells with zeros
                     for _geometry, cell_idxs in output_idxs['matrix'].items():
@@ -399,9 +403,12 @@ class UnstructReservoir(ReservoirBase):
         :param prop_names: List of keys for properties
         :type prop_names: list
         :param data: Data for output
-        :type data: dict
+        :type data: nd.array
         """
         from pyevtk.vtk import VtkGroup
+
+        mesh_geom_dtype = np.float32
+        frac_props = self.frac_property_array
 
         # First check if output directory already exists:
         os.makedirs(output_directory, exist_ok=True)
@@ -427,8 +434,9 @@ class UnstructReservoir(ReservoirBase):
         )
         geometries = output_nodes.keys()
 
+        prop_names_ = {**prop_names, **{k: k for k in self.frac_property_array.keys()}}
         cell_data = {
-            prop_names[prop]: [[] for geometry in geometries] for prop in prop_names
+            prop_names_[prop]: [[] for geometry in geometries] for prop in prop_names_
         }
 
         # Distinguish fracture cells from matrix cells
@@ -441,6 +449,7 @@ class UnstructReservoir(ReservoirBase):
                 len(cell_idxs)
             ).tolist()  # fill fracture cells with zeros
             ith_geometry += 1
+
         for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
             'matrix'
         ].items():
@@ -456,6 +465,36 @@ class UnstructReservoir(ReservoirBase):
             # Loop over fracture and matrix cells (in that order)
             for ith_geometry, (_geometry, cell_idxs) in enumerate(output_idxs.items()):
                 cell_data[prop_names[prop]][ith_geometry] = data[i][cell_idxs]
+
+        # Loop over fracture cell properties
+        if self.discretizer.frac_cells_tot:
+            for prop, data in frac_props.items():
+                ith_geometry = 0
+
+                # Fill fracture cells with data
+                for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
+                    'fracture'
+                ].items():
+                    if np.isscalar(data):
+                        if type(data) is int:
+                            cell_data[prop][ith_geometry] += (
+                                data * np.ones(len(cell_idxs))
+                            ).tolist()
+                        elif type(data) is float:
+                            cell_data[prop][ith_geometry] += (
+                                data * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)
+                            ).tolist()
+                    else:
+                        cell_data[prop][ith_geometry] += data.flatten()[
+                            cell_idxs
+                        ].tolist()
+                    ith_geometry += 1
+                # Fill matrix cells with zeros
+                for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
+                    'matrix'
+                ].items():
+                    cell_data[prop][ith_geometry] += [0.0] * len(cell_idxs)
+                    ith_geometry += 1
 
         # Temporarily store mesh_data in copy:
         mesh = meshio.Mesh(

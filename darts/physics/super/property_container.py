@@ -179,7 +179,7 @@ class PropertyContainer(PropertyBase):
         )
         self.temperature = (
             temperature
-            if not evaluate_PT_from_PHflash
+            if evaluate_PT_from_PHflash
             else self.flash_ev.get_flash_results().temperature
         )
 

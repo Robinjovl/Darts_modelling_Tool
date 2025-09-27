@@ -52,7 +52,7 @@ def check_performance_local(m, case):
     print('pkl_suffix=', pkl_suffix)
 
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix + '_' + case + '.pkl')
-    
+
     overwrite = 0
     if os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
@@ -81,17 +81,17 @@ if __name__ == "__main__":
 
     cases_list = ['case_1']
 
-    cases_list += ['case_1_burden_O1']
-    cases_list += ['case_1_burden_O2']
-    cases_list += ['case_1_burden_U1']
-    cases_list += ['case_1_burden_U2']
-    cases_list += ['case_1_burden_O1_U1']
-    cases_list += ['case_1_burden_O2_U2']
+    ##cases_list += ['case_1_burden_O1']
+    #cases_list += ['case_1_burden_O2']
+    #cases_list += ['case_1_burden_U1']
+    #cases_list += ['case_1_burden_U2']
+    #cases_list += ['case_1_burden_O1_U1']
+    #cases_list += ['case_1_burden_O2_U2']
 
     ##cases_list = ['case_2']
-    cases_list += ['case_3']
-    cases_list += ['case_4']
-    cases_list += ['case_5']
+    #cases_list += ['case_3']
+    #cases_list += ['case_4']
+    #cases_list += ['case_5']
 
     #cases_list += ['whitby']
 

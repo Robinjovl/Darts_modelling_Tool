@@ -184,22 +184,24 @@ class Output:
                 self.physics.property_operators[region] = PropertyOperators(
                     pc, self.physics.thermal, temp_dict
                 )
-                self.physics.property_itor[region] = self.physics.create_interpolator(
-                    self.physics.property_operators[region],
-                    n_ops=self.physics.n_ops,
-                    axes_min=self.physics.axes_min,
-                    axes_max=self.physics.axes_max,
-                    platform='cpu',
-                    algorithm='multilinear',
-                    mode='adaptive',
-                    precision='d',
-                    timer_name=f'property {region:d} interpolation',
-                    region=str(region),
+                self.physics.property_itor[region], n_ops = (
+                    self.physics.create_interpolator(
+                        self.physics.property_operators[region],
+                        n_ops=self.physics.n_ops,
+                        axes_min=self.physics.axes_min,
+                        axes_max=self.physics.axes_max,
+                        platform='cpu',
+                        algorithm='multilinear',
+                        mode='adaptive',
+                        precision='d',
+                        timer_name=f'property {region:d} interpolation',
+                        region=str(region),
+                    )
                 )
 
                 # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
-                self.n_ops = self.physics.n_ops
+                self.n_ops = n_ops
 
         elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
             phase_props_labels = [
@@ -236,22 +238,24 @@ class Output:
                 self.physics.property_operators[region] = PropertyOperators(
                     pc, thermal=False, props=temp_dict
                 )
-                self.physics.property_itor[region] = self.physics.create_interpolator(
-                    self.physics.property_operators[region],
-                    n_ops=self.physics.property_operators[region].n_ops,
-                    axes_min=self.physics.axes_min,
-                    axes_max=self.physics.axes_max,
-                    platform='cpu',
-                    algorithm='multilinear',
-                    mode='adaptive',
-                    precision='d',
-                    timer_name=f'property {region:d} interpolation',
-                    region=str(region),
+                self.physics.property_itor[region], n_ops = (
+                    self.physics.create_interpolator(
+                        self.physics.property_operators[region],
+                        n_ops=self.physics.property_operators[region].n_ops,
+                        axes_min=self.physics.axes_min,
+                        axes_max=self.physics.axes_max,
+                        platform='cpu',
+                        algorithm='multilinear',
+                        mode='adaptive',
+                        precision='d',
+                        timer_name=f'property {region:d} interpolation',
+                        region=str(region),
+                    )
                 )
 
                 # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
-                self.n_ops = self.physics.property_operators[0].n_ops
+                self.n_ops = n_ops
 
         # Update the properties list
         self.properties = list(self.physics.property_containers[0].output_props.keys())
@@ -290,18 +294,21 @@ class Output:
                 self.physics.thermal,
                 output_dictionary,
             )
-            self.physics.property_itor[region] = self.physics.create_interpolator(
-                self.physics.property_operators[region],
-                n_ops=self.physics.n_ops,
-                axes_min=self.physics.axes_min,
-                axes_max=self.physics.axes_max,
-                platform='cpu',
-                algorithm='multilinear',
-                mode='adaptive',
-                precision='d',
-                timer_name=f'property {region:d} interpolation',
-                region=str(region),
+            self.physics.property_itor[region], n_ops = (
+                self.physics.create_interpolator(
+                    self.physics.property_operators[region],
+                    n_ops=self.physics.n_ops,
+                    axes_min=self.physics.axes_min,
+                    axes_max=self.physics.axes_max,
+                    platform='cpu',
+                    algorithm='multilinear',
+                    mode='adaptive',
+                    precision='d',
+                    timer_name=f'property {region:d} interpolation',
+                    region=str(region),
+                )
             )
+            self.n_ops = n_ops
             self.properties = list(output_dictionary.keys())
 
         return
@@ -965,12 +972,41 @@ class Output:
         else:
             timesteps, property_array = output_data[0], output_data[1]
 
-            expected_shape = (len(timesteps), self.reservoir.mesh.n_res_blocks)
-            for key, array in property_array.items():
-                if array.shape[1] != self.reservoir.mesh.n_res_blocks:
+        non_conform = (
+            1
+            if hasattr(self.reservoir.discretizer, "frac_cells_tot")
+            and self.reservoir.discretizer.frac_cells_tot > 0
+            else 0
+        )
+
+        if non_conform:
+            n = int(self.reservoir.mesh.n_res_blocks)
+            n_frac = int(self.reservoir.discretizer.frac_cells_tot)
+
+            frac_property_array = {}
+            to_drop = []
+
+            for k, v in list(property_array.items()):
+                arr = np.asarray(v)
+
+                if arr.shape == (1, n_frac):
+                    frac_property_array[k] = arr
+                    to_drop.append(k)
+
+                elif arr.shape == (1, n):
+                    pass
+
+                else:
                     raise ValueError(
-                        f"Property '{key}' has shape {array.shape}, expected {expected_shape}."
+                        f"Property '{k}' has an invalid shape {arr.shape}, "
+                        f"expected (1, {n}) or (1, {n_frac}) in case of fracture-property-arrays."
+                        f"WARNING: Multiple timesteps are not supported when using fracture-property-arrays."
                     )
+
+            for k in to_drop:
+                property_array.pop(k, None)
+        else:
+            frac_property_array = {}
 
         # units to prop names
         self.set_units()
@@ -982,18 +1018,19 @@ class Output:
                 prop_names[name] = name
 
         for t, time in enumerate(timesteps):
-            data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
-            for i, name in enumerate(property_array.keys()):
-                data[i, :] = property_array[name][t]
+            data = np.array([property_array[name][t] for name in property_array])
 
-            if ith_step is None:
-                self.reservoir.output_to_vtk(
-                    t, time, output_directory, prop_names, data
-                )
-            else:
-                self.reservoir.output_to_vtk(
-                    ith_step, time, output_directory, prop_names, data
-                )
+            self.reservoir.frac_property_array = (
+                frac_property_array  # fracture-property-array
+            )
+
+            self.reservoir.output_to_vtk(
+                t if ith_step is None else ith_step,
+                time,
+                output_directory,
+                prop_names,
+                data,  # this array only contains reservoir properties
+            )
 
         self.timer.node["vtk_output"].stop()
         self.timer.stop()
@@ -1322,15 +1359,6 @@ class Output:
             [well.well_transmissibility for well in self.reservoir.wells]
         )
 
-        # This change is done to make sure that if the user has not set multi_segment to True in the function
-        # add_perforation, the perforations have different indices.
-        for well in self.reservoir.wells:
-            new_perforations = []
-            for idx, perf in enumerate(well.perforations):
-                new_perf = (idx, *perf[1:])
-                new_perforations.append(new_perf)
-            well.perforations = new_perforations
-
         return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
 
     def store_perf_rates(
@@ -1349,29 +1377,29 @@ class Output:
         :type rate_type: str
         """
         pc = self.physics.property_containers[0]
-        perf_idx = 0
+        total_perf_idx = 0
         for well in self.reservoir.wells:
-            for perf in well.perforations:
-                tag = f"well_{well.name}_perf_{perf[0]}"
+            for perf_idx in range(len(well.perforations)):
+                tag = f"well_{well.name}_perf_{perf_idx}"
                 if rate_type.startswith("phase_"):
                     for phase_idx, phase_name in enumerate(pc.phases_name):
-                        arr = rates_perfs[:, perf_idx, phase_idx]
+                        arr = rates_perfs[:, total_perf_idx, phase_idx]
                         time_data_dict[
                             f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}'
                         ] = arr
                 elif rate_type.startswith("component_"):
                     for c_idx in range(pc.nc_fl):
                         arr = np.sum(
-                            rates_perfs[:, perf_idx, c_idx :: pc.nc_fl], axis=1
+                            rates_perfs[:, total_perf_idx, c_idx :: pc.nc_fl], axis=1
                         )
                         time_data_dict[
                             f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}'
                         ] = arr
                 elif rate_type.startswith("advective_heat_"):
                     for phase_idx, phase_name in enumerate(pc.phases_name):
-                        arr = rates_perfs[:, perf_idx, phase_idx]
+                        arr = rates_perfs[:, total_perf_idx, phase_idx]
                         time_data_dict[f"{tag}_advective_heat_rate_{phase_name}"] = arr
-                perf_idx += 1
+                total_perf_idx += 1
 
     def store_well_rates_sums(
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
@@ -1390,39 +1418,42 @@ class Output:
         :type rate_type: str
         """
         pc = self.physics.property_containers[0]
-        perf_idx = 0
+        total_perf_idx = 0
         for well in self.reservoir.wells:
             tag = f"well_{well.name}"
             if rate_type.startswith("phase_"):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     total = sum(
-                        rates_perfs[:, perf_idx + j, phase_idx]
+                        rates_perfs[:, total_perf_idx + j, phase_idx]
                         for j in range(len(well.perforations))
                     )
                     time_data_dict[
                         f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_by_sum_perfs'
                     ] = total
-                perf_idx += len(well.perforations)
+                total_perf_idx += len(well.perforations)
             elif rate_type.startswith("component_"):
                 for c_idx in range(pc.nc_fl):
                     total = sum(
-                        np.sum(rates_perfs[:, perf_idx + j, c_idx :: pc.nc_fl], axis=1)
+                        np.sum(
+                            rates_perfs[:, total_perf_idx + j, c_idx :: pc.nc_fl],
+                            axis=1,
+                        )
                         for j in range(len(well.perforations))
                     )
                     time_data_dict[
                         f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}_by_sum_perfs'
                     ] = total
-                perf_idx += len(well.perforations)
+                total_perf_idx += len(well.perforations)
             elif rate_type.startswith("advective_heat_"):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     total = sum(
-                        rates_perfs[:, perf_idx + j, phase_idx]
+                        rates_perfs[:, total_perf_idx + j, phase_idx]
                         for j in range(len(well.perforations))
                     )
                     time_data_dict[
                         f"{tag}_advective_heat_rate_{phase_name}_by_sum_perfs"
                     ] = total
-                perf_idx += len(well.perforations)
+                total_perf_idx += len(well.perforations)
 
     def store_wellhead_rates(
         self, time_data_dict: dict, wh_rates: np.ndarray, rate_type: str
@@ -1786,11 +1817,11 @@ class Output:
         }
 
         for rtype in types_of_well_rates:
-            for w in self.reservoir.wells:
-                well_dir = os.path.join(main_dir, f"well_{w.name}")
-                for perf in w.perforations:
-                    subdir = os.path.join(well_dir, f"perf_{perf[0]}")
-                    keys = self.create_perf_keys(rtype, w.name, perf[0])
+            for well in self.reservoir.wells:
+                well_dir = os.path.join(main_dir, f"well_{well.name}")
+                for perf_idx in range(len(well.perforations)):
+                    subdir = os.path.join(well_dir, f"perf_{perf_idx}")
+                    keys = self.create_perf_keys(rtype, well.name, perf_idx)
                     for key, ylabel in keys:
                         if key not in df.keys():
                             continue
@@ -1803,7 +1834,7 @@ class Output:
                         plt.savefig(os.path.join(subdir, f"{key}.png"))
                         plt.close()
                 # total and wellhead plots
-                total_keys = self.create_total_keys(rtype, w.name)
+                total_keys = self.create_total_keys(rtype, well.name)
                 for key, ylabel in total_keys:
                     if key not in df.keys():
                         continue
@@ -1816,10 +1847,10 @@ class Output:
                     plt.close()
 
         # BHP and BHT are plotted all the time
-        for w in self.reservoir.wells:
-            well_dir = os.path.join(main_dir, f"well_{w.name}")
+        for well in self.reservoir.wells:
+            well_dir = os.path.join(main_dir, f"well_{well.name}")
 
-            BHP_key = f"well_{w.name}_BHP"
+            BHP_key = f"well_{well.name}_BHP"
             BHP = df[BHP_key]
 
             plt.figure()
@@ -1830,7 +1861,7 @@ class Output:
             plt.savefig(os.path.join(well_dir, f"{BHP_key}.png"))
             plt.close()
 
-            BHT_key = f"well_{w.name}_BHT"
+            BHT_key = f"well_{well.name}_BHT"
             BHT = df[BHT_key]
 
             plt.figure()
@@ -1856,8 +1887,8 @@ class Output:
         for well in self.reservoir.wells:
             well_dir = os.path.join(main_dir, f"well_{well.name}")
             os.makedirs(well_dir, exist_ok=True)
-            for perf in well.perforations:
-                os.makedirs(os.path.join(well_dir, f"perf_{perf[0]}"), exist_ok=True)
+            for perf_idx in range(len(well.perforations)):
+                os.makedirs(os.path.join(well_dir, f"perf_{perf_idx}"), exist_ok=True)
 
     def create_perf_keys(self, rtype: str, well_name: str, perf_idx: int):
         """

@@ -147,7 +147,12 @@ def run_timestep_python(m, dt, t):
                     converged = 0
                 break
 
-        r_code = self.e.solve_linear_equation()
+        from darts.input.input_data import linear_solver_types
+        if hasattr(self, 'data_ts') and type(self.data_ts.linear_type) == linear_solver_types: # if PETSc
+            r_code = self.petsc_solve_linear_equation()
+        else:
+            r_code = self.e.solve_linear_equation()
+
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)
         self.timer.node["newton update"].stop()

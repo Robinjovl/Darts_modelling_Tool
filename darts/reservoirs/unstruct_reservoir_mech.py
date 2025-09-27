@@ -19,6 +19,7 @@ from darts.engines import (
     Face,
     conn_mesh,
     contact,
+    contact_state,
     contact_vector,
     critical_stress,
     face_vector,
@@ -96,7 +97,7 @@ class bound_cond:
             "bt": 1.0,
             "rt": np.array([0.0, 0.0, 0.0]),
         }
-        # doesn allow shearing, but allows normal displacement and apply load in the normal direction
+        # doesn't allow shearing, but allows normal displacement and apply load in the normal direction
         self.STUCK_T_LOAD_N = lambda Fn, ut: {
             "an": 0.0,
             "bn": 1.0,
@@ -223,13 +224,11 @@ def get_isotropic_stiffness(E, nu):
         return matrices
 
 
-# TODO add cache of discretizer, recompute if something changed
-
-
 class UnstructReservoirMech:
     # TODO: inherit from UnstructReservoirBase to have add_well functions from there
     # TODO: create a py wrapper reservoir class UnstructReservoirCPP for C++ discretizer (flow only, MPFA)
     # TODO: create an abstract  class UnstructReservoirBase for existing Python class and UnstructReservoirCPP
+    # TODO: add cache of discretizer, recompute if something changed (done locally in displaced_fault model)
     """
     Class for Poroelasticity/ThermoPoroElasticity coupled model
     """
@@ -498,15 +497,17 @@ class UnstructReservoirMech:
             self.th_expn_poro_arr = np.array(self.mesh.th_poro, copy=False)
 
         # specify properties
-        self.poro[: self.n_matrix] = self.porosity
+        self.poro[: self.n_matrix] = (
+            self.porosity
+            if np.isscalar(self.porosity)
+            else self.porosity[: self.n_matrix]
+        )
         self.poro[self.n_matrix :] = 1  # fractures
         if self.thermoporoelasticity:
             hcap[:] = self.hcap
         self.rock_compressibility[:] = self.cs
 
-        frac_apers = self.get_frac_apers(idata)
-
-        if self.discretizer_name == "mech_discretizer":
+        if self.discretizer_name == 'mech_discretizer':
             volumes = np.array(self.discr_mesh.volumes, copy=False)
             self.volume[: self.n_matrix] = volumes[
                 : self.n_matrix
@@ -521,6 +522,7 @@ class UnstructReservoirMech:
             self.volume[: self.unstr_discr.mat_cells_tot] = (
                 self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot :]
             )
+            frac_apers = self.get_frac_apers(idata)
             if frac_apers is not None:  # set volume for fractures
                 for i in range(
                     self.unstr_discr.mat_cells_tot,
@@ -683,8 +685,7 @@ class UnstructReservoirMech:
                 self.cpp_heat = BoundaryCondition()
                 self.cpp_heat.a = value_vector(at)
                 self.cpp_heat.b = value_vector(bt)
-        elif self.discretizer_name == "pm_discretizer":
-            self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
+        elif self.discretizer_name == 'pm_discretizer':
             self.unstr_discr.p_ref = np.zeros(self.n_matrix + self.n_fracs)
             self.unstr_discr.p_ref[:] = self.p_init
             for bound_id in range(len(self.unstr_discr.bound_face_info_dict)):
@@ -740,6 +741,7 @@ class UnstructReservoirMech:
             ]["flow"]
             bc = [mech["an"], mech["bn"], mech["at"], mech["bt"], flow["a"], flow["b"]]
             self.pm.bc.append(matrix(bc, len(bc), 1))
+        self.pm.bc_prev = self.pm.bc
 
     def set_boundary_conditions_pm_discretizer(self):
         if self.discretizer_name == "pm_discretizer":
@@ -811,12 +813,8 @@ class UnstructReservoirMech:
                     self.discr.thermal_expansions.append(
                         disc_matrix33(idata.rock.th_expn)
                     )
-        elif self.discretizer_name == "pm_discretizer":
-            for cell_id in range(self.unstr_discr.mat_cells_tot):
-                cell = self.unstr_discr.mat_cell_info_dict[cell_id]
-                self.pm.cell_centers.append(
-                    matrix(list(cell.centroid), cell.centroid.size, 1)
-                )
+        elif self.discretizer_name == 'pm_discretizer':
+            for _cell_id in range(self.unstr_discr.mat_cells_tot):
                 perm = idata.rock.get_permxyz()
                 if len(perm) == 3:  # permx, permy, permz
                     self.pm.perms.append(engine_matrix33(perm[0], perm[1], perm[2]))
@@ -948,6 +946,13 @@ class UnstructReservoirMech:
             self.t_init = None
 
     def init_reservoir_main(self, idata: InputData):
+        if not hasattr(self, 'ref_contact_cells'):
+            self.ref_contact_cells = np.zeros(
+                self.n_fracs, dtype=np.intc
+            )  # array of reference cells for fractures
+        # dimension - number of fracture cells; for each fracture it contains the same value - index of the first cell of this fracture
+        # this needed to have normal vectors for one fracture cells oriented towards the same semi-space
+
         # allocate arrays in C++ (conn_mesh)
         if self.discretizer_name == "mech_discretizer":
             if self.thermoporoelasticity:
@@ -1952,7 +1957,7 @@ class UnstructReservoirMech:
                 Sinv = np.linalg.inv(S)
                 K = np.zeros((self.n_dim, self.n_dim))
                 for i in range(self.n_dim):
-                    K[i, i] = idata.rock.get_permxyz()[i]
+                    K[i, i] = idata.other.perm_frac
                 K = Sinv.dot(K).dot(S)
                 self.pm.perms.append(engine_matrix33(list(K.flatten())))
                 self.pm.biots.append(engine_matrix33(idata.rock.biot))
@@ -1990,3 +1995,27 @@ class UnstructReservoirMech:
             assert self.unstr_discr.frac_cells_tot == 0, (
                 "Fractures are not supported in mech discretizer"
             )
+
+    def calc_slip_areas(self, engine):
+        '''
+        Calculates the ratio of slip area to the total fracture area and returns a list of these ratios for each fracture
+        :param engine:
+        :return:
+        '''
+        slip_areas = []
+        if self.discretizer_name == 'pm_discretizer':
+            full_area = 0.0
+            slip_area = 0.0
+            for contact in engine.contacts:
+                cell_ids = np.array(contact.cell_ids, copy=True)
+                for i in range(cell_ids.size):
+                    # fracture-fracture connections are the first in the list, so take the latest that will be fracture to matrix connection
+                    faces = self.unstr_discr.faces[cell_ids[i]]
+                    curr_area = faces[len(faces) - 1].area
+                    if contact.states[i] == contact_state.SLIP:
+                        slip_area += curr_area
+                    full_area += curr_area
+                slip_areas.append(slip_area / full_area)
+        elif self.discretizer_name == 'mech_discretizer':
+            raise Exception('calc_slip_area is not supported in mech discretizer')
+        return slip_areas

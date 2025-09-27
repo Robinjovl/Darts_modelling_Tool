@@ -522,7 +522,7 @@ class UnstructReservoir:
         for cell_block in self.mesh_data.cells:
             if cell_block.type in available_matrix_geometries:
                 cells.append(cell_block)
-                cell_ids = np.array(self.discr_mesh.elem_type_map[available_matrix_geometries[cell_block.type]], copy=False, dtype=np.int64)
+                cell_ids = np.array(self.discr_mesh.elem_type_map[available_matrix_geometries[cell_block.type]], dtype=np.int64)
                 for i in range(props_num):
                     if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
                     cell_data[cell_property[i]].append(property_array[props_num * cell_ids + i])
