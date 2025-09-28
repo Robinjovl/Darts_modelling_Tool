@@ -56,7 +56,11 @@ void pybind_ms_well(py::module& m)
         .def_readwrite("phase_vels_ders", &ms_well::phase_vels_ders)
         .def_readwrite("segments_spe", &ms_well::segments_spe)
         //.def_readwrite("phase_specific_potential_energy_up", &ms_well::phase_specific_potential_energy_up)
-        .def_readwrite("conns_spe", &ms_well::conns_spe);
+        .def_readwrite("conns_spe", &ms_well::conns_spe)
+        // For lateral heat transfer in DFM wells
+        .def_readwrite("with_lateral_heat_transfer", &ms_well::with_lateral_heat_transfer)
+        .def_readwrite("connections_for_lateral_heat_transfer", &ms_well::connections_for_lateral_heat_transfer);
+
 
     py::enum_<ms_well::MS_Type>(ms_well_class, "MS_Type")
         .value("EPM", ms_well::MS_Type::EPM)

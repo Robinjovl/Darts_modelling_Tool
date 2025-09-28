@@ -173,6 +173,87 @@ class SemiAnalyticalWellLateralHeatTransfer:
         )  # Multiplying the heat rate by 24 * 60 * 60 / 1000 converts the unit from Joule/second to kJ/day
 
 
+def add_numerical_lateral_heat_transfer(
+    well_name: str,
+    well_geometry: PipeGeometry,
+    reservoir,
+    well_wall_cells_idx: np.ndarray,
+    well_wall_thickness: float,
+    well_wall_cond: float,
+    verbose: bool = False,
+):
+    """
+    This function adds lateral heat transfer between the wellbore the geometry of which is entered as the second
+    input argument of the function and the surrounding well (and beyond) using a numerical lateral heat
+    transfer model.
+
+    :param well_name: Name of the well for which numerical lateral heat transfer is intended to be added
+    :type well_name: str
+    :param well_geometry: The geometry of the well for which lateral heat transfer is intended to be added
+    :type well_geometry: PipeGeometry
+    :param well_wall_cells_idx: Indices of all the cells of the well wall. The number of these indices must be equal
+    to the number of the well segments. These indices need to be retrieved from reservoir cell indices.
+    :type well_wall_cells_idx: np.ndarray of integers
+    :param well_wall_thickness: Thickness of the well wall [meters]
+    :type well_wall_thickness: float
+    :param well_wall_cond: Thermal conductivity of the well wall [kJ/m.K.day]
+    :type well_wall_cond: float
+    :param verbose: Whether to display extra info about the function
+    :type verbose: boolean
+    """
+    assert well_geometry.pipe_name == well_name, (
+        "The names of the wells in PipeGeometry and add_numerical_lateral_heat_transfer are not identical!"
+    )
+
+    assert isinstance(well_wall_cells_idx, np.ndarray), (
+        "well_wall_cells_idx must be a numpy array!"
+    )
+    assert len(well_wall_cells_idx) == well_geometry.num_segments, (
+        "The number of well_wall_cells_idx must be equal to the number of the well segments!"
+    )
+
+    # Thermal transmissibility simply equals geom_coef = A / L
+    assert isinstance(well_geometry.pipe_IR, float), (
+        "Well radius must be a float; otherwise, it's not supported!"
+    )
+    well_perimeter = 2 * np.pi * well_geometry.pipe_IR
+    A = well_perimeter * well_geometry.segments_lengths
+    assert isinstance(well_wall_thickness, float), (
+        "Well wall thickness must be a float; otherwise, it's not supported!"
+    )
+    L = well_wall_thickness / 2
+    geom_coef = A / L
+    well_indexD = geom_coef
+
+    assert isinstance(well_wall_cond, float), (
+        "Well wall conductivity must be a float; otherwise, it's not supported!"
+    )
+
+    cpp_well = reservoir.get_well(well_name)
+
+    cpp_well.with_lateral_heat_transfer = True
+
+    well_segments_idx = np.arange(0, cpp_well.num_segments)
+
+    lateral_heat_connections = []
+    for idx, segment_idx in enumerate(well_segments_idx):
+        lateral_heat_connections = lateral_heat_connections + [
+            (segment_idx, well_wall_cells_idx[idx], well_indexD[idx])
+        ]
+
+    cpp_well.connections_for_lateral_heat_transfer = lateral_heat_connections
+
+    rock_cond = np.array(reservoir.mesh.rock_cond, copy=False)
+    rock_cond[well_wall_cells_idx] = well_wall_cond
+
+    if verbose:
+        print(
+            f'** Numerical lateral heat transfer for the well "{well_name}" is added!'
+        )
+
+    return
+
+
 class NumericalWellLateralHeatTransfer:
     def __init__(
         self,
