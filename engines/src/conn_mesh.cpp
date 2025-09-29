@@ -2030,8 +2030,24 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 				index_t i_w, i_r;
 				value_t wid;
 				std::tie(i_w, i_r, wid) = wells[iw]->connections_for_lateral_heat_transfer[i];
-				value_t wi = 0.0;
-				add_conn(i_w + wells[iw]->well_head_idx, i_r, wi, wid);
+
+				bool i_w_in_perforations = false;
+				for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
+				{
+					index_t i_ww, i_rr;
+					value_t wii, widd;
+					std::tie(i_ww, i_rr, wii, widd) = wells[iw]->perforations[p];
+					if (i_w + wells[iw]->well_head_idx == i_ww + wells[iw]->well_head_idx + 1)
+					{
+						i_w_in_perforations = true;
+						break;
+					}
+				}
+				if (i_w_in_perforations == false)
+				{
+					value_t wi = 0.0;
+					add_conn(i_w + wells[iw]->well_head_idx, i_r, wi, wid);
+				}
 			}
 		}
 	}
