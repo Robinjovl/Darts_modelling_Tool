@@ -17,7 +17,7 @@ public:
 
   int init_grav_coef(value_t grav_const = 9.80665e-5);      // discretize ms wells into reservoir
 
-  int get_res_tran(std::vector<value_t> &res_tran, 
+  int get_res_tran(std::vector<value_t> &res_tran,
                    std::vector<value_t> &res_tranD);        // get trans for reservoir part
 
   int set_res_tran(std::vector<value_t> &res_tran,
@@ -37,9 +37,9 @@ public:
   index_t n_bounds = 0;                                     // number of boundary blocks
   index_t n_fracs = 0;                                     // number of fracture blocks
 
-  // mapping from one-way list to actual list (forward connections) 
+  // mapping from one-way list to actual list (forward connections)
   std::vector <index_t> one_way_to_conn_index_forward;
-  // mapping from one-way list to actual list (reversed connections) 
+  // mapping from one-way list to actual list (reversed connections)
   std::vector <index_t> one_way_to_conn_index_reverse;
   // mapping actual list to one_way
   std::vector <index_t> conn_index_to_one_way;
@@ -50,11 +50,11 @@ public:
    *  @{
    */
 
-  /// @brief init mesh by reading array of left/right neighbours 
+  /// @brief init mesh by reading array of left/right neighbours
   int init(std::vector<index_t> &block_m,
     std::vector<index_t> &block_p,
     std::vector<value_t> &tran,
-    std::vector<value_t> &tranD);                    
+    std::vector<value_t> &tranD);
 
   /// @brief init mesh by reading MPFA connections
   /*int init_mpfa(std::vector<index_t>& block_m,
@@ -92,7 +92,7 @@ public:
 	  std::vector<index_t>& _sstencil,
 	  std::vector<index_t>& _sst_offset,
 	  std::vector<value_t>& _stran,
-	  uint8_t _n_dim, 
+	  uint8_t _n_dim,
 	  index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);
 
   int init_mpsa(std::vector<index_t>& block_m,
@@ -141,7 +141,7 @@ public:
 	  std::vector<value_t>& _biot, std::vector<value_t>& _biot_rhs,
 	  std::vector<value_t>& _darcy, std::vector<value_t>& _darcy_rhs,
 	  std::vector<value_t>& _vol_strain, std::vector<value_t>& _vol_strain_rhs,
-	  index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);  
+	  index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);
   int init_pme(std::vector<index_t>& block_m,
 	  std::vector<index_t>& block_p,
 	  std::vector<index_t>& _stencil,
@@ -173,12 +173,12 @@ public:
     value_t trans, value_t transD, const uint8_t P_VAR);
 
   /// @brief reverse connections and sort them by both row and col
-  int reverse_and_sort(); 
-  /// @brief reverse connections and sort them by both row and col for velocities at connections of wells
-  std::vector<value_t> reverse_and_sort_wells_velocities(std::vector<value_t> phase_velocities);
-  /// @brief reverse connections and sort them by both row and col for derivatives of velocities at connections of wells
+  int reverse_and_sort();
+  /// @brief reverse connections and sort them by both row and col for velocities at all connections
+  std::vector<value_t> reverse_and_sort_velocities(std::vector<value_t> phase_velocities);
+  /// @brief reverse connections and sort them by both row and col for derivatives of velocities at all connections
   using MixedType = std::variant<int, std::vector<value_t>>;
-  std::vector<MixedType> reverse_and_sort_wells_velocities_derivatives(std::vector<MixedType> phase_velocities_derivatives);
+  std::vector<MixedType> reverse_and_sort_velocities_derivatives(std::vector<MixedType> phase_velocities_derivatives);
   /// @brief reverse connections and renumerate velocity mappers and sort them by both row and col
   int reverse_and_sort_dvel();
   /// @brief reverse mpsa connections and sort them by both row and col
@@ -190,30 +190,30 @@ public:
   int reverse_and_sort_pme_mech_discretizer();
 
   /// @brief discretize ms wells into reservoir
-  int add_wells(std::vector<ms_well*> &wells);         
+  int add_wells(std::vector<ms_well*> &wells);
   int add_wells_mpfa(std::vector<ms_well*> &wells, const uint8_t P_VAR);
   int connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose=0);
 
   void shift_boundary_ids_mpfa(const int n);
 
-  // two-way, sorted connection list    
+  // two-way, sorted connection list
   /// [n_conns] array of indices of blocks on the minus side of a connection (smaller index)
-  std::vector<index_t> block_m;         
-  /// [n_conns] array of indices of blocks on the plus side of a connection (bigger index)                        
-  std::vector<index_t> block_p;         
-  /// [n_conns] array of transissibility values for given connection                        
-  std::vector<value_t> tran;            
-  /// [n_conns] array of diffusion transissibility values for given connection (transmis value)                        
-  std::vector<value_t> tranD;    
-  /// [n_conns] array of heat conduction transissibility values for given connection (transmis value)                        
+  std::vector<index_t> block_m;
+  /// [n_conns] array of indices of blocks on the plus side of a connection (bigger index)
+  std::vector<index_t> block_p;
+  /// [n_conns] array of transissibility values for given connection
+  std::vector<value_t> tran;
+  /// [n_conns] array of diffusion transissibility values for given connection (transmis value)
+  std::vector<value_t> tranD;
+  /// [n_conns] array of heat conduction transissibility values for given connection (transmis value)
   std::vector<value_t> tran_heat_cond;
   /// [n_conns] array of transmissibilities that describe the forces due to thermal dilation
   std::vector<value_t> tran_th_expn;
-  /// [n_conns] array of gravity coefficient for every connection ( = (depth[block_m] - depth[block_p]) * g)                        
+  /// [n_conns] array of gravity coefficient for every connection ( = (depth[block_m] - depth[block_p]) * g)
   std::vector<value_t> grav_coef;
-  /// [n_conns] array of initial velocity values (Decouple - velocity engine)                        
+  /// [n_conns] array of initial velocity values (Decouple - velocity engine)
   std::vector<value_t> velocity;
-  /// [n_conns] array of temporary const transmissibilities                       
+  /// [n_conns] array of temporary const transmissibilities
   std::vector<value_t> tran_const;
   /*
   * Multi-point stuff
@@ -226,7 +226,7 @@ public:
   std::vector<index_t> stencil;
   /// [n_conns + 1] array of offsets of the first block of connection in 'stencil'
   std::vector<index_t> offset;
-  /// [n_conns] array of transissibility values for biot contribution to the given connection                        
+  /// [n_conns] array of transissibility values for biot contribution to the given connection
   std::vector<value_t> tran_biot;
   // [n_blocks] stencil per block
   std::vector<std::vector<int>> cell_stencil;
@@ -240,13 +240,13 @@ public:
   std::vector<value_t> tran_face;
   // [n_conns] array of free-terms in the discretization of unknown pressure and displacements on faces
   std::vector<value_t> rhs_face;
-  /// number of non-zero links 
+  /// number of non-zero links
   index_t n_links;
 
   /*
   * Previous time step
   */
-  /// [n_conns] array of transissibility values for biot contribution to the given connection                        
+  /// [n_conns] array of transissibility values for biot contribution to the given connection
   std::vector<value_t> tran_biot_n;
   // [n_conns] the rest part of the biot contribution to flux
   std::vector<value_t> rhs_biot_n;
@@ -254,33 +254,33 @@ public:
   /*
   * Reference state
   */
-  /// [n_conns] array of transissibility values for given connection                        
+  /// [n_conns] array of transissibility values for given connection
   std::vector<value_t> tran_ref;
   // [n_conns] the rest part of the flux
   std::vector<value_t> rhs_ref;
-  /// [n_conns] array of transissibility values for biot contribution to the given connection                        
+  /// [n_conns] array of transissibility values for biot contribution to the given connection
   std::vector<value_t> tran_biot_ref;
   // [n_conns] the rest part of the biot contribution to flux
   std::vector<value_t> rhs_biot_ref;
 
 
-  /// [n_blocks] array of volumes of mesh blocks 
-  std::vector<value_t> volume;          
-  /// [n_blocks] array of porosities of mesh blocks                        
-  std::vector<value_t> poro;            
-  /// [n_blocks] array of depths                        
-  std::vector<value_t> depth;           
-  /// [n_blocks] array of heat capacity of rock                        
+  /// [n_blocks] array of volumes of mesh blocks
+  std::vector<value_t> volume;
+  /// [n_blocks] array of porosities of mesh blocks
+  std::vector<value_t> poro;
+  /// [n_blocks] array of depths
+  std::vector<value_t> depth;
+  /// [n_blocks] array of heat capacity of rock
   std::vector<value_t> heat_capacity;
-  /// [n_blocks] array of heat conduction of rock;                       
-  std::vector<value_t> rock_cond;      
-  /// [n_blocks] array of kinetic rate constants (dependent on the initial porosity and other factors!);                       
+  /// [n_blocks] array of heat conduction of rock;
+  std::vector<value_t> rock_cond;
+  /// [n_blocks] array of kinetic rate constants (dependent on the initial porosity and other factors!);
   std::vector<value_t> kin_factor;
-  /// [np * n_blocks] array of phase mobility multiplier (dependent on phase index!);                       
+  /// [np * n_blocks] array of phase mobility multiplier (dependent on phase index!);
   std::vector<value_t> mob_multiplier;
   /// [n_blocks] array of specific potential energy of mesh blocks
   std::vector<value_t> cells_spe;
-                                        
+
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;
   /// [n_blocks] array of reference pressure values
@@ -299,9 +299,9 @@ public:
   std::vector<value_t> bc_ref;
   /// [nc * n_bounds] array of pressures and (inflow) fractions at boundaries
   std::vector<value_t> pz_bounds;
-  /// [n_blocks] array of rock compressibility of mesh blocks for mechanical models                        
+  /// [n_blocks] array of rock compressibility of mesh blocks for mechanical models
   std::vector<value_t> rock_compressibility;
-  /// [n_blocks] array of calculated fluxes                        
+  /// [n_blocks] array of calculated fluxes
   std::vector<value_t> flux;
   /// [n_blocks] array of calculated gravity contribution
   std::vector<value_t> grav_flux;
@@ -353,7 +353,7 @@ private:
   std::vector <value_t> one_way_tran_th_expn;
   // arrays for multi-point approximation
   std::vector<index_t> one_way_stencil;
-  std::vector<index_t> one_way_offset;                 
+  std::vector<index_t> one_way_offset;
   std::vector<value_t> one_way_rhs;
   std::vector<value_t> one_way_tran_biot;
   std::vector<value_t> one_way_rhs_biot;

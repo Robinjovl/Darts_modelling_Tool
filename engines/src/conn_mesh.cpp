@@ -830,7 +830,7 @@ conn_mesh::reverse_and_sort()
 }
 
 std::vector<value_t>
-conn_mesh::reverse_and_sort_wells_velocities(std::vector<value_t> one_way_phase_velocities)
+conn_mesh::reverse_and_sort_velocities(std::vector<value_t> one_way_phase_velocities)
 {
 	std::vector<value_t> phase_velocities;
 	phase_velocities.resize(n_conns);
@@ -909,7 +909,7 @@ conn_mesh::reverse_and_sort_wells_velocities(std::vector<value_t> one_way_phase_
 
 using MixedType = std::variant<int, std::vector<value_t>>;
 std::vector<MixedType>
-conn_mesh::reverse_and_sort_wells_velocities_derivatives(std::vector<MixedType> one_way_phase_velocities_derivatives)
+conn_mesh::reverse_and_sort_velocities_derivatives(std::vector<MixedType> one_way_phase_velocities_derivatives)
 {
 	std::vector<MixedType> phase_velocities_derivatives;
 	phase_velocities_derivatives.resize(n_conns);

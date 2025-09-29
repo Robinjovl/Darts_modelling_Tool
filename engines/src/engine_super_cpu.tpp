@@ -235,11 +235,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 one_way_phase_B_vels_ders.push_back(0);
             }
         }
-        phase_A_vels = mesh->reverse_and_sort_wells_velocities(one_way_phase_A_vels);
-        phase_B_vels = mesh->reverse_and_sort_wells_velocities(one_way_phase_B_vels);
+        phase_A_vels = mesh->reverse_and_sort_velocities(one_way_phase_A_vels);
+        phase_B_vels = mesh->reverse_and_sort_velocities(one_way_phase_B_vels);
 
-        phase_A_vels_ders = mesh->reverse_and_sort_wells_velocities_derivatives(one_way_phase_A_vels_ders);
-        phase_B_vels_ders = mesh->reverse_and_sort_wells_velocities_derivatives(one_way_phase_B_vels_ders);
+        phase_A_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_A_vels_ders);
+        phase_B_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_B_vels_ders);
         // --- End evaluating phase velocities and derivatives in DFM wells
 
         if (THERMAL)
@@ -297,11 +297,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
             }
             //// We can use the same function used for well velocity for well upwinded spe as well
-            //phase_A_specific_potential_energy_up = mesh->reverse_and_sort_wells_velocities(one_way_phase_A_spe_up);
-            //phase_B_specific_potential_energy_up = mesh->reverse_and_sort_wells_velocities(one_way_phase_B_spe_up);
+            //phase_A_specific_potential_energy_up = mesh->reverse_and_sort_velocities(one_way_phase_A_spe_up);
+            //phase_B_specific_potential_energy_up = mesh->reverse_and_sort_velocities(one_way_phase_B_spe_up);
 
             // We can use the same function used for well velocity for well connections spe as well
-            connections_spe = mesh->reverse_and_sort_wells_velocities(one_way_conns_spe);
+            connections_spe = mesh->reverse_and_sort_velocities(one_way_conns_spe);
 
             // --- End reversing, sorting, and storing upwinded specfic potential energy (spe) of the two phases in DFM wells
         }
