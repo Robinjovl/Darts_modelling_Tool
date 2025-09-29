@@ -495,7 +495,7 @@ class Model(CICDModel):
         #                                    verbose=True, well_radius=r_w, well_index=well_index,
         #                                    well_indexD=well_index)
 
-        self.reservoir.add_well("P1", well_type, wellbore_diameter=d_w)
+        self.reservoir.add_well("P1", well_type, well_ID=d_w)
         if self.domain == '3D':
             for idx in self.prd_cells:
                 self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, multi_segment=False,
