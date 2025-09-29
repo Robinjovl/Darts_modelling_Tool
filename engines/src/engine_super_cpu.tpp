@@ -615,8 +615,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
   for (ms_well *w : wells)
   {
-    value_t *jac_well_head = &(jacobian->get_values()[jacobian->get_rows_ptr()[w->well_head_idx] * n_vars * n_vars]);
-    w->add_to_jacobian(dt, X, jac_well_head, RHS);
+      value_t* jac_well_head = &(jacobian->get_values()[jacobian->get_rows_ptr()[w->well_head_idx] * n_vars * n_vars]);
+      w->add_to_jacobian(dt, X, jac_well_head, RHS);
   }
 
   return 0;
