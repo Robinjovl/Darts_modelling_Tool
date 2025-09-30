@@ -170,10 +170,8 @@ class ReservoirBase:
             w.segment_volumes.resize(len(w.perforations))
             for p in w.perforations:
                 segment_area = pi * w.segment_diameter**2 / 4
-                # TODO: self.get_ijk does not work correctly so the line 176 is hard-coded -> [0, 0, 0]
-                # res_cell_ijk = self.get_ijk(p[1], self.nx, self.ny, self.nz)
-                # segment_height = self.global_data['dz'][res_cell_ijk]
-                segment_height = self.global_data['dz'][0, 0, 0]
+                res_cell_ijk = self.get_ijk(p[1], self.nx, self.ny, self.nz)
+                segment_height = self.global_data['dz'][res_cell_ijk]
                 w.segment_volumes[p[0]] = segment_height * segment_area
 
         self.mesh.add_wells(ms_well_vector(self.wells))
@@ -270,10 +268,13 @@ class ReservoirBase:
 
     @staticmethod
     def get_ijk(idx, nx, ny, nz):
+        """
+        i, j, and k indices are zero-based.
+        """
         k = idx // (nx * ny)
         j = (idx - k * (nx * ny)) // nx
         i = idx % nx
-        return (i + 1, j + 1, k + 1)
+        return (i, j, k)
 
     def write_cache(self):
         return
