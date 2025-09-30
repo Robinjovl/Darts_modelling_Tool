@@ -220,19 +220,19 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), w->num_segments - w->perforations.size(), 0);
 
                     // Derivatives of phase velocities at connections of lateral heat transfer, which will remain unused
-                    one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), w->num_segments, 0);
-                    one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), w->num_segments, 0);
+                    one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), w->num_segments - w->perforations.size(), 0);
+                    one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), w->num_segments - w->perforations.size(), 0);
                 }
             }
             else if (w->ms_type == ms_well::MS_Type::EPM)
             {
-                // EPM wells have only one connection. This zero velocity won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
-                one_way_phase_A_vels.push_back(0);
-                one_way_phase_B_vels.push_back(0);
+                // EPM wells have n_segments connections. This zero velocity won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
+                one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), w->n_segments, 0);
+                one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), w->n_segments, 0);
 
                 // Derivatives of phase velocities at the connection of EPM wells, which will remain unused
-                one_way_phase_A_vels_ders.push_back(0);
-                one_way_phase_B_vels_ders.push_back(0);
+                one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), w->n_segments, 0);
+                one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), w->n_segments, 0);
             }
         }
         phase_A_vels = mesh->reverse_and_sort_velocities(one_way_phase_A_vels);
@@ -289,11 +289,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
                 else if (w->ms_type == ms_well::MS_Type::EPM)
                 {
-                    // EPM wells have only one connection. This zero spe won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
-                    //one_way_phase_A_spe_up.push_back(0);
-                    //one_way_phase_B_spe_up.push_back(0);
+                    // EPM wells have n_segments connections. This zero spe won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
+                    //one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), w->n_segments, 0);
+                    //one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), w->n_segments, 0);
 
-                    one_way_conns_spe.push_back(0);
+                    one_way_conns_spe.insert(one_way_conns_spe.end(), w->n_segments, 0);
                 }
             }
             //// We can use the same function used for well velocity for well upwinded spe as well
