@@ -150,7 +150,8 @@ trigger-mcp-ingest:
     # Instruct downstream to run only ingest job
     MCP_INGEST_ONLY: "1"
   rules:
-    # Auto-run on the target branch, after gitingest-digest
-    - if: '$CI_COMMIT_BRANCH == "gitingest"'
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "gitingest"
       when: on_success
     - when: never

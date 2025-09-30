@@ -43,7 +43,7 @@ build-linux-tahiti-3.10-gpu:
         - conda activate darts_gpu
         - export GSELINSOLVERSPATH=/data/$(id -un)/darts-linear-solvers/build
     rules:
-        - if: '$MCP_TRIGGER_TAHITI_GPU == "1"'
+        - if: $MCP_TRIGGER_TAHITI_GPU == "1"
         - when: never
     extends: .build-linux-gpu
 
