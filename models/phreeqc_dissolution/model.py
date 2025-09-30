@@ -587,6 +587,7 @@ class Model(CICDModel):
         max_dx = np.zeros(nc)
 
         n_good_steps = 0
+        n_bad_steps = 0
 
         if np.fabs(data_ts.dt_mult - 1) < 1e-10:
             omega = 0.
@@ -638,9 +639,15 @@ class Model(CICDModel):
                 else:
                     self.prev_dt = dt
 
+                n_bad_steps = 0
             else:
                 dt /= data_ts.dt_mult
                 n_good_steps = 0
+                n_bad_steps += 1
+
+                if n_bad_steps > 1:
+                    data_ts.dt_max /= 2.
+                    n_bad_steps = 0
 
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
