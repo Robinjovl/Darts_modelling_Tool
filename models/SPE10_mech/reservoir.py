@@ -182,6 +182,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 bc['temp'] = self.bc_type.AQUIFER(0.0)
 
     def update_boundary_conditions(self):
+        return
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
             bc = self.boundary_conditions[tag]
