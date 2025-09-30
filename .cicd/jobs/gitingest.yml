@@ -108,8 +108,13 @@ gitingest-digest:
           else
             echo "WARN: 'models' directory not found; skipping models digest generation." >&2
           fi
+    after_script:
+        # Export metadata for the next job
+        - echo "OPEN_DARTS_GITINGEST_JOB_ID=${CI_JOB_ID}" > gitingest.env
+        - echo "OPEN_DARTS_REF=${CI_COMMIT_REF_NAME}" >> gitingest.env
+        - echo "OPEN_DARTS_COMMIT_SHA=${CI_COMMIT_SHA}" >> gitingest.env
     rules:
-        - if: '$RUN_GITINGEST == "1" && $CI_COMMIT_BRANCH == "development"'
+        - if: $CI_COMMIT_BRANCH == "gitingest"'
           when: on_success
         - when: never
     artifacts:
@@ -120,5 +125,29 @@ gitingest-digest:
             - "${GITINGEST_OUT_DIR}/gitingest-stderr.txt"
             - "${GITINGEST_OUT_DIR}/gitingest-models-output.txt"
             - "${GITINGEST_OUT_DIR}/gitingest-models-stderr.txt"
+        reports:
+          dotenv: gitingest.env
         when: always
         expire_in: 1 week
+
+trigger-mcp-ingest:
+  stage: pre_commit
+  needs: ["gitingest-digest"]
+  trigger:
+    project: open-darts/mcp-server
+    branch: mcp_poc
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  variables:
+    OPEN_DARTS_PROJECT_ID: "$CI_PROJECT_ID"
+    OPEN_DARTS_PIPELINE_ID: "$CI_PIPELINE_ID"
+    OPEN_DARTS_COMMIT_SHA: "$CI_COMMIT_SHA"
+    OPEN_DARTS_REF: "$CI_COMMIT_REF_NAME"
+    OPEN_DARTS_GITINGEST_JOB_NAME: "gitingest-digest"
+    # pulled from dotenv produced by previous job:
+    OPEN_DARTS_GITINGEST_JOB_ID: "$OPEN_DARTS_GITINGEST_JOB_ID"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "gitingest"'
+      when: on_success
+    - when: never
