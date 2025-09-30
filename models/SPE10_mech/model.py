@@ -272,23 +272,9 @@ class Model(THMCModel):
     def set_boundary_conditions(self):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
-            if 'PRD' in w.name:
                 self.physics.set_well_controls(w.control,
                                                control_type=well_control_iface.MOLAR_RATE,
                                                is_inj=False, target=0., phase_name='wat')
-            elif 'INJ' in w.name:
-                inj = []
-                inj_temp = None
-                if self.physics_type == 'single_phase_thermal':
-                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[i]])
-                elif self.physics_type == 'dead_oil':
-                    inj = [1.0 - self.idata.obl.zero]
-                elif self.physics_type == 'dead_oil_thermal':
-                    inj = [1.0 - self.idata.obl.zero]
-                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[i]])
-                self.physics.set_well_controls(wctrl=w.control,
-                                               control_type=well_control_iface.MOLAR_RATE,
-                                               is_inj=True, target=0., phase_name='wat', inj_composition=inj, inj_temp=inj_temp)
 
     def set_boundary_conditions_after_initialization(self):
         #return
@@ -300,7 +286,8 @@ class Model(THMCModel):
         # rate) water/oil rate:
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
-            p_cell = self.reservoir.p_init[self.well_cell_ids[i]]
+            p_cell = self.initial_pressure[self.well_cell_ids[i]]
+            t_cell = self.initial_temperature[self.well_cell_ids[i]]
 
             delta_temp_inj = 40 # [K] - delta for temperature control
             delta_p = 50  # [bar] - delta for BHP control
@@ -312,12 +299,12 @@ class Model(THMCModel):
                 inj = []
                 inj_temp = None
                 if self.physics_type == 'single_phase_thermal':
-                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[i]]) - delta_temp_inj
+                    inj_temp = t_cell - delta_temp_inj
                 elif self.physics_type == 'dead_oil':
                     inj = [1.0 - self.idata.obl.zero]
                 elif self.physics_type == 'dead_oil_thermal':
                     inj = [1.0 - self.idata.obl.zero]
-                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[i]]) - delta_temp_inj
+                    inj_temp = t_cell - delta_temp_inj
                 print('inj_temp = ', inj_temp)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=True, target=np.max(p_cell) + delta_p, inj_composition=inj,
@@ -363,6 +350,11 @@ class Model(THMCModel):
             self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
                                                            input_distribution=input_distribution,
                                                            input_displacement=input_displacement)
+        s = np.asarray(self.reservoir.mesh.initial_state)
+        self.initial_pressure = s[0::2]
+        self.initial_temperature = s[1::2]
+        print('Initial pressure: min/mean/max:', self.initial_pressure.min(), self.initial_pressure.mean(), self.initial_pressure.max())
+        print('Initial temperature: min/mean/max:', self.initial_temperature.min(), self.initial_temperature.mean(), self.initial_temperature.max())
         return 0
 
 
