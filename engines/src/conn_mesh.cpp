@@ -1869,7 +1869,10 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
     depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
     for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
     {
-      volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
+	  if (p == 0)   // Use the volume of the cell below the ghost cell as the volume of the ghost cell
+		  volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volumes[p];
+	  else   // segment_volumes contains the volumes of all the segments except the ghost cell
+		  volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volumes[p - 1];
       poro[wells[iw]->well_head_idx + p] = 1;
       op_num[wells[iw]->well_head_idx + p] = 0;
       heat_capacity[wells[iw]->well_head_idx + p] = 0;
@@ -1881,12 +1884,8 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
         int w_i = wells[iw]->well_head_idx + p;
         // copy properties for the well blocks from the reservoir blocks
         rock_cond[w_i] = rock_cond[r_i];
-        // depth of well segments
-        depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
-		if (depth[wells[iw]->well_head_idx + p] != depth[r_i])
-		{
-			cout << "Warning: Depth of well segment " << p << " in the well """ << wells[iw]->name << """ (" << depth[wells[iw]->well_head_idx + p] << " meters) is different from the depth of the reservoir block it is connected to (" << depth[r_i] << " meters)\n";
-		}
+		// Align well segment depth with reservoir block
+		depth[w_i] = depth[r_i];
       }
     }
   }
@@ -1978,7 +1977,10 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 		depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
 		for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
 		{
-			volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
+			if (p == 0)   // Use the volume of the cell below the ghost cell as the volume of the ghost cell
+				volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volumes[p];
+			else   // segment_volumes contains the volumes of all the segments except the ghost cell
+				volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volumes[p - 1];
 			poro[wells[iw]->well_head_idx + p] = 1;
 			if (th_poro.size())
 			  th_poro[wells[iw]->well_head_idx + p] = 0;
@@ -1987,10 +1989,10 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 			rock_cond[wells[iw]->well_head_idx + p] = 0;
 			if (p > 0)
 			{
+				// Align well segment depth with reservoir block
 				int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
 				int w_i = wells[iw]->well_head_idx + p;
-				// depth of well segments
-				depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+				depth[w_i] = depth[r_i];
 			}
 		}
 	}

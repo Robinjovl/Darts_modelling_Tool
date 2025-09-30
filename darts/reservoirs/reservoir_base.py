@@ -92,13 +92,11 @@ class ReservoirBase:
         well = ms_well()
         well.name = well_name
 
-        # first put only area here, to be multiplied by segment length later
-        well.segment_volume = pi * wellbore_diameter**2 / 4
+        well.segment_diameter = wellbore_diameter
 
-        # will be updated  in add_perforation
+        # will be updated in add_perforation
         well.well_head_depth = 0
         well.well_body_depth = 0
-        well.segment_depth_increment = 0
         self.wells.append(well)
 
         return
@@ -168,6 +166,16 @@ class ReservoirBase:
             assert len(w.perforations) > 0, (
                 f"Well {w.name} does not perforate any active reservoir blocks"
             )
+
+            w.segment_volumes.resize(len(w.perforations))
+            for p in w.perforations:
+                segment_area = pi * w.segment_diameter**2 / 4
+                # TODO: self.get_ijk does not work correctly so the line 176 is hard-coded -> [0, 0, 0]
+                # res_cell_ijk = self.get_ijk(p[1], self.nx, self.ny, self.nz)
+                # segment_height = self.global_data['dz'][res_cell_ijk]
+                segment_height = self.global_data['dz'][0, 0, 0]
+                w.segment_volumes[p[0]] = segment_height * segment_area
+
         self.mesh.add_wells(ms_well_vector(self.wells))
 
         # connect perforations of wells (for example, for closed loop geothermal)
@@ -259,6 +267,13 @@ class ReservoirBase:
         :type data: dict
         """
         pass
+
+    @staticmethod
+    def get_ijk(idx, nx, ny, nz):
+        k = idx // (nx * ny)
+        j = (idx - k * (nx * ny)) // nx
+        i = idx % nx
+        return (i + 1, j + 1, k + 1)
 
     def write_cache(self):
         return

@@ -583,9 +583,6 @@ class CPG_Reservoir(ReservoirBase):
             if len(well.perforations) == 0:  # if adding the first perforation
                 well.well_head_depth = self.depth_all_cells[res_block_local]
                 well.well_body_depth = well.well_head_depth
-                dx, dy, dz = self.discr_mesh.calc_cell_sizes(i - 1, j - 1, k - 1)
-                well.segment_depth_increment = dz
-                well.segment_volume *= well.segment_depth_increment
             else:  # update well depth
                 well.well_head_depth = min(
                     well.well_head_depth, self.depth_all_cells[res_block_local]

@@ -253,24 +253,7 @@ class StructReservoir(ReservoirBase):
                     res_block_local
                 ]
                 well.well_body_depth = well.well_head_depth
-                if self.discretizer.is_cpg:
-                    dx, dy, dz = self.discretizer.calc_cell_dimensions(
-                        i - 1, j - 1, k - 1
-                    )
-                    # TODO: need segment_depth_increment and segment_length logic
-                    if segment_direction == 'z_axis':
-                        well.segment_depth_increment = dz
-                    elif segment_direction == 'x_axis':
-                        well.segment_depth_increment = dx
-                    else:
-                        well.segment_depth_increment = dy
-                else:
-                    well.segment_depth_increment = self.discretizer.len_cell_zdir[
-                        i - 1, j - 1, k - 1
-                    ]
-
-                well.segment_volume *= well.segment_depth_increment
-            else:  # update well depth
+            else:  # update wellhead and well body depths
                 well.well_head_depth = min(
                     well.well_head_depth,
                     np.array(self.mesh.depth, copy=False)[res_block_local],
