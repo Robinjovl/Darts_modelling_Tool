@@ -147,7 +147,10 @@ trigger-mcp-ingest:
     OPEN_DARTS_GITINGEST_JOB_NAME: "gitingest-digest"
     # pulled from dotenv produced by previous job:
     OPEN_DARTS_GITINGEST_JOB_ID: "$OPEN_DARTS_GITINGEST_JOB_ID"
+    # Instruct downstream to run only ingest job
+    MCP_INGEST_ONLY: "1"
   rules:
+    # Auto-run on the target branch, after gitingest-digest
     - if: '$CI_COMMIT_BRANCH == "gitingest"'
       when: on_success
     - when: never
