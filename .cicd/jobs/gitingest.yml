@@ -121,10 +121,10 @@ gitingest-digest:
         paths:
             - "digest/open-darts-digest-*.json"
             - "digest/open-darts-models-*.json"
-            - "${GITINGEST_OUT_DIR}/gitingest-output.txt"
-            - "${GITINGEST_OUT_DIR}/gitingest-stderr.txt"
-            - "${GITINGEST_OUT_DIR}/gitingest-models-output.txt"
-            - "${GITINGEST_OUT_DIR}/gitingest-models-stderr.txt"
+            - "digest/gitingest-output.txt"
+            - "digest/gitingest-stderr.txt"
+            - "digest/gitingest-models-output.txt"
+            - "digest/gitingest-models-stderr.txt"
         reports:
           dotenv: gitingest.env
         when: always
