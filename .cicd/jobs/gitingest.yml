@@ -1,5 +1,5 @@
 gitingest-digest:
-    stage: pre_commit
+    stage: ingest
     tags:
         - linux_tahiti_gpu
     needs: []
@@ -131,7 +131,7 @@ gitingest-digest:
         expire_in: 1 week
 
 trigger-mcp-ingest:
-  stage: pre_commit
+  stage: ingest
   needs: ["gitingest-digest"]
   trigger:
     project: open-darts/mcp-server
