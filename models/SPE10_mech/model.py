@@ -76,7 +76,7 @@ class Model(THMCModel):
         self.idata.rock.nu = 0.25
 
         self.idata.rock.poro_non_rsv = 0.001
-        self.idata.rock.perm_non_rsv = 0.001
+        self.idata.rock.perm_non_rsv = 0.000001
         self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
 
         self.idata.rock.compressibility = get_rock_compressibility(
@@ -84,8 +84,8 @@ class Model(THMCModel):
             biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
-        self.idata.rock.th_expn = 9.0 * 1.E-7  # TODO
-        self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
+        self.idata.rock.th_expn = 1e-5  # 1/K
+        self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)  # Couchy book formula 4.19a, 4.21a
         self.idata.rock.conductivity = 0.836 * 86400.0 / 1000  # [kJ/m/day/K]
         self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]
         self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update

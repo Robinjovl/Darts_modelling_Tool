@@ -275,4 +275,6 @@ if __name__ == '__main__':
     #run(model_folder='16_16_15', physics_type='single_phase', generate_mesh=True, wells_type='prod', decouple_geomech=True)
     #run(model_folder='16_16_15', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
 
-    run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='prod', decouple_geomech=True)
+    #run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='prod', decouple_geomech=True)
+    run(model_folder='34_34_54', physics_type='single_phase_thermal', generate_mesh=True, wells_type='inj', decouple_geomech=True)
+    #run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='inj', decouple_geomech=True)
