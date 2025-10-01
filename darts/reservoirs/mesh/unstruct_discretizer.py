@@ -533,7 +533,8 @@ class UnstructDiscretizer:
         self.vtk_output_nodes_to_cells = {'fracture': {}, 'matrix': {}}
         self.vtk_output_cell_idxs = {'fracture': {}, 'matrix': {}}
         cell_count = 0
-        for geometry, tags in self.mesh_data.cell_data_dict['gmsh:physical'].items():
+        for geometry in self.geom_order:
+            tags = self.mesh_data.cell_data_dict['gmsh:physical'][geometry]
             nodes = {}
             cell_idxs = {}
 
@@ -4217,5 +4218,11 @@ class UnstructDiscretizer:
         # for debugging/plotting
         # np.save('frac_tips.npy', act_frac_sys, allow_pickle=True)
         # np.save('frac_aper.npy', [frac_angles, sigma_n, fracture_aper], allow_pickle=True)
+
+        print(
+            'calculated fracture apertures range (m):',
+            fracture_aper.min(),
+            fracture_aper.max(),
+        )
 
         return fracture_aper
