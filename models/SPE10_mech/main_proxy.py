@@ -4,6 +4,7 @@ import meshio
 from datetime import datetime
 
 from main import run
+from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus
 
 # unit conversion factors
 m2mm = 1e3
@@ -92,7 +93,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     # elastic constants
     g.poisson = m.idata.rock.nu
     g.young = m.idata.rock.E.mean() * bars2mpa # bars to MPa
-    g.thermal_exp_coeff = m.idata.rock.th_expn # 1/°C
+    g.thermal_exp_coeff = m.idata.rock.th_expn / get_bulk_modulus(E=m.idata.rock.E, nu=m.idata.rock.nu)# 1/°C
 
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
     poro = np.array(msh_initial.cell_data['poro']).flatten()
@@ -238,7 +239,7 @@ if __name__ == '__main__':
     #case = '28_28_29'  # crashes after initialization
     #case = '28_28_37'  #
     #case = '28_28_53'  #
-    case = '34_34_56'  #
+    case = '34_34_54'  #
     #case = '34_34_53' # bad allocation for both isothermal and thermal
 
     #uniform_props = True
@@ -249,9 +250,9 @@ if __name__ == '__main__':
     physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
-    wells_types_list += ['none']
+    #wells_types_list += ['none']
     #wells_types_list += ['prod']
-    #wells_types_list += ['inj']
+    wells_types_list += ['inj']
     #wells_types_list += ['doublet']
 
     for physics_type in physics_types_list:

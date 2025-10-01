@@ -273,14 +273,10 @@ class Model(THMCModel):
     def set_boundary_conditions(self):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
-            if 'PRD' in w.name:
                 self.physics.set_well_controls(w.control,
                                                control_type=well_control_iface.MOLAR_RATE,
                                                is_inj=False, target=0., phase_name='wat')
-            elif 'INJ' in w.name:
-                self.physics.set_well_controls(w.control,
-                                               control_type=well_control_iface.MOLAR_RATE,
-                                               is_inj=True, target=0., phase_name='wat')
+
 
     def set_boundary_conditions_after_initialization(self):
         #return
