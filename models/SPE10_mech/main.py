@@ -138,7 +138,10 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None, decoup
     # Properties for writing to vtk format:
     m.output_directory = 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder
     if os.path.exists(m.output_directory):
-        shutil.rmtree(m.output_directory)
+        try:
+            shutil.rmtree(m.output_directory)
+        except:
+            pass
 
     splitter = '-' * 100 + '\n'
 
@@ -166,7 +169,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None, decoup
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
-    sim_time = 12 * size_report_step #* 40
+    sim_time = 12 * size_report_step #* 50
     m.time_steps = []
     data = []
     # Run over all reporting time-steps:
@@ -258,7 +261,7 @@ if __name__ == '__main__':
     #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=True)
     #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=False)
 
-    #run(model_folder='10_10_10', physics_type='single_phase', uniform_props=True, decouple_geomech=True)
+    #run(model_folder='10_10_10', physics_type='single_phase', uniform_props=True, wells_type='prod', decouple_geomech=True)
     #run(model_folder='10_10_10', physics_type='dead_oil')
     #run(model_folder='10_10_10', physics_type='dead_oil_thermal')
 
@@ -268,6 +271,8 @@ if __name__ == '__main__':
     #run(model_folder='20_40_40', physics_type='dead_oil_thermal')
 
 
-    #run(model_folder='6_6_5', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
+    #run(model_folder='16_16_15', physics_type='single_phase', generate_mesh=True, wells_type='none', decouple_geomech=True)
+    #run(model_folder='16_16_15', physics_type='single_phase', generate_mesh=True, wells_type='prod', decouple_geomech=True)
     #run(model_folder='16_16_15', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
-    run(model_folder='28_28_37', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
+
+    run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='prod', decouple_geomech=True)

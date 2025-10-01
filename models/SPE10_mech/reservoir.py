@@ -78,7 +78,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 exit(1)
 
             if nz == 5: # for debugging
-                self.Zc = np.array([0, 1000, 2000, 2100, 2120, 3000])
+                self.Zc = np.array([0, 1000, 2000, 2100, 2200, 3000])
             elif nz == 15:  # dz = 100-1000 m for over and underburden and 20m for the reservoir
                 self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
             elif nz == 29:  # dz = 200 m for over and underburden and 20m for the reservoir
@@ -87,10 +87,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.Zc = np.hstack([np.arange(0, self.rsv_top, 150), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 150)])
             elif nz == 53:  # dz = 100 m for over and underburden and 20m for the reservoir
                 self.Zc = np.hstack([np.arange(0, self.rsv_top, 100), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 100)])
-            elif nz == 56:  # uniform dz = 100 m
+            elif nz == 54:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
                 self.Zc = np.hstack([np.arange(0, self.rsv_top - 100, 100),
                                      self.rsv_top - 100,
-                                     np.arange(self.rsv_top - 50, self.rsv_bottom, 20),
+                                     np.arange(self.rsv_top - 50, self.rsv_bottom, 25),
                                      self.rsv_bottom + 50,
                                      np.arange(self.rsv_bottom + 100, 5000, 100)])
             elif nz == 60:  # uniform dz = 100 m

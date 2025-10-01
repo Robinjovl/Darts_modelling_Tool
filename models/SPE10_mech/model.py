@@ -75,8 +75,8 @@ class Model(THMCModel):
         self.idata.rock.E = 1.e+4 * E  # to bars
         self.idata.rock.nu = 0.25
 
-        self.idata.rock.poro_non_rsv = 0.01
-        self.idata.rock.perm_non_rsv = 0.01
+        self.idata.rock.poro_non_rsv = 0.001
+        self.idata.rock.perm_non_rsv = 0.001
         self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
 
         self.idata.rock.compressibility = get_rock_compressibility(
@@ -218,19 +218,20 @@ class Model(THMCModel):
         centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
 
-        if self.wells_type == 'prod':  # one well (prod)
+        if self.wells_type == 'none':
+            well_names = []
+            well_coords = []
+        elif self.wells_type == 'prod':  # one well (prod)
             well_names = ['PRD1']
             well_coords = np.array([self.prod_well_coords])
-
-        if self.wells_type == 'inj': # one well (inj)
+        elif self.wells_type == 'inj': # one well (inj)
             well_names = ['INJ1']
             well_coords = np.array([self.inj_well_coords])
-
-        if self.wells_type == 'doublet':# two wells (doublet)
+        elif self.wells_type == 'doublet':# two wells (doublet)
             well_names = ['PRD1', 'INJ1']
             well_coords = np.array([self.prod_well_coords, self.inj_well_coords])
 
-        print('well_coords:', well_coords)
+        print('well_coords:', well_coords, 'depth=', self.well_init_depth)
         print('centroids_mean depth:', centroids_3d[:, 2].mean())
 
         self.well_cell_ids = []
@@ -266,15 +267,20 @@ class Model(THMCModel):
                 well_index = np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
                 # add perforation
                 self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
-                print('well perf added to the cell with a center=', centroids_3d[ids], 'requested point=', coord)
+                print('well perf added to the cell', ids, 'with a center=', centroids_3d[ids], 'for the requested point=', coord)
                 #exit()
 
     def set_boundary_conditions(self):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
+            if 'PRD' in w.name:
                 self.physics.set_well_controls(w.control,
                                                control_type=well_control_iface.MOLAR_RATE,
                                                is_inj=False, target=0., phase_name='wat')
+            elif 'INJ' in w.name:
+                self.physics.set_well_controls(w.control,
+                                               control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=0., phase_name='wat')
 
     def set_boundary_conditions_after_initialization(self):
         #return
@@ -294,7 +300,8 @@ class Model(THMCModel):
 
             if 'PRD' in w.name:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=np.min(p_cell) - delta_p)
+                                               is_inj=False, target=p_cell - delta_p)
+                print('w.name BHP control = ', p_cell - delta_p)
             elif 'INJ' in w.name:
                 inj = []
                 inj_temp = None
@@ -307,8 +314,9 @@ class Model(THMCModel):
                     inj_temp = t_cell - delta_temp_inj
                 print('inj_temp = ', inj_temp)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=np.max(p_cell) + delta_p, inj_composition=inj,
+                                               is_inj=True, target=p_cell + delta_p, inj_composition=inj,
                                                inj_temp=inj_temp)
+                print('w.name BHP control = ', p_cell + delta_p)
         return 0
 
     def set_initial_conditions(self):
@@ -339,6 +347,7 @@ class Model(THMCModel):
                                                                  input_displacement=self.reservoir.u_init,
                                                             depths=self.reservoir.depths[:self.reservoir.mesh.n_blocks])
         else:
+            #self.reservoir.p_init[:] = 500  # uniform init pressure
             input_distribution = {'pressure': self.reservoir.p_init}
             input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in enumerate(self.physics.components[:-1])})
             if self.reservoir.thermoporoelasticity:
@@ -351,10 +360,22 @@ class Model(THMCModel):
                                                            input_distribution=input_distribution,
                                                            input_displacement=input_displacement)
         s = np.asarray(self.reservoir.mesh.initial_state)
-        self.initial_pressure = s[0::2]
-        self.initial_temperature = s[1::2]
+        if self.reservoir.thermoporoelasticity:
+            self.initial_pressure = s[0::2][:self.reservoir.n_matrix]
+            self.initial_temperature = s[1::2][:self.reservoir.n_matrix]
+        else:
+            self.initial_pressure = s[:self.reservoir.n_matrix]
+            self.initial_temperature = np.zeros_like(s)[:self.reservoir.n_matrix]
         print('Initial pressure: min/mean/max:', self.initial_pressure.min(), self.initial_pressure.mean(), self.initial_pressure.max())
         print('Initial temperature: min/mean/max:', self.initial_temperature.min(), self.initial_temperature.mean(), self.initial_temperature.max())
+
+        centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
+                              c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
+        eps = 1
+        from functools import reduce
+        rsv = reduce(np.logical_and, [self.reservoir.rsv_top - eps < centroids_3d[:,2], centroids_3d[:,2] < self.reservoir.rsv_bottom + eps])
+        print('Initial pressure rsv: min/mean/max:', self.initial_pressure[rsv].min(), self.initial_pressure[rsv].mean(), self.initial_pressure[rsv].max())
+        print('Initial temperature rsv: min/mean/max:', self.initial_temperature[rsv].min(), self.initial_temperature[rsv].mean(), self.initial_temperature[rsv].max())
         return 0
 
 
