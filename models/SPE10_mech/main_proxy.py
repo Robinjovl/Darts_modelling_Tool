@@ -102,8 +102,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     msh_last    = read_vtk_darts_solution(folder=folder, timestep=1)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
     uz_last = np.array(msh_last.cell_data['uz']).flatten()
-    delta_Sxx_last = np.array(msh_last.cell_data['tot_delta_stress'])[0, :, 0] # third dimension: 0 is XX
-    #delta_Szz_last = np.array(msh_last.cell_data['tot_delta_stress'])[0, :, 2] # third dimension: 2 is ZZ
+    delta_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] # third dimension: 0 is XX
+    #delta_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] # third dimension: 2 is ZZ
 
     delta_pressure = (p_last - p_initial) * 0.1 # bars to MPa
     delta_temperature = np.zeros_like(delta_pressure) #TODO
@@ -247,7 +247,7 @@ if __name__ == '__main__':
 
     physics_types_list = []
     physics_types_list += ['single_phase']
-    physics_types_list += ['single_phase_thermal']
+    #physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['none']
