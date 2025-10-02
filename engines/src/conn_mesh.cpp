@@ -1888,9 +1888,9 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
         // the depth of the reservoir block is used as the depth of the corresponding well segment.
         if (depth[w_i] != depth[r_i])
         {
-			cout << "Warning: Depth of well segment " << p << " in the well """ << wells[iw]->name << """ (" <<
-			depth[w_i] << " meters) is different from the depth of the reservoir block it is connected to (" <<
-			depth[r_i] << " meters). Alignment is made by setting the depth of the well segment to " << depth[r_i] << ".\n";
+			//cout << "Warning: Depth of well segment " << p << " in the well """ << wells[iw]->name << """ (" <<
+			//depth[w_i] << " meters) is different from the depth of the reservoir block it is connected to (" <<
+			//depth[r_i] << " meters). Alignment is made by setting the depth of the well segment to " << depth[r_i] << ".\n";
 
 			depth[w_i] = depth[r_i];
         }
