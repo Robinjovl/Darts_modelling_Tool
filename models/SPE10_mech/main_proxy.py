@@ -137,7 +137,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
         cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
         if verbose:
             print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
-        return -delta_Sxx_last[cell]
+        return delta_Sxx_last[cell]
 
     def get_proxy_displs(point):
         eval_points = np.zeros((1,3))  # just one point
