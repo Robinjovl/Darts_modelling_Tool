@@ -137,7 +137,7 @@ class Output:
 
     def set_phase_properties(self):
         """
-        This function constructs a predefined set of property operators for the compositiol/geothermal physics class.
+        This function constructs a predefined set of property operators for the compositional/geothermal physics class.
         """
 
         if type(self.physics) is Compositional or type(self.physics) is BlackOil:
