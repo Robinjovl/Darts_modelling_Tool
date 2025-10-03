@@ -169,7 +169,11 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None, decoup
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
-    sim_time = 12 * size_report_step #* 50
+    n_years = 1
+    #n_years = 5
+    #n_years = 10
+    #n_years = 50
+    sim_time = 365.25 * n_years
     m.time_steps = []
     data = []
     # Run over all reporting time-steps:
@@ -276,5 +280,5 @@ if __name__ == '__main__':
     #run(model_folder='16_16_15', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
 
     #run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='prod', decouple_geomech=True)
-    run(model_folder='34_34_54', physics_type='single_phase_thermal', generate_mesh=True, wells_type='inj', decouple_geomech=True)
-    #run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='inj', decouple_geomech=True)
+    #run(model_folder='34_34_54', physics_type='single_phase_thermal', generate_mesh=True, wells_type='inj', decouple_geomech=True)
+    run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='inj', decouple_geomech=True)

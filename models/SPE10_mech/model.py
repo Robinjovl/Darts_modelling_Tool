@@ -58,9 +58,10 @@ class Model(THMCModel):
         dims=os.path.basename(self.model_folder).split('_')
         self.nx, self.ny, self.nz = int(dims[-3]), int(dims[-2]), int(dims[-1])
 
-        # read properties
+        # set properties
         porosity = 0.375
-        permeability = 100.0 # [mD]
+        #permeability = 1000 # [mD] # this matched thm and analytical solution
+        permeability = 100 # [mD] # this matches proxy and thm
         E = 10 # [GPa]
         p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
 
@@ -76,7 +77,8 @@ class Model(THMCModel):
         self.idata.rock.nu = 0.25
 
         self.idata.rock.poro_non_rsv = 0.001
-        self.idata.rock.perm_non_rsv = 0.000001
+        #self.idata.rock.perm_non_rsv = 0.000001 # this matched thm and analytical solution
+        self.idata.rock.perm_non_rsv = 0.001   # this matches proxy and thm
         self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
 
         self.idata.rock.compressibility = get_rock_compressibility(
@@ -88,6 +90,7 @@ class Model(THMCModel):
         self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)  # Couchy book formula 4.19a, 4.21a
         self.idata.rock.conductivity = 0.836 * 86400.0 / 1000  # [kJ/m/day/K]
         self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]
+        #self.idata.rock.heat_capacity *= 1e-1 # to make cooling faster for benchmarking - doesn't converge
         self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
 
         # TODO: Only for a single-phase physics

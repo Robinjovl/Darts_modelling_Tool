@@ -57,7 +57,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             # define permeable reservoir geometric boundaries
             self.rsv_top = 2100
             self.rsv_bottom = 2200
-            #self.rsv_xy = 1000   # laterally limited
+            #self.rsv_xy = 1000   # laterally limited (rsv width will be self.rsv_xy*2)
             self.rsv_xy = 100000  # "infinite" laterally
 
             if nx == 6: # for debugging, -4..4 km XY

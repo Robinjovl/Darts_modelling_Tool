@@ -102,8 +102,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     msh_last    = read_vtk_darts_solution(folder=folder, timestep=1)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
     uz_last = np.array(msh_last.cell_data['uz']).flatten()
-    delta_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] # third dimension: 0 is XX
-    #delta_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] # third dimension: 2 is ZZ
+    delta_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] * bars2mpa # third dimension: 0 is XX
+    #delta_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] * bars2mpa # third dimension: 2 is ZZ
 
     delta_pressure = (p_last - p_initial) * 0.1 # bars to MPa
     delta_temperature = np.zeros_like(delta_pressure) #TODO
@@ -111,8 +111,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     prisms = geomech_init_geometry(msh_initial)
     print('\tprisms all', prisms.shape[0])
 
-    # do not use the whole mesh - use only the permeable part, assuming there is no p,T change in the impermeable part
-    rsv = poro > m.idata.rock.poro_non_rsv  # reservoir cells
+    #TODO do not use the whole mesh - use only the permeable part, assuming there is no p,T change in the impermeable part
+    #rsv = poro > m.idata.rock.poro_non_rsv  # reservoir cells
     #delta_pressure = delta_pressure[rsv]
     #delta_temperature = delta_temperature[rsv]
     #prisms = prisms[rsv, :]
@@ -172,15 +172,15 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
                 prx.append(get_proxy_displs(point) * m2mm)
                 label = 'uz'
             elif mode == 'stress':
-                thm.append(get_thm_stress(point) * bars2mpa)
+                thm.append(get_thm_stress(point))
                 prx.append(get_proxy_stress(point))
                 label = 'delta_stress'
 
         from matplotlib import pyplot as plt
-        plt.plot(thm, z_range, label=label + '_thm')
-        plt.plot(prx, z_range, label=label + '_prx')
-        plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='--', label='rsv top')
-        plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='--', label='rsv bottom')
+        plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
+        plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
+        plt.plot(thm, z_range, label=label + '_THM')
+        plt.plot(prx, z_range, label=label + '_proxy')
         plt.gca().invert_yaxis()
         if mode == 'displ_z':
             s = 'Vertical displacement, mm.'
@@ -218,7 +218,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     point = [points_xy[0][1], points_xy[0][2], 0.] # at the surface (depth=0)
     uz_thm = get_thm_displs(point)*m2mm
     uz_prx = get_proxy_displs(point)*m2mm
-    print('Compare at single point ', point)
+    print('Compare at the middle point at the surface, point=', point)
     print('\tTHM   ', 'uz=', uz_thm, 'mm.')
     print('\tProxy ', 'uz=', uz_prx, 'mm.')
 
@@ -226,9 +226,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     point[2] = (m.reservoir.rsv_top + m.reservoir.rsv_bottom) * 0.5  # at the middle depth of the reservoir
     dsxx_thm = get_thm_stress(point)*bars2mpa
     dsxx_prx = get_proxy_stress(point)
-    print('Compare at single point ', point)
+    print('Compare at the middle depth of the reservoir, point=', point)
     print('\tTHM   ', 'delta_Sxx=', dsxx_thm, 'MPa')
     print('\tProxy ', 'delta_Sxx=', dsxx_prx, 'MPa')
+
+    print('THM delta_Sxx / delta_pressure=', np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max())
+
 
 if __name__ == '__main__':
 
