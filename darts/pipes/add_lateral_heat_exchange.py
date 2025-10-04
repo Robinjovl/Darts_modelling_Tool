@@ -173,13 +173,12 @@ class SemiAnalyticalWellLateralHeatTransfer:
         )  # Multiplying the heat rate by 24 * 60 * 60 / 1000 converts the unit from Joule/second to kJ/day
 
 
-def add_numerical_lateral_heat_transfer(
+def add_numerical_well_lateral_heat_transfer(
     well_name: str,
     well_geometry: PipeGeometry,
     reservoir,
     well_wall_cells_idx: np.ndarray,
     well_wall_thickness: float,
-    well_wall_cond: float,
     verbose: bool = False,
 ):
     """
@@ -225,9 +224,8 @@ def add_numerical_lateral_heat_transfer(
     geom_coef = A / L
     well_indexD = geom_coef
 
-    assert isinstance(well_wall_cond, float), (
-        "Well wall conductivity must be a float; otherwise, it's not supported!"
-    )
+    well_indexD *= 2  # Because in cpp code, (gamma_t_i + gamma_t_j) is divided by 2, but we don't want this division
+    # in lateral heat exchange because either gamma_t_i or gamma_t_j is always zero since T is at well-pipe interface.
 
     cpp_well = reservoir.get_well(well_name)
 
@@ -242,9 +240,6 @@ def add_numerical_lateral_heat_transfer(
         ]
 
     cpp_well.connections_for_lateral_heat_transfer = lateral_heat_connections
-
-    rock_cond = np.array(reservoir.mesh.rock_cond, copy=False)
-    rock_cond[well_wall_cells_idx] = well_wall_cond
 
     if verbose:
         print(
