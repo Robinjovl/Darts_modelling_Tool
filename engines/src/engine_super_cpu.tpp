@@ -1013,7 +1013,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
             }
 
-            // [4] add rock conduction (if connections are defined between DFM wells and their surrounding formation, the lateral heat transfer is considered here)
+            // [4] add rock conduction (if connections are defined between DFM wells and their surrounding formation, the lateral heat transfer is considered here in addition to rock conduction between reservoir cells)
             if (THERMAL)
             {
                 t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];

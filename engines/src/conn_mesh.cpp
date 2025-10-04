@@ -832,76 +832,10 @@ conn_mesh::reverse_and_sort()
 std::vector<value_t>
 conn_mesh::reverse_and_sort_velocities(std::vector<value_t> one_way_phase_velocities)
 {
-	std::vector<value_t> phase_velocities;
-	phase_velocities.resize(n_conns);
-
-	// Sort connection list + add reversed connections
-	n_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
-	n_blocks = std::max(n_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
-
-	tmp_index.assign(n_blocks + 1, 0);
-
-	// run 1 - calc indices
-	for (index_t j = 0; j < n_conns / 2; ++j)
-	{
-		tmp_index[one_way_block_m[j] + 1]++;  // 1 for direct connection
-		tmp_index[one_way_block_p[j] + 1]++;  // and 1 for reverse connection
-	}
-	// run 2 - sum indices
-	for (index_t i = 0; i < n_blocks; ++i)
-	{
-		tmp_index[i + 1] += tmp_index[i]; // 1 for direct and 1 for reverse connection
-	}
-	// run 2 - set values and check
-	index_t idx;
-	index_t need_sort = 0;
-	for (index_t j = 0; j < n_conns / 2; ++j)
-	{
-		idx = tmp_index[one_way_block_m[j]]++;
-
-		phase_velocities[idx] = one_way_phase_velocities[j];
-
-
-		if (!need_sort && idx > 0 && block_m[idx] == block_m[idx - 1] && block_p[idx] < block_p[idx - 1])
-		{
-			// columns were not sorted in initial file
-			//cout << "Warning: block " << block_m[idx] << " has unsorted connections to " << block_p[idx] << " and " << block_p[idx - 1] << endl;
-			need_sort = 1;
-		}
-
-		// reverse
-
-		idx = tmp_index[one_way_block_p[j]]++;
-		phase_velocities[idx] = one_way_phase_velocities[j];
-
-
-		if (!need_sort && block_m[idx] == block_m[idx - 1] && block_p[idx] < block_p[idx - 1])
-		{
-			// columns were not sorted in initial file
-			//cout << "Warning: block " << block_m[idx] << " has unsorted connections to " << block_p[idx] << " and " << block_p[idx - 1] << endl;
-			need_sort = 1;
-		}
-	}
-
-	// run 3 - bubble sort columns within each block
-	if (need_sort)
-	{
-		index_t j = 0;
-		value_t v_tmp;
-		for (index_t i = 0; i < n_blocks; ++i)
-		{
-			for (; j < tmp_index[i] - 1; j++)
-				for (index_t k = j + 1; k < tmp_index[i]; k++)
-				{
-					if (block_p[k] < block_p[j])
-					{
-						v_tmp = phase_velocities[k];
-						phase_velocities[k] = phase_velocities[j];
-						phase_velocities[j] = v_tmp;
-					}
-				}
-			j++;
-		}
+	std::vector<value_t> phase_velocities(n_conns);
+	for (index_t j = 0; j < n_conns / 2; ++j) {
+		phase_velocities[one_way_to_conn_index_forward[j]] = one_way_phase_velocities[j]; // m->p
+		phase_velocities[one_way_to_conn_index_reverse[j]] = one_way_phase_velocities[j]; // p->m (same value or negate if needed)
 	}
 
 	return phase_velocities;
@@ -911,77 +845,11 @@ using MixedType = std::variant<int, std::vector<value_t>>;
 std::vector<MixedType>
 conn_mesh::reverse_and_sort_velocities_derivatives(std::vector<MixedType> one_way_phase_velocities_derivatives)
 {
-	std::vector<MixedType> phase_velocities_derivatives;
-	phase_velocities_derivatives.resize(n_conns);
-
-	// Sort connection list + add reversed connections
-	n_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
-	n_blocks = std::max(n_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
-
-	tmp_index.assign(n_blocks + 1, 0);
-
-	// run 1 - calc indices
-	for (index_t j = 0; j < n_conns / 2; ++j)
-	{
-		tmp_index[one_way_block_m[j] + 1]++;  // 1 for direct connection
-		tmp_index[one_way_block_p[j] + 1]++;  // and 1 for reverse connection
+	std::vector<MixedType> phase_velocities_derivatives(n_conns);
+	for (index_t j = 0; j < n_conns / 2; ++j) {
+		phase_velocities_derivatives[one_way_to_conn_index_forward[j]] = one_way_phase_velocities_derivatives[j]; // m->p
+		phase_velocities_derivatives[one_way_to_conn_index_reverse[j]] = one_way_phase_velocities_derivatives[j]; // p->m (same value or negate if needed)
 	}
-	// run 2 - sum indices
-	for (index_t i = 0; i < n_blocks; ++i)
-	{
-		tmp_index[i + 1] += tmp_index[i]; // 1 for direct and 1 for reverse connection
-	}
-	// run 2 - set values and check
-	index_t idx;
-	index_t need_sort = 0;
-	for (index_t j = 0; j < n_conns / 2; ++j)
-	{
-		idx = tmp_index[one_way_block_m[j]]++;
-
-		phase_velocities_derivatives[idx] = one_way_phase_velocities_derivatives[j];
-
-
-		if (!need_sort && idx > 0 && block_m[idx] == block_m[idx - 1] && block_p[idx] < block_p[idx - 1])
-		{
-			// columns were not sorted in initial file
-			//cout << "Warning: block " << block_m[idx] << " has unsorted connections to " << block_p[idx] << " and " << block_p[idx - 1] << endl;
-			need_sort = 1;
-		}
-
-		// reverse
-
-		idx = tmp_index[one_way_block_p[j]]++;
-		phase_velocities_derivatives[idx] = one_way_phase_velocities_derivatives[j];
-
-
-		if (!need_sort && block_m[idx] == block_m[idx - 1] && block_p[idx] < block_p[idx - 1])
-		{
-			// columns were not sorted in initial file
-			//cout << "Warning: block " << block_m[idx] << " has unsorted connections to " << block_p[idx] << " and " << block_p[idx - 1] << endl;
-			need_sort = 1;
-		}
-	}
-
-	// run 3 - bubble sort columns within each block
-	//if (need_sort)
-	//{
-	//	index_t j = 0;
-	//	value_t v_tmp;
-	//	for (index_t i = 0; i < n_blocks; ++i)
-	//	{
-	//		for (; j < tmp_index[i] - 1; j++)
-	//			for (index_t k = j + 1; k < tmp_index[i]; k++)
-	//			{
-	//				if (block_p[k] < block_p[j])
-	//				{
-	//					v_tmp = phase_velocities_derivatives[k];
-	//					phase_velocities_derivatives[k] = phase_velocities_derivatives[j];
-	//					phase_velocities_derivatives[j] = v_tmp;
-	//				}
-	//			}
-	//		j++;
-	//	}
-	//}
 
 	return phase_velocities_derivatives;
 }
@@ -2034,10 +1902,10 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 				bool i_w_in_perforations = false;
 				for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
 				{
-					index_t i_ww, i_rr;
-					value_t wii, widd;
-					std::tie(i_ww, i_rr, wii, widd) = wells[iw]->perforations[p];
-					if (i_w + wells[iw]->well_head_idx == i_ww + wells[iw]->well_head_idx + 1)
+					index_t i_w_perf, i_r_perf;
+					value_t wi_perf, wid_perf;
+					std::tie(i_w_perf, i_r_perf, wi_perf, wid_perf) = wells[iw]->perforations[p];
+					if (i_w + wells[iw]->well_head_idx == i_w_perf + wells[iw]->well_head_idx + 1)
 					{
 						i_w_in_perforations = true;
 						break;
