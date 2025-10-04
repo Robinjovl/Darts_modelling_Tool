@@ -1030,32 +1030,6 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
             }
 
-     //       // [5] add lateral heat conduction in dfm wells
-     //       if (has_DFM)
-     //       {
-     //           if (i >= n_res_blocks && j < n_res_blocks)   // This means we have a connection between a reservoir block and a DFM well block
-     //           {
-     //               t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
-					//gamma_t = tranD[conn_idx] * dt * mesh->rock_cond[j];   // Use the rock conductivity of the reservoir block (here j)
-     //           }
-     //           else if (i < n_res_blocks && j >= n_res_blocks)   // This means we have a connection between a reservoir block and a DFM well block
-     //           {
-     //               t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
-     //               gamma_t = tranD[conn_idx] * dt * mesh->rock_cond[i];   // Use the rock conductivity of the reservoir block (here i)
-     //           }
-
-     //           if ((i >= n_res_blocks && j < n_res_blocks) || (i < n_res_blocks && j >= n_res_blocks))
-     //           {
-     //               // rock heat flows from cell i to j
-     //               RHS[i * N_VARS + NC] -= t_diff * gamma_t;
-     //               //if (enabled_flux_output) cur_fourier_fluxes[NP] = -t_diff * gamma_t / dt;          I don't know what this line is for, so I commented it out.
-     //               for (uint8_t v = 0; v < N_VARS; v++)
-     //               {
-     //                   Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * gamma_t;
-     //                   Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * gamma_t;
-     //               }
-     //           }
-     //       }
 
             conn_idx++;
             if (j < n_res_blocks)
