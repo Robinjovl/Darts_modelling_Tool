@@ -102,6 +102,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     const std::vector<value_t>& velocity_appr = mesh->velocity_appr;
     const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     const std::vector<index_t>& op_num = mesh->op_num;
+    const std::vector<value_t>& cell_spe = mesh->cell_spe;
 
     value_t* Jac = jacobian->get_values();
     index_t* diag_ind = jacobian->get_diag_ind();
@@ -150,8 +151,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     //std::vector<value_t> phase_A_specific_potential_energy_up;
     //std::vector<value_t> phase_B_specific_potential_energy_up;
 
-    // Declare variables for connections specific potential energy of phases
-    std::vector<value_t> connections_spe;
+    // Declare variable for connections specific potential energy of phases
+    std::vector<value_t> conn_spe;
 
     if (has_DFM)
     {
@@ -244,18 +245,17 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
         if (THERMAL)
         {
-            //// --- Start reversing, sorting, and storing upwinded specfic potential energy (spe) of the two phases in DFM wells (defined at DFM connections)
+            // --- Start reversing, sorting, and storing specfic potential energy (spe)
             //std::vector<value_t> one_way_phase_A_spe_up;
             //std::vector<value_t> one_way_phase_B_spe_up;
 
-            // --- Start reversing, sorting, and storing DFM connections specfic potential energy(spe)
-            std::vector<value_t> one_way_conns_spe;
+            std::vector<value_t> one_way_conn_spe;
 
             // Zero spe at reservoir connections, which will remain unused. These values won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
             //one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), mesh->n_res_conns / 2, 0);
             //one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), mesh->n_res_conns / 2, 0);
 
-            one_way_conns_spe.insert(one_way_conns_spe.end(), mesh->n_res_conns / 2, 0);
+            one_way_conn_spe.insert(one_way_conn_spe.end(), mesh->n_res_conns / 2, 0);
 
             for (ms_well* w : wells)
             {
@@ -264,7 +264,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 //one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), n_perfs, 0);
                 //one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), n_perfs, 0);
 
-                one_way_conns_spe.insert(one_way_conns_spe.end(), n_perfs, 0);
+                one_way_conn_spe.insert(one_way_conn_spe.end(), n_perfs, 0);
 
                 if (w->ms_type == ms_well::MS_Type::DFM)
                 {
@@ -279,12 +279,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     //one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), well_phase_A_spe_up.begin(), well_phase_A_spe_up.end());
                     //one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), well_phase_B_spe_up.begin(), well_phase_B_spe_up.end());
 
-                    one_way_conns_spe.insert(one_way_conns_spe.end(), w->conns_spe.begin(), w->conns_spe.end());
+                    one_way_conn_spe.insert(one_way_conn_spe.end(), w->conns_spe.begin(), w->conns_spe.end());
 
                     if (w->with_lateral_heat_transfer)
                     {
                         // Zero spe for connections of lateral heat transfer, which will remain unused
-                        one_way_conns_spe.insert(one_way_conns_spe.end(), w->num_segments - w->perforations.size(), 0);
+                        one_way_conn_spe.insert(one_way_conn_spe.end(), w->num_segments - w->perforations.size(), 0);
                     }
                 }
                 else if (w->ms_type == ms_well::MS_Type::EPM)
@@ -293,17 +293,17 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     //one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), w->n_segments, 0);
                     //one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), w->n_segments, 0);
 
-                    one_way_conns_spe.insert(one_way_conns_spe.end(), w->n_segments, 0);
+                    one_way_conn_spe.insert(one_way_conn_spe.end(), w->n_segments, 0);
                 }
             }
             //// We can use the same function used for well velocity for well upwinded spe as well
             //phase_A_specific_potential_energy_up = mesh->reverse_and_sort_velocities(one_way_phase_A_spe_up);
             //phase_B_specific_potential_energy_up = mesh->reverse_and_sort_velocities(one_way_phase_B_spe_up);
 
-            // We can use the same function used for well velocity for well connections spe as well
-            connections_spe = mesh->reverse_and_sort_velocities(one_way_conns_spe);
+            // We can use the same function used for well velocity for spe of well connections as well
+            conn_spe = mesh->reverse_and_sort_velocities(one_way_conn_spe);
 
-            // --- End reversing, sorting, and storing upwinded specfic potential energy (spe) of the two phases in DFM wells
+            // --- End reversing, sorting, and storing spe in
         }
     }
 
@@ -380,7 +380,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             sat_dens_sum += op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p]
                                             - op_vals_arr_n[i * N_OPS + SAT_OP + p] * op_vals_arr_n[i * N_OPS + GRAV_OP + p];
                         }
-                        RHS[i * N_VARS + c] += PV[i] * mesh->cells_spe[i] * sat_dens_sum;
+                        RHS[i * N_VARS + c] += PV[i] * cell_spe[i] * sat_dens_sum;
 
                         break;
                     }
@@ -408,7 +408,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             sat_dens_der_sum += op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]
                                 + op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v];
                         }
-                        Jac[diag_idx + c * N_VARS + v] += PV[i] * mesh->cells_spe[i] * sat_dens_der_sum; // der of potential energy accumulation term
+                        Jac[diag_idx + c * N_VARS + v] += PV[i] * cell_spe[i] * sat_dens_der_sum; // der of potential energy accumulation term
                     }
                 }
             }
@@ -755,7 +755,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 //else if (p == 1 || p == 2)
                                 //    RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
 
-                                RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * connections_spe[conn_idx];
+                                RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
                             }
                         }
 
@@ -789,8 +789,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                     //    Jac[jac_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
                                     //}
 
-                                    Jac[diag_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * connections_spe[conn_idx];
-                                    Jac[jac_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * connections_spe[conn_idx];
+                                    Jac[diag_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
+                                    Jac[jac_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
                                 }
                             }
                         }
@@ -891,7 +891,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 //else if (p == 1 || p == 2)
                                 //    RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
 
-                                RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * connections_spe[conn_idx];
+                                RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
                             }
                         }
 
@@ -925,8 +925,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                     //    Jac[jac_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_B_specific_potential_energy_up[conn_idx];
                                     //}
 
-                                    Jac[diag_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * connections_spe[conn_idx];
-                                    Jac[jac_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * connections_spe[conn_idx];
+                                    Jac[diag_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+                                    Jac[jac_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
                                 }
                             }
                         }
