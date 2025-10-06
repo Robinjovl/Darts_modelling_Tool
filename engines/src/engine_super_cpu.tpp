@@ -697,7 +697,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             Jac[diag_idx + c * N_VARS + v] -= phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
                             Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
-                            if (!DFM_conn)
+                            if (!DFM_conn)   // Add derivatives for pressure
                             {
                                 if (v == 0)
                                 {
@@ -705,7 +705,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                     Jac[diag_idx + c * N_VARS + v] += c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
                                 }
                             }
-                            else if (DFM_conn)   // if it's a DFM connection, add derivatives of potential energy flux
+
+                            if (DFM_conn)   // if it's a DFM connection, add derivatives of potential energy flux
                             {
                                 if (THERMAL && c == NE - 1)
                                 {
@@ -833,7 +834,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             Jac[diag_idx + c * N_VARS + v] -= phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
                             Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
 
-                            if (!DFM_conn)
+                            if (!DFM_conn)   // Add derivatives for pressure
                             {
                                 if (v == 0)
                                 {
@@ -841,7 +842,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                     Jac[jac_idx + c * N_VARS + v] -= c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
                                 }
                             }
-                            else if (DFM_conn)   // if it's a DFM connection, add derivatives of potential energy flux
+
+                            if (DFM_conn)   // if it's a DFM connection, add derivatives of potential energy flux
                             {
                                 if (THERMAL && c == NE - 1)
                                 {
