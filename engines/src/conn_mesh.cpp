@@ -843,8 +843,8 @@ conn_mesh::reverse_and_sort_conn_spe(std::vector<ms_well*>& wells)
 	std::vector<value_t> one_way_conn_spe;
 
 	// Zero spe at reservoir connections, which will remain unused. These values won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
-	//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), mesh->n_res_conns / 2, 0);
-	//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), mesh->n_res_conns / 2, 0);
+	//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), n_res_conns / 2, 0);
+	//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), n_res_conns / 2, 0);
 
 	one_way_conn_spe.insert(one_way_conn_spe.end(), n_res_conns / 2, 0);
 
@@ -887,39 +887,39 @@ conn_mesh::reverse_and_sort_conn_spe(std::vector<ms_well*>& wells)
 			one_way_conn_spe.insert(one_way_conn_spe.end(), w->n_segments, 0);
 		}
 	}
-	//// We can use the same function used for well velocity for well upwinded spe as well
-	//phase_A_specific_potential_energy_up = reverse_and_sort_velocities(one_way_phase_A_spe_up);
-	//phase_B_specific_potential_energy_up = reverse_and_sort_velocities(one_way_phase_B_spe_up);
+	//// Reverse and sort the one-way specific potential energy at connections
+	//phase_A_specific_potential_energy_up = reverse_and_sort_one_way_prop(one_way_phase_A_spe_up);
+	//phase_B_specific_potential_energy_up = reverse_and_sort_one_way_prop(one_way_phase_B_spe_up);
 
-	// We can use the same function used for well velocity for spe of well connections as well
-	conn_spe = reverse_and_sort_velocities(one_way_conn_spe);
+	// Reverse and sort the one-way specific potential energy at connections
+	conn_spe = reverse_and_sort_one_way_prop(one_way_conn_spe);
 
 	return 0;
 }
 
 std::vector<value_t>
-conn_mesh::reverse_and_sort_velocities(std::vector<value_t> one_way_phase_velocities)
+conn_mesh::reverse_and_sort_one_way_prop(std::vector<value_t> one_way_prop)
 {
-	std::vector<value_t> phase_velocities(n_conns);
+	std::vector<value_t> two_way_prop(n_conns);
 	for (index_t j = 0; j < n_conns / 2; ++j) {
-		phase_velocities[one_way_to_conn_index_forward[j]] = one_way_phase_velocities[j]; // m->p
-		phase_velocities[one_way_to_conn_index_reverse[j]] = one_way_phase_velocities[j]; // p->m (same value or negate if needed)
+		two_way_prop[one_way_to_conn_index_forward[j]] = one_way_prop[j]; // m->p
+		two_way_prop[one_way_to_conn_index_reverse[j]] = one_way_prop[j]; // p->m (same value or negate if needed)
 	}
 
-	return phase_velocities;
+	return two_way_prop;
 }
 
 using MixedType = std::variant<int, std::vector<value_t>>;
 std::vector<MixedType>
 conn_mesh::reverse_and_sort_velocities_derivatives(std::vector<MixedType> one_way_phase_velocities_derivatives)
 {
-	std::vector<MixedType> phase_velocities_derivatives(n_conns);
+	std::vector<MixedType> two_way_phase_velocities_derivatives(n_conns);
 	for (index_t j = 0; j < n_conns / 2; ++j) {
-		phase_velocities_derivatives[one_way_to_conn_index_forward[j]] = one_way_phase_velocities_derivatives[j]; // m->p
-		phase_velocities_derivatives[one_way_to_conn_index_reverse[j]] = one_way_phase_velocities_derivatives[j]; // p->m (same value or negate if needed)
+		two_way_phase_velocities_derivatives[one_way_to_conn_index_forward[j]] = one_way_phase_velocities_derivatives[j]; // m->p
+		two_way_phase_velocities_derivatives[one_way_to_conn_index_reverse[j]] = one_way_phase_velocities_derivatives[j]; // p->m (same value or negate if needed)
 	}
 
-	return phase_velocities_derivatives;
+	return two_way_phase_velocities_derivatives;
 }
 
 int

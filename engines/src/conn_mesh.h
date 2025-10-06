@@ -176,8 +176,8 @@ public:
   int reverse_and_sort(std::vector<ms_well*>& wells);
   /// @brief store one-way connection spe, and reverse and sort them by both row and col
   int reverse_and_sort_conn_spe(std::vector<ms_well*>& wells);
-  /// @brief reverse connections and sort them by both row and col for velocities at all connections
-  std::vector<value_t> reverse_and_sort_velocities(std::vector<value_t> phase_velocities);
+  /// @brief reverse connections and sort them by both row and col for a one-way property at all connections
+  std::vector<value_t> reverse_and_sort_one_way_prop(std::vector<value_t> phase_velocities);
   /// @brief reverse connections and sort them by both row and col for derivatives of velocities at all connections
   using MixedType = std::variant<int, std::vector<value_t>>;
   std::vector<MixedType> reverse_and_sort_velocities_derivatives(std::vector<MixedType> phase_velocities_derivatives);
