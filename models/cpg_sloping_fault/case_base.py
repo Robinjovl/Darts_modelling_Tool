@@ -39,6 +39,8 @@ def input_data_base(idata: InputData, case: str):
     # optional: use PETSc linear solver
     #idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_CPR
     #idata.sim.DataTS.linear_print_level = 0
+    # optional: use PARDISO linear solver
+    #idata.sim.DataTS.linear_type = linear_solver_types.CPU_PARDISO
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()
