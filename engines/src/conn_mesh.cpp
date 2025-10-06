@@ -691,7 +691,7 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
 }
 
 int
-conn_mesh::reverse_and_sort()
+conn_mesh::reverse_and_sort(std::vector<ms_well*>& wells)
 {
   int diff_trans = one_way_tranD.size();
 
@@ -826,7 +826,75 @@ conn_mesh::reverse_and_sort()
   get_res_tran(test_t, test_tD);
   set_res_tran(test_t, test_tD);
 
+  // Store one-way connection spe, and reverse and sort it
+  reverse_and_sort_conn_spe(wells);
+
   return 0;
+}
+
+int
+conn_mesh::reverse_and_sort_conn_spe(std::vector<ms_well*>& wells)
+{
+	//// Declare variables for one-way upwinded specific potential energy of phases
+	//std::vector<value_t> one_way_phase_A_spe_up;
+	//std::vector<value_t> one_way_phase_B_spe_up;
+
+	// Declare variable for one-way specific potential energy at connections
+	std::vector<value_t> one_way_conn_spe;
+
+	// Zero spe at reservoir connections, which will remain unused. These values won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
+	//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), mesh->n_res_conns / 2, 0);
+	//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), mesh->n_res_conns / 2, 0);
+
+	one_way_conn_spe.insert(one_way_conn_spe.end(), n_res_conns / 2, 0);
+
+	for (ms_well* w : wells)
+	{
+		index_t n_perfs = w->perforations.size();
+		// Zero spe for perforation of each well, which will remain unused
+		//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), n_perfs, 0);
+		//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), n_perfs, 0);
+
+		one_way_conn_spe.insert(one_way_conn_spe.end(), n_perfs, 0);
+
+		if (w->ms_type == ms_well::MS_Type::DFM)
+		{
+			//// Upwinded phase spe of DFM wells are evaluated in Python
+			//std::vector<value_t> well_phase_spe_up = w->phase_specific_potential_energy_up;
+
+			//// Separate the specific potential energy of the two phases
+			//size_t half_size_pot_ener = well_phase_spe_up.size() / 2;
+			//std::vector<value_t> well_phase_A_spe_up(well_phase_spe_up.begin(), well_phase_spe_up.begin() + half_size_pot_ener);
+			//std::vector<value_t> well_phase_B_spe_up(well_phase_spe_up.begin() + half_size_pot_ener, well_phase_spe_up.end());
+
+			//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), well_phase_A_spe_up.begin(), well_phase_A_spe_up.end());
+			//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), well_phase_B_spe_up.begin(), well_phase_B_spe_up.end());
+
+			one_way_conn_spe.insert(one_way_conn_spe.end(), w->conn_spe.begin(), w->conn_spe.end());
+
+			if (w->with_lateral_heat_transfer)
+			{
+				// Zero spe for connections of lateral heat transfer, which will remain unused
+				one_way_conn_spe.insert(one_way_conn_spe.end(), w->num_segments - w->perforations.size(), 0);
+			}
+		}
+		else if (w->ms_type == ms_well::MS_Type::EPM)
+		{
+			// EPM wells have n_segments connections. This zero spe won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
+			//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), w->n_segments, 0);
+			//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), w->n_segments, 0);
+
+			one_way_conn_spe.insert(one_way_conn_spe.end(), w->n_segments, 0);
+		}
+	}
+	//// We can use the same function used for well velocity for well upwinded spe as well
+	//phase_A_specific_potential_energy_up = reverse_and_sort_velocities(one_way_phase_A_spe_up);
+	//phase_B_specific_potential_energy_up = reverse_and_sort_velocities(one_way_phase_B_spe_up);
+
+	// We can use the same function used for well velocity for spe of well connections as well
+	conn_spe = reverse_and_sort_velocities(one_way_conn_spe);
+
+	return 0;
 }
 
 std::vector<value_t>
@@ -1974,7 +2042,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 		  std::fill(poro.begin() + wells[iw]->well_head_idx, poro.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 1);
 		  std::fill(op_num.begin() + wells[iw]->well_head_idx, op_num.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
 		  std::fill(heat_capacity.begin() + wells[iw]->well_head_idx, heat_capacity.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
-		  std::copy(wells[iw]->segments_spe.begin(), wells[iw]->segments_spe.end(), cell_spe.begin() + wells[iw]->well_head_idx);
+		  std::copy(wells[iw]->segment_spe.begin(), wells[iw]->segment_spe.end(), cell_spe.begin() + wells[iw]->well_head_idx);
 		  // The following lines are not applied to DFM-MS yet.
 		  //for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
 		  //{

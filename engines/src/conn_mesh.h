@@ -173,7 +173,9 @@ public:
     value_t trans, value_t transD, const uint8_t P_VAR);
 
   /// @brief reverse connections and sort them by both row and col
-  int reverse_and_sort();
+  int reverse_and_sort(std::vector<ms_well*>& wells);
+  /// @brief store one-way connection spe, and reverse and sort them by both row and col
+  int reverse_and_sort_conn_spe(std::vector<ms_well*>& wells);
   /// @brief reverse connections and sort them by both row and col for velocities at all connections
   std::vector<value_t> reverse_and_sort_velocities(std::vector<value_t> phase_velocities);
   /// @brief reverse connections and sort them by both row and col for derivatives of velocities at all connections
@@ -280,6 +282,11 @@ public:
   std::vector<value_t> mob_multiplier;
   /// [n_blocks] array of specific potential energy of mesh blocks
   std::vector<value_t> cell_spe;
+  /// [n_conns * 2] array of two-way specific potential energy at connections
+  std::vector<value_t> conn_spe;
+  ///// [n_conns * 2] array of two-way upwinded specific potential energy of phases at connections
+  //std::vector<value_t> phase_A_specific_potential_energy_up;
+  //std::vector<value_t> phase_B_specific_potential_energy_up;
 
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;

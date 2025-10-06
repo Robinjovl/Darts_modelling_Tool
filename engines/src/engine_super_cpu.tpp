@@ -103,6 +103,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     const std::vector<index_t>& op_num = mesh->op_num;
     const std::vector<value_t>& cell_spe = mesh->cell_spe;
+	const std::vector<value_t>& conn_spe = mesh->conn_spe;
 
     value_t* Jac = jacobian->get_values();
     index_t* diag_ind = jacobian->get_diag_ind();
@@ -146,13 +147,6 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     using MixedType = std::variant<int, std::vector<value_t>>;
     std::vector<MixedType> phase_A_vels_ders;
     std::vector<MixedType> phase_B_vels_ders;
-
-    //// Declare variables for upwinded specific potential energy of phases
-    //std::vector<value_t> phase_A_specific_potential_energy_up;
-    //std::vector<value_t> phase_B_specific_potential_energy_up;
-
-    // Declare variable for connections specific potential energy of phases
-    std::vector<value_t> conn_spe;
 
     if (has_DFM)
     {
@@ -242,69 +236,6 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         phase_A_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_A_vels_ders);
         phase_B_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_B_vels_ders);
         // --- End evaluating phase velocities and derivatives in DFM wells
-
-        if (THERMAL)
-        {
-            // --- Start reversing, sorting, and storing specfic potential energy (spe)
-            //std::vector<value_t> one_way_phase_A_spe_up;
-            //std::vector<value_t> one_way_phase_B_spe_up;
-
-            std::vector<value_t> one_way_conn_spe;
-
-            // Zero spe at reservoir connections, which will remain unused. These values won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
-            //one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), mesh->n_res_conns / 2, 0);
-            //one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), mesh->n_res_conns / 2, 0);
-
-            one_way_conn_spe.insert(one_way_conn_spe.end(), mesh->n_res_conns / 2, 0);
-
-            for (ms_well* w : wells)
-            {
-                index_t n_perfs = w->perforations.size();
-                // Zero spe for perforation of each well, which will remain unused
-                //one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), n_perfs, 0);
-                //one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), n_perfs, 0);
-
-                one_way_conn_spe.insert(one_way_conn_spe.end(), n_perfs, 0);
-
-                if (w->ms_type == ms_well::MS_Type::DFM)
-                {
-                    //// Upwinded phase spe of DFM wells are evaluated in Python
-                    //std::vector<value_t> well_phase_spe_up = w->phase_specific_potential_energy_up;
-
-                    //// Separate the specific potential energy of the two phases
-                    //size_t half_size_pot_ener = well_phase_spe_up.size() / 2;
-                    //std::vector<value_t> well_phase_A_spe_up(well_phase_spe_up.begin(), well_phase_spe_up.begin() + half_size_pot_ener);
-                    //std::vector<value_t> well_phase_B_spe_up(well_phase_spe_up.begin() + half_size_pot_ener, well_phase_spe_up.end());
-
-                    //one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), well_phase_A_spe_up.begin(), well_phase_A_spe_up.end());
-                    //one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), well_phase_B_spe_up.begin(), well_phase_B_spe_up.end());
-
-                    one_way_conn_spe.insert(one_way_conn_spe.end(), w->conns_spe.begin(), w->conns_spe.end());
-
-                    if (w->with_lateral_heat_transfer)
-                    {
-                        // Zero spe for connections of lateral heat transfer, which will remain unused
-                        one_way_conn_spe.insert(one_way_conn_spe.end(), w->num_segments - w->perforations.size(), 0);
-                    }
-                }
-                else if (w->ms_type == ms_well::MS_Type::EPM)
-                {
-                    // EPM wells have n_segments connections. This zero spe won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
-                    //one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), w->n_segments, 0);
-                    //one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), w->n_segments, 0);
-
-                    one_way_conn_spe.insert(one_way_conn_spe.end(), w->n_segments, 0);
-                }
-            }
-            //// We can use the same function used for well velocity for well upwinded spe as well
-            //phase_A_specific_potential_energy_up = mesh->reverse_and_sort_velocities(one_way_phase_A_spe_up);
-            //phase_B_specific_potential_energy_up = mesh->reverse_and_sort_velocities(one_way_phase_B_spe_up);
-
-            // We can use the same function used for well velocity for spe of well connections as well
-            conn_spe = mesh->reverse_and_sort_velocities(one_way_conn_spe);
-
-            // --- End reversing, sorting, and storing spe in
-        }
     }
 
     CFL_max = 0;

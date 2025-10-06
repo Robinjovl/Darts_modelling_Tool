@@ -136,7 +136,7 @@ class ReservoirBase:
                 * (well_geometry.pipe_length - well_geometry.z - well_geometry.z[0])
                 * np.cos(well_geometry.inclination_angle_radian)
             )
-            well.segments_spe = value_vector(segments_specific_potential_energy)
+            well.segment_spe = value_vector(segments_specific_potential_energy)
             connections_specific_potential_energy = (
                 9.80665
                 * 1e-3
@@ -147,7 +147,7 @@ class ReservoirBase:
                 )
                 * np.cos(well_geometry.inclination_angle_radian)
             )
-            well.conns_spe = value_vector(connections_specific_potential_energy)
+            well.conn_spe = value_vector(connections_specific_potential_energy)
             well.num_segments = well_geometry.num_segments
 
         self.wells.append(well)
@@ -237,7 +237,7 @@ class ReservoirBase:
                     )
 
         # allocate mesh arrays
-        self.mesh.reverse_and_sort()
+        self.mesh.reverse_and_sort(ms_well_vector(self.wells))
         self.mesh.init_grav_coef()
 
     @abc.abstractmethod
