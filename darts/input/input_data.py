@@ -5,8 +5,9 @@ import numpy as np
 
 # set PETSC solver types with negative values to easily distinguish c++ solvers and PETSC
 class linear_solver_types(Enum):
-    CPU_PETSC_CPR = -1
+    CPU_PETSC_CPR = -1  # CPR for flow
     CPU_PETSC_FS = -2  # fixed stress for poromechanics
+    CPU_PARDISO = -10  # direct parallel solver
 
 
 class RockProps:
