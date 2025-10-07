@@ -3,6 +3,8 @@ import atexit
 import hashlib
 import os
 import pickle
+import signal
+import tempfile
 from enum import Enum
 from functools import total_ordering
 
@@ -688,18 +690,21 @@ class PhysicsBase:
 
             if hasattr(self, 'cache_dir'):
                 itor_cache_filename = os.path.join(self.cache_dir, itor_cache_filename)
-            # if cache file exists, read it
+            # if cache file exists, read it safely
             if os.path.exists(itor_cache_filename):
-                with open(itor_cache_filename, "rb") as fp:
-                    print(
-                        "Reading cached point data for ",
-                        type(itor).__name__,
-                        'from',
-                        itor_cache_filename,
-                    )
-                    itor.point_data = pickle.load(fp)
+                print(
+                    "Reading cached point data for ",
+                    type(itor).__name__,
+                    'from',
+                    itor_cache_filename,
+                )
+                loaded_point_data = self._safe_pickle_load(itor_cache_filename)
+                if loaded_point_data is not None:
+                    itor.point_data = loaded_point_data
                     print(len(itor.point_data.keys()), "points loaded")
                     cache_loaded = 1
+                else:
+                    print("Cached point data is invalid, ignoring.")
             if mode == 'adaptive':
                 # for adaptive itors, delay obl data save moment, because
                 # during simulations new points will be evaluated.
@@ -710,9 +715,8 @@ class PhysicsBase:
         # for static itors, save the cache immediately after init, if it has not been already loaded
         # otherwise, there is no point to save the same data over and over
         if self.cache and mode == 'static' and not cache_loaded:
-            with open(itor_cache_filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__)
-                pickle.dump(itor.point_data, fp, protocol=4)
+            print("Writing point data for ", type(itor).__name__)
+            self._atomic_pickle_dump(itor.point_data, itor_cache_filename)
 
         self.create_itor_timers(itor, timer_name)
         return itor, signature_n_ops
@@ -760,9 +764,92 @@ class PhysicsBase:
                     os.path.basename(fname) == fname
                 ):  # could already have a folder in fname
                     filename = os.path.join(self.cache_dir, fname)
-            with open(filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__, 'to', filename)
-                pickle.dump(itor.point_data, fp, protocol=4)
+            print("Writing point data for ", type(itor).__name__, 'to', filename)
+            # Temporarily ignore SIGINT/SIGTERM to avoid partial writes during sudden termination
+            prev_int = None
+            prev_term = None
+            try:
+                try:
+                    prev_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
+                except Exception:
+                    prev_int = None
+                try:
+                    prev_term = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                except Exception:
+                    prev_term = None
+                self._atomic_pickle_dump(itor.point_data, filename)
+            finally:
+                if prev_int is not None:
+                    try:
+                        signal.signal(signal.SIGINT, prev_int)
+                    except Exception:
+                        pass
+                if prev_term is not None:
+                    try:
+                        signal.signal(signal.SIGTERM, prev_term)
+                    except Exception:
+                        pass
+
+    def _atomic_pickle_dump(self, obj, final_path: str):
+        """
+        Atomically write pickle to final_path using a temporary file followed by os.replace.
+        Ensures data is flushed (fsync) to disk before the rename to avoid corruption.
+        """
+        directory = os.path.dirname(final_path) or "."
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception:
+            pass
+
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=os.path.basename(final_path) + ".tmp.", suffix=".pkl", dir=directory
+        )
+        try:
+            with os.fdopen(fd, "wb") as fp:
+                pickle.dump(obj, fp, protocol=4)
+                fp.flush()
+                try:
+                    os.fsync(fp.fileno())
+                except Exception:
+                    pass
+            os.replace(tmp_path, final_path)
+            # Best-effort directory fsync to persist the rename
+            try:
+                dir_fd = os.open(directory, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except Exception:
+                pass
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+
+    def _safe_pickle_load(self, path: str):
+        """
+        Safely load a pickle file. If the file is corrupted or truncated, delete it and return None.
+        """
+        try:
+            with open(path, "rb") as fp:
+                return pickle.load(fp)
+        except Exception as err:
+            print(
+                "Failed to read cached point data from",
+                path,
+                "-",
+                type(err).__name__,
+                str(err),
+            )
+            try:
+                os.remove(path)
+                print("Removed corrupted cache file", path)
+            except Exception:
+                pass
+            return None
 
     def body_path_start(self, output_folder):
         """
