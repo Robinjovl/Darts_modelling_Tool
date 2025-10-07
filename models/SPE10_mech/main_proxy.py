@@ -101,8 +101,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
 
     msh_last    = read_vtk_darts_solution(folder=folder, timestep=1)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
-    ux_last = np.array(msh_last.cell_data['uz']).flatten()
-    uy_last = np.array(msh_last.cell_data['uz']).flatten()
+    ux_last = np.array(msh_last.cell_data['ux']).flatten()
+    uy_last = np.array(msh_last.cell_data['uy']).flatten()
     uz_last = np.array(msh_last.cell_data['uz']).flatten()
     delta_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] * bars2mpa #  XX
     delta_Syy_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 1] * bars2mpa #  YY
@@ -302,12 +302,16 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
                 thm2.append(get_thm_stress_by_deriv(point)[2])
                 prx.append(get_proxy_stress(point)[2])
                 label = 'delta_stress'
+            else:
+                print('unknown mode', mode)
+                exit(1)
         from matplotlib import pyplot as plt
         plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
         plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
-        plt.plot(thm, z_range, label=label + '_THM', marker='.')
-        if 'stress' in mode:
-            plt.plot(thm2, z_range, label=label + '_THM2', marker='o')
+        if len(thm):
+            plt.plot(thm, z_range, label=label + '_THM', marker='.')
+        if 'stress' in mode or 'strain' in mode:
+            plt.plot(thm2, z_range, label=label + '_THM2', marker='.')
         plt.plot(prx, z_range, label=label + '_proxy', marker='o')
         plt.gca().invert_yaxis()
         match mode:
@@ -340,7 +344,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
 
     for point_xy in points_xy:
         print('plotting for point', point_xy[0], 'XY=', point_xy[1:3])
-        for mode in ['displ_z', 'displ_x', 'strain_z', 'strain_x', 'stress_z', 'stress_x']:
+        modes = ['displ_z', 'displ_x', 'strain_z', 'strain_x', 'stress_z', 'stress_x']
+        #modes = ['strain_z']
+        for mode in modes:
             # compare U-Z at a line along z-axis
             z_min = 0.
             z_max = centroids[:, 2].max() #+ 1000.
@@ -373,14 +379,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
 if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
-    #case = '34_34_15'
-    #case = '16_16_53'
-    #case = '28_28_53' # bad allocation only for thermal
-    #case = '28_28_29'  # crashes after initialization
-    #case = '28_28_37'  #
-    #case = '28_28_53'  #
+    #case = '16_16_15'
     case = '34_34_54'  #
-    #case = '34_34_53' # bad allocation for both isothermal and thermal
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
