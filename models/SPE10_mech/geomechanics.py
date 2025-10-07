@@ -84,6 +84,12 @@ class geomech():
         from _proxygeomech import index_vector as index_vector_geomech
         v_points = value_vector_geomech(points.transpose().flatten())
         v_prisms = value_vector_geomech(prisms.flatten())
+        
+        # to avoid TypeError: Format mismatch (Python: <d C++: d)
+        # convert from dtype='<f8' (little-endian float64) to float64
+        delta_pressure = delta_pressure.astype(delta_pressure.dtype.newbyteorder('='))
+        delta_temperature = delta_temperature.astype(delta_temperature.dtype.newbyteorder('='))
+        
         v_delta_pressure = value_vector_geomech(delta_pressure)
         v_delta_temperature = value_vector_geomech(delta_temperature)
         if verbose:
