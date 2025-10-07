@@ -183,7 +183,7 @@ class ReservoirBase:
                     )
 
         # allocate mesh arrays
-        self.mesh.reverse_and_sort()
+        self.mesh.reverse_and_sort(ms_well_vector(self.wells))
         self.mesh.init_grav_coef()
 
     @abc.abstractmethod
