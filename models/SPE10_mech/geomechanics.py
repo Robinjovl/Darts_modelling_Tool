@@ -19,8 +19,9 @@ def get_tensor_from_voight(t):
 # compute derivative in point x using finite difference - central schema
 # u_minus = u(x - step)
 # u_plus  = u(x + step)
-def deriv(u_minus, u_plus, step):
-    return 0.5 * (u_plus - u_minus) / step
+def deriv(u_minus, u_plus, step, mult=0.5):
+    assert step != 0
+    return mult * (u_plus - u_minus) / step
 
 class geomech():
     def __init__(self):
@@ -147,6 +148,8 @@ class geomech():
              0.5 * (dux_dz + duz_dx),
              0.5 * (dux_dy + duy_dx)])
 
+        assert not np.isnan(strain).any()
+
         # volumetric_strain=div(displ)
         volumetric_strain = dux_dx + duy_dy + duz_dz
 
@@ -271,11 +274,13 @@ class geomech():
             n_points = fault_surface.shape[1]
             kronecker = np.array(n_points * [1, 1, 1, 0, 0, 0]).reshape(n_points, 6).transpose()
 
-            #print('strain', strain.shape)
-            #print('kronecker', kronecker.shape)
+            #print('strain = \n', strain)
 
             stress = self.young * (strain + self.poisson / (1 - 2 * self.poisson) *
                                    volumetric_strain * kronecker) / (1 + self.poisson)
+
+            #print('dir=', ui, 'stress=\n', stress)
+
             if ui == 0:
                 stress_p, strain_p = stress.copy(), strain.copy()
             elif ui == 1:

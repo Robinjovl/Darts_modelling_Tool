@@ -101,9 +101,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
 
     msh_last    = read_vtk_darts_solution(folder=folder, timestep=1)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
+    ux_last = np.array(msh_last.cell_data['uz']).flatten()
+    uy_last = np.array(msh_last.cell_data['uz']).flatten()
     uz_last = np.array(msh_last.cell_data['uz']).flatten()
-    delta_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] * bars2mpa # third dimension: 0 is XX
-    #delta_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] * bars2mpa # third dimension: 2 is ZZ
+    delta_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] * bars2mpa #  XX
+    delta_Syy_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 1] * bars2mpa #  YY
+    delta_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] * bars2mpa # ZZ
 
     delta_pressure = (p_last - p_initial) * 0.1 # bars to MPa
     delta_temperature = np.zeros_like(delta_pressure) #TODO
@@ -124,29 +127,130 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     centroids[:, 1] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # y
     centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
 
+    def find_cell_by_point(point):
+        # find an index of the cell, closest to the desired point
+        cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (
+                    centroids[:, 2] - point[2]) ** 2).argmin()
+        return cell
+
     def get_thm_displs(point, verbose=False):
         # find an index of the cell, closest to the desired point
         cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
+        ux_thm = ux_last[cell]
+        uy_thm = uy_last[cell]
         uz_thm = uz_last[cell]
         if verbose:
             print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
-        return uz_thm
+        return ux_thm, uy_thm, uz_thm
 
     def get_thm_stress(point, verbose=False):
         # find an index of the cell, closest to the desired point
         cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
         if verbose:
             print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
-        return delta_Sxx_last[cell]
+        return delta_Sxx_last[cell],  delta_Syy_last[cell],  delta_Szz_last[cell]
+
+    def get_thm_stress_by_deriv(point, strain_mode=False):
+        from geomechanics import deriv
+
+        # find the closest neighbout cell in each direction. Since we don't know the cells size, we will move step by step
+        n_neig = 6 # X- X+, Y-, Y+, Z-, Z+
+        n_dim = 3  # X,Y,Z
+        cell_neig = np.zeros(n_neig, dtype=int)
+        point_neig = np.zeros((n_neig, n_dim))
+        step = [10., 10., 1.]  # [m] to find neighboring cells, should be less than cell size
+
+        bounds = [0]*n_dim
+        for k in range(n_dim):
+            bounds[k] = centroids[:, k].min(), centroids[:, k].max()
+
+        mults = [0.5] * n_dim
+
+        cell = find_cell_by_point(point)
+        i = 0
+        for side in [-1, 1]:
+            for k in range(n_dim):
+                cell_neig[i] = cell
+                point_neig[i] = point.copy()
+                if point_neig[i][k] < bounds[k][0] or point_neig[i][k] > bounds[k][1]: # if the starting point is out of bounds, start from the closest centroid
+                    cell_neig[i] = find_cell_by_point(point_neig[i])
+                    point_neig[i] = centroids[cell_neig[i], :]
+                j = 0
+                while cell_neig[i] == cell:
+                    point_neig[i][k] += side * step[k]
+                    if point_neig[i][k] < bounds[k][0] or point_neig[i][k] > bounds[k][1]:  # reached the boundary
+                        cell_neig[i] = cell
+                        point_neig[i][k] = point[k]  # return to the original point
+                        mults[k] = 1.0  # one-sided derivative
+                        break
+                    cell_neig[i] = find_cell_by_point(point_neig[i])
+                    if j > 50:  # just in case, to avoid infinite loop
+                        print('Error: can not find a neighboring cell for point', point, 'side', side, 'k', k)
+                        break
+                #print(point, side, k, point_neig[i])
+                i += 1
+
+        ux_x_minus_, ux_x_plus_ = ux_last[cell_neig[0]], ux_last[cell_neig[3]]
+        ux_y_minus_, ux_y_plus_ = ux_last[cell_neig[1]], ux_last[cell_neig[4]]
+        ux_z_minus_, ux_z_plus_ = ux_last[cell_neig[2]], ux_last[cell_neig[5]]
+
+        uy_x_minus_, uy_x_plus_ = uy_last[cell_neig[0]], uy_last[cell_neig[3]]
+        uy_y_minus_, uy_y_plus_ = uy_last[cell_neig[1]], uy_last[cell_neig[4]]
+        uy_z_minus_, uy_z_plus_ = uy_last[cell_neig[2]], uy_last[cell_neig[5]]
+
+        uz_x_minus_, uz_x_plus_ = uz_last[cell_neig[0]], uz_last[cell_neig[3]]
+        uz_y_minus_, uz_y_plus_ = uz_last[cell_neig[1]], uz_last[cell_neig[4]]
+        uz_z_minus_, uz_z_plus_ = uz_last[cell_neig[2]], uz_last[cell_neig[5]]
+
+        # distances between two neighbor cells in each direction
+        dist_x = np.fabs(point_neig[0][0] - point_neig[3][0]) # X+ and X-
+        dist_y = np.fabs(point_neig[1][1] - point_neig[4][1]) #
+        dist_z = np.fabs(point_neig[2][2] - point_neig[5][2])
+
+        dux_dx = deriv(ux_x_minus_, ux_x_plus_, dist_x, mult=mults[0])
+        dux_dy = deriv(ux_y_minus_, ux_y_plus_, dist_y, mult=mults[1])
+        dux_dz = deriv(ux_z_minus_, ux_z_plus_, dist_z, mult=mults[2])
+
+        duy_dx = deriv(uy_x_minus_, uy_x_plus_, dist_x, mult=mults[0])
+        duy_dy = deriv(uy_y_minus_, uy_y_plus_, dist_y, mult=mults[1])
+        duy_dz = deriv(uy_z_minus_, uy_z_plus_, dist_z, mult=mults[2])
+
+        duz_dx = deriv(uz_x_minus_, uz_x_plus_, dist_x, mult=mults[0])
+        duz_dy = deriv(uz_y_minus_, uz_y_plus_, dist_y, mult=mults[1])
+        duz_dz = deriv(uz_z_minus_, uz_z_plus_, dist_z, mult=mults[2])
+
+        # Voight notation: 6 values for each fault point: 3 diagonal (xx, yy, zz) + 3 off-diagonal values (yz, xz, xy)
+        strain = np.vstack(
+            [dux_dx, duy_dy, duz_dz,
+             0.5 * (duy_dz + duz_dy),
+             0.5 * (dux_dz + duz_dx),
+             0.5 * (dux_dy + duy_dx)])
+
+        # volumetric_strain=div(displ)
+        volumetric_strain = dux_dx + duy_dy + duz_dz
+
+        n_points = 1
+        kronecker = np.array(n_points * [1, 1, 1, 0, 0, 0]).reshape(n_points, 6).transpose()
+        stress = g.young * (strain + g.poisson / (1 - 2 * g.poisson) *
+                               volumetric_strain * kronecker) / (1 + g.poisson)
+
+        if strain_mode:
+            return strain[0], strain[1], strain[2] # xx yy zz
+        else:
+            return stress[0], stress[1], stress[2]  # Sxx, Syy, Szz
+
 
     def get_proxy_displs(point):
         eval_points = np.zeros((1,3))  # just one point
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
         upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
-        return upz1[0] + utz1[0] # thermoporoelastic vertical displacement uz, in m
+        ux = upx1[0] + utx1[0]
+        uy = upy1[0] + uty1[0]
+        uz = upz1[0] + utz1[0]
+        return ux, uy, uz # thermoporoelastic displacements [m]
 
-    def get_proxy_stress(point):
+    def get_proxy_stress(point, strain_mode=False):
         eval_points = np.zeros((1,3))  # just one point
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
@@ -157,35 +261,62 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
         [St_xx, St_yy, St_zz, St_yz, St_xz, St_xy] = stress_t
         [S_xx, S_yy, S_zz, S_yz, S_xz, S_xy] = stress
 
-        return Sp_xx + St_xx # thermoporoelastic stress XX in MPa
+        if strain_mode:
+            return strain[0], strain[1], strain[2] # xx yy zz
+        else:
+            #return Sp_xx[0] + St_xx[0] # thermoporoelastic stress XX in MPa
+            return  stress[0], stress[1], stress[2] # xx yy zz
 
 
     def compare_vert_line(point_xy, z_min, z_max, suffix, z_step=100, output_folder='.', mode='displ_z'):
         point = np.array([point_xy[1], point_xy[2], 0.])  # XY from point and Z will be changed
         z_range = np.arange(z_min, z_max+1., z_step)
         thm = []
+        thm2 = []
         prx = []
         for z in z_range:  # use XY from point and different Z
             point[2] = z
-            if mode == 'displ_z':
-                thm.append(get_thm_displs(point) * m2mm)
-                prx.append(get_proxy_displs(point) * m2mm)
+            if mode == 'displ_x':
+                thm.append(get_thm_displs(point)[0] * m2mm)
+                prx.append(get_proxy_displs(point)[0] * m2mm)
+                label = 'ux'
+            elif mode == 'displ_z':
+                thm.append(get_thm_displs(point)[2] * m2mm)
+                prx.append(get_proxy_displs(point)[2] * m2mm)
                 label = 'uz'
-            elif mode == 'stress':
-                thm.append(get_thm_stress(point))
-                prx.append(get_proxy_stress(point))
+            elif mode == 'strain_x':
+                thm2.append(get_thm_stress_by_deriv(point, strain_mode=True)[0])
+                prx.append(get_proxy_stress(point, strain_mode=True)[0])
+                label = 'strain_x'
+            elif mode == 'strain_z':
+                thm2.append(get_thm_stress_by_deriv(point, strain_mode=True)[2])
+                prx.append(get_proxy_stress(point, strain_mode=True)[2])
+                label = 'strain_z'
+            elif mode == 'stress_x':
+                thm.append(get_thm_stress(point)[0])
+                thm2.append(get_thm_stress_by_deriv(point)[0])
+                prx.append(get_proxy_stress(point)[0])
+                label = 'delta_stress_x'
+            elif mode == 'stress_z':
+                thm.append(get_thm_stress(point)[2])
+                thm2.append(get_thm_stress_by_deriv(point)[2])
+                prx.append(get_proxy_stress(point)[2])
                 label = 'delta_stress'
-
         from matplotlib import pyplot as plt
         plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
         plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
-        plt.plot(thm, z_range, label=label + '_THM')
-        plt.plot(prx, z_range, label=label + '_proxy')
+        plt.plot(thm, z_range, label=label + '_THM', marker='.')
+        if 'stress' in mode:
+            plt.plot(thm2, z_range, label=label + '_THM2', marker='o')
+        plt.plot(prx, z_range, label=label + '_proxy', marker='o')
         plt.gca().invert_yaxis()
-        if mode == 'displ_z':
-            s = 'Vertical displacement, mm.'
-        elif mode == 'stress':
-            s = 'Horizontal stress delta, MPa.'
+        match mode:
+            case 'displ_z': s = 'Vertical displacement, mm.'
+            case 'displ_x': s = 'Horizontal displacement, mm.'
+            case 'strain_z': s = 'Vertical strain'
+            case 'strain_x': s = 'Horizontal strain'
+            case 'stress_z': s = 'Vertical stress delta, MPa.'
+            case 'stress_x': s = 'Horizontal stress delta, MPa.'
         s += ' at ' + point_xy[0]
         plt.xlabel(s)
         plt.title(s)
@@ -198,16 +329,18 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     ######################################
 
     points_xy = []
-    points_xy += [['center', centroids[:, 0].mean(), centroids[:, 1].mean()]]  # middle point of the mesh
+    #points_xy += [['center', centroids[:, 0].mean(), centroids[:, 1].mean()]]  # middle point of the mesh
+    points_xy += [['center', 50., 50.]]  # middle point of the mesh but shift abit to make it at the cell centers by XY
 
-    if wells_type in ['prod', 'doublet']:
-        points_xy += [['prod well'] + m.prod_well_coords[:-1]] # -1 to skip z coord
-    if wells_type in ['inj', 'doublet']:
-        points_xy += [['inj well'] + m.inj_well_coords[:-1]]
+    if False:
+        if wells_type in ['prod', 'doublet']:
+            points_xy += [['prod well'] + m.prod_well_coords[:-1]] # -1 to skip z coord
+        if wells_type in ['inj', 'doublet']:
+            points_xy += [['inj well'] + m.inj_well_coords[:-1]]
 
     for point_xy in points_xy:
         print('plotting for point', point_xy[0], 'XY=', point_xy[1:3])
-        for mode in ['displ_z', 'stress']:
+        for mode in ['displ_z', 'displ_x', 'strain_z', 'strain_x', 'stress_z', 'stress_x']:
             # compare U-Z at a line along z-axis
             z_min = 0.
             z_max = centroids[:, 2].max() #+ 1000.
@@ -215,22 +348,26 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
             compare_vert_line(point_xy, m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100.,'rsv',  z_step=10, output_folder=folder, mode=mode)
 
     # compare vert displs at the middle point at the surface and print
-    point = [points_xy[0][1], points_xy[0][2], 0.] # at the surface (depth=0)
-    uz_thm = get_thm_displs(point)*m2mm
-    uz_prx = get_proxy_displs(point)*m2mm
-    print('Compare at the middle point at the surface, point=', point)
-    print('\tTHM   ', 'uz=', uz_thm, 'mm.')
-    print('\tProxy ', 'uz=', uz_prx, 'mm.')
+    if False:
+        point = [points_xy[0][1], points_xy[0][2], 0.] # at the surface (depth=0)
+        uz_thm = get_thm_displs(point)*m2mm
+        uz_prx = get_proxy_displs(point)*m2mm
+        print('Compare at the middle point at the surface, point=', point)
+        print('\tTHM   ', 'uz=', uz_thm, 'mm.')
+        print('\tProxy ', 'uz=', uz_prx, 'mm.')
 
-    # compare delta Sxx at the middle point in the reservoir and print
-    point[2] = (m.reservoir.rsv_top + m.reservoir.rsv_bottom) * 0.5  # at the middle depth of the reservoir
-    dsxx_thm = get_thm_stress(point)*bars2mpa
-    dsxx_prx = get_proxy_stress(point)
-    print('Compare at the middle depth of the reservoir, point=', point)
-    print('\tTHM   ', 'delta_Sxx=', dsxx_thm, 'MPa')
-    print('\tProxy ', 'delta_Sxx=', dsxx_prx, 'MPa')
+        # compare delta Sxx at the middle point in the reservoir and print
+        point[2] = (m.reservoir.rsv_top + m.reservoir.rsv_bottom) * 0.5  # at the middle depth of the reservoir
+        dsxx_thm = get_thm_stress(point)*bars2mpa
+        dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
+        dsxx_prx = get_proxy_stress(point)
+        print('Compare at the middle depth of the reservoir, point=', point)
+        print('\tTHM   ', 'delta_Sxx=', dsxx_thm, 'MPa')
+        print('\tTHM_by_deriv', 'delta_Sxx=', dsxx_thm2, 'MPa')
+        print('\tProxy ', 'delta_Sxx=', dsxx_prx, 'MPa')
 
-    print('THM delta_Sxx / delta_pressure=', np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max())
+    # for uniform depletion with Biot=1 and poisson ratio=0.25 should be 2/3
+    #print('THM delta_Sxx / delta_pressure=', np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max())
 
 
 if __name__ == '__main__':
