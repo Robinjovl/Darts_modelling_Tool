@@ -544,6 +544,7 @@ class DartsModel:
 
             self.output.well_time_labels = []
             self.output.well_data = []
+            self.output.well_cfl = []
 
         # get current engine time
         t = self.physics.engine.t
@@ -620,6 +621,7 @@ class DartsModel:
                             self.output.id_well_data
                         ]
                     )
+                    self.output.well_cfl.append(self.physics.engine.CFL_max)
 
             else:
                 dt /= data_ts.dt_mult
@@ -642,7 +644,12 @@ class DartsModel:
             self.output.timer.start()
             self.output.timer.node["saving_well_data"].start()
             self.output.save_specific_data(
-                path, [self.output.well_time_labels, self.output.well_data]
+                path,
+                [
+                    self.output.well_time_labels,
+                    self.output.well_data,
+                    self.output.well_cfl,
+                ],
             )
             self.output.timer.node["saving_well_data"].stop()
             self.output.timer.stop()

@@ -75,8 +75,6 @@ class MyOutput(Output):
         self.variable_units[op.property.components_name[op.property.fc_mask][-1]] = ''
 
     def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[np.ndarray, dict]:
-        self.save_data_to_h5(kind='reservoir')
-
         timesteps = [timestep] if timestep is not None else [0]
         if output_properties is None:
             prop_names = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
@@ -551,7 +549,13 @@ class Model(CICDModel):
         self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, is_inj=False,
                                        target=self.pressure_init)
 
-    def run(self, days: float = None, restart_dt: float = 0., verbose: bool = True):
+    def run(self,
+            days: float = None,
+            restart_dt: float = 0.,
+            save_well_data: bool = True,
+            save_reservoir_data: bool = True,
+            save_well_data_after_run: bool = True,
+            verbose: bool = True):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
@@ -565,6 +569,19 @@ class Model(CICDModel):
         assert hasattr(self, 'output'), "self.output does not exist, please call m.set_output() after m.init()"
         days = days if days is not None else self.runtime
         data_ts = self.data_ts
+
+        self.output.save_well_after_run = save_well_data_after_run
+
+        if save_well_data_after_run:
+            if not hasattr(self, "_well_output_configured"):
+                self.output.configure_output(kind="well")
+                self._well_output_configured = True
+            else:
+                pass
+
+            self.output.well_time_labels = []
+            self.output.well_data = []
+            self.output.well_cfl = []
 
         # get current engine time
         t = self.physics.engine.t
@@ -640,6 +657,20 @@ class Model(CICDModel):
                     self.prev_dt = dt
 
                 n_bad_steps = 0
+
+                # save well data at every converged time step
+                if save_well_data and save_well_data_after_run is False:
+                    self.output.save_data_to_h5(kind="well")
+                else:
+                    self.output.well_time_labels.append(self.physics.engine.t)
+                    X = np.array(self.physics.engine.X, copy=False)
+
+                    self.output.well_data.append(
+                        X.reshape(self.reservoir.mesh.n_blocks, self.physics.n_vars)[
+                            self.output.id_well_data
+                        ]
+                    )
+                    self.output.well_cfl.append(self.physics.engine.CFL_max)
             else:
                 dt /= data_ts.dt_mult
                 n_good_steps = 0
@@ -657,11 +688,28 @@ class Model(CICDModel):
         # update current engine time
         self.physics.engine.t = stop_time
 
+        # save well data after run
+        if save_well_data and save_well_data_after_run is True:
+            path = os.path.join(self.output_folder, self.well_filename)
+
+            self.output.timer.start()
+            self.output.timer.node["saving_well_data"].start()
+            self.output.save_specific_data(
+                path, [self.output.well_time_labels, self.output.well_data, self.output.well_cfl]
+            )
+            self.output.timer.node["saving_well_data"].stop()
+            self.output.timer.stop()
+
+        # save solution vector
+        if save_reservoir_data:
+            self.output.save_data_to_h5(kind="reservoir")
+
         if verbose:
-            print("TS = %d(%d), NI = %d(%d), LI = %d(%d)"
-                  % (self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
-                     self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
-                     self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
+            print(
+                f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
+                f"NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), "
+                f"LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d}) -----"
+            )
 
         return 0
 
