@@ -8,7 +8,7 @@
 
 Solution: run "helper_scripts\\build_darts_cmake" with -r argument.
 
-### Wheels generation 
+### Wheels generation
 
 1. If open-darts wheels you generated in the open-darts/dist folder contains `UNKNOWN.0.0.0` in its name, please upgrade setuptools:
 
@@ -30,7 +30,7 @@ Solution: check engines.pyd (engines.so) has been compiled with the same Python 
 
 ### Installation issues
 
-For installing open-DARTS using `helper_scripts\build_install_darts.bat`, Python version 3.9 is required. Using a different Python version may result in errors, displaying the following message:
+For installing open-DARTS using `helper_scripts\build_install_darts.bat`, Python version 3.10 is required. Using a different Python version may result in errors, displaying the following message:
 
 `ERROR: open_darts-1.2.2-cp39-cp39-win_amd64.whl is not a supported wheel on this platform.`
 
@@ -41,8 +41,8 @@ For installing open-DARTS using `helper_scripts\build_install_darts.bat`, Python
 Errors may fixed by manually installing liburcu6
 
 ```bash
-wget http://ftp.de.debian.org/debian/pool/main/libu/liburcu/liburcu6_0.12.2-1_amd64.deb   
-sudo dpkg -i liburcu6_0.12.2-1_amd64.deb  
+wget http://ftp.de.debian.org/debian/pool/main/libu/liburcu/liburcu6_0.12.2-1_amd64.deb
+sudo dpkg -i liburcu6_0.12.2-1_amd64.deb
 ```
 
 - AMGX compilation

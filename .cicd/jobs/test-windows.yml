@@ -83,18 +83,6 @@ test-windows-3.10:
     needs:
         - build-windows-3.10
 
-test-windows-3.9:
-    rules:
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL_PYTHONS == "1"
-    extends: .test-windows
-    variables:
-        PY_VER: '3.9'
-        PYTHONPATH: 'D:\Python39'
-        ODLS: '-a'
-    needs:
-        - build-windows-3.9
-
 test-windows-3.12-ODLS:
     rules:
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
@@ -133,15 +121,3 @@ test-windows-3.10-ODLS:
         ODLS: ''
     needs:
         - build-windows-3.10-ODLS
-
-test-windows-3.9-ODLS:
-    rules:
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL_PYTHONS == "1"
-    extends: .test-windows
-    variables:
-        PY_VER: '3.9'
-        PYTHONPATH: 'D:\Python39'
-        ODLS: ''
-    needs:
-        - build-windows-3.9-ODLS
