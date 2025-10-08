@@ -67,10 +67,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     g.young = m.idata.rock.E.mean() * bars2mpa # bars to MPa
     g.thermal_exp_coeff = m.idata.rock.th_expn / get_bulk_modulus(E=m.idata.rock.E, nu=m.idata.rock.nu)# 1/°C
 
+    # read THM solution from vtk
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
     poro = np.array(msh_initial.cell_data['poro']).flatten()
 
-    msh_last    = read_vtk_darts_solution(folder=folder, timestep=timestep)
+    msh_last = read_vtk_darts_solution(folder=folder, timestep=timestep)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
     ux_last = np.array(msh_last.cell_data['ux']).flatten()
     uy_last = np.array(msh_last.cell_data['uy']).flatten()
@@ -429,6 +430,10 @@ if __name__ == '__main__':
     #wells_types_list += ['prod']
     wells_types_list += ['inj']
     #wells_types_list += ['doublet']
+    
+    # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
+    timestep = 1
+    #timestep = 13
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
@@ -437,13 +442,13 @@ if __name__ == '__main__':
 
             # run THM with no mechanics->flow impact
             t1 = datetime.now()
-            #run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
+            run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
             t2 = datetime.now()
             thm_time = t2 - t1
 
             # run geomech proxy
             t1 = datetime.now()
-            run_geomech_proxy(case=case, physics_type=physics_type, wells_type=wells_type)
+            run_geomech_proxy(case=case, physics_type=physics_type, wells_type=wells_type, timestep=timestep)
             t2 = datetime.now()
             proxy_time = t2 - t1
 
