@@ -31,6 +31,7 @@ def visualize_results_heat_maps_contourf(
     n_cmap_bins_v: int = 10,
     font_size: float = 14,
     with_title: bool = True,
+    with_logarithmic_x_axis: bool = False,
 ):
     """
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
@@ -73,6 +74,8 @@ def visualize_results_heat_maps_contourf(
     :type font_size: float
     :param with_title: If you want the figure to have a title or not
     :type with_title: bool
+    :param with_logarithmic_x_axis: Whether or not to have the logarithmic x-axis
+    :type with_logarithmic_x_axis: bool
     """
     main_dir = os.path.join(coupled_model.output_folder, 'heat_maps_contourf')
 
@@ -207,6 +210,10 @@ def visualize_results_heat_maps_contourf(
     ax.set_xlabel(x_label, fontsize=font_size)
     ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+    # Make the x-axis logarithmic
+    if with_logarithmic_x_axis:
+        ax.set_xscale('log')
+
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
@@ -298,6 +305,10 @@ def visualize_results_heat_maps_contourf(
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
+
         ax.tick_params(
             axis='both', labelsize=font_size
         )  # Set the font size of tick labels
@@ -387,6 +398,10 @@ def visualize_results_heat_maps_contourf(
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
+
         ax.tick_params(
             axis='both', labelsize=font_size
         )  # Set the font size of tick labels
@@ -469,6 +484,10 @@ def visualize_results_heat_maps_contourf(
     ax.set_xlabel(x_label, fontsize=font_size)
     ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+    # Make the x-axis logarithmic
+    if with_logarithmic_x_axis:
+        ax.set_xscale('log')
+
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
@@ -549,6 +568,10 @@ def visualize_results_heat_maps_contourf(
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
 
         ax.tick_params(
             axis='both', labelsize=font_size
@@ -633,6 +656,10 @@ def visualize_results_heat_maps_contourf(
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
 
         ax.tick_params(
             axis='both', labelsize=font_size
@@ -724,6 +751,10 @@ def visualize_results_heat_maps_contourf(
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
 
         ax.tick_params(
             axis='both', labelsize=font_size
@@ -827,6 +858,10 @@ def visualize_results_heat_maps_contourf(
             # Add axes labels
             ax.set_xlabel(x_label, fontsize=font_size)
             ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+            # Make the x-axis logarithmic
+            if with_logarithmic_x_axis:
+                ax.set_xscale('log')
 
             ax.tick_params(
                 axis='both', labelsize=font_size
@@ -932,6 +967,10 @@ def visualize_results_heat_maps_contourf(
                 ax.set_xlabel(x_label, fontsize=font_size)
                 ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+                # Make the x-axis logarithmic
+                if with_logarithmic_x_axis:
+                    ax.set_xscale('log')
+
                 ax.tick_params(
                     axis='both', labelsize=font_size
                 )  # Set the font size of tick labels
@@ -1036,6 +1075,10 @@ def visualize_results_heat_maps_contourf(
                 ax.set_xlabel(x_label, fontsize=font_size)
                 ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+                # Make the x-axis logarithmic
+                if with_logarithmic_x_axis:
+                    ax.set_xscale('log')
+
                 ax.tick_params(
                     axis='both', labelsize=font_size
                 )  # Set the font size of tick labels
@@ -1125,6 +1168,10 @@ def visualize_results_heat_maps_contourf(
     ax.set_xlabel(x_label, fontsize=font_size)
     ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+    # Make the x-axis logarithmic
+    if with_logarithmic_x_axis:
+        ax.set_xscale('log')
+
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
@@ -1206,6 +1253,10 @@ def visualize_results_heat_maps_contourf(
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
 
         ax.tick_params(
             axis='both', labelsize=font_size
@@ -1303,6 +1354,10 @@ def visualize_results_heat_maps_contourf(
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
+
         ax.tick_params(
             axis='both', labelsize=font_size
         )  # Set the font size of tick labels
@@ -1399,6 +1454,10 @@ def visualize_results_heat_maps_contourf(
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
+
         ax.tick_params(
             axis='both', labelsize=font_size
         )  # Set the font size of tick labels
@@ -1484,6 +1543,10 @@ def visualize_results_heat_maps_contourf(
     ax.set_xlabel(x_label, fontsize=font_size)
     ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+    # Make the x-axis logarithmic
+    if with_logarithmic_x_axis:
+        ax.set_xscale('log')
+
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
@@ -1565,6 +1628,10 @@ def visualize_results_heat_maps_contourf(
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
 
         ax.tick_params(
             axis='both', labelsize=font_size
@@ -1662,6 +1729,10 @@ def visualize_results_heat_maps_contourf(
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
 
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
+
         ax.tick_params(
             axis='both', labelsize=font_size
         )  # Set the font size of tick labels
@@ -1757,6 +1828,10 @@ def visualize_results_heat_maps_contourf(
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=font_size)
         ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        # Make the x-axis logarithmic
+        if with_logarithmic_x_axis:
+            ax.set_xscale('log')
 
         ax.tick_params(
             axis='both', labelsize=font_size
