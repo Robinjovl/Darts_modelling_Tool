@@ -2,6 +2,7 @@ import numpy as np
 import os
 import meshio
 from datetime import datetime
+from matplotlib import pyplot as plt
 
 from main import run
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus
@@ -17,35 +18,6 @@ def read_vtk_darts_solution(folder, timestep : int):
     print("\tCells:", msh.cells_dict.keys())
     print("\tCell Data:", msh.cell_data.keys())
     return msh
-
-
-def get_pressure(self, physics):
-    '''
-    :param physics:
-    :return: 1d current timestep pressure array
-    '''
-    # Temporarily store mesh_data in copy:
-    Mesh = meshio.read(self.mesh_filename)
-
-    # Allocate empty new cell_data dictionary:
-    cell_property = ['u_x', 'u_y', 'u_z', 'p']
-    props_num = len(cell_property)
-    property_array = np.array(physics.engine.X, copy=False)
-    available_matrix_geometries = ['hexahedron', 'wedge', 'tetra']
-    available_fracture_geometries = ['quad', 'triangle']
-    # Matrix
-    geom_id = 0
-    Mesh.cells = []
-    cell_data = {}
-    for ith_geometry in self.unstr_discr.mesh_data.cells_dict.keys():
-        if ith_geometry in available_matrix_geometries:
-            Mesh.cells.append(self.unstr_discr.mesh_data.cells[geom_id])
-            # Add matrix data to dictionary:
-            for i in range(props_num):
-                if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
-                cell_data[cell_property[i]].append(property_array[i:props_num * self.unstr_discr.mat_cells_tot:props_num])
-    return cell_data['p'][-1]
-
 
 def geomech_init_geometry(mesh_data):
     #if hasattr(self, 'prisms'):  # do only once
@@ -81,7 +53,7 @@ def geomech_init_geometry(mesh_data):
 
     return prisms
 
-def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
+def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timestep=1):
     folder = 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case
 
     # init geomech proxy
@@ -97,9 +69,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
 
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
     poro = np.array(msh_initial.cell_data['poro']).flatten()
-    p_initial = np.array(msh_initial.cell_data['pressure']).flatten()
 
-    msh_last    = read_vtk_darts_solution(folder=folder, timestep=1)
+    msh_last    = read_vtk_darts_solution(folder=folder, timestep=timestep)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
     ux_last = np.array(msh_last.cell_data['ux']).flatten()
     uy_last = np.array(msh_last.cell_data['uy']).flatten()
@@ -108,8 +79,17 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     delta_Syy_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 1] * bars2mpa #  YY
     delta_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] * bars2mpa # ZZ
 
-    delta_pressure = (p_last - p_initial) * 0.1 # bars to MPa
-    delta_temperature = np.zeros_like(delta_pressure) #TODO
+    if 'delta_pressure' in msh_last.cell_data.keys():
+        delta_pressure = np.array(msh_last.cell_data['delta_pressure']).flatten()
+    else:
+        p_initial = np.array(msh_initial.cell_data['pressure']).flatten()
+        delta_pressure = p_last - p_initial
+    delta_pressure *= 0.1 # bars to MPa
+    
+    # delta_temperature is zero in isothermal case
+    delta_temperature = np.zeros_like(delta_pressure) 
+    if 'delta_temperature' in msh_last.cell_data.keys():
+        delta_temperature = np.array(msh_last.cell_data['delta_temperature']).flatten()
 
     prisms = geomech_init_geometry(msh_initial)
     print('\tprisms all', prisms.shape[0])
@@ -119,7 +99,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     #delta_pressure = delta_pressure[rsv]
     #delta_temperature = delta_temperature[rsv]
     #prisms = prisms[rsv, :]
-    print('\tprisms rsv', prisms.shape[0])
+    #print('\tprisms rsv', prisms.shape[0])
 
     # where to compare the results - middle XYZ
     centroids = np.zeros((prisms.shape[0], 3))
@@ -134,8 +114,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
         return cell
 
     def get_thm_displs(point, verbose=False):
-        # find an index of the cell, closest to the desired point
-        cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
+        cell = find_cell_by_point(point)
         ux_thm = ux_last[cell]
         uy_thm = uy_last[cell]
         uz_thm = uz_last[cell]
@@ -144,13 +123,13 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
         return ux_thm, uy_thm, uz_thm
 
     def get_thm_stress(point, verbose=False):
-        # find an index of the cell, closest to the desired point
-        cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
+        cell = find_cell_by_point(point)
         if verbose:
             print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
         return delta_Sxx_last[cell],  delta_Syy_last[cell],  delta_Szz_last[cell]
 
-    def get_thm_stress_by_deriv(point, strain_mode=False):
+    def get_thm_stress_by_deriv(point, strain_mode=False): 
+        # compute strain and stress in python from THM displacements (ux_last, etc)
         from geomechanics import deriv
 
         # find the closest neighbout cell in each direction. Since we don't know the cells size, we will move step by step
@@ -240,14 +219,40 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
             return stress[0], stress[1], stress[2]  # Sxx, Syy, Szz
 
 
-    def get_proxy_displs(point):
+    def get_proxy_displs_point(point):
         eval_points = np.zeros((1,3))  # just one point
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
-        eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
-        upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
+        eval_points[0, :] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
+        eval_points = eval_points.transpose()
+        upy1, upx1, upz1, uty1, utx1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
         ux = upx1[0] + utx1[0]
         uy = upy1[0] + uty1[0]
         uz = upz1[0] + utz1[0]
+        return ux, uy, uz # thermoporoelastic displacements [m]
+
+    def get_eval_points(mode, shift_x=0, shift_y=0):
+        if mode == 'centers':
+            # X<->Y
+            eval_points = np.zeros_like(centroids)
+            eval_points[:, 1] = centroids[:, 0] # X
+            eval_points[:, 0] = centroids[:, 1]
+            eval_points[:, 2] = centroids[:, 2]
+        elif mode == 'vertical':
+            # test with a vertical line
+            z = np.unique(centroids[:, 2])
+            eval_points = np.zeros((z.size, 3))
+            eval_points[:, 1] = centroids[:, 0].mean() + shift_x
+            eval_points[:, 0] = centroids[:, 1].mean() + shift_y
+            eval_points[:, 2] = z
+        return eval_points.transpose()
+        
+    def get_proxy_displs(mode, shift_x=0, shift_y=0):
+        eval_points = get_eval_points(mode=mode, shift_x=shift_x, shift_y=shift_y)
+        eval_points[:,:] += 1 # [m], to avoid r=0 for the integral in the geomech proxy 1/r
+        upy1, upx1, upz1, uty1, utx1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
+        ux = upx1 + utx1
+        uy = upy1 + uty1
+        uz = upz1 + utz1
         return ux, uy, uz # thermoporoelastic displacements [m]
 
     def get_proxy_stress(point, strain_mode=False):
@@ -262,10 +267,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
         [S_xx, S_yy, S_zz, S_yz, S_xz, S_xy] = stress
 
         if strain_mode:
-            return strain[0], strain[1], strain[2] # xx yy zz
+            return strain[1], strain[0], strain[2] # xx yy zz
         else:
-            #return Sp_xx[0] + St_xx[0] # thermoporoelastic stress XX in MPa
-            return  stress[0], stress[1], stress[2] # xx yy zz
+            # thermoporoelastic stress XX in MPa
+            return  stress[1], stress[0], stress[2] # xx yy zz
 
 
     def compare_vert_line(point_xy, z_min, z_max, suffix, z_step=100, output_folder='.', mode='displ_z'):
@@ -278,11 +283,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
             point[2] = z
             if mode == 'displ_x':
                 thm.append(get_thm_displs(point)[0] * m2mm)
-                prx.append(get_proxy_displs(point)[0] * m2mm)
+                prx.append(get_proxy_displs_point(point)[0] * m2mm)
                 label = 'ux'
             elif mode == 'displ_z':
                 thm.append(get_thm_displs(point)[2] * m2mm)
-                prx.append(get_proxy_displs(point)[2] * m2mm)
+                prx.append(get_proxy_displs_point(point)[2] * m2mm)
                 label = 'uz'
             elif mode == 'strain_x':
                 thm2.append(get_thm_stress_by_deriv(point, strain_mode=True)[0])
@@ -305,14 +310,14 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
             else:
                 print('unknown mode', mode)
                 exit(1)
-        from matplotlib import pyplot as plt
+
         plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
         plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
         if len(thm):
             plt.plot(thm, z_range, label=label + '_THM', marker='.')
         if 'stress' in mode or 'strain' in mode:
             plt.plot(thm2, z_range, label=label + '_THM2', marker='.')
-        plt.plot(prx, z_range, label=label + '_proxy', marker='o')
+        plt.plot(prx, z_range, label=label + '_proxy', marker='.')
         plt.gca().invert_yaxis()
         match mode:
             case 'displ_z': s = 'Vertical displacement, mm.'
@@ -330,8 +335,38 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
         plt.savefig(os.path.join(output_folder, mode + '_' + point_xy[0] + '_' + suffix + '.png'))
         plt.close()
 
-    ######################################
 
+    def testing():
+        # checks
+        # the order in centroids is ZXY
+        # plot x-centers along X-axis
+        #plt.plot(centroids[:,0].reshape((15,16,16))[0,:,0])
+        # plt.imshow(delta_pressure.reshape((15,16,16))[6,:,:]) # 2D
+        #plt.plot(delta_pressure.reshape((15,16,16))[:,7,7]) # 1D
+        
+        ux, uy, uz = get_proxy_displs(mode='centers')
+        # ux
+        plt.imshow(ux.reshape((15,16,16))[5,:,:])
+        # uz
+        #plt.imshow(uz.reshape((15,16,16))[0,:,:]) # 2D
+        #plt.contourf(uz.reshape((15,16,16))[0,:,:]) # 2D
+
+        ux_1d, uy_1d, uz_1d = get_proxy_displs(mode='vertical')
+        #plt.plot(uz_1d) # 1D
+        
+        # check with python's version
+        if False:
+            eval_points = get_eval_points(mode='vertical')
+            from compaction import displacement_x_component, displacement_y_component, displacement_z_component
+            ux_1d_c = displacement_x_component(eval_points, prisms, delta_pressure, 
+                                            g.poisson, g.young, np.array([]), g.thermal_expansion)
+            uy_1d_c = displacement_y_component(eval_points, prisms, delta_pressure, 
+                                            g.poisson, g.young, np.array([]), g.thermal_expansion)
+            uz_1d_c = displacement_z_component(eval_points, prisms, delta_pressure, 
+                                            g.poisson, g.young, np.array([]), g.thermal_expansion)
+
+    ######################################
+    
     points_xy = []
     #points_xy += [['center', centroids[:, 0].mean(), centroids[:, 1].mean()]]  # middle point of the mesh
     points_xy += [['center', 50., 50.]]  # middle point of the mesh but shift abit to make it at the cell centers by XY
@@ -402,7 +437,7 @@ if __name__ == '__main__':
 
             # run THM with no mechanics->flow impact
             t1 = datetime.now()
-            run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
+            #run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
             t2 = datetime.now()
             thm_time = t2 - t1
 
