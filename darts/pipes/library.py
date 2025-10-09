@@ -6,7 +6,7 @@ This file contains the typical physical properties of some materials to define t
 computations. These values are typical values suggested by Schlumberger, and they may differ considerably from case to
 case and product to product.
 
-c: Heat capacity of the material in J/kg-C
+c: Specific heat capacity of the material in J/kg-C
 K: Thermal conductivity of the material in W/m-C
 rho: Material density in kg/m3
 """
