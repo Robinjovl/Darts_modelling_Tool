@@ -114,6 +114,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                     centroids[:, 2] - point[2]) ** 2).argmin()
         return cell
 
+    def get_cell_center(point):
+        cell = find_cell_by_point(point)
+        return centroids[cell, 0], centroids[cell, 1], centroids[cell, 2]
+
     def get_thm_displs(point, verbose=False):
         cell = find_cell_by_point(point)
         ux_thm = ux_last[cell]
@@ -139,7 +143,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         n_dim = 3  # X,Y,Z
         cell_neig = np.zeros(n_neig, dtype=int)
         point_neig = np.zeros((n_neig, n_dim))
-        step = [10., 10., 1.]  # [m] to find neighboring cells, should be less than cell size
+        step = [10., 10., 5.]  # [m] to find neighboring cells, should be less than cell size
 
         bounds = [0]*n_dim
         for k in range(n_dim):
@@ -152,24 +156,28 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         for side in [-1, 1]:
             for k in range(n_dim):
                 cell_neig[i] = cell
-                point_neig[i] = point.copy()
+                point_neig[i] = point.copy()  # start from the point itself
                 if point_neig[i][k] < bounds[k][0] or point_neig[i][k] > bounds[k][1]: # if the starting point is out of bounds, start from the closest centroid
                     cell_neig[i] = find_cell_by_point(point_neig[i])
-                    point_neig[i] = centroids[cell_neig[i], :]
+                    mults[k] = 1.0  # one-sided derivative
                 j = 0
-                while cell_neig[i] == cell:
+                while cell_neig[i] == cell:  # move, until reached the next cell
                     point_neig[i][k] += side * step[k]
-                    if point_neig[i][k] < bounds[k][0] or point_neig[i][k] > bounds[k][1]:  # reached the boundary
+                    if (point_neig[i][k] < bounds[k][0] and side == -1) or (point_neig[i][k] > bounds[k][1] and side == 1):  # reached the boundary
                         cell_neig[i] = cell
                         point_neig[i][k] = point[k]  # return to the original point
                         mults[k] = 1.0  # one-sided derivative
                         break
                     cell_neig[i] = find_cell_by_point(point_neig[i])
-                    if j > 50:  # just in case, to avoid infinite loop
+                    if j > 1000:  # just in case, to avoid infinite loop
                         print('Error: can not find a neighboring cell for point', point, 'side', side, 'k', k)
-                        break
-                #print(point, side, k, point_neig[i])
+                        exit(1)
+                point_neig[i] = centroids[cell_neig[i], :]
                 i += 1
+                
+        #print('point', point)
+        #print('z- neig center', centroids[find_cell_by_point(point_neig[2]), 2])
+        #print('z+ neig center', centroids[find_cell_by_point(point_neig[5]), 2])
 
         ux_x_minus_, ux_x_plus_ = ux_last[cell_neig[0]], ux_last[cell_neig[3]]
         ux_y_minus_, ux_y_plus_ = ux_last[cell_neig[1]], ux_last[cell_neig[4]]
@@ -206,6 +214,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
              0.5 * (duy_dz + duz_dy),
              0.5 * (dux_dz + duz_dx),
              0.5 * (dux_dy + duy_dx)])
+        
+        assert np.any(~np.isnan(strain))
+        
 
         # volumetric_strain=div(displ)
         volumetric_strain = dux_dx + duy_dy + duz_dz
@@ -267,12 +278,19 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         sx_thm = np.zeros(n_points); sy_thm = np.zeros(n_points); sz_thm = np.zeros(n_points);
         qx_thm2 = np.zeros(n_points); qy_thm2 = np.zeros(n_points); qz_thm2 = np.zeros(n_points);
         sx_thm2 = np.zeros(n_points); sy_thm2 = np.zeros(n_points); sz_thm2 = np.zeros(n_points);
+        #x = np.zeros(n_points); y = np.zeros(n_points); z = np.zeros(n_points);
         for i in range(n_points):  # use XY from point and different Z
             point = np.array([points[1, i], points[0, i], points[2, i]])  # YXZ - > XYZ
             ux_thm[i], uy_thm[i], uz_thm[i] = get_thm_displs(point)
             sx_thm[i], sy_thm[i], sz_thm[i] = get_thm_stress(point)
             qx_thm2[i], qy_thm2[i], qz_thm2[i], \
             sx_thm2[i], sy_thm2[i], sz_thm2[i] = get_thm_stress_by_deriv(point)
+            #x[i], y[i], z[i] = get_cell_center(point)
+            
+        #for i in range(n_points):  # use XY from point and different Z
+        #    qx_thm2[i] = np.gradient(ux_thm_along_x, x)[i]
+        #    qy_thm2[i] = np.gradient(uy_thm_along_y, y)[i]
+        #    qz_thm2[i] = np.gradient(uz_thm_along_z, z)[i]
             
         for mode in modes:
             match mode:
@@ -288,15 +306,22 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 case 'delta_stress_y': prx = sy_prx; thm = sy_thm; thm2 = sy_thm2; s = 'Horizontal stress change (YY), MPa.' + ' at ' + loc
                 case 'delta_stress_x': prx = sx_prx; thm = sx_thm; thm2 = sx_thm2; s = 'Horizontal stress change (XX), MPa.' + ' at ' + loc
                     
+            plot_mesh_layers = False
+            if plot_mesh_layers:
+                for zi in m.reservoir.Zc:
+                    if z_range.min() <= zi <= z_range.max():
+                        plt.axhline(y=zi, color='gray', linestyle='dotted')
+                        
             plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
             plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
+            
+            plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
             if 'strain' not in mode:
                 plt.plot(thm, z_range, label=mode + '_THM', marker='.')
             if 'stress' in mode or 'strain' in mode:
-                plt.plot(thm2, z_range, label=mode + '_THM2', marker='.')
-            plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
+                plt.plot(thm2, z_range, label=mode + '_THM2', marker='.', color='black')
+                
             plt.gca().invert_yaxis()
-
             plt.xlabel(s)
             plt.title(s)
             plt.ylabel('Depth, m.')
@@ -359,25 +384,26 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         modes = ['displ_z', 'displ_y', 'displ_x']
         modes += ['strain_z', 'strain_y', 'strain_x']
         modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
+        modes = ['strain_z']
 
         # compare U-Z at a line along z-axis
         z_min = 0.
         z_max = centroids[:, 2].max() #+ 1000.
         z_step = 25.  # m.
         
-        z_range = np.arange(z_min, z_max+1., z_step)
-        n_points = z_range.size
+        z_range_all = np.arange(z_min, z_max+1., z_step)
+        n_points = z_range_all.size
         points_all = np.zeros((3, n_points))
         points_all[0, :] = point_xy[1]  # X<->Y
         points_all[1, :] = point_xy[0]
-        points_all[2, :] = z_range
+        points_all[2, :] = z_range_all
         
-        z_range = np.arange(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100., z_step)
-        n_points = z_range.size
+        z_range_rsv = np.arange(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100., z_step)
+        n_points = z_range_rsv.size
         points_rsv = np.zeros((3, n_points))
         points_rsv[0, :] = point_xy[1] # X<->Y
         points_rsv[1, :] = point_xy[0]            
-        points_rsv[2, :] = z_range
+        points_rsv[2, :] = z_range_rsv
         
         compare_vert_line(points_all, suffix='all', loc=k, output_folder=folder, modes=modes)
         compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, modes=modes)
@@ -408,8 +434,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
-    case = '16_16_15'
-    #case = '34_34_54'  #
+    #case = '16_16_15'
+    case = '34_34_54'  #
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
