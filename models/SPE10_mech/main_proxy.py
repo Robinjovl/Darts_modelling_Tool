@@ -384,7 +384,6 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         modes = ['displ_z', 'displ_y', 'displ_x']
         modes += ['strain_z', 'strain_y', 'strain_x']
         modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
-        modes = ['strain_z']
 
         # compare U-Z at a line along z-axis
         z_min = 0.
