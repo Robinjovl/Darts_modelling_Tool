@@ -124,12 +124,13 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         return ux_thm, uy_thm, uz_thm
 
     def get_thm_stress(point, verbose=False):
+        # in MPa
         cell = find_cell_by_point(point)
         if verbose:
             print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
-        return delta_Sxx_last[cell],  delta_Syy_last[cell],  delta_Szz_last[cell]
+        return delta_Sxx_last[cell]*0.1,  delta_Syy_last[cell]*0.1,  delta_Szz_last[cell]*0.1
 
-    def get_thm_stress_by_deriv(point, strain_mode=False): 
+    def get_thm_stress_by_deriv(point): 
         # compute strain and stress in python from THM displacements (ux_last, etc)
         from geomechanics import deriv
 
@@ -214,10 +215,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         stress = g.young * (strain + g.poisson / (1 - 2 * g.poisson) *
                                volumetric_strain * kronecker) / (1 + g.poisson)
 
-        if strain_mode:
-            return strain[0], strain[1], strain[2] # xx yy zz
-        else:
-            return stress[0], stress[1], stress[2]  # Sxx, Syy, Szz
+        return strain[0], strain[1], strain[2], stress[0], stress[1], stress[2]  # Sxx, Syy, Szz
 
 
     def get_proxy_displs(eval_points):  # Y,X,Z 
@@ -228,7 +226,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         ux = upx1 + utx1
         uy = upy1 + uty1
         uz = upz1 + utz1
-        return uz, uy, ux # thermoporoelastic displacements [m]
+        return ux, uy, uz # thermoporoelastic displacements [m]
 
     def get_eval_points(mode, shift_x=0, shift_y=0):
         if mode == 'centers':
@@ -247,86 +245,65 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         return eval_points.transpose()
 
     def get_proxy_strain_stress(eval_points):
+        # returns thermoporoelastic strain and  stress in MPa, (6, n_points), 6 - Voight notation
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points_eps = eval_points + eps
         res = g.calc_strain_stress_cpp(eval_points_eps, prisms, delta_pressure, delta_temperature)
         stress_p, strain_p, stress_t, strain_t, stress, strain = res
-        [Sp_xx, Sp_yy, Sp_zz, Sp_yz, Sp_xz, Sp_xy] = stress_p
-        [St_xx, St_yy, St_zz, St_yz, St_xz, St_xy] = stress_t
-        [S_xx, S_yy, S_zz, S_yz, S_xz, S_xy] = stress
-        return strain[1], strain[0], strain[2], stress[1], stress[0], stress[2] # xx yy zz
-        # thermoporoelastic stress XX in MPa
+        #[Sp_xx, Sp_yy, Sp_zz, Sp_yz, Sp_xz, Sp_xy] = stress_p
+        #[St_xx, St_yy, St_zz, St_yz, St_xz, St_xy] = stress_t
+        return strain[1,:], strain[0,:], strain[2,:], \
+            stress[1,:], stress[0,:], stress[2,:] # xx yy zz
 
 
-    def compare_vert_line(points, suffix='', loc='', output_folder='.', mode='displ_z'):
+    def compare_vert_line(points, suffix='', loc='', output_folder='.', modes={}):
         z_range = points[2,:]
+        
         ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
         qx_prx, qy_prx, qz_prx, sx_prx, sy_prx, sz_prx =  get_proxy_strain_stress(points)
-        thm = []
-        thm2 = []
-        prx = []
-        for i in range(points.shape[1]):  # use XY from point and different Z
+        
+        n_points = points.shape[1]
+        ux_thm = np.zeros(n_points); uy_thm = np.zeros(n_points); uz_thm = np.zeros(n_points);
+        sx_thm = np.zeros(n_points); sy_thm = np.zeros(n_points); sz_thm = np.zeros(n_points);
+        qx_thm2 = np.zeros(n_points); qy_thm2 = np.zeros(n_points); qz_thm2 = np.zeros(n_points);
+        sx_thm2 = np.zeros(n_points); sy_thm2 = np.zeros(n_points); sz_thm2 = np.zeros(n_points);
+        for i in range(n_points):  # use XY from point and different Z
             point = np.array([points[1, i], points[0, i], points[2, i]])  # YXZ - > XYZ
-            if mode == 'displ_x':
-                thm.append(get_thm_displs(point)[0] * m2mm)
-                label = 'ux'
-            elif mode == 'displ_y':
-                thm.append(get_thm_displs(point)[1] * m2mm)
-                label = 'ux'
-            elif mode == 'displ_z':
-                thm.append(get_thm_displs(point)[2] * m2mm)
-                label = 'uz'
-            elif mode == 'strain_x':
-                thm2.append(get_thm_stress_by_deriv(point, strain_mode=True)[0])
-                label = 'strain_x'
-            elif mode == 'strain_z':
-                thm2.append(get_thm_stress_by_deriv(point, strain_mode=True)[2])
-                label = 'strain_z'
-            elif mode == 'stress_x':
-                thm.append(get_thm_stress(point)[0])
-                thm2.append(get_thm_stress_by_deriv(point)[0])
-                label = 'delta_stress_x'
-            elif mode == 'stress_z':
-                thm.append(get_thm_stress(point)[2])
-                thm2.append(get_thm_stress_by_deriv(point)[2])
-                label = 'delta_stress'
-            else:
-                print('unknown mode', mode)
-                exit(1)
+            ux_thm[i], uy_thm[i], uz_thm[i] = get_thm_displs(point)
+            sx_thm[i], sy_thm[i], sz_thm[i] = get_thm_stress(point)
+            qx_thm2[i], qy_thm2[i], qz_thm2[i], \
+            sx_thm2[i], sy_thm2[i], sz_thm2[i] = get_thm_stress_by_deriv(point)
+            
+        for mode in modes:
+            match mode:
+                case 'displ_z': prx = uz_prx * m2mm; thm = uz_thm * m2mm; s = 'Vertical displacement, mm.' + ' at ' + loc
+                case 'displ_y': prx = uy_prx * m2mm; thm = uy_thm * m2mm; s = 'Horizontal displacement (Y), mm.' + ' at ' + loc
+                case 'displ_x': prx = ux_prx * m2mm; thm = ux_thm * m2mm; s = 'Horizontal displacement (X), mm.' + ' at ' + loc
                 
-        match mode:
-            case 'displ_z': prx = ux_prx * m2mm
-            case 'displ_y': prx = uy_prx * m2mm
-            case 'displ_x': prx = uz_prx * m2mm
-            case 'strain_z': prx = qz_prx
-            case 'strain_x': prx = qx_prx
-            case 'stress_z': prx = sz_prx
-            case 'stress_x': prx = sx_prx
+                case 'strain_z': prx = qz_prx; thm2 = qz_thm2; s = 'Vertical strain' + ' at ' + loc
+                case 'strain_y': prx = qy_prx; thm2 = qy_thm2; s = 'Horizontal strain (YY)' + ' at ' + loc
+                case 'strain_x': prx = qx_prx; thm2 = qx_thm2; s = 'Horizontal strain (XX)' + ' at ' + loc
                 
-        plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
-        plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
-        if len(thm):
-            plt.plot(thm, z_range, label=label + '_THM', marker='.')
-        if 'stress' in mode or 'strain' in mode:
-            plt.plot(thm2, z_range, label=label + '_THM2', marker='.')
-        plt.plot(prx, z_range, label=label + '_proxy', marker='.')
-        plt.gca().invert_yaxis()
-        match mode:
-            case 'displ_z': s = 'Vertical displacement, mm.'
-            case 'displ_y': s = 'Horizontal displacement (Y), mm.'
-            case 'displ_x': s = 'Horizontal displacement (X), mm.'
-            case 'strain_z': s = 'Vertical strain'
-            case 'strain_x': s = 'Horizontal strain (XX)'
-            case 'stress_z': s = 'Vertical stress delta, MPa.'
-            case 'stress_x': s = 'Horizontal stress delta (XX), MPa.'
-        s += ' at ' + loc
-        plt.xlabel(s)
-        plt.title(s)
-        plt.ylabel('Depth, m.')
-        plt.legend()
-        plt.grid()
-        plt.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '.png'))
-        plt.close()
+                case 'delta_stress_z': prx = sz_prx; thm = sz_thm; thm2 = sz_thm2; s = 'Vertical stress change, MPa.' + ' at ' + loc
+                case 'delta_stress_y': prx = sy_prx; thm = sy_thm; thm2 = sy_thm2; s = 'Horizontal stress change (YY), MPa.' + ' at ' + loc
+                case 'delta_stress_x': prx = sx_prx; thm = sx_thm; thm2 = sx_thm2; s = 'Horizontal stress change (XX), MPa.' + ' at ' + loc
+                    
+            plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
+            plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
+            if 'strain' not in mode:
+                plt.plot(thm, z_range, label=mode + '_THM', marker='.')
+            if 'stress' in mode or 'strain' in mode:
+                plt.plot(thm2, z_range, label=mode + '_THM2', marker='.')
+            plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
+            plt.gca().invert_yaxis()
+
+            plt.xlabel(s)
+            plt.title(s)
+            plt.ylabel('Depth, m.')
+            plt.legend()
+            plt.grid()
+            plt.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '.png'))
+            plt.close()
 
 
     def testing():
@@ -349,7 +326,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         # uz
         #plt.imshow(uz.reshape((15,16,16))[0,:,:]) # 2D
         #plt.contourf(uz.reshape((15,16,16))[0,:,:]) # 2D
-
+        
         ux_1d, uy_1d, uz_1d = get_proxy_displs(eval_points_line_v)
         #plt.plot(uz_1d) # 1D
         
@@ -379,30 +356,31 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     for k in points_xy.keys():
         point_xy = points_xy[k]
         print('plotting for point', k, 'XY=', point_xy)
-        modes = ['displ_z', 'displ_x', 'strain_z', 'strain_x', 'stress_z', 'stress_x']
-        #modes = ['strain_z']
-        for mode in modes:
-            # compare U-Z at a line along z-axis
-            z_min = 0.
-            z_max = centroids[:, 2].max() #+ 1000.
-            z_step = 25.  # m.
-            
-            z_range = np.arange(z_min, z_max+1., z_step)
-            n_points = z_range.size
-            points_all = np.zeros((3, n_points))
-            points_all[0, :] = point_xy[1]  # X<->Y
-            points_all[1, :] = point_xy[0]
-            points_all[2, :] = z_range
-            
-            z_range = np.arange(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100., z_step)
-            n_points = z_range.size
-            points_rsv = np.zeros((3, n_points))
-            points_rsv[0, :] = point_xy[1] # X<->Y
-            points_rsv[1, :] = point_xy[0]            
-            points_rsv[2, :] = z_range
-            
-            compare_vert_line(points_all, suffix='all', loc=k, output_folder=folder, mode=mode)
-            compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, mode=mode)
+        modes = ['displ_z', 'displ_y', 'displ_x']
+        modes += ['strain_z', 'strain_y', 'strain_x']
+        modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
+
+        # compare U-Z at a line along z-axis
+        z_min = 0.
+        z_max = centroids[:, 2].max() #+ 1000.
+        z_step = 25.  # m.
+        
+        z_range = np.arange(z_min, z_max+1., z_step)
+        n_points = z_range.size
+        points_all = np.zeros((3, n_points))
+        points_all[0, :] = point_xy[1]  # X<->Y
+        points_all[1, :] = point_xy[0]
+        points_all[2, :] = z_range
+        
+        z_range = np.arange(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100., z_step)
+        n_points = z_range.size
+        points_rsv = np.zeros((3, n_points))
+        points_rsv[0, :] = point_xy[1] # X<->Y
+        points_rsv[1, :] = point_xy[0]            
+        points_rsv[2, :] = z_range
+        
+        compare_vert_line(points_all, suffix='all', loc=k, output_folder=folder, modes=modes)
+        compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, modes=modes)
 
     # compare vert displs at the middle point at the surface and print
     if False:
@@ -430,8 +408,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
-    #case = '16_16_15'
-    case = '34_34_54'  #
+    case = '16_16_15'
+    #case = '34_34_54'  #
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
