@@ -220,16 +220,15 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             return stress[0], stress[1], stress[2]  # Sxx, Syy, Szz
 
 
-    def get_proxy_displs_point(point):
-        eval_points = np.zeros((1,3))  # just one point
+    def get_proxy_displs(eval_points):  # Y,X,Z 
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
-        eval_points[0, :] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
-        eval_points = eval_points.transpose()
-        upy1, upx1, upz1, uty1, utx1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
-        ux = upx1[0] + utx1[0]
-        uy = upy1[0] + uty1[0]
-        uz = upz1[0] + utz1[0]
-        return ux, uy, uz # thermoporoelastic displacements [m]
+        eval_points_eps = eval_points + eps
+        #eval_points_eps = eval_points_eps.transpose()
+        upy1, upx1, upz1, uty1, utx1, utz1 = g.calc_displacements_cpp(eval_points_eps, prisms, delta_pressure, delta_temperature)
+        ux = upx1 + utx1
+        uy = upy1 + uty1
+        uz = upz1 + utz1
+        return uz, uy, ux # thermoporoelastic displacements [m]
 
     def get_eval_points(mode, shift_x=0, shift_y=0):
         if mode == 'centers':
@@ -246,72 +245,64 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             eval_points[:, 0] = centroids[:, 1].mean() + shift_y
             eval_points[:, 2] = z
         return eval_points.transpose()
-        
-    def get_proxy_displs(mode, shift_x=0, shift_y=0):
-        eval_points = get_eval_points(mode=mode, shift_x=shift_x, shift_y=shift_y)
-        eval_points[:,:] += 1 # [m], to avoid r=0 for the integral in the geomech proxy 1/r
-        upy1, upx1, upz1, uty1, utx1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
-        ux = upx1 + utx1
-        uy = upy1 + uty1
-        uz = upz1 + utz1
-        return ux, uy, uz # thermoporoelastic displacements [m]
 
-    def get_proxy_stress(point, strain_mode=False):
-        eval_points = np.zeros((1,3))  # just one point
+    def get_proxy_strain_stress(eval_points):
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
-        eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
-        eval_points = eval_points.transpose()
-        res = g.calc_strain_stress_cpp(eval_points, prisms, delta_pressure, delta_temperature)
+        eval_points_eps = eval_points + eps
+        res = g.calc_strain_stress_cpp(eval_points_eps, prisms, delta_pressure, delta_temperature)
         stress_p, strain_p, stress_t, strain_t, stress, strain = res
         [Sp_xx, Sp_yy, Sp_zz, Sp_yz, Sp_xz, Sp_xy] = stress_p
         [St_xx, St_yy, St_zz, St_yz, St_xz, St_xy] = stress_t
         [S_xx, S_yy, S_zz, S_yz, S_xz, S_xy] = stress
-
-        if strain_mode:
-            return strain[1], strain[0], strain[2] # xx yy zz
-        else:
-            # thermoporoelastic stress XX in MPa
-            return  stress[1], stress[0], stress[2] # xx yy zz
+        return strain[1], strain[0], strain[2], stress[1], stress[0], stress[2] # xx yy zz
+        # thermoporoelastic stress XX in MPa
 
 
-    def compare_vert_line(point_xy, z_min, z_max, suffix, z_step=100, output_folder='.', mode='displ_z'):
-        point = np.array([point_xy[1], point_xy[2], 0.])  # XY from point and Z will be changed
-        z_range = np.arange(z_min, z_max+1., z_step)
+    def compare_vert_line(points, suffix='', loc='', output_folder='.', mode='displ_z'):
+        z_range = points[2,:]
+        ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
+        qx_prx, qy_prx, qz_prx, sx_prx, sy_prx, sz_prx =  get_proxy_strain_stress(points)
         thm = []
         thm2 = []
         prx = []
-        for z in z_range:  # use XY from point and different Z
-            point[2] = z
+        for i in range(points.shape[1]):  # use XY from point and different Z
+            point = np.array([points[1, i], points[0, i], points[2, i]])  # YXZ - > XYZ
             if mode == 'displ_x':
                 thm.append(get_thm_displs(point)[0] * m2mm)
-                prx.append(get_proxy_displs_point(point)[0] * m2mm)
+                label = 'ux'
+            elif mode == 'displ_y':
+                thm.append(get_thm_displs(point)[1] * m2mm)
                 label = 'ux'
             elif mode == 'displ_z':
                 thm.append(get_thm_displs(point)[2] * m2mm)
-                prx.append(get_proxy_displs_point(point)[2] * m2mm)
                 label = 'uz'
             elif mode == 'strain_x':
                 thm2.append(get_thm_stress_by_deriv(point, strain_mode=True)[0])
-                prx.append(get_proxy_stress(point, strain_mode=True)[0])
                 label = 'strain_x'
             elif mode == 'strain_z':
                 thm2.append(get_thm_stress_by_deriv(point, strain_mode=True)[2])
-                prx.append(get_proxy_stress(point, strain_mode=True)[2])
                 label = 'strain_z'
             elif mode == 'stress_x':
                 thm.append(get_thm_stress(point)[0])
                 thm2.append(get_thm_stress_by_deriv(point)[0])
-                prx.append(get_proxy_stress(point)[0])
                 label = 'delta_stress_x'
             elif mode == 'stress_z':
                 thm.append(get_thm_stress(point)[2])
                 thm2.append(get_thm_stress_by_deriv(point)[2])
-                prx.append(get_proxy_stress(point)[2])
                 label = 'delta_stress'
             else:
                 print('unknown mode', mode)
                 exit(1)
-
+                
+        match mode:
+            case 'displ_z': prx = ux_prx * m2mm
+            case 'displ_y': prx = uy_prx * m2mm
+            case 'displ_x': prx = uz_prx * m2mm
+            case 'strain_z': prx = qz_prx
+            case 'strain_x': prx = qx_prx
+            case 'stress_z': prx = sz_prx
+            case 'stress_x': prx = sx_prx
+                
         plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
         plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
         if len(thm):
@@ -322,18 +313,19 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         plt.gca().invert_yaxis()
         match mode:
             case 'displ_z': s = 'Vertical displacement, mm.'
-            case 'displ_x': s = 'Horizontal displacement, mm.'
+            case 'displ_y': s = 'Horizontal displacement (Y), mm.'
+            case 'displ_x': s = 'Horizontal displacement (X), mm.'
             case 'strain_z': s = 'Vertical strain'
-            case 'strain_x': s = 'Horizontal strain'
+            case 'strain_x': s = 'Horizontal strain (XX)'
             case 'stress_z': s = 'Vertical stress delta, MPa.'
-            case 'stress_x': s = 'Horizontal stress delta, MPa.'
-        s += ' at ' + point_xy[0]
+            case 'stress_x': s = 'Horizontal stress delta (XX), MPa.'
+        s += ' at ' + loc
         plt.xlabel(s)
         plt.title(s)
         plt.ylabel('Depth, m.')
         plt.legend()
         plt.grid()
-        plt.savefig(os.path.join(output_folder, mode + '_' + point_xy[0] + '_' + suffix + '.png'))
+        plt.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '.png'))
         plt.close()
 
 
@@ -345,14 +337,20 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         # plt.imshow(delta_pressure.reshape((15,16,16))[6,:,:]) # 2D
         #plt.plot(delta_pressure.reshape((15,16,16))[:,7,7]) # 1D
         
-        ux, uy, uz = get_proxy_displs(mode='centers')
+        eval_points_centers = get_eval_points(mode='centers')
+        eval_points_centers[:,:] += 1 # [m], to avoid r=0 for the integral in the geomech proxy 1/r
+        
+        eval_points_line_v = get_eval_points(mode='vertical', shift_x=50, shift_y=50)
+        eval_points_line_v[:,:] += 1 # [m], to avoid r=0 for the integral in the geomech proxy 1/r
+        
+        ux, uy, uz = get_proxy_displs(eval_points_centers)
         # ux
         plt.imshow(ux.reshape((15,16,16))[5,:,:])
         # uz
         #plt.imshow(uz.reshape((15,16,16))[0,:,:]) # 2D
         #plt.contourf(uz.reshape((15,16,16))[0,:,:]) # 2D
 
-        ux_1d, uy_1d, uz_1d = get_proxy_displs(mode='vertical')
+        ux_1d, uy_1d, uz_1d = get_proxy_displs(eval_points_line_v)
         #plt.plot(uz_1d) # 1D
         
         # check with python's version
@@ -368,30 +366,47 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     ######################################
     
-    points_xy = []
-    #points_xy += [['center', centroids[:, 0].mean(), centroids[:, 1].mean()]]  # middle point of the mesh
-    points_xy += [['center', 50., 50.]]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    points_xy = dict()
+    #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
+    points_xy['center'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
 
     if False:
         if wells_type in ['prod', 'doublet']:
-            points_xy += [['prod well'] + m.prod_well_coords[:-1]] # -1 to skip z coord
+            points_xy['prod well'] = m.prod_well_coords[:-1] # -1 to skip z coord
         if wells_type in ['inj', 'doublet']:
-            points_xy += [['inj well'] + m.inj_well_coords[:-1]]
+            points_xy['inj well'] = m.inj_well_coords[:-1]
 
-    for point_xy in points_xy:
-        print('plotting for point', point_xy[0], 'XY=', point_xy[1:3])
+    for k in points_xy.keys():
+        point_xy = points_xy[k]
+        print('plotting for point', k, 'XY=', point_xy)
         modes = ['displ_z', 'displ_x', 'strain_z', 'strain_x', 'stress_z', 'stress_x']
         #modes = ['strain_z']
         for mode in modes:
             # compare U-Z at a line along z-axis
             z_min = 0.
             z_max = centroids[:, 2].max() #+ 1000.
-            compare_vert_line(point_xy, z_min, z_max, 'all', z_step=20, output_folder=folder, mode=mode)
-            compare_vert_line(point_xy, m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100.,'rsv',  z_step=10, output_folder=folder, mode=mode)
+            z_step = 25.  # m.
+            
+            z_range = np.arange(z_min, z_max+1., z_step)
+            n_points = z_range.size
+            points_all = np.zeros((3, n_points))
+            points_all[0, :] = point_xy[1]  # X<->Y
+            points_all[1, :] = point_xy[0]
+            points_all[2, :] = z_range
+            
+            z_range = np.arange(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100., z_step)
+            n_points = z_range.size
+            points_rsv = np.zeros((3, n_points))
+            points_rsv[0, :] = point_xy[1] # X<->Y
+            points_rsv[1, :] = point_xy[0]            
+            points_rsv[2, :] = z_range
+            
+            compare_vert_line(points_all, suffix='all', loc=k, output_folder=folder, mode=mode)
+            compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, mode=mode)
 
     # compare vert displs at the middle point at the surface and print
     if False:
-        point = [points_xy[0][1], points_xy[0][2], 0.] # at the surface (depth=0)
+        point = np.array([points_xy[0][1], points_xy[0][2], 0.]) # at the surface (depth=0)
         uz_thm = get_thm_displs(point)*m2mm
         uz_prx = get_proxy_displs(point)*m2mm
         print('Compare at the middle point at the surface, point=', point)
@@ -402,7 +417,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         point[2] = (m.reservoir.rsv_top + m.reservoir.rsv_bottom) * 0.5  # at the middle depth of the reservoir
         dsxx_thm = get_thm_stress(point)*bars2mpa
         dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
-        dsxx_prx = get_proxy_stress(point)
+        dsxx_prx = get_proxy_strain_stress(point)
         print('Compare at the middle depth of the reservoir, point=', point)
         print('\tTHM   ', 'delta_Sxx=', dsxx_thm, 'MPa')
         print('\tTHM_by_deriv', 'delta_Sxx=', dsxx_thm2, 'MPa')
@@ -434,6 +449,9 @@ if __name__ == '__main__':
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
     timestep = 1
     #timestep = 13
+    
+    #run_thm = True
+    run_thm = False
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
@@ -442,7 +460,8 @@ if __name__ == '__main__':
 
             # run THM with no mechanics->flow impact
             t1 = datetime.now()
-            run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
+            if run_thm:
+                run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
             t2 = datetime.now()
             thm_time = t2 - t1
 
