@@ -132,7 +132,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         cell = find_cell_by_point(point)
         if verbose:
             print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
-        return delta_Sxx_last[cell]*0.1,  delta_Syy_last[cell]*0.1,  delta_Szz_last[cell]*0.1
+        return delta_Sxx_last[cell],  delta_Syy_last[cell],  delta_Szz_last[cell]
 
     def get_thm_stress_by_deriv(point): 
         # compute strain and stress in python from THM displacements (ux_last, etc)
@@ -219,11 +219,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         
 
         # volumetric_strain=div(displ)
-        volumetric_strain = dux_dx + duy_dy + duz_dz
+        volumetric_strain = -(dux_dx + duy_dy + duz_dz)
 
         n_points = 1
         kronecker = np.array(n_points * [1, 1, 1, 0, 0, 0]).reshape(n_points, 6).transpose()
-        stress = g.young * (strain + g.poisson / (1 - 2 * g.poisson) *
+        stress = g.young * (-strain + g.poisson / (1 - 2 * g.poisson) *
                                volumetric_strain * kronecker) / (1 + g.poisson)
 
         return strain[0], strain[1], strain[2], stress[0], stress[1], stress[2]  # Sxx, Syy, Szz
@@ -384,6 +384,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         modes = ['displ_z', 'displ_y', 'displ_x']
         modes += ['strain_z', 'strain_y', 'strain_x']
         modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
+        #modes = ['strain_z']
 
         # compare U-Z at a line along z-axis
         z_min = 0.

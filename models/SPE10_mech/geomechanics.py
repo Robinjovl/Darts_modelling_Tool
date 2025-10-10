@@ -166,7 +166,7 @@ class geomech():
         #print('strain', strain.shape)
         #print('kronecker', kronecker.shape)
 
-        stress = self.young * (strain + self.poisson / (1 - 2 * self.poisson) *
+        stress = self.young * (-strain + self.poisson / (1 - 2 * self.poisson) *
                                volumetric_strain * kronecker) / (1 + self.poisson)
         return stress, strain
 
@@ -274,7 +274,7 @@ class geomech():
                  0.5 * (dux_dy + duy_dx)])
 
             # volumetric_strain=div(displ)
-            volumetric_strain = dux_dx + duy_dy + duz_dz
+            volumetric_strain = -(dux_dx + duy_dy + duz_dz)
 
             # Voight notation: 3 diagonal and 3 off-diagonal values
             n_points = fault_surface.shape[1]
@@ -282,7 +282,7 @@ class geomech():
 
             #print('strain = \n', strain)
 
-            stress = self.young * (strain + self.poisson / (1 - 2 * self.poisson) *
+            stress = self.young * (-strain + self.poisson / (1 - 2 * self.poisson) *
                                    volumetric_strain * kronecker) / (1 + self.poisson)
 
             #print('dir=', ui, 'stress=\n', stress)

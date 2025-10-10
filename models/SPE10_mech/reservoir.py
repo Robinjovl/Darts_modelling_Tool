@@ -256,12 +256,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # Stresses and velocities
         engine.eval_stresses_and_velocities()
-        total_stresses = np.array(engine.total_stresses, copy=False)
+        total_stresses = -np.array(engine.total_stresses, copy=False)# make positive for compressive stresses
 
         if not hasattr(self, 'displs_initial'):
             self.displs_initial = dict()
         if not hasattr(self, 'tot_stress_initial'):
-            self.tot_stress_initial = total_stresses.copy()
+            self.tot_stress_initial = total_stresses.copy() 
 
         # Matrix
         cells = []
@@ -292,12 +292,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if 'tot_stress' not in cell_data: cell_data['tot_stress'] = []
                 cell_data['tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
                 for j in range(6):
-                    cell_data['tot_stress'][-1][:, j] = -(total_stresses[j::6])
+                    cell_data['tot_stress'][-1][:, j] = total_stresses[j::6]
 
                 if 'delta_tot_stress' not in cell_data: cell_data['delta_tot_stress'] = []
                 cell_data['delta_tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
                 for j in range(6):
-                    cell_data['delta_tot_stress'][-1][:, j] = -(total_stresses[j::6]) - np.fabs(self.tot_stress_initial[j::6])
+                    cell_data['delta_tot_stress'][-1][:, j] = total_stresses[j::6] - self.tot_stress_initial[j::6]
 
                 delta_pressure = pressure - self.pressure_initial
                 if 'delta_pressure' not in cell_data: cell_data['delta_pressure'] = []
@@ -307,7 +307,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if 'delta_eff_stress' not in cell_data: cell_data['delta_eff_stress'] = []
                 cell_data['delta_eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
                 for j in range(6):
-                    cell_data['delta_eff_stress'][-1][:, j] = -(total_stresses[j::6] - self.tot_stress_initial[j::6] + delta_pressure)
+                    cell_data['delta_eff_stress'][-1][:, j] = cell_data['delta_tot_stress'][-1][:, j] - delta_pressure
 
                 if hasattr(self, 'temperature_initial'): # if thermal simulation
                     if 'delta_temperature' not in cell_data: cell_data['delta_temperature'] = []
