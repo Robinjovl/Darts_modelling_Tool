@@ -317,9 +317,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if True:#ith_step == 0:
                     if 'perm' not in cell_data: cell_data['perm'] = []
                     if 'E' not in cell_data: cell_data['E'] = []
+                    if 'poisson' not in cell_data: cell_data['poisson'] = []
                     if 'poro' not in cell_data: cell_data['poro'] = []
                     cell_data['perm'].append(np.zeros((len(cell_ids), 9), dtype=np.float64))
                     cell_data['E'].append(np.zeros(len(cell_ids), dtype=np.float64))
+                    cell_data['poisson'].append(np.zeros(len(cell_ids), dtype=np.float64))
                     cell_data['poro'].append(np.array(self.mesh.poro, copy=False)[:self.n_matrix])
                     for i, cell_id in enumerate(cell_ids):
                         cell_data['perm'][-1][i] = np.array(self.discr.perms[cell_id].values)
@@ -327,7 +329,22 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                         la = stf[1]
                         mu = (stf[0] - la) / 2
                         E = mu * (3 * la + 2 * mu) / (la + mu)
+                        poisson = la / (2 * (la + mu))
                         cell_data['E'][-1][i] = E
+                        cell_data['poisson'][-1][i] = poisson
+
+                # compute strain from stress and geomech props
+                # https://en.wikipedia.org/wiki/Hooke%27s_law, In matrix form, Hooke's law for isotropic materials can be written as
+                if 'strain' not in cell_data: cell_data['strain'] = []
+                cell_data['strain'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
+                stress = cell_data['delta_tot_stress'][-1]
+                E = cell_data['E'][-1]
+                poisson = cell_data['poisson'][-1]
+                cell_data['strain'][-1][:, 0] = (stress[:, 0] - poisson*(stress[:, 1]+stress[:, 2]))/E
+                cell_data['strain'][-1][:, 1] = (stress[:, 1] - poisson*(stress[:, 0]+stress[:, 2]))/E
+                cell_data['strain'][-1][:, 2] = (stress[:, 2] - poisson*(stress[:, 0]+stress[:, 1]))/E
+                for k in range(3,6):  # shear part
+                    cell_data['strain'][-1][:, k] = (2 + 2 * poisson) * stress[:, k]/E
 
         # Store solution for each time-step:
         mesh = meshio.Mesh(

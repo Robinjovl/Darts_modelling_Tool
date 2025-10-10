@@ -79,6 +79,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     delta_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] * bars2mpa #  XX
     delta_Syy_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 1] * bars2mpa #  YY
     delta_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] * bars2mpa # ZZ
+    qx_last = np.array(msh_last.cell_data['strain'])[0, :, 0]  #  XX
+    qy_last = np.array(msh_last.cell_data['strain'])[0, :, 1]  #  YY
+    qz_last = np.array(msh_last.cell_data['strain'])[0, :, 2]  # ZZ
+    
 
     if 'delta_pressure' in msh_last.cell_data.keys():
         delta_pressure = np.array(msh_last.cell_data['delta_pressure']).flatten()
@@ -112,6 +116,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         # find an index of the cell, closest to the desired point
         cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (
                     centroids[:, 2] - point[2]) ** 2).argmin()
+        #print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
         return cell
 
     def get_cell_center(point):
@@ -123,15 +128,18 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         ux_thm = ux_last[cell]
         uy_thm = uy_last[cell]
         uz_thm = uz_last[cell]
-        if verbose:
-            print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
         return ux_thm, uy_thm, uz_thm
+
+    def get_thm_strain(point, verbose=False):
+        cell = find_cell_by_point(point)
+        qx_thm = qx_last[cell]
+        qy_thm = qy_last[cell]
+        qz_thm = qz_last[cell]
+        return qx_thm, qy_thm, qz_thm
 
     def get_thm_stress(point, verbose=False):
         # in MPa
         cell = find_cell_by_point(point)
-        if verbose:
-            print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
         return delta_Sxx_last[cell],  delta_Syy_last[cell],  delta_Szz_last[cell]
 
     def get_thm_stress_by_deriv(point): 
@@ -275,6 +283,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         
         n_points = points.shape[1]
         ux_thm = np.zeros(n_points); uy_thm = np.zeros(n_points); uz_thm = np.zeros(n_points);
+        qx_thm = np.zeros(n_points); qy_thm = np.zeros(n_points); qz_thm = np.zeros(n_points);
         sx_thm = np.zeros(n_points); sy_thm = np.zeros(n_points); sz_thm = np.zeros(n_points);
         qx_thm2 = np.zeros(n_points); qy_thm2 = np.zeros(n_points); qz_thm2 = np.zeros(n_points);
         sx_thm2 = np.zeros(n_points); sy_thm2 = np.zeros(n_points); sz_thm2 = np.zeros(n_points);
@@ -282,6 +291,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         for i in range(n_points):  # use XY from point and different Z
             point = np.array([points[1, i], points[0, i], points[2, i]])  # YXZ - > XYZ
             ux_thm[i], uy_thm[i], uz_thm[i] = get_thm_displs(point)
+            qx_thm[i], qy_thm[i], qz_thm[i] = get_thm_strain(point)
             sx_thm[i], sy_thm[i], sz_thm[i] = get_thm_stress(point)
             qx_thm2[i], qy_thm2[i], qz_thm2[i], \
             sx_thm2[i], sy_thm2[i], sz_thm2[i] = get_thm_stress_by_deriv(point)
@@ -298,9 +308,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 case 'displ_y': prx = uy_prx * m2mm; thm = uy_thm * m2mm; s = 'Horizontal displacement (Y), mm.' + ' at ' + loc
                 case 'displ_x': prx = ux_prx * m2mm; thm = ux_thm * m2mm; s = 'Horizontal displacement (X), mm.' + ' at ' + loc
                 
-                case 'strain_z': prx = qz_prx; thm2 = qz_thm2; s = 'Vertical strain' + ' at ' + loc
-                case 'strain_y': prx = qy_prx; thm2 = qy_thm2; s = 'Horizontal strain (YY)' + ' at ' + loc
-                case 'strain_x': prx = qx_prx; thm2 = qx_thm2; s = 'Horizontal strain (XX)' + ' at ' + loc
+                case 'strain_z': prx = qz_prx; thm = qx_thm; thm2 = qz_thm2; s = 'Vertical strain' + ' at ' + loc
+                case 'strain_y': prx = qy_prx; thm = qy_thm; thm2 = qy_thm2; s = 'Horizontal strain (YY)' + ' at ' + loc
+                case 'strain_x': prx = qx_prx; thm = qz_thm; thm2 = qx_thm2; s = 'Horizontal strain (XX)' + ' at ' + loc
                 
                 case 'delta_stress_z': prx = sz_prx; thm = sz_thm; thm2 = sz_thm2; s = 'Vertical stress change, MPa.' + ' at ' + loc
                 case 'delta_stress_y': prx = sy_prx; thm = sy_thm; thm2 = sy_thm2; s = 'Horizontal stress change (YY), MPa.' + ' at ' + loc
@@ -316,8 +326,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
             
             plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
-            if 'strain' not in mode:
-                plt.plot(thm, z_range, label=mode + '_THM', marker='.')
+            plt.plot(thm, z_range, label=mode + '_THM', marker='.')
             if 'stress' in mode or 'strain' in mode:
                 plt.plot(thm2, z_range, label=mode + '_THM2', marker='.', color='black')
                 
@@ -378,13 +387,53 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         if wells_type in ['inj', 'doublet']:
             points_xy['inj well'] = m.inj_well_coords[:-1]
 
+    # compute with proxy in volume
+    if False:
+        points_x = np.arange(-1000, 1000, 100)
+        points_y = np.arange(-1000, 1000, 100)           
+        #points_z = np.hstack([np.arange(0, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 4000, 200)])
+        points_z = np.arange(1800, 2400, 25)
+        
+        nx, ny, nz = points_x.size, points_y.size, points_z.size
+        #print(nx, ny, nz)
+        points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
+        points = np.zeros((3, points_x_3d.size))
+        points[0, :], points[1, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
+        ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
+        ux_prx_3d = ux_prx.reshape((nx, ny, nz))
+        uy_prx_3d = uy_prx.reshape((nx, ny, nz))
+        uz_prx_3d = uz_prx.reshape((nx, ny, nz))
+        #plt.contourf(uz_prx_3d[:,10,:].transpose())  # XZ plane
+        #plt.contourf(uz_prx_3d[:,:,20])  # XY plane 
+        #plt.plot(ux_prx_3d[10,10,:])  # along Z-axis
+        # along X-axis
+        #dux_dx = np.gradient(ux_prx_3d[:,10,10], points_x) 
+        #plt.plot(ux_prx_3d[:,10,10])
+        #plt.plot(dux_dx)
+        #
+        j = 10
+        for i in range(9,12):
+            plt.plot(points_z, ux_prx_3d[i,j,:], label='prx_'+str(i), marker='.')
+            ux_thm = []
+            for p_z in points_z:
+                p = points_x[i], points_y[j], p_z
+                ux_thm.append(get_thm_displs(p)[0])
+            plt.plot(points_z, ux_thm, label='thm_'+str(i), linestyle='--', marker='.')
+            
+        plt.gca().invert_yaxis()
+        plt.legend()
+        plt.grid()
+        plt.savefig('Ux_by_depth.png')
+        plt.close()
+        exit()
+
     for k in points_xy.keys():
         point_xy = points_xy[k]
         print('plotting for point', k, 'XY=', point_xy)
         modes = ['displ_z', 'displ_y', 'displ_x']
         modes += ['strain_z', 'strain_y', 'strain_x']
         modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
-        #modes = ['strain_z']
+        #modes = ['strain_x']
 
         # compare U-Z at a line along z-axis
         z_min = 0.
@@ -434,8 +483,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
-    #case = '16_16_15'
-    case = '34_34_54'  #
+    case = '16_16_15'
+    #case = '34_34_54'  #
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -454,8 +503,8 @@ if __name__ == '__main__':
     timestep = 1
     #timestep = 13
     
-    #run_thm = True
-    run_thm = False
+    run_thm = True
+    #run_thm = False
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
