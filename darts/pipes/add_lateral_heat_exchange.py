@@ -121,7 +121,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
         # Time function evaluation
         if self.time_function_name == "Ramey":
             # Ramey's time function: Gives reasonably good results for long times but fails for times less than seven days.
-            f_t = 1 / (
+            f_t = -1 / (
                 -np.log(
                     (self.outermost_layer_OD / 2)
                     / (2 * np.sqrt(self.alpha * simulation_timer))
@@ -135,7 +135,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
                 1
                 + 1.81
                 * np.sqrt(self.alpha * simulation_timer)
-                / (self.outermost_layer_OD)
+                / (self.outermost_layer_OD / 2)
             )
         else:
             raise TypeError(
@@ -147,7 +147,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
             # For constant overall heat transfer coefficient
             # I should see if U is based on ID or OD of the pipe. I think it's based on ID.
             self.q_lateral_heat = (
-                (2 * np.pi * self.tubing_IR * self.segments_lengths)
+                (2 * np.pi * self.segments_lengths)
                 * self.Ui
                 * (self.T_earth - T_segments)
                 / f_t
