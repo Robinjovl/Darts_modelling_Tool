@@ -28,7 +28,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: C++"
 ]
-dynamic = ["scripts"]
+
+[project.scripts]
+darts = "darts.tools.cli:main"
 
 [project.urls]
 homepage = "https://darts.citg.tudelft.nl/"
