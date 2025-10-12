@@ -1,0 +1,60 @@
+{
+  "apiVersion": "darts/v1alpha1",
+  "kind": "Model",
+  "reservoir": {
+    "type": "structured",
+    "nx": 1000,
+    "ny": 1,
+    "nz": 1,
+    "dx": 1,
+    "dy": 1,
+    "dz": 1,
+    "permx": 100,
+    "permy": 100,
+    "permz": 10,
+    "poro": 1.0,
+    "depth": 1000
+  },
+  "physics": {
+    "plugin": {"type_id": "physics/Compositional@v1", "config": {"state_spec": "P", "n_points": 101, "min_p": 1, "max_p": 1000, "min_z": 1e-12, "max_z": 0.999999}},
+    "components": ["CO2", "Ions", "H2O", "CaCO3"],
+    "phases": ["gas", "wat", "sol"],
+    "property_regions": [
+      {
+        "region": 0,
+        "property_container": {"type_id": "pc/SuperPropertyContainer@v1", "config": {"components_name": ["CO2", "Ions", "H2O", "CaCO3"], "phases_name": ["gas", "wat", "sol"], "Mw": [44.01, 50.043, 18.015, 100.086], "min_z": 1e-12, "temperature": 1.0, "nc_sol": 1, "np_sol": 1, "rock_comp": 1e-7}},
+        "plugins": {
+          "flash_ev": {"type_id": "flash/ConstantK@v1", "config": {"K": [10.0, 1e-12, 0.1], "epsilon": 1e-12}},
+          "density_ev": {
+            "gas": {"type_id": "density/DensityBasic@v1", "config": {"compr": 1e-4, "dens0": 100}},
+            "wat": {"type_id": "density/DensityBasic@v1", "config": {"compr": 1e-6, "dens0": 1000}},
+            "sol": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 2000.0}}
+          },
+          "viscosity_ev": {
+            "gas": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 0.1}},
+            "wat": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1.0}}
+          },
+          "rel_perm_ev": {
+            "gas": {"type_id": "relperm/PhaseRelPerm@v1", "config": {"phase": "gas"}},
+            "wat": {"type_id": "relperm/PhaseRelPerm@v1", "config": {"phase": "wat"}}
+          },
+          "diffusion_ev": {
+            "gas": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1e-9}},
+            "wat": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1e-9}}
+          }
+        }
+      }
+    ]
+  },
+  "wells": {
+    "wells": [
+      {"name": "I1", "perforations": [{"ijk": [1, 1, 1]}],
+       "controls": {"inj_rate": 0.2, "rate_type": "MOLAR_RATE", "phase_name": "gas", "inj_composition": [0.9999999998, 1e-12, 0.0]}},
+      {"name": "P1", "perforations": [{"ijk": [1000, 1, 1]}],
+       "controls": {"prod_bhp": 50.0}}
+    ]
+  },
+  "initial_conditions": {"by_array": {"pressure": 95, "CO2": 1e-12, "Ions": 0.5, "H2O": 0.499999999999}} ,
+  "sim_params": {"first_ts": 0.001, "mult_ts": 2.0, "max_ts": 1.0, "runtime": 1000, "tol_newton": 1e-5, "tol_linear": 1e-6, "it_newton": 10, "it_linear": 50, "newton_tol_stationary": 1e-5},
+  "output": {"folder": "output", "precision": "d"}
+}
