@@ -524,7 +524,7 @@ if __name__ == '__main__':
     #timestep = 13
     
     run_thm = True
-    run_thm = False
+    #run_thm = False
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
