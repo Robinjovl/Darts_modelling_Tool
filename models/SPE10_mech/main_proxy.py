@@ -327,8 +327,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             
             plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
             plt.plot(thm, z_range, label=mode + '_THM', marker='.')
-            if 'stress' in mode or 'strain' in mode:
-                plt.plot(thm2, z_range, label=mode + '_THM2', marker='.', color='black')
+            #if 'stress' in mode or 'strain' in mode:
+            #    plt.plot(thm2, z_range, label=mode + '_THM2', marker='.', color='black')
                 
             plt.gca().invert_yaxis()
             plt.xlabel(s)
@@ -483,8 +483,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
-    case = '16_16_15'
-    #case = '34_34_54'  #
+    #case = '16_16_15'
+    case = '34_34_54'  #
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -504,7 +504,7 @@ if __name__ == '__main__':
     #timestep = 13
     
     run_thm = True
-    #run_thm = False
+    run_thm = False
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:

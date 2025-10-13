@@ -340,9 +340,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 stress = cell_data['delta_tot_stress'][-1]
                 E = cell_data['E'][-1]
                 poisson = cell_data['poisson'][-1]
-                cell_data['strain'][-1][:, 0] = (stress[:, 0] - poisson*(stress[:, 1]+stress[:, 2]))/E
-                cell_data['strain'][-1][:, 1] = (stress[:, 1] - poisson*(stress[:, 0]+stress[:, 2]))/E
-                cell_data['strain'][-1][:, 2] = (stress[:, 2] - poisson*(stress[:, 0]+stress[:, 1]))/E
+                cell_data['strain'][-1][:, 0] = (stress[:, 0] - poisson * (stress[:, 1] + stress[:, 2])) / E
+                cell_data['strain'][-1][:, 1] = (stress[:, 1] - poisson * (stress[:, 0] + stress[:, 2])) / E
+                cell_data['strain'][-1][:, 2] = (stress[:, 2] - poisson * (stress[:, 0] + stress[:, 1])) / E
                 for k in range(3,6):  # shear part
                     cell_data['strain'][-1][:, k] = (2 + 2 * poisson) * stress[:, k]/E
 
