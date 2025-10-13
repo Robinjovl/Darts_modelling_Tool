@@ -213,8 +213,11 @@ class Model(THMCModel):
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
         middle = centroids_3d[:, 0].mean(), centroids_3d[:, 1].mean(), self.well_init_depth #centroids_3d[:, 2].mean()
 
-        self.prod_well_coords = [middle[0] - 250, middle[1], middle[2]]
-        self.inj_well_coords = [middle[0] + 250, middle[1], middle[2]]
+        shift = 0.  # for one well case, symmetric
+        #shift = 250.
+
+        self.prod_well_coords = [middle[0] - shift, middle[1], middle[2]]
+        self.inj_well_coords = [middle[0] + shift, middle[1], middle[2]]
 
 
     def set_wells(self):

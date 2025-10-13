@@ -83,7 +83,6 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     qy_last = np.array(msh_last.cell_data['strain'])[0, :, 1]  #  YY
     qz_last = np.array(msh_last.cell_data['strain'])[0, :, 2]  # ZZ
     
-
     if 'delta_pressure' in msh_last.cell_data.keys():
         delta_pressure = np.array(msh_last.cell_data['delta_pressure']).flatten()
     else:
@@ -308,9 +307,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 case 'displ_y': prx = uy_prx * m2mm; thm = uy_thm * m2mm; s = 'Horizontal displacement (Y), mm.' + ' at ' + loc
                 case 'displ_x': prx = ux_prx * m2mm; thm = ux_thm * m2mm; s = 'Horizontal displacement (X), mm.' + ' at ' + loc
                 
-                case 'strain_z': prx = qz_prx; thm = qx_thm; thm2 = qz_thm2; s = 'Vertical strain' + ' at ' + loc
+                case 'strain_z': prx = qz_prx; thm = qz_thm; thm2 = qz_thm2; s = 'Vertical strain' + ' at ' + loc
                 case 'strain_y': prx = qy_prx; thm = qy_thm; thm2 = qy_thm2; s = 'Horizontal strain (YY)' + ' at ' + loc
-                case 'strain_x': prx = qx_prx; thm = qz_thm; thm2 = qx_thm2; s = 'Horizontal strain (XX)' + ' at ' + loc
+                case 'strain_x': prx = qx_prx; thm = qx_thm; thm2 = qx_thm2; s = 'Horizontal strain (XX)' + ' at ' + loc
                 
                 case 'delta_stress_z': prx = sz_prx; thm = sz_thm; thm2 = sz_thm2; s = 'Vertical stress change, MPa.' + ' at ' + loc
                 case 'delta_stress_y': prx = sy_prx; thm = sy_thm; thm2 = sy_thm2; s = 'Horizontal stress change (YY), MPa.' + ' at ' + loc
@@ -379,7 +378,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    points_xy['center'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    points_xy['center'] = [450., 450.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
 
     if False:
         if wells_type in ['prod', 'doublet']:
@@ -403,8 +402,17 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         ux_prx_3d = ux_prx.reshape((nx, ny, nz))
         uy_prx_3d = uy_prx.reshape((nx, ny, nz))
         uz_prx_3d = uz_prx.reshape((nx, ny, nz))
+        
+        # save to pkl
+        displs = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
+        import pickle
+        with open("displs_prx.pkl", "wb") as f:   # note 'wb' = write binary
+            pickle.dump(displs, f)
+        
+        #rsv_idx = np.where((self.rsv_top < m.reservoir.Zc) & (m.reservoir.Zc < self.rsv_top)).min()
+        
         #plt.contourf(uz_prx_3d[:,10,:].transpose())  # XZ plane
-        #plt.contourf(uz_prx_3d[:,:,20])  # XY plane 
+        plt.contourf(uz_prx_3d[:,:,20])  # XY plane 
         #plt.plot(ux_prx_3d[10,10,:])  # along Z-axis
         # along X-axis
         #dux_dx = np.gradient(ux_prx_3d[:,10,10], points_x) 
@@ -425,7 +433,19 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         plt.grid()
         plt.savefig('Ux_by_depth.png')
         plt.close()
-        exit()
+        
+        if False:  # write to vtk, doesn't work
+            m.output_directory = 'prx_cpp_' + physics_type + '_' + wells_type + '_' + case   
+            from darts.models.thmc_model import THMCModel
+            m.init()
+            #super(THMCModel, m).init()  # to have m.restart created
+            m.restart = False
+            m.set_output(output_folder=m.output_directory)
+            os.mkdir(m.output_directory)
+            timesteps = np.array([0.0])
+            property_array = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
+            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=0)
+            exit()
 
     for k in points_xy.keys():
         point_xy = points_xy[k]
