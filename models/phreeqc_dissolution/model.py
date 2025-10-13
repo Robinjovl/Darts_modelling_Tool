@@ -491,6 +491,9 @@ class Model(CICDModel):
         # for i in range(n_matrix, n_matrix + 2):
         #     self.initial_comp[i, :] = np.array(self.inj_stream)
 
+        # ensure passing compositional correction with zero update
+        self.initial_comp[self.initial_comp < self.min_z] = self.min_z
+
         for i in range(self.n_res_blocks, self.n_res_blocks + 2):
             self.initial_comp[i, :] = np.array(self.initial_comp[0, :])
 
