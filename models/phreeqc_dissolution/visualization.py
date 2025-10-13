@@ -11,6 +11,7 @@ matplotlib.use('pgf')
 matplotlib.rc('pgf', texsystem='pdflatex',
                preamble=(
                     r'\usepackage{color}'
+                    r'\usepackage{amsmath}'
                     r'\definecolor{violet}{RGB}{238,130,238}'
                     r'\definecolor{orange}{RGB}{255,165,0}'
                ))
@@ -21,6 +22,24 @@ plt.rc('ytick',labelsize=16)
 plt.rc('legend',fontsize=16)
 from PIL import Image
 import glob
+
+def extract_data(path):
+    times = []
+    time_steps = []
+    cfl_numbers = []
+
+    # Regular expression pattern to match the lines with T, DT, and CFL values
+    pattern = re.compile(r"T = ([0-9.e+-]+), DT = ([0-9.e+-]+).*?CFL=([0-9.e+-]+)")
+
+    # Open and process the log file
+    with open(path, 'r') as file:
+        for line in file:
+            match = pattern.search(line)
+            if match:
+                times.append(float(match.group(1)))
+                time_steps.append(float(match.group(2)))
+                cfl_numbers.append(float(match.group(3)))
+    return times, time_steps, cfl_numbers
 
 def plot_new_profiles(m):
     props_names = m.physics.property_operators[next(iter(m.physics.property_operators))].props_name
@@ -365,24 +384,6 @@ def write_2d_output_for_paper(paths):
         mesh.save(output_path)
 
 def plot_max_cfl(paths, labels, nx, linestyle, colors):
-
-    def extract_data(path):
-        times = []
-        time_steps = []
-        cfl_numbers = []
-
-        # Regular expression pattern to match the lines with T, DT, and CFL values
-        pattern = re.compile(r"T = ([0-9.e+-]+), DT = ([0-9.e+-]+).*?CFL=([0-9.e+-]+)")
-
-        # Open and process the log file
-        with open(path, 'r') as file:
-            for line in file:
-                match = pattern.search(line)
-                if match:
-                    times.append(float(match.group(1)))
-                    time_steps.append(float(match.group(2)))
-                    cfl_numbers.append(float(match.group(3)))
-        return times, time_steps, cfl_numbers
 
     # colors = ['b', 'r', 'g', 'm', 'cyan']
     lw = 1
@@ -835,6 +836,289 @@ def plot_properties_from_h5(h5_paths, time_indices, output_folder, fname, props_
     fig.savefig(outname, dpi=300)
     plt.close(fig)
 
+def plot_convergence(h5_paths, labels, output_figure, kind, time_index: int = -1, fs: int = 18, ms: int = 7, ls: int = 16):
+    fig, ax = plt.subplots(2, 1, figsize=(8, 7), sharex=True,
+                           gridspec_kw={'height_ratios': [5, 1]})
+    colors = ['b', 'r', 'g', 'm']
+    linestyles = ['-', '-', '-', '-']
+
+
+    # ax2 = ax.twinx()
+    # ax.set_xscale('log')
+    # To avoid bar overlap on a log x-axis, use multiplicative offsets around 1.0
+    n_series = len(h5_paths)
+    if n_series == 1:
+        offset_factors = [5.0]
+    else:
+        # Spread bars gently around the original x (centered at 1.0)
+        offset_factors = np.geomspace(0.88, 1.12, n_series).tolist()
+
+    # Store bar handles to build a combined legend that references line color per label
+    bar_handles = []
+    line_handles = []
+
+    max_dt_all_series = 0.0
+    min_error = 1e+6
+    for i, paths in enumerate(h5_paths):
+        # finest solution
+        with h5py.File(paths[-1], 'r') as f:
+            finest_vars = f['dynamic/X'][time_index]
+            n_cells = finest_vars.shape[0]
+            times = f['dynamic/time'][:] * 24.0
+            finest_x = 0.1 * np.arange(n_cells) / n_cells + 0.05 / n_cells
+            finest_dx = 0.1 / n_cells
+            finest_t = times[time_index]
+
+        dx = []
+        omega = []
+        max_dt = []
+        max_cfl = []
+        for j in range(len(paths) - 1):
+            path = paths[j]
+            with h5py.File(path, 'r') as f:
+                # read property names and data
+                var_names = f['dynamic/variable_names'].asstr()[...]
+                vars = f['dynamic/X'][time_index]
+                times = f['dynamic/time'][:] * 24.0
+
+            path_well_data = '\\'.join(path.split('\\')[:-1] + ['well_data.h5'])
+            with h5py.File(path_well_data, 'r') as f:
+                # read property names and data
+                dt = np.diff(f['dynamic/time'][14:] * 24.0).max()
+
+            # path_log = '\\'.join(path.split('\\')[:-1] + ['log.txt'])
+            # _, _, cfl = extract_data(path_log)
+            # max_cfl.append(max(cfl))
+
+            n_cells = vars.shape[0]
+            n_vars = vars.shape[1]
+            x = 0.1 * np.arange(n_cells) / n_cells + 0.05 / n_cells
+            cur_dx = 0.1 / n_cells
+
+            assert(finest_t == times[time_index])
+
+            norm = 0.0
+            for k in range(n_vars):
+                finest_var_proj = np.interp(x, finest_x, finest_vars[:, k])
+                norm += np.sum((vars[:, k] - finest_var_proj) ** 2) / np.sum(finest_var_proj ** 2)
+            norm /= n_vars
+
+            if kind == 'spatial':
+                dx.append(cur_dx)
+            elif kind == 'obl':
+                obl_mult = 3
+                dx.append(1 / obl_mult ** j)
+
+            omega.append(np.sqrt(norm))
+            max_dt.append(dt)
+
+        line, = ax[0].loglog(dx, omega, color=colors[i], linestyle=linestyles[i], markerfacecolor='none', marker='s', markersize=ms, label=labels[i])
+        max_dt_all_series = max(max_dt_all_series, np.max(max_dt))
+        min_error = min(min_error, np.min(omega))
+        # print(max_dt)
+
+        line_handles.append(line)
+
+        # ---- Bars of max_dt (right axis) ----
+        # Use multiplicative x-offset so bars don't overlap on a log scale
+        x_pos = np.array(dx, dtype=float) * offset_factors[i]
+        # Width: a small fraction of x; on log axes this is data-units, so keep modest
+        bar_width = np.array(dx, dtype=float) * 0.05
+
+        bars = ax[1].bar(
+            x_pos, max_dt,
+            width=bar_width,
+            align='center',
+            alpha=0.6,
+            edgecolor='k',
+            linewidth=1.0,
+            color=colors[i]
+        )
+        # Keep one handle per label for the legend (use the first bar in the container)
+        bar_handles.append(bars.patches[0] if len(bars.patches) else bars)
+
+    if kind == 'obl':
+        x_label = r'$\Delta x^{OBL} / \Delta x^{OBL}_0$'
+    elif kind == 'spatial':
+        x_label = r'$\Delta x$, m'
+
+    ax[1].set_xlabel(x_label, fontsize=fs)
+    ax[0].set_ylabel(r'$\left||\boldsymbol{\omega}_h - \boldsymbol{\omega}\right||$', fontsize=fs)
+    ax[0].legend(loc='upper left', prop={'size': ls})
+    ax[0].grid(True)
+    # ax[1].grid(True)
+
+    # ax2.spines['right'].set_visible(False)  # hide the right spine
+    # ax2.tick_params(right=False, labelright=False)  # hide right ticks and their labels
+    # ax2.get_yaxis().set_visible(False)  # hide the entire right y-axis (safer)
+    ax[1].set_ylabel(r'$\max(\Delta t)$, h', fontsize=fs-2)
+    # ax[1].set_ylim(top=4 * max_dt_all_series)
+    # ax[0].set_ylim(bottom=0.3 * min_error)
+
+    fig.tight_layout()
+    fig.savefig(output_figure, dpi=300)
+    # plt.show()
+    plt.close(fig)
+
+def plot_temporal_convergence_1d(h5_paths, output_figure: str, output_cfl: str, labels: list, time_index: int = -1,
+                                 fs: int = 18, ms: int = 7, ls: int = 14):
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    fig1, ax1 = plt.subplots(1, 1, figsize=(8, 6))
+    colors = ['b', 'r', 'g', 'm', 'orange']
+    linestyles = [
+        'solid',  # fine
+        'dotted',  # fine
+        'dashed',  # fine
+        'dashdot',  # fine
+        (0, (1, 3)),  # replaces 'loosely dotted'
+        (0, (3, 1, 1, 1))  # replaces 'densely dotted'
+    ]
+
+    for i, paths in enumerate(h5_paths):
+        # finest solution
+        with h5py.File(paths[-1], 'r') as f:
+            finest_vars = f['dynamic/X'][time_index]
+            n_cells = finest_vars.shape[0]
+            times = f['dynamic/time'][:] * 24.0
+            finest_x = 0.1 * np.arange(n_cells) / n_cells + 0.05 / n_cells
+            finest_t = times[time_index]
+
+        dx = []
+        omega = []
+        max_dt = []
+        for j in range(len(paths) - 1):
+            path = paths[j]
+            with h5py.File(path, 'r') as f:
+                # read property names and data
+                var_names = f['dynamic/variable_names'].asstr()[...]
+                vars = f['dynamic/X'][time_index]
+                times = f['dynamic/time'][:] * 24.0
+
+            assert (finest_t == times[time_index])
+
+            path_well_data = '\\'.join(path.split('\\')[:-1] + ['well_data.h5'])
+            with h5py.File(path_well_data, 'r') as f:
+                # read property names and data
+                start_time_id = np.diff(f['dynamic/time'][:]).argmin() + 1
+                times = f['dynamic/time'][start_time_id:] * 24.0
+                dt_max = np.diff(times).max()
+                cfl = f['dynamic/CFL_max'][start_time_id:]
+
+            n_cells = vars.shape[0]
+            n_vars = vars.shape[1]
+            x = 0.1 * np.arange(n_cells) / n_cells + 0.05 / n_cells
+            cur_dx = 0.1 / n_cells
+
+            norm = 0.0
+            for k in range(n_vars):
+                finest_var_proj = np.interp(x, finest_x, finest_vars[:, k])
+                norm += np.sum((vars[:, k] - finest_var_proj) ** 2) / np.sum(finest_var_proj ** 2)
+            norm /= n_vars
+
+            omega.append(np.sqrt(norm))
+            max_dt.append(dt_max)
+
+            ax1.loglog(times, cfl, color=colors[i], linestyle=linestyles[j], label=labels[i] + r': $\max(\Delta t)$=' + str(round(dt_max, 3)) + ' h')
+
+        line, = ax.loglog(max_dt, omega, color=colors[i], linestyle='-', markerfacecolor='none', marker='s', markersize=ms, label=labels[i])
+
+    # fig1
+    ax.set_xlabel(r'$\max(\Delta t)$, h', fontsize=fs)
+    ax.set_ylabel(r'$\left||\boldsymbol{\omega}_h - \boldsymbol{\omega}\right||$', fontsize=fs)
+    ax.legend(loc='upper left', prop={'size': ls})
+    ax.grid(True)
+    fig.tight_layout()
+    fig.savefig(output_figure, dpi=300)
+    plt.close(fig)
+
+    # fig2
+    ax1.set_xlabel(r'$t$, h', fontsize=fs)
+    ax1.set_ylabel(r'$\max(CFL)$', fontsize=fs)
+    ax1.legend(loc='upper left', prop={'size': ls - 6})
+    ax1.set_ylim(bottom=1e-2)
+    ax1.grid(True)
+    fig1.tight_layout()
+    fig1.savefig(output_cfl, dpi=300)
+    plt.close(fig1)
+
+def convergence_pictures():
+    # spatial convergence
+    h5_paths = [['.\\convergence_study\\output_1D_40_calcite_acidic_neutral_carbonate_multilinear_3\\nx40.h5',
+                 '.\\convergence_study\\output_1D_200_calcite_acidic_neutral_carbonate_multilinear_3\\nx200.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_3\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_5000_calcite_acidic_neutral_carbonate_multilinear_3\\nx5000.h5'],
+                ['.\\convergence_study\\output_1D_40_calcite_acidic_neutral_carbonate_multilinear_3_gas\\nx40.h5',
+                 '.\\convergence_study\\output_1D_200_calcite_acidic_neutral_carbonate_multilinear_3_gas\\nx200.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_3_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_5000_calcite_acidic_neutral_carbonate_multilinear_3_gas\\nx5000.h5'],
+                ['.\\convergence_study\\output_1D_40_calcite_dolomite_acidic_neutral_carbonate_multilinear_3\\nx40.h5',
+                 '.\\convergence_study\\output_1D_200_calcite_dolomite_acidic_neutral_carbonate_multilinear_3\\nx200.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_3\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_5000_calcite_dolomite_acidic_neutral_carbonate_multilinear_3\\nx5000.h5'],
+                ['.\\convergence_study\\output_1D_40_calcite_dolomite_acidic_neutral_carbonate_multilinear_3_gas\\nx40.h5',
+                 '.\\convergence_study\\output_1D_200_calcite_dolomite_acidic_neutral_carbonate_multilinear_3_gas\\nx200.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_3_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_5000_calcite_dolomite_acidic_neutral_carbonate_multilinear_3_gas\\nx5000.h5']
+                ]
+    labels = ['1ph CaCO3', '2ph CaCO3', '1ph CaCO3-CaMg(CO3)2', '2ph CaCO3-CaMg(CO3)2']
+    output_figure = '.\\convergence_study\\spatial_conv_new.png'
+    # plot_convergence(h5_paths=h5_paths, labels=labels, output_figure=output_figure, kind='spatial')
+
+    # OBL convergence
+    h5_paths = [['.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_1\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_3\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_9\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_27\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_81\\nx1000.h5'],
+                ['.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_1_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_3_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_9_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_27_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_acidic_neutral_carbonate_multilinear_81_gas\\nx1000.h5'],
+                ['.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_1\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_3\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_9\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_27\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_81\\nx1000.h5'],
+                ['.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_1_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_3_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_9_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_27_gas\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_acidic_neutral_carbonate_multilinear_81_gas\\nx1000.h5']
+                ]
+    labels = ['1ph CaCO3', '2ph CaCO3', '1ph CaCO3-CaMg(CO3)2', '2ph CaCO3-CaMg(CO3)2']
+    output_figure = '.\\convergence_study\\obl_conv_new.png'
+    # plot_convergence(h5_paths=h5_paths, labels=labels, output_figure=output_figure, kind='obl')
+
+    # temporal convergence
+    h5_paths = [['.\\convergence_study\\output_1D_1000_calcite_3_0.1_ts_0.01\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_3_0.1_ts_0.001\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_3_0.1_ts_0.0001\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_3_0.1_ts_1e-05\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_3_0.1_ts_1e-06\\nx1000.h5'],
+                ['.\\convergence_study\\output_1D_1000_calcite_dolomite_9_0.1_ts_0.001\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_9_0.1_ts_0.0001\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_9_0.1_ts_1e-05\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_9_0.1_ts_1e-06\\nx1000.h5'],
+                ['.\\convergence_study\\output_1D_1000_calcite_9_1.0_ts_0.01\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_9_1.0_ts_0.001\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_9_1.0_ts_0.0001\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_9_1.0_ts_1e-05\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_9_1.0_ts_1e-06\\nx1000.h5'],
+                ['.\\convergence_study\\output_1D_1000_calcite_dolomite_9_1.0_ts_0.001\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_9_1.0_ts_0.0001\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_9_1.0_ts_1e-05\\nx1000.h5',
+                 '.\\convergence_study\\output_1D_1000_calcite_dolomite_9_1.0_ts_1e-06\\nx1000.h5'],
+                ]
+    labels = [r'1ph CaCO3, $\Delta x^{OBL} / \Delta x_0^{OBL} = 3$',
+              r'1ph CaCO3-CaMg(CO3)2, $\Delta x^{OBL} / \Delta x_0^{OBL} = 9$',
+              r'2ph CaCO3, $\Delta x^{OBL} / \Delta x_0^{OBL} = 9$',
+              r'2ph CaCO3-CaMg(CO3)2, $\Delta x^{OBL} / \Delta x_0^{OBL} = 9$',
+              ]
+    output_figure = '.\\convergence_study\\temp_conv_new.png'
+    output_cfl = '.\\convergence_study\\cfl_conv_new.png'
+    plot_temporal_convergence_1d(h5_paths=h5_paths, labels=labels, output_figure=output_figure, output_cfl=output_cfl)
+
 if __name__ == '__main__':
     # output_folder = 'c:\work\packages\open-darts\models\phreeqc_dissolution\data_for_seminar\output_1D_1000'
     ffmpeg_path = r'c:\work\packages\ffmpeg-6.0\bin\ffmpeg.exe'
@@ -866,25 +1150,55 @@ if __name__ == '__main__':
     #                                   output_folder=output_folder, ffmpeg_path=ffmpeg_path,
     #                                   nx_fig=12, ny_fig=8, ls=12)
 
-    # 1ph
-    output_folder = 'output_1D_200_calcite_acidic_neutral_carbonate_multilinear_3_1ph'
+    # 1ph calcite
+    output_folder = 'output_1D_200_calcite_acidic_neutral_carbonate_multilinear_9_1ph_gas_spec'
     h5_paths = [os.path.join(output_folder, 'nx200.h5')]
     time_indices = [0, 1, 2, 10]
     plot_unknowns_from_h5(h5_paths=h5_paths, output_folder=output_folder,
                             fname='vars_calcite_1ph_1D.png', time_indices=time_indices, plot_saturation=True)
     props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+',
-             'z(CO2)2', 'zCa+2', 'zOH-', 'zH+']#,
-             #'zCH4', 'zCO3-2', 'zCaCO3', 'zCaOH+']
+             'z(CO2)2', 'zCa+2', 'SR_CaCO3', 'rate_CaCO3', 'zOH-', 'zH+',
+             'zCH4', 'zCO3-2', 'zCaCO3', 'zCaOH+', 'zH2', 'zO2']
     plot_properties_from_h5(h5_paths=h5_paths, time_indices=time_indices, output_folder=output_folder,
-                            fname='props_calcite_1ph_1D.png', props_to_plot=props, nrows=2, ncols=4)
-    # 2ph
-    output_folder = 'output_1D_200_calcite_acidic_neutral_carbonate_multilinear_3_2ph'
+                            fname='props_calcite_1ph_1D.png', props_to_plot=props, nrows=2, ncols=8)
+    # 2ph calcite
+    output_folder = 'output_1D_200_calcite_acidic_neutral_carbonate_multilinear_9_2ph_gas_spec'
     h5_paths = [os.path.join(output_folder, 'nx200.h5')]
     time_indices = [0, 1, 2, 10]
     plot_unknowns_from_h5(h5_paths=h5_paths, output_folder=output_folder,
                             fname='vars_calcite_2ph_1D.png', time_indices=time_indices, plot_saturation=True)
-    props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+',
-             'z(CO2)2', 'zCa+2', 'zOH-', 'zH+', 'zCO2(g)', 'zH2O(g)']#,
-             #'zCH4', 'zCO3-2', 'zCaCO3', 'zCaOH+']
+    # props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+',
+    #          'z(CO2)2', 'zCa+2', 'zOH-', 'zH+',
+    #          'zCH4', 'zCO3-2', 'zCaCO3', 'zCaOH+', 'zH2', 'zO2', 'zCO2(g)', 'zH2O(g)']
+    props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+', 'z(CO2)2',
+             'zCa+2', 'zCO2(g)', 'zH2O(g)', 'SR_CaCO3', 'rate_CaCO3']
     plot_properties_from_h5(h5_paths=h5_paths, time_indices=time_indices, output_folder=output_folder,
                             fname='props_calcite_2ph_1D.png', props_to_plot=props, nrows=2, ncols=5)
+    # 1ph dolomite
+    output_folder = 'output_1D_200_calcite_dolomite_magnesite_acidic_neutral_carbonate_multilinear_3_1ph_1'
+    h5_paths = [os.path.join(output_folder, 'nx200.h5')]
+    time_indices = [0, 1, 2, 10]
+    plot_unknowns_from_h5(h5_paths=h5_paths, output_folder=output_folder,
+                            fname='vars_calcite_dolomite_magnesite_1ph_1D.png', time_indices=time_indices, n_cols=6, plot_saturation=True)
+    props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+',
+             'z(CO2)2', 'zCa+2', 'SR_CaCO3', 'rate_CaCO3', 'zOH-', 'zH+',
+             'zCH4', 'zCO3-2', 'zCaCO3', 'zCaOH+', 'zH2', 'zO2',
+             'zMgCO3', 'zMg+2', 'zMgOH+', 'zMgHCO3+', 'SR_CaMg(CO3)2', 'rate_CaMg(CO3)2',
+             'SR_MgCO3', 'rate_MgCO3']
+    plot_properties_from_h5(h5_paths=h5_paths, time_indices=time_indices, output_folder=output_folder,
+                            fname='props_calcite_dolomite_magnesite_1ph_1D.png', props_to_plot=props, nrows=2, ncols=12, nx_fig=34)
+    # 2ph dolomite
+    output_folder = 'output_1D_200_calcite_acidic_neutral_carbonate_multilinear_9_2ph_gas_spec'
+    h5_paths = [os.path.join(output_folder, 'nx200.h5')]
+    time_indices = [0, 1, 2, 10]
+    plot_unknowns_from_h5(h5_paths=h5_paths, output_folder=output_folder,
+                            fname='vars_calcite_dolomite_2ph_1D.png', time_indices=time_indices, plot_saturation=True)
+    # props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+',
+    #          'z(CO2)2', 'zCa+2', 'zOH-', 'zH+',
+    #          'zCH4', 'zCO3-2', 'zCaCO3', 'zCaOH+', 'zH2', 'zO2', 'zCO2(g)', 'zH2O(g)']
+    props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+', 'z(CO2)2',
+             'zCa+2', 'zCO2(g)', 'zH2O(g)', 'SR_CaCO3', 'rate_CaCO3']
+    plot_properties_from_h5(h5_paths=h5_paths, time_indices=time_indices, output_folder=output_folder,
+                            fname='props_calcite_dolomite_2ph_1D.png', props_to_plot=props, nrows=2, ncols=5)
+
+    # convergence_pictures()
