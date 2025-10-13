@@ -168,6 +168,7 @@ class Model(CICDModel):
 
         self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=200)
         self.params.newton_type = sim_params.newton_local_chop
+        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
         # self.params.linear_type = sim_params.cpu_superlu
         self.params.newton_params[0] = 0.2
         self.runtime = 1

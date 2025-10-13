@@ -10,7 +10,8 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
                    output: bool = False, interpolator: str = 'multilinear', minerals: list = ['calcite'],
                    kinetic_mechanisms: list = ['acidic', 'neutral', 'carbonate'], output_folder: str = None,
                    n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
-                   inj_rate: float = None, perm_poro: str = 'power_8', platform: str = 'cpu'):
+                   inj_rate: float = None, perm_poro: str = 'power_8', platform: str = 'cpu',
+                   ni_dt_increase_cutoff: int = 5, ni_dt_decrease_cutoff: int = 8, n_good_ts: int = 10, report_timesteps = None):
     # Make a folder
     if output_folder is None:
         output_folder = f'output_{domain}_{nx}_' + '_'.join(minerals) + \
@@ -26,7 +27,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
               co2_injection=co2_injection, h2o_injection=h2o_injection, inj_rate=inj_rate, perm_poro=perm_poro)
 
     # Initialize model
-    m.init(itor_type=interpolator, platform=platform)
+    m.init(itor_type=interpolator, platform=platform, verbose=True)
     m.physics.engine.n_solid = len(minerals)
     m.set_output(output_folder=output_folder, sol_filename=f'nx{nx}.h5')
 
@@ -49,9 +50,9 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             if domain == '1D': return plot_profiles(m, output_folder=output_folder)
             else: m.output.output_to_vtk(ith_step=ith_step)
 
-    m.n_good_ts = 10 # 6
-    m.ni_dt_increase_cutoff = 3 # 5
-    m.ni_dt_decrease_cutoff = 5 # 8
+    m.n_good_ts = n_good_ts
+    m.ni_dt_increase_cutoff = ni_dt_increase_cutoff
+    m.ni_dt_decrease_cutoff = ni_dt_decrease_cutoff
 
     # intialization without injection
     if minerals == ['calcite']:
@@ -103,24 +104,31 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         plot(m=m, ith_step=ith_step)
         ith_step += 1
 
-        report_timesteps = np.array([0.001, 0.001, 0.001, 0.002, 0.005,
-                                            0.01, 0.01, 0.02, 0.05,
-                                            0.1, 0.1, 0.2, 0.5]) * 1e-4 / m.inj_rate
-        m.data_ts.dt_first = m.prev_dt = 1.e-6 * 1e-3 / m.inj_rate
+        if report_timesteps is None:
+            report_timesteps = np.array([0.001, 0.001, 0.001, 0.002, 0.005,
+                                                0.01, 0.01, 0.02, 0.05,
+                                                0.1, 0.1, 0.2]) * 1e-4 / m.inj_rate
+            default_run = True
+        else:
+            default_run = False
+
+        m.data_ts.dt_first = m.prev_dt = min(1.e-6 * 1e-3 / m.inj_rate, m.data_ts.dt_max)
         m.data_ts.dt_mult = 1.5
         for rts in report_timesteps:
             m.run(days=rts, restart_dt=m.prev_dt)
             plot(m=m, ith_step=ith_step)
             ith_step += 1
 
-        ts_after_bt = 0
-        while ts_after_bt < 6:
-            m.run(days=report_timesteps.max(), restart_dt=m.prev_dt)
-            plot(m=m, ith_step=ith_step)
-            ith_step += 1
+        if default_run:
+            ts_after_bt = 0
+            while ts_after_bt < 5:
+                m.run(days=report_timesteps.max(), restart_dt=m.prev_dt)
+                plot(m=m, ith_step=ith_step)
+                ith_step += 1
 
-            if m.reservoir.wh_propagation_ratio > 0.999:
-                ts_after_bt += 1
+                if m.reservoir.wh_propagation_ratio > 0.999:
+                    ts_after_bt += 1
+
     elif domain == '3D':
         m.data_ts.dt_mult = 1.5
         plot(m=m, ith_step=ith_step)
@@ -166,18 +174,24 @@ if __name__ == '__main__':
     # nx = 50
     # minerals = ['calcite']#, 'dolomite', 'magnesite']
     # max_ts = 6.e-5 * 1e-4 / inj_rate
+    # max_ts = 1.e-6
+    # co2_injection = 1.0
     # run_simulation(domain='2D', nx=nx, output=True, max_ts=max_ts,
     #                 n_obl_mult=n_obl_mult,
     #                 interpolator='multilinear',
-    #                 output_folder=f'output_2D_{nx}_' + '_'.join(minerals) + f'_{n_obl_mult}_{inj_rate}',
-    #                 poro_filename='calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
+    #                 output_folder=f'output_2D_{nx}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}',
+    #                 poro_filename='old_calculations/calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
     #                 minerals=minerals,
     #                 kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
     #                 h2o_injection=1.1,
-    #                 co2_injection=0.1,
-    #                 inj_rate=inj_rate,
+    #                 co2_injection=co2_injection,
+    #                 #inj_rate=inj_rate,
     #                 perm_poro='power_8',
-    #                 platform='cpu')
+    #                 platform='cpu',
+    #                 ni_dt_increase_cutoff=4,
+    #                 ni_dt_decrease_cutoff=6,
+    #                 n_good_ts=15,
+    #                 report_timesteps=6 * [5e-6])
 
     # 3D
     # run_simulation(domain='3D', max_ts=2.e-3, output=False,
