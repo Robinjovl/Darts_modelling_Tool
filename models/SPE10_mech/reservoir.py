@@ -426,13 +426,13 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         vol_strain_tran[:] = 0.0
         vol_strain_rhs[:] = 0.0
 
-    def create_vtk_wells(self, output_directory: str, prolongation=-3000, tube_radius=20):
+    def create_vtk_wells(self, output_directory: str, prolongation=-3000, tube_radius=20, dz=10):
         '''
         creates a file wells.vtk with a tube per well based on its first perforation
         :param output_directory:
         :return:
         '''
-        return
+    
         import vtk
         well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
         # Append multiple cylinders into one polydata
@@ -467,15 +467,19 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             return tubeFilter.GetOutput()
 
         for w in self.wells:
+            is_first = True 
             for p in w.perforations:
                 well_block, res_block_local, well_index, well_indexD = p
-                #c = self.centroids_all_cells[res_block_local].values
-                c = np.array(self.centroids[res_block_local].values)
+                c = np.array(self.centroids[res_block_local].values, copy=True)
                 c[2] = -c[2]
-                cyl = create_tube(c, prolongation=prolongation, tube_radius=tube_radius)
+                if is_first:
+                    cyl = create_tube(c, prolongation=prolongation, tube_radius=tube_radius)
+                    appendFilter.AddInputData(cyl)
+                    is_first = False
+                c[2] -= dz * 0.5
+                cyl = create_tube(c, prolongation=dz, tube_radius=tube_radius * 2)
                 appendFilter.AddInputData(cyl)
-                #prolongation = 0
-                break  # use only the first perf
+                #break  # use only the first perf
 
         # Update the append filter to combine the polydata
         appendFilter.Update()
@@ -485,3 +489,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         writer.SetFileName(well_vtk_filename)
         writer.SetInputConnection(appendFilter.GetOutputPort())
         writer.Write()
+        
+    #def init_reservoir(self, verbose):
+    #    pass
