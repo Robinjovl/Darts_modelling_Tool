@@ -240,6 +240,9 @@ class StructReservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wid
 
+        assert well_index >= 0
+        assert well_indexD >= 0
+
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
             well_block = len(well.perforations)
@@ -280,9 +283,6 @@ class StructReservoir(ReservoirBase):
                     f'Neglected perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}] (inactive block)'
                 )
             return
-
-        assert well_index >= 0
-        assert well_indexD >= 0
 
         return
 
