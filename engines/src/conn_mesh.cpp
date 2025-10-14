@@ -1972,6 +1972,15 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
     }
   }
 
+  // Calculate and store specific potential energy (spe) at cell centroids
+  for (size_t i = 0; i < depth.size(); i++)
+  {
+	  cell_spe[i] = - 9.80665e-3 * (depth[i] - depth[0]);   // It is multiplied by -1 because for spe height needs to be used instead of depth
+  }
+  // Calculate and store specific potential energy (spe) at connections
+  // Implement later
+  // conn_spe is set to zero for all the elements in reverse_and_sort_conn_spe, but it must be correctly calculated from depths of connections later
+
   return 0;
 }
 
