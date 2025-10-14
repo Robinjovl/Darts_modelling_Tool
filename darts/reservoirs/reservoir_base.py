@@ -135,7 +135,7 @@ class ReservoirBase:
                 * 1e-3
                 * (well_geometry.pipe_length - well_geometry.z - well_geometry.z[0])
                 * np.cos(well_geometry.inclination_angle_radian)
-            )
+            )  # Subtract well_geometry.z[0] to make the spe zero at the centroid of the bottom segment
             well.segment_spe = value_vector(segments_specific_potential_energy)
             connections_specific_potential_energy = (
                 9.80665
