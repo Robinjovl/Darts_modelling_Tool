@@ -1,6 +1,5 @@
 import abc
 import atexit
-from math import pi
 
 import numpy as np
 
@@ -152,45 +151,12 @@ class ReservoirBase:
             if w.name == well_name:
                 return w
 
-    def init_wells(self, verbose: bool = False):
+    @abc.abstractmethod
+    def init_wells(self):
         """
-        Function to initialize wells.
-
-        Adds perforations to the wells, adds well objects to the mesh object
-        and prepares mesh object for running simulation
-
-        :param mesh: conn_mesh object
-        :param verbose: Switch to set verbose level
+        This function adds well objects to the mesh object and prepares mesh object for running simulation
         """
-        for w in self.wells:
-            assert len(w.perforations) > 0, (
-                f"Well {w.name} does not perforate any active reservoir blocks"
-            )
-
-            w.segment_volumes.resize(len(w.perforations))
-            for p in w.perforations:
-                segment_area = pi * w.segment_diameter**2 / 4
-                res_cell_ijk = self.get_ijk(p[1], self.nx, self.ny, self.nz)
-                segment_height = self.global_data['dz'][res_cell_ijk]
-                w.segment_volumes[p[0]] = segment_height * segment_area
-
-        self.mesh.add_wells(ms_well_vector(self.wells))
-
-        # connect perforations of wells (for example, for closed loop geothermal)
-        # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
-        # example {(well_1.name, well_2.name): [(w1_perf_1, w2_perf_1),(w1_perf_2, w2_perf_2)]}
-        if hasattr(self, 'connected_well_segments'):
-            for well_pair in self.connected_well_segments.keys():
-                well_1 = self.get_well(well_pair[0])
-                well_2 = self.get_well(well_pair[1])
-                for perf_pair in self.connected_well_segments[well_pair]:
-                    self.mesh.connect_segments(
-                        well_1, well_2, perf_pair[0], perf_pair[1], 1
-                    )
-
-        # allocate mesh arrays
-        self.mesh.reverse_and_sort()
-        self.mesh.init_grav_coef()
+        pass
 
     @abc.abstractmethod
     def output_to_plt(
@@ -267,14 +233,24 @@ class ReservoirBase:
         pass
 
     @staticmethod
-    def get_ijk(idx, nx, ny, nz):
+    @abc.abstractmethod
+    def get_reservoir_cell_ijk(idx, nx, ny, nz):
         """
-        i, j, and k indices are zero-based.
+        This function gets the index of the reservoir cell and dimensions of the reservoir and gives the indices of the
+        reservoir cell in x, y, and z directions.
+
+        :param idx: Index of the reservoir cell, which is zero-based
+        :type idx: int
+        :param nx: Number of reservoir cells in the x direction
+        :type nx: int
+        :param ny: Number of reservoir cells in the y direction
+        :type ny: int
+        :param nz: Number of reservoir cells in the z direction
+        :type nz: int
+
+        :returns: Tuple of indices of the reservoir cell in x, y, and z directions, which are zero-based
         """
-        k = idx // (nx * ny)
-        j = (idx - k * (nx * ny)) // nx
-        i = idx % nx
-        return (i, j, k)
+        pass
 
     def write_cache(self):
         return
