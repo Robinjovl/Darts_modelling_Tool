@@ -300,10 +300,8 @@ class StructReservoir(ReservoirBase):
             w.segment_volumes.resize(len(w.perforations))
             for p in w.perforations:
                 segment_area = pi * w.segment_diameter**2 / 4
-                res_cell_ijk = self.get_reservoir_cell_ijk(
-                    p[1], self.nx, self.ny, self.nz
-                )
-                segment_height = self.global_data['dz'][res_cell_ijk]
+                i, j, k = self.get_reservoir_cell_ijk(p[1], self.nx, self.ny)
+                segment_height = self.global_data['dz'][i, j, k]
                 w.segment_volumes[p[0]] = segment_height * segment_area
 
         self.mesh.add_wells(ms_well_vector(self.wells))
@@ -917,23 +915,8 @@ class StructReservoir(ReservoirBase):
         # self.vtkobj.decomposeModel()
 
     @staticmethod
-    def get_reservoir_cell_ijk(idx, nx, ny, nz):
-        """
-        This function gets the index of the reservoir cell and dimensions of the reservoir and gives the indices of the
-        reservoir cell in x, y, and z directions.
-
-        :param idx: Index of the reservoir cell, which is zero-based
-        :type idx: int
-        :param nx: Number of reservoir cells in the x direction
-        :type nx: int
-        :param ny: Number of reservoir cells in the y direction
-        :type ny: int
-        :param nz: Number of reservoir cells in the z direction
-        :type nz: int
-
-        :returns: Tuple of indices of the reservoir cell in x, y, and z directions, which are zero-based
-        """
-        k = idx // (nx * ny)
-        j = (idx - k * (nx * ny)) // nx
-        i = idx % nx
-        return (i, j, k)
+    def get_reservoir_cell_ijk(global_idx, nx, ny):
+        k = global_idx // (nx * ny)
+        j = (global_idx - k * (nx * ny)) // nx
+        i = global_idx % nx
+        return i, j, k

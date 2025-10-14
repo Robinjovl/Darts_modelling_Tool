@@ -234,21 +234,19 @@ class ReservoirBase:
 
     @staticmethod
     @abc.abstractmethod
-    def get_reservoir_cell_ijk(idx, nx, ny, nz):
+    def get_reservoir_cell_ijk(global_idx, nx, ny):
         """
         This function gets the index of the reservoir cell and dimensions of the reservoir and gives the indices of the
         reservoir cell in x, y, and z directions.
 
-        :param idx: Index of the reservoir cell, which is zero-based
-        :type idx: int
+        :param global_idx: Global index of the reservoir cell, which is zero-based
+        :type global_idx: int
         :param nx: Number of reservoir cells in the x direction
         :type nx: int
         :param ny: Number of reservoir cells in the y direction
         :type ny: int
-        :param nz: Number of reservoir cells in the z direction
-        :type nz: int
 
-        :returns: Tuple of indices of the reservoir cell in x, y, and z directions, which are zero-based
+        :returns: Indices of the reservoir cell in x, y, and z directions, which are zero-based
         """
         pass
 

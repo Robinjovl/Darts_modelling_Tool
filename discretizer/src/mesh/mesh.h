@@ -28,7 +28,7 @@ namespace mesh
 		index_t num_of_nodes;
 		// number of elements
 		index_t num_of_elements;
-		
+
 		// array of elements
 		std::vector<Elem> elems;
 		// array of volumes for 3D, areas for 2D, lengths for 1D
@@ -79,10 +79,10 @@ namespace mesh
 		std::vector<index_t> adj_matrix_cols;
 		// vector of offsets for the adjacency matrix
 		std::vector<index_t> adj_matrix_offset;
-		
+
 		// elem ids for each elem type
 		std::unordered_map<ElemType, std::vector<index_t>> elem_type_map;
-		
+
 		// conn ids for each conn type
 		std::unordered_map<ConnType, std::vector<index_t>> conn_type_map;
 
@@ -120,7 +120,7 @@ namespace mesh
 		// is_global should be false if idx in range of active elements (internal arrays)
 		void inline get_ijk(index_t idx, int &i1, int &j1, int &k1, const bool is_global) const {
 			if (is_global)
-			  get_ijk_from_global_idx(idx, i1, j1, k1);
+			    get_ijk_from_global_idx(idx, i1, j1, k1);
 			else
 				get_ijk_from_local_idx(idx, i1, j1, k1);
 		}
@@ -167,7 +167,7 @@ namespace mesh
 		        const bool append) const
 		{
 		        std::cout << "Writing array " << keyword << " to file " << filename << "\n";
-		
+
 		        std::ofstream f;
 		        if (append)
 		          f.open(filename, std::ios_base::app);
@@ -199,7 +199,7 @@ namespace mesh
 
 		std::vector<int> cpg_elems_nodes(
 			const int _number_of_nodes,
-			const int number_of_cells,// number of active cells 
+			const int number_of_cells,// number of active cells
 			const int number_of_faces,
 			const std::vector<double>& node_coords,
 			const std::vector<int>& face_nodes,
@@ -212,7 +212,7 @@ namespace mesh
 
 		void cpg_cell_props(
 			const int _number_of_nodes,
-			const int num_of_cells,// number of active cells 
+			const int num_of_cells,// number of active cells
 			const int number_of_faces,
 			const std::vector<double>& cell_volumes,
 			const std::vector<double>& cell_centroids,
@@ -224,7 +224,7 @@ namespace mesh
 			const std::vector<int>& face_order);
 
 		void cpg_connections(
-			const int num_of_cells,// number of active cells 
+			const int num_of_cells,// number of active cells
 			const int number_of_faces,
 			const std::vector<double>& node_coords,
 			const std::vector<int>& face_nodes,
