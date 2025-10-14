@@ -20,7 +20,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      'GeoRising',
                      'CoaxWell',
                      'phreeqc_dissolution'
-                     ]       
+                     ]
 
 
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
@@ -77,7 +77,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_dirs_cpg = ['cpg_sloping_fault']
     cpg_cases_list = ['generate_5x3x4']
     if iter_solvers:  # run this case only for the build with iterative solvers
-        cpg_cases_list += ['generate_51x51x1', 'case_40x40x10']
+        cpg_cases_list += ['generate_51x51x1', '40x40x10', '40x40x10_hcap', '40x40x10_regions']
     test_args_cpg = []
     for case_geom in cpg_cases_list:
         for physics_type in ['geothermal', 'deadoil']:
@@ -217,7 +217,7 @@ def check_performance(mod):
             set_gpu_device(int(os.getenv('GPU_DEVICE')))
 
     m.init(platform=platform)
-    
+
     m.set_output()
     m.run(save_well_data=False, save_reservoir_data=False)
     m.print_stat()
@@ -252,7 +252,7 @@ if __name__ == '__main__':
     engines_pbi()
 
     # multithreaded run can be enabled by setting OMP_NUM_THREADS environment variable
-    if os.getenv('OMP_NUM_THREADS') == None:  
+    if os.getenv('OMP_NUM_THREADS') == None:
         os.environ['OMP_NUM_THREADS'] = '1'
     print('OMP_NUM_THREADS=', os.environ['OMP_NUM_THREADS'])
 
@@ -266,7 +266,7 @@ if __name__ == '__main__':
     overwrite = '0'
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = '1'
-        
+
     # run larger set of models (takes longer)
     test_all_models = False
     if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
@@ -275,6 +275,6 @@ if __name__ == '__main__':
     iter_solvers = False
     if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
         iter_solvers = True
-        
+
     rcode = run_testing(platform, overwrite, iter_solvers, test_all_models)
     exit(rcode)
