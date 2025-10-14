@@ -30,7 +30,7 @@
         # Install EPEL from 'extras' (no external URL)
         - yum -y -q install epel-release || true
         - yum clean all && yum makecache fast && yum repolist
-        - yum install -y -q samba-client libjpeg-turbo-devel hdf5-devel
+        - yum install -y -q samba-client libjpeg-turbo-devel
 
         - export PATH="/opt/python/$PY_SUF/bin:$PATH"
     needs:
