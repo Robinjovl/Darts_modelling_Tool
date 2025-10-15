@@ -113,6 +113,8 @@ gitingest-digest:
           fi
     after_script:
         # Cleanup conda env and export metadata for the next job
+        - CONDA_BASE="/data/gitlab-runner/miniconda3"
+        - . "${CONDA_BASE}/etc/profile.d/conda.sh"
         - conda env remove -n ${CONDA_ENV} -y || true
         - echo "OPEN_DARTS_GITINGEST_JOB_ID=${CI_JOB_ID}" > gitingest.env
         - echo "OPEN_DARTS_REF=${CI_COMMIT_REF_NAME}" >> gitingest.env
