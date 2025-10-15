@@ -284,26 +284,25 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
         qx_prx, qy_prx, qz_prx, sx_prx, sy_prx, sz_prx =  get_proxy_strain_stress(points)
         
+        thm2 = False
+        
         n_points = points.shape[1]
         ux_thm = np.zeros(n_points); uy_thm = np.zeros(n_points); uz_thm = np.zeros(n_points);
         qx_thm = np.zeros(n_points); qy_thm = np.zeros(n_points); qz_thm = np.zeros(n_points);
         sx_thm = np.zeros(n_points); sy_thm = np.zeros(n_points); sz_thm = np.zeros(n_points);
         qx_thm2 = np.zeros(n_points); qy_thm2 = np.zeros(n_points); qz_thm2 = np.zeros(n_points);
         sx_thm2 = np.zeros(n_points); sy_thm2 = np.zeros(n_points); sz_thm2 = np.zeros(n_points);
-        #x = np.zeros(n_points); y = np.zeros(n_points); z = np.zeros(n_points);
+
         for i in range(n_points):  # use XY from point and different Z
             point = np.array([points[1, i], points[0, i], points[2, i]])  # YXZ - > XYZ
             ux_thm[i], uy_thm[i], uz_thm[i] = get_thm_displs(point)
-            qx_thm[i], qy_thm[i], qz_thm[i] = get_thm_strain(point)
-            sx_thm[i], sy_thm[i], sz_thm[i] = get_thm_stress(point)
-            qx_thm2[i], qy_thm2[i], qz_thm2[i], \
-            sx_thm2[i], sy_thm2[i], sz_thm2[i] = get_thm_stress_by_deriv(point)
-            #x[i], y[i], z[i] = get_cell_center(point)
-            
-        #for i in range(n_points):  # use XY from point and different Z
-        #    qx_thm2[i] = np.gradient(ux_thm_along_x, x)[i]
-        #    qy_thm2[i] = np.gradient(uy_thm_along_y, y)[i]
-        #    qz_thm2[i] = np.gradient(uz_thm_along_z, z)[i]
+            if 'strain' in modes:
+                qx_thm[i], qy_thm[i], qz_thm[i] = get_thm_strain(point)
+            if 'stress' in modes:
+                sx_thm[i], sy_thm[i], sz_thm[i] = get_thm_stress(point)
+            if ('strain' in modes or 'stress' in modes) and thm2:
+                qx_thm2[i], qy_thm2[i], qz_thm2[i], \
+                sx_thm2[i], sy_thm2[i], sz_thm2[i] = get_thm_stress_by_deriv(point)
             
         for mode in modes:
             match mode:
@@ -330,8 +329,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             
             plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
             plt.plot(thm, z_range, label=mode + '_THM', marker='.')
-            #if 'stress' in mode or 'strain' in mode:
-            #    plt.plot(thm2, z_range, label=mode + '_THM2', marker='.', color='black')
+            if ('stress' in mode or 'strain' in mode) and thm2:
+                plt.plot(thm2, z_range, label=mode + '_THM2', marker='.', color='black')
                 
             plt.gca().invert_yaxis()
             plt.xlabel(s)
@@ -382,8 +381,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    #points_xy['center'] = [0., 0.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
-    points_xy['(0,450)'] = [0., 450.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    #points_xy['center'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
 
     if False:
         if wells_type in ['prod', 'doublet']:
@@ -397,6 +396,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         points_y = np.arange(-1000, 1000, 100)           
         #points_z = np.hstack([np.arange(0, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 4000, 200)])
         points_z = np.arange(1800, 2400, 25)
+        points_z = np.array([2150])
         
         nx, ny, nz = points_x.size, points_y.size, points_z.size
         #print(nx, ny, nz)
@@ -417,8 +417,19 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         #rsv_idx = np.where((self.rsv_top < m.reservoir.Zc) & (m.reservoir.Zc < self.rsv_top)).min()
         
         #plt.contourf(uz_prx_3d[:,10,:].transpose())  # XZ plane
-        plt.contourf(uz_prx_3d[:,:,20])  # XY plane 
+        #plt.contourf(uz_prx_3d[:,:,20])  # XY plane 
         #plt.plot(ux_prx_3d[10,10,:])  # along Z-axis
+        
+        # XY plane , 1 layer by z
+        for u_prx, fname in zip([ux_prx_3d, uy_prx_3d, uz_prx_3d], ['ux_prx_3d', 'uy_prx_3d', 'uz_prx_3d']):
+            cs = plt.contourf(u_prx[:,:,0], levels=9)  
+            plt.colorbar(cs)
+            plt.set_xlabel('X')
+            plt.set_ylabel('Y')
+            plt.set_title(fname)
+            plt.savefig(fname + '.png')
+            plt.close()
+        
         # along X-axis
         #dux_dx = np.gradient(ux_prx_3d[:,10,10], points_x) 
         #plt.plot(ux_prx_3d[:,10,10])
@@ -454,10 +465,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     for k in points_xy.keys():
         point_xy = points_xy[k]
-        print('plotting for point', k, 'XY=', point_xy)
+        print('plotting for point', k, 'YX=', point_xy)
         modes = ['displ_z', 'displ_y', 'displ_x']
-        modes += ['strain_z', 'strain_y', 'strain_x']
-        modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
+        #modes += ['strain_z', 'strain_y', 'strain_x']
+        #modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
         #modes = ['strain_x']
 
         # compare U-Z at a line along z-axis
@@ -525,15 +536,16 @@ if __name__ == '__main__':
     #wells_types_list += ['doublet']
     
     # for THM solver run
-    n_years = 1; 
+    n_years = 1
     #n_years = 5
     #n_years = 10
-    #n_years = 30; 
+    #n_years = 30
     #n_years = 50
     
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    #timestep = (n_years * 365.25) // 30  # last one; dt = 30 days
+    #timestep = int((n_years * 365.25) / 30)  # last one; dt = 30 days
     timestep = 1
+    #timestep = 13
     
     run_thm = True
     #run_thm = False
@@ -546,7 +558,10 @@ if __name__ == '__main__':
             # run THM with no mechanics->flow impact
             t1 = datetime.now()
             if run_thm:
-                run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
+                run(model_folder=case, physics_type=physics_type, 
+                    uniform_props=uniform_props, wells_type=wells_type, 
+                    decouple_geomech=True, generate_mesh=True,
+                    n_years=n_years)
             t2 = datetime.now()
             thm_time = t2 - t1
 
@@ -556,6 +571,6 @@ if __name__ == '__main__':
             t2 = datetime.now()
             proxy_time = t2 - t1
 
-            print('case', case, 'done')
+            print('case', case, 'done', 'timestep', timestep)
             print('THM   time', thm_time)
             print('proxy time', proxy_time)

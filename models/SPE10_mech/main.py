@@ -112,7 +112,8 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type, uniform_props=False, wells_type=None, decouple_geomech=False, generate_mesh=False, n_years=1):
+def run(model_folder, physics_type, uniform_props=False, wells_type=None, 
+        decouple_geomech=False, generate_mesh=False, n_years=1, report_step = 90.):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -156,11 +157,10 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None, decoup
     m.physics.engine.find_equilibrium = False
     print(splitter + 'initialization completed\n' + splitter)
 
-    size_report_step = 30
-    max_dt = size_report_step
+    max_dt = report_step
     m.max_dt = max_dt
     m.params.max_ts = max_dt
-    first_ts = size_report_step
+    first_ts = report_step
     m.params.first_ts = first_ts
     m.set_boundary_conditions_after_initialization()
 
@@ -175,7 +175,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None, decoup
     # Run over all reporting time-steps:
     ith_step = 0
     while m.physics.engine.t < sim_time:
-        run_python(m=m, days=size_report_step)
+        run_python(m=m, days=report_step)
         m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
         ith_step += 1
         m.time_steps.append(m.physics.engine.t)
