@@ -446,9 +446,12 @@ class DartsModel:
         :param verbose: Switch for verbose, default is True
         :type verbose: bool
         """
-        days = days if days is not None else self.runtime
         self.physics = physics
         self.data_ts = data_ts
+
+        days = days if days is not None else self.runtime
+        assert days > 0, "Time must be a positive value!"
+
         verbose = False
 
         # get current engine time
@@ -530,7 +533,10 @@ class DartsModel:
         assert hasattr(self, 'output'), (
             "self.output does not exist, please call m.set_output() after m.init()"
         )
+
         days = days if days is not None else self.runtime
+        assert days > 0, "Time must be a positive value!"
+
         data_ts = self.data_ts
 
         self.output.save_well_after_run = save_well_data_after_run
