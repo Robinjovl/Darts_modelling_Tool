@@ -1886,11 +1886,11 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
         rock_cond[w_i] = rock_cond[r_i];
         // Check if well segment and its corresponding reservoir block are aligned in terms of depth. If not aligned,
         // the depth of the reservoir block is used as the depth of the corresponding well segment.
-        if (depth[w_i] != depth[r_i])
+        if (fabs(depth[w_i] - depth[r_i]) > 1e-5)
         {
-			//cout << "Warning: Depth of well segment " << p << " in the well """ << wells[iw]->name << """ (" <<
-			//depth[w_i] << " meters) is different from the depth of the reservoir block it is connected to (" <<
-			//depth[r_i] << " meters). Alignment is made by setting the depth of the well segment to " << depth[r_i] << ".\n";
+			cout << "Warning: Depth of well segment " << p << " in the well """ << wells[iw]->name << """ (" <<
+			depth[w_i] << " meters) is different from the depth of the reservoir block it is connected to (" <<
+			depth[r_i] << " meters). Alignment is made by setting the depth of the well segment to " << depth[r_i] << ".\n";
 
 			depth[w_i] = depth[r_i];
         }
@@ -2000,7 +2000,17 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 				// Align well segment depth with reservoir block
 				int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
 				int w_i = wells[iw]->well_head_idx + p;
-				depth[w_i] = depth[r_i];
+
+				// Check if well segment and its corresponding reservoir block are aligned in terms of depth. If not aligned,
+	         	// the depth of the reservoir block is used as the depth of the corresponding well segment.
+				if (fabs(depth[w_i] - depth[r_i]) > 1e-5)
+				{
+					cout << "Warning: Depth of well segment " << p << " in the well """ << wells[iw]->name << """ (" <<
+					depth[w_i] << " meters) is different from the depth of the reservoir block it is connected to (" <<
+					depth[r_i] << " meters). Alignment is made by setting the depth of the well segment to " << depth[r_i] << ".\n";
+
+					depth[w_i] = depth[r_i];
+				}
 			}
 		}
 	}

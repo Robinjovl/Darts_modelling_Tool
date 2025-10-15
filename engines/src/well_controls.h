@@ -47,7 +47,7 @@ public:
 	  // Evaluate well control operators
     // WellControlOperators are defined as follows: P, composition, T, NP MOLAR_RATE, NP MASS_RATE, NP VOLUMETRIC_RATE, and NP ADVECTIVE_HEAT_RATE operators
 	  n_vars = n_comps + thermal;
-    n_ops = WellControlType::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls;
+      n_ops = WellControlType::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls;
 	  well_control_ops.resize(n_ops);
 	  well_control_ops_derivs.resize(n_ops * n_vars);
   }
