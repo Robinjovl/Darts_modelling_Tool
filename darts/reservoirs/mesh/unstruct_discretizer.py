@@ -299,18 +299,27 @@ class UnstructDiscretizer:
             bound_count = 0
             frac_bound_count = 0
             output_count = 0
-            self.geom_order = [
-                geom[0]
-                for geom in sorted(
-                    list(self.mesh_data.cell_data_dict['gmsh:physical'].items()),
-                    key=lambda x: -x[1][0],
-                )
-            ]
 
-            for geometry, tags in sorted(
-                list(self.mesh_data.cell_data_dict['gmsh:physical'].items()),
-                key=lambda x: -x[1][0],
-            ):
+            # the loop below has conditions such that the elements are looped over in the following order: 'matrix', 'fracture', 'boundary', 'fracture_boundary', 'output'
+            # however, the outer loop is over geometry types, so need to find the geometries in the right order first
+            # in 3D case, 'fracture', 'boundary' both might have the same geometry type (e.g. 'triangle') and there is no issue as there is an ordering in the inner loops below
+            self.geom_order = []
+            for elem_type in [
+                'matrix',
+                'fracture',
+                'boundary',
+                'fracture_boundary',
+                'output',
+            ]:
+                if elem_type in self.physical_tags.keys():
+                    for k, t in self.mesh_data.cell_data_dict['gmsh:physical'].items():
+                        for mat_tag in self.physical_tags[elem_type]:
+                            if mat_tag in t:
+                                if k not in self.geom_order:
+                                    self.geom_order.append(k)
+
+            for geometry in self.geom_order:
+                tags = self.mesh_data.cell_data_dict['gmsh:physical'][geometry]
                 # Main loop over different existing geometries
                 for ith_cell, nodes_to_cell in enumerate(
                     self.mesh_data.cells_dict[geometry]
@@ -524,7 +533,8 @@ class UnstructDiscretizer:
         self.vtk_output_nodes_to_cells = {'fracture': {}, 'matrix': {}}
         self.vtk_output_cell_idxs = {'fracture': {}, 'matrix': {}}
         cell_count = 0
-        for geometry, tags in self.mesh_data.cell_data_dict['gmsh:physical'].items():
+        for geometry in self.geom_order:
+            tags = self.mesh_data.cell_data_dict['gmsh:physical'][geometry]
             nodes = {}
             cell_idxs = {}
 
@@ -4208,5 +4218,11 @@ class UnstructDiscretizer:
         # for debugging/plotting
         # np.save('frac_tips.npy', act_frac_sys, allow_pickle=True)
         # np.save('frac_aper.npy', [frac_angles, sigma_n, fracture_aper], allow_pickle=True)
+
+        print(
+            'calculated fracture apertures range (m):',
+            fracture_aper.min(),
+            fracture_aper.max(),
+        )
 
         return fracture_aper
