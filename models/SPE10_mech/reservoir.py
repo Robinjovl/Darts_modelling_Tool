@@ -55,10 +55,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             tags['MATRIX_2'] = 99992
 
             # define permeable reservoir geometric boundaries
-            self.rsv_top = 2100
-            self.rsv_bottom = 2200
-            #self.rsv_xy = 1000   # laterally limited (rsv width will be self.rsv_xy*2)
-            self.rsv_xy = 100000  # "infinite" laterally
+            self.rsv_top = idata.other.rsv_top
+            self.rsv_bottom = idata.other.rsv_bottom
+            self.rsv_xy = idata.other.rsv_xy
 
             if nx == 6: # for debugging, -4..4 km XY
                 self.Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])

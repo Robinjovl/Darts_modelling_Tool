@@ -112,7 +112,7 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type, uniform_props=False, wells_type=None, decouple_geomech=False, generate_mesh=False):
+def run(model_folder, physics_type, uniform_props=False, wells_type=None, decouple_geomech=False, generate_mesh=False, n_years=1):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -169,10 +169,6 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None, decoup
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
-    n_years = 1
-    #n_years = 5
-    #n_years = 10
-    #n_years = 50
     sim_time = 365.25 * n_years
     m.time_steps = []
     data = []
@@ -187,6 +183,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None, decoup
 
     m.print_timers()
     m.print_stat()
+    print(ith_step, 'timesteps')
 
     return m, data
 
@@ -280,5 +277,5 @@ if __name__ == '__main__':
     #run(model_folder='16_16_15', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
 
     #run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='prod', decouple_geomech=True)
-    #run(model_folder='34_34_54', physics_type='single_phase_thermal', generate_mesh=True, wells_type='inj', decouple_geomech=True)
-    run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='inj', decouple_geomech=True)
+    run(model_folder='34_34_54', physics_type='single_phase_thermal', generate_mesh=True, wells_type='inj', decouple_geomech=True)
+    #run(model_folder='34_34_54', physics_type='single_phase', generate_mesh=True, wells_type='inj', decouple_geomech=True)

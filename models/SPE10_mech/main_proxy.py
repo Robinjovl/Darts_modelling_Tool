@@ -61,10 +61,14 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     g = geomech()
     # just to set input data
     from model import Model
-    m = Model(model_folder=case, physics_type=physics_type, uniform_props=False, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
+    m = Model(model_folder=case, physics_type=physics_type, uniform_props=False, 
+              wells_type=wells_type, decouple_geomech=True, generate_mesh=True,
+              dummy='no')
+    #m.set_input_data()
     # elastic constants
     g.poisson = m.idata.rock.nu
-    g.young = m.idata.rock.E.mean() * bars2mpa # bars to MPa
+    g.young = m.idata.rock.E if np.isscalar(m.idata.rock.E) else m.idata.rock.E.mean()
+    g.young *= bars2mpa
     g.thermal_exp_coeff = m.idata.rock.th_expn / get_bulk_modulus(E=m.idata.rock.E, nu=m.idata.rock.nu)# 1/°C
 
     # read THM solution from vtk
@@ -378,7 +382,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    points_xy['center'] = [450., 450.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    #points_xy['center'] = [0., 0.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    points_xy['(0,450)'] = [0., 450.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
 
     if False:
         if wells_type in ['prod', 'doublet']:
@@ -519,9 +524,16 @@ if __name__ == '__main__':
     wells_types_list += ['inj']
     #wells_types_list += ['doublet']
     
+    # for THM solver run
+    n_years = 1; 
+    #n_years = 5
+    #n_years = 10
+    #n_years = 30; 
+    #n_years = 50
+    
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
+    #timestep = (n_years * 365.25) // 30  # last one; dt = 30 days
     timestep = 1
-    #timestep = 13
     
     run_thm = True
     #run_thm = False

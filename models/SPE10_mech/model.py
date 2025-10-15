@@ -19,7 +19,9 @@ from darts.input.input_data import InputData
 from reservoir import UnstructReservoirCustom
 
 class Model(THMCModel):
-    def __init__(self, model_folder, physics_type='dead_oil', uniform_props=False, wells_type=None, decouple_geomech=False, generate_mesh=False):
+    def __init__(self, model_folder, physics_type='dead_oil', 
+                 uniform_props=False, wells_type=None, 
+                 decouple_geomech=False, generate_mesh=False, dummy='no'):
         self.model_folder = os.path.join('meshes', model_folder)
         self.uniform_props = uniform_props
         self.physics_type = physics_type
@@ -32,6 +34,9 @@ class Model(THMCModel):
         self.decouple_geomech = decouple_geomech
         self.generate_mesh = generate_mesh
         self.wells_type = wells_type
+        
+        if dummy == 'yes':  # save time for proxy run
+            return
         # call base class constructor
         super().__init__()
 
@@ -63,6 +68,8 @@ class Model(THMCModel):
         #permeability = 1000 # [mD] # this matched thm and analytical solution
         permeability = 100 # [mD] # this matches proxy and thm
         E = 10 # [GPa]
+        #E = 22  # GPa, Dinantian carbonate 
+        #E = 12  # GPa, Indiana Limestone 
         p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
@@ -75,6 +82,12 @@ class Model(THMCModel):
         self.idata.rock.biot = 1.
         self.idata.rock.E = 1.e+4 * E  # to bars
         self.idata.rock.nu = 0.25
+
+        # define permeable reservoir geometric boundaries
+        self.idata.other.rsv_top = 2100
+        self.idata.other.rsv_bottom = 2200
+        #self.idata.other.rsv_xy = 1000   # laterally limited (rsv width will be self.rsv_xy*2)
+        self.idata.other.rsv_xy = 100000  # "infinite" laterally
 
         self.idata.rock.poro_non_rsv = 0.001
         #self.idata.rock.perm_non_rsv = 0.000001 # this matched thm and analytical solution
