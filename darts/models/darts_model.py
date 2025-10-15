@@ -750,9 +750,21 @@ class DartsModel:
                         print("Stationary point detected!")
                     break
             else:
-                if type(self.data_ts.linear_type) is linear_solver_types:
-                    self.petsc_solve_linear_equation()
-                else:
+                if (
+                    type(self.data_ts.linear_type) is linear_solver_types
+                ):  # solvers via Python interface
+                    if self.data_ts.linear_type in [
+                        linear_solver_types.CPU_PETSC_CPR,
+                        linear_solver_types.CPU_PETSC_FS,
+                    ]:
+                        self.petsc_solve_linear_equation()
+                    elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
+                        self.pardiso_solve_linear_equation()
+                    else:
+                        raise Exception(
+                            "Unknown linear solver type", self.data_ts.linear_type
+                        )
+                else:  # compile-tyme C++ linear solvers
                     self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
@@ -1290,3 +1302,9 @@ class DartsModel:
             print('PETSC: True residual =', np.linalg.norm(mat.dot(sol) - rhs))
 
         # TODO check when solver fails https://petsc.org/main/petsc4py/reference/petsc4py.PETSc.KSP.html#petsc4py.PETSc.KSP.solve
+
+    def pardiso_solve_linear_equation(self):
+        import pypardiso
+
+        mat, rhs, sol = self.get_linear_system()
+        sol[:] = pypardiso.spsolve(mat, rhs)

@@ -41,11 +41,9 @@ deploy-testpypi:
         - twine upload -u $REPOUSER -p $REPOPWD --repository $REPO --verbose dist/*
     dependencies:
         # get the wheels from the build stage
-        - build-linux-3.9-ODLS
         - build-linux-3.10-ODLS
         - build-linux-3.11-ODLS
         - build-linux-3.12-ODLS
-        - build-windows-3.9-ODLS
         - build-windows-3.10-ODLS
         - build-windows-3.11-ODLS
         - build-windows-3.12-ODLS

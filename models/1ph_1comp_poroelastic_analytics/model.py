@@ -238,6 +238,9 @@ class Model(THMCModel):
         #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
         #self.idata.sim.DataTS.linear_print_level = 0
 
+        # optional: use PARDISO linear solver
+        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PARDISO
+
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
         self.idata.obl.min_p = -5.

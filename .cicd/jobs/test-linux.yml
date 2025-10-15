@@ -88,18 +88,6 @@ test-linux-3.10-ODLS:
     needs:
         - build-linux-3.10-ODLS
 
-test-linux-3.9-ODLS:
-    rules:
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL_PYTHONS == "1"
-    extends: .test-linux
-    variables:
-        PY_VER: '3.9'       # for python image selection in .test-linux
-        PY_SUF: 'cp39-cp39' # for python path selection in .test-linux
-        ODLS: ''            # test with open-darts linear solvers
-    needs:
-        - build-linux-3.9-ODLS
-
 test-linux-3.12:
     rules:
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
@@ -138,15 +126,3 @@ test-linux-3.10:
         ODLS: '-a'
     needs:
         - build-linux-3.10
-
-test-linux-3.9:
-    rules:
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL_PYTHONS == "1"
-    extends: .test-linux
-    variables:
-        PY_VER: '3.9'       # for python image selection in .test-linux
-        PY_SUF: 'cp39-cp39' # for python path selection in .test-linux
-        ODLS: '-a'
-    needs:
-        - build-linux-3.9

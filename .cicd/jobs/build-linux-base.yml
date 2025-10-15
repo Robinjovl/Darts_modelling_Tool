@@ -27,9 +27,11 @@
     before_script:
         - sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
         - sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-        - sed -i 's/^enabled=1$/enabled=0/' /etc/yum.repos.d/epel*.repo
-        - yum clean all
+        # Install EPEL from 'extras' (no external URL)
+        - yum -y -q install epel-release || true
+        - yum clean all && yum makecache fast && yum repolist
         - yum install -y -q samba-client libjpeg-turbo-devel
+
         - export PATH="/opt/python/$PY_SUF/bin:$PATH"
     needs:
     - job: docker-image-builder
