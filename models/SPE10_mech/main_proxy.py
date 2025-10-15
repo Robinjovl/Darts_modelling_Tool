@@ -63,8 +63,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     from model import Model
     m = Model(model_folder=case, physics_type=physics_type, uniform_props=False, 
               wells_type=wells_type, decouple_geomech=True, generate_mesh=True,
-              dummy='no')
-    #m.set_input_data()
+              dummy='yes')
+    m.set_input_data()
     # elastic constants
     g.poisson = m.idata.rock.nu
     g.young = m.idata.rock.E if np.isscalar(m.idata.rock.E) else m.idata.rock.E.mean()
@@ -324,8 +324,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                     if z_range.min() <= zi <= z_range.max():
                         plt.axhline(y=zi, color='gray', linestyle='dotted')
                         
-            plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
-            plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
+            plt.axhline(y=m.idata.other.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
+            plt.axhline(y=m.idata.other.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
             
             plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
             plt.plot(thm, z_range, label=mode + '_THM', marker='.')
@@ -390,19 +390,19 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         if wells_type in ['inj', 'doublet']:
             points_xy['inj well'] = m.inj_well_coords[:-1]
 
-    # compute with proxy in volume
-    if False:
+    # compute with proxy in 3D volume
+    if True:
         points_x = np.arange(-1000, 1000, 100)
         points_y = np.arange(-1000, 1000, 100)           
         #points_z = np.hstack([np.arange(0, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 4000, 200)])
-        points_z = np.arange(1800, 2400, 25)
+        #points_z = np.arange(1800, 2400, 25)
         points_z = np.array([2150])
         
         nx, ny, nz = points_x.size, points_y.size, points_z.size
         #print(nx, ny, nz)
         points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
         points = np.zeros((3, points_x_3d.size))
-        points[0, :], points[1, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
+        points[1, :], points[0, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
         ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
         ux_prx_3d = ux_prx.reshape((nx, ny, nz))
         uy_prx_3d = uy_prx.reshape((nx, ny, nz))
@@ -411,7 +411,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         # save to pkl
         displs = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
         import pickle
-        with open("displs_prx.pkl", "wb") as f:   # note 'wb' = write binary
+        with open(os.path.join(folder, "displs_prx.pkl"), "wb") as f:   # note 'wb' = write binary
             pickle.dump(displs, f)
         
         #rsv_idx = np.where((self.rsv_top < m.reservoir.Zc) & (m.reservoir.Zc < self.rsv_top)).min()
@@ -420,14 +420,26 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         #plt.contourf(uz_prx_3d[:,:,20])  # XY plane 
         #plt.plot(ux_prx_3d[10,10,:])  # along Z-axis
         
+        arrays = [ux_prx_3d, uy_prx_3d, uz_prx_3d]
+        array_names = ['ux_prx_3d', 'uy_prx_3d', 'uz_prx_3d']
+        
+        # interp thm solution to struct grid for plotting
+        from scipy.interpolate import griddata as gd
+        ux_thm_struct = gd((centroids[:, 0], centroids[:, 1], centroids[:, 2]), \
+            ux_last, (points_x_3d, points_y_3d, points_z_3d), method='linear')
+        arrays += [ux_thm_struct]
+        array_names += ['ux_thm_3d']
+        
         # XY plane , 1 layer by z
-        for u_prx, fname in zip([ux_prx_3d, uy_prx_3d, uz_prx_3d], ['ux_prx_3d', 'uy_prx_3d', 'uz_prx_3d']):
-            cs = plt.contourf(u_prx[:,:,0], levels=9)  
+        for u_prx, fname in zip(arrays, array_names):
+            px, py = points_x_3d.flatten(), points_y_3d.flatten()
+            cs = plt.contourf(points_x, points_y, u_prx[:,:,0].transpose(), levels=10)  
             plt.colorbar(cs)
-            plt.set_xlabel('X')
-            plt.set_ylabel('Y')
-            plt.set_title(fname)
-            plt.savefig(fname + '.png')
+            plt.gca().set_aspect('equal')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title(fname)
+            plt.savefig(os.path.join(folder, fname + '.png'))
             plt.close()
         
         # along X-axis
@@ -447,21 +459,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         plt.gca().invert_yaxis()
         plt.legend()
         plt.grid()
-        plt.savefig('Ux_by_depth.png')
+        plt.savefig(os.path.join(folder, 'Ux_by_depth.png'))
         plt.close()
-        
-        if False:  # write to vtk, doesn't work
-            m.output_directory = 'prx_cpp_' + physics_type + '_' + wells_type + '_' + case   
-            from darts.models.thmc_model import THMCModel
-            m.init()
-            #super(THMCModel, m).init()  # to have m.restart created
-            m.restart = False
-            m.set_output(output_folder=m.output_directory)
-            os.mkdir(m.output_directory)
-            timesteps = np.array([0.0])
-            property_array = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
-            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=0)
-            exit()
 
     for k in points_xy.keys():
         point_xy = points_xy[k]
@@ -483,7 +482,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         points_all[1, :] = point_xy[0]
         points_all[2, :] = z_range_all
         
-        z_range_rsv = np.arange(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100., z_step)
+        z_range_rsv = np.arange(m.idata.other.rsv_top-100., m.idata.other.rsv_bottom+100., z_step)
         n_points = z_range_rsv.size
         points_rsv = np.zeros((3, n_points))
         points_rsv[0, :] = point_xy[1] # X<->Y
@@ -541,14 +540,15 @@ if __name__ == '__main__':
     #n_years = 10
     #n_years = 30
     #n_years = 50
+    report_step = 90  # days
     
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
     #timestep = int((n_years * 365.25) / 30)  # last one; dt = 30 days
     timestep = 1
     #timestep = 13
     
-    run_thm = True
-    #run_thm = False
+    #run_thm = True
+    run_thm = False
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
@@ -561,7 +561,7 @@ if __name__ == '__main__':
                 run(model_folder=case, physics_type=physics_type, 
                     uniform_props=uniform_props, wells_type=wells_type, 
                     decouple_geomech=True, generate_mesh=True,
-                    n_years=n_years)
+                    n_years=n_years, report_step=report_step)
             t2 = datetime.now()
             thm_time = t2 - t1
 
