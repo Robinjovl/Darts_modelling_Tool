@@ -112,7 +112,7 @@ apptainer-image-builder-agents:
     IMAGE_PREFIX: "open-darts-agents"
     ENABLE_AGENT_TOOLS: "1"
   rules:
-    - if: '$RUN_DEVTOOLS == "1"'
+    - if: $RUN_DEVTOOLS == "1"
       when: on_success
     - if: $CI_PIPELINE_SOURCE == "web"
       when: manual
