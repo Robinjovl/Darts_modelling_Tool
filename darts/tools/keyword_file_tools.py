@@ -14,14 +14,23 @@ def get_table_keyword(file_name, keyword):
                 table = []
                 while True:
                     row = f.readline()
-                    if row[0] == '#':
+                    if row.startswith('#') or row.startswith('--'):  # skip comments
                         continue
-                    else:
-                        a = np.fromstring(row.strip(), dtype=float, sep=' ')
-                    if a.size > 0:
-                        table.append(value_vector(a))
-                    if row.find('/') != -1:
+                    elif row.find('/') != -1:  # end of the table
                         return table
+                    else:
+                        try:
+                            a = np.fromstring(row.strip(), dtype=float, sep=' ')
+                        except ValueError:
+                            print(
+                                "Error processing the file",
+                                file_name,
+                                "! Can't convert the row to float array:",
+                                row,
+                            )
+                            exit(1)
+                        if a.size > 0:
+                            table.append(value_vector(a))
                 break
 
 
@@ -73,7 +82,12 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                     else:
                         continue
             # requested keyword is not yet detected or comment found - skip the line
-            if not read_data_mode or len(s_line) == 0 or s_line[0] == '#':
+            if (
+                not read_data_mode
+                or len(s_line) == 0
+                or s_line.startswith('#')
+                or s_line.startswith('--')
+            ):
                 continue
             # collect all float values to numpy array
             # check for repeating values
@@ -97,7 +111,18 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                             continue
                         b = np.append(b, value)
             else:
-                b = np.fromstring(s_line, dtype=float, sep=' ')
+                if s_line.find('/') != -1:  # end of the array
+                    break
+                try:
+                    b = np.fromstring(s_line, dtype=float, sep=' ')
+                except ValueError:
+                    print(
+                        "Error processing the file",
+                        file_name,
+                        "! Can't convert the row to float array:",
+                        s_line,
+                    )
+                    exit(1)
 
             # Check if there is still enough place in array
             # if not, enlarge array by a factor of 2
