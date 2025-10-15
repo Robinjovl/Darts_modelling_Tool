@@ -5,6 +5,9 @@ stages:
     - test
     - deploy
 
+variables:
+    TEST_CUSTOM_BRANCH: "1"
+
 include:
   - local: '.cicd/jobs/pre-commit.yml'
   - local: '.cicd/jobs/build-images.yml'
