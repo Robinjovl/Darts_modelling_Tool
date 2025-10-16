@@ -3,6 +3,7 @@ import os
 import meshio
 from datetime import datetime
 from matplotlib import pyplot as plt
+from scipy.interpolate import griddata as gd
 
 from main import run
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus
@@ -15,8 +16,8 @@ def read_vtk_darts_solution(folder, timestep : int):
     filename = os.path.join(folder, 'solution'+str(timestep)+'.vtu')
     msh = meshio.read(filename)
     print('Reading', filename)
-    print("\tCells:", msh.cells_dict.keys())
-    print("\tCell Data:", msh.cell_data.keys())
+    #print("\tCells:", msh.cells_dict.keys())
+    #print("\tCell Data:", msh.cell_data.keys())
     return msh
 
 def geomech_init_geometry(mesh_data):
@@ -115,6 +116,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     centroids[:, 1] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # y
     centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
 
+    n_dim = 3  # X,Y,Z
+    bounds = [0]*n_dim
+    for k in range(n_dim):
+        bounds[k] = centroids[:, k].min(), centroids[:, k].max()
+
+
     def find_cell_by_point(point):
         # find an index of the cell, closest to the desired point
         cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (
@@ -125,6 +132,14 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     def get_cell_center(point):
         cell = find_cell_by_point(point)
         return centroids[cell, 0], centroids[cell, 1], centroids[cell, 2]
+
+    def get_thm_by_interp(array_dict, points_x, points_y, points_z):
+        array_dict_interp = dict()
+        for arr_name, arr in array_dict.items():
+            # interpolate the solution (arr) from cell centers to given set of points
+            array_dict_interp[arr_name] = gd((centroids[:, 1], centroids[:, 0], centroids[:, 2]), \
+                arr, (points_x, points_y, points_z), method='linear')
+        return array_dict_interp
 
     def get_thm_displs(point, verbose=False):
         cell = find_cell_by_point(point)
@@ -151,14 +166,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
         # find the closest neighbout cell in each direction. Since we don't know the cells size, we will move step by step
         n_neig = 6 # X- X+, Y-, Y+, Z-, Z+
-        n_dim = 3  # X,Y,Z
         cell_neig = np.zeros(n_neig, dtype=int)
         point_neig = np.zeros((n_neig, n_dim))
         step = [10., 10., 5.]  # [m] to find neighboring cells, should be less than cell size
-
-        bounds = [0]*n_dim
-        for k in range(n_dim):
-            bounds[k] = centroids[:, k].min(), centroids[:, k].max()
 
         mults = [0.5] * n_dim
 
@@ -280,6 +290,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     def compare_vert_line(points, suffix='', loc='', output_folder='.', modes={}):
         z_range = points[2,:]
+
+        array_dict = {'dp': delta_pressure, 'dt': delta_temperature}
+        array_dict_interp = get_thm_by_interp(array_dict, points[1,:], points[0,:], points[2,:])
+        dp = array_dict_interp['dp']
+        dt = array_dict_interp['dt']
         
         ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
         qx_prx, qy_prx, qz_prx, sx_prx, sy_prx, sz_prx =  get_proxy_strain_stress(points)
@@ -317,7 +332,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 case 'delta_stress_z': prx = sz_prx; thm = sz_thm; thm2 = sz_thm2; s = 'Vertical stress change, MPa.' + ' at ' + loc
                 case 'delta_stress_y': prx = sy_prx; thm = sy_thm; thm2 = sy_thm2; s = 'Horizontal stress change (YY), MPa.' + ' at ' + loc
                 case 'delta_stress_x': prx = sx_prx; thm = sx_thm; thm2 = sx_thm2; s = 'Horizontal stress change (XX), MPa.' + ' at ' + loc
-                    
+            
+                case 'delta_pressure': prx = None; thm = dp; s = 'Pressure change, MPa.' + ' at ' + loc
+                case 'delta_temperature': prx = None; thm = dt; s = 'Temperature change, K.' + ' at ' + loc
+                #delta_temperature
+            
             plot_mesh_layers = False
             if plot_mesh_layers:
                 for zi in m.reservoir.Zc:
@@ -326,8 +345,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                         
             plt.axhline(y=m.idata.other.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
             plt.axhline(y=m.idata.other.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
-            
-            plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
+            if prx is not None:
+                plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
             plt.plot(thm, z_range, label=mode + '_THM', marker='.')
             if ('stress' in mode or 'strain' in mode) and thm2:
                 plt.plot(thm2, z_range, label=mode + '_THM2', marker='.', color='black')
@@ -341,6 +360,21 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '.png'))
             plt.close()
 
+    def plot_contour(array_dict, points_x, points_y, layer=0):
+        # plot contours XY plane, 1 layer by z
+        for arr_name, arr in array_dict.items():
+            if len(arr.shape) == 3:
+                arr_layer = arr[:, :, layer]
+            else:
+                arr_layer = arr
+            cs = plt.contourf(points_x, points_y, arr_layer, levels=10)  
+            plt.colorbar(cs)
+            plt.gca().set_aspect('equal')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title(arr_name)
+            plt.savefig(os.path.join(folder, arr_name + '.png'))
+            plt.close()
 
     def testing():
         # checks
@@ -382,7 +416,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
     #points_xy['center'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
-    points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
+    #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
+    points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
 
     if False:
         if wells_type in ['prod', 'doublet']:
@@ -390,26 +425,30 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         if wells_type in ['inj', 'doublet']:
             points_xy['inj well'] = m.inj_well_coords[:-1]
 
+    # plot 2D THM displs (XY plane)
+    points_x = np.arange(bounds[0][0], bounds[0][1], 250)
+    points_y = points_x
+    points_z = np.array([2150])
+    #points_z = np.hstack([np.arange(0, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 4000, 200)])
+    #points_z = np.arange(1800, 2400, 25)
+    points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
+    array_dict = {'ux_thm_2d': ux_last, 'uy_thm_2d': uy_last, 'uz_thm_2d': uz_last}
+    array_dict.update({'delta_pressure': delta_pressure, 'delta_temperature': delta_temperature})
+    array_dict_interp = get_thm_by_interp(array_dict, points_x_3d, points_y_3d, points_z_3d)
+    plot_contour(array_dict_interp, points_x, points_y)
+
     # compute with proxy in 3D volume
     if True:
-        points_x = np.arange(-1000, 1000, 100)
-        points_y = np.arange(-1000, 1000, 100)           
-        #points_z = np.hstack([np.arange(0, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 4000, 200)])
-        #points_z = np.arange(1800, 2400, 25)
-        points_z = np.array([2150])
-        
-        nx, ny, nz = points_x.size, points_y.size, points_z.size
-        #print(nx, ny, nz)
-        points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
+        p_nx, p_ny, p_nz = points_x.size, points_y.size, points_z.size
         points = np.zeros((3, points_x_3d.size))
         points[1, :], points[0, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
         ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
-        ux_prx_3d = ux_prx.reshape((nx, ny, nz))
-        uy_prx_3d = uy_prx.reshape((nx, ny, nz))
-        uz_prx_3d = uz_prx.reshape((nx, ny, nz))
+        ux_prx_3d = ux_prx.reshape((p_nx, p_ny, p_nz))
+        uy_prx_3d = uy_prx.reshape((p_nx, p_ny, p_nz))
+        uz_prx_3d = uz_prx.reshape((p_nx, p_ny, p_nz))
         
         # save to pkl
-        displs = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
+        displs = {'ux_prx_2d': ux_prx_3d, 'uy_prx_2d': uy_prx_3d, 'uz_prx_2d': uz_prx_3d}
         import pickle
         with open(os.path.join(folder, "displs_prx.pkl"), "wb") as f:   # note 'wb' = write binary
             pickle.dump(displs, f)
@@ -420,27 +459,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         #plt.contourf(uz_prx_3d[:,:,20])  # XY plane 
         #plt.plot(ux_prx_3d[10,10,:])  # along Z-axis
         
-        arrays = [ux_prx_3d, uy_prx_3d, uz_prx_3d]
-        array_names = ['ux_prx_3d', 'uy_prx_3d', 'uz_prx_3d']
-        
-        # interp thm solution to struct grid for plotting
-        from scipy.interpolate import griddata as gd
-        ux_thm_struct = gd((centroids[:, 0], centroids[:, 1], centroids[:, 2]), \
-            ux_last, (points_x_3d, points_y_3d, points_z_3d), method='linear')
-        arrays += [ux_thm_struct]
-        array_names += ['ux_thm_3d']
-        
-        # XY plane , 1 layer by z
-        for u_prx, fname in zip(arrays, array_names):
-            px, py = points_x_3d.flatten(), points_y_3d.flatten()
-            cs = plt.contourf(points_x, points_y, u_prx[:,:,0].transpose(), levels=10)  
-            plt.colorbar(cs)
-            plt.gca().set_aspect('equal')
-            plt.xlabel('X')
-            plt.ylabel('Y')
-            plt.title(fname)
-            plt.savefig(os.path.join(folder, fname + '.png'))
-            plt.close()
+        array_dict = {'ux_prx_3d':ux_prx_3d[:,:,0].transpose(), 'uy_prx_3d':uy_prx_3d[:,:,0].transpose(), 
+                      'uz_prx_3d':uz_prx_3d[:,:,0].transpose()}
+        plot_contour(array_dict, points_x, points_y)
         
         # along X-axis
         #dux_dx = np.gradient(ux_prx_3d[:,10,10], points_x) 
@@ -465,10 +486,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     for k in points_xy.keys():
         point_xy = points_xy[k]
         print('plotting for point', k, 'YX=', point_xy)
-        modes = ['displ_z', 'displ_y', 'displ_x']
+        modes = ['delta_pressure']
+        modes += ['displ_z', 'displ_y', 'displ_x']
         #modes += ['strain_z', 'strain_y', 'strain_x']
         #modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
-        #modes = ['strain_x']
+        #modes = ['strain_x']  # debug
 
         # compare U-Z at a line along z-axis
         z_min = 0.
@@ -518,8 +540,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
-    #case = '16_16_15'
-    case = '34_34_54'  #
+    case = '16_16_15'
+    #case = '34_34_54'  #
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -543,12 +565,12 @@ if __name__ == '__main__':
     report_step = 90  # days
     
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    #timestep = int((n_years * 365.25) / 30)  # last one; dt = 30 days
-    timestep = 1
+    timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    #timestep = 1
     #timestep = 13
     
-    #run_thm = True
-    run_thm = False
+    run_thm = True
+    #run_thm = False
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
@@ -571,6 +593,6 @@ if __name__ == '__main__':
             t2 = datetime.now()
             proxy_time = t2 - t1
 
-            print('case', case, 'done', 'timestep', timestep)
+            print('case', case, 'done', 'timestep for plots and proxy', timestep)
             print('THM   time', thm_time)
             print('proxy time', proxy_time)

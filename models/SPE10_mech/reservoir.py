@@ -39,64 +39,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
     def spe10(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
 
         self.mesh_filename = os.path.join(model_folder, 'spe10.msh')
-        nx, ny, nz = list(map(int, os.path.basename(model_folder).split('_')))
+        nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
 
         if generate_mesh:
             print('Mesh generation started')
-            tags = dict()
-            tags['BND_X-'] = 991
-            tags['BND_X+'] = 992
-            tags['BND_Y-'] = 993
-            tags['BND_Y+'] = 994
-            tags['BND_Z-'] = 995
-            tags['BND_Z-F'] = 997
-            tags['BND_Z+'] = 996
-            tags['MATRIX_1'] = 99991
-            tags['MATRIX_2'] = 99992
-
             # define permeable reservoir geometric boundaries
             self.rsv_top = idata.other.rsv_top
             self.rsv_bottom = idata.other.rsv_bottom
             self.rsv_xy = idata.other.rsv_xy
-
-            if nx == 6: # for debugging, -4..4 km XY
-                self.Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
-            elif nx == 16: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
-                self.Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
-            elif nx == 28: # -15..15 km XY, dx = 100 m in the reservoir, outside 1000-7000 m
-                self.Xc = np.array([-15000, -8000, -4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000, 8000, 15000])
-            elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 1000-15000 m
-                self.Xc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
-            elif nx == 41: # 41x41
-                pass
-                #rsv = np.arange(-900, 1000, 200)
-                #side = np.arange(1000, 6500, 1000)
-                #self.Xc = np.hstack([-side, rsv, side])
-            else:
-                print('not found an option to mesh with nx = ', nx)
-                exit(1)
-
-            if nz == 5: # for debugging
-                self.Zc = np.array([0, 1000, 2000, 2100, 2200, 3000])
-            elif nz == 15:  # dz = 100-1000 m for over and underburden and 20m for the reservoir
-                self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
-            elif nz == 29:  # dz = 200 m for over and underburden and 20m for the reservoir
-                self.Zc = np.hstack([np.arange(0, self.rsv_top, 200), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 200)])
-            elif nz == 37:  # dz = 200 m for over and underburden and 20m for the reservoir
-                self.Zc = np.hstack([np.arange(0, self.rsv_top, 150), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 150)])
-            elif nz == 53:  # dz = 100 m for over and underburden and 20m for the reservoir
-                self.Zc = np.hstack([np.arange(0, self.rsv_top, 100), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 100)])
-            elif nz == 54:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
-                self.Zc = np.hstack([np.arange(0, self.rsv_top - 100, 100),
-                                     self.rsv_top - 100,
-                                     np.arange(self.rsv_top - 50, self.rsv_bottom, 25),
-                                     self.rsv_bottom + 50,
-                                     np.arange(self.rsv_bottom + 100, 5000, 100)])
-            elif nz == 60:  # uniform dz = 100 m
-                np.linspace(0, 6000, num=61)  # mesh Z range
-            else:
-                print('not found an option to mesh with nz = ', nz)
-                exit(1)
+            self.Xc = idata.other.Xc
+            self.Zc = idata.other.Zc
 
             # refine by Z also around rsv
             #self.Zc = np.hstack([np.arange(0, self.rsv_top-100, 100), np.arange(self.rsv_top-100, self.rsv_bottom+100, 20),np.arange(self.rsv_bottom+100, 6000, 100)])
@@ -120,7 +72,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
             self.Yc = self.Xc
             from gen_msh import generate_box_3d
-            generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags,  # XYZ are ignored since Xc, Yc, Zc are passed
+            generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=idata.mesh.tags,  # XYZ are ignored since Xc, Yc, Zc are passed
                                        is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)
             print('Mesh generation finished')
 

@@ -61,7 +61,7 @@ class Model(THMCModel):
     def set_input_data(self):
         # figure out nx, ny, nz
         dims=os.path.basename(self.model_folder).split('_')
-        self.nx, self.ny, self.nz = int(dims[-3]), int(dims[-2]), int(dims[-1])
+        nx, ny, nz = int(dims[-3]), int(dims[-2]), int(dims[-1])
 
         # set properties
         porosity = 0.375
@@ -70,11 +70,11 @@ class Model(THMCModel):
         E = 10 # [GPa]
         #E = 22  # GPa, Dinantian carbonate 
         #E = 12  # GPa, Indiana Limestone 
-        p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
+        p_init = 300 * np.ones(nx * ny * nz)  # [bar]
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
 
-        self.idata.other.nx, self.idata.other.ny, self.idata.other.nz = self.nx, self.ny, self.nz
+        self.idata.other.nx, self.idata.other.ny, self.idata.other.nz = nx, ny, nz
 
         self.idata.rock.density = 2650.
         self.idata.rock.porosity = porosity
@@ -119,14 +119,61 @@ class Model(THMCModel):
             self.idata.initial.initial_composition = [0.67]
 
         self.idata.mesh.bnd_tags = {}
-        bnd_tags = self.idata.mesh.bnd_tags  # short name
-        bnd_tags['BND_X-'] = 991
-        bnd_tags['BND_X+'] = 992
-        bnd_tags['BND_Y-'] = 993
-        bnd_tags['BND_Y+'] = 994
-        bnd_tags['BND_Z-'] = 995
-        bnd_tags['BND_Z+'] = 996
-        self.idata.mesh.matrix_tags = [99991]
+        tags = self.idata.mesh.bnd_tags  # short name
+        tags['BND_X-'] = 991
+        tags['BND_X+'] = 992
+        tags['BND_Y-'] = 993
+        tags['BND_Y+'] = 994
+        tags['BND_Z-'] = 995
+        tags['BND_Z+'] = 996
+        mat_tag = 99991
+        self.idata.mesh.matrix_tags = [mat_tag]
+        # merge dicts (for mesh generation)
+        self.idata.mesh.tags = self.idata.mesh.bnd_tags.copy()
+        self.idata.mesh.tags['MATRIX_1'] = mat_tag
+
+        if nx == 6: # for debugging, -4..4 km XY
+            Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
+        elif nx == 16: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
+            Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
+        elif nx == 28: # -15..15 km XY, dx = 100 m in the reservoir, outside 1000-7000 m
+            Xc = np.array([-15000, -8000, -4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000, 8000, 15000])
+        elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 1000-15000 m
+            Xc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
+        elif nx == 41: # 41x41
+            pass
+            #rsv = np.arange(-900, 1000, 200)
+            #side = np.arange(1000, 6500, 1000)
+            #self.Xc = np.hstack([-side, rsv, side])
+        else:
+            print('not found an option to mesh with nx = ', nx)
+            exit(1)
+
+        rsv_top = self.idata.other.rsv_top
+        rsv_bottom = self.idata.other.rsv_bottom
+        if nz == 5: # for debugging
+            Zc = np.array([0, 1000, 2000, 2100, 2200, 3000])
+        elif nz == 15:  # dz = 100-1000 m for over and underburden and 20m for the reservoir
+            Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
+        elif nz == 29:  # dz = 200 m for over and underburden and 20m for the reservoir
+            Zc = np.hstack([np.arange(0, rsv_top, 200), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 200)])
+        elif nz == 37:  # dz = 200 m for over and underburden and 20m for the reservoir
+            Zc = np.hstack([np.arange(0, rsv_top, 150), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 150)])
+        elif nz == 53:  # dz = 100 m for over and underburden and 20m for the reservoir
+            Zc = np.hstack([np.arange(0, rsv_top, 100), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 100)])
+        elif nz == 54:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
+            Zc = np.hstack([np.arange(0, rsv_top - 100, 100),
+                                 rsv_top - 100,
+                                 np.arange(rsv_top - 50, rsv_bottom, 25),
+                                 rsv_bottom + 50,
+                                 np.arange(rsv_bottom + 100, 5000, 100)])
+        elif nz == 60:  # uniform dz = 100 m
+            np.linspace(0, 6000, num=61)  # mesh Z range
+        else:
+            print('not found an option to mesh with nz = ', nz)
+            exit(1)
+        self.idata.other.Xc = Xc
+        self.idata.other.Zc = Zc
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-9
