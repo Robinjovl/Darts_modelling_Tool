@@ -112,8 +112,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     # where to compare the results - middle XYZ
     centroids = np.zeros((prisms.shape[0], 3))
-    centroids[:, 0] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # x
-    centroids[:, 1] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # y
+    centroids[:, 0] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # Y
+    centroids[:, 1] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # X
     centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
 
     n_dim = 3  # X,Y,Z
@@ -140,6 +140,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             array_dict_interp[arr_name] = gd((centroids[:, 1], centroids[:, 0], centroids[:, 2]), \
                 arr, (points_x, points_y, points_z), method='linear')
         return array_dict_interp
+
+    def get_thm_dp_dt(point, verbose=False):
+        cell = find_cell_by_point(point)
+        dp = delta_pressure[cell]
+        dt = delta_temperature[cell]
+        return dp, dt
 
     def get_thm_displs(point, verbose=False):
         cell = find_cell_by_point(point)
@@ -276,7 +282,14 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             eval_points[:, 2] = z
         return eval_points.transpose()
 
-    def get_proxy_strain_stress(eval_points):
+    def get_proxy_strain_stress(eval_points_):
+        if len(eval_points_.shape) == 1:  # just one point (1d array)
+            eval_points = np.zeros((3, 1))
+            eval_points[0, :] = eval_points_[0]  # X<->Y
+            eval_points[1, :] = eval_points_[1]
+            eval_points[2, :] = eval_points_[2]
+        else: # multiple points, 2d array
+            eval_points = eval_points_
         # returns thermoporoelastic strain and  stress in MPa, (6, n_points), 6 - Voight notation
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points_eps = eval_points + eps
@@ -426,7 +439,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             points_xy['inj well'] = m.inj_well_coords[:-1]
 
     # plot 2D THM displs (XY plane)
-    points_x = np.arange(bounds[0][0], bounds[0][1], 250)
+    #points_x = np.arange(bounds[0][0], bounds[0][1], 250) # the whole mesh by XY
+    points_x = np.arange(-1000, 1000, 100)  # only internal XY part
     points_y = points_x
     points_z = np.array([2150])
     #points_z = np.hstack([np.arange(0, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 4000, 200)])
@@ -439,6 +453,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     # compute with proxy in 3D volume
     if True:
+        print('plotting 2D slices')
         p_nx, p_ny, p_nz = points_x.size, points_y.size, points_z.size
         points = np.zeros((3, points_x_3d.size))
         points[1, :], points[0, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
@@ -463,25 +478,22 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                       'uz_prx_3d':uz_prx_3d[:,:,0].transpose()}
         plot_contour(array_dict, points_x, points_y)
         
-        # along X-axis
-        #dux_dx = np.gradient(ux_prx_3d[:,10,10], points_x) 
-        #plt.plot(ux_prx_3d[:,10,10])
-        #plt.plot(dux_dx)
-        #
-        j = 10
-        for i in range(9,12):
-            plt.plot(points_z, ux_prx_3d[i,j,:], label='prx_'+str(i), marker='.')
-            ux_thm = []
-            for p_z in points_z:
-                p = points_x[i], points_y[j], p_z
-                ux_thm.append(get_thm_displs(p)[0])
-            plt.plot(points_z, ux_thm, label='thm_'+str(i), linestyle='--', marker='.')
-            
-        plt.gca().invert_yaxis()
-        plt.legend()
-        plt.grid()
-        plt.savefig(os.path.join(folder, 'Ux_by_depth.png'))
-        plt.close()
+        # plot 1D plots at different X-layers to check the strain computation
+        if False:
+            j = 10
+            for i in range(9,12):
+                plt.plot(points_z, ux_prx_3d[i,j,:], label='prx_'+str(i), marker='.')
+                ux_thm = []
+                for p_z in points_z:
+                    p = points_x[i], points_y[j], p_z
+                    ux_thm.append(get_thm_displs(p)[0])
+                plt.plot(points_z, ux_thm, label='thm_'+str(i), linestyle='--', marker='.')
+                
+            plt.gca().invert_yaxis()
+            plt.legend()
+            plt.grid()
+            plt.savefig(os.path.join(folder, 'Ux_by_depth.png'))
+            plt.close()
 
     for k in points_xy.keys():
         point_xy = points_xy[k]
@@ -514,34 +526,34 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         compare_vert_line(points_all, suffix='all', loc=k, output_folder=folder, modes=modes)
         compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, modes=modes)
 
-    # compare vert displs at the middle point at the surface and print
-    if False:
-        point = np.array([points_xy[0][1], points_xy[0][2], 0.]) # at the surface (depth=0)
-        uz_thm = get_thm_displs(point)*m2mm
-        uz_prx = get_proxy_displs(point)*m2mm
-        print('Compare at the middle point at the surface, point=', point)
-        print('\tTHM   ', 'uz=', uz_thm, 'mm.')
-        print('\tProxy ', 'uz=', uz_prx, 'mm.')
+    # print vert displs and stresses change at a point
+    if True:
+        point = np.array([0., 0., 2150.]) # middle
 
-        # compare delta Sxx at the middle point in the reservoir and print
-        point[2] = (m.reservoir.rsv_top + m.reservoir.rsv_bottom) * 0.5  # at the middle depth of the reservoir
-        dsxx_thm = get_thm_stress(point)*bars2mpa
-        dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
-        dsxx_prx = get_proxy_strain_stress(point)
-        print('Compare at the middle depth of the reservoir, point=', point)
+        ux_thm, uy_thm, uz_thm = get_thm_displs(point)
+        ux_prx, uy_prx, uz_prx = get_proxy_displs(point)# need to X<->Y
+        print('Compare at the point=', point)
+        print('\tTHM   ', 'ux=', ux_thm*m2mm, 'uy=', uy_thm*m2mm, 'uz=', uz_thm*m2mm, 'mm.')
+        print('\tProxy ', 'ux=', ux_prx*m2mm, 'uy=', uy_prx*m2mm, 'uz=', uz_prx*m2mm, 'mm.')
+
+        dsxx_thm = get_thm_stress(point)[0]*bars2mpa
+        #dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
+        dsxx_prx = get_proxy_strain_stress(point)[3]  # need to X<->Y
+        print('Compare at the point=', point)
         print('\tTHM   ', 'delta_Sxx=', dsxx_thm, 'MPa')
-        print('\tTHM_by_deriv', 'delta_Sxx=', dsxx_thm2, 'MPa')
+        #print('\tTHM_by_deriv', 'delta_Sxx=', dsxx_thm2, 'MPa')
         print('\tProxy ', 'delta_Sxx=', dsxx_prx, 'MPa')
 
-    # for uniform depletion with Biot=1 and poisson ratio=0.25 should be 2/3
-    #print('THM delta_Sxx / delta_pressure=', np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max())
+        # for uniform depletion with Biot=1 and poisson ratio=0.25 should be 2/3
+        #print('THM delta_Sxx / delta_pressure=', np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max())  # MAX
+        print('THM delta_Sxx / delta_pressure=', dsxx_thm / get_thm_dp_dt(point)[0])
 
 
 if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
-    case = '16_16_15'
-    #case = '34_34_54'  #
+    #case = '16_16_15'
+    case = '34_34_54'  #
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
