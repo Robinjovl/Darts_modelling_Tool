@@ -65,8 +65,8 @@ class Model(THMCModel):
 
         # set properties
         porosity = 0.375
-        #permeability = 1000 # [mD] # this matched thm and analytical solution
-        permeability = 100 # [mD] # this matches proxy and thm
+        permeability = 1000 # [mD] # this matched thm and analytical solution
+        #permeability = 100 # [mD] # this matches proxy and thm
         E = 10 # [GPa]
         #E = 22  # GPa, Dinantian carbonate 
         #E = 12  # GPa, Indiana Limestone 
@@ -90,8 +90,8 @@ class Model(THMCModel):
         self.idata.other.rsv_xy = 100000  # "infinite" laterally
 
         self.idata.rock.poro_non_rsv = 0.001
-        #self.idata.rock.perm_non_rsv = 0.000001 # this matched thm and analytical solution
-        self.idata.rock.perm_non_rsv = 0.001   # this matches proxy and thm
+        self.idata.rock.perm_non_rsv = 0.000001 # this matched thm and analytical solution
+        #self.idata.rock.perm_non_rsv = 0.001   # this matches proxy and thm
         self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
 
         self.idata.rock.compressibility = get_rock_compressibility(

@@ -55,7 +55,7 @@ def geomech_init_geometry(mesh_data):
     return prisms
 
 def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timestep=1):
-    folder = 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case
+    folder = 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case  # where vtk files are located
 
     # init geomech proxy
     from geomechanics import geomech
@@ -87,6 +87,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     qx_last = np.array(msh_last.cell_data['strain'])[0, :, 0]  #  XX
     qy_last = np.array(msh_last.cell_data['strain'])[0, :, 1]  #  YY
     qz_last = np.array(msh_last.cell_data['strain'])[0, :, 2]  # ZZ
+    
+    folder = os.path.join(folder, 'timestep_' + str(timestep))
+    os.makedirs(folder, exist_ok=True)
     
     if 'delta_pressure' in msh_last.cell_data.keys():
         delta_pressure = np.array(msh_last.cell_data['delta_pressure']).flatten()
@@ -373,7 +376,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '.png'))
             plt.close()
 
-    def plot_contour(array_dict, points_x, points_y, layer=0):
+    def plot_contour(array_dict, points_x, points_y, output_folder, layer=0):
         # plot contours XY plane, 1 layer by z
         for arr_name, arr in array_dict.items():
             if len(arr.shape) == 3:
@@ -386,7 +389,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.xlabel('X')
             plt.ylabel('Y')
             plt.title(arr_name)
-            plt.savefig(os.path.join(folder, arr_name + '.png'))
+            plt.savefig(os.path.join(output_folder, arr_name + '.png'))
             plt.close()
 
     def testing():
@@ -447,12 +450,13 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     #points_z = np.arange(1800, 2400, 25)
     points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
     array_dict = {'ux_thm_2d': ux_last, 'uy_thm_2d': uy_last, 'uz_thm_2d': uz_last}
-    array_dict.update({'delta_pressure': delta_pressure, 'delta_temperature': delta_temperature})
+    array_dict.update({'delta_stress_XX_MPa': delta_Sxx_last, 'delta_stress_ZZ_MPa': delta_Szz_last})
+    array_dict.update({'delta_pressure_MPa': delta_pressure, 'delta_temperature': delta_temperature})
     array_dict_interp = get_thm_by_interp(array_dict, points_x_3d, points_y_3d, points_z_3d)
-    plot_contour(array_dict_interp, points_x, points_y)
+    plot_contour(array_dict_interp, points_x, points_y, output_folder=folder)
 
     # compute with proxy in 3D volume
-    if True:
+    if False:
         print('plotting 2D slices')
         p_nx, p_ny, p_nz = points_x.size, points_y.size, points_z.size
         points = np.zeros((3, points_x_3d.size))
@@ -476,7 +480,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         
         array_dict = {'ux_prx_3d':ux_prx_3d[:,:,0].transpose(), 'uy_prx_3d':uy_prx_3d[:,:,0].transpose(), 
                       'uz_prx_3d':uz_prx_3d[:,:,0].transpose()}
-        plot_contour(array_dict, points_x, points_y)
+        plot_contour(array_dict, points_x, points_y, output_folder=folder)
         
         # plot 1D plots at different X-layers to check the strain computation
         if False:
@@ -497,7 +501,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     for k in points_xy.keys():
         point_xy = points_xy[k]
-        print('plotting for point', k, 'YX=', point_xy)
+        print('1D plots for point', k, 'YX=', point_xy)
         modes = ['delta_pressure']
         modes += ['displ_z', 'displ_y', 'displ_x']
         #modes += ['strain_z', 'strain_y', 'strain_x']
@@ -540,13 +544,13 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         #dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
         dsxx_prx = get_proxy_strain_stress(point)[3]  # need to X<->Y
         print('Compare at the point=', point)
-        print('\tTHM   ', 'delta_Sxx=', dsxx_thm, 'MPa')
+        print('\tTHM   ', 'delta_Sxx=', -dsxx_thm, 'MPa')
         #print('\tTHM_by_deriv', 'delta_Sxx=', dsxx_thm2, 'MPa')
         print('\tProxy ', 'delta_Sxx=', dsxx_prx, 'MPa')
 
         # for uniform depletion with Biot=1 and poisson ratio=0.25 should be 2/3
-        #print('THM delta_Sxx / delta_pressure=', np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max())  # MAX
-        print('THM delta_Sxx / delta_pressure=', dsxx_thm / get_thm_dp_dt(point)[0])
+        print('THM delta_Sxx_thm_max / delta_pressure_max=', np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max())  # MAX
+        print('THM delta_Sxx_thm_point / delta_pressure_point =', -dsxx_thm / get_thm_dp_dt(point)[0])
 
 
 if __name__ == '__main__':
@@ -577,12 +581,12 @@ if __name__ == '__main__':
     report_step = 90  # days
     
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    #timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
     #timestep = 1
-    #timestep = 13
+    timestep = 5
     
-    run_thm = True
-    #run_thm = False
+    #run_thm = True
+    run_thm = False
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
