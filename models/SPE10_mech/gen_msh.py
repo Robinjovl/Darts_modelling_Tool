@@ -12,7 +12,7 @@ import sys
 def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : int, tags : dict, filename : str = None,
                     is_transfinite : bool = True, is_recombine : bool  = True, refinement_mult : bool = 1.0,
                     fault_refinement_mult = 1.0, fault_angle : float = None, z_minus_hybrid = False, two_rocks = False,
-                    msh_ver=2.1, popup=False, Xc=None, Yc=None, Zc=None):
+                    msh_ver=2.1, popup=False, Xc=None, Yc=None, Zc=None, rsv_top=None, rsv_bottom=None):
     '''
     generates a rectangular-box structured-like mesh with hexahedron (right prism) cells in the unstructured mesh format (gmsh 2).
     :param X: a box size along X-axis
@@ -275,13 +275,22 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
                                                                  i + 1 + n_max_x * j + n_max_xy * (k + 1),
                                                                  i + 1 + n_max_x * (j + 1) + n_max_xy * (k + 1),
                                                                  i + n_max_x * (j + 1) + n_max_xy * (k + 1) ])
-                if two_rocks:
-                    if k == 0:
-                        reservoir_1.append(id)
+                if Zc is None:
+                    if two_rocks:
+                        if k == 0:
+                            reservoir_1.append(id)
+                        else:
+                            reservoir_2.append(id)
                     else:
-                        reservoir_2.append(id)
-                else:
-                    reservoir.append(id)
+                        reservoir.append(id)
+                else:  # depths list is specified
+                    if two_rocks:
+                        if rsv_top >= z[k] > rsv_bottom:
+                            reservoir_1.append(id)
+                        else:
+                            reservoir_2.append(id)
+                    else:
+                        reservoir.append(id)
 
     gmsh.model.geo.synchronize()
 
@@ -421,6 +430,15 @@ if __name__ == '__main__':
     # for field scale model
     tags_no_fault = tags.copy()
     tags_no_fault.pop('FRAC')
-    filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault,
-                               is_transfinite=True, is_recombine=True, popup=True)
-    write_to_vtk_with_faces(filename)
+    if False:
+        filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault, is_transfinite=True, is_recombine=True, popup=True)
+        write_to_vtk_with_faces(filename)
+    
+    if True:  # rsv_top < rsv < rsv_bottom (tag MATRIX_1) and non-rsv (tag MATRIX_2)
+        x_list = [-2000, -1000, 0, 1000, 2000]
+        z_list = [0,-1000,-1500,-2100,-2200,-3000,-4000]
+        filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault, 
+                                   Xc=x_list, Yc=x_list, Zc=z_list, rsv_top=-2100, rsv_bottom=-2200, 
+                                   msh_ver=4.2, # geos fails with a negative volume issue for gmsh 2.1 format https://github.com/GEOS-DEV/GEOS/issues/2154
+                                   two_rocks=True, is_transfinite=True, is_recombine=True, popup=True)
+    
