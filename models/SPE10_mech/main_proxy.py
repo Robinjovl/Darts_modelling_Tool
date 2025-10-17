@@ -146,7 +146,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     def get_thm_dp_dt(point, verbose=False):
         cell = find_cell_by_point(point)
-        dp = delta_pressure[cell]
+        dp = delta_pressure[cell] * bars2mpa
         dt = delta_temperature[cell]
         return dp, dt
 
@@ -551,7 +551,6 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         # for uniform depletion with Biot=1 and poisson ratio=0.25 should be 2/3
         print('THM delta_Sxx_thm_max / delta_pressure_max=', np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max())  # MAX
         print('THM delta_Sxx_thm_point / delta_pressure_point =', -dsxx_thm / get_thm_dp_dt(point)[0])
-
 
 if __name__ == '__main__':
 
