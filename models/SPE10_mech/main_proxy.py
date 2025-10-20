@@ -11,6 +11,10 @@ from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus
 # unit conversion factors
 m2mm = 1e3
 bars2mpa = 0.1
+Pa2bars = 1e-5
+
+def fmt(x):
+    return '{:.3}'.format(x)
 
 def read_vtk_darts_solution(folder, timestep : int):
     filename = os.path.join(folder, 'solution'+str(timestep)+'.vtu')
@@ -75,6 +79,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     # read THM solution from vtk
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
     poro = np.array(msh_initial.cell_data['poro']).flatten()
+    p_init = np.array(msh_initial.cell_data['pressure']).flatten()
+    Szz_init = np.array(msh_initial.cell_data['tot_stress'])[0, :, 2] * bars2mpa # ZZ
 
     msh_last = read_vtk_darts_solution(folder=folder, timestep=timestep)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
@@ -434,7 +440,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     #points_xy['center'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
     #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
     points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
-
+    #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
+    
     if False:
         if wells_type in ['prod', 'doublet']:
             points_xy['prod well'] = m.prod_well_coords[:-1] # -1 to skip z coord
@@ -537,20 +544,37 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         ux_thm, uy_thm, uz_thm = get_thm_displs(point)
         ux_prx, uy_prx, uz_prx = get_proxy_displs(point)# need to X<->Y
         print('Compare at the point=', point)
-        print('\tTHM   ', 'ux=', ux_thm*m2mm, 'uy=', uy_thm*m2mm, 'uz=', uz_thm*m2mm, 'mm.')
-        print('\tProxy ', 'ux=', ux_prx*m2mm, 'uy=', uy_prx*m2mm, 'uz=', uz_prx*m2mm, 'mm.')
+        print('\tTHM   ', 'ux=', fmt(ux_thm*m2mm), 'uy=', fmt(uy_thm*m2mm), 'uz=', fmt(uz_thm*m2mm), 'mm.')
+        print('\tProxy ', 'ux=', fmt(ux_prx[0]*m2mm), 'uy=', fmt(uy_prx[0]*m2mm), 'uz=', fmt(uz_prx[0]*m2mm), 'mm.')
 
         dsxx_thm = get_thm_stress(point)[0]*bars2mpa
         #dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
-        dsxx_prx = get_proxy_strain_stress(point)[3]  # need to X<->Y
+        dsxx_prx = get_proxy_strain_stress(point)[3][0]  # need to X<->Y
         print('Compare at the point=', point)
-        print('\tTHM   ', 'delta_Sxx=', -dsxx_thm, 'MPa')
+        print('\tTHM   ', 'delta_Sxx=', fmt(dsxx_thm), 'MPa')
         #print('\tTHM_by_deriv', 'delta_Sxx=', dsxx_thm2, 'MPa')
-        print('\tProxy ', 'delta_Sxx=', dsxx_prx, 'MPa')
+        print('\tProxy ', 'delta_Sxx=', fmt(dsxx_prx), 'MPa')
 
         # for uniform depletion with Biot=1 and poisson ratio=0.25 should be 2/3
-        print('THM delta_Sxx_thm_max / delta_pressure_max=', np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max())  # MAX
-        print('THM delta_Sxx_thm_point / delta_pressure_point =', -dsxx_thm / get_thm_dp_dt(point)[0])
+        print('THM delta_Sxx_thm_max / delta_pressure_max=', fmt(np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max()))  # MAX
+        print('THM delta_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_thm / get_thm_dp_dt(point)[0]))
+        
+    if False: # check initial pressure and stress for THM
+        max_depth = bounds[2][1]  # max z m
+        rsv_thickness = m.idata.other.rsv_bottom - m.idata.other.rsv_top
+        poro_rsv = m.idata.rock.porosity
+        poro_non_rsv = m.idata.rock.poro_non_rsv
+        rock_dens = m.idata.rock.density
+        fluid_dens = m.idata.fluid.density
+        
+        p_init_by_density = 9.81 * fluid_dens * max_depth * Pa2bars
+        szz_init_by_density = 9.81 * (rock_dens*(1-poro_non_rsv) + fluid_dens*poro_non_rsv) * (max_depth - rsv_thickness) * Pa2bars
+        szz_init_by_density += 9.81 * (rock_dens*(1-poro_rsv) + fluid_dens*poro_rsv) * rsv_thickness * Pa2bars
+        # Note, that THM depth is at cell center 
+        print('Pressure at depth ', max_depth, 'by gradient=', fmt(p_init_by_density), 
+              'THM=', fmt(p_init.max()), 'bars')
+        print('StressZZ at depth ', max_depth, 'by gradient=', fmt(szz_init_by_density),
+              'THM=', fmt(Szz_init.max()), 'bars')
 
 if __name__ == '__main__':
 
@@ -577,12 +601,16 @@ if __name__ == '__main__':
     #n_years = 10
     #n_years = 30
     #n_years = 50
+    #sim_time = 365.25 * n_years
+    sim_time = 90 # days
+    
     report_step = 90  # days
+
     
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
     #timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
-    #timestep = 1
-    timestep = 5
+    timestep = 1
+    #timestep = 5
     
     #run_thm = True
     run_thm = False
@@ -598,7 +626,7 @@ if __name__ == '__main__':
                 run(model_folder=case, physics_type=physics_type, 
                     uniform_props=uniform_props, wells_type=wells_type, 
                     decouple_geomech=True, generate_mesh=True,
-                    n_years=n_years, report_step=report_step)
+                    n_years=n_years, report_step=report_step, sim_time=sim_time)
             t2 = datetime.now()
             thm_time = t2 - t1
 

@@ -64,10 +64,10 @@ class Model(THMCModel):
         nx, ny, nz = int(dims[-3]), int(dims[-2]), int(dims[-1])
 
         # set properties
-        porosity = 0.375
+        porosity = 0.1
         permeability = 1000 # [mD] # this matched thm and analytical solution
         #permeability = 100 # [mD] # this matches proxy and thm
-        E = 10 # [GPa]
+        E = 12 # [GPa]
         #E = 22  # GPa, Dinantian carbonate 
         #E = 12  # GPa, Indiana Limestone 
         p_init = 300 * np.ones(nx * ny * nz)  # [bar]
@@ -378,7 +378,7 @@ class Model(THMCModel):
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=True, target=p_cell + delta_p, inj_composition=inj,
                                                inj_temp=inj_temp)
-                print('w.name BHP control = ', p_cell + delta_p)
+                print('well', w.name, 'BHP control = ', p_cell + delta_p)
         return 0
 
     def set_initial_conditions(self):

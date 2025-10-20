@@ -245,6 +245,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 for j in range(6):
                     cell_data['tot_stress'][-1][:, j] = total_stresses[j::6]
 
+                if 'eff_stress' not in cell_data: cell_data['eff_stress'] = []
+                cell_data['eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
+                for j in range(6):
+                    cell_data['eff_stress'][-1][:, j] = np.fabs(cell_data['tot_stress'][-1][:, j]) - pressure
+
                 if 'delta_tot_stress' not in cell_data: cell_data['delta_tot_stress'] = []
                 cell_data['delta_tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
                 for j in range(6):

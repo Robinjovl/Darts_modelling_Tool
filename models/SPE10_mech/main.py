@@ -113,7 +113,7 @@ def run_timestep_python(m, dt, t):
     return converged
 
 def run(model_folder, physics_type, uniform_props=False, wells_type=None, 
-        decouple_geomech=False, generate_mesh=False, n_years=1, report_step = 90.):
+        decouple_geomech=False, generate_mesh=False, n_years=1, report_step = 90., sim_time = 90.):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -169,12 +169,11 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
-    sim_time = 365.25 * n_years
     m.time_steps = []
     data = []
     # Run over all reporting time-steps:
     ith_step = 0
-    while m.physics.engine.t < sim_time:
+    while m.physics.engine.t <= sim_time:
         run_python(m=m, days=report_step)
         m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
         ith_step += 1
