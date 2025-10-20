@@ -435,10 +435,20 @@ if __name__ == '__main__':
         write_to_vtk_with_faces(filename)
     
     if True:  # rsv_top < rsv < rsv_bottom (tag MATRIX_1) and non-rsv (tag MATRIX_2)
-        x_list = [-2000, -1000, 0, 1000, 2000]
-        z_list = [0,-1000,-1500,-2100,-2200,-3000,-4000]
+        rsv_top = 2100
+        rsv_bottom = 2200
+        
+        # small
+        #x_list = np.array([-2000, -1000, 0, 1000, 2000])
+        #z_list = -1 * np.array([0,1000,1500,rsv_top,rsv_bottom,3000,4000])
+        
+        x_list = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
+        z_list = -1 * np.hstack([np.arange(0, rsv_top - 100, 100), rsv_top - 100, np.arange(rsv_top - 50, rsv_bottom, 25), rsv_bottom + 50, np.arange(rsv_bottom + 100, 5000, 100)])
+
         filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault, 
-                                   Xc=x_list, Yc=x_list, Zc=z_list, rsv_top=-2100, rsv_bottom=-2200, 
+                                   Xc=x_list, Yc=x_list, Zc=z_list, rsv_top=-rsv_top, rsv_bottom=-rsv_bottom, 
                                    msh_ver=4.2, # geos fails with a negative volume issue for gmsh 2.1 format https://github.com/GEOS-DEV/GEOS/issues/2154
                                    two_rocks=True, is_transfinite=True, is_recombine=True, popup=True)
+        
+    print('Finished')
     
