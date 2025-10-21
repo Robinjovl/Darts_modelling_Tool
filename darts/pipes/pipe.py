@@ -907,10 +907,10 @@ class Pipe:
                     from scipy.optimize import fsolve
 
                     def colebrook(f, Re, relative_roughness):
-                        if (
-                            f <= 0
-                        ):  # Ensure the friction factor doesn't go negative or zero
-                            return 1e6  # Return a large value to prevent sqrt of negative number
+                        # Ensure the friction factor doesn't go negative or zero
+                        if f <= 0:
+                            # Return a large value to prevent sqrt of negative number
+                            return 1e6
                         return 1 / math.sqrt(f) + 4 * math.log10(
                             relative_roughness / 3.7065 + (1.2613 / (Re * math.sqrt(f)))
                         )
