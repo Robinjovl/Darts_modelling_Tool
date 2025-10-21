@@ -493,12 +493,8 @@ class Pipe:
         rhoL_face = np.zeros(num_segments - 1)
 
         if self.diff_method == "OBL":
-            rhoG_face_der = np.zeros(
-                (num_interfaces, num_segments * self.physics.n_vars)
-            )
-            rhoL_face_der = np.zeros(
-                (num_interfaces, num_segments * self.physics.n_vars)
-            )
+            rhoG_face_der = np.zeros((num_interfaces, num_segments * n_vars))
+            rhoL_face_der = np.zeros((num_interfaces, num_segments * n_vars))
 
         # Compute interface values using conditional averaging
         for i in range(num_interfaces):
@@ -719,8 +715,8 @@ class Pipe:
 
         # If the differentiation method is OBL, preallocate derivative matrices
         if self.diff_method == "OBL":
-            self.vG_der = np.zeros((num_interfaces, num_segments * self.physics.n_vars))
-            self.vL_der = np.zeros((num_interfaces, num_segments * self.physics.n_vars))
+            self.vG_der = np.zeros((num_interfaces, num_segments * n_vars))
+            self.vL_der = np.zeros((num_interfaces, num_segments * n_vars))
 
         # Gas velocity at wellbore interfaces
         # self.vG = self.C00 * self.rhoM_vM / self.rhoM_adjusted_face + rhoL_face * self.vD0 / self.rhoM_adjusted_face
