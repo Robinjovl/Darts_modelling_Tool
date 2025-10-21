@@ -202,6 +202,7 @@ class Pipe:
         dt = dt * 24 * 60 * 60  # convert day to second
 
         num_segments = self.geometry.num_segments
+        num_interfaces = self.geometry.num_interfaces
         nc = self.physics.nc
         n_vars = self.physics.n_vars
 
@@ -493,20 +494,14 @@ class Pipe:
 
         if self.diff_method == "OBL":
             rhoG_face_der = np.zeros(
-                (
-                    self.geometry.num_interfaces,
-                    self.geometry.num_segments * self.physics.n_vars,
-                )
+                (num_interfaces, num_segments * self.physics.n_vars)
             )
             rhoL_face_der = np.zeros(
-                (
-                    self.geometry.num_interfaces,
-                    self.geometry.num_segments * self.physics.n_vars,
-                )
+                (num_interfaces, num_segments * self.physics.n_vars)
             )
 
         # Compute interface values using conditional averaging
-        for i in range(self.geometry.num_interfaces):
+        for i in range(num_interfaces):
             if sG[i] == 0:
                 # If no gas in segment i, use properties from segment i+1
                 rhoG_face[i] = rhoG[i + 1]
@@ -718,29 +713,19 @@ class Pipe:
         self.vM = self.rhoM_vM / self.rhoM_face
 
         if iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
-            self.vD0 = np.zeros(self.geometry.num_interfaces)
+            self.vD0 = np.zeros(num_interfaces)
         elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
             self.calc_drift_velocity()
 
         # If the differentiation method is OBL, preallocate derivative matrices
         if self.diff_method == "OBL":
-            self.vG_der = np.zeros(
-                (
-                    self.geometry.num_interfaces,
-                    self.geometry.num_segments * self.physics.n_vars,
-                )
-            )
-            self.vL_der = np.zeros(
-                (
-                    self.geometry.num_interfaces,
-                    self.geometry.num_segments * self.physics.n_vars,
-                )
-            )
+            self.vG_der = np.zeros((num_interfaces, num_segments * self.physics.n_vars))
+            self.vL_der = np.zeros((num_interfaces, num_segments * self.physics.n_vars))
 
         # Gas velocity at wellbore interfaces
         # self.vG = self.C00 * self.rhoM_vM / self.rhoM_adjusted_face + rhoL_face * self.vD0 / self.rhoM_adjusted_face
-        self.vG = np.zeros(self.geometry.num_interfaces)
-        for i in range(self.geometry.num_interfaces):
+        self.vG = np.zeros(num_interfaces)
+        for i in range(num_interfaces):
             if sG_face[i] != 0:
                 self.vG[i] = (
                     self.C00[i] * self.rhoM_vM[i] / self.rhoM_adjusted_face[i]
@@ -757,8 +742,8 @@ class Pipe:
                     ) / (self.rhoM_adjusted_face[i] ** 2)
 
         # Liquid velocity at wellbore interfaces
-        self.vL = np.zeros(self.geometry.num_interfaces)
-        for i in range(self.geometry.num_interfaces):
+        self.vL = np.zeros(num_interfaces)
+        for i in range(num_interfaces):
             if sG_face[i] != 1:
                 self.vL[i] = (1 - self.C00[i] * sG_face[i]) * self.rhoM_vM[i] / (
                     (1 - sG_face[i]) * self.rhoM_adjusted_face[i]
@@ -798,7 +783,7 @@ class Pipe:
                         * self.vD0[i]
                     ) / (((1 - sG_face[i]) * self.rhoM_adjusted_face[i]) ** 2)
 
-        for i in range(self.geometry.num_interfaces):
+        for i in range(num_interfaces):
             if self.vG[i] > 0 and sG[i] == 0:
                 self.vG[i] = 0
                 if self.diff_method == "OBL":
