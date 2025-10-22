@@ -183,8 +183,10 @@ class ReservoirBase:
                     )
 
         # allocate mesh arrays
-        self.mesh.reverse_and_sort(ms_well_vector(self.wells))
+        self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
+        # Initialize specific potential energy at cell centroids and connections for both reservoir and wells
+        self.mesh.init_spe(grav_acc=0)  # For the Earth: grav_const = 9.80665
 
     @abc.abstractmethod
     def output_to_plt(

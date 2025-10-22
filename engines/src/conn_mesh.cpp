@@ -36,7 +36,7 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   depth.assign(n_res_blocks, 0);
   heat_capacity.assign(n_res_blocks, 0);
   rock_cond.assign(n_res_blocks, 0);
-  cell_spe.assign(n_res_blocks, 0);
+  cell_thickness.assign(n_res_blocks, 0);
 
   // kinetic property
   kin_factor.assign(n_res_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
@@ -691,7 +691,7 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
 }
 
 int
-conn_mesh::reverse_and_sort(std::vector<ms_well*>& wells)
+conn_mesh::reverse_and_sort()
 {
   int diff_trans = one_way_tranD.size();
 
@@ -826,88 +826,7 @@ conn_mesh::reverse_and_sort(std::vector<ms_well*>& wells)
   get_res_tran(test_t, test_tD);
   set_res_tran(test_t, test_tD);
 
-  // Store one-way connection spe, and reverse and sort it
-  reverse_and_sort_conn_spe(wells);
-
   return 0;
-}
-
-int
-conn_mesh::reverse_and_sort_conn_spe(std::vector<ms_well*>& wells)
-{
-	//// Declare variables for one-way upwinded specific potential energy of phases
-	//std::vector<value_t> one_way_phase_A_spe_up;
-	//std::vector<value_t> one_way_phase_B_spe_up;
-
-	// Declare variable for one-way specific potential energy at connections
-	std::vector<value_t> one_way_conn_spe;
-
-	// Zero spe at reservoir connections, which will remain unused. These values won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
-	//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), mesh->n_res_conns / 2, 0);
-	//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), mesh->n_res_conns / 2, 0);
-
-	one_way_conn_spe.insert(one_way_conn_spe.end(), n_res_conns / 2, 0);
-
-	for (ms_well* w : wells)
-	{
-		index_t n_perfs = w->perforations.size();
-		// Zero spe for perforation of each well, which will remain unused
-		//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), n_perfs, 0);
-		//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), n_perfs, 0);
-
-		one_way_conn_spe.insert(one_way_conn_spe.end(), n_perfs, 0);
-
-		//if (w->ms_type == ms_well::MS_Type::DFM)
-		//{
-		//	//// Upwinded phase spe of DFM wells are evaluated in Python
-		//	//std::vector<value_t> well_phase_spe_up = w->phase_specific_potential_energy_up;
-
-		//	//// Separate the specific potential energy of the two phases
-		//	//size_t half_size_pot_ener = well_phase_spe_up.size() / 2;
-		//	//std::vector<value_t> well_phase_A_spe_up(well_phase_spe_up.begin(), well_phase_spe_up.begin() + half_size_pot_ener);
-		//	//std::vector<value_t> well_phase_B_spe_up(well_phase_spe_up.begin() + half_size_pot_ener, well_phase_spe_up.end());
-
-		//	//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), well_phase_A_spe_up.begin(), well_phase_A_spe_up.end());
-		//	//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), well_phase_B_spe_up.begin(), well_phase_B_spe_up.end());
-
-		//	one_way_conn_spe.insert(one_way_conn_spe.end(), w->conn_spe.begin(), w->conn_spe.end());
-
-		//	if (w->with_lateral_heat_transfer)
-		//	{
-		//		// Zero spe for connections of lateral heat transfer, which will remain unused
-		//		one_way_conn_spe.insert(one_way_conn_spe.end(), w->num_segments - w->perforations.size(), 0);
-		//	}
-		//}
-		//else if (w->ms_type == ms_well::MS_Type::EPM)
-		//{
-		//	// EPM wells have n_segments connections. This zero spe won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
-		//	//one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), w->n_segments, 0);
-		//	//one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), w->n_segments, 0);
-
-		one_way_conn_spe.insert(one_way_conn_spe.end(), w->n_segments, 0);
-		//}
-	}
-	//// We can use the same function used for well velocity for well upwinded spe as well
-	//phase_A_specific_potential_energy_up = reverse_and_sort_one_way_prop(one_way_phase_A_spe_up);
-	//phase_B_specific_potential_energy_up = reverse_and_sort_one_way_prop(one_way_phase_B_spe_up);
-
-	// We can use the same function used for well velocity for spe of well connections as well
-	conn_spe = reverse_and_sort_one_way_prop(one_way_conn_spe);
-
-	return 0;
-}
-
-std::vector<value_t>
-conn_mesh::reverse_and_sort_one_way_prop(std::vector<value_t> one_way_prop)
-{
-	std::vector<value_t> two_way_prop(n_conns);
-	for (index_t j = 0; j < n_conns / 2; ++j)
-	{
-		two_way_prop[one_way_to_conn_index_forward[j]] = one_way_prop[j]; // m->p
-		two_way_prop[one_way_to_conn_index_reverse[j]] = one_way_prop[j]; // p->m (same value or negate if needed)
-	}
-
-	return two_way_prop;
 }
 
 int
@@ -1816,6 +1735,42 @@ conn_mesh::init_grav_coef(value_t grav_const)
   return 0;
 }
 
+int conn_mesh::init_spe(value_t grav_acc)
+{
+	// Calculate and store specific potential energy (spe) at cell centroids
+	cell_spe.assign(n_blocks, 0);
+
+	for (size_t i = 0; i < depth.size(); i++)
+	{
+		// It is multiplied by -1 because for spe height needs to be used instead of depth
+		// It is multiplied by 1e-3 to convert Joule to kilo Joule
+		cell_spe[i] = - (depth[i] - depth[0]) * grav_acc * 1e-3;
+	}
+
+	// Calculate and store specific potential energy (spe) at connections
+	conn_spe.assign(n_conns, 0);
+
+	value_t half_dz_m;
+	value_t half_dz_p;
+	value_t z_m;
+	value_t z_p;
+	value_t z_conn;
+	for (index_t j = 0; j < n_conns; ++j)
+	{
+		half_dz_m = cell_thickness[block_m[j]] / 2;
+		half_dz_p = cell_thickness[block_p[j]] / 2;
+		z_m = depth[block_m[j]];
+		z_p = depth[block_p[j]];
+		z_conn = (half_dz_m * z_p + half_dz_p * z_m) / (half_dz_m + half_dz_p);
+
+		// It is multiplied by -1 because for spe height needs to be used instead of depth
+		// It is multiplied by 1e-3 to convert Joule to kilo Joule
+		conn_spe[j] = - (z_conn - depth[0]) * grav_acc * 1e-3;
+	}
+
+	return 0;
+}
+
 int conn_mesh::get_res_tran(std::vector<value_t>& res_tran, std::vector<value_t>& res_tranD)
 {
   res_tran.resize(n_one_way_conns_res);
@@ -1942,11 +1897,11 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   initial_state.resize(n_blocks * n_vars);
   op_num.resize(n_blocks);
   depth.resize(n_blocks + n_bounds);
+  cell_thickness.resize(n_blocks);
 
   heat_capacity.resize(n_blocks);
   rock_cond.resize(n_blocks + n_bounds);
   mob_multiplier.resize(2 * n_blocks);
-  cell_spe.resize(n_blocks);
 
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
@@ -1968,18 +1923,10 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
         rock_cond[w_i] = rock_cond[r_i];
         // depth of well segments
         depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+		cell_thickness[wells[iw]->well_head_idx + p] = cell_thickness[r_i];
       }
     }
   }
-
-  // Calculate and store specific potential energy (spe) at cell centroids
-  for (size_t i = 0; i < depth.size(); i++)
-  {
-	  cell_spe[i] = - 9.80665e-3 * (depth[i] - depth[0]);   // It is multiplied by -1 because for spe height needs to be used instead of depth
-  }
-  // Calculate and store specific potential energy (spe) at connections
-  // Implement later
-  // conn_spe is set to zero for all the elements in reverse_and_sort_conn_spe, but it must be correctly calculated from depths of connections later
 
   return 0;
 }
