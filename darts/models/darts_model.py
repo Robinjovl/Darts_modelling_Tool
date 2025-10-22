@@ -704,7 +704,6 @@ class DartsModel:
                     dt, self.iter_counter
                 )
 
-            self.physics.engine.simulation_time = t
             self.physics.engine.assemble_linear_system(
                 dt
             )  # assemble Jacobian and residual of reservoir and well blocks
