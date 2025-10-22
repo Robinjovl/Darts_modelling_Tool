@@ -18,6 +18,4 @@ There is a list of supported/non-supported features:
   * To consider specific potential energy in the energy conservation equation: 
       1. Open this Python module darts>reservoirs>reservoir_base.py
       2. In the class ReservoirBase, find the method init_wells.
-      3. Instead of zero as the input argument of the following line:
-         elf.mesh.init_spe(grav_acc=0)
-         Specify the desired gravitational acceleration (for the earch: 9.80665)
+      3. Instead of zero as the input argument of the following line: elf.mesh.init_spe(grav_acc=0), specify the desired gravitational acceleration (for the earch: 9.80665)
