@@ -850,7 +850,27 @@ class ModelProperties(PropertyContainer):
             # self.phreeqc.phreeqc.OutputFileOn = True
             # self.phreeqc.phreeqc.SelectedOutputFileOn = True
 
-            self.gas_species = ['CO2(g)', 'H2O(g)']
+            self.gas_species = ['CO2(g)', 'H2O(g)']#, 'O2(g)'] #, 'CH4(g)']
+            # Precompute gas-related helpers
+            self._gases_selected_output = " ".join(self.gas_species)
+            self._gas_phase_entries = "\n".join([f"{sp}    0.0" for sp in self.gas_species])
+            # Initial guess partial pressures [atm] per gas species
+            self.gas_partial_pressures = {sp: 0.0 for sp in self.gas_species}
+            # Parse gas species formulas to element stoichiometry for dynamic aggregation
+            self._gas_species_element_stoich = {}
+            for sp in self.gas_species:
+                formula = sp.split("(")[0]  # e.g., 'CO2(g)' -> 'CO2'
+                self._gas_species_element_stoich[sp] = self._parse_formula_to_elements(formula)
+            # Precompute gas-related helpers
+            self._gases_selected_output = " ".join(self.gas_species)
+            self._gas_phase_entries = "\n".join([f"{sp}    0.0" for sp in self.gas_species])
+            # Initial guess partial pressures [atm] per gas species
+            self.gas_partial_pressures = {sp: 0.0 for sp in self.gas_species}
+            # Parse gas species formulas to element stoichiometry for dynamic aggregation
+            self._gas_species_element_stoich = {}
+            for sp in self.gas_species:
+                formula = sp.split("(")[0]  # e.g., 'CO2(g)' -> 'CO2'
+                self._gas_species_element_stoich[sp] = self._parse_formula_to_elements(formula)
             if set(self.minerals) == {'Solid_CaCO3'}: # pure calcite
                 self.spec = 0
                 self.phreeqc_species = ["OH-", "H+", "H2O", "CH4", "HCO3-", "CO2", "CO3-2",
@@ -868,7 +888,7 @@ class ModelProperties(PropertyContainer):
                     -user_punch      true
                     -reset           false
                     -high_precision  true
-                    -gases           CO2(g) H2O(g)
+                    -gases           {self._gases_selected_output}
 
                     SOLUTION 1
                     temp      {{temperature:.2f}}
@@ -890,8 +910,7 @@ class ModelProperties(PropertyContainer):
                     -fixed_pressure
                     -pressure       {{pressure:.4f}}
                     -temperature    {{temperature:.2f}}
-                    CO2(g)    {{co2_pressure:.4f}}
-                    H2O(g)    {{h2o_pressure:.4f}}
+                    {{gas_phase_entries}}
 
                     END
                     """
@@ -905,30 +924,29 @@ class ModelProperties(PropertyContainer):
                         -selected_out    true
                         -user_punch      true
                         -reset           false
-                        -high_precision  true
-                        -gases           CO2(g) H2O(g)
+                        -high_precision  false
+                        -gases           {self._gases_selected_output}
 
                         SOLUTION 1
-                        temp      {{temperature:.2f}}
-                        pressure  {{pressure:.4f}}
+                        temp      {{temperature:.4f}}
+                        pressure  {{pressure:.6f}}
                         pH        7 charge
-                        -water    {{water_mass:.10f}} # kg
+                        -water    {{water_mass:.12f}} # kg
 
                         REACTION 1
-                        Ca        {{calcium:.10f}}
-                        C         {{carbon:.10f}}
-                        O         {{oxygen:.10f}}
-                        H         {{hydrogen:.10f}}
+                        Ca        {{calcium:.13f}}
+                        C         {{carbon:.13f}}
+                        O         {{oxygen:.13f}}
+                        H         {{hydrogen:.13f}}
                         1
 
                         KNOBS
                         -convergence_tolerance  1e-10
 
                         GAS_PHASE 1
-                        pressure  {{pressure:.4f}}
-                        temp      {{temperature:.2f}}
-                        CO2(g)    {{co2_pressure:.4f}}
-                        H2O(g)    {{h2o_pressure:.4f}}
+                        pressure  {{pressure:.6f}}
+                        temp      {{temperature:.4f}}
+                        {{gas_phase_entries}}
 
                         END
                         """
@@ -943,7 +961,7 @@ class ModelProperties(PropertyContainer):
                         -user_punch      true
                         -reset           false
                         -high_precision  true
-                        -gases           CO2(g) H2O(g)
+                        -gases           {self._gases_selected_output}
 
                         SOLUTION 1
                         temp      {{temperature:.2f}}
@@ -964,8 +982,7 @@ class ModelProperties(PropertyContainer):
                         GAS_PHASE 1
                         pressure  {{pressure:.4f}}
                         temp      {{temperature:.2f}}
-                        CO2(g)    0.0#{{co2_pressure:.4f}}
-                        # H2O(g)    {{h2o_pressure:.4f}}
+                        {{gas_phase_entries}}
 
                         END
                         """
@@ -989,7 +1006,7 @@ class ModelProperties(PropertyContainer):
                         -user_punch      true
                         -reset           false
                         -high_precision  true
-                        -gases           CO2(g) H2O(g)
+                        -gases           {self._gases_selected_output}
 
                         SOLUTION 1
                         temp      {{temperature:.2f}}
@@ -1013,8 +1030,7 @@ class ModelProperties(PropertyContainer):
                         temp      {{temperature:.2f}}
                         pressure  {{pressure:.4f}}
                         temp      {{temperature:.2f}}
-                        CO2(g)    {{co2_pressure:.4f}}
-                        H2O(g)    {{h2o_pressure:.4f}}
+                        {{gas_phase_entries}}
 
                         END
                         """
@@ -1030,7 +1046,7 @@ class ModelProperties(PropertyContainer):
                         -user_punch      true
                         -reset           false
                         -high_precision  true
-                        -gases           CO2(g) H2O(g)
+                        -gases           {self._gases_selected_output}
 
                         SOLUTION 1
                         temp      {{temperature:.2f}}
@@ -1054,8 +1070,7 @@ class ModelProperties(PropertyContainer):
                         temp      {{temperature:.2f}}
                         pressure  {{pressure:.4f}}
                         temp      {{temperature:.2f}}
-                        CO2(g)    0#{{co2_pressure:.4f}}
-                        #H2O(g)    {{h2o_pressure:.4f}}
+                        {{gas_phase_entries}}
 
                         END
                         """
@@ -1078,7 +1093,7 @@ class ModelProperties(PropertyContainer):
                     -user_punch      true
                     -reset           false
                     -high_precision  true
-                    -gases           CO2(g) H2O(g)
+                    -gases           {self._gases_selected_output}
 
                     SOLUTION 1
                     temp      {{temperature:.2f}}
@@ -1102,7 +1117,7 @@ class ModelProperties(PropertyContainer):
                     temp      {{temperature:.2f}}
                     pressure  {{pressure:.4f}}
                     temp      {{temperature:.2f}}
-                    CO2(g)     0
+                    {{gas_phase_entries}}
 
                     END
                     """
@@ -1116,23 +1131,42 @@ class ModelProperties(PropertyContainer):
         def interpret_results(self, database):
             results_array = np.array(database.get_selected_output_array()[2])
 
+            # Gas phase: volume and moles per species (in order of self.gas_species)
+            # Gas phase: volume and moles per species (in order of self.gas_species)
             volume_gas = results_array[2] / 1000  # liters to m3
-            co2_gas_mole = results_array[3]
-            h2o_gas_mole = results_array[4]
-            total_mole_gas = 3 * (co2_gas_mole + h2o_gas_mole)
-            gas_fractions = np.array([co2_gas_mole, h2o_gas_mole])
-            sum_co2_h2o = co2_gas_mole + h2o_gas_mole
-            if sum_co2_h2o > 0:
-                gas_fractions /= sum_co2_h2o
+            n_gases = len(self.gas_species)
+            gas_moles = np.array(results_array[3:3 + n_gases])
+
+            # Compute total gas "element moles" (sum over atoms) for consistent basis with aqueous TOTMOLE
+            total_mole_gas = 0.0
+            element_moles_in_gas = {el: 0.0 for el in self.fc_idx.keys()}
+            # Aggregate elemental contributions from each gas species
+            for sp, moles in zip(self.gas_species, gas_moles):
+                stoich = self._gas_species_element_stoich.get(sp, {})
+                # Sum total atoms (only elements of interest)
+                atoms_in_sp = 0
+                for el, count in stoich.items():
+                    if el in element_moles_in_gas:
+                        element_moles_in_gas[el] += count * moles
+                        atoms_in_sp += count
+                total_mole_gas += atoms_in_sp * moles
+
+            # Gas species fractional composition by molecules
+            sum_gas_moles = gas_moles.sum()
+            if sum_gas_moles > 0:
+                gas_fractions = gas_moles / sum_gas_moles
+            else:
+                gas_fractions = np.zeros_like(gas_moles)
 
             # interpret aqueous phase
-            mole_aq = results_array[5:5 + self.n_fluid]
+            aq_start = 3 + n_gases
+            mole_aq = results_array[aq_start:aq_start + self.n_fluid]
             # hydrogen_mole_aq = results_array[5]
             # oxygen_mole_aq = results_array[6]
             # carbon_mole_aq = results_array[7]
             # calcium_mole_aq = results_array[8]
 
-            volume_aq = results_array[5 + self.n_fluid] / 1000  # liters to m3
+            volume_aq = results_array[aq_start + self.n_fluid] / 1000  # liters to m3
             total_mole_aq = mole_aq.sum()  # mol
             rho_aq = total_mole_aq / volume_aq / 1000  # kmol/m3
 
@@ -1143,11 +1177,11 @@ class ModelProperties(PropertyContainer):
 
             # in gaseous phase
             y = np.zeros(nc)
-            if total_mole_gas > 1.e-8:
+            if total_mole_gas > 1.e-12:
                 rho_g = total_mole_gas / volume_gas / 1000  # kmol/m3
-                y[-3] = co2_gas_mole / total_mole_gas
-                y[-2] = (2 * co2_gas_mole + h2o_gas_mole) / total_mole_gas
-                y[-1] = 2 * h2o_gas_mole / total_mole_gas
+                # Fill elemental fractions in gas on an elemental basis
+                for el, idx in self.fc_idx.items():
+                    y[self.n_solid + idx] = element_moles_in_gas.get(el, 0.0) / total_mole_gas
             else:
                 rho_g = 0.0
 
@@ -1157,7 +1191,7 @@ class ModelProperties(PropertyContainer):
             nu_v = total_mole_gas / (total_mole_aq + total_mole_gas)
 
             # interpret kinetic parameters
-            counter = self.n_fluid + 5 + 1
+            counter = self.n_fluid + aq_start + 1
             kin_state = {}
             for i, name in enumerate(self.mineral_names):
                 kin_state['SR_' + name] = results_array[counter]
@@ -1206,35 +1240,36 @@ class ModelProperties(PropertyContainer):
 
             # Check if solvent (water) is enough
             ion_strength = np.sum(fluid_moles) / (water_mass + 1.e-8)
-            if ion_strength > 20:
-                print(f'ion_strength = {ion_strength}')
+            # if ion_strength > 20:
+            #     print(f'ion_strength = {ion_strength}')
             # assert ion_strength < 7, "Not enough water to form a realistic brine"
 
             # Generate and execute PHREEQC input
+            # Build GAS_PHASE entries using current per-species initial guess partial pressures
+            gas_phase_entries = "\n".join([f"{sp}    {self.gas_partial_pressures.get(sp, 0.0):.6f}" for sp in self.gas_species])
+
             if self.spec == 0:
                 input_string = self.phreeqc_template.format(
                     temperature=self.temperature,
                     pressure=pressure_atm,
-                    co2_pressure=0.0,#0.99 * pressure_atm,
-                    h2o_pressure=0.0,#0.01 * pressure_atm,
-                    water_mass=water_mass,
-                    hydrogen=fluid_moles[self.fc_idx['H']],
-                    oxygen=fluid_moles[self.fc_idx['O']],
-                    carbon=fluid_moles[self.fc_idx['C']],
-                    calcium=fluid_moles[self.fc_idx['Ca']]
-                )
-            elif self.spec == 1 or self.spec == 2:
-                input_string = self.phreeqc_template.format(
-                    temperature=self.temperature,
-                    pressure=pressure_atm,
-                    co2_pressure=0.0,
-                    h2o_pressure=0.0,
                     water_mass=water_mass,
                     hydrogen=fluid_moles[self.fc_idx['H']],
                     oxygen=fluid_moles[self.fc_idx['O']],
                     carbon=fluid_moles[self.fc_idx['C']],
                     calcium=fluid_moles[self.fc_idx['Ca']],
-                    magnesium=fluid_moles[self.fc_idx['Mg']]
+                    gas_phase_entries=gas_phase_entries
+                )
+            elif self.spec == 1 or self.spec == 2:
+                input_string = self.phreeqc_template.format(
+                    temperature=self.temperature,
+                    pressure=pressure_atm,
+                    water_mass=water_mass,
+                    hydrogen=fluid_moles[self.fc_idx['H']],
+                    oxygen=fluid_moles[self.fc_idx['O']],
+                    carbon=fluid_moles[self.fc_idx['C']],
+                    calcium=fluid_moles[self.fc_idx['Ca']],
+                    magnesium=fluid_moles[self.fc_idx['Mg']],
+                    gas_phase_entries=gas_phase_entries
                 )
 
             try:
@@ -1252,6 +1287,27 @@ class ModelProperties(PropertyContainer):
             species_aq_molar_fractions = species_aq_molalities * water_mass * self.species_2_element_moles / self.total_moles
             species_gas_molar_fractions *= nu_v
             return nu_v, x, y, rho_phases, kin_state, fluid_volume, species_aq_molar_fractions, species_gas_molar_fractions
+
+        def set_gas_partial_pressures(self, gas_to_pressure_atm):
+            """Set/update initial guess partial pressures [atm] for gas species in GAS_PHASE.
+            Any species not provided keeps its current value.
+            """
+            for sp, p in gas_to_pressure_atm.items():
+                if sp in self.gas_partial_pressures:
+                    self.gas_partial_pressures[sp] = float(p)
+
+        def _parse_formula_to_elements(self, formula):
+            """
+            Convert a chemical formula string (e.g., 'CO2', 'H2O', 'CH4') into a mapping of element symbol to atom count.
+            Only elements present in the current fluid component set will be relevant.
+            """
+            import re
+            tokens = re.findall(r"([A-Z][a-z]?)(\d*)", formula)
+            stoich = {}
+            for (el, count_str) in tokens:
+                count = int(count_str) if count_str else 1
+                stoich[el] = stoich.get(el, 0) + count
+            return stoich
 
     class CustomKineticRate:
         def __init__(self, temperature, min_z, mineral, kinetic_mechanisms):
