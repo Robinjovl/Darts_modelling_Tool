@@ -24,6 +24,11 @@ class ReservoirBase:
         self.poro, self.permx, self.permy, self.permz = [], [], [], []
         self.hcap, self.rcond = [], []
 
+        # Gravitational acceleration used in the Darcy's law in m/s^2
+        self.grav_acc_for_darcy_law = 9.80665  # in m/s^2
+        # Gravitational acceleration used for potential energy calculation in m/s^2
+        self.grav_acc_for_spe = 0.0  # in m/s^2
+
         self.vtk_initialized = False
 
         # is used on destruction to save cache data
@@ -154,15 +159,13 @@ class ReservoirBase:
             if w.name == well_name:
                 return w
 
-    def init_wells(self, verbose: bool = False):
+    def init_wells(self):
         """
-        Function to initialize wells.
-
-        Adds perforations to the wells, adds well objects to the mesh object
-        and prepares mesh object for running simulation
-
-        :param mesh: conn_mesh object
-        :param verbose: Switch to set verbose level
+        Function to
+        - add well blocks to mesh
+        - reverse and sort mesh
+        - initialize the gravity coefficient used in the Darcy's law
+        - initialize specific potential energy
         """
         for w in self.wells:
             assert len(w.perforations) > 0, (
@@ -184,9 +187,9 @@ class ReservoirBase:
 
         # allocate mesh arrays
         self.mesh.reverse_and_sort()
-        self.mesh.init_grav_coef()
+        self.mesh.init_grav_coef(grav_acc=self.grav_acc_for_darcy_law)
         # Initialize specific potential energy at cell centroids and connections for both reservoir and wells
-        self.mesh.init_spe(grav_acc=0)  # For the Earth: grav_const = 9.80665
+        self.mesh.init_spe(grav_acc=self.grav_acc_for_spe)
 
     @abc.abstractmethod
     def output_to_plt(
