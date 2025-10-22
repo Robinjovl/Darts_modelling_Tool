@@ -166,7 +166,7 @@ class Model(THMCModel):
                                  rsv_top - 100,
                                  np.arange(rsv_top - 50, rsv_bottom, 25),
                                  rsv_bottom + 50,
-                                 np.arange(rsv_bottom + 100, 5000, 100)])
+                                 np.arange(rsv_bottom + 100, 5000, 100)]) #TODO add , 5000
         elif nz == 60:  # uniform dz = 100 m
             np.linspace(0, 6000, num=61)  # mesh Z range
         else:

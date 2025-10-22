@@ -596,24 +596,25 @@ if __name__ == '__main__':
     #wells_types_list += ['doublet']
     
     # for THM solver run
-    n_years = 1
+    #n_years = 1
+    n_years = 2
     #n_years = 5
     #n_years = 10
     #n_years = 30
     #n_years = 50
-    #sim_time = 365.25 * n_years
-    sim_time = 90 # days
+    sim_time = 365.25 * n_years
+    report_step = 365.25 / 4
     
-    report_step = 90  # days
-
+    #sim_time = 90 # days
+    #report_step = 90  # days
     
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    #timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
-    timestep = 1
+    timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    #timestep = 1
     #timestep = 5
     
-    #run_thm = True
-    run_thm = False
+    run_thm = True
+    #run_thm = False
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
@@ -626,16 +627,17 @@ if __name__ == '__main__':
                 run(model_folder=case, physics_type=physics_type, 
                     uniform_props=uniform_props, wells_type=wells_type, 
                     decouple_geomech=True, generate_mesh=True,
-                    n_years=n_years, report_step=report_step, sim_time=sim_time)
+                    report_step=report_step, sim_time=sim_time)
             t2 = datetime.now()
             thm_time = t2 - t1
 
             # run geomech proxy
+            print('timestep for plots and proxy', timestep)
             t1 = datetime.now()
             run_geomech_proxy(case=case, physics_type=physics_type, wells_type=wells_type, timestep=timestep)
             t2 = datetime.now()
             proxy_time = t2 - t1
 
-            print('case', case, 'done', 'timestep for plots and proxy', timestep)
+            print('case', case, 'done')
             print('THM   time', thm_time)
             print('proxy time', proxy_time)
