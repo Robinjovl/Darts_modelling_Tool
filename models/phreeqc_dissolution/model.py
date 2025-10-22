@@ -850,17 +850,7 @@ class ModelProperties(PropertyContainer):
             # self.phreeqc.phreeqc.OutputFileOn = True
             # self.phreeqc.phreeqc.SelectedOutputFileOn = True
 
-            self.gas_species = ['CO2(g)', 'H2O(g)']#, 'O2(g)'] #, 'CH4(g)']
-            # Precompute gas-related helpers
-            self._gases_selected_output = " ".join(self.gas_species)
-            self._gas_phase_entries = "\n".join([f"{sp}    0.0" for sp in self.gas_species])
-            # Initial guess partial pressures [atm] per gas species
-            self.gas_partial_pressures = {sp: 0.0 for sp in self.gas_species}
-            # Parse gas species formulas to element stoichiometry for dynamic aggregation
-            self._gas_species_element_stoich = {}
-            for sp in self.gas_species:
-                formula = sp.split("(")[0]  # e.g., 'CO2(g)' -> 'CO2'
-                self._gas_species_element_stoich[sp] = self._parse_formula_to_elements(formula)
+            self.gas_species = ['CO2(g)', 'H2O(g)']
             # Precompute gas-related helpers
             self._gases_selected_output = " ".join(self.gas_species)
             self._gas_phase_entries = "\n".join([f"{sp}    0.0" for sp in self.gas_species])
@@ -876,247 +866,64 @@ class ModelProperties(PropertyContainer):
                 self.phreeqc_species = ["OH-", "H+", "H2O", "CH4", "HCO3-", "CO2", "CO3-2",
                                         "CaHCO3+", "CaCO3", "(CO2)2", "Ca+2", "CaOH+", "H2", "O2"]
                 self.species_2_element_moles = np.array([2, 1, 3, 5, 5, 3, 4, 6, 5, 6, 1, 3, 2, 2])
-                species_headings = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
-                species_punch = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
-                self.phreeqc_template = f"""
-                    USER_PUNCH
-                    -headings   Ca(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR            ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
-                    10 PUNCH    TOTMOLE("Ca") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
-
-                    SELECTED_OUTPUT
-                    -selected_out    true
-                    -user_punch      true
-                    -reset           false
-                    -high_precision  true
-                    -gases           {self._gases_selected_output}
-
-                    SOLUTION 1
-                    temp      {{temperature:.2f}}
-                    pressure  {{pressure:.4f}}
-                    pH        7 charge
-                    -water    {{water_mass:.10f}} # kg
-
-                    REACTION 1
-                    Ca        {{calcium:.10f}}
-                    C         {{carbon:.10f}}
-                    O         {{oxygen:.10f}}
-                    H         {{hydrogen:.10f}}
-                    1
-
-                    KNOBS
-                    -convergence_tolerance  1e-10
-
-                    GAS_PHASE 1
-                    -fixed_pressure
-                    -pressure       {{pressure:.4f}}
-                    -temperature    {{temperature:.2f}}
-                    {{gas_phase_entries}}
-
-                    END
-                    """
-                if is_gas_spec:
-                    self.phreeqc_template = f"""
-                        USER_PUNCH
-                        -headings   Ca(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR            ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
-                        10 PUNCH    TOTMOLE("Ca") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
-
-                        SELECTED_OUTPUT
-                        -selected_out    true
-                        -user_punch      true
-                        -reset           false
-                        -high_precision  false
-                        -gases           {self._gases_selected_output}
-
-                        SOLUTION 1
-                        temp      {{temperature:.4f}}
-                        pressure  {{pressure:.6f}}
-                        pH        7 charge
-                        -water    {{water_mass:.12f}} # kg
-
-                        REACTION 1
-                        Ca        {{calcium:.13f}}
-                        C         {{carbon:.13f}}
-                        O         {{oxygen:.13f}}
-                        H         {{hydrogen:.13f}}
-                        1
-
-                        KNOBS
-                        -convergence_tolerance  1e-10
-
-                        GAS_PHASE 1
-                        pressure  {{pressure:.6f}}
-                        temp      {{temperature:.4f}}
-                        {{gas_phase_entries}}
-
-                        END
-                        """
-                else:
-                    self.phreeqc_template = f"""
-                        USER_PUNCH
-                        -headings   Ca(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR            ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
-                        10 PUNCH    TOTMOLE("Ca") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
-
-                        SELECTED_OUTPUT
-                        -selected_out    true
-                        -user_punch      true
-                        -reset           false
-                        -high_precision  true
-                        -gases           {self._gases_selected_output}
-
-                        SOLUTION 1
-                        temp      {{temperature:.2f}}
-                        pressure  {{pressure:.4f}}
-                        pH        7 charge
-                        -water    {{water_mass:.10f}} # kg
-
-                        REACTION 1
-                        Ca        {{calcium:.10f}}
-                        C         {{carbon:.10f}}
-                        O         {{oxygen:.10f}}
-                        H         {{hydrogen:.10f}}
-                        1
-
-                        KNOBS
-                        -convergence_tolerance  1e-10
-
-                        GAS_PHASE 1
-                        pressure  {{pressure:.4f}}
-                        temp      {{temperature:.2f}}
-                        {{gas_phase_entries}}
-
-                        END
-                        """
             elif set(self.minerals) == {'Solid_CaCO3', 'Solid_CaMg(CO3)2'}: # calcite and dolomite
                 self.spec = 1
                 self.phreeqc_species = ["OH-", "H+", "H2O", "CH4", "HCO3-", "CO2", "CO3-2", "CaHCO3+", "MgHCO3+",
                                         "CaCO3", "MgCO3", "(CO2)2", "Ca+2", "CaOH+", "H2", "Mg+2", "MgOH+", "O2"]
                 self.species_2_element_moles = np.array([2, 1, 3, 5, 5, 3, 4, 6, 6,
                                                          5, 5, 6, 1, 3, 2, 1, 3, 2])
-                species_headings = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
-                species_punch = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
-                if is_gas_spec:
-                    self.phreeqc_template = f"""
-                        USER_PUNCH
-                        USER_PUNCH
-                        -headings    Ca(mol)      Mg(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR_Calcite    SR_Dolomite    ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
-                        10 PUNCH    TOTMOLE("Ca") TOTMOLE("Mg") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") SR("Dolomite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
-
-                        SELECTED_OUTPUT
-                        -selected_out    true
-                        -user_punch      true
-                        -reset           false
-                        -high_precision  true
-                        -gases           {self._gases_selected_output}
-
-                        SOLUTION 1
-                        temp      {{temperature:.2f}}
-                        pressure  {{pressure:.4f}}
-                        pH        7 charge
-                        -water    {{water_mass:.10f}} # kg
-
-                        REACTION 1
-                        Ca        {{calcium:.10f}}
-                        Mg        {{magnesium:.10f}}
-                        C         {{carbon:.10f}}
-                        O         {{oxygen:.10f}}
-                        H         {{hydrogen:.10f}}
-                        1
-
-                        KNOBS
-                        -convergence_tolerance  1e-10
-
-                        GAS_PHASE 1
-                        pressure  {{pressure:.4f}}
-                        temp      {{temperature:.2f}}
-                        pressure  {{pressure:.4f}}
-                        temp      {{temperature:.2f}}
-                        {{gas_phase_entries}}
-
-                        END
-                        """
-                else:
-                    self.phreeqc_template = f"""
-                        USER_PUNCH
-                        USER_PUNCH
-                        -headings    Ca(mol)      Mg(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR_Calcite    SR_Dolomite    ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
-                        10 PUNCH    TOTMOLE("Ca") TOTMOLE("Mg") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") SR("Dolomite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
-
-                        SELECTED_OUTPUT
-                        -selected_out    true
-                        -user_punch      true
-                        -reset           false
-                        -high_precision  true
-                        -gases           {self._gases_selected_output}
-
-                        SOLUTION 1
-                        temp      {{temperature:.2f}}
-                        pressure  {{pressure:.4f}}
-                        pH        7 charge
-                        -water    {{water_mass:.10f}} # kg
-
-                        REACTION 1
-                        Ca        {{calcium:.10f}}
-                        Mg        {{magnesium:.10f}}
-                        C         {{carbon:.10f}}
-                        O         {{oxygen:.10f}}
-                        H         {{hydrogen:.10f}}
-                        1
-
-                        KNOBS
-                        -convergence_tolerance  1e-10
-
-                        GAS_PHASE 1
-                        pressure  {{pressure:.4f}}
-                        temp      {{temperature:.2f}}
-                        pressure  {{pressure:.4f}}
-                        temp      {{temperature:.2f}}
-                        {{gas_phase_entries}}
-
-                        END
-                        """
             elif set(self.minerals) == {'Solid_CaCO3', 'Solid_CaMg(CO3)2', 'Solid_MgCO3'}: # calcite, dolomite and magnesite
                 self.spec = 2
                 self.phreeqc_species = ["OH-", "H+", "H2O", "CH4", "HCO3-", "CO2", "CO3-2", "CaHCO3+", "MgHCO3+",
                                         "CaCO3", "MgCO3", "(CO2)2", "Ca+2", "CaOH+", "H2", "Mg+2", "MgOH+", "O2"]
                 self.species_2_element_moles = np.array([2, 1, 3, 5, 5, 3, 4, 6, 6,
                                                          5, 5, 6, 1, 3, 2, 1, 3, 2])
-                species_headings = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
-                species_punch = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
-                self.phreeqc_template = f"""
+
+            # Unify PHREEQC template across specs; use high_precision=false and dynamic sections
+            fluid_elements_order = [el for el, _ in sorted(self.fc_idx.items(), key=lambda kv: kv[1])]
+            element_headings = " ".join([f"{el}(mol)" for el in fluid_elements_order])
+            element_punch = " ".join([f"TOTMOLE(\"{el}\")" for el in fluid_elements_order])
+
+            mineral_label_map = {'Solid_CaCO3': 'Calcite', 'Solid_CaMg(CO3)2': 'Dolomite', 'Solid_MgCO3': 'Magnesite'}
+            mineral_labels = [mineral_label_map.get(m, m) for m in self.minerals]
+            if len(mineral_labels) > 0:
+                sr_headings = " ".join([f"SR_{lbl}" for lbl in mineral_labels])
+                sr_punch = " ".join([f"SR(\"{lbl}\")" for lbl in mineral_labels])
+            else:
+                sr_headings = "SR"
+                sr_punch = "SR(\"Calcite\")"
+
+            species_headings = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
+            species_punch = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
+
+            self.phreeqc_template = f"""
                     USER_PUNCH
-                    USER_PUNCH
-                    -headings    Ca(mol)      Mg(mol)       C(mol)       O(mol)       H(mol)       Vol_aq   SR_Calcite    SR_Dolomite    SR_Magnesite    ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
-                    10 PUNCH    TOTMOLE("Ca") TOTMOLE("Mg") TOTMOLE("C") TOTMOLE("O") TOTMOLE("H") SOLN_VOL SR("Calcite") SR("Dolomite") SR("Magnesite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
+                    -headings   {element_headings}   Vol_aq   {sr_headings}   ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
+                    10 PUNCH    {element_punch} SOLN_VOL {sr_punch} ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
 
                     SELECTED_OUTPUT
                     -selected_out    true
                     -user_punch      true
                     -reset           false
-                    -high_precision  true
+                    -high_precision  false
                     -gases           {self._gases_selected_output}
 
                     SOLUTION 1
-                    temp      {{temperature:.2f}}
-                    pressure  {{pressure:.4f}}
+                    temp      {{temperature:.4f}}
+                    pressure  {{pressure:.6f}}
                     pH        7 charge
-                    -water    {{water_mass:.10f}} # kg
+                    -water    {{water_mass:.12f}} # kg
 
                     REACTION 1
-                    Ca        {{calcium:.10f}}
-                    Mg        {{magnesium:.10f}}
-                    C         {{carbon:.10f}}
-                    O         {{oxygen:.10f}}
-                    H         {{hydrogen:.10f}}
+                    {{reaction_lines}}
                     1
 
                     KNOBS
                     -convergence_tolerance  1e-10
 
                     GAS_PHASE 1
-                    pressure  {{pressure:.4f}}
-                    temp      {{temperature:.2f}}
-                    pressure  {{pressure:.4f}}
-                    temp      {{temperature:.2f}}
+                    pressure  {{pressure:.6f}}
+                    temp      {{temperature:.4f}}
                     {{gas_phase_entries}}
 
                     END
@@ -1131,7 +938,6 @@ class ModelProperties(PropertyContainer):
         def interpret_results(self, database):
             results_array = np.array(database.get_selected_output_array()[2])
 
-            # Gas phase: volume and moles per species (in order of self.gas_species)
             # Gas phase: volume and moles per species (in order of self.gas_species)
             volume_gas = results_array[2] / 1000  # liters to m3
             n_gases = len(self.gas_species)
@@ -1240,37 +1046,29 @@ class ModelProperties(PropertyContainer):
 
             # Check if solvent (water) is enough
             ion_strength = np.sum(fluid_moles) / (water_mass + 1.e-8)
-            # if ion_strength > 20:
-            #     print(f'ion_strength = {ion_strength}')
+            if ion_strength > 20:
+                print(f'ion_strength = {ion_strength}')
             # assert ion_strength < 7, "Not enough water to form a realistic brine"
 
             # Generate and execute PHREEQC input
             # Build GAS_PHASE entries using current per-species initial guess partial pressures
             gas_phase_entries = "\n".join([f"{sp}    {self.gas_partial_pressures.get(sp, 0.0):.6f}" for sp in self.gas_species])
 
-            if self.spec == 0:
-                input_string = self.phreeqc_template.format(
-                    temperature=self.temperature,
-                    pressure=pressure_atm,
-                    water_mass=water_mass,
-                    hydrogen=fluid_moles[self.fc_idx['H']],
-                    oxygen=fluid_moles[self.fc_idx['O']],
-                    carbon=fluid_moles[self.fc_idx['C']],
-                    calcium=fluid_moles[self.fc_idx['Ca']],
-                    gas_phase_entries=gas_phase_entries
-                )
-            elif self.spec == 1 or self.spec == 2:
-                input_string = self.phreeqc_template.format(
-                    temperature=self.temperature,
-                    pressure=pressure_atm,
-                    water_mass=water_mass,
-                    hydrogen=fluid_moles[self.fc_idx['H']],
-                    oxygen=fluid_moles[self.fc_idx['O']],
-                    carbon=fluid_moles[self.fc_idx['C']],
-                    calcium=fluid_moles[self.fc_idx['Ca']],
-                    magnesium=fluid_moles[self.fc_idx['Mg']],
-                    gas_phase_entries=gas_phase_entries
-                )
+            # Build REACTION block lines for present elements
+            reaction_elements = ['Ca', 'Mg', 'C', 'O', 'H']
+            reaction_lines_list = []
+            for el in reaction_elements:
+                if el in self.fc_idx:
+                    reaction_lines_list.append(f"{el:<9}{fluid_moles[self.fc_idx[el]]:.12f}")
+            reaction_lines = "\n                    ".join(reaction_lines_list)
+
+            input_string = self.phreeqc_template.format(
+                temperature=self.temperature,
+                pressure=pressure_atm,
+                water_mass=water_mass,
+                gas_phase_entries=gas_phase_entries,
+                reaction_lines=reaction_lines
+            )
 
             try:
                 self.phreeqc.run_string(input_string)
