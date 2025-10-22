@@ -14,7 +14,9 @@ class conn_mesh
 public:
   conn_mesh () {};                                          // default constructor
 
-  int init_grav_coef(value_t grav_const = 9.80665e-5);      // discretize ms wells into reservoir
+  int init_grav_coef(value_t grav_const = 9.80665e-5);      // initialize gravity coefficient for all the connections
+
+  int init_spe(value_t grav_const = 0.);                    // initialize specific potential energy for all the connections
 
   int get_res_tran(std::vector<value_t> &res_tran,
                    std::vector<value_t> &res_tranD);        // get trans for reservoir part
@@ -172,11 +174,7 @@ public:
     value_t trans, value_t transD, const uint8_t P_VAR);
 
   /// @brief reverse connections and sort them by both row and col
-  int reverse_and_sort(std::vector<ms_well*>& wells);
-  /// @brief store one-way connection spe, and reverse and sort them by both row and col
-  int reverse_and_sort_conn_spe(std::vector<ms_well*>& wells);
-  /// @brief reverse connections and sort them by both row and col for a one-way property at all connections
-  std::vector<value_t> reverse_and_sort_one_way_prop(std::vector<value_t> one_way_prop);
+  int reverse_and_sort();
   /// @brief reverse connections and renumerate velocity mappers and sort them by both row and col
   int reverse_and_sort_dvel();
   /// @brief reverse mpsa connections and sort them by both row and col
@@ -278,6 +276,8 @@ public:
   std::vector<value_t> mob_multiplier;
   /// [n_blocks] array of specific potential energy of mesh blocks
   std::vector<value_t> cell_spe;
+  /// [n_blocks] array of thickness of mesh blocks
+  std::vector<value_t> cell_thickness;
   /// [n_conns * 2] array of two-way specific potential energy at connections
   std::vector<value_t> conn_spe;
 
