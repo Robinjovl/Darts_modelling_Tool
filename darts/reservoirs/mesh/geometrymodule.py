@@ -13,7 +13,6 @@ import numpy as np
         - Nodes:    Vertices or points
         - Cells:    Control volumes
         - Face:     Sides of the control volume
-        
     Most of the calculations regarding subdividing control volumes into tetrahedrons is taken from this paper:
     https://www.researchgate.net/publication/221561839_How_to_Subdivide_Pyramids_Prisms_and_Hexahedra_into_Tetrahedra
 """
@@ -189,7 +188,7 @@ class Hexahedron(ControlVolume):
         )
 
         # Loop over all tetrahedrons:
-        for jj, ith_tetra in enumerate(nodes_array_tetras):
+        for _jj, ith_tetra in enumerate(nodes_array_tetras):
             # Assign local coordinates:
             local_coord = np.zeros((4, 3))
 
@@ -293,7 +292,7 @@ class Wedge(ControlVolume):
         self.volume = 0
 
         # Loop over all tetrahedrons:
-        for jj, ith_tetra in enumerate(nodes_array_tetras):
+        for _jj, ith_tetra in enumerate(nodes_array_tetras):
             # Assign local coordinates:
             local_coord = np.zeros((4, 3))
 
@@ -407,7 +406,7 @@ class Pyramid(ControlVolume):
         nodes_array_tetras = np.array([[1, 2, 3, 4], [1, 3, 0, 4]])
 
         # Loop over all tetrahedrons:
-        for jj, ith_tetra in enumerate(nodes_array_tetras):
+        for _jj, ith_tetra in enumerate(nodes_array_tetras):
             # Assign local coordinates:
             local_coord = np.zeros((4, 3))
 
@@ -622,7 +621,7 @@ class Cylinder(ControlVolume):
             self.coord_nodes_to_cell.extend(coords[i])
 
         # Side faces (rectangles)
-        for i, node in enumerate(nodes[0]):
+        for i, _node in enumerate(nodes[0]):
             if i < len(nodes[0]) - 1:
                 nodes_to_face = [
                     nodes[0][i],
@@ -651,7 +650,7 @@ class Cylinder(ControlVolume):
             self.faces.append(nodes_to_face)
             self.wedge_coords.append(coord_nodes_to_wedge)
 
-        for i, face in enumerate(self.faces):
+        for i, _face in enumerate(self.faces):
             self.nodes_to_faces[i] = self.faces[i]
 
         return 0
@@ -661,7 +660,7 @@ class Cylinder(ControlVolume):
         Class method which overloads parent method for calculating the volume of the particular CV
         :return:
         """
-        for i, wedge_coords in enumerate(
+        for _i, wedge_coords in enumerate(
             self.wedge_coords
         ):  # divide into wedges of side faces and center nodes
             nodes_to_cell = [0, 1, 2, 3, 4, 5]

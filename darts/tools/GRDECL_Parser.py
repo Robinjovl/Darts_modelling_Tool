@@ -102,7 +102,7 @@ class GRDECL_Parser:
         # Derived variabls
         self.CELL_FAULT = []
 
-    ######[read_GRDECL]######
+    # #####[read_GRDECL]######
     def read_GRDECL(self):
         """Read input file(GRDECL) of Reservoir Simulator- Petrel (Eclipse)
         file format:http://petrofaq.org/wiki/Eclipse_Input_Data
@@ -115,9 +115,8 @@ class GRDECL_Parser:
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2017
         """
-        debug = 0
 
-        print('[Input] Reading ECLIPSE/PETREL file \"%s\" ....' % (self.fname))
+        print(f'[Input] Reading ECLIPSE/PETREL file "{self.fname}" ....')
 
         # Read whole file into list
         f = open(self.fname)
@@ -147,12 +146,11 @@ class GRDECL_Parser:
                 self.NX, self.NY, self.NZ = DataArray[0], DataArray[1], DataArray[2]
                 self.N = self.NX * self.NY * self.NZ
                 print(
-                    "     Grid Dimension(NX,NY,NZ): (%s x %s x %s)"
-                    % (self.NX, self.NY, self.NZ)
+                    f"     Grid Dimension(NX,NY,NZ): ({self.NX} x {self.NY} x {self.NZ})"
                 )
-                print("     NumOfGrids=%s" % (self.N))
-                print('     NumOfKeywords=%s' % (NumKeywords))
-                print("     Reading Keyword %d [%s] " % (i + 1, Keyword), end='')
+                print(f"     NumOfGrids={self.N}")
+                print(f'     NumOfKeywords={NumKeywords}')
+                print(f"     Reading Keyword {i + 1:d} [{Keyword}] ", end='')
                 GoodFlag = 1
                 continue
             elif Keyword == 'SPECGRID':
@@ -161,12 +159,11 @@ class GRDECL_Parser:
                 self.NX, self.NY, self.NZ = DataArray[0], DataArray[1], DataArray[2]
                 self.N = self.NX * self.NY * self.NZ
                 print(
-                    "     Grid Dimension(NX,NY,NZ): (%s x %s x %s)"
-                    % (self.NX, self.NY, self.NZ)
+                    f"     Grid Dimension(NX,NY,NZ): ({self.NX} x {self.NY} x {self.NZ})"
                 )
-                print("     NumOfGrids=%s" % (self.N))
-                print('     NumOfKeywords=%s' % (NumKeywords))
-                print("     Reading Keywords [%s] " % (Keyword), end='')
+                print(f"     NumOfGrids={self.N}")
+                print(f'     NumOfKeywords={NumKeywords}')
+                print(f"     Reading Keywords [{Keyword}] ", end='')
                 GoodFlag = 1
                 continue
 
@@ -175,23 +172,23 @@ class GRDECL_Parser:
 
             # Read Grid spatial information, x,y,z ordering
             if Keyword == 'COORD':  # Pillar coords
-                assert len(DataArray) == 6 * (self.NX + 1) * (
-                    self.NY + 1
-                ), '[Error] Incompatible COORD data size!'
+                assert len(DataArray) == 6 * (self.NX + 1) * (self.NY + 1), (
+                    '[Error] Incompatible COORD data size!'
+                )
                 self.COORD = np.array(DataArray, dtype=float)
             elif Keyword == 'ZCORN':  # Depth coords
-                assert (
-                    len(DataArray) == 8 * self.N
-                ), '[Error] Incompatible ZCORN data size!'
+                assert len(DataArray) == 8 * self.N, (
+                    '[Error] Incompatible ZCORN data size!'
+                )
                 self.ZCORN = np.array(DataArray, dtype=float)
             # Read Grid Properties information
             else:
                 self.LoadVar(Keyword, DataArray, DataSize=self.N)
 
         f.close()
-        assert (
-            GoodFlag == 1
-        ), 'Can not find grid dimension info, [SPECGRID] or [DIMENS]!'
+        assert GoodFlag == 1, (
+            'Can not find grid dimension info, [SPECGRID] or [DIMENS]!'
+        )
         print('.....Done!')
 
     def LoadVar(self, Keyword, DataArray, DataSize):
@@ -204,12 +201,12 @@ class GRDECL_Parser:
         if Keyword in SupportKeyWords:  # KeyWords Check
             assert len(DataArray) == DataSize, '\n     [Error] Incompatible data size!'
             KeywordID = SupportKeyWords.index(Keyword)
-            print('     [%s] ' % (Keyword), end='')
+            print(f'     [{Keyword}] ', end='')
             self.SpatialDatas[Keyword] = np.array(
                 DataArray, dtype=KeyWordsDatatypes[KeywordID]
             )
         else:
-            print('\n     [Warnning] Unsupport keywords[%s]' % (Keyword))
+            print(f'\n     [Warnning] Unsupport keywords[{Keyword}]')
 
     def read_IncludeFile(self, filename_include, NumData):
         """Read Include data file
@@ -226,12 +223,11 @@ class GRDECL_Parser:
         block_dataset = np.array(block_dataset, dtype=float)
         if len(block_dataset) != NumData:
             print(
-                'Data size %s is not equal to defined block dimension (NX*NY*NZ) %s'
-                % (len(block_dataset), NumData)
+                f'Data size {len(block_dataset)} is not equal to defined block dimension (NX*NY*NZ) {NumData}'
             )
         return block_dataset
 
-    ######[DataInterperator]######
+    # #####[DataInterperator]######
     def getPillar(self, Pid):
         """Get a pillar line from COORD
         Pillar is the vertical cell edge line (top point-bottm point)
@@ -287,8 +283,9 @@ class GRDECL_Parser:
         """
         nx, ny = self.NX + 1, self.NY + 1
         pil0_id, pil1_id = getIJK(i, j, 0, nx, ny, 0), getIJK(i + 1, j, 0, nx, ny, 0)
-        pil2_id, pil3_id = getIJK(i, j + 1, 0, nx, ny, 0), getIJK(
-            i + 1, j + 1, 0, nx, ny, 0
+        pil2_id, pil3_id = (
+            getIJK(i, j + 1, 0, nx, ny, 0),
+            getIJK(i + 1, j + 1, 0, nx, ny, 0),
         )
 
         return [
@@ -400,18 +397,22 @@ class GRDECL_Parser:
         """
         nx, ny, nz = 2 * self.NX, 2 * self.NY, 2 * self.NZ
 
-        p1_id, p2_id = getIJK(2 * i, 2 * j, 2 * k, nx, ny, nz), getIJK(
-            2 * i + 1, 2 * j, 2 * k, nx, ny, nz
+        p1_id, p2_id = (
+            getIJK(2 * i, 2 * j, 2 * k, nx, ny, nz),
+            getIJK(2 * i + 1, 2 * j, 2 * k, nx, ny, nz),
         )
-        p3_id, p4_id = getIJK(2 * i, 2 * j + 1, 2 * k, nx, ny, nz), getIJK(
-            2 * i + 1, 2 * j + 1, 2 * k, nx, ny, nz
+        p3_id, p4_id = (
+            getIJK(2 * i, 2 * j + 1, 2 * k, nx, ny, nz),
+            getIJK(2 * i + 1, 2 * j + 1, 2 * k, nx, ny, nz),
         )
 
-        p5_id, p6_id = getIJK(2 * i, 2 * j, 2 * k + 1, nx, ny, nz), getIJK(
-            2 * i + 1, 2 * j, 2 * k + 1, nx, ny, nz
+        p5_id, p6_id = (
+            getIJK(2 * i, 2 * j, 2 * k + 1, nx, ny, nz),
+            getIJK(2 * i + 1, 2 * j, 2 * k + 1, nx, ny, nz),
         )
-        p7_id, p8_id = getIJK(2 * i, 2 * j + 1, 2 * k + 1, nx, ny, nz), getIJK(
-            2 * i + 1, 2 * j + 1, 2 * k + 1, nx, ny, nz
+        p7_id, p8_id = (
+            getIJK(2 * i, 2 * j + 1, 2 * k + 1, nx, ny, nz),
+            getIJK(2 * i + 1, 2 * j + 1, 2 * k + 1, nx, ny, nz),
         )
 
         # print(p1_id,p2_id,p3_id,p4_id)#Top Layer
@@ -476,10 +477,10 @@ class GRDECL_Parser:
 
         print('Overlap',overlap_p02,overlap_p13)
         print('Gap',gap_p02,gap_p13)
-       
+
 
         if(abs(gap_p02)+abs(gap_p13)<1e-10): #Fully connected
-           
+
             return -1.0
         elif(abs(overlap_p02)+abs(overlap_p13)<1e-10): #Sealing fault
             return 0.0
@@ -493,12 +494,14 @@ class GRDECL_Parser:
         else:
             return -1
 
-    def isBoundaryCell(self, Cell=[0, 0, 0], Dim='3D'):
+    def isBoundaryCell(self, Cell=None, Dim='3D'):
         '''Check the a given cell is boundary cell or not
 
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2018
         '''
+        if Cell is None:
+            Cell = [0, 0, 0]
         count = 0
         face = []
         # Boundary Point
@@ -525,14 +528,15 @@ class GRDECL_Parser:
 
         return count, face
 
-    def findCellFault(self, Cell=[0, 0, 0]):
+    def findCellFault(self, Cell=None):
         '''Check the fault for 4 faces of a cell [X-,X+,Y-,Y+] 2D
 
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2018
         '''
+        if Cell is None:
+            Cell = [0, 0, 0]
         i, j, k = Cell
-        Faces = ['X-', 'X+', 'Y-', 'Y+']
         Fault = [False, False, False, False]
 
         FaultMarker = -1

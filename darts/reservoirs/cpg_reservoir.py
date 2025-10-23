@@ -1,44 +1,34 @@
-import datetime
 import time
 import warnings
-from typing import Dict, List, Union
 
 import numpy as np
-from opmcpg._cpggrid import UnstructuredGrid
 from opmcpg._cpggrid import index_vector as index_vector_cpggrid
 from opmcpg._cpggrid import process_cpg_grid
 from opmcpg._cpggrid import value_vector as value_vector_cpggrid
-from pyevtk import hl, vtk
 from pyevtk.hl import pointsToVTK
 
 import darts
 from darts.discretizer import (
     BoundaryCondition,
     Discretizer,
-    Elem,
     Mesh,
     elem_loc,
-    elem_type,
-)
-from darts.discretizer import index_vector
-from darts.discretizer import index_vector as index_vector_discr
-from darts.discretizer import (
+    index_vector,
     load_single_float_keyword,
     load_single_int_keyword,
-    matrix33,
+    value_vector,
 )
-from darts.discretizer import value_vector
+from darts.discretizer import index_vector as index_vector_discr
 from darts.discretizer import value_vector as value_vector_discr
-from darts.discretizer import vector_matrix33, vector_vector3
-from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node
+from darts.engines import conn_mesh, timer_node
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
 
 try:
     from vtk import vtkCellArray, vtkHexahedron, vtkPoints
-    from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
+    from vtk.util.numpy_support import numpy_to_vtk
 except ImportError:
-    warnings.warn("No vtk module loaded.")
+    warnings.warn("No vtk module loaded.", stacklevel=2)
 
 import inspect
 import os
@@ -332,15 +322,15 @@ class CPG_Reservoir(ReservoirBase):
         assert i > 0, "Perforation block coordinate should be positive"
         assert j > 0, "Perforation block coordinate should be positive"
         assert k > 0, "Perforation block coordinate should be positive"
-        assert (
-            i <= self.nx
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            j <= self.ny
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            k <= self.nz
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert i <= self.nx, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert j <= self.ny, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert k <= self.nz, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
         i -= 1
         j -= 1
         k -= 1
@@ -366,9 +356,9 @@ class CPG_Reservoir(ReservoirBase):
             kz = self.permz[res_block] + eps
 
             if segment_direction == 'z_axis':
-                assert (
-                    well_diam < dx and well_diam < dy
-                ), f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dy}, cell({i+1},{j+1},{k+1})'
+                assert well_diam < dx and well_diam < dy, (
+                    f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dy}, cell({i + 1},{j + 1},{k + 1})'
+                )
 
                 peaceman_rad = (
                     0.28
@@ -389,9 +379,9 @@ class CPG_Reservoir(ReservoirBase):
                 if kx == 0 or ky == 0:
                     well_index = 0.0
             elif segment_direction == 'x_axis':
-                assert (
-                    well_diam < dz and well_diam < dy
-                ), f'well diameter {well_diam} should be less than the cell size dx={dz} dy={dy}, cell({i+1},{j+1},{k+1})'
+                assert well_diam < dz and well_diam < dy, (
+                    f'well diameter {well_diam} should be less than the cell size dx={dz} dy={dy}, cell({i + 1},{j + 1},{k + 1})'
+                )
                 peaceman_rad = (
                     0.28
                     * np.sqrt(np.sqrt(ky / kz) * dz**2 + np.sqrt(kz / ky) * dy**2)
@@ -411,9 +401,9 @@ class CPG_Reservoir(ReservoirBase):
                 if kz == 0 or ky == 0:
                     well_index = 0.0
             elif segment_direction == 'y_axis':
-                assert (
-                    well_diam < dx and well_diam < dz
-                ), f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dz}, cell({i+1},{j+1},{k+1})'
+                assert well_diam < dx and well_diam < dz, (
+                    f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dz}, cell({i + 1},{j + 1},{k + 1})'
+                )
                 peaceman_rad = (
                     0.28
                     * np.sqrt(np.sqrt(kz / kx) * dx**2 + np.sqrt(kx / kz) * dz**2)
@@ -536,7 +526,7 @@ class CPG_Reservoir(ReservoirBase):
     def add_perforation(
         self,
         well_name: str,
-        cell_index: Union[int, tuple],
+        cell_index: int | tuple,
         well_radius: float = 0.1524,
         well_index: float = None,
         well_indexD: float = 0.0,
@@ -571,17 +561,16 @@ class CPG_Reservoir(ReservoirBase):
         if res_block_local < 0:
             if verbose:
                 print(
-                    'Neglected perforation for well %s to block [%d, %d, %d] (inactive block)'
-                    % (well.name, i, j, k)
+                    f"Neglected perforation for well {well.name} to block [{i}, {j}, {k}] (inactive block)"
                 )
             return
 
-        assert (
-            well_index >= 0
-        ), f'Well {well_name} index = {well_index} is non-positive! Check the data.'
-        assert (
-            well_indexD >= 0
-        ), f'Well {well_name} index = {well_index} is non-positive! Check the data.'
+        assert well_index >= 0, (
+            f'Well {well_name} index = {well_index} is non-positive! Check the data.'
+        )
+        assert well_indexD >= 0, (
+            f'Well {well_name} index = {well_index} is non-positive! Check the data.'
+        )
 
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
@@ -605,8 +594,7 @@ class CPG_Reservoir(ReservoirBase):
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
                     print(
-                        'Neglected duplicate perforation for well %s to block [%d, %d, %d]'
-                        % (well.name, i, j, k)
+                        f'Neglected duplicate perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}]'
                     )
                     return
             well.perforations = well.perforations + [
@@ -615,19 +603,9 @@ class CPG_Reservoir(ReservoirBase):
             if verbose:
                 c = self.centroids_all_cells[res_block_local].values
                 print(
-                    'Added perforation for well %s to block %d IJK=[%d, %d, %d] XYZ=(%f, %f, %f) with WI=%f WID=%f'
-                    % (
-                        well.name,
-                        res_block_local,
-                        i,
-                        j,
-                        k,
-                        c[0],
-                        c[1],
-                        c[2],
-                        well_index,
-                        well_indexD,
-                    )
+                    f'Added perforation for well {well.name} to block {res_block_local:d} '
+                    f'IJK=[{i:d}, {j:d}, {k:d}] XYZ=({c[0]:f}, {c[1]:f}, {c[2]:f}) '
+                    f'with WI={well_index:f} WID={well_indexD:f}'
                 )
 
         return
@@ -661,7 +639,7 @@ class CPG_Reservoir(ReservoirBase):
             # row_vals = ''#str(coefs)
             for i in range(cells.size):
                 if np.abs(coefs[i]) > 1.0e-10:
-                    row += str(cells[i]) + '\t' + str('{:.2e}'.format(coefs[i])) + '\t'
+                    row += str(cells[i]) + '\t' + str(f'{coefs[i]:.2e}') + '\t'
                     # row_cells += str(cells[i]) + '\t'
                     # row_vals += str('{:.2e}'.format(coefs[i])) + '\t'
             f.write(row + '\n')  # + row_cells + '\n' + row_vals + '\n')
@@ -706,7 +684,7 @@ class CPG_Reservoir(ReservoirBase):
             mesh_filename = output_directory + '/mesh'
 
             if self.vtk_grid_type == 0:
-                vtk_file_name = gridToVTK(
+                gridToVTK(
                     mesh_filename,
                     self.vtk_x,
                     self.vtk_y,
@@ -715,16 +693,16 @@ class CPG_Reservoir(ReservoirBase):
                 )
             else:
                 g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
-                for key, value in cell_data.items():
+                for key, _value in cell_data.items():
                     if cell_data[key].size == g_to_l.size:
                         a = cell_data[key][g_to_l >= 0]
                     else:
                         a = cell_data[key]
                     self.vtkobj.AppendScalarData(key, a)
 
-                vtk_file_name = self.vtkobj.Write2VTU(mesh_filename)
+                self.vtkobj.Write2VTU(mesh_filename)
                 if len(self.vtk_filenames_and_times) == 0:
-                    for key, data in self.global_data.items():
+                    for key, _data in self.global_data.items():
                         self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
@@ -745,7 +723,7 @@ class CPG_Reservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+        vtk_file_name = output_directory + f'/solution_ts{ith_step}'
 
         cell_data = {}
         for i, prop in enumerate(prop_names):
@@ -763,7 +741,7 @@ class CPG_Reservoir(ReservoirBase):
                 vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data
             )
         else:
-            for key, value in cell_data.items():
+            for key, _value in cell_data.items():
                 g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
                 if cell_data[key].size == g_to_l.size:
                     a = cell_data[key][g_to_l >= 0]
@@ -773,7 +751,7 @@ class CPG_Reservoir(ReservoirBase):
 
             vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
             if len(self.vtk_filenames_and_times) == 0:
-                for key, data in self.global_data.items():
+                for key, _data in self.global_data.items():
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
                 self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
 
@@ -843,16 +821,13 @@ class CPG_Reservoir(ReservoirBase):
     def apply_fault_mult(self, faultfile, cell_m, cell_p, mpfa_tran, ids):
         # Faults
 
-        keep_reading = True
-        prev_fault_name = ''
-
         with open(faultfile) as f:
             while True:
                 buff = f.readline()
                 strline = buff.split()
                 if len(strline) == 0 or '/' == strline[0]:
                     break
-                fault_name = strline[0]
+                strline[0]
                 # multiply tran
                 i1 = int(strline[1])
                 j1 = int(strline[2])
@@ -1042,9 +1017,9 @@ class CPG_Reservoir(ReservoirBase):
         '''
         # make 1D, also convert the type to be able to convert to value_vector_discr
         # store to self to save in vtk
-        assert (
-            self.reservoir.permx.size == permx.flatten().size
-        ), f'Grid and perm shapes are not consistent: {self.reservoir.permx.size}, {permx.size}'
+        assert self.reservoir.permx.size == permx.flatten().size, (
+            f'Grid and perm shapes are not consistent: {self.reservoir.permx.size}, {permx.size}'
+        )
         self.reservoir.permx = np.array(permx, dtype=np.float64).flatten()
         self.reservoir.permy = np.array(permy, dtype=np.float64).flatten()
         self.reservoir.permz = np.array(permz, dtype=np.float64).flatten()
@@ -1166,13 +1141,28 @@ def read_arrays(gridfile: str, propfile: str):
 
     arrays['SPECGRID'] = read_int_array(gridfile, "SPECGRID", 3)
 
-    arrays['PERMX'] = read_float_array(propfile, 'PERMX')
-    arrays['PERMY'] = read_float_array(propfile, 'PERMY')
-    if arrays['PERMY'].size == 0:
+    for arr_name in [
+        'PORO',
+        'PERMX',
+        'PERMY',
+        'PERMZ',
+        'HCAP',
+        'RCOND',
+    ]:  # float arrays
+        arr = read_float_array(propfile, arr_name)
+        if arr.size > 0:  # if a keyword was found
+            arrays[arr_name] = arr
+
+    for arr_name in ['ROCKNUM']:  # integer arrays
+        arr = read_int_array(propfile, 'ROCKNUM')
+        if arr.size > 0:  # if a keyword was found
+            arrays[arr_name] = arr
+
+    if 'PERMY' not in arrays and 'PERMX' in arrays:
         arrays['PERMY'] = arrays['PERMX']
         print('No PERMY found in input files. PERMY=PERMX will be used')
     for perm_str in ['PERMEABILITYXY', 'PERMEABILITY']:
-        if arrays['PERMX'].size == 0 and arrays['PERMY'].size == 0:
+        if 'PERMX' not in arrays and 'PERMX' not in arrays:
             a = read_float_array(propfile, perm_str)
             if a.size > 0:
                 arrays['PERMX'] = a
@@ -1182,11 +1172,9 @@ def read_arrays(gridfile: str, propfile: str):
                     perm_str,
                     'will be used',
                 )
-    arrays['PERMZ'] = read_float_array(propfile, 'PERMZ')
-    if arrays['PERMZ'].size == 0:
+    if 'PERMZ' not in arrays and 'PERMX' in arrays:
         arrays['PERMZ'] = arrays['PERMX'] * 0.1
         print('No PERMZ found in input files. PERMZ=PERMX/10 will be used')
-    arrays['PORO'] = read_float_array(propfile, 'PORO')
 
     arrays['COORD'] = read_float_array(gridfile, 'COORD')
     arrays['ZCORN'] = read_float_array(gridfile, 'ZCORN')
@@ -1258,11 +1246,15 @@ def make_burden_layers(
     """
     if number_of_burden_layers == 0:
         return
+
+    array_names_to_extend = ['PORO', 'PERMX', 'PERMY', 'PERMZ', 'RCOND', 'HCAP']
+    array_names_grid = ['SPECGRID', 'COORD', 'ZCORN', 'ACTNUM']
+
     thickness = initial_thickness
 
     nx = property_dictionary['SPECGRID'][0]
     ny = property_dictionary['SPECGRID'][1]
-    for i in range(0, number_of_burden_layers):
+    for _i in range(0, number_of_burden_layers):
         # for each burden layer, zcorn has 4 * nx * ny number of values
         property_dictionary['ZCORN'] = np.concatenate(
             [
@@ -1274,14 +1266,15 @@ def make_burden_layers(
             ]
         )
         # for each burden layer, poro, perm have nx * ny number of values
-        for property_name in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
-            property_dictionary[property_name] = np.concatenate(
-                [
-                    np.ones(nx * ny) * burden_layer_prop_value,
-                    property_dictionary[property_name],
-                    np.ones(nx * ny) * burden_layer_prop_value,
-                ]
-            )
+        for property_name in array_names_to_extend:
+            if property_name in property_dictionary.keys():
+                property_dictionary[property_name] = np.concatenate(
+                    [
+                        np.ones(nx * ny) * burden_layer_prop_value,
+                        property_dictionary[property_name],
+                        np.ones(nx * ny) * burden_layer_prop_value,
+                    ]
+                )
         # for each burden layer, actnum has nx * ny number of values
         # which are the same the values from the top reservoir layer
         property_dictionary['ACTNUM'] = np.concatenate(
@@ -1291,6 +1284,20 @@ def make_burden_layers(
                 property_dictionary['ACTNUM'][-nx * ny :],
             ]
         )
+        # for arrays like ROCKNUM
+        for property_name in property_dictionary.keys():
+            if property_name not in array_names_to_extend + array_names_grid:
+                property_dictionary[property_name] = np.concatenate(
+                    [
+                        np.zeros(
+                            nx * ny, dtype=property_dictionary[property_name].dtype
+                        ),
+                        property_dictionary[property_name],
+                        np.zeros(
+                            nx * ny, dtype=property_dictionary[property_name].dtype
+                        ),
+                    ]
+                )
 
         thickness *= 2  # increase thickness for each new layer
 

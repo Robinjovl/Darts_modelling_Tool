@@ -4,6 +4,34 @@ Subsurface reservoirs are the main bodies for the modelling in DARTS. Reservoir 
 
 The kind of computational grid spanning reservoir produces two types of reservoirs: structured and unstructured. The treatment of structured reservoir can be generalized that was done by  [StructReservoir](https://gitlab.tudelft.nl/darts/darts-package/-/blob/master/darts/models/reservoirs/struct_reservoir.py) class provided in DARTS. Many models use it directly without overloading and extension built-in methods. The models working with unstructured reservoir have to provide their own implementation that is usually represented by UnstructReservoir class defined in reservoir.py script.
 
+Open-DARTS adds additional cells for the wells (2 cells per well in non multi_segment case), one can filter them out similarly to a line below, since those additional cells are always in the end
+```sh
+my_array[:self.reservoir.mesh.n_blocks]
+```
+
+## Structured reservoir
+
+## CPG reservoir (Corner-Point-Geometry)
+
+### Active cells
+This reservoir type supports inactive cells, where some grid part is not used in the simulation. That is defined in a keyword ACTNUM which contains values 0 (inactive) or 1 (active). 
+Additionally, cells with very low permeability can be excluded from the isothermal simulation. Input arrays, like PORO and PERMX should be defined for the full grid (NX*NY*NZ). 
+Computational arrays store only active cells data and have self.reservoir.mesh.n_blocks size.
+For converting between full and active-cells-only arrays, one can use global_to_local or local_to_global correspondence arrays from the CPG_reservoir class:
+```sh
+l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
+g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
+```
+For example, the function make_full_cube converts an active-cells-only array to a full one:
+```sh
+array_full = np.full(g2l.size, np.nan)
+array_full[l2g] = array_active
+```
+And next line would convert a full array to the active-cells-only array:
+```sh
+array_active = array_full[g2l >= 0] 
+```
+
 ## Unstructured reservoir
 Let us describe the basic parts which unstructured reservoir must and may include.
 

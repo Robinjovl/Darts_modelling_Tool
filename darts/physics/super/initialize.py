@@ -54,8 +54,7 @@ class Initialize:
         if aq_idx is not None:
             self.props.update(
                 {
-                    'm'
-                    + str(i): lambda i=i: 55.509
+                    'm' + str(i): lambda i=i: 55.509
                     * pc.x[aq_idx, i]
                     / pc.x[aq_idx, h2o_idx]
                     for i in range(pc.nc_fl)
@@ -77,7 +76,7 @@ class Initialize:
 
         # Create PropertyOperators and interpolators
         self.etor = PropertyOperators(pc, self.thermal, self.props)
-        self.itor = physics.create_interpolator(
+        self.itor, n_ops = physics.create_interpolator(
             evaluator=self.etor,
             n_ops=physics.n_ops,
             axes_min=value_vector(self.physics.PT_axes_min),
@@ -87,6 +86,7 @@ class Initialize:
             mode=mode,
             is_barycentric=is_barycentric,
         )
+        self.n_ops = n_ops
 
     def evaluate(self, Xi: list):
         """
@@ -100,8 +100,8 @@ class Initialize:
         """
         # Interpolate values and derivatives in property_itor
         state_idxs = index_vector([0])
-        values = value_vector(np.zeros(self.physics.n_ops))
-        derivs = value_vector(np.zeros(self.physics.n_ops * self.nv))
+        values = value_vector(np.zeros(self.n_ops))
+        derivs = value_vector(np.zeros(self.n_ops * self.nv))
 
         self.itor.evaluate_with_derivatives(
             value_vector(Xi), state_idxs, values, derivs
@@ -144,9 +144,9 @@ class Initialize:
 
         # Else, check input and create depths
         assert depth_bottom >= depth_top, "Top depth is below bottom depth"
-        assert (
-            depth_top <= depth_known <= depth_bottom
-        ), "Known depth is not in range [bottom, top]"
+        assert depth_top <= depth_known <= depth_bottom, (
+            "Known depth is not in range [bottom, top]"
+        )
         self.depths = np.linspace(start=depth_top, stop=depth_bottom, num=nb)
         bc_idx = (np.fabs(self.depths - depth_known)).argmin()
         self.depths[bc_idx] = depth_known
@@ -156,7 +156,7 @@ class Initialize:
             for spec, values in primary_specs.items():
                 self.primary_specs[spec] = (
                     values
-                    if isinstance(values, (list, np.ndarray))
+                    if isinstance(values, list | np.ndarray)
                     else np.ones(nb) * values
                 )
                 assert len(self.primary_specs[spec]) == nb, (
@@ -166,7 +166,7 @@ class Initialize:
             for spec, values in secondary_specs.items():
                 self.secondary_specs[spec] = (
                     values
-                    if isinstance(values, (list, np.ndarray))
+                    if isinstance(values, list | np.ndarray)
                     else np.ones(nb) * values
                 )
                 assert len(self.secondary_specs[spec]) == nb, (
@@ -189,8 +189,8 @@ class Initialize:
                     )
                 )
                 == self.nv - 1 - self.thermal
-            ), "Not the right number of variables specified for well-defined system of equations in block {}, need {}".format(
-                i, self.nv - 1 - self.thermal
+            ), (
+                f"Not the right number of variables specified for well-defined system of equations in block {i}, need {self.nv - 1 - self.thermal}"
             )
 
         # Define thermal gradient
@@ -248,22 +248,27 @@ class Initialize:
                 )
             )
             == self.nv
-        ), "Not enough variables specified for well-defined system of equations, {} specified but {} needed".format(
-            int(
-                np.sum(
-                    [not np.isnan(np.float64(spec)) for spec in primary_specs.values()]
-                )
-                + np.sum(
-                    [
-                        not np.isnan(np.float64(spec))
-                        for spec in secondary_specs.values()
-                    ]
-                )
-            ),
-            self.nv,
+        ), (
+            "Not enough variables specified for well-defined system of equations, {} specified but {} needed".format(
+                int(
+                    np.sum(
+                        [
+                            not np.isnan(np.float64(spec))
+                            for spec in primary_specs.values()
+                        ]
+                    )
+                    + np.sum(
+                        [
+                            not np.isnan(np.float64(spec))
+                            for spec in secondary_specs.values()
+                        ]
+                    )
+                ),
+                self.nv,
+            )
         )
 
-        for it in range(max_iter):
+        for _it in range(max_iter):
             res = np.zeros(self.nv)
             Jac = np.zeros((self.nv, self.nv))
             values, derivs = self.evaluate(Xi)
@@ -330,7 +335,7 @@ class Initialize:
         if self.thermal:
             X[cell_idx, -1] = self.T(cell_idx)
 
-        for it in range(max_iter):
+        for _it in range(max_iter):
             # nc variables for pressure and nc-1 compositions, temperature is calculated from gradient
             res = np.zeros(n_vars)
             Jac = np.zeros((n_vars, n_vars))

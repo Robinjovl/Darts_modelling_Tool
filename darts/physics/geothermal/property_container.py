@@ -153,7 +153,7 @@ class PropertyContainerPH(PropertyBase):
 
         # PH-flash from DARTS-flash
         from dartsflash.components import CompData
-        from dartsflash.libflash import AQEoS, CubicEoS, EoSParams, FlashParams, PHFlash
+        from dartsflash.libflash import AQEoS, CubicEoS, FlashParams, PHFlash
 
         comp_data = CompData(components=self.components, setprops=True)
         self.Mw = comp_data.Mw
@@ -233,7 +233,7 @@ class PropertyContainerPH(PropertyBase):
         self.output_props = {'temperature': lambda: self.temperature}
 
     def run_flash(self, pressure, enthalpy):
-        error_output = self.flash_ev.evaluate(pressure, enthalpy)
+        self.flash_ev.evaluate(pressure, enthalpy)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)

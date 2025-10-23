@@ -29,9 +29,7 @@ class ModelDeadOil(Model_CPG):
             input_distribution = {'pressure': [P_at_surface, P_at_surface + input_depth[1] * 0.1],  # gradient 0.1 bar/m
                                   self.physics.vars[1]: [self.ini[0], self.ini[0]]
                                   }
-            g2l = np.asarray(self.reservoir.discr_mesh.global_to_local)[:self.reservoir.mesh.n_res_blocks]
             return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
-                                                                        global_to_local=g2l,
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         else:
@@ -45,7 +43,7 @@ class ModelDeadOil(Model_CPG):
                 for z in z_range:
                     # state is pressure and 1 molar fractions out of 2
                     state = [p, z]
-                    sat = self.physics.property_containers[0].compute_saturation_full(state)
+                    sat = self.physics.property_containers[0].compute_saturation_full(state, evaluate_PT_from_PHflash=True)
                     if sat > s:
                         break
                 return z

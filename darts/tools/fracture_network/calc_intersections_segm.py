@@ -8,8 +8,6 @@ Author: Ole de Koning
 Last updated: 12/12/2020 by Ole de Koning
 """
 
-import time
-
 import numpy as np
 
 from .find_parametric_intersect import find_parametric_intersect
@@ -106,9 +104,9 @@ def calc_intersections_segm(
         if num_prev_int == 0 and num_new_int == 0:
             glob_segm_count += 1
             new_fract_sys[glob_segm_count : (glob_segm_count + 1), :] = ii_frac
-            new_frac_order_vec[
-                glob_segm_count : (glob_segm_count + 1)
-            ] = frac_order_vec[ii]
+            new_frac_order_vec[glob_segm_count : (glob_segm_count + 1)] = (
+                frac_order_vec[ii]
+            )
             glob_segm_count += 1
             continue
 
@@ -118,9 +116,9 @@ def calc_intersections_segm(
         tot_loc_pts_list[0, :] = act_frac_sys[ii, :2]
         tot_loc_pts_list[-1, :] = act_frac_sys[ii, 2:]
         tot_loc_pts_list[1 : num_prev_int + 1, :] = prev_jj_int
-        tot_loc_pts_list[
-            num_prev_int + 1 : num_new_int + num_prev_int + 1, :
-        ] = new_ii_int
+        tot_loc_pts_list[num_prev_int + 1 : num_new_int + num_prev_int + 1, :] = (
+            new_ii_int
+        )
 
         tot_loc_pts_list = tot_loc_pts_list[
             np.lexsort((tot_loc_pts_list[:, 1], tot_loc_pts_list[:, 0]))
@@ -137,13 +135,13 @@ def calc_intersections_segm(
                 tot_loc_pts_list[mm + 1, 1],
             ]
 
-        new_fract_sys[
-            glob_segm_count : (glob_segm_count + tot_new_segm), :
-        ] = tot_loc_segm_list
+        new_fract_sys[glob_segm_count : (glob_segm_count + tot_new_segm), :] = (
+            tot_loc_segm_list
+        )
 
-        new_frac_order_vec[
-            glob_segm_count : (glob_segm_count + tot_new_segm)
-        ] = frac_order_vec[ii]
+        new_frac_order_vec[glob_segm_count : (glob_segm_count + tot_new_segm)] = (
+            frac_order_vec[ii]
+        )
 
         glob_segm_count += tot_new_segm
 

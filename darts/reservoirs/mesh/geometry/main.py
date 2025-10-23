@@ -1,5 +1,3 @@
-import numpy as np
-from geometry import Geometry
 from shapes import *
 from structured import Structured
 from unstructured import Unstructured
@@ -121,7 +119,7 @@ if __name__ == "__main__":
             m = Unstructured(dim=2, axs=[0, 2])
             m.add_shape(f)
 
-            for i, (name, center) in enumerate(well_centers.items()):
+            for _i, (_name, center) in enumerate(well_centers.items()):
                 in_surfaces = m.find_surface(center)
                 m.refine_around_point(center, radius=0.015, lc=len(m.lc))
 

@@ -11,10 +11,12 @@
 # Email: binwang.0213@gmail.com                                         #
 #########################################################################
 
-import os
 import warnings
 
 import numpy as np
+
+from darts.tools.GRDECL_FaultProcess import *
+from darts.tools.GRDECL_Parser import *
 
 warnings.simplefilter(
     action='ignore', category=FutureWarning
@@ -24,11 +26,8 @@ try:
     import vtk
     import vtk.util.numpy_support as ns
 except ImportError:
-    warnings.warn("No vtk module loaded.")
+    warnings.warn("No vtk module loaded.", stacklevel=2)
 
-
-from darts.tools.GRDECL_FaultProcess import *
-from darts.tools.GRDECL_Parser import *
 
 # from GRDECL_CADExporter import *
 

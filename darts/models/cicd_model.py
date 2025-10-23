@@ -3,7 +3,6 @@ import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 from darts.models.darts_model import DartsModel
 
@@ -53,25 +52,23 @@ class CICDModel(DartsModel):
                 sol_range = np.max(sol_et) - np.min(sol_et)
                 diff_abs = np.abs(diff)
                 diff_norm = np.linalg.norm(diff)
-                diff_norm_normalized = diff_norm / len(sol_et) / sol_range
-                diff_abs_max_normalized = np.max(diff_abs) / sol_range
+                denom = (
+                    sol_range
+                    if np.isfinite(sol_range) and sol_range != 0
+                    else np.finfo(float).eps
+                )
+                diff_norm_normalized = diff_norm / (len(sol_et) * denom)
+                diff_abs_max_normalized = np.max(diff_abs) / denom
                 if (
                     diff_norm_normalized > diff_norm_normalized_tol
                     or diff_abs_max_normalized > diff_abs_max_normalized_tol
                 ):
                     fail += 1
                     print(
-                        '#%d solution check failed for variable %s (range %f): L2(diff)/len(diff)/range = %.2E (tol %.2E), max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E'
-                        % (
-                            fail,
-                            self.physics.vars[v],
-                            sol_range,
-                            diff_norm_normalized,
-                            diff_norm_normalized_tol,
-                            diff_abs_max_normalized,
-                            diff_abs_max_normalized_tol,
-                            np.max(diff_abs),
-                        )
+                        f"#{fail} solution check failed for variable {self.physics.vars[v]} "
+                        f"(range {sol_range:f}): L2(diff)/len(diff)/range = {diff_norm_normalized:.2E} "
+                        f"(tol {diff_norm_normalized_tol:.2E}), max(abs(diff))/range {diff_abs_max_normalized:.2E} "
+                        f"(tol {diff_abs_max_normalized_tol:.2E}), max(abs(diff)) = {np.max(diff_abs):.2E}"
                     )
 
                     # plot the difference
@@ -88,27 +85,26 @@ class CICDModel(DartsModel):
                     plt.close()
 
             for key, value in sorted(data.items()):
-                if key == 'solution' or type(value) != int:
+                if key == 'solution' or not isinstance(value, int):
                     continue
                 reference = data_et[key]
 
                 if reference == 0:
                     if value != 0:
-                        print('#%d parameter %s is %d (was 0)' % (fail, key, value))
+                        print(f"#{fail} parameter {key} is {value:d} (was 0)")
                         fail += 1
                 else:
                     rel_diff = (value - data_et[key]) / reference * 100
                     if abs(rel_diff) > rel_diff_tol:
                         print(
-                            '#%d parameter %s is %d (was %d, %+.2f%%)'
-                            % (fail, key, value, reference, rel_diff)
+                            f"#{fail} parameter {key} is {value:d} (was {reference:d}, {rel_diff:+.2f}%)"
                         )
                         fail += 1
             if not fail:
-                print('OK, \t%.2f s' % self.timer.node['simulation'].get_timer())
+                print(f"OK, \t{self.timer.node['simulation'].get_timer():.2f} s")
                 return 0
             else:
-                print('FAIL, \t%.2f s' % self.timer.node['simulation'].get_timer())
+                print(f"FAIL, \t{self.timer.node['simulation'].get_timer():.2f} s")
                 return 1
         else:
             self.save_performance_data(perf_file, pkl_suffix=pkl_suffix)

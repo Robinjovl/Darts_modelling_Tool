@@ -1,6 +1,7 @@
 import abc
 
 import numpy as np
+from numba import jit
 
 
 class Flash:
@@ -45,9 +46,6 @@ class ConstantK(Flash):
         return 0
 
 
-from numba import jit
-
-
 @jit(nopython=True)
 def RR2(k, zc, eps):
     a = 1 / (1 - np.max(k)) + eps
@@ -57,7 +55,7 @@ def RR2(k, zc, eps):
     max_iter = 200  # use enough iterations for V to converge
     tol = 1e-12  # convergence tolerance
 
-    for i in range(1, max_iter):
+    for _i in range(1, max_iter):
         V = 0.5 * (a + b)
         r = np.sum(zc * k_minus_1 / (V * k_minus_1 + 1))
         if abs(r) < tol:
@@ -68,7 +66,7 @@ def RR2(k, zc, eps):
         else:
             b = V
 
-    if i >= max_iter:
+    if _i >= max_iter:
         print("Flash warning!!!")
 
     x = zc / (V * k_minus_1 + 1)
@@ -93,7 +91,7 @@ class IonFlash(Flash):
         nc_tot = len(zc)
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
-        error_output = self.flash_ev.evaluate(pressure, temperature, zc)
+        self.flash_ev.evaluate(pressure, temperature, zc)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.X = np.empty(

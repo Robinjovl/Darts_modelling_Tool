@@ -15,7 +15,7 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
-    n.set_output()
+    n.set_output(verbose = True)
 
     prop_list = n.physics.vars + n.output.properties
     # output primary (state) and secondary variables to .vtk files from engine.X at the current engine.time
@@ -60,3 +60,5 @@ if __name__ == '__main__':
                            output_directory = n.output_folder + '/vtk_files_all_timesteps_from_h5',
                            output_properties = prop_list,
                            engine = False)
+
+    n.print_timers()

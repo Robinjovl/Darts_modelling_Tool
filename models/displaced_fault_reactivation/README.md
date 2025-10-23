@@ -7,8 +7,8 @@ whereas the pore pressure can be changes by setting uniform depletion or adding 
 Geomechanics in this model is based on the quasi-static formulation before the slip, and can be changed to dynamic formulation during the slip.
 
 ## Notes
-During the first run, the script creates a file 'cached_preprocessing.pkl' which contains processed mesh data. For next run, the script check that file existance and if it exists, 
-the mesh processing will be skipped and the data from the file will be used instead to reduce the initialization time. 
+During the first run, the script creates a file 'cached_preprocessing.pkl' which contains processed mesh data. For next run, the script check that file existance and if it exists,
+the mesh processing will be skipped and the data from the file will be used instead to reduce the initialization time.
 If the reservoir geometry was changed, the file 'cached_preprocessing.pkl' should be manually deleted.
 
 ## Output
@@ -24,5 +24,4 @@ The domain output (3D) contains:
 The fault output (2D) contains:
 - g_local - slip value, where 'X' stands for the normal to the fault direction, 'Y' and 'Z' tangential direction
 - f_local - traction, with the same magnitudes direction names
-
-
+- phi - slip cretiria

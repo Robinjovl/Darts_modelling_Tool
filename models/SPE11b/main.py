@@ -13,10 +13,6 @@ from model_b import Model, PorPerm, Corey, layer_props
 from darts.engines import redirect_darts_output, sim_params
 from darts.engines import well_control_iface
 
-try:
-    from darts.engines import set_gpu_device
-except ImportError:
-    pass
 from fluidflower_str_b import FluidFlowerStruct
 
 #%%
@@ -55,7 +51,7 @@ def output(m, ts):
             property_array[f'vel_{ph}'] = np.sqrt(np.square(property_array[f'vel_{ph}_x']) \
                                                     + np.square(property_array[f'vel_{ph}_y']) \
                                                         + np.square(property_array[f'vel_{ph}_z']))
-        
+
         if m.specs['platform'] == 'cpu': # flux output is only enabled for CPU platform
             # store and plot fluxes
             diff = np.asarray(m.physics.engine.diffusion_fluxes) # array containing diffusive fluxes per component and phase
@@ -190,7 +186,7 @@ nz = 120
 zero = 1e-10
 
 
-# cpu/gpu based on platform 
+# cpu/gpu based on platform
 platform = 'cpu'
 if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
     platform = 'gpu'
@@ -228,7 +224,7 @@ if __name__ == '__main__':
 
             if specs['dispersion']:
                 m.init_dispersion()
-            
+
             if specs['platform'] == 'cpu':
                 m.physics.engine.enable_flux_output()
                 m.map_mesh_faces()
@@ -282,7 +278,7 @@ if __name__ == '__main__':
 
             if specs['dispersion']:
                 m.init_dispersion()
-                
+
             if specs['platform'] == 'cpu':
                 m.physics.engine.enable_flux_output()
                 m.map_mesh_faces()
@@ -291,6 +287,3 @@ if __name__ == '__main__':
 
         m.print_timers()
         m.print_stat()
-
-
-

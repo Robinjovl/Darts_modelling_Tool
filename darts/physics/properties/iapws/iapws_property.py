@@ -1,4 +1,4 @@
-from iapws._iapws import _D2O_Viscosity, _Viscosity
+from iapws._iapws import _Viscosity
 from iapws.iapws97 import (
     Pmin,
     _Backward1_T_Ph,
@@ -473,7 +473,7 @@ class Viscosity_iapws_water:
         :param temperature: state temperature, [K]
         :return: water viscosity, [cP]
         '''
-        P = pressure * 0.1  # MPa
+        pressure * 0.1  # MPa
         T = temperature  # K
 
         den = Density_iapws_water().evaluate(pressure, temperature)
@@ -491,7 +491,6 @@ class Viscosity_iapws_steam:
         :param temperature: state temperature, [K]
         :return: steam viscosity, [cP]
         '''
-        P = pressure * 0.1  # MPa
         T = temperature  # K
 
         den = Density_iapws_steam().evaluate(pressure, temperature)
@@ -546,9 +545,6 @@ class Saturation_iapws_steam:
         :param temperature: state temperature, [K]
         :return: steam saturation
         '''
-        P = pressure * 0.1  # MPa
-        T = temperature  # K
-
         water_saturation = Saturation_iapws_water()
         ss = 1 - water_saturation.evaluate(pressure, temperature)
         return ss
@@ -565,8 +561,6 @@ class Relperm_iapws_water:
         :param temperature: state temperature, [K]
         :return: water relative permeability
         '''
-        P = pressure * 0.1  # MPa
-        T = temperature  # K
 
         water_saturation = Saturation_iapws_water()
         water_rp = water_saturation.evaluate(pressure, temperature) ** 1
@@ -584,9 +578,6 @@ class Relperm_iapws_steam:
         :param temperature: state temperature, [K]
         :return: steam relative permeability
         '''
-        P = pressure * 0.1  # MPa
-        T = temperature  # K
-
         steam_saturation = Saturation_iapws_steam()
         steam_rp = steam_saturation.evaluate(pressure, temperature) ** 1
         return steam_rp

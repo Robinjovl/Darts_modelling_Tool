@@ -1,5 +1,3 @@
-from math import exp, log, sqrt
-
 import numpy as np
 
 
@@ -26,8 +24,8 @@ def _Backward1_T_Ph_vec(P, h):
     http://www.iapws.org/relguide/IF97-Rev.html, Eq 11
 
     """
-    I = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 4, 5, 6]
-    J = [0, 1, 2, 6, 22, 32, 0, 1, 2, 3, 4, 10, 32, 10, 32, 10, 32, 32, 32, 32]
+    II = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 4, 5, 6]
+    JJ = [0, 1, 2, 6, 22, 32, 0, 1, 2, 3, 4, 10, 32, 10, 32, 10, 32, 32, 32, 32]
     n = [
         -0.23872489924521e3,
         0.40421188637945e3,
@@ -54,12 +52,13 @@ def _Backward1_T_Ph_vec(P, h):
     Pr = P / 1
     nu = h / 2500
     T = np.zeros(P.shape)
-    for i, j, ni in zip(I, J, n):
+    for i, j, ni in zip(II, JJ, n, strict=False):
         T += ni * Pr**i * (nu + 1) ** j
     return T
 
 
 def enthalpy_to_temperature(X):  # X array of values (p, h) with stride=2
-    data_len = int(len(X) / 2)  # number of values
+    # number of values (not used further, kept for clarity)
+    _data_len = int(len(X) / 2)
     # the first argument is pressure, convert [bars] to [MPa], the second is enthalpy, convert [kJ/kmol] to [kJ/kg]
     return _Backward1_T_Ph_vec(X[::2] / 10, X[1::2] / 18.015)
