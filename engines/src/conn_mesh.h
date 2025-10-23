@@ -14,7 +14,7 @@ class conn_mesh
 public:
   conn_mesh () {};                                          // default constructor
 
-  int init_grav_coef(value_t grav_acc = 9.80665);           // initialize gravity coefficient for all the connections (grav_acc is in m/s^2)
+  int init_grav_coef(value_t grav_const = 9.80665e-5);      // initialize gravity coefficient for all the connections (grav_acc is in m/s^2)
 
   int init_spe(value_t grav_acc = 0.);                      // initialize specific potential energy for all the connections (grav_acc is in m/s^2)
 
