@@ -1724,12 +1724,12 @@ conn_mesh::reverse_and_sort_pme_mech_discretizer()
 }
 
 int
-conn_mesh::init_grav_coef(value_t grav_acc)
+conn_mesh::init_grav_coef(value_t grav_const)
 {
 
   for (index_t j = 0; j < n_conns; ++j)
   {
-    grav_coef[j] = (depth[block_m[j]] - depth[block_p[j]]) * grav_acc * 1e-5;
+    grav_coef[j] = (depth[block_m[j]] - depth[block_p[j]]) * grav_const;
   }
 
   return 0;

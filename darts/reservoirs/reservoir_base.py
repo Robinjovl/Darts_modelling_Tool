@@ -24,8 +24,6 @@ class ReservoirBase:
         self.poro, self.permx, self.permy, self.permz = [], [], [], []
         self.hcap, self.rcond = [], []
 
-        # Gravitational acceleration used in the Darcy's law in m/s^2
-        self.grav_acc_for_darcy_law = 9.80665  # in m/s^2
         # Gravitational acceleration used for potential energy calculation in m/s^2
         self.grav_acc_for_spe = 0.0  # in m/s^2
 
@@ -187,7 +185,7 @@ class ReservoirBase:
 
         # allocate mesh arrays
         self.mesh.reverse_and_sort()
-        self.mesh.init_grav_coef(grav_acc=self.grav_acc_for_darcy_law)
+        self.mesh.init_grav_coef()
         # Initialize specific potential energy at cell centroids and connections for both reservoir and wells
         self.mesh.init_spe(grav_acc=self.grav_acc_for_spe)
 
