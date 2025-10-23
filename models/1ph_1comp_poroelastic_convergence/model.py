@@ -100,7 +100,7 @@ class Model(THMCModel):
                                                              0.5, 0.15, 1.5])
             self.idata.rock.compressibility = 0.0
         else:
-            self.idata.rock.compressibility = self.idata.rock.porosity * 1.4503768e-05 
+            self.idata.rock.compressibility = self.idata.rock.porosity * 1.4503768e-05
 
         self.idata.fluid.compressibility = 0.0
         self.idata.fluid.viscosity = 1e-2
