@@ -742,9 +742,10 @@ class ModelProperties(PropertyContainer):
         # Define custom evaluators
         self.rock_density_ev = {}
         self.rock_compr_ev = {}
-        self.flash_ev = Flash(min_z=self.min_z, fc_mask=self.fc_mask, fc_idx=self.fc_idx,
-                                   f_mask_state=self.f_mask_state, temperature=self.temperature,
-                                   minerals=self.minerals, is_gas_spec=is_gas_spec)
+        self.flash_ev = Flash(min_z=self.min_z,
+                              minerals=self.minerals,
+                              components=self.components_name[self.fc_mask],
+                              temperature=self.temperature)
 
         # Build one evaluator per mineral using the single-mineral API
         surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)

@@ -160,30 +160,37 @@ class MineralSpec(BaseModel):
 
 
 class Flash:
+    """
+    Calculates chemical and vapour-liquid equilibrium using PHREEQC.
+    Currently phreeqc.dat is main database while pitzer.dat is used as a back-up.
+
+    """
+
     def __init__(
         self,
-        min_z,
-        fc_mask,
-        fc_idx,
-        f_mask_state,
-        minerals,
-        temperature=None,
-        is_gas_spec=False,
+        min_z: float,
+        minerals: list[str],
+        components: list[str],
+        temperature: float | None = None,
     ):
         """
         :param min_z: minimal composition value
-        :param fc_mask: boolean mask for extraction of fluid components from all components
-        :param fc_idx: dictionary for mapping names of fluid components to filtered (via mask) state
+        :param minerals: list of minerals
+        :param components: list of components (elements in this case)
         :param temperature: temperature for isothermal case
         """
-        self.fc_mask = fc_mask
-        self.fc_idx = fc_idx
-        self.f_mask_state = f_mask_state
-        self.n_fluid = np.count_nonzero(self.fc_mask)
-        self.n_solid = np.count_nonzero(~self.fc_mask)
         self.minerals = minerals
+        self.components = components
+        self.n_fluid = len(self.components)
+        self.n_solid = len(self.minerals)
+        # maps of component names to their indices for local treatment
+        self.fc_idx = {comp: i for i, comp in enumerate(self.components)}
+        # boolean mask for extraction of fluid components from state vector
+        self.f_mask_state = np.concatenate(
+            [[False] * (self.n_solid + 1), [True] * (self.n_fluid - 1)]
+        )
+        # TODO: unify mineral and miniral_names
         self.mineral_names = [item.split('_', 1)[1] for item in self.minerals]
-        self.is_gas_spec = is_gas_spec
 
         if temperature is None:
             self.thermal = True
@@ -306,6 +313,7 @@ class Flash:
         element_headings = " ".join([f"{el}(mol)" for el in fluid_elements_order])
         element_punch = " ".join([f"TOTMOLE(\"{el}\")" for el in fluid_elements_order])
 
+        # TODO: unify mineral and miniral_names
         mineral_label_map = {
             'Solid_CaCO3': 'Calcite',
             'Solid_CaMg(CO3)2': 'Dolomite',
@@ -356,12 +364,27 @@ class Flash:
                 """
 
     def load_database(self, database, db_path):
+        """
+        Loads a PHREEQC database into the given database object.
+        :param database: PHREEQC database object
+        :param db_path: path to the PHREEQC database file
+        """
         try:
             database.load_database(db_path)
         except Exception as e:
             warnings.warn(f"Failed to load '{db_path}': {e}.", Warning, stacklevel=2)
 
     def interpret_results(self, database):
+        """
+        Interprets the results of a PHREEQC simulation.
+        :param database: PHREEQC database object
+        :return: (nu_v) vapour phase molar fraction, (x) molar composition of aqueous
+         and (y) vapour phases, (rho_phases) phase molar densities,
+         (kin_state) kinetic params, (volume_aq + volume_gas) fluid volume,
+         (species_molalities) aqueous species molalities,
+         and (gas_fractions) gas species molar fractions
+        :rtype: tuple[float, np.ndarray, np.ndarray, dict, dict, float, np.ndarray, np.ndarray]
+        """
         results_array = np.array(database.get_selected_output_array()[2])
 
         # Gas phase: volume and moles per species (in order of self.gas_species)
@@ -443,6 +466,13 @@ class Flash:
         )
 
     def get_fluid_composition(self, state):
+        """
+        Extracts the fluid composition from the state vector using the boolean mask.
+        :param state: state vector
+        :type state: np.ndarray
+        :return: fluid composition
+        :rtype: np.ndarray
+        """
         if self.thermal:
             z = state[-1][self.f_mask_state]
         else:
@@ -453,9 +483,15 @@ class Flash:
 
     def evaluate(self, state):
         """
-        :param state: state vector with fluid composition accessible by fc_mask
+        Calculates chemical and vapour-liquid equilibrium using PHREEQC.
+        :param state: state vector
         :type state: np.ndarray
-        :return: phase molar fraction, molar composition of aqueous and vapour phases, kinetic params, solution volume
+        :return: (nu_v) vapour phase molar fraction, (x) molar composition of aqueous
+         and (y) vapour phases, (rho_phases) phase molar densities,
+         (kin_state) kinetic params, (fluid_volume) fluid volume,
+         (species_aq_molar_fractions) aqueous species molar fractions,
+         and (species_gas_molar_fractions) gas species molar fractions
+        :rtype: tuple[float, np.ndarray, np.ndarray, dict, dict, float, np.ndarray, np.ndarray]
         """
         # extract pressure and fluid composition
         pressure_atm = state[0] / 1.01325  # bar to atm
@@ -496,13 +532,9 @@ class Flash:
         )
 
         # Build REACTION block lines for present elements
-        reaction_elements = ['Ca', 'Mg', 'C', 'O', 'H']
         reaction_lines_list = []
-        for el in reaction_elements:
-            if el in self.fc_idx:
-                reaction_lines_list.append(
-                    f"{el:<9}{fluid_moles[self.fc_idx[el]]:.12f}"
-                )
+        for el in self.components:
+            reaction_lines_list.append(f"{el:<9}{fluid_moles[self.fc_idx[el]]:.12f}")
         reaction_lines = "\n                    ".join(reaction_lines_list)
 
         input_string = self.phreeqc_template.format(

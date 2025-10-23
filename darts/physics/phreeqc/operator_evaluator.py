@@ -46,7 +46,7 @@ class ReservoirOperators(OperatorsSuper):
         else:
             z = state[1:]
         z_last = min(
-            max(1 - np.sum(z[self.property.flash_ev.fc_mask[:-1]]), self.min_z),
+            max(1 - np.sum(z[self.property.fc_mask[:-1]]), self.min_z),
             1 - self.min_z,
         )
         z = np.concatenate([z, [z_last]])
