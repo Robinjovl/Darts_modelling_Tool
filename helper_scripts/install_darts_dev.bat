@@ -1,4 +1,4 @@
-call helper_scripts\install_darts.bat
+call helper_scripts\install_darts.bat %*
 
 rem One-time dev tools install (ruff, pre-commit) if missing
 set "NEED_DEV=1"
