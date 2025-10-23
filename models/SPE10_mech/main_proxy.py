@@ -113,11 +113,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     print('\tprisms all', prisms.shape[0])
 
     #TODO do not use the whole mesh - use only the permeable part, assuming there is no p,T change in the impermeable part
-    #rsv = poro > m.idata.rock.poro_non_rsv  # reservoir cells
-    #delta_pressure = delta_pressure[rsv]
-    #delta_temperature = delta_temperature[rsv]
-    #prisms = prisms[rsv, :]
-    #print('\tprisms rsv', prisms.shape[0])
+    #rsv = poro > m.idata.rock.poro_non_rsv  # reservoir (permeable) cells only for use in the proxy
+    rsv = poro > 0 # use all cells in the proxy
+    delta_pressure_rsv = delta_pressure[rsv]
+    delta_temperature_rsv = delta_temperature[rsv]
+    prisms_rsv = prisms[rsv, :]
+    print('\tprisms rsv', prisms.shape[0])
 
     # where to compare the results - middle XYZ
     centroids = np.zeros((prisms.shape[0], 3))
@@ -269,7 +270,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points_eps = eval_points + eps
         #eval_points_eps = eval_points_eps.transpose()
-        upy1, upx1, upz1, uty1, utx1, utz1 = g.calc_displacements_cpp(eval_points_eps, prisms, delta_pressure, delta_temperature)
+        upy1, upx1, upz1, uty1, utx1, utz1 = g.calc_displacements_cpp(eval_points_eps, prisms_rsv, delta_pressure_rsv, delta_temperature_rsv)
         ux = upx1 + utx1
         uy = upy1 + uty1
         uz = upz1 + utz1
@@ -302,7 +303,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         # returns thermoporoelastic strain and  stress in MPa, (6, n_points), 6 - Voight notation
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points_eps = eval_points + eps
-        res = g.calc_strain_stress_cpp(eval_points_eps, prisms, delta_pressure, delta_temperature)
+        res = g.calc_strain_stress_cpp(eval_points_eps, prisms_rsv, delta_pressure_rsv, delta_temperature_rsv)
         stress_p, strain_p, stress_t, strain_t, stress, strain = res
         #[Sp_xx, Sp_yy, Sp_zz, Sp_yz, Sp_xz, Sp_xy] = stress_p
         #[St_xx, St_yy, St_zz, St_yz, St_xz, St_xy] = stress_t
@@ -458,6 +459,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
     array_dict = {'ux_thm_2d': ux_last, 'uy_thm_2d': uy_last, 'uz_thm_2d': uz_last}
     array_dict.update({'delta_stress_XX_MPa': delta_Sxx_last, 'delta_stress_ZZ_MPa': delta_Szz_last})
+    #for arr_name in array_dict.keys():
+    #    array_dict[arr_name] = array_dict[arr_name][rsv]
     array_dict.update({'delta_pressure_MPa': delta_pressure, 'delta_temperature': delta_temperature})
     array_dict_interp = get_thm_by_interp(array_dict, points_x_3d, points_y_3d, points_z_3d)
     plot_contour(array_dict_interp, points_x, points_y, output_folder=folder)
@@ -580,7 +583,8 @@ if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
-    case = '34_34_54'  #
+    case = '34_34_55'  # z 0 - 5 km 
+    #case = '34_34_65'  # z 0 - 10 km
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -632,7 +636,7 @@ if __name__ == '__main__':
             thm_time = t2 - t1
 
             # run geomech proxy
-            print('timestep for plots and proxy', timestep)
+            print('The timestep for plots and proxy-apply:', timestep)
             t1 = datetime.now()
             run_geomech_proxy(case=case, physics_type=physics_type, wells_type=wells_type, timestep=timestep)
             t2 = datetime.now()

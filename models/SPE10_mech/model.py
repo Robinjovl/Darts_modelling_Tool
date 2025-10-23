@@ -161,14 +161,19 @@ class Model(THMCModel):
             Zc = np.hstack([np.arange(0, rsv_top, 150), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 150)])
         elif nz == 53:  # dz = 100 m for over and underburden and 20m for the reservoir
             Zc = np.hstack([np.arange(0, rsv_top, 100), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 100)])
-        elif nz == 54:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
+        elif nz == 55:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
             Zc = np.hstack([np.arange(0, rsv_top - 100, 100),
                                  rsv_top - 100,
                                  np.arange(rsv_top - 50, rsv_bottom, 25),
                                  rsv_bottom + 50,
-                                 np.arange(rsv_bottom + 100, 5000, 100)]) #TODO add , 5000
-        elif nz == 60:  # uniform dz = 100 m
-            np.linspace(0, 6000, num=61)  # mesh Z range
+                                 np.arange(rsv_bottom + 100, 5000, 100), 5000])
+        elif nz == 65:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
+            Zc = np.hstack([np.arange(0, rsv_top - 100, 100),
+                                 rsv_top - 100,
+                                 np.arange(rsv_top - 50, rsv_bottom, 25),
+                                 rsv_bottom + 50,
+                                 np.arange(rsv_bottom + 100, 5000, 100), 
+                                 np.arange(5000, 10500, 500)])
         else:
             print('not found an option to mesh with nz = ', nz)
             exit(1)
