@@ -308,7 +308,7 @@ class PropertyOperators(operator_set_evaluator_iface):
         shift += len(self.property.flash_ev.mineral_names)
         for i, k in enumerate(self.property.rock_compr_ev.keys()):
             values_np[shift + 4 + i] = self.property.kinetic_rate_ev[k].evaluate(
-                kin_state, sat_minerals[i], dens_m_solid[i]
+                kin_state, sat_minerals[i], dens_m_solid[i], self.property.temperature
             )
 
         return 0

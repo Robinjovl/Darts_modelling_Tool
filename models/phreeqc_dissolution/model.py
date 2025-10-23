@@ -746,7 +746,11 @@ class ModelProperties(PropertyContainer):
                                    f_mask_state=self.f_mask_state, temperature=self.temperature,
                                    minerals=self.minerals, is_gas_spec=is_gas_spec)
 
-        self.kinetic_rate_ev = {m: KineticRate(self.temperature, self.min_z, m.split('_', 1)[1], kinetic_mechanisms) for m in self.minerals}
+        # Build one evaluator per mineral using the single-mineral API
+        self.kinetic_rate_ev = {
+            m: KineticRate( min_z=self.min_z,
+                            mineral_name=m.split('_', 1)[1],
+                            mechanisms=kinetic_mechanisms ) for m in self.minerals }
         self.rel_perm_ev = {ph: self.CustomRelPerm(2) for ph in phases_name[:2]}  # Relative perm for first two phases
         self.viscosity_ev = { phases_name[0]: self.GasViscosity(), phases_name[1]: self.LiquidViscosity() }
 
@@ -799,7 +803,7 @@ class ModelProperties(PropertyContainer):
 
         for i, k in enumerate(self.rock_compr_ev.keys()):
             self.rock_compr[i] = self.rock_compr_ev[k].evaluate(pressure)
-            self.kin_rates[i] = self.kinetic_rate_ev[k].evaluate(self.kin_state, self.sat_minerals[i], self.dens_m_solid[i])
+            self.kin_rates[i] = self.kinetic_rate_ev[k].evaluate(self.kin_state, self.sat_minerals[i], self.dens_m_solid[i], self.temperature)
 
     # default flash working with molar fractions
 
