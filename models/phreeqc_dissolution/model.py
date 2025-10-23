@@ -294,10 +294,9 @@ class Model(CICDModel):
         self.nc = len(self.elements)
 
         # Create property containers:
-        is_gas_spec = False if self.co2_injection < self.co2_injection_cutoff else True
         property_container = ModelProperties(phases_name=self.phases, components_name=self.elements, Mw=Mw,
                                              kinetic_mechanisms=self.kinetic_mechanisms, min_z=self.obl_min,
-                                             temperature=self.temperature, fc_mask=self.fc_mask, is_gas_spec=is_gas_spec)
+                                             temperature=self.temperature, fc_mask=self.fc_mask)
 
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
@@ -711,7 +710,7 @@ class Model(CICDModel):
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, nc_sol=0, np_sol=0,
-                 min_z=1e-11, rate_ann_mat=None, temperature=None, fc_mask=None, is_gas_spec=False):
+                 min_z=1e-11, rate_ann_mat=None, temperature=None, fc_mask=None):
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, nc_sol=nc_sol, np_sol=np_sol,
                          min_z=min_z, rate_ann_mat=rate_ann_mat, temperature=temperature)
         self.components_name = np.array(self.components_name)

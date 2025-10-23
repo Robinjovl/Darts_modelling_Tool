@@ -13,7 +13,7 @@ except ImportError:
 
 
 # Pydantic is used to validate user-provided kinetic configuration
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 # -----------------------------
 # Kinetic reactions registry
@@ -157,6 +157,64 @@ class MineralSpec(BaseModel):
             if mk not in clean:
                 clean.append(mk)
         return clean
+
+
+class FlashSpec(BaseModel):
+    """Pydantic spec for constructing a Flash instance.
+
+    This model is JSON-schema friendly and validates only user inputs.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    min_z: float = Field(gt=0)
+    minerals: list[str] = Field(min_length=1)
+    components: list[str] = Field(min_length=1)
+    temperature: float | None = None
+
+    # Optional overrides
+    phreeqc_db: str = 'phreeqc.dat'
+    pitzer_db: str = 'pitzer.dat'
+    gas_species: list[str] = ['CO2(g)', 'H2O(g)']
+
+    @field_validator('minerals')
+    @classmethod
+    def _validate_minerals(cls, value: list[str]) -> list[str]:
+        if not all(isinstance(m, str) and m.strip() for m in value):
+            raise ValueError('minerals must be non-empty strings')
+        return [m.strip() for m in value]
+
+    @field_validator('components')
+    @classmethod
+    def _validate_components(cls, comps: list[str]) -> list[str]:
+        comps = [c.strip() for c in comps]
+        # Require at least H and O due to water-formation logic
+        for required in ('H', 'O'):
+            if required not in comps:
+                raise ValueError(f"components must include '{required}'")
+        return comps
+
+
+class ReactionSurfaceAreaSpec(BaseModel):
+    """Spec for reaction surface area evaluator used by KineticRate.
+
+    Currently supports a linear evaluator only.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    kind: str = Field(default='linear', pattern='^(linear)$')
+    initial_area_per_mol: float = Field(gt=0)
+
+
+class KineticRateSpec(MineralSpec):
+    """Pydantic spec for constructing a KineticRate instance.
+
+    Inherits mineral/mechanism validation; adds `min_z` and surface area spec.
+    """
+
+    min_z: float = Field(gt=0)
+    surface_area: ReactionSurfaceAreaSpec
 
 
 class Flash:
@@ -373,6 +431,46 @@ class Flash:
             database.load_database(db_path)
         except Exception as e:
             warnings.warn(f"Failed to load '{db_path}': {e}.", Warning, stacklevel=2)
+
+    @classmethod
+    def from_spec(cls, spec: FlashSpec) -> 'Flash':
+        """Construct a Flash instance from a validated FlashSpec.
+
+        Converts JSON-friendly inputs to runtime types and applies optional
+        overrides for databases and gas settings.
+        """
+        inst = cls(
+            min_z=spec.min_z,
+            minerals=spec.minerals,
+            components=spec.components,
+            temperature=spec.temperature,
+        )
+
+        # Override databases if requested
+        if spec.phreeqc_db and spec.phreeqc_db != 'phreeqc.dat':
+            try:
+                inst.load_database(inst.phreeqc, spec.phreeqc_db)
+            except Exception:
+                pass
+        if spec.pitzer_db and spec.pitzer_db != 'pitzer.dat':
+            try:
+                inst.load_database(inst.pitzer, spec.pitzer_db)
+            except Exception:
+                pass
+
+        # Apply gas settings
+        if spec.gas_species != inst.gas_species:
+            inst.gas_species = list(spec.gas_species)
+            inst._gases_selected_output = " ".join(inst.gas_species)
+            # Recompute stoichiometry map for gases
+            inst._gas_species_element_stoich = {}
+            for sp in inst.gas_species:
+                formula = sp.split("(")[0]
+                inst._gas_species_element_stoich[sp] = inst._parse_formula_to_elements(
+                    formula
+                )
+
+        return inst
 
     def interpret_results(self, database):
         """
@@ -697,6 +795,22 @@ class KineticRate:
         # convert to [kmol/d/m3]
         kinetic_rate = kinetic_rate * 60 * 60 * 24 / 1000
         return kinetic_rate
+
+    @classmethod
+    def from_spec(cls, spec: KineticRateSpec) -> 'KineticRate':
+        """Construct a KineticRate instance from a validated KineticRateSpec."""
+        # Build surface area evaluator (extensible by kind)
+        if spec.surface_area.kind == 'linear':
+            sa_ev = LinearReactionSurfaceArea(spec.surface_area.initial_area_per_mol)
+        else:
+            raise ValueError(f"Unsupported surface area kind: {spec.surface_area.kind}")
+
+        return cls(
+            min_z=spec.min_z,
+            mineral_name=spec.mineral_name,
+            mechanisms=spec.mechanisms,
+            surface_area_ev=sa_ev,
+        )
 
 
 class LinearReactionSurfaceArea:
