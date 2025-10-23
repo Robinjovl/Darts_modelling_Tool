@@ -11,7 +11,7 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.phreeqc.physics import PhreeqcDissolution
-from darts.physics.properties.phreeqc import Flash, KineticRate
+from darts.physics.properties.phreeqc import Flash, KineticRate, LinearReactionSurfaceArea
 from darts.engines import sim_params, well_control_iface, value_vector, timer_node
 
 from iapws._iapws import _Viscosity
@@ -747,10 +747,12 @@ class ModelProperties(PropertyContainer):
                                    minerals=self.minerals, is_gas_spec=is_gas_spec)
 
         # Build one evaluator per mineral using the single-mineral API
+        surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)
         self.kinetic_rate_ev = {
             m: KineticRate( min_z=self.min_z,
                             mineral_name=m.split('_', 1)[1],
-                            mechanisms=kinetic_mechanisms ) for m in self.minerals }
+                            mechanisms=kinetic_mechanisms,
+                            surface_area_ev=surface_area_ev ) for m in self.minerals }
         self.rel_perm_ev = {ph: self.CustomRelPerm(2) for ph in phases_name[:2]}  # Relative perm for first two phases
         self.viscosity_ev = { phases_name[0]: self.GasViscosity(), phases_name[1]: self.LiquidViscosity() }
 

@@ -594,24 +594,23 @@ class KineticRate:
     Input is validated against the kinetics registry via Pydantic.
     """
 
-    def __init__(self, min_z, mineral_name, mechanisms):
+    def __init__(self, min_z, mineral_name, mechanisms, surface_area_ev):
         """Create a kinetic rate evaluator for a single mineral.
 
         Parameters
         - min_z: Minimum composition value (kept for API symmetry)
         - mineral_name: Mineral identifier, e.g. 'CaCO3'
         - mechanisms: List of mechanism names, e.g. ['acidic','neutral']
+        - surface_area_ev: Surface area evaluator, e.g. LinearReactionSurfaceArea
         """
         self.min_z = min_z
-        self.specific_sa = 0.925  # [m2/mol]
+        self.surface_area_ev = surface_area_ev
         try:
             spec = MineralSpec(mineral_name=mineral_name, mechanisms=mechanisms)
         except ValidationError as exc:
             raise exc
         self.mineral = spec.mineral_name
-        mech_names = spec.mechanisms
         mech_defs = KINETIC_REGISTRY[self.mineral]
-        canonical = ['acidic', 'neutral', 'carbonate']
         self.mechanisms = [
             ReactionMechanism(
                 name=mech,
@@ -622,8 +621,7 @@ class KineticRate:
                 p=mech_defs[mech]['p'],
                 q=mech_defs[mech]['q'],
             )
-            for mech in canonical
-            if mech in mech_names
+            for mech in mechanisms
         ]
 
     def evaluate(self, kin_state, solid_saturation, rho_s, temperature):
@@ -632,17 +630,22 @@ class KineticRate:
         Parameters
         - kin_state: Dict-like with activities/saturation ratios from PHREEQC; expects keys
           'Act(H+)', 'Act(CO2)', and 'SR_<mineral>'
-        - solid_saturation: Solid saturation (fraction) of the mineral
+        - solid_saturation: Solid saturation (volume fraction) of the mineral
         - rho_s: Solid molar density [kmol/m3]
         - temperature: Temperature [K]
         """
         if not self.mechanisms:
             return 0.0
+
+        # TODO: avoid dependence on PHREEQC format of kin_state
+        # gather activities by mechanism
         activity_by_mech = {
             'acidic': kin_state['Act(H+)'],
             'neutral': 1.0,
             'carbonate': kin_state['Act(CO2)'],
         }
+
+        # calculate rates by mechanism
         sr_key = 'SR_' + self.mineral
         rates = [
             mech.evaluate(
@@ -652,11 +655,29 @@ class KineticRate:
             )
             for mech in self.mechanisms
         ]
-        kinetic_rate_mol_s_m3 = (
-            -self.specific_sa * solid_saturation * (rho_s * 1000) * sum(rates)
-        )
-        kinetic_rate = kinetic_rate_mol_s_m3 * 60 * 60 * 24 / 1000
+
+        # calculate surface area [m2/mol]
+        surface_area = self.surface_area_ev.evaluate(solid_saturation)
+
+        # calculate kinetic rate [mol/s/m3]
+        kinetic_rate = -surface_area * (rho_s * 1000) * sum(rates)
+
+        # convert to [kmol/d/m3]
+        kinetic_rate = kinetic_rate * 60 * 60 * 24 / 1000
         return kinetic_rate
+
+
+class LinearReactionSurfaceArea:
+    def __init__(self, initial_area_per_mol: float):
+        """
+        Initialize the reaction surface area evaluator.
+        :param initial_area_per_mol: initial area per mol [m2/mol]
+        :type initial_area_per_mol: float
+        """
+        self.s_init = initial_area_per_mol
+
+    def evaluate(self, vol_fraction):
+        return self.s_init * vol_fraction
 
 
 class ReactionMechanism:
@@ -691,7 +712,7 @@ class ReactionMechanism:
         :param temperature: temperature [K]
         :param activity: activity of the reactant relevant to the mechanism
         :param SR: saturation ratio
-        :return: reaction rate [mol/s/m3]
+        :return: reaction rate [mol/s/m2]
         """
         # calculate the Arrhenius factor
         k_arr = self.k * np.exp(
