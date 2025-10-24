@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 
 import darts
+from darts.physics.properties.kinetic_registry import KINETIC_REGISTRY
 
 try:
     from phreeqpy.iphreeqc.phreeqc_dll import IPhreeqc
@@ -14,100 +15,6 @@ except ImportError:
 
 # Pydantic is used to validate user-provided kinetic configuration
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-
-# -----------------------------
-# Kinetic reactions registry
-# -----------------------------
-# Registry of supported minerals and their kinetic mechanisms with Arrhenius
-# parameters. The following sources of data are used:
-# - carbonates: doi: 10.3133/ofr20041068.
-# Each mechanism also stores the reference temperature (T_ref_K) where parameters were measured.
-# Entries:
-# - k: Arrhenius pre-exponential factor [mol/m2/s]
-# - Ea: Activation energy [J/mol]
-# - T_ref_K: Reference temperature [K] where parameters were measured
-# - n: reaction order with respect to mechanism activity
-# - p, q: chemical affinity parameters in (1 - SR^p)^q term
-KINETIC_REGISTRY = {
-    'CaCO3': {
-        'acidic': {
-            'k': 10 ** (-0.3),
-            'Ea': 14400,
-            'n': 1,
-            'p': 1,
-            'q': 1,
-            'T_ref_K': 273.15 + 25,
-        },
-        'neutral': {
-            'k': 10 ** (-5.81),
-            'Ea': 23500,
-            'n': 0,
-            'p': 1,
-            'q': 1,
-            'T_ref_K': 273.15 + 25,
-        },
-        'carbonate': {
-            'k': 10 ** (-3.48),
-            'Ea': 35400,
-            'n': 1,
-            'p': 1,
-            'q': 1,
-            'T_ref_K': 273.15 + 25,
-        },
-    },
-    'CaMg(CO3)2': {
-        'acidic': {
-            'k': 10 ** (-3.19),
-            'Ea': 36100,
-            'n': 0.5,
-            'p': 1,
-            'q': 1,
-            'T_ref_K': 273.15 + 25,
-        },
-        'neutral': {
-            'k': 10 ** (-7.53),
-            'Ea': 52200,
-            'n': 0,
-            'p': 1,
-            'q': 1,
-            'T_ref_K': 273.15 + 25,
-        },
-        'carbonate': {
-            'k': 10 ** (-5.11),
-            'Ea': 34800,
-            'n': 0.5,
-            'p': 1,
-            'q': 1,
-            'T_ref_K': 273.15 + 25,
-        },
-    },
-    'MgCO3': {
-        'acidic': {
-            'k': 10 ** (-6.38),
-            'Ea': 14400,
-            'n': 1,
-            'p': 1,
-            'q': 1,
-            'T_ref_K': 273.15 + 25,
-        },
-        'neutral': {
-            'k': 10 ** (-9.34),
-            'Ea': 23500,
-            'n': 0,
-            'p': 1,
-            'q': 1,
-            'T_ref_K': 273.15 + 25,
-        },
-        'carbonate': {
-            'k': 10 ** (-5.22),
-            'Ea': 62800,
-            'n': 1,
-            'p': 1,
-            'q': 1,
-            'T_ref_K': 273.15 + 25,
-        },
-    },
-}
 
 
 # -----------------------------
