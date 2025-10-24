@@ -41,6 +41,17 @@ def get_lib_var():
         return None
 
 
+def get_lib_search_var():
+    if sys.platform == 'linux':
+        return 'LD_LIBRARY_PATH'
+    elif sys.platform == 'darwin':
+        return 'DYLD_LIBRARY_PATH'
+    elif sys.platform.startswith('win'):
+        return 'PATH'
+    else:
+        return None
+
+
 def get_darts_path():
     return Path(darts.__file__).parent
 
@@ -53,10 +64,11 @@ def main():
 
     # Handle multiprocessing spawn / resource_tracker callbacks
     if args_list[1] in ('-c', '-m'):
-        lib_var = get_lib_var()
-        if lib_var:
-            os.environ[lib_var] = (
-                str(get_darts_path()) + os.pathsep + os.environ.get(lib_var, "")
+        # Extend dynamic loader search path for inline Python execution
+        lib_search_var = get_lib_search_var()
+        if lib_search_var:
+            os.environ[lib_search_var] = (
+                os.environ.get(lib_search_var, "") + os.pathsep + str(get_darts_path())
             )
         python_args = [sys.executable] + args_list[1:]
         res = subprocess.run(python_args)
@@ -129,11 +141,20 @@ def main():
     python_args += args.args
 
     # Update env vars for running DARTS
-    lib_var = get_lib_var()
-    if lib_var:
-        os.environ[lib_var] = (
-            str(get_darts_path()) + "/libstdc++.so.6:" + os.environ.get(lib_var, "")
+    # Prefer search path over forced preload to avoid ABI conflicts with other packages (e.g., Reaktoro)
+    lib_search_var = get_lib_search_var()
+    if lib_search_var:
+        os.environ[lib_search_var] = (
+            os.environ.get(lib_search_var, "") + os.pathsep + str(get_darts_path())
         )
+
+    # Optional opt-in to force-preload libstdc++.so.6 if absolutely required
+    if os.environ.get("DARTS_FORCE_PRELOAD_LIBSTDCXX", "0") in ("1", "true", "True"):
+        lib_var = get_lib_var()
+        if lib_var:
+            os.environ[lib_var] = (
+                str(get_darts_path()) + "/libstdc++.so.6:" + os.environ.get(lib_var, "")
+            )
 
     res = subprocess.run(python_args)
     sys.exit(res.returncode)
