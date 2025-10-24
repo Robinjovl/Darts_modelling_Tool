@@ -160,9 +160,9 @@ class CPG_Reservoir(ReservoirBase):
         self.mesh.volume = darts.engines.value_vector(self.discr_mesh.volumes)
 
         dz = np.zeros(self.discr_mesh.n_cells)
-        for i in range(self.discr_mesh.n_cells):
-            i, j, k = self.discr_mesh.get_ijk(idx=i, is_global=False)
-            _, _, dz[i] = self.discr_mesh.calc_cell_sizes(i, j, k)
+        for cell_idx in range(self.discr_mesh.n_cells):
+            i, j, k = self.discr_mesh.get_ijk(idx=cell_idx, is_global=False)
+            _, _, dz[cell_idx] = self.discr_mesh.calc_cell_sizes(i, j, k)
 
         self.mesh.cell_thickness = darts.engines.value_vector(dz)
 
