@@ -1,0 +1,163 @@
+gitingest-digest:
+    stage: ingest
+    tags:
+        - linux_tahiti_gpu
+    needs: []
+    variables:
+        # Python to use for the temporary environment
+        PY_VER: "3.10"
+        # Unique conda env name per job to avoid collisions on shared runners
+        CONDA_ENV: "gitingest_${CI_JOB_ID}"
+        # Optional manifest file (one path per line; lines starting with # are comments)
+        GITINGEST_MANIFEST: "helper_scripts/gitingest-include.txt"
+        # Output directory and filename prefix for the digest
+        GITINGEST_OUT_DIR: "digest"
+        GITINGEST_OUTPUT_PREFIX: "open-darts-digest"
+        GITINGEST_MODELS_OUTPUT_PREFIX: "open-darts-models"
+    before_script:
+        - set -euo pipefail
+        # Prepare Python env on Tahiti runner (same pattern as GPU tests)
+        - spack env activate open_darts_gcc134 || true
+        - CONDA_BASE="/data/gitlab-runner/miniconda3"
+        - . "${CONDA_BASE}/etc/profile.d/conda.sh"
+        - conda env remove -n ${CONDA_ENV} -y || true
+        - conda create -n ${CONDA_ENV} python=${PY_VER} -q -y
+        - conda activate ${CONDA_ENV}
+        - python -m pip install --upgrade pip
+        # Try to install gitingest if available on PyPI; job will still succeed if not
+        - pip install --upgrade gitingest || true
+    script:
+        - set -euo pipefail
+        - mkdir -p "${GITINGEST_OUT_DIR}" "${GITINGEST_OUT_DIR}/src"
+        - COMMIT_HASH="${CI_COMMIT_SHORT_SHA:-${CI_COMMIT_SHA:-local}}"
+        - GITINGEST_OUTPUT="${GITINGEST_OUT_DIR}/${GITINGEST_OUTPUT_PREFIX}-${COMMIT_HASH}.json"
+        - MODELS_GITINGEST_OUTPUT="${GITINGEST_OUT_DIR}/${GITINGEST_MODELS_OUTPUT_PREFIX}-${COMMIT_HASH}.json"
+        - export GITINGEST_OUTPUT MODELS_GITINGEST_OUTPUT COMMIT_HASH
+        - echo "Resolved include list:"
+        - grep -vE '^(#|[[:space:]]*$)' "${GITINGEST_MANIFEST}" | sort -u
+          # Validate and copy files preserving directory structure
+        - MISSING=0
+        - |
+          while IFS= read -r relpath; do
+            [ -z "$relpath" ] && continue
+            [ "${relpath#\#}" != "$relpath" ] && continue  # skip comments
+            if [ -e "$relpath" ]; then
+              mkdir -p "${GITINGEST_OUT_DIR}/src/$(dirname "$relpath")"
+              # Prefer --parents when available
+              cp --parents -a "$relpath" "${GITINGEST_OUT_DIR}/src" 2>/dev/null || cp -a "$relpath" "${GITINGEST_OUT_DIR}/src/$relpath"
+            else
+              echo "WARN: missing path: $relpath" >&2
+              MISSING=$((MISSING+1))
+            fi
+          done < <(grep -vE '^(#|[[:space:]]*$)' "${GITINGEST_MANIFEST}" | sort -u)
+        - |
+          if [ "$MISSING" -gt 0 ]; then
+            echo "There were $MISSING missing paths (continuing)." >&2
+          fi
+          # Run gitingest if available (manifest-only flow)
+        - |
+          if command -v gitingest >/dev/null 2>&1; then
+            echo "Running gitingest CLI..."
+            gitingest "${GITINGEST_OUT_DIR}/src" > "${GITINGEST_OUT_DIR}/gitingest-output.txt" 2> "${GITINGEST_OUT_DIR}/gitingest-stderr.txt" || true
+            OUT_FILE=""
+            if [ -f "digest.txt" ]; then
+              OUT_FILE="digest.txt"
+            else
+              OUT_FILE="$(sed -n 's/^.*Output written to:[[:space:]]*//p' \"${GITINGEST_OUT_DIR}/gitingest-output.txt\" | head -n1 | tr -d '\r')"
+            fi
+            if [ -n "${OUT_FILE}" ] && [ -f "${OUT_FILE}" ]; then
+              mkdir -p "$(dirname \"${GITINGEST_OUTPUT}\")"
+              cp -f "${OUT_FILE}" "${GITINGEST_OUTPUT}"
+            else
+              echo "WARN: Could not locate gitingest output file; leaving ${GITINGEST_OUTPUT} absent." >&2
+            fi
+          else
+            echo "gitingest CLI not found; skipping digest generation." >&2
+          fi
+        - echo "Digest preparation completed."
+        - |
+          echo "Preparing models subfolders (*.py) for second gitingest..."
+          if [ -d models ]; then
+            mkdir -p "${GITINGEST_OUT_DIR}/models_src"
+            MISSING_MODELS=0
+            while IFS= read -r relpath; do
+              [ -z "$relpath" ] && continue
+              if [ -e "$relpath" ]; then
+                mkdir -p "${GITINGEST_OUT_DIR}/models_src/$(dirname "$relpath")"
+                cp --parents -a "$relpath" "${GITINGEST_OUT_DIR}/models_src" 2>/dev/null || cp -a "$relpath" "${GITINGEST_OUT_DIR}/models_src/$relpath"
+              else
+                echo "WARN: missing models path: $relpath" >&2
+                MISSING_MODELS=$((MISSING_MODELS+1))
+              fi
+            done < <(find models -mindepth 2 -type f -name "*.py" | sort)
+            if command -v gitingest >/dev/null 2>&1; then
+              echo "Running second gitingest on models_src..."
+              gitingest "${GITINGEST_OUT_DIR}/models_src" > "${GITINGEST_OUT_DIR}/gitingest-models-output.txt" 2> "${GITINGEST_OUT_DIR}/gitingest-models-stderr.txt" || true
+              OUT_FILE2=""
+              if [ -f "digest.txt" ]; then
+                OUT_FILE2="digest.txt"
+              else
+                OUT_FILE2="$(sed -n 's/^.*Output written to:[[:space:]]*//p' \"${GITINGEST_OUT_DIR}/gitingest-models-output.txt\" | head -n1 | tr -d '\r')"
+              fi
+              if [ -n "${OUT_FILE2}" ] && [ -f "${OUT_FILE2}" ]; then
+                mkdir -p "$(dirname \"${MODELS_GITINGEST_OUTPUT}\")"
+                cp -f "${OUT_FILE2}" "${MODELS_GITINGEST_OUTPUT}"
+              else
+                echo "WARN: Could not locate gitingest models output file; leaving ${MODELS_GITINGEST_OUTPUT} absent." >&2
+              fi
+            else
+              echo "gitingest CLI not found; skipping models digest generation." >&2
+            fi
+          else
+            echo "WARN: 'models' directory not found; skipping models digest generation." >&2
+          fi
+    after_script:
+        # Cleanup conda env and export metadata for the next job
+        - conda env remove -n ${CONDA_ENV} -y || true
+        - echo "OPEN_DARTS_GITINGEST_JOB_ID=${CI_JOB_ID}" > gitingest.env
+        - echo "OPEN_DARTS_REF=${CI_COMMIT_REF_NAME}" >> gitingest.env
+        - echo "OPEN_DARTS_COMMIT_SHA=${CI_COMMIT_SHA}" >> gitingest.env
+    rules:
+        - if: $CI_PIPELINE_SOURCE == "pipeline"
+          when: never
+        - if: $CI_COMMIT_BRANCH == "development" && $ENABLE_GITINGEST == "1"
+          when: on_success
+        - when: never
+    artifacts:
+        paths:
+            - "digest/open-darts-digest-*.json"
+            - "digest/open-darts-models-*.json"
+            - "digest/gitingest-output.txt"
+            - "digest/gitingest-stderr.txt"
+            - "digest/gitingest-models-output.txt"
+            - "digest/gitingest-models-stderr.txt"
+        reports:
+          dotenv: gitingest.env
+        when: always
+        expire_in: 1 week
+
+trigger-mcp-ingest:
+  stage: ingest
+  needs: ["gitingest-digest"]
+  trigger:
+    project: open-darts/mcp-server
+    branch: mcp_poc
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  variables:
+    OPEN_DARTS_PROJECT_ID: "$CI_PROJECT_ID"
+    OPEN_DARTS_PIPELINE_ID: "$CI_PIPELINE_ID"
+    OPEN_DARTS_COMMIT_SHA: "$CI_COMMIT_SHA"
+    OPEN_DARTS_REF: "$CI_COMMIT_REF_NAME"
+    OPEN_DARTS_GITINGEST_JOB_NAME: "gitingest-digest"
+    # pulled from dotenv produced by previous job:
+    OPEN_DARTS_GITINGEST_JOB_ID: "$OPEN_DARTS_GITINGEST_JOB_ID"
+    # Instruct downstream to run only ingest job
+    MCP_INGEST_ONLY: "1"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "development" && $ENABLE_GITINGEST == "1"
+      when: on_success
+    - when: never

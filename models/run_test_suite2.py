@@ -77,7 +77,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_dirs_cpg = ['cpg_sloping_fault']
     cpg_cases_list = ['generate_5x3x4']
     if iter_solvers:  # run this case only for the build with iterative solvers
-        cpg_cases_list += ['generate_51x51x1', 'case_40x40x10']
+        cpg_cases_list += ['generate_51x51x1', '40x40x10', '40x40x10_hcap', '40x40x10_regions']
     test_args_cpg = []
     for case_geom in cpg_cases_list:
         for physics_type in ['geothermal', 'deadoil']:
