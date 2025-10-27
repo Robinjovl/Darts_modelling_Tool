@@ -8,9 +8,9 @@ Please check these models to get how to enable PETSc:
 - cpg_sloping_fault (`case_base.py`)
 - 1ph_1comp_poroelastic_analytics (`model.py`)
 
-### 
+###
 
-### PETSc INSTALLATION 
+### PETSc INSTALLATION
 
 ```
 conda install -c conda-forge mpi4py
