@@ -88,12 +88,12 @@ class Compositional(PhysicsBase):
             )
 
         n_vars = len(variables)
-        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
+        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP * /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
         # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*LAMBDA*/ + NP /*SAT*/ + NP /*enthalpy*/
         # + 2 /*temperature and pressure*/
         # = NE * (2 * nph + 2) + 6 * nph + 3
 
-        n_ops = n_vars * (2 * nph + 2) + 6 * nph + 3
+        n_ops = n_vars * (2 * nph + 2) + 7 * nph + 3
 
         # axes_min
         if axes_min is None:
