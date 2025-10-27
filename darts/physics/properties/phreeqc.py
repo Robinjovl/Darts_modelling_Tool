@@ -137,12 +137,14 @@ class Flash:
         minerals: list[str],
         components: list[str],
         temperature: float | None = None,
+        gas_species: list[str] | tuple[str, ...] = ("CO2(g)", "H2O(g)"),
     ):
         """
         :param min_z: minimal composition value
         :param minerals: list of minerals
         :param components: list of components (elements in this case)
         :param temperature: temperature for isothermal case
+        :param gas_species: gas species to include in the GAS_PHASE section
         """
         self.minerals = minerals
         self.components = components
@@ -176,10 +178,10 @@ class Flash:
         self.load_database(self.phreeqc, "phreeqc.dat")
         self.pitzer = IPhreeqc(os.path.join(root, libname))
         self.load_database(self.pitzer, "pitzer.dat")
-        # self.phreeqc.phreeqc.OutputFileOn = True
-        # self.phreeqc.phreeqc.SelectedOutputFileOn = True
+        # self.phreeqc.set_output_file_on()
+        # self.phreeqc.set_selected_output_file_on()
 
-        self.gas_species = ['CO2(g)', 'H2O(g)']
+        self.gas_species = list(gas_species)
         # Precompute gas-related helpers
         self._gases_selected_output = " ".join(self.gas_species)
         self._gas_phase_entries = "\n".join([f"{sp}    0.0" for sp in self.gas_species])
@@ -351,6 +353,7 @@ class Flash:
             minerals=spec.minerals,
             components=spec.components,
             temperature=spec.temperature,
+            gas_species=spec.gas_species,
         )
 
         # Override databases if requested
