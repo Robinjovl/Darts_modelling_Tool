@@ -1,6 +1,6 @@
 import numpy as np
-import pickle, h5py
-import os, sys
+import h5py
+import os
 
 import darts
 from darts.models.output import Output
@@ -11,7 +11,9 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.phreeqc.physics import PhreeqcDissolution
-from darts.physics.properties.phreeqc import Flash, KineticRate, LinearReactionSurfaceArea
+from darts.physics.properties.kinetic_registry import KineticRate, LinearReactionSurfaceArea
+from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
+from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
 from darts.engines import sim_params, well_control_iface, value_vector, timer_node
 
 from iapws._iapws import _Viscosity
@@ -139,7 +141,7 @@ class Model(CICDModel):
                  poro_filename: str = None, minerals: list = ['calcite'],
                  kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
                  n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
-                 inj_rate: float = None, perm_poro: str = 'power_8'):
+                 inj_rate: float = None, perm_poro: str = 'power_8', flash: str = 'phreeqc'):
         # Call base class constructor
         super().__init__()
 
@@ -154,6 +156,7 @@ class Model(CICDModel):
         self.co2_injection_cutoff = 0.4
         self.inj_rate = inj_rate
         self.perm_poro = perm_poro
+        self.flash = flash
 
         self.set_reservoir(domain=domain, nx=nx, mesh_filename=mesh_filename, poro_filename=poro_filename)
         self.set_physics()
@@ -296,7 +299,7 @@ class Model(CICDModel):
         # Create property containers:
         property_container = ModelProperties(phases_name=self.phases, components_name=self.elements, Mw=Mw,
                                              kinetic_mechanisms=self.kinetic_mechanisms, min_z=self.obl_min,
-                                             temperature=self.temperature, fc_mask=self.fc_mask)
+                                             temperature=self.temperature, fc_mask=self.fc_mask, flash=self.flash)
 
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
@@ -710,7 +713,7 @@ class Model(CICDModel):
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, nc_sol=0, np_sol=0,
-                 min_z=1e-11, rate_ann_mat=None, temperature=None, fc_mask=None):
+                 min_z=1e-11, rate_ann_mat=None, temperature=None, fc_mask=None, flash='phreeqc'):
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, nc_sol=nc_sol, np_sol=np_sol,
                          min_z=min_z, rate_ann_mat=rate_ann_mat, temperature=temperature)
         self.components_name = np.array(self.components_name)
@@ -741,10 +744,18 @@ class ModelProperties(PropertyContainer):
         # Define custom evaluators
         self.rock_density_ev = {}
         self.rock_compr_ev = {}
-        self.flash_ev = Flash(min_z=self.min_z,
+        if flash == 'phreeqc':
+            self.flash_ev = PhreeqcFlash(min_z=self.min_z,
                               minerals=self.minerals,
                               components=self.components_name[self.fc_mask],
                               temperature=self.temperature)
+        elif flash == 'reaktoro':
+            self.flash_ev = ReaktoroFlash(min_z=self.min_z,
+                              minerals=self.minerals,
+                              components=self.components_name[self.fc_mask],
+                              temperature=self.temperature)
+        else:
+            raise ValueError(f'Invalid flash type: {flash}')
 
         # Build one evaluator per mineral using the single-mineral API
         surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)

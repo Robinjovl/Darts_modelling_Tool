@@ -5,7 +5,6 @@ import warnings
 import numpy as np
 
 import darts
-from darts.physics.properties.kinetic_registry import KINETIC_REGISTRY
 
 try:
     from phreeqpy.iphreeqc.phreeqc_dll import IPhreeqc
@@ -14,58 +13,12 @@ except ImportError:
 
 
 # Pydantic is used to validate user-provided kinetic configuration
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # -----------------------------
 # Pydantic input schema
 # -----------------------------
-class MineralSpec(BaseModel):
-    """Pydantic schema for a single-mineral kinetic configuration.
-
-    Example:
-        mineral_name='CaCO3', mechanisms=['acidic', 'neutral', 'carbonate']
-    """
-
-    mineral_name: str
-    mechanisms: list[str]
-
-    model_config = ConfigDict(extra='forbid')
-
-    @field_validator('mineral_name')
-    @classmethod
-    def validate_mineral_name(cls, value: str) -> str:
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError("'mineral_name' must be a non-empty string")
-        mineral_key = value.strip()
-        if mineral_key not in KINETIC_REGISTRY:
-            raise ValueError(
-                f"Unsupported mineral '{value}'. Supported: {sorted(KINETIC_REGISTRY.keys())}"
-            )
-        return mineral_key
-
-    @field_validator('mechanisms')
-    @classmethod
-    def validate_mechanisms(cls, value: list[str], info) -> list[str]:
-        if not isinstance(value, list | tuple) or len(value) == 0:
-            raise ValueError("'mechanisms' must be a non-empty list of strings")
-        # Access already-validated mineral_name from model fields
-        # Pydantic v2 passes validated fields via 'data' on the model instance after init,
-        # but here we re-validate against the full registry after normalization below.
-        clean: list[str] = []
-        for mech in value:
-            if not isinstance(mech, str):
-                raise ValueError("Mechanism names must be strings")
-            mk = mech.strip().lower()
-            if mk not in {'acidic', 'neutral', 'carbonate'}:
-                raise ValueError(
-                    "Unsupported mechanism '{mk}'. Supported: ['acidic','neutral','carbonate']"
-                )
-            if mk not in clean:
-                clean.append(mk)
-        return clean
-
-
 class FlashSpec(BaseModel):
     """Pydantic spec for constructing a Flash instance.
 
@@ -78,10 +31,10 @@ class FlashSpec(BaseModel):
     minerals: list[str] = Field(min_length=1)
     components: list[str] = Field(min_length=1)
     temperature: float | None = None
-
+    tolerance: float = (1e-10,)
+    database_filename: str = ('phreeqc.dat',)
     # Optional overrides
-    phreeqc_db: str = 'phreeqc.dat'
-    pitzer_db: str = 'pitzer.dat'
+    backup_database_filename: str = 'pitzer.dat'
     gas_species: list[str] = ['CO2(g)', 'H2O(g)']
 
     @field_validator('minerals')
@@ -102,33 +55,27 @@ class FlashSpec(BaseModel):
         return comps
 
 
-class ReactionSurfaceAreaSpec(BaseModel):
-    """Spec for reaction surface area evaluator used by KineticRate.
-
-    Currently supports a linear evaluator only.
-    """
-
-    model_config = ConfigDict(extra='forbid')
-
-    kind: str = Field(default='linear', pattern='^(linear)$')
-    initial_area_per_mol: float = Field(gt=0)
-
-
-class KineticRateSpec(MineralSpec):
-    """Pydantic spec for constructing a KineticRate instance.
-
-    Inherits mineral/mechanism validation; adds `min_z` and surface area spec.
-    """
-
-    min_z: float = Field(gt=0)
-    surface_area: ReactionSurfaceAreaSpec
-
-
 class Flash:
     """
     Calculates chemical and vapour-liquid equilibrium using PHREEQC.
-    Currently phreeqc.dat is main database while pitzer.dat is used as a back-up.
 
+    Write doc
+    :param min_z: minimal composition value
+    :type min_z: float
+    :param minerals: list of minerals
+    :type minerals: list[str]
+    :param components: list of components (elements in this case)
+    :type components: list[str]
+    :param temperature: temperature for isothermal case
+    :type temperature: float | None
+    :param gas_species: gas species to include in the GAS_PHASE section
+    :type gas_species: list[str] | tuple[str, ...]
+    :param tolerance: convergence tolerance for the equilibrium solver
+    :type tolerance: float
+    :param database_filename: path to PHREEQC database file for primary engine
+    :type database_filename: str
+    :param backup_database_filename: path to database file as a backup for primary database
+    :type backup_database_filename: str
     """
 
     def __init__(
@@ -138,6 +85,9 @@ class Flash:
         components: list[str],
         temperature: float | None = None,
         gas_species: list[str] | tuple[str, ...] = ("CO2(g)", "H2O(g)"),
+        tolerance: float = 1e-10,
+        database_filename: str = "phreeqc.dat",
+        backup_database_filename: str = "pitzer.dat",
     ):
         """
         :param min_z: minimal composition value
@@ -145,6 +95,8 @@ class Flash:
         :param components: list of components (elements in this case)
         :param temperature: temperature for isothermal case
         :param gas_species: gas species to include in the GAS_PHASE section
+        :param database_filename: path to PHREEQC database file for primary engine
+        :param backup_database_filename: path to database file as a backup for primary database
         """
         self.minerals = minerals
         self.components = components
@@ -169,15 +121,16 @@ class Flash:
         self.molar_weight_h2o = 0.018016
 
         # phreeqc
+        self.tolerance = tolerance
         root = os.path.dirname(darts.__file__)
         if sys.platform.startswith("win"):
             libname = "IPhreeqc.dll"
         else:
             libname = "libIPhreeqc.so"
         self.phreeqc = IPhreeqc(os.path.join(root, libname))
-        self.load_database(self.phreeqc, "phreeqc.dat")
-        self.pitzer = IPhreeqc(os.path.join(root, libname))
-        self.load_database(self.pitzer, "pitzer.dat")
+        self.load_database(self.phreeqc, database_filename)
+        self.backup_phreeqc = IPhreeqc(os.path.join(root, libname))
+        self.load_database(self.backup_phreeqc, backup_database_filename)
         # self.phreeqc.set_output_file_on()
         # self.phreeqc.set_selected_output_file_on()
 
@@ -196,7 +149,7 @@ class Flash:
             )
         if set(self.minerals) == {'Solid_CaCO3'}:  # pure calcite
             self.spec = 0
-            self.phreeqc_species = [
+            self.aqueous_species = [
                 "OH-",
                 "H+",
                 "H2O",
@@ -220,7 +173,7 @@ class Flash:
             'Solid_CaMg(CO3)2',
         }:  # calcite and dolomite
             self.spec = 1
-            self.phreeqc_species = [
+            self.aqueous_species = [
                 "OH-",
                 "H+",
                 "H2O",
@@ -249,7 +202,7 @@ class Flash:
             'Solid_MgCO3',
         }:  # calcite, dolomite and magnesite
             self.spec = 2
-            self.phreeqc_species = [
+            self.aqueous_species = [
                 "OH-",
                 "H+",
                 "H2O",
@@ -294,8 +247,8 @@ class Flash:
             sr_headings = "SR"
             sr_punch = "SR(\"Calcite\")"
 
-        species_headings = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
-        species_punch = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
+        species_headings = " ".join([f'MOL("{sp}")' for sp in self.aqueous_species])
+        species_punch = " ".join([f'MOL("{sp}")' for sp in self.aqueous_species])
 
         self.phreeqc_template = f"""
                 USER_PUNCH
@@ -320,7 +273,7 @@ class Flash:
                 1
 
                 KNOBS
-                -convergence_tolerance  1e-10
+                -convergence_tolerance  {self.tolerance}
 
                 GAS_PHASE 1
                 pressure  {{pressure:.6f}}
@@ -347,6 +300,10 @@ class Flash:
 
         Converts JSON-friendly inputs to runtime types and applies optional
         overrides for databases and gas settings.
+        :param spec: FlashSpec instance
+        :type spec: FlashSpec
+        :return: Flash instance
+        :rtype: Flash
         """
         inst = cls(
             min_z=spec.min_z,
@@ -354,31 +311,10 @@ class Flash:
             components=spec.components,
             temperature=spec.temperature,
             gas_species=spec.gas_species,
+            tolerance=spec.tolerance,
+            database_filename=spec.database_filename,
+            backup_database_filename=spec.backup_database_filename,
         )
-
-        # Override databases if requested
-        if spec.phreeqc_db and spec.phreeqc_db != 'phreeqc.dat':
-            try:
-                inst.load_database(inst.phreeqc, spec.phreeqc_db)
-            except Exception:
-                pass
-        if spec.pitzer_db and spec.pitzer_db != 'pitzer.dat':
-            try:
-                inst.load_database(inst.pitzer, spec.pitzer_db)
-            except Exception:
-                pass
-
-        # Apply gas settings
-        if spec.gas_species != inst.gas_species:
-            inst.gas_species = list(spec.gas_species)
-            inst._gases_selected_output = " ".join(inst.gas_species)
-            # Recompute stoichiometry map for gases
-            inst._gas_species_element_stoich = {}
-            for sp in inst.gas_species:
-                formula = sp.split("(")[0]
-                inst._gas_species_element_stoich[sp] = inst._parse_formula_to_elements(
-                    formula
-                )
 
         return inst
 
@@ -575,7 +511,7 @@ class Flash:
                 print(
                     f"h20_mass={water_mass}, p={state[0]}, Ca={fluid_moles[self.fc_idx['Ca']]}, Mg={fluid_moles[self.fc_idx['Mg']]}, C={fluid_moles[self.fc_idx['C']]}, O={fluid_moles[self.fc_idx['O']]}, H={fluid_moles[self.fc_idx['H']]}"
                 )
-            self.pitzer.run_string(input_string)
+            self.backup_phreeqc.run_string(input_string)
             (
                 nu_v,
                 x,
@@ -585,7 +521,7 @@ class Flash:
                 fluid_volume,
                 species_aq_molalities,
                 species_gas_molar_fractions,
-            ) = self.interpret_results(self.pitzer)
+            ) = self.interpret_results(self.backup_phreeqc)
 
         species_aq_molar_fractions = (
             species_aq_molalities
@@ -608,6 +544,8 @@ class Flash:
     def set_gas_partial_pressures(self, gas_to_pressure_atm):
         """Set/update initial guess partial pressures [atm] for gas species in GAS_PHASE.
         Any species not provided keeps its current value.
+        :param gas_to_pressure_atm: dictionary of gas species to partial pressures [atm]
+        :type gas_to_pressure_atm: dict[str, float]
         """
         for sp, p in gas_to_pressure_atm.items():
             if sp in self.gas_partial_pressures:
@@ -617,6 +555,10 @@ class Flash:
         """
         Convert a chemical formula string (e.g., 'CO2', 'H2O', 'CH4') into a mapping of element symbol to atom count.
         Only elements present in the current fluid component set will be relevant.
+        :param formula: chemical formula string
+        :type formula: str
+        :return: dictionary of element symbol to atom count
+        :rtype: dict[str, int]
         """
         import re
 
@@ -626,158 +568,3 @@ class Flash:
             count = int(count_str) if count_str else 1
             stoich[el] = stoich.get(el, 0) + count
         return stoich
-
-
-class KineticRate:
-    """Evaluate mineral kinetic rates.
-
-    Input is validated against the kinetics registry via Pydantic.
-    """
-
-    def __init__(self, min_z, mineral_name, mechanisms, surface_area_ev):
-        """Create a kinetic rate evaluator for a single mineral.
-
-        Parameters
-        - min_z: Minimum composition value (kept for API symmetry)
-        - mineral_name: Mineral identifier, e.g. 'CaCO3'
-        - mechanisms: List of mechanism names, e.g. ['acidic','neutral']
-        - surface_area_ev: Surface area evaluator, e.g. LinearReactionSurfaceArea
-        """
-        self.min_z = min_z
-        self.surface_area_ev = surface_area_ev
-        try:
-            spec = MineralSpec(mineral_name=mineral_name, mechanisms=mechanisms)
-        except ValidationError as exc:
-            raise exc
-        self.mineral = spec.mineral_name
-        mech_defs = KINETIC_REGISTRY[self.mineral]
-        self.mechanisms = [
-            ReactionMechanism(
-                name=mech,
-                temperature_ref=mech_defs[mech]['T_ref_K'],
-                k=mech_defs[mech]['k'],
-                Ea=mech_defs[mech]['Ea'],
-                n=mech_defs[mech]['n'],
-                p=mech_defs[mech]['p'],
-                q=mech_defs[mech]['q'],
-            )
-            for mech in mechanisms
-        ]
-
-    def evaluate(self, kin_state, solid_saturation, rho_s, temperature):
-        """Compute kinetic rate [kmol/d/m3] for the configured mineral.
-
-        Parameters
-        - kin_state: Dict-like with activities/saturation ratios from PHREEQC; expects keys
-          'Act(H+)', 'Act(CO2)', and 'SR_<mineral>'
-        - solid_saturation: Solid saturation (volume fraction) of the mineral
-        - rho_s: Solid molar density [kmol/m3]
-        - temperature: Temperature [K]
-        """
-        if not self.mechanisms:
-            return 0.0
-
-        # TODO: avoid dependence on PHREEQC format of kin_state
-        # gather activities by mechanism
-        activity_by_mech = {
-            'acidic': kin_state['Act(H+)'],
-            'neutral': 1.0,
-            'carbonate': kin_state['Act(CO2)'],
-        }
-
-        # calculate rates by mechanism
-        sr_key = 'SR_' + self.mineral
-        rates = [
-            mech.evaluate(
-                temperature=temperature,
-                activity=activity_by_mech[mech.name],
-                SR=kin_state[sr_key],
-            )
-            for mech in self.mechanisms
-        ]
-
-        # calculate surface area [m2/mol]
-        surface_area = self.surface_area_ev.evaluate(solid_saturation)
-
-        # calculate kinetic rate [mol/s/m3]
-        kinetic_rate = -surface_area * (rho_s * 1000) * sum(rates)
-
-        # convert to [kmol/d/m3]
-        kinetic_rate = kinetic_rate * 60 * 60 * 24 / 1000
-        return kinetic_rate
-
-    @classmethod
-    def from_spec(cls, spec: KineticRateSpec) -> 'KineticRate':
-        """Construct a KineticRate instance from a validated KineticRateSpec."""
-        # Build surface area evaluator (extensible by kind)
-        if spec.surface_area.kind == 'linear':
-            sa_ev = LinearReactionSurfaceArea(spec.surface_area.initial_area_per_mol)
-        else:
-            raise ValueError(f"Unsupported surface area kind: {spec.surface_area.kind}")
-
-        return cls(
-            min_z=spec.min_z,
-            mineral_name=spec.mineral_name,
-            mechanisms=spec.mechanisms,
-            surface_area_ev=sa_ev,
-        )
-
-
-class LinearReactionSurfaceArea:
-    def __init__(self, initial_area_per_mol: float):
-        """
-        Initialize the reaction surface area evaluator.
-        :param initial_area_per_mol: initial area per mol [m2/mol]
-        :type initial_area_per_mol: float
-        """
-        self.s_init = initial_area_per_mol
-
-    def evaluate(self, vol_fraction):
-        return self.s_init * vol_fraction
-
-
-class ReactionMechanism:
-    """
-    Class representing an Arrhenius-type reaction mechanism
-    with chemical affinity term (1-SR**p)**q.
-    """
-
-    def __init__(self, name, temperature_ref, k, Ea, n, p=1, q=1):
-        # maximum saturation ratio threshold for chemical affinity term
-        self.SR_threshold = 100
-        # universal gas constant [J/mol/K]
-        self.R = 8.314472
-        # name of the mechanism
-        self.name = name
-        # reference temperature when rate parameters are given [K]
-        self.temperature_ref = temperature_ref
-        # pre-exponential factor [mol/m2/s]
-        self.k = k
-        # activation energy [J/mol]
-        self.Ea = Ea
-        # reaction order with respect to given activity/anything
-        self.n = n
-        # chemical affinity parameter in (1-SR**p)**q term
-        self.p = p
-        # chemical affinity parameter in (1-SR**p)**q term
-        self.q = q
-
-    def evaluate(self, temperature, activity, SR):
-        """
-        Evaluate the reaction rate for a given temperature, activity, and saturation ratio.
-        :param temperature: temperature [K]
-        :param activity: activity of the reactant relevant to the mechanism
-        :param SR: saturation ratio
-        :return: reaction rate [mol/s/m2]
-        """
-        # calculate the Arrhenius factor
-        k_arr = self.k * np.exp(
-            (-self.Ea / self.R) * (1 / temperature - 1 / self.temperature_ref)
-        )
-        # impose maximum saturation ratio threshold on chemical affinity term
-        SR_bound = min(SR, self.SR_threshold)
-        # calculate the chemical affinity factor
-        k_aff = (1 - SR_bound**self.p) ** self.q
-        # calculate the reaction rate
-        rate = k_arr * k_aff * activity**self.n
-        return rate

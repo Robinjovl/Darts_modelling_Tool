@@ -229,7 +229,7 @@ class PropertyOperators(operator_set_evaluator_iface):
         self.input_data = input_data
         self.property = properties
         self.props_name = (
-            ['z' + prop for prop in properties.flash_ev.phreeqc_species]
+            ['z' + prop for prop in properties.flash_ev.aqueous_species]
             + ['z' + prop for prop in properties.flash_ev.gas_species]
             + ['satV']
             + ['porosity']
