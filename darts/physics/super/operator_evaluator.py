@@ -119,7 +119,7 @@ class ReservoirOperators(OperatorsSuper):
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
             ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
-        """ density operator """
+        """ molar density operator """
         values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
             self.property.ph
         ]
@@ -127,10 +127,8 @@ class ReservoirOperators(OperatorsSuper):
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         # fluid diffusive flux sat: c_r phi_f s_j rho_mj [kmol/m3] (kmol/m3)
         values_np[self.UPSAT_OP + self.property.ph] = (
-            self.compr
-            * self.phi_f
-            * self.property.sat[self.property.ph]
-            * self.property.dens_m[self.property.ph]
+            self.compr * self.phi_f * self.property.sat[self.property.ph]
+            # * self.property.dens_m[self.property.ph]
         )
         # solid diffusive flux sat: c_r z_s* (-)
         values_np[self.UPSAT_OP + self.np_fl : self.UPSAT_OP + self.np_fl + self.ns] = (
