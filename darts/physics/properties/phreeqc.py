@@ -318,15 +318,17 @@ class Flash:
 
         return inst
 
-    def interpret_results(self, database):
+    def interpret_results(self, database, water_mass):
         """
         Interprets the results of a PHREEQC simulation.
         :param database: PHREEQC database object
+        :param water_mass: mass of water in kg
+        :type water_mass: float
         :return: (nu_v) vapour phase molar fraction, (x) molar composition of aqueous
          and (y) vapour phases, (rho_phases) phase molar densities,
          (kin_state) kinetic params, (volume_aq + volume_gas) fluid volume,
-         (species_molalities) aqueous species molalities,
-         and (gas_fractions) gas species molar fractions
+         (species_aq_molar_fractions) species molar fractions in aqueous phase,
+         and (species_gas_molar_fractions) species molar fractions in gaseous phase
         :rtype: tuple[float, np.ndarray, np.ndarray, dict, dict, float, np.ndarray, np.ndarray]
         """
         results_array = np.array(database.get_selected_output_array()[2])
@@ -353,9 +355,9 @@ class Flash:
         # Gas species fractional composition by molecules
         sum_gas_moles = gas_moles.sum()
         if sum_gas_moles > 0:
-            gas_fractions = gas_moles / sum_gas_moles
+            species_gas_molar_fractions = gas_moles / sum_gas_moles
         else:
-            gas_fractions = np.zeros_like(gas_moles)
+            species_gas_molar_fractions = np.zeros_like(gas_moles)
 
         # interpret aqueous phase
         aq_start = 3 + n_gases
@@ -398,6 +400,11 @@ class Flash:
         kin_state['Act(H2O)'] = results_array[counter + 2]
         species_molalities = results_array[counter + 3 :]
 
+        species_aq_molar_fractions = (
+            species_molalities * water_mass * self.species_2_element_moles
+        )
+        species_aq_molar_fractions /= species_aq_molar_fractions.sum()
+
         return (
             nu_v,
             x,
@@ -405,8 +412,8 @@ class Flash:
             rho_phases,
             kin_state,
             volume_aq + volume_gas,
-            species_molalities,
-            gas_fractions,
+            species_aq_molar_fractions,
+            species_gas_molar_fractions,
         )
 
     def get_fluid_composition(self, state):
@@ -433,8 +440,8 @@ class Flash:
         :return: (nu_v) vapour phase molar fraction, (x) molar composition of aqueous
          and (y) vapour phases, (rho_phases) phase molar densities,
          (kin_state) kinetic params, (fluid_volume) fluid volume,
-         (species_aq_molar_fractions) aqueous species molar fractions,
-         and (species_gas_molar_fractions) gas species molar fractions
+         (species_aq_molar_fractions) species molar fractions in aqueous phase,
+         and (species_gas_molar_fractions) species molar fractions in gaseous phase
         :rtype: tuple[float, np.ndarray, np.ndarray, dict, dict, float, np.ndarray, np.ndarray]
         """
         # extract pressure and fluid composition
@@ -498,9 +505,9 @@ class Flash:
                 rho_phases,
                 kin_state,
                 fluid_volume,
-                species_aq_molalities,
+                species_aq_molar_fractions,
                 species_gas_molar_fractions,
-            ) = self.interpret_results(self.phreeqc)
+            ) = self.interpret_results(self.phreeqc, water_mass)
         except Exception as e:
             warnings.warn(f"Failed to run PHREEQC: {e}", Warning, stacklevel=2)
             if self.spec == 0:
@@ -519,17 +526,10 @@ class Flash:
                 rho_phases,
                 kin_state,
                 fluid_volume,
-                species_aq_molalities,
+                species_aq_molar_fractions,
                 species_gas_molar_fractions,
             ) = self.interpret_results(self.backup_phreeqc)
 
-        species_aq_molar_fractions = (
-            species_aq_molalities
-            * water_mass
-            * self.species_2_element_moles
-            / self.total_moles
-        )
-        species_gas_molar_fractions *= nu_v
         return (
             nu_v,
             x,

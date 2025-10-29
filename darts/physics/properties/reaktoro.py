@@ -205,9 +205,12 @@ class Flash:
             )
 
         volume_liters = props.volume().val()  # m3
-        moles_aq = props.phaseProps("AqueousPhase").amount().val()
-        moles_gas = props.phaseProps("GaseousPhase").amount().val()
-        nu_v = moles_gas / (moles_aq + moles_gas)
+        elem_moles_aq = props.elementAmountsInPhase("AqueousPhase").asarray()
+        elem_moles_gas = props.elementAmountsInPhase("GaseousPhase").asarray()
+        elem_moles_aq_sum = elem_moles_aq.sum()
+        elem_moles_gas_sum = elem_moles_gas.sum()
+
+        nu_v = elem_moles_gas_sum / (elem_moles_aq_sum + elem_moles_gas_sum)
         species_aq_molar_fractions = (
             props.phaseProps("AqueousPhase").speciesMoleFractions().asarray()
         )
@@ -215,9 +218,11 @@ class Flash:
             props.phaseProps("GaseousPhase").speciesMoleFractions().asarray()
         )
         rho_phases = {
-            'aq': moles_aq / float(props.phaseProps("AqueousPhase").volume()) / 1000.0,
-            'gas': moles_gas
-            / float(props.phaseProps("GaseousPhase").volume())
+            'aq': elem_moles_aq_sum
+            / props.phaseProps("AqueousPhase").volume().val()
+            / 1000.0,
+            'gas': elem_moles_gas_sum
+            / props.phaseProps("GaseousPhase").volume().val()
             / 1000.0,
         }
 
@@ -226,23 +231,23 @@ class Flash:
         x = np.zeros(nc)
         y = np.zeros(nc)
 
-        if moles_aq > 0:
-            moles_aq_elements = props.elementAmountsInPhase("AqueousPhase")
-            total_mole_aq_elements = sum(moles_aq_elements.asarray())
+        if elem_moles_aq_sum > 0:
+            moles_aq_elements = props.elementAmountsInPhase("AqueousPhase").asarray()
+            total_mole_aq_elements = sum(moles_aq_elements)
             x[self.n_solid :] = np.array(
                 [
-                    moles_aq_elements[self.system.elements().index(c)].val()
+                    moles_aq_elements[self.system.elements().index(c)]
                     / total_mole_aq_elements
                     for c in self.components
                 ]
             )
 
-        if moles_gas > 0:
-            moles_gas_elements = props.elementAmountsInPhase("GaseousPhase")
-            total_mole_gas_elements = sum(moles_gas_elements.asarray())
+        if elem_moles_gas_sum > 1.0e-10:
+            moles_gas_elements = props.elementAmountsInPhase("GaseousPhase").asarray()
+            total_mole_gas_elements = sum(moles_gas_elements)
             y[self.n_solid :] = np.array(
                 [
-                    moles_gas_elements[self.system.elements().index(c)].val()
+                    moles_gas_elements[self.system.elements().index(c)]
                     / total_mole_gas_elements
                     for c in self.components
                 ]
