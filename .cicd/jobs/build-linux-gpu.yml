@@ -13,7 +13,7 @@
         TEST_GPU: '1'
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
-        - ./helper_scripts/build_install_darts_gpu.sh -c -p
+        - ./helper_scripts/build_install_darts_gpu.sh -c -p -j 20
     artifacts:
       paths:
         - './dist/*.whl'
@@ -88,6 +88,6 @@ build-linux-tahiti-image-3.10-gpu:
                 # activate your env
                 conda activate ${CONDA_ENV} && \
                 # _this_ is your real build
-                ./helper_scripts/build_install_darts_gpu.sh -c -p
+                ./helper_scripts/build_install_darts_gpu.sh -c -p -j 16
             "
     extends: .build-linux-gpu
