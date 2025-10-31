@@ -4,7 +4,7 @@
         # run simulation fot test models set
         - cd models
         # passing additional argument LOG to trigger verbose check performance
-        - darts run_test_suite2.py LOG
+        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
         # test discretizer
