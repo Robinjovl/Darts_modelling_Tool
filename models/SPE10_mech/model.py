@@ -86,6 +86,9 @@ class Model(THMCModel):
         # define permeable reservoir geometric boundaries
         self.idata.other.rsv_top = 2100
         self.idata.other.rsv_bottom = 2200
+        
+        self.idata.other.perf_depth = 2162.
+        
         #self.idata.other.rsv_xy = 1000   # laterally limited (rsv width will be self.rsv_xy*2)
         self.idata.other.rsv_xy = 100000  # "infinite" laterally
 
@@ -101,9 +104,9 @@ class Model(THMCModel):
 
         self.idata.rock.th_expn = 1e-5  # 1/K
         self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)  # Couchy book formula 4.19a, 4.21a
-        self.idata.rock.conductivity = 0.836 * 86400.0 / 1000  # [kJ/m/day/K]
-        self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]
-        #self.idata.rock.heat_capacity *= 1e-1 # to make cooling faster for benchmarking - doesn't converge
+        self.idata.rock.conductivity = 260  # [kJ/m/day/K]
+        self.idata.rock.heat_capacity = 2300  # [kJ/m3/K]
+
         self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
 
         # TODO: Only for a single-phase physics
@@ -161,12 +164,11 @@ class Model(THMCModel):
             Zc = np.hstack([np.arange(0, rsv_top, 150), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 150)])
         elif nz == 53:  # dz = 100 m for over and underburden and 20m for the reservoir
             Zc = np.hstack([np.arange(0, rsv_top, 100), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 100)])
-        elif nz == 55:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
-            Zc = np.hstack([np.arange(0, rsv_top - 100, 100),
-                                 rsv_top - 100,
-                                 np.arange(rsv_top - 50, rsv_bottom, 25),
-                                 rsv_bottom + 50,
-                                 np.arange(rsv_bottom + 100, 5000, 100), 5000])
+        elif nz == 57:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
+            Zc = np.hstack([np.arange(0, rsv_top - 100 + 1, 100),
+                                 np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
+                                 rsv_bottom + 100,
+                                 np.arange(rsv_bottom + 200, 5000 + 1, 100)])
         elif nz == 65:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
             Zc = np.hstack([np.arange(0, rsv_top - 100, 100),
                                  rsv_top - 100,
@@ -273,7 +275,7 @@ class Model(THMCModel):
         # prod well - 250 m to the left from the center of the mesh
         # inj well - 250 m to the right from the center of the mesh
         # perforate only one cell of the mesh at depth  well_init_depth
-        self.well_init_depth = 2150.
+        self.well_init_depth = self.idata.other.perf_depth
         centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
         middle = centroids_3d[:, 0].mean(), centroids_3d[:, 1].mean(), self.well_init_depth #centroids_3d[:, 2].mean()

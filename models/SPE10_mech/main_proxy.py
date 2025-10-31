@@ -322,7 +322,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
         qx_prx, qy_prx, qz_prx, sx_prx, sy_prx, sz_prx =  get_proxy_strain_stress(points)
         
-        thm2 = False
+        plot_thm2 = False
         
         n_points = points.shape[1]
         ux_thm = np.zeros(n_points); uy_thm = np.zeros(n_points); uz_thm = np.zeros(n_points);
@@ -336,9 +336,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             ux_thm[i], uy_thm[i], uz_thm[i] = get_thm_displs(point)
             if 'strain' in modes:
                 qx_thm[i], qy_thm[i], qz_thm[i] = get_thm_strain(point)
-            if 'stress' in modes:
+            if 'delta_stress_z' in modes:
                 sx_thm[i], sy_thm[i], sz_thm[i] = get_thm_stress(point)
-            if ('strain' in modes or 'stress' in modes) and thm2:
+            if ('strain_z' in modes or 'delta_stress_z' in modes) and plot_thm2:
                 qx_thm2[i], qy_thm2[i], qz_thm2[i], \
                 sx_thm2[i], sy_thm2[i], sz_thm2[i] = get_thm_stress_by_deriv(point)
             
@@ -371,7 +371,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             if prx is not None:
                 plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
             plt.plot(thm, z_range, label=mode + '_THM', marker='.')
-            if ('stress' in mode or 'strain' in mode) and thm2:
+            if ('stress' in mode or 'strain' in mode) and plot_thm2:
                 plt.plot(thm2, z_range, label=mode + '_THM2', marker='.', color='black')
                 
             plt.gca().invert_yaxis()
@@ -514,8 +514,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         print('1D plots for point', k, 'YX=', point_xy)
         modes = ['delta_pressure']
         modes += ['displ_z', 'displ_y', 'displ_x']
-        #modes += ['strain_z', 'strain_y', 'strain_x']
-        #modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
+        modes += ['strain_z', 'strain_y', 'strain_x']
+        modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
         #modes = ['strain_x']  # debug
 
         # compare U-Z at a line along z-axis
@@ -583,7 +583,7 @@ if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
-    case = '34_34_55'  # z 0 - 5 km 
+    case = '34_34_57'  # z 0 - 5 km 
     #case = '34_34_65'  # z 0 - 10 km
 
     #uniform_props = True
@@ -613,12 +613,12 @@ if __name__ == '__main__':
     #report_step = 90  # days
     
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
-    #timestep = 1
+    #timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    timestep = 1
     #timestep = 5
     
-    run_thm = True
-    #run_thm = False
+    #run_thm = True
+    run_thm = False
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
