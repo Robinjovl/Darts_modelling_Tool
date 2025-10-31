@@ -12,6 +12,8 @@ import copy
 
 class UnstructReservoirCustom(UnstructReservoirMech):
     def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False):
+        self.idata = idata
+        
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         thermoporoelasticity = True if 'temperature' in fluid_vars else False
         super().__init__(timer, discretizer='mech_discretizer',
@@ -20,7 +22,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bnd_tags = idata.mesh.bnd_tags
         self.domain_tags = set_domain_tags(matrix_tags=idata.mesh.matrix_tags, bnd_tags=list(self.bnd_tags.values()))
 
-        self.spe10(model_folder=model_folder, idata=idata, uniform_props=uniform_props, generate_mesh=generate_mesh)
+        self.field_reservoir(model_folder=model_folder, idata=idata, uniform_props=uniform_props, generate_mesh=generate_mesh)
         self.init_reservoir_main(idata=idata)
         t1 = None
         if thermoporoelasticity:
@@ -28,17 +30,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=t1)
         self.wells = []
 
+
     def get_reservoir_initial_pressure(self, depths):
-        #return 290. + 0.0 * depths  # uniform initial pressure
-        return 1. + 0.1 * depths  # by gradient 0.1 bars/m
+        return self.idata.initial.pressure_at_ref_depth + self.idata.initial.pressure_gradient * depths
 
     def get_reservoir_initial_temperature(self, depths):
-        #return 273.15 + 0. * depths # uniform initial temperature
-        return 273.15 + 10 + 30. / 1000 * depths # by gradient 30 degrees/km
+        return self.idata.initial.temperature_at_ref_depth + self.idata.initial.temperature_gradient * depths
 
-    def spe10(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
+    def field_reservoir(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
 
-        self.mesh_filename = os.path.join(model_folder, 'spe10.msh')
+        self.mesh_filename = os.path.join(model_folder, 'mesh.msh')
         nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
 
         if generate_mesh:
@@ -79,17 +80,19 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         print('Mesh reading...')
         self.mesh_data = meshio.read(self.mesh_filename)
         print('Init reservoir...')
-        self.set_uniform_initial_conditions(idata=idata)
+        #self.set_uniform_initial_conditions(idata=idata)
+        self.u_init = [0., 0., 0.]  # [m]
+        self.p_init = None
+        self.z_init = None
         self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
 
         self.grav = 9.80665e-5
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
-        #self.init_gravity(gravity_on=True, gravity_coeff=0.)
         #self.init_gravity(gravity_on=False)
 
         self.depths = np.array([c.values[2] for c in self.centroids])
-        # specify initial temperature and pressure, which will be used for well controls setting, but overridden in model.set_initial_conditions()
+        # specify initial temperature and pressure for the 
         self.p_init = self.get_reservoir_initial_pressure(self.depths[:self.n_matrix])
         if self.thermoporoelasticity: # specify initial temperature
             self.t_init = self.get_reservoir_initial_temperature(self.depths[:self.n_matrix])

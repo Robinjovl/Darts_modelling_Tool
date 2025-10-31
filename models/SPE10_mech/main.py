@@ -1,4 +1,4 @@
-from model import Model
+from model import Model, fmt_e, fmt
 import numpy as np
 import os
 import shutil
@@ -85,8 +85,8 @@ def run_timestep_python(m, dt, t):
 
         self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + dev_e ** 2)        #self.e.newton_residual_last_dt = self.e.calc_newton_residual()
         self.e.well_residual_last_dt = self.e.calc_well_residual()
-        print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
-                    're = ' + str(dev_e) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + str(self.e.CFL_max))
+        print(str(i) + ': ' + 'rp = ' + fmt_e(self.e.dev_p) + '\t' + 'ru = ' + fmt_e(self.e.dev_u) + '\t' + \
+                    're = ' + fmt_e(dev_e) + '\t' + 'rwell = ' + fmt_e(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + fmt_e(self.e.CFL_max))
 
         self.e.n_newton_last_dt = i
         #  check tolerance if it converges
@@ -146,11 +146,13 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     splitter = '-' * 100 + '\n'
 
-    # intialization:
+    # For geomechanics quilibrium intialization, we initially run the simulation for a long time 
+    # to get the equilibrium, then store that initial displacements internally.
+    # Further-timestep displacements will be relative to the initial ones.
     print(splitter + 'compute initialization ...\n' + splitter)
     m.reservoir.set_equilibrium(zero_conduction=True)
     m.physics.engine.find_equilibrium = True
-    dt_init = 1.e+8
+    dt_init = 1.e+8 # days
     m.params.first_ts = dt_init
     run_python(m, dt_init, init_step=True)
     m.reinit(zero_conduction=True)
@@ -245,41 +247,27 @@ if __name__ == '__main__':
     except:
         pass
 
-    test_all = False
-    #test_all = True
-    physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
-    meshes_list = ['10_10_10', '20_40_40']
-    if test_all:
-        for physics in physics_list:
-            for mesh in meshes_list:
-                run(model_folder=mesh, physics_type=physics)
+    # turns off mechanical to flow(pressure in this case) impact which is generally is quite small for field-scale applications. It typically improves the convergence.
+    decouple_geomech = True
+    #decouple_geomech = False
 
+    mesh='16_16_15'
+    #mesh='34_34_57'
+    
+    generate_mesh=True
+    #generate_mesh=False
 
-    #run(model_folder='16_16_12', physics_type='single_phase_thermal', uniform_props=True)
-    #run(model_folder='16_16_12', physics_type='single_phase_thermal', uniform_props=False)
-
-    #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=True)
-    #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=False)
-
-    #run(model_folder='10_10_10', physics_type='single_phase', uniform_props=True, wells_type='prod', decouple_geomech=True)
-    #run(model_folder='10_10_10', physics_type='dead_oil')
-    #run(model_folder='10_10_10', physics_type='dead_oil_thermal')
-
-    #run(model_folder='20_40_40', physics_type='single_phase')
-    #run(model_folder='20_40_40', physics_type='single_phase_thermal')
-    #run(model_folder='20_40_40', physics_type='dead_oil')
-    #run(model_folder='20_40_40', physics_type='dead_oil_thermal')
-
-
-    #run(model_folder='16_16_15', physics_type='single_phase', generate_mesh=True, wells_type='none', decouple_geomech=True)
-    #run(model_folder='16_16_15', physics_type='single_phase', generate_mesh=True, wells_type='prod', decouple_geomech=True)
-    #run(model_folder='16_16_15', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
+    physics_type='single_phase'
+    #physics_type='single_phase_thermal'
+    
+    #wells_type='none'
+    #wells_type='prod'
+    #wells_type='inj'
+    wells_type='doublet'
 
     n_years = 30
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
 
-    #run(model_folder='34_34_57', physics_type='single_phase', generate_mesh=True, wells_type='prod', decouple_geomech=True, report_step=report_step, sim_time=sim_time)
-    #run(model_folder='34_34_57', physics_type='single_phase', generate_mesh=True, wells_type='inj', decouple_geomech=True, report_step=report_step, sim_time=sim_time)
-    #run(model_folder='34_34_57', physics_type='single_phase_thermal', generate_mesh=True, wells_type='inj', decouple_geomech=True, report_step=report_step, sim_time=sim_time)
-    run(model_folder='34_34_57', physics_type='single_phase_thermal', generate_mesh=True, wells_type='doublet', decouple_geomech=True, report_step=report_step, sim_time=sim_time)
+    run(model_folder=mesh, physics_type=physics_type, generate_mesh=generate_mesh, wells_type=wells_type, decouple_geomech=decouple_geomech, report_step=report_step, sim_time=sim_time)
+
