@@ -14,9 +14,9 @@ class conn_mesh
 public:
   conn_mesh () {};                                          // default constructor
 
-  int init_grav_coef(value_t grav_const = 9.80665e-5);      // initialize gravity coefficient for all the connections (grav_acc is in m/s^2)
+  int init_grav_coef(value_t grav_const = 9.80665e-5);      // initialize gravity coefficient for all the connections
 
-  int init_spe(value_t grav_acc = 0.);                      // initialize specific potential energy for all the connections (grav_acc is in m/s^2)
+  int init_spe(value_t grav_acceleration_for_spe = 0.);     // initialize specific potential energy for all the connections (grav_acceleration_for_spe is in m/s^2)
 
   int get_res_tran(std::vector<value_t> &res_tran,
                    std::vector<value_t> &res_tranD);        // get trans for reservoir part

@@ -25,7 +25,7 @@ class ReservoirBase:
         self.hcap, self.rcond = [], []
 
         # Gravitational acceleration used for potential energy calculation in m/s^2
-        self.grav_acc_for_spe = 0.0  # in m/s^2
+        self.grav_acceleration_for_spe = 0.0  # in m/s^2
 
         self.vtk_initialized = False
 
@@ -187,7 +187,7 @@ class ReservoirBase:
         self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
         # Initialize specific potential energy at cell centroids and connections for both reservoir and wells
-        self.mesh.init_spe(grav_acc=self.grav_acc_for_spe)
+        self.mesh.init_spe(grav_acceleration_for_spe=self.grav_acceleration_for_spe)
 
     @abc.abstractmethod
     def output_to_plt(

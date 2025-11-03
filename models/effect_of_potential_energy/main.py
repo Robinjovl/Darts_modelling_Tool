@@ -12,7 +12,7 @@ from model import Model
 
 m = Model()
 
-m.reservoir.grav_acc_for_spe = 0.
+m.reservoir.grav_acceleration_for_spe = 0.
 
 m.init()
 m.set_output()
@@ -31,7 +31,7 @@ H2O_mole_frac_profile_without_pe = output['H2O'].T
 
 m = Model()
 
-m.reservoir.grav_acc_for_spe = 9.80665
+m.reservoir.grav_acceleration_for_spe = 9.80665
 
 m.init()
 m.set_output()
