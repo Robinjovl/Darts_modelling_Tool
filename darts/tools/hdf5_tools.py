@@ -28,3 +28,46 @@ def load_hdf5_to_dict(filename, path='/', decode_strings: list = None):
             # Recursively load the group
             result[key] = load_hdf5_to_dict(filename, path + key + '/')
     return result
+
+
+def add_data_2_h5(m, filename, restart_ts):
+    """
+    This function allows one, to append to the same reservoir.h5 saved data file
+    """
+
+    with h5py.File(filename, 'r+') as file:
+        time = file['dynamic/time'][:]
+        dataset = file['dynamic/X'][:]
+
+        new_time = time[: restart_ts + 1]
+        new_dataset = dataset[: restart_ts + 1, :, :]
+
+        del file['dynamic/time']
+        del file['dynamic/X']
+
+        dynamic_group = file['dynamic']
+
+        dynamic_group.create_dataset(
+            'time',
+            shape=(0,),
+            maxshape=(None,),
+            dtype=m.output.precision_map[m.output.precision],
+        )
+
+        dynamic_group.create_dataset(
+            'X',
+            shape=(0, m.reservoir.mesh.n_res_blocks, m.physics.n_vars),
+            maxshape=(None, m.reservoir.mesh.n_res_blocks, m.physics.n_vars),
+            dtype=m.output.precision_map[m.output.precision],
+            compression=m.output.compression,
+        )
+
+        dynamic_group['time'].resize(new_time.shape)
+        dynamic_group['time'][:] = new_time
+
+        dynamic_group['X'].resize(new_dataset.shape)
+        dynamic_group['X'][:] = new_dataset
+
+    file.close()
+
+    return 0

@@ -799,6 +799,81 @@ class Output:
 
         return time, cell_id, X, var_names
 
+    def get_mass_components(self, property_array):
+        component_names = self.physics.property_containers[0].components_name
+        Mw = np.array(self.physics.property_containers[0].Mw).reshape(-1, 1)
+
+        # Extract properties from property_array
+        sg = property_array["sat_g"][0]
+        so = property_array['sat_o'][0]
+
+        rhoV = property_array["dens_g"][0]
+        rho_m_o = property_array["densm_o"][0]
+        try:
+            rho_m_w = property_array["densm_w"][0]
+        except:
+            pass
+
+        self.x_components, self.y_components, self.w_components = [], [], []
+        # for phase_name in self.physics.phases:
+        for component_name in self.physics.components:
+            self.x_components.append(property_array[f"x{component_name}"][0])  # oil
+            self.y_components.append(property_array[f"y{component_name}"][0])  # gas
+
+            try:
+                self.w_components.append(property_array[f"w{component_name}"][0])
+            except:
+                pass
+
+        self.x_components, self.y_components = (
+            np.array(self.x_components),
+            np.array(self.y_components),
+        )
+
+        # Compute molecular weight of the aqueous phase
+        MWo = (
+            np.sum(self.y_components[1:, :] * Mw[1:], axis=0)
+            + (1 - np.sum(self.y_components[1:, :], axis=0)) * Mw[0]
+        )
+
+        # Mass fractions in oil phase
+        w_components_vapor = (self.y_components * Mw) / MWo
+
+        # Pore volume
+        V = np.array(self.reservoir.mesh.volume, copy=False)[: self.reservoir.n]
+        phi = np.array(self.reservoir.mesh.poro, copy=False)[: self.reservoir.n]
+
+        # Calculate total mass for each component
+        mass_components = {}
+        mass_oil = {}
+        mass_vapor = {}
+        mass_water = {}
+        for i, component_name in enumerate(component_names):
+            # gas phase mass contribution
+            mass_vapor[component_name] = phi * V * w_components_vapor[i] * sg * rhoV
+
+            # oil phase mass contribution
+            mass_oil[component_name] = (
+                phi * V * so * self.x_components[i] * rho_m_o * Mw[i]
+            )
+
+            # water phase mass conribution
+            try:
+                mass_water[component_name] = (
+                    phi * V * (1 - so - sg) * self.w_components[i] * rho_m_w * Mw[i]
+                )
+            except:
+                mass_water[component_name] = 0
+
+            # Total mass
+            mass_components[component_name] = (
+                mass_vapor[component_name]
+                + mass_oil[component_name]
+                + mass_water[component_name]
+            )
+
+        return mass_components, mass_vapor, mass_oil, mass_water
+
     def output_properties(
         self,
         filepath: str = None,
