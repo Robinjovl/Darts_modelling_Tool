@@ -1735,7 +1735,7 @@ conn_mesh::init_grav_coef(value_t grav_const)
   return 0;
 }
 
-int conn_mesh::init_spe(value_t grav_acc)
+int conn_mesh::init_spe(value_t grav_acceleration_for_spe)
 {
 	// Calculate and store specific potential energy (spe) at cell centroids
 	cell_spe.assign(n_blocks, 0);
@@ -1744,7 +1744,7 @@ int conn_mesh::init_spe(value_t grav_acc)
 	{
 		// It is multiplied by -1 because for spe height needs to be used instead of depth
 		// It is multiplied by 1e-3 to convert Joule to kilo Joule
-		cell_spe[i] = - (depth[i] - depth[0]) * grav_acc * 1e-3;
+		cell_spe[i] = - (depth[i] - depth[0]) * grav_acceleration_for_spe * 1e-3;
 	}
 
 	// Calculate and store specific potential energy (spe) at connections
@@ -1765,7 +1765,7 @@ int conn_mesh::init_spe(value_t grav_acc)
 
 		// It is multiplied by -1 because for spe height needs to be used instead of depth
 		// It is multiplied by 1e-3 to convert Joule to kilo Joule
-		conn_spe[j] = - (z_conn - depth[0]) * grav_acc * 1e-3;
+		conn_spe[j] = - (z_conn - depth[0]) * grav_acceleration_for_spe * 1e-3;
 	}
 
 	return 0;
