@@ -9,6 +9,105 @@ class ConstFunc:
         return self.value
 
 
+class StoneRelPerm:
+    def __init__(
+        self,
+        phase,
+        swc=0.00,
+        sorw=0.00,  # OW system
+        sgc=0.00,
+        sorg=0.00,  # OG system
+        krw_end=1.0,
+        krocw=1.0,
+        nw=2.0,
+        now=2.0,
+        krg_end=1.0,
+        krog0=1.0,
+        ng=2.0,
+        nog=2.0,
+        som=None,
+    ):
+        self.phase = phase
+
+        self.swc = swc
+        self.sorw = sorw
+        self.sgc = sgc
+        self.sorg = sorg
+
+        self.krw_end = krw_end
+        self.krocw = krocw
+        self.nw = nw
+        self.now = now
+
+        self.krg_end = krg_end
+        self.krog0 = krog0
+        self.ng = ng
+        self.nog = nog
+
+        self.som = som if som is not None else None
+
+    @staticmethod
+    def _eff(S, sr, sr1):
+        den = np.maximum(1e-12, 1.0 - sr - sr1)
+        return np.clip((S - sr) / den, 0.0, 1.0)
+
+    def _two_phase_ow(self, Sw):
+        Swe = self._eff(Sw, self.swc, self.sorw)
+        krw = self.krw_end * (Swe**self.nw)
+        krow = self.krocw * ((1.0 - Swe) ** self.now)
+        return krw, krow
+
+    def _two_phase_og(self, Sg):
+        Sge = self._eff(Sg, self.sgc, self.sorg)
+        krg = self.krg_end * (Sge**self.ng)
+        krog = self.krog0 * ((1.0 - Sge) ** self.nog)
+        return krg, krog
+
+    def evaluate_kro(self, Sw, Sg):
+        Sw = np.asarray(Sw, dtype=float)
+        Sg = np.asarray(Sg, dtype=float)
+        So = 1.0 - Sw - Sg
+
+        krw, krow = self._two_phase_ow(Sw)
+        krg, krog = self._two_phase_og(Sg)
+
+        Som = self.som if self.som is not None else self.sorw
+        den = np.maximum(1e-12, 1.0 - self.swc - Som)
+
+        SwD = np.clip((Sw - self.swc) / den, 0.0, 1.0)
+        SgD = np.clip(Sg / den, 0.0, 1.0)
+        SoD = np.clip((So - Som) / den, 0.0, 1.0)
+
+        eps = 1e-12
+        kro = (
+            SoD
+            * (krow / np.maximum(eps, (1.0 - SwD)))
+            * (krog / np.maximum(eps, (1.0 - SgD)))
+        )
+
+        # kro = np.where(So <= Som, np.nan, kro)
+        krw = np.clip(krw, 0.0, 1.0)
+        krg = np.clip(krg, 0.0, 1.0)
+        kro = np.clip(kro, 0.0, 1.0)
+
+        return krw, kro, krg
+
+    def evaluate(self, sat):
+        if self.phase == 'gas':
+            krg, krog = self._two_phase_og(sat)
+            return krg
+
+        elif self.phase == 'wat':
+            krw, krow = self._two_phase_ow(sat)
+            return krw
+
+        elif self.phase == 'oil':
+            # !! there has to be a beter way of doing this !!
+            Sg, Sw = sat[0], sat[1]
+            krw, kro, krg = self.evaluate_kro(Sw, Sg)
+            return kro
+
+
 class PhaseRelPerm:
     def __init__(self, phase, swc=0.0, sgr=0.0, kre=1.0, n=2.0):
         self.phase = phase
