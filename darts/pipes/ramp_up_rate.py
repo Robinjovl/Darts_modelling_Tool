@@ -81,12 +81,6 @@ class RampUpRate:
 
         if inflow_or_outflow == "inflow":
             assert isinstance(inj_fluid_props, dict), "inj_fluid_props must be a dict!"
-            assert "pressure" in inj_fluid_props, (
-                "inj_fluid_props must contain a 'pressure' key!"
-            )
-            assert isinstance(inj_fluid_props["pressure"], float), (
-                "Specified pressure must be a float!"
-            )
 
             assert "composition" in inj_fluid_props, (
                 "inj_fluid_props must contain a 'composition' key!"
@@ -104,16 +98,14 @@ class RampUpRate:
             )
             inj_fluid_props["composition"] = comp
 
-            assert "phase_name" in inj_fluid_props, (
-                "inj_fluid_props must contain a 'phase_name' key!"
-            )
-            ph_name = inj_fluid_props["phase_name"]
-            assert isinstance(ph_name, str), "Specified phase_name is not a string!"
-            assert ph_name in physics.phases, (
-                "Specified phase_name is not in the list of the phase names in physics!"
-            )
-
             if physics.thermal:
+                assert "pressure" in inj_fluid_props, (
+                    "inj_fluid_props must contain a 'pressure' key!"
+                )
+                assert isinstance(inj_fluid_props["pressure"], float), (
+                    "Specified pressure must be a float!"
+                )
+
                 assert "temperature" in inj_fluid_props, (
                     "inj_fluid_props must contain a 'temperature' key!"
                 )
@@ -122,6 +114,15 @@ class RampUpRate:
                 )
                 assert inj_fluid_props["temperature"] > 273.15, (
                     "Specified temperature must be in Kelvin!"
+                )
+
+                assert "phase_name" in inj_fluid_props, (
+                    "inj_fluid_props must contain a 'phase_name' key!"
+                )
+                ph_name = inj_fluid_props["phase_name"]
+                assert isinstance(ph_name, str), "Specified phase_name is not a string!"
+                assert ph_name in physics.phases, (
+                    "Specified phase_name is not in the list of the phase names in physics!"
                 )
 
                 # Calculate and store injected_fluid_molar_enthalpy
@@ -137,8 +138,14 @@ class RampUpRate:
                 inj_fluid_props["molar_enthalpy"] = injected_fluid_molar_enthalpy
 
             else:
+                assert "pressure" not in inj_fluid_props, (
+                    "inj_fluid_props must not contain a 'pressure' key for isothermal scenarios!"
+                )
                 assert "temperature" not in inj_fluid_props, (
                     "inj_fluid_props must not contain a 'temperature' key for isothermal scenarios!"
+                )
+                assert "phase_name" not in inj_fluid_props, (
+                    "inj_fluid_props must not contain a 'phase_name' key for isothermal scenarios!"
                 )
         elif inflow_or_outflow == "outflow":
             assert inj_fluid_props is None, (
