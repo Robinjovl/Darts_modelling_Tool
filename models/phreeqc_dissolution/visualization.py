@@ -22,7 +22,7 @@ from PIL import Image
 
 def plot_new_profiles(m):
     props_names = m.physics.property_operators[next(iter(m.physics.property_operators))].props_name
-    timesteps, property_array = m.output_properties(output_properties=props_names)
+    _, property_array = m.output.output_properties(output_properties=props_names)
 
     # folder
     t = round(m.physics.engine.t, 4)
@@ -168,17 +168,10 @@ def plot_profiles(m, output_folder='./', plot_kinetics=False, plot_saturation=Tr
     n_vars = m.physics.nc
     n_solid = m.n_solid
     Xm = np.asarray(m.physics.engine.X[:n_cells * n_vars]).reshape(n_cells, n_vars)
-    op_vals = np.asarray(m.physics.engine.op_vals_arr).reshape(m.reservoir.mesh.n_blocks, m.physics.n_ops)
-    poro = op_vals[:m.reservoir.mesh.n_res_blocks, m.physics.reservoir_operators[0].PORO_OP]
-
-    # fig = plt.figure(figsize=(16, 6))
-    # # Create a 1x3 grid with different column widths (adjust as needed):
-    # gs = gridspec.GridSpec(nrows=1, ncols=3, width_ratios=[0.3, 0.4, 0.3])#, wspace=0.2)
-    # ax = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1]), fig.add_subplot(gs[0, 2])]
 
     prop = m.physics.reservoir_operators[0].property
     props_names = m.physics.property_operators[next(iter(m.physics.property_operators))].props_name
-    timesteps, property_array = m.output_properties(output_properties=props_names)
+    _, property_array = m.output.output_properties(output_properties=props_names)
 
     n_plots = 3
     fig, ax = plt.subplots(ncols=n_plots, sharex=True, figsize=(16, 6))
@@ -212,7 +205,7 @@ def plot_profiles(m, output_folder='./', plot_kinetics=False, plot_saturation=Tr
         ax1.plot(x, Xm[:, idx], color=colors['Mg'], label=label)
         y_axis_label11 += r', \textcolor{orange}{z$_{Mg}$}'
 
-    ax[2].plot(x, poro, color='b', label='porosity')
+    ax[2].plot(x, property_array['porosity'][0], color='b', label='porosity')
 
     t = round(m.physics.engine.t * 24, 4)
     ax[0].text(0.15, 0.85, 'time = ' + str(t) + ' hours',
@@ -237,26 +230,7 @@ def plot_profiles(m, output_folder='./', plot_kinetics=False, plot_saturation=Tr
 
     if plot_saturation:
         ax_sat = ax[2].twinx()
-        gas_sat = np.zeros(n_cells)
-        for i in range(n_cells):
-            nu_v, _, _, rho_phases, _, _, _ = prop.flash_ev.evaluate(Xm[i])
-            nu_s = Xm[i, 1:1 + n_solid]
-            nu_v = nu_v * (1 - nu_s.sum())  # convert to overall molar fraction
-            nu_a = 1 - nu_v - nu_s.sum()
-            rho_a, rho_v = rho_phases['aq'], rho_phases['gas']
-            rho_s = np.array([v.evaluate(Xm[i, 0]) / prop.Mw[k] for k, v in prop.rock_density_ev.items()])
-            if nu_v > 0:
-                sum = nu_v / rho_v + nu_a / rho_a + (nu_s / rho_s).sum()
-                sv = nu_v / rho_v / sum
-                # sa = nu_a / rho_a / sum
-                # ss = nu_s / rho_s / sum
-            else:
-                sv = 0
-                # sa = nu_a / rho_a / (nu_a / rho_a + nu_s / rho_s)
-                # ss = nu_s / rho_s / (nu_a / rho_a + nu_s / rho_s)
-            gas_sat[i] = sv
-
-        ax_sat.plot(x, gas_sat, color='r', label='gas saturation')
+        ax_sat.plot(x, property_array['satV'][0], color='r', label='gas saturation')
         ax_sat.set_ylabel(r'\textcolor{red}{gas saturation}', fontsize=16)
         ax_sat.legend(loc='upper right', prop={'size': ls}, framealpha=0.9)
 
@@ -272,45 +246,42 @@ def plot_profiles(m, output_folder='./', plot_kinetics=False, plot_saturation=Tr
     plt.close(fig)
 
     if plot_kinetics:
-        evaluator = m.physics.reservoir_operators[0]
-        op_kin_rates = op_vals[:m.reservoir.mesh.n_res_blocks, \
-                       evaluator.KIN_OP:evaluator.KIN_OP + n_vars]
-        op_sr = op_vals[:m.reservoir.mesh.n_res_blocks, 40]
-        op_actHp = op_vals[:m.reservoir.mesh.n_res_blocks, 41]
-
+        colors = ['b', 'r', 'g', 'm', 'c', 'y', 'k']
         ms = 4
         n = 5
         fig, ax = plt.subplots(nrows=3, sharex=True, figsize=(6, 12))
 
+        mineral = prop.minerals[0]
+        op_vals = np.asarray(m.physics.engine.op_vals_arr).reshape(m.reservoir.mesh.n_blocks, m.physics.n_ops)
+        evaluator = m.physics.reservoir_operators[0]
+        kin_rates_op = op_vals[:m.reservoir.mesh.n_res_blocks, evaluator.KIN_OP:evaluator.KIN_OP + n_vars]
         kin_rates, SR, actHp = np.zeros(n_cells), np.zeros(n_cells), np.zeros(n_cells)
+
         for i in range(n_cells):
-            _, _, _, rho_phases, kin_state, _ = m.physics.reservoir_operators[0].property.flash_ev.evaluate(Xm[i])
+            _, _, _, rho_phases, kin_state, _, _ = m.physics.reservoir_operators[0].property.flash_ev.evaluate(Xm[i])
             nu_s = Xm[i, 1]
             nu_a = 1 - nu_s
-            rho_s = m.physics.reservoir_operators[0].property.rock_density_ev['Solid_CaCO3'].evaluate(Xm[i, 0]) / m.physics.reservoir_operators[0].property.Mw['Solid_CaCO3']
+            rho_s = m.physics.reservoir_operators[0].property.rock_density_ev[mineral].evaluate(Xm[i, 0]) / m.physics.reservoir_operators[0].property.Mw[mineral]
             rho_a = rho_phases['aq']
             ss = nu_s / rho_s / (nu_a / rho_a + nu_s / rho_s)
-            kin_rates[i] = m.physics.reservoir_operators[0].property.kinetic_rate_ev.evaluate(kin_state, ss, rho_s,
-                                                              m.physics.reservoir_operators[0].min_z,
-                                                              m.physics.reservoir_operators[0].kin_fact)
-
-            SR[i] = kin_state['SR']
+            kin_rates[i] = m.physics.reservoir_operators[0].property.kinetic_rate_ev[mineral].evaluate(kin_state, ss, rho_s)
+            SR[i] = kin_state['SR_CaCO3']
             actHp[i] = kin_state['Act(H+)']
 
         for i in range(n_vars - 1):
             label = 'Operator Rate ' + m.physics.property_containers[0].components_name[i]
-            ax[0].plot(x, op_kin_rates[:, i], color=colors[i], label=label)
+            ax[0].plot(x, kin_rates_op[:, i], color=colors[i], label=label)
             label = 'True rate ' + m.physics.property_containers[0].components_name[i]
-            ax[0].plot(x, m.physics.reservoir_operators[0].input_data.stoich_matrix[i] * kin_rates,
+            ax[0].plot(x, m.physics.reservoir_operators[0].input_data.stoich_matrix[0, i] * kin_rates,
                        color=colors[i], linestyle='--', label=label)
-            ax[0].plot(x[::n], m.physics.reservoir_operators[0].input_data.stoich_matrix[i] * kin_rates[::n],
+            ax[0].plot(x[::n], m.physics.reservoir_operators[0].input_data.stoich_matrix[0, i] * kin_rates[::n],
                        color=colors[i], linestyle='None', marker='o', markerfacecolor='none', markersize=ms, label='_nolegend_')
-        ax[1].plot(x, op_sr, color='b', label='Operator SR')
+        ax[1].plot(x, property_array['SR_CaCO3'][0], color='b', label='Operator SR')
         ax[1].plot(x, SR, color='b', linestyle='--', label='True SR')
         ax[1].plot(x[::n], SR[::n], color='b', linestyle='None', marker='o',
                    markerfacecolor='none', markersize=ms, label='_nolegend_')
 
-        ax[2].plot(x, op_actHp, color='r', label=r'Operator $a_{H+}$')
+        ax[2].plot(x, property_array['Act(H+)'][0], color='r', label=r'Operator $a_{H+}$')
         ax[2].plot(x, actHp, color='r', linestyle='--', label=r'True $a_{H+}$')
         ax[2].plot(x[::n], actHp[::n], color='r', linestyle='None', marker='o',
                    markerfacecolor='none', markersize=ms, label='_nolegend_')

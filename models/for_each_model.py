@@ -8,7 +8,6 @@ import time
 import importlib
 
 import signal
-import time
 
 original_stdout = os.dup(1)
 
@@ -61,7 +60,7 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
     p = Path(root_path)
     # iterate over directories in 'root_path'
     parent = p.cwd()
-    n_fails = 0
+    failed = []
     if len(accepted_paths) != 0:
         for x in accepted_paths:
             if 'mpfa' in  x:
@@ -73,8 +72,9 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
             p.start()
             p.join(timeout=7200)
             p.terminate()
-            n_fails += ret_value.value
-            if 'mpfa' in  x:
+            if ret_value.value:
+                failed.append(x)
+            if 'mpfa' in x:
                 os.environ['OMP_NUM_THREADS'] = nt
     else:
         for x in p.iterdir():
@@ -86,7 +86,7 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
                 p.start()
                 p.join(timeout=7200)
                 p.terminate()
-    return n_fails
+    return failed
 
 
 def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], excluded_paths=[], timeout=120):
@@ -97,7 +97,7 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
     p = Path(root_path)
     # iterate over directories in 'root_path'
     parent = p.cwd()
-    n_fails = 0
+    failed = []
     if len(accepted_paths) != 0:
         for x in accepted_paths:
             if 'mpfa' in  x:
@@ -110,7 +110,8 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
             p.start()
             p.join(timeout=7200)
             p.terminate()
-            n_fails += ret_value.value
+            if ret_value.value:
+                failed.append(x)
             ending_time = time.time()
             if not ret_value.value:
                 print('OK, \t%.2f s' % (ending_time - starting_time))
@@ -128,7 +129,7 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
                 p.start()
                 p.join(timeout=7200)
                 p.terminate()
-    return n_fails
+    return failed
 
 def run_single_test(dir, module_name, args, ret_value, platform):
 
@@ -179,7 +180,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
     if not os.path.exists(logs_folder):
         os.makedirs(logs_folder)
 
-    n_failed = 0
+    failed = []
     n_tot = 0
     assert(len(test_dirs) == len(test_args))
     for i, dir in enumerate(test_dirs):
@@ -204,7 +205,8 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             arg_1 = arg if type(arg) == list else map(str,list(arg.values())) # do nothing if a list or convert to a list of str if a dict
             print('Test ' + dir + ' ' + '_'.join(arg_1) + ': ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
 
-            n_failed += ret_value.value
+            if ret_value.value:
+                failed.append(dir + ' ' + '_'.join(arg_1))
             n_tot += 1
 
-    return n_tot, n_failed
+    return n_tot, failed

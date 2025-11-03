@@ -25,17 +25,17 @@ class my_own_acc_flux_etor(OperatorsBase):
         # Operator order
         self.ACC_OP = 0  # accumulation operator - ne
         self.FLUX_OP = self.ACC_OP + self.ne  # flux operator - ne * nph
-        self.UPSAT_OP = self.FLUX_OP + self.ne * self.nph  # saturation operator (diffusion/conduction term) - nph
-        self.GRAD_OP = self.UPSAT_OP + self.nph  # gradient operator (diffusion/conduction term) - ne * nph
+        self.UPSAT_OP = self.FLUX_OP + self.ne * self.nph  # c*sat operator - nph
+        self.GRAD_OP = self.UPSAT_OP + self.nph  # gradient operator - ne * nph
         self.KIN_OP = self.GRAD_OP + self.ne * self.nph  # kinetic operator - ne
-
-        # extra operators
         self.GRAV_OP = self.KIN_OP + self.ne  # gravity operator - nph
         self.PC_OP = self.GRAV_OP + self.nph  # capillary operator - nph
-        self.PORO_OP = self.PC_OP + self.nph  # porosity operator - 1
-        self.ENTH_OP = self.PORO_OP + 1  # enthalpy operator - nph
+        self.MULT_OP = self.PC_OP + self.nph  # permeability multiplier operator - 1
+        self.LAMBDA_OP = self.MULT_OP + 1  # mobility operator - nph
+        self.SAT_OP = self.LAMBDA_OP + self.nph  # saturation operator - nph
+        self.ENTH_OP = self.SAT_OP + self.nph  # enthalpy operator - nph
         self.TEMP_OP = self.ENTH_OP + self.nph  # temperature operator - 1
-        self.PRES_OP = self.TEMP_OP + 1
+        self.PRES_OP = self.TEMP_OP + 1  # pressure operator - 1
         self.n_ops = self.PRES_OP + 1
 
     def comp_out_of_bounds(self, vec_composition):
@@ -100,14 +100,14 @@ class my_own_acc_flux_etor(OperatorsBase):
 
         """ CONSTRUCT OPERATORS HERE """
         values_np[:] = 0.
-        
+
         """ Alpha operator represents accumulation term: """
         values_np[self.ACC_OP:self.ACC_OP + ns] = z[:ns] * rho_t
         values_np[self.ACC_OP + ns:self.ACC_OP + nc] = (1 - self.property.sat_overall[self.property.nph]) * z[ns:] * rho_f
 
         """ Beta operator represents flux term: """
         for j in range(nph):
-            values_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + nc] = self.property.x[j] * self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]
+            values_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + nc] = self.property.x[j] * self.property.dens_m[j]
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         for j in range(nph):
@@ -124,15 +124,32 @@ class my_own_acc_flux_etor(OperatorsBase):
 
         """ Gravity and Capillarity operators """
         # E3-> gravity
-        for i in range(nph):
-            values_np[self.GRAV_OP + i] = 0
+        values_np[self.GRAV_OP + self.property.ph] = 0
 
         # E4-> capillarity
         for i in range(nph):
             values_np[self.PC_OP + i] = 0
 
-        # E5_> porosity
-        values_np[self.PORO_OP] = 1 - self.property.sat_overall[self.property.nph]
+        """ Permeability multiplier k/kmax """
+        # E5_> permeability multiplier due to permporo relationship
+        values_np[self.MULT_OP] = self.property.permporo_mult_ev.evaluate(1 - self.property.sat_overall[self.property.nph])
+
+        """ Lambda operator for velocity calculations """
+        # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
+        values_np[self.LAMBDA_OP + self.property.ph] = (
+            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        )
+
+        """ Saturation operator """
+        # phase saturation: s_j [-]
+        values_np[self.SAT_OP + self.property.ph] = self.property.sat[
+            self.property.ph
+        ]
+
+        """ Pressure operator """
+        # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
+        values_np[self.PRES_OP] = state_np[0]
+
 
         return 0
 
@@ -173,7 +190,7 @@ class my_own_property_evaluator(operator_set_evaluator_iface):
         super().__init__()
         self.input_data = input_data
         self.property = properties
-        self.props_name = (['z' + prop for prop in properties.flash_ev.phreeqc_species] + ['satV'] +
+        self.props_name = (['z' + prop for prop in properties.flash_ev.phreeqc_species] + ['satV'] + ['porosity'] +
                            ['Act(H+)', 'Act(CO2)'] + ['SR_' + mineral for mineral in self.property.flash_ev.mineral_names])
 
     def evaluate(self, state, values):
@@ -192,14 +209,19 @@ class my_own_property_evaluator(operator_set_evaluator_iface):
         rho_a, rho_v = rho_phases['aq'], rho_phases['gas']
         if nu_v > 0:
             sv = nu_v / rho_v / (nu_v / rho_v + nu_a / rho_a + nu_s_rho_s)
+            sa = nu_a / rho_a / (nu_v / rho_v + nu_a / rho_a + nu_s_rho_s)
+            ss = nu_s_rho_s / (nu_v / rho_v + nu_a / rho_a + nu_s_rho_s)
         else:
             sv = 0
-        values_np[molar_fractions.size] = sv
+            sa = nu_a / rho_a / (nu_a / rho_a + nu_s_rho_s)
+            ss = nu_s_rho_s / (nu_a / rho_a + nu_s_rho_s)
+        values_np[molar_fractions.size] = sv / (sv + sa)
+        values_np[molar_fractions.size + 1] = 1 - ss
 
         # extra kinetic props
-        values_np[molar_fractions.size + 1] = kin_state['Act(H+)']
-        values_np[molar_fractions.size + 2] = kin_state['Act(CO2)']
+        values_np[molar_fractions.size + 2] = kin_state['Act(H+)']
+        values_np[molar_fractions.size + 3] = kin_state['Act(CO2)']
         for i, mineral in enumerate(self.property.flash_ev.mineral_names):
-            values_np[molar_fractions.size + 3 + i] = kin_state['SR_' + mineral]
+            values_np[molar_fractions.size + 4 + i] = kin_state['SR_' + mineral]
 
         return 0

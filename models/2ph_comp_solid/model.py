@@ -31,8 +31,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
-        trans_exp = 3
-        perm = 100  # / (1 - solid_init) ** trans_exp
+        perm = 100
         """Reservoir"""
         nx = 1000
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1,
@@ -228,7 +227,7 @@ class Model(CICDModel):
 
         axs[2][2].plot(1 - Ss, 'b')
         axs[2][2].set_xlabel('x [m]', font_dict_axes)
-        axs[2][2].set_ylabel('$\phi$ [-]', font_dict_axes)
+        axs[2][2].set_ylabel(r'$\phi$ [-]', font_dict_axes)
         axs[2][2].set_title('Porosity', fontdict=font_dict_title)
 
         left = 0.05  # the left side of the subplots of the figure
