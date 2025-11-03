@@ -804,6 +804,38 @@ class DartsModel:
         self.timer.node["simulation"].stop()
         return converged
 
+    def update_dfm_well_phase_velocities_and_derivatives(self, dt, t, iter_counter):
+        """
+        Updates phase velocities and their corresponding derivatives in DFM wells
+
+        :param dt: Time step size [day]
+        :type dt: float
+        :param t: Simulation time [day]
+        :type t: float
+        :param iter_counter: Newton-Raphson iteration counter for the current time step
+        :type iter_counter: int
+        """
+        for w in self.reservoir.wells:
+            if w.ms_type == ms_well.MS_Type.DFM:
+                start = w.well_head_idx * self.physics.n_vars
+                stop = (
+                    w.well_head_idx + w.num_segments
+                ) * self.physics.n_vars  # exclusive
+
+                Xn_ms_well = np.array(self.physics.engine.Xn[start:stop])
+                X_ms_well = np.array(self.physics.engine.X[start:stop])
+                well_phase_v, well_phase_v_d = self.wells[
+                    w.name
+                ].evaluate_phase_velocities_and_derivatives(
+                    Xn_ms_well, X_ms_well, dt, t, iter_counter
+                )
+                w.phase_vels = value_vector(well_phase_v)
+                w.phase_vels_ders = value_vector(well_phase_v_d)
+
+                # if self.physics.property_containers[0].thermal:
+                #     phase_specific_potential_energy_up = self.wells[w.name].evaluate_upwinded_phase_specific_potential_energy(w, well_phase_v)
+                #     w.phase_specific_potential_energy_up = value_vector(phase_specific_potential_energy_up)
+
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:
             if (
@@ -853,38 +885,6 @@ class DartsModel:
                     raise TypeError(
                         f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
                     )
-
-    def update_dfm_well_phase_velocities_and_derivatives(self, dt, t, iter_counter):
-        """
-        Updates phase velocities and their corresponding derivatives in DFM wells
-
-        :param dt: Time step size [day]
-        :type dt: float
-        :param t: Simulation time [day]
-        :type t: float
-        :param iter_counter: Newton-Raphson iteration counter for the current time step
-        :type iter_counter: int
-        """
-        for w in self.reservoir.wells:
-            if w.ms_type == ms_well.MS_Type.DFM:
-                start = w.well_head_idx * self.physics.n_vars
-                stop = (
-                    w.well_head_idx + w.num_segments
-                ) * self.physics.n_vars  # exclusive
-
-                Xn_ms_well = np.array(self.physics.engine.Xn[start:stop])
-                X_ms_well = np.array(self.physics.engine.X[start:stop])
-                well_phase_v, well_phase_v_d = self.wells[
-                    w.name
-                ].evaluate_phase_velocities_and_derivatives(
-                    Xn_ms_well, X_ms_well, dt, t, iter_counter
-                )
-                w.phase_vels = value_vector(well_phase_v)
-                w.phase_vels_ders = value_vector(well_phase_v_d)
-
-                # if self.physics.property_containers[0].thermal:
-                #     phase_specific_potential_energy_up = self.wells[w.name].evaluate_upwinded_phase_specific_potential_energy(w, well_phase_v)
-                #     w.phase_specific_potential_energy_up = value_vector(phase_specific_potential_energy_up)
 
     def line_search(self, dt, t, coef, history, verbose: bool = False):
         """
