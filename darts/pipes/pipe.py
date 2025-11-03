@@ -17,6 +17,7 @@ Notes:
 import math
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
+from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.set_initial_conditions import (
     LinearAmbientTemperature,
     SingleAmbientTemperature,
@@ -36,6 +37,7 @@ class Pipe:
         physics,
         reservoir,
         initial_conditions: SingleAmbientTemperature | LinearAmbientTemperature,
+        source_sinks: dict = None,
         Cmax: float = 1.2,
         Fv: float = 1,
         diff_method: str = "OBL",
@@ -53,6 +55,8 @@ class Pipe:
         :param reservoir Reservoir object
         :param initial_conditions: Object containing the initial conditions of the wellbore/pipe
         :type initial_conditions: SingleAmbientTemperature or LinearAmbientTemperature
+        :param source_sinks: Dict containing sources or sinks for the momentum equation
+        :type source_sinks: dict
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
         could have a value between 1.0 and 1.5. It is set to:
         --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
@@ -87,6 +91,17 @@ class Pipe:
         self.isothermal = not physics.thermal
 
         self.initial_conditions = initial_conditions
+
+        source_sinks = {} if source_sinks is None else source_sinks
+        for source_sink in source_sinks.values():
+            # RampUpRate is supported fow now
+            assert isinstance(source_sink, RampUpRate), (
+                "source_sink must be of the type RampUpRate!"
+            )
+            assert pipe_name == source_sink.pipe_name, (
+                "Pipe names in pipe_name and source_sink are not identical!"
+            )
+        self.source_sinks = source_sinks
 
         if self.isothermal:
             assert self.physics.property_containers[0].temperature is not None, (
@@ -176,13 +191,14 @@ class Pipe:
 
         self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
 
-        self.source_props = {}
         self.lateral_heat_rate_eval = None
 
         if verbose:
             print(f'** Model of the pipe "{self.geometry.pipe_name}" is created!')
 
-    def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, iter_counter, flag):
+    def evaluate_phase_velocities(
+        self, Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter, flag
+    ):
         """
         Evaluates pipe phase velocities
 
@@ -190,8 +206,10 @@ class Pipe:
         :type Xn_ms_well: np.ndarray
         :param X_ms_well: Vector containing the state of pipe segments (ordered block by block) of the current time step
         :type X_ms_well: np.ndarray
-        :param dt: Time step size [days]
+        :param dt: Time step size [day]
         :type dt: float
+        :param simulation_time: Simulation time [day]
+        :type simulation_time: float
         :param iter_counter: Iteration counter of the current time step
         :type iter_counter: int
         :param flag: Flag indicating if we want to update the solution of the previous time step based on the new solution or not
@@ -605,14 +623,12 @@ class Pipe:
 
             """ Add momentum boundary conditions """
             momentum_at_first_last_exterfaces = [0, 0]
-            if self.source_props:
-                segment_idx_source = self.source_props["segment_idx_source"]
-                rate_source = (
-                    self.source_props["rate_source"]
-                    if "rate_source" in self.source_props
-                    else self.source_props["target_rate_source"]
-                )
-                comp_source = self.source_props["comp_source"]
+            for sink_source in self.source_sinks.values():
+                segment_idx_source = sink_source.segment_idx
+                # Update current rate
+                sink_source.update_current_molar_rate(simulation_time)
+                rate_source = sink_source.current_rate  # Output rate is in kmol/day
+                comp_source = sink_source.inj_fluid_props["composition"]
                 Mw = self.physics.property_containers[0].Mw
                 mass_rate = sum(rate_source * np.array(comp_source) * np.array(Mw)) / (
                     24 * 60 * 60
@@ -1116,7 +1132,7 @@ class Pipe:
         self.vD0 = -vD0  # I multiplied the drift velocity by -1 because I changed the positive direction of the well from top to bottom.
 
     def evaluate_phase_velocities_and_derivatives(
-        self, Xn_ms_well, X_ms_well, dt, iter_counter
+        self, Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter
     ):
         """
         Evaluates pipe phase velocities and their derivatives with respect to primary variables
@@ -1125,8 +1141,10 @@ class Pipe:
         :type Xn_ms_well: np.ndarray
         :param X_ms_well: Vector containing the state of pipe segments (ordered block by block) of the current time step
         :type X_ms_well: np.ndarray
-        :param dt: Time step size [days]
+        :param dt: Time step size [day]
         :type dt: float
+        :param simulation_time: Simulation time [day]
+        :type simulation_time: float
         :param iter_counter: Iteration counter of the current time step
         :type iter_counter: int
         """
@@ -1140,7 +1158,7 @@ class Pipe:
         vel_der_matrix = np.zeros((num_phase_velocities, num_primary_vars))
 
         phase_velocities = self.evaluate_phase_velocities(
-            Xn_ms_well, X_ms_well, dt, iter_counter, flag=1
+            Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter, flag=1
         )
 
         # Construct the matrix of derivatives of phase velocities
@@ -1150,7 +1168,7 @@ class Pipe:
                 X_ms_well[i * n_vars] += self.eps_p
                 vel_der_matrix[:, i * n_vars] = (
                     self.evaluate_phase_velocities(
-                        Xn_ms_well, X_ms_well, dt, iter_counter, flag=0
+                        Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter, flag=0
                     )
                     - phase_velocities
                 ) / self.eps_p
@@ -1161,7 +1179,12 @@ class Pipe:
                     X_ms_well[i * n_vars + j + 1] += self.eps_z
                     vel_der_matrix[:, i * n_vars + j + 1] = (
                         self.evaluate_phase_velocities(
-                            Xn_ms_well, X_ms_well, dt, iter_counter, flag=0
+                            Xn_ms_well,
+                            X_ms_well,
+                            dt,
+                            simulation_time,
+                            iter_counter,
+                            flag=0,
                         )
                         - phase_velocities
                     ) / self.eps_z
@@ -1172,7 +1195,12 @@ class Pipe:
                     X_ms_well[i * n_vars + n_vars - 1] += self.eps_temp
                     vel_der_matrix[:, i * n_vars + n_vars - 1] = (
                         self.evaluate_phase_velocities(
-                            Xn_ms_well, X_ms_well, dt, iter_counter, flag=0
+                            Xn_ms_well,
+                            X_ms_well,
+                            dt,
+                            simulation_time,
+                            iter_counter,
+                            flag=0,
                         )
                         - phase_velocities
                     ) / self.eps_temp
@@ -1181,7 +1209,7 @@ class Pipe:
             # Update properties at the current time step with the original primary variables (original X_ms_well)
             # unaffected by eps_p, eps_temp, and eps_z
             phase_velocities = self.evaluate_phase_velocities(
-                Xn_ms_well, X_ms_well, dt, iter_counter, flag=0
+                Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter, flag=0
             )
 
             vel_der_matrix_phase_A = vel_der_matrix[: num_phase_velocities // 2, :]

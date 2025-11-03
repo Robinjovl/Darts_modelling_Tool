@@ -1,6 +1,6 @@
 """
 This script can be used to plot the desired property, which is stored in stored_primary_vars_and_phase_props.pkl,
-for the desired wellbore segment, e.g., 0 for the wellhead and num_segments - 1 for the bottomhole, over time for
+for the desired wellbore segment, e.g., 0 for the wellhead and num_segments - 1 for the bottom-hole, over time for
 different scenarios saved in different output folders each of which containing the following two files:
     - well_data.h5
     - stored_primary_vars_and_phase_props.pkl

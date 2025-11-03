@@ -701,7 +701,7 @@ class DartsModel:
             # Update well phase velocities and derivatives if DFM wells are used
             if self.is_coupled_well_res_model:
                 self.update_dfm_well_phase_velocities_and_derivatives(
-                    dt, self.iter_counter
+                    dt, t, self.iter_counter
                 )
 
             self.physics.engine.assemble_linear_system(
@@ -854,7 +854,17 @@ class DartsModel:
                         f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
                     )
 
-    def update_dfm_well_phase_velocities_and_derivatives(self, dt, iter_counter):
+    def update_dfm_well_phase_velocities_and_derivatives(self, dt, t, iter_counter):
+        """
+        Updates phase velocities and their corresponding derivatives in DFM wells
+
+        :param dt: Time step size [day]
+        :type dt: float
+        :param t: Simulation time [day]
+        :type t: float
+        :param iter_counter: Newton-Raphson iteration counter for the current time step
+        :type iter_counter: int
+        """
         for w in self.reservoir.wells:
             if w.ms_type == ms_well.MS_Type.DFM:
                 start = w.well_head_idx * self.physics.n_vars
@@ -867,7 +877,7 @@ class DartsModel:
                 well_phase_v, well_phase_v_d = self.wells[
                     w.name
                 ].evaluate_phase_velocities_and_derivatives(
-                    Xn_ms_well, X_ms_well, dt, iter_counter
+                    Xn_ms_well, X_ms_well, dt, t, iter_counter
                 )
                 w.phase_vels = value_vector(well_phase_v)
                 w.phase_vels_ders = value_vector(well_phase_v_d)
