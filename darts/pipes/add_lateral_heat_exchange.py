@@ -113,9 +113,9 @@ class SemiAnalyticalWellLateralHeatTransfer:
 
     def evaluate(self, T_segments, simulation_timer):
         """
-        :param T_segments: Fluid temperature inside the segment
-        :param simulation_timer: Simulation timer in days
-        :return Lateral heat rate
+        :param T_segments: Fluid temperature inside the segment [Kelvin]
+        :param simulation_timer: Simulation timer [day]
+        :return Lateral heat rate [kJ/day]
         """
         simulation_timer = simulation_timer * 24 * 60 * 60
         # Time function evaluation
@@ -195,8 +195,6 @@ def add_numerical_well_lateral_heat_transfer(
     :type well_wall_cells_idx: np.ndarray of integers
     :param well_wall_thickness: Thickness of the well wall [meters]
     :type well_wall_thickness: float
-    :param well_wall_cond: Thermal conductivity of the well wall [kJ/m.K.day]
-    :type well_wall_cond: float
     :param verbose: Whether to display extra info about the function
     :type verbose: boolean
     """
@@ -220,6 +218,7 @@ def add_numerical_well_lateral_heat_transfer(
     assert isinstance(well_wall_thickness, float), (
         "Well wall thickness must be a float; otherwise, it's not supported!"
     )
+    # Using the linear form of the heat conduction equation
     L = well_wall_thickness / 2
     geom_coef = A / L
     well_indexD = geom_coef
