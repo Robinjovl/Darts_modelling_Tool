@@ -1,7 +1,7 @@
 from darts.engines import *
 from darts.physics.base.operators_base import WellControlOperators, WellInitOperators
 from darts.physics.base.physics_base import PhysicsBase
-from darts.physics.phreeqc.operator_evaluator import (
+from darts.physics.chemistry.operator_evaluator import (
     CoversionOperators,
     PropertyOperators,
     ReservoirOperators,
@@ -10,7 +10,7 @@ from darts.physics.super.physics import Compositional
 
 
 # Define our own operator evaluator class
-class PhreeqcDissolution(Compositional):
+class ElementBasedReactiveFlow(Compositional):
     def __init__(
         self,
         timer,

@@ -10,7 +10,7 @@ from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
-from darts.physics.phreeqc.physics import PhreeqcDissolution
+from darts.physics.chemistry.physics import ElementBasedReactiveFlow
 from darts.physics.properties.kinetic_registry import KineticRate, LinearReactionSurfaceArea
 from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
 from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
@@ -318,7 +318,7 @@ class Model(CICDModel):
                                             kin_fact=self.kin_fact, n_init_ops=n_init_ops, n_prop_ops=n_prop_ops)
 
         # Create instance of (own) physics class:
-        self.physics = PhreeqcDissolution(timer=self.timer, elements=self.elements, n_points=self.n_points,
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points,
                                           axes_min=self.axes_min, axes_max=self.axes_max,
                                           input_data_struct=input_data_struct, properties=property_container, cache=True)
 

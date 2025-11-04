@@ -54,7 +54,8 @@ class ReservoirOperators(OperatorsSuper):
 
     def evaluate(self, state, values):
         """
-        Class methods which evaluates the state operators for the element-based phreeqc physics
+        Class methods which evaluates the state operators for
+        the element-based formulation of reactive flow physics
         :param state: state variables [p, z_{1}, ..., z_{n_m}, z_{n_m+1}, ..., z_{n_c-1}]
         :type state: value_vector
         :param values: values of the operators (used for storing the operator values)
@@ -171,7 +172,8 @@ class CoversionOperators(ReservoirOperators):
 
     def evaluate(self, state, values):
         """
-        Class methods which performs volumetric to molar conversion for the element-based phreeqc physics
+        Class methods which performs volumetric to molar conversion for
+        the element-based formulation of reactive flow physics
         :param state: state variables [p, \phi_{1}, ..., \phi_{n_m}, z_{n_m+1}, ..., z_{n_c-1}]
         :type state: value_vector
         :param values: values of the operators (used for storing the operator values)
@@ -240,7 +242,8 @@ class PropertyOperators(operator_set_evaluator_iface):
 
     def evaluate(self, state, values):
         """
-        Class methods which evaluates the property operators for the element-based phreeqc physics
+        Class methods which evaluates the property operators for
+        the element-based formulation of reactive flow physics
         :param state: state variables [p, z_{1}, ..., z_{n_m}, z_{n_m+1}, ..., z_{n_c-1}]
         :type state: value_vector
         :param values: values of the operators (used for storing the operator values)
