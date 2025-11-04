@@ -121,7 +121,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
         # Time function evaluation
         if self.time_function_name == "Ramey":
             # Ramey's time function: Gives reasonably good results for long times but fails for times less than seven days.
-            f_t = -1 / (
+            f_t = 1 / (
                 -np.log(
                     (self.outermost_layer_OD / 2)
                     / (2 * np.sqrt(self.alpha * simulation_timer))
