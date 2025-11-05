@@ -40,7 +40,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         poro_id = m.physics.property_operators[next(iter(m.physics.property_operators))].props_name.index('porosity')
         m.physics.property_itor[0].evaluate_with_derivatives(m.physics.engine.X, m.physics.engine.region_cell_idx[0],
                                                                 m.output.prop_values, m.output.prop_dvalues)
-        poro = np.array([m.output.prop_values_np[poro_id::m.physics.input_data_struct.n_prop_ops]])
+        poro = np.array([m.output.prop_values_np[poro_id::m.physics.n_property_itor_ops]])
         volume = np.array(m.reservoir.mesh.volume, copy=False)
         total_pv = np.sum(volume[:m.n_res_blocks] * poro) * 1e6
         print(f'Total pore volume: {total_pv} cm3')

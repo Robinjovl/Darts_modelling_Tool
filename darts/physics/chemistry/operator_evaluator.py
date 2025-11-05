@@ -14,21 +14,15 @@ class ReservoirOperators(OperatorsSuper):
     values are the same as in OperatorsSuper
     """
 
-    def __init__(self, input_data, properties):
+    def __init__(self, properties):
         # set some properties to -1 to use OperatorsSuper constructor
         # TODO: refactor in future
         properties.nc_fl = -1
         properties.np_fl = -1
         properties.ns = -1
-        properties.min_z = input_data.min_z
         super().__init__(properties, thermal=properties.thermal)
 
         # Store your input parameters in self here, and initialize other parameters here in self
-        self.input_data = input_data
-        self.temperature = input_data.temperature
-        self.exp_w = input_data.exp_w
-        self.exp_g = input_data.exp_g
-        self.kin_fact = input_data.kin_fact
         self.property = properties
         self.counter = 0
 
@@ -119,7 +113,7 @@ class ReservoirOperators(OperatorsSuper):
         """ Delta operator for reaction """
         for i in range(ne):
             values_np[self.KIN_OP + i] = (
-                self.input_data.stoich_matrix[:, i] * self.property.kin_rates
+                self.property.stoich_matrix[:, i] * self.property.kin_rates
             ).sum()
 
         """ Gravity and Capillarity operators """
@@ -164,11 +158,11 @@ class CoversionOperators(ReservoirOperators):
     values are mineral molar fractions within rock + fluid mixture
     """
 
-    def __init__(self, input_data, properties):
-        super().__init__(input_data, properties)  # Initialize base-class
+    def __init__(self, properties):
+        super().__init__(properties)  # Initialize base-class
         self.fluid_mole = self.property.flash_ev.total_moles / 1000  # mol to kmol
         self.counter = 0
-        self.props_name = ['z_solid']
+        self.props_name = ['z_' + prop for prop in properties.minerals]
 
     def evaluate(self, state, values):
         """
@@ -225,10 +219,9 @@ class PropertyOperators(operator_set_evaluator_iface):
     - reaction rate of minerals
     """
 
-    def __init__(self, input_data, properties):
+    def __init__(self, properties):
         # Initialize base-class
         super().__init__()
-        self.input_data = input_data
         self.property = properties
         self.props_name = (
             ['z' + prop for prop in properties.flash_ev.aqueous_species]

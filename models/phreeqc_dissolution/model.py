@@ -21,27 +21,6 @@ from conversions import convert_composition, correct_composition, calculate_inje
     get_mole_fractions
 
 
-# Definition of your input parameter data structure,
-# change as you see fit (when you need more constant values, etc.)!!
-class MyOwnDataStruct:
-    def __init__(self, nc, zmin, temp, stoich_matrix, pressure_init, kin_fact, n_init_ops, n_prop_ops, exp_w=1, exp_g=1):
-        """
-        Data structure class which holds various input parameters for simulation
-        :param nc: number of components used in simulation
-        :param zmin: actual 0 used for composition (usually >0, around some small epsilon)
-        :param temp: temperature
-        """
-        self.num_comp = nc
-        self.min_z = zmin
-        self.temperature = temp
-        self.stoich_matrix = stoich_matrix
-        self.exp_w = exp_w
-        self.exp_g = exp_g
-        self.pressure_init = pressure_init
-        self.kin_fact = kin_fact
-        self.n_init_ops = n_init_ops
-        self.n_prop_ops = n_prop_ops
-
 class MyOutput(Output):
     def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder: str, sol_filename: str,
                  well_filename: str, save_initial: bool, all_phase_props: bool, precision: str, compression: str,
@@ -53,7 +32,7 @@ class MyOutput(Output):
                          compression=compression, verbose=verbose)
 
         # prepare arrays for evaluation of properties
-        n_prop_ops = self.physics.input_data_struct.n_prop_ops
+        n_prop_ops = self.physics.n_property_itor_ops
         n_vars = self.physics.n_vars
         n_res_blocks = self.reservoir.mesh.n_res_blocks
         self.prop_states = value_vector([0.] * n_res_blocks * (n_vars + 1))
@@ -79,7 +58,7 @@ class MyOutput(Output):
         nb = self.reservoir.mesh.n_res_blocks
         nv = self.physics.n_vars
         nops = len(prop_names)
-        n_interp_size = self.physics.input_data_struct.n_prop_ops
+        n_interp_size = self.physics.n_property_itor_ops
 
         # unknowns
         property_array = {var: np.array([X[i:nb * nv:nv]]) for i, var in enumerate(self.physics.vars)}
@@ -220,9 +199,6 @@ class Model(CICDModel):
             stoich_matrix = np.array([[-1, 1, 1, 3, 0]])
             # Mineral properties
             rock_props = {'Solid_CaCO3': {'density': 2710., 'compressibility': 1.e-6}}
-            # Dimensions of initial, property interpolators
-            n_init_ops = 1
-            n_prop_ops = 24
         elif set(self.minerals) == {'calcite', 'dolomite'}:
             # purely for initialization
             self.components = ['H2O', 'H+', 'OH-', 'CO2', 'HCO3-', 'CO3-2',
@@ -253,9 +229,6 @@ class Model(CICDModel):
             # Mineral properties
             rock_props = {'Solid_CaCO3': {'density': 2710., 'compressibility': 1.e-6},
                           'Solid_CaMg(CO3)2': {'density': 2840., 'compressibility': 1.e-6}}
-            # Dimensions of initial, property interpolators
-            n_init_ops = 10
-            n_prop_ops = 32
         elif set(self.minerals) == {'calcite', 'dolomite', 'magnesite'}:
             # purely for initialization
             self.components = ['H2O', 'H+', 'OH-', 'CO2', 'HCO3-', 'CO3-2',
@@ -290,16 +263,14 @@ class Model(CICDModel):
             rock_props = {'Solid_CaCO3': {'density': 2710., 'compressibility': 1.e-6},
                           'Solid_CaMg(CO3)2': {'density': 2840., 'compressibility': 1.e-6},
                           'Solid_MgCO3': {'density': 2958., 'compressibility': 1.e-6}}
-            # Dimensions of initial, property interpolators
-            n_init_ops = 10
-            n_prop_ops = 36
 
         self.nc = len(self.elements)
 
         # Create property containers:
         property_container = ModelProperties(phases_name=self.phases, components_name=self.elements, Mw=Mw,
-                                             kinetic_mechanisms=self.kinetic_mechanisms, min_z=self.obl_min,
-                                             temperature=self.temperature, fc_mask=self.fc_mask, flash=self.flash)
+                                            stoich_matrix=stoich_matrix, kinetic_mechanisms=self.kinetic_mechanisms,
+                                            min_z=self.obl_min, temperature=self.temperature,
+                                            fc_mask=self.fc_mask, flash=self.flash)
 
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
@@ -309,18 +280,10 @@ class Model(CICDModel):
             property_container.rock_compr_ev[min] = ConstFunc(props['compressibility'])
             property_container.rock_density_ev[min] = DensityBasic(compr=props['compressibility'], dens0=props['density'], p0=1.)
 
-        # self.kin_fact = self.property.rock_density_ev['solid'].evaluate(pressure) / self.property.Mw['Solid'] * np.mean(self.solid_sat)
-        self.kin_fact = 1
-
-        # Create instance of data-structure for simulation (and chemical) input parameters:
-        input_data_struct = MyOwnDataStruct(nc=self.nc, zmin=self.obl_min, temp=self.temperature,
-                                            stoich_matrix=stoich_matrix, pressure_init=self.pressure_init,
-                                            kin_fact=self.kin_fact, n_init_ops=n_init_ops, n_prop_ops=n_prop_ops)
-
         # Create instance of (own) physics class:
         self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points,
-                                          axes_min=self.axes_min, axes_max=self.axes_max,
-                                          input_data_struct=input_data_struct, properties=property_container, cache=True)
+                                          axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
+                                          cache=False)
 
         self.physics.add_property_region(property_container, 0)
 
@@ -461,7 +424,7 @@ class Model(CICDModel):
         self.initial_comp = np.zeros((self.n_res_blocks + 2, self.nc - 1))
 
         # Interpolated values of non-solid volume (second value always 0 due to no (5,1) interpolator)
-        values = value_vector([0] * self.physics.input_data_struct.n_init_ops)
+        values = value_vector([0] * self.physics.n_comp_itor_ops)
         values_np = np.asarray(values)
 
         # Iterate over solid saturation and call interpolator
@@ -469,7 +432,7 @@ class Model(CICDModel):
             # There are 5 values in the state
             composition_full = convert_composition(self.initial_comp_components, self.E)
             composition = correct_composition(composition_full, self.min_z)
-            init_state = value_vector(np.hstack((self.physics.input_data_struct.pressure_init, self.solid_sat[i],
+            init_state = value_vector(np.hstack((self.pressure_init, self.solid_sat[i],
                                                  composition[self.n_solid:])))
 
             # Call interpolator
@@ -712,11 +675,13 @@ class Model(CICDModel):
         return 0
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, nc_sol=0, np_sol=0,
-                 min_z=1e-11, rate_ann_mat=None, temperature=None, fc_mask=None, flash='phreeqc'):
+    def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, stoich_matrix,
+                nc_sol=0, np_sol=0, min_z=1e-11, rate_ann_mat=None, temperature=None,
+                fc_mask=None, flash='phreeqc'):
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, nc_sol=nc_sol, np_sol=np_sol,
                          min_z=min_z, rate_ann_mat=rate_ann_mat, temperature=temperature)
         self.components_name = np.array(self.components_name)
+        self.stoich_matrix = stoich_matrix
 
         # Define primary fluid constituents
         if fc_mask is None:
@@ -817,8 +782,6 @@ class ModelProperties(PropertyContainer):
         for i, k in enumerate(self.rock_compr_ev.keys()):
             self.rock_compr[i] = self.rock_compr_ev[k].evaluate(pressure)
             self.kin_rates[i] = self.kinetic_rate_ev[k].evaluate(self.kin_state, self.sat_minerals[i], self.dens_m_solid[i], self.temperature)
-
-    # default flash working with molar fractions
 
     class CustomRelPerm:
         def __init__(self, exp, sr=0):

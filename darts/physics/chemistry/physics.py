@@ -18,7 +18,6 @@ class ElementBasedReactiveFlow(Compositional):
         n_points,
         axes_min,
         axes_max,
-        input_data_struct,
         properties,
         platform='cpu',
         itor_type='multilinear',
@@ -26,8 +25,6 @@ class ElementBasedReactiveFlow(Compositional):
         itor_precision='d',
         cache=True,
     ):
-        # Obtain properties from user input during initialization:
-        self.input_data_struct = input_data_struct
         vars = ["p"] + elements[:-1]
         phases = ['vapor', 'liquid']
         self.initial_operators = {}
@@ -56,13 +53,13 @@ class ElementBasedReactiveFlow(Compositional):
         """
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
-                self.input_data_struct, self.property_containers[region]
+                self.property_containers[region]
             )
             self.initial_operators[region] = CoversionOperators(
-                self.input_data_struct, self.property_containers[region]
+                self.property_containers[region]
             )
             self.property_operators[region] = PropertyOperators(
-                self.input_data_struct, self.property_containers[region]
+                self.property_containers[region]
             )
 
         self.well_ctrl_operators = WellControlOperators(
@@ -102,10 +99,10 @@ class ElementBasedReactiveFlow(Compositional):
 
             # ==============================================================================================================
             # Create initialization & porosity evaluator
-            self.comp_itor[region], _ = self.create_interpolator(
+            self.comp_itor[region], n_comp_ops = self.create_interpolator(
                 evaluator=self.initial_operators[region],
                 timer_name=f'comp {region} interpolation',
-                n_ops=self.input_data_struct.n_init_ops,
+                n_ops=len(self.initial_operators[region].props_name),
                 axes_min=self.axes_min,
                 axes_max=self.axes_max,
                 platform=platform,
@@ -114,13 +111,14 @@ class ElementBasedReactiveFlow(Compositional):
                 precision=itor_precision,
                 is_barycentric=is_barycentric,
             )
+            self.n_comp_itor_ops = n_comp_ops
 
             # ==============================================================================================================
             # Create property interpolator:
-            self.property_itor[region], _ = self.create_interpolator(
+            self.property_itor[region], n_property_ops = self.create_interpolator(
                 evaluator=self.property_operators[region],
                 timer_name=f'property {region} interpolation',
-                n_ops=self.input_data_struct.n_prop_ops,
+                n_ops=len(self.property_operators[region].props_name),
                 axes_min=self.axes_min,
                 axes_max=self.axes_max,
                 platform=platform,
@@ -129,10 +127,10 @@ class ElementBasedReactiveFlow(Compositional):
                 precision=itor_precision,
                 is_barycentric=is_barycentric,
             )
-
+            self.n_property_itor_ops = n_property_ops
         self.acc_flux_w_itor = self.acc_flux_itor[0]
 
-        self.well_ctrl_itor, _ = self.create_interpolator(
+        self.well_ctrl_itor, n_well_ctrl_ops = self.create_interpolator(
             self.well_ctrl_operators,
             n_ops=self.well_ctrl_operators.n_ops,
             axes_min=self.axes_min,
@@ -143,7 +141,8 @@ class ElementBasedReactiveFlow(Compositional):
             mode=itor_mode,
             precision=itor_precision,
         )
-        self.well_init_itor, _ = self.create_interpolator(
+        self.n_well_ctrl_itor_ops = n_well_ctrl_ops
+        self.well_init_itor, n_well_init_ops = self.create_interpolator(
             self.well_init_operators,
             n_ops=self.well_init_operators.n_ops,
             axes_min=value_vector(self.PT_axes_min),
@@ -154,3 +153,4 @@ class ElementBasedReactiveFlow(Compositional):
             mode=itor_mode,
             precision=itor_precision,
         )
+        self.n_well_init_itor_ops = n_well_init_ops
