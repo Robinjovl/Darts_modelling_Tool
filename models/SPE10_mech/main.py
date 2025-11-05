@@ -251,8 +251,8 @@ if __name__ == '__main__':
     decouple_geomech = True
     #decouple_geomech = False
 
-    mesh='16_16_15'
-    #mesh='34_34_57'
+    #mesh='16_16_15'
+    mesh='34_34_57'
     
     generate_mesh=True
     #generate_mesh=False
@@ -262,8 +262,8 @@ if __name__ == '__main__':
     
     #wells_type='none'
     #wells_type='prod'
-    #wells_type='inj'
-    wells_type='doublet'
+    wells_type='inj'
+    #wells_type='doublet'
 
     n_years = 30
     sim_time = 365.25 * n_years

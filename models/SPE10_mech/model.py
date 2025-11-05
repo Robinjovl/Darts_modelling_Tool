@@ -84,7 +84,8 @@ class Model(THMCModel):
         self.idata.rock.density = 2650. # kg/m63
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
-        self.idata.rock.biot = 1.
+        #self.idata.rock.biot = 1  # rock compressibility will be 0
+        self.idata.rock.biot = 0.6
         self.idata.rock.E = 1.e+4 * E  # convert units to bars
         self.idata.rock.nu = 0.25  # poisson ratio
 
@@ -105,6 +106,8 @@ class Model(THMCModel):
         self.idata.rock.compressibility = get_rock_compressibility(
             kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
             biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
+        print('bulk modulus = ', get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu))
+        print('rock compressibility = ', self.idata.rock.compressibility)
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
         self.idata.rock.th_expn = 1e-5  # [1/K]
@@ -140,8 +143,8 @@ class Model(THMCModel):
         eps_perf = 1 # [m]
         perf_depth_start = self.idata.other.rsv_top + eps_perf
         perf_depth_end =  self.idata.other.rsv_bottom - eps_perf
-        self.idata.other.prod_well_coords = [0. - shift, 0., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
-        self.idata.other.inj_well_coords = [0. + shift, 0., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
+        self.idata.other.prod_well_coords = [50. - shift, 50., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
+        self.idata.other.inj_well_coords = [50. + shift, 50., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
         self.well_init_depth = perf_depth_start
 
         # well controls
@@ -336,8 +339,14 @@ class Model(THMCModel):
             z_points = np.arange(z1, z2, step_z_perf)
             ids = set()
             for z in z_points: # find a cell with the closest center
-                ids.add(((centroids_3d[:, 0] - coord[0]) ** 2 + (centroids_3d[:, 1] - coord[1]) ** 2 + (centroids_3d[:, 2] - z) ** 2).argmin())
+                cell = ((centroids_3d[:, 0] - coord[0]) ** 2 + (centroids_3d[:, 1] - coord[1]) ** 2 + (centroids_3d[:, 2] - z) ** 2).argmin()
+                ids.add(int(cell))
             ids_1 = list(ids)
+            
+            # sort perforations by depth
+            perf_depths = centroids_3d[ids_1, 2]
+            perf_sorted_indices = np.argsort(perf_depths)
+            ids_1 = np.array(ids_1)[perf_sorted_indices]
             
             self.well_cell_ids.append(ids_1)
             # adding a well
@@ -366,7 +375,7 @@ class Model(THMCModel):
                 well_index = np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
                 # add perforation
                 self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
-                print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', coord)
+                print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', centroids_3d[cell_id,:])
 
     def set_boundary_conditions(self): # for initial mechanical equilibrium initialization, wells are switched off
         for i, w in enumerate(self.reservoir.wells):
@@ -411,7 +420,7 @@ class Model(THMCModel):
                     inj = [1.0 - self.idata.obl.zero]
                     inj_temp = t_cell - delta_temp_inj
                 target = p_cell + delta_p if wctrl_type == well_control_iface.BHP else well_rate
-                print('inj well', w.name, 'control', wctrl_type, 'target' + fmt(target), 'inj_temp = ' + fmt(inj_temp))
+                print('inj well', w.name, 'control', wctrl_type, 'target ' + fmt(target), 'inj_temp = ' + fmt(inj_temp))
                 self.physics.set_well_controls(wctrl=w.control, 
                                                control_type=wctrl_type,
                                                is_inj=True, 
