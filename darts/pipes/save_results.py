@@ -55,7 +55,8 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     flag = 1
 
     time = h5_well_data["dynamic"]["time"]
-    time_step_sizes = np.diff(np.insert(time, 0, 0))
+    time_from_zero = np.insert(time, 0, 0.0)
+    time_step_sizes = np.diff(time_from_zero)
     for i, dt in enumerate(time_step_sizes):
         for j in range(num_segments):
             state = h5_well_data["dynamic"]["X"][i, j + num_perfs, :]
@@ -128,7 +129,9 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
             X_ms_well = h5_well_data["dynamic"]["X"][i, num_perfs:, :].flatten()
         phase_velocities = next(
             iter(coupled_model.wells.values())
-        ).evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, iter_counter, flag)
+        ).evaluate_phase_velocities(
+            Xn_ms_well, X_ms_well, dt, time_from_zero[i], iter_counter, flag
+        )
         # phase_velocities = np.zeros((num_segments - 1) * 2)
         mid = int(len(phase_velocities) / 2)
         vG = phase_velocities[:mid]
