@@ -29,8 +29,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
               perm_poro=perm_poro, flash=flash)
 
     # Initialize model
-    m.init(itor_type=interpolator, platform=platform, verbose=True)
-    m.physics.engine.n_solid = len(minerals)
+    m.init(itor_type=interpolator, platform=platform, verbose=True, n_solid=len(minerals))
     m.set_output(output_folder=output_folder, sol_filename=f'nx{nx}.h5')
 
     # Initialization check

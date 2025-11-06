@@ -15,6 +15,11 @@ class ReservoirOperators(OperatorsSuper):
     """
 
     def __init__(self, properties):
+        """
+        Constructor for ReservoirOperators class.
+        :param properties: Property container object
+        :type properties: user-defined or built-in PropertyContainer class
+        """
         # set some properties to -1 to use OperatorsSuper constructor
         # TODO: refactor in future
         properties.nc_fl = -1
@@ -159,6 +164,11 @@ class CoversionOperators(ReservoirOperators):
     """
 
     def __init__(self, properties):
+        """
+        Constructor for CoversionOperators class.
+        :param properties: Property container object
+        :type properties: user-defined or built-in PropertyContainer class
+        """
         super().__init__(properties)  # Initialize base-class
         self.fluid_mole = self.property.flash_ev.total_moles / 1000  # mol to kmol
         self.counter = 0
@@ -220,6 +230,11 @@ class PropertyOperators(operator_set_evaluator_iface):
     """
 
     def __init__(self, properties):
+        """
+        Constructor for PropertyOperators class.
+        :param properties: Property container object
+        :type properties: user-defined or built-in PropertyContainer class
+        """
         # Initialize base-class
         super().__init__()
         self.property = properties

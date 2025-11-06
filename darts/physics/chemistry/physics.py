@@ -11,6 +11,10 @@ from darts.physics.super.physics import Compositional
 
 # Define our own operator evaluator class
 class ElementBasedReactiveFlow(Compositional):
+    """
+    This is the Physics class for element-based reactive flow.
+    """
+
     def __init__(
         self,
         timer,
@@ -25,6 +29,31 @@ class ElementBasedReactiveFlow(Compositional):
         itor_precision='d',
         cache=True,
     ):
+        """
+        Constructor for ElementBasedReactiveFlow class.
+        :param timer: Timer object
+        :type timer: timer_node
+        :param elements: List of elements
+        :type elements: list
+        :param n_points: Number of points
+        :type n_points: int
+        :param axes_min: Minimum axes values
+        :type axes_min: list
+        :param axes_max: Maximum axes values
+        :type axes_max: list
+        :param properties: Property container object
+        :type properties: user-defined or built-in PropertyContainer class
+        :param platform: Platform to run the simulation
+        :type platform: str (cpu or gpu)
+        :param itor_type: Interpolator type
+        :type itor_type: str (multilinear or linear)
+        :param itor_mode: Interpolator mode
+        :type itor_mode: str (adaptive or static)
+        :param itor_precision: Interpolator precision
+        :type itor_precision: str
+        :param cache: Cache flag
+        :type cache: bool
+        """
         vars = ["p"] + elements[:-1]
         phases = ['vapor', 'liquid']
         self.initial_operators = {}
@@ -79,6 +108,24 @@ class ElementBasedReactiveFlow(Compositional):
         itor_precision='d',
         is_barycentric: bool = False,
     ):
+        """
+        Function to set interpolator objects:
+        - :class:`acc_flux_itor` main interpolator
+        - :class:`comp_itor` initialization and porosity interpolator
+        - :class:`property_itor` output property interpolator
+        - :class:`well_ctrl_itor` well control interpolator
+        - :class:`well_init_itor` well initialization interpolator
+        :param platform: Platform to run the simulation
+        :type platform: str (cpu or gpu)
+        :param itor_type: Interpolator type
+        :type itor_type: str (multilinear or linear)
+        :param itor_mode: Interpolator mode
+        :type itor_mode: str (adaptive or static)
+        :param itor_precision: Interpolator precision
+        :type itor_precision: str
+        :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
+        :type is_barycentric: bool
+        """
         # Create actual accumulation and flux interpolator:
         self.acc_flux_itor = {}
         self.comp_itor = {}

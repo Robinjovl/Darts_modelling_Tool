@@ -7,13 +7,10 @@ from darts.models.output import Output
 from darts.models.cicd_model import CICDModel
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.chemistry.property_container import PropertyContainer
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
-from darts.physics.properties.kinetic_registry import KineticRate, LinearReactionSurfaceArea
-from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
-from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
 from darts.engines import sim_params, well_control_iface, value_vector, timer_node
 
 from iapws._iapws import _Viscosity
@@ -267,15 +264,17 @@ class Model(CICDModel):
         self.nc = len(self.elements)
 
         # Create property containers:
-        property_container = ModelProperties(phases_name=self.phases, components_name=self.elements, Mw=Mw,
+        property_container = PropertyContainer(phases_name=self.phases, components_name=self.elements, Mw=Mw,
                                             stoich_matrix=stoich_matrix, kinetic_mechanisms=self.kinetic_mechanisms,
                                             min_z=self.obl_min, temperature=self.temperature,
                                             fc_mask=self.fc_mask, flash=self.flash)
-
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
                                          np.ones(self.nc - self.n_solid)]) * 5.2e-10 * 86400) for ph in self.phases}
+        property_container.rel_perm_ev = {ph: CustomRelPerm(2) for ph in self.phases}
+        property_container.viscosity_ev = { self.phases[0]: GasViscosity(), self.phases[1]: LiquidViscosity() }
 
+        # Mineral properties
         for min, props in rock_props.items():
             property_container.rock_compr_ev[min] = ConstFunc(props['compressibility'])
             property_container.rock_density_ev[min] = DensityBasic(compr=props['compressibility'], dens0=props['density'], p0=1.)
@@ -674,135 +673,27 @@ class Model(CICDModel):
 
         return 0
 
-class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, stoich_matrix,
-                nc_sol=0, np_sol=0, min_z=1e-11, rate_ann_mat=None, temperature=None,
-                fc_mask=None, flash='phreeqc'):
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, nc_sol=nc_sol, np_sol=np_sol,
-                         min_z=min_z, rate_ann_mat=rate_ann_mat, temperature=temperature)
-        self.components_name = np.array(self.components_name)
-        self.stoich_matrix = stoich_matrix
 
-        # Define primary fluid constituents
-        if fc_mask is None:
-            self.fc_mask = self.nc * [True]
-        else:
-            self.fc_mask = fc_mask
-        self.fc_idx = {comp: i for i, comp in enumerate(self.components_name[self.fc_mask])}
-        self.Mw_array = np.array([self.Mw[c] for c in self.components_name])
-        self.n_solid = (self.fc_mask == False).sum()
+class CustomRelPerm:
+    def __init__(self, exp, sr=0):
+        self.exp = exp
+        self.sr = sr
 
-        # to retrieve fluid component fractions from state
-        self.f_mask_state = np.concatenate([[False], self.fc_mask[:-1]])
-        # to retrieve solid component fractions from state
-        self.s_mask_state = np.concatenate([[False], ~self.fc_mask[:-1]])
+    def evaluate(self, sat):
+        return (sat - self.sr) ** self.exp
 
-        # figure out spec
-        self.minerals = self.components_name[~self.fc_mask]
+class GasViscosity:
+    def __init__(self):
+        pass
+    def evaluate(self, pressure, temperature):
+        return 0.0278
 
-        self.sat_overall = np.zeros(self.nph + 1)
-        self.diffusivity = np.zeros((self.nph, self.nc))
-        self.sat_minerals = np.zeros(self.n_solid)
-        self.kin_rates = np.zeros(self.n_solid)
-        self.rock_compr = np.zeros(self.n_solid)
-
-        # Define custom evaluators
-        self.rock_density_ev = {}
-        self.rock_compr_ev = {}
-        if flash == 'phreeqc':
-            self.flash_ev = PhreeqcFlash(min_z=self.min_z,
-                              minerals=self.minerals,
-                              components=self.components_name[self.fc_mask],
-                              temperature=self.temperature)
-        elif flash == 'reaktoro':
-            self.flash_ev = ReaktoroFlash(min_z=self.min_z,
-                              minerals=self.minerals,
-                              components=self.components_name[self.fc_mask],
-                              temperature=self.temperature)
-        else:
-            raise ValueError(f'Invalid flash type: {flash}')
-
-        # Build one evaluator per mineral using the single-mineral API
-        surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)
-        self.kinetic_rate_ev = {
-            m: KineticRate( min_z=self.min_z,
-                            mineral_name=m.split('_', 1)[1],
-                            mechanisms=kinetic_mechanisms,
-                            surface_area_ev=surface_area_ev ) for m in self.minerals }
-        self.rel_perm_ev = {ph: self.CustomRelPerm(2) for ph in phases_name[:2]}  # Relative perm for first two phases
-        self.viscosity_ev = { phases_name[0]: self.GasViscosity(), phases_name[1]: self.LiquidViscosity() }
-
-    def evaluate(self, state):
-        """
-        Class methods which evaluates the state operators for the element based physics
-
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
-        :type state: value_vector
-
-        :return: updated value for operators, stored in values
-        """
-        nu_v, x, y, rho_phases, self.kin_state, _, _, _ = self.flash_ev.evaluate(state)
-        self.nu_solid = state[self.s_mask_state]
-        self.nu[0] = nu_v * (1 - self.nu_solid.sum()) # convert to overall molar fraction
-        self.nu[1] = 1 - nu_v - self.nu_solid.sum()
-
-        pressure = state[0]
-        # molar densities in kmol/m3
-        self.dens_m[1], self.dens_m[0] = rho_phases['aq'], rho_phases['gas']
-        self.dens_m_solid = np.array([v.evaluate(pressure) / self.Mw[k] for k, v in self.rock_density_ev.items()])
-        self.ph = np.array([0, 1], dtype=np.intp)
-
-        # Get saturations
-        if nu_v > 0:
-            sum = self.nu[0] / self.dens_m[0] + self.nu[1] / self.dens_m[1] + (self.nu_solid / self.dens_m_solid).sum()
-            self.sat_overall[0] = self.nu[0] / self.dens_m[0] / sum
-            self.sat_overall[1] = self.nu[1] / self.dens_m[1] / sum
-            self.sat_overall[2] = (self.nu_solid / self.dens_m_solid).sum() / sum
-        else:
-            sum = self.nu[1] / self.dens_m[1] + (self.nu_solid / self.dens_m_solid).sum()
-            self.sat_overall[0] = 0
-            self.sat_overall[1] = self.nu[1] / self.dens_m[1] / sum
-            self.sat_overall[2] = (self.nu_solid / self.dens_m_solid).sum() / sum
-        self.sat_minerals = self.nu_solid / self.dens_m_solid / sum
-
-        self.x = np.array([y, x])
-
-        for j in self.ph:
-            M = np.sum(self.Mw_array * self.x[j])
-            self.dens[j] = self.dens_m[j] * M
-            self.sat[j] = self.sat_overall[j] / np.sum(self.sat_overall[:self.nph])
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
-            self.diffusivity[j] = self.diffusion_ev[self.phases_name[j]].evaluate()
-
-        # gas
-        self.mu[0] = self.viscosity_ev[self.phases_name[0]].evaluate(pressure=pressure, temperature=self.temperature)
-        # liquid
-        self.mu[1] = self.viscosity_ev[self.phases_name[1]].evaluate(density=self.dens[1], temperature=self.temperature)
-
-        for i, k in enumerate(self.rock_compr_ev.keys()):
-            self.rock_compr[i] = self.rock_compr_ev[k].evaluate(pressure)
-            self.kin_rates[i] = self.kinetic_rate_ev[k].evaluate(self.kin_state, self.sat_minerals[i], self.dens_m_solid[i], self.temperature)
-
-    class CustomRelPerm:
-        def __init__(self, exp, sr=0):
-            self.exp = exp
-            self.sr = sr
-
-        def evaluate(self, sat):
-            return (sat - self.sr) ** self.exp
-
-    class GasViscosity:
-        def __init__(self):
-            pass
-        def evaluate(self, pressure, temperature):
-            return 0.0278
-
-    class LiquidViscosity:
-        def __init__(self):
-            pass
-        def evaluate(self, density, temperature):
-            visc = _Viscosity(rho=density, T=temperature)
-            return visc * 1000
+class LiquidViscosity:
+    def __init__(self):
+        pass
+    def evaluate(self, density, temperature):
+        visc = _Viscosity(rho=density, T=temperature)
+        return visc * 1000
 
 class PermPoroRelationship:
     def __init__(self, exp):
