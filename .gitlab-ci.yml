@@ -892,3 +892,62 @@ pages:
         - public
     dependencies:
         - build-linux-3.10-ODLS
+# --- Add portable manylinux wheel build + smoke test -------------------------
+build:manylinux-wheels:
+  stage: build
+  image: quay.io/pypa/manylinux2014_x86_64
+  tags: [docker]                # <- adjust to your runner tag if needed
+  variables:
+    CMAKE_BUILD_PARALLEL_LEVEL: "8"
+    GIT_SUBMODULE_STRATEGY: recursive
+  script:
+    - yum -y install git
+    # Ensure submodules present (Eigen/pybind11 if you use them)
+    - git submodule update --init --recursive
+
+    # If your Python packaging lives under ./python keep 'cd python'; otherwise, remove it
+    - cd python || true
+
+    # Build wheels for the CPython versions you want (adjust the list)
+    - |
+      for PY in /opt/python/cp3{9,10,11,12}-*/bin/python; do
+        $PY -m pip install -U pip build scikit-build-core cmake ninja pybind11 auditwheel
+        # Point CMake to bundled Eigen if needed; add other CMake flags as required
+        export CMAKE_ARGS="-DEIGEN3_INCLUDE_DIR=../thirdparty/eigen -DDARTS_PYTHON=ON"
+        CMAKE_BUILD_PARALLEL_LEVEL=8 $PY -m build --wheel -n
+      done
+
+    # Repair to manylinux policy and bundle shared libs
+    - mkdir -p dist_repaired
+    - for whl in dist/*.whl; do auditwheel repair "$whl" -w dist_repaired/; done
+
+  artifacts:
+    paths:
+      - python/dist/*.whl
+      - python/dist_repaired/*.whl
+    expire_in: 2 weeks
+
+  rules:
+    # Build on branches, MRs, and tags; tune to your preference
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+test:manylinux-import:
+  stage: test
+  image: quay.io/pypa/manylinux2014_x86_64
+  needs: ["build:manylinux-wheels"]
+  script:
+    - cd python || true
+    - PY=/opt/python/cp311-cp311*/bin/python
+    - $PY -m pip install --no-index --find-links dist_repaired opendarts
+    - $PY - << 'PYCODE'
+from importlib import import_module
+m = import_module("opendarts")
+print("Imported:", m.__name__)
+PYCODE
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+# --- End addition -------------------------------------------------------------
