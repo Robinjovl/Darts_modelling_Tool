@@ -22,7 +22,7 @@
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS  
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 int engine_base::print_header()
 {
@@ -299,7 +299,7 @@ engine_base::init_adjoint_structure(csr_matrix_base* init_adjoint)
 
 		index_t n_value = mesh->n_conns + mesh->n_blocks;
         //memcpy(ad_cols, &cols[0], n_value * sizeof(ad_cols)); // still have some problems when using memcpy
-        memcpy(ad_cols, &cols[0], n_value * sizeof(index_t)); 
+        memcpy(ad_cols, &cols[0], n_value * sizeof(index_t));
 		//for (index_t i = 0; i < n_value; i++)
 		//{
 		//	ad_cols[i] = cols[i];
@@ -791,8 +791,8 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 int
 engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
-	std::vector<std::vector<value_t>> bhp, std::vector<std::vector<value_t>> well_tempr, 
-	std::vector<std::vector<value_t>> temperature, std::vector<std::vector<value_t>> customized_op, 
+	std::vector<std::vector<value_t>> bhp, std::vector<std::vector<value_t>> well_tempr,
+	std::vector<std::vector<value_t>> temperature, std::vector<std::vector<value_t>> customized_op,
 	index_t idx_sim_ts, index_t idx_obs_ts)
 {
 
@@ -962,7 +962,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	Temp_dj_du = sub2;
 
 
-    
+
     if (objfun_prod_phase_rate)
     {
         index_t upstream_idx;
@@ -1077,7 +1077,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 
 
-	
+
 	if (objfun_inj_phase_rate)
 	{
 		index_t upstream_idx;
@@ -1183,7 +1183,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	}
 
 
-	
+
 	if (objfun_BHP)
 	{
         index_t upstream_idx;
@@ -1230,7 +1230,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 
 
-	
+
 	if (objfun_well_tempr)
 	{
         index_t upstream_idx;
@@ -1261,7 +1261,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 				index_t v = n_vars - 1;  // derivatives w.r.t. temperature
 				Temp_dj_dx[upstream_idx * n_vars + v] += 1 * (-wt_WT[ww]);
 			}
-			else 
+			else
 			{
 				//index_t nc = n_vars;
 				//index_t n_ops = 2 * nc;
@@ -1394,7 +1394,7 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 		}
 	}
 	sprintf(buffer2, "%s %s )\n%s", line, buffer, line);
-	std::cout << buffer2 << std::flush;
+	//std::cout << buffer2 << std::flush;
 
 	return 0;
 }
@@ -1866,7 +1866,7 @@ int engine_base::apply_newton_update(value_t dt)
 
 	// make newton update
 	auto newton_update_coefficient_copy = this->newton_update_coefficient;
-	std::transform(X.begin(), X.end(), dX.begin(), X.begin(), 
+	std::transform(X.begin(), X.end(), dX.begin(), X.begin(),
 	  [newton_update_coefficient_copy](double x, double dx) {
 		return x - newton_update_coefficient_copy * dx;
 	  });
@@ -1929,7 +1929,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		}
 		/* ---- end check solid compositions ---- */
 
-		/* ---- check fluid compositions ---- */ 		
+		/* ---- check fluid compositions ---- */
 		sum_z = 0;
 		z_corrected = false;
 		for (char c = n_solid; c < nc - 1; c++)
@@ -1973,9 +1973,9 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		}
 		/* ---- end check fluid compositions ---- */
 	}
-	if (n_solid_corrected || n_fluid_corrected)
-		std::cout << "Composition correction applied to solid in " << n_solid_corrected << 
-		  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
+	//if (n_solid_corrected || n_fluid_corrected)
+	//	std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
+	//	  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2019,7 +2019,7 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 		}
 		else if (c_min >= 0)
 		{
-			// compute fraction of update to be at min_zc 
+			// compute fraction of update to be at min_zc
 			double frac = -(min_zc - X[i * n_vars + z_var + c_min]) / (dX[i * n_vars + z_var + c_min]);
 			if (dX[i * n_vars + z_var + c_min]  != 0)
 			{
@@ -2031,8 +2031,8 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 		}
 	}
 
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+	//if (n_corrected)
+	//	std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2322,8 +2322,8 @@ void engine_base::apply_local_chop_correction(std::vector<value_t> &X, std::vect
 			}
 		}
 	}
-	if (n_corrected)
-		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
+	//if (n_corrected)
+	//	std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2364,8 +2364,8 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 			}
 		}
 	}
-	if (n_corrected)
-		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
+	//if (n_corrected)
+	//	std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2411,7 +2411,7 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 	}
 	else if (params->log_transform == 1)
 	{
-		std::cout << "!!!Using local chop for log-transform of variables is not tested properly, proceed with caution!!!" << std::endl;
+		//std::cout << "!!!Using local chop for log-transform of variables is not tested properly, proceed with caution!!!" << std::endl;
 		for (int i = 0; i < mesh->n_blocks; i++)
 		{
 			ratio = 1.0;
@@ -2445,8 +2445,8 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 			}
 		}
 	}
-	if (n_corrected)
-		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
+	//if (n_corrected)
+	//	std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX)

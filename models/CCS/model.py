@@ -16,6 +16,28 @@ from dartsflash.components import CompData
 
 
 class Model(DartsModel):
+    def __init__(self):
+        # Call base class constructor
+        super().__init__()
+
+        # Measure time spend on reading/initialization
+        self.timer.node["initialization"].start()
+
+        self.set_reservoir()
+        zero = 1e-10
+        self.set_physics(zero, n_points=1001, temperature=None)
+
+        self.inj_stream = [0.00005]
+        self.inj_stream += [350.] if self.physics.thermal else []
+        self.p_inj = 100.
+        self.p_prod = 50.
+
+        self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3,
+                                    tol_linear=1e-5, it_newton=10, it_linear=50)
+
+        self.timer.node["initialization"].stop()
+
+
     def set_reservoir(self):
         nx = 100
         ny = 1
