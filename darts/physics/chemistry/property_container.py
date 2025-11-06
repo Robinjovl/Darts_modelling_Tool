@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.physics.properties.kinetic_registry import (
+from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
 )

@@ -1,6 +1,7 @@
 import os
 import sys
 import warnings
+from pathlib import Path
 
 import numpy as np
 
@@ -14,6 +15,32 @@ except ImportError:
 
 # Pydantic is used to validate user-provided kinetic configuration
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Databases directory co-located with this module
+_DEFAULT_DB_DIR = Path(__file__).parent / 'databases'
+
+
+def _resolve_phreeqc_db_path(db_spec: str | os.PathLike) -> str:
+    """Resolve PHREEQC database path.
+
+    Accepts either an explicit path or a file name. If a name is given, the
+    function looks under the default databases directory.
+    """
+    candidate = Path(db_spec)
+    if candidate.exists():
+        return str(candidate.resolve())
+    # Try within default dir, with and without .dat suffix
+    name = candidate.name
+    attempts = [
+        _DEFAULT_DB_DIR / name,
+    ]
+    if not candidate.suffix:
+        attempts.append(_DEFAULT_DB_DIR / f"{name}.dat")
+    for path in attempts:
+        if path.exists():
+            return str(path.resolve())
+    # Fall back to provided string; load will likely fail but error will be clear
+    return str(candidate)
 
 
 # -----------------------------
@@ -289,10 +316,11 @@ class Flash:
         :param database: PHREEQC database object
         :param db_path: path to the PHREEQC database file
         """
+        resolved = _resolve_phreeqc_db_path(db_path)
         try:
-            database.load_database(db_path)
+            database.load_database(resolved)
         except Exception as e:
-            warnings.warn(f"Failed to load '{db_path}': {e}.", Warning, stacklevel=2)
+            warnings.warn(f"Failed to load '{resolved}': {e}.", Warning, stacklevel=2)
 
     @classmethod
     def from_spec(cls, spec: FlashSpec) -> 'Flash':
