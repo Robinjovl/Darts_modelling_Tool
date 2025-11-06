@@ -2568,6 +2568,55 @@ int engine_base::test_spmv(int n_times, int kernel_number, int dump_result)
 	return 0;
 }
 
+void engine_base::extract_Xop()
+{
+	const uint8_t nc = get_n_comps();
+	const uint8_t z_var = get_z_var();
+	const uint8_t n_vars = get_n_vars();
+	const uint8_t n_ops = get_n_ops();
+	const uint8_t p_var = 0;
+
+	const int state_size = n_vars + 1;
+
+	if (Xop.size() < mesh->n_blocks * state_size)
+	{
+		Xop.resize(mesh->n_blocks * state_size);
+		xop_ders_arr.resize(mesh->n_blocks * n_ops * state_size);
+	}
+
+	for (index_t i = 0; i < mesh->n_blocks; i++)
+	{
+		Xop[i * state_size] = X[i * n_vars + p_var];
+		for (uint8_t c = 0; c < nc - 1; c++)
+		{
+			Xop[i * state_size + c + 1] = X[i * n_vars + z_var + c];
+		}
+		Xop[i * state_size + state_size - 1] = sg_max[i];
+	}
+
+	if (n_vars > nc)
+	{
+		for (index_t i = 0; i < mesh->n_blocks; i++)
+		{
+			Xop[i * state_size + nc] = X[i * n_vars + nc];
+		}
+	}
+}
+
+void engine_base::extract_xop_ders()
+{
+	const int state_size = n_vars + 1;
+	const uint8_t n_ops = get_n_ops();
+	const uint8_t n_vars = get_n_vars();
+	const index_t n_block0 = n_ops * n_vars;
+	const index_t n_block1 = n_ops * state_size;
+
+	for (index_t i = 0; i < mesh->n_blocks; i++)
+		for (index_t op = 0; op < n_ops; op++)
+			for (index_t v = 0; v < n_vars; v++)
+				op_ders_arr[i * n_block0 + op * n_vars + v] = xop_ders_arr[i * n_block1 + op * state_size + v];
+}
+
 int engine_base::assemble_linear_system(value_t deltat)
 {
 	// switch constraints if needed
@@ -2580,12 +2629,14 @@ int engine_base::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start();
 
+	extract_Xop();
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, xop_ders_arr);
 		if (result < 0)
 			return 0;
 	}
+	extract_xop_ders();
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();
 
