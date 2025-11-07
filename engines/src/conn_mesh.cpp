@@ -1744,6 +1744,7 @@ int conn_mesh::init_spe(value_t grav_acceleration_for_spe)
 	{
 		// It is multiplied by -1 because for spe height needs to be used instead of depth
 		// It is multiplied by 1e-3 to convert Joule to kilo Joule
+		// Use depth[0] as the reference depth
 		cell_spe[i] = - (depth[i] - depth[0]) * grav_acceleration_for_spe * 1e-3;
 	}
 
@@ -1765,6 +1766,7 @@ int conn_mesh::init_spe(value_t grav_acceleration_for_spe)
 
 		// It is multiplied by -1 because for spe height needs to be used instead of depth
 		// It is multiplied by 1e-3 to convert Joule to kilo Joule
+		// Use depth[0] as the reference depth
 		conn_spe[j] = - (z_conn - depth[0]) * grav_acceleration_for_spe * 1e-3;
 	}
 
