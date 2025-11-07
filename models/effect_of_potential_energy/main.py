@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 
 from model import Model
 
+simulation_time = 50
+
 """ 1st simulation: Without potential energy """
 
 m = Model()
@@ -19,12 +21,13 @@ m.set_output()
 
 print_props = m.physics.vars + ['sat_CO2_rich_phase', 'xCO2', 'yH2O']
 
-m.run(200)
+m.run(simulation_time)
 
 _, output = m.output.output_properties(output_properties=print_props, timestep=1)
-temp_profile_without_pe = output['temperature'].T
-pressure_profile_without_pe = output['pressure'].T
-H2O_mole_frac_profile_without_pe = output['H2O'].T
+linear_interval_num_cells = len(m.linear_inverval)   # Number of cells of the linear inverval considered as the reservoir
+temp_profile_without_pe = output['temperature'].T[:linear_interval_num_cells]
+pressure_profile_without_pe = output['pressure'].T[:linear_interval_num_cells]
+H2O_mole_frac_profile_without_pe = output['H2O'].T[:linear_interval_num_cells]
 
 
 """ 2nd simulation: With potential energy """
@@ -36,14 +39,14 @@ m.reservoir.grav_acceleration_for_spe = 9.80665
 m.init()
 m.set_output()
 
-m.run(200)
+m.run(simulation_time)
 
 _, output = m.output.output_properties(output_properties=print_props, timestep=1)
-temp_profile_with_pe = output['temperature'].T
-pressure_profile_with_pe = output['pressure'].T
-H2O_mole_frac_profile_with_pe = output['H2O'].T
+temp_profile_with_pe = output['temperature'].T[:linear_interval_num_cells]
+pressure_profile_with_pe = output['pressure'].T[:linear_interval_num_cells]
+H2O_mole_frac_profile_with_pe = output['H2O'].T[:linear_interval_num_cells]
 
-y = m.reservoir.global_data['depth']
+y = m.reservoir.global_data['depth'][:linear_interval_num_cells]
 
 """ Compare the temperature profiles """
 plt.plot(temp_profile_without_pe - 273.15, y, color='red', marker='o', label='Without potential energy')
