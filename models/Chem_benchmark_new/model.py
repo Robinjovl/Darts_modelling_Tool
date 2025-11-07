@@ -61,12 +61,12 @@ class Model(CICDModel):
 
     def set_reservoir(self, grid_1D: bool, res: int, solid_init):
         """Reservoir"""
-        trans_exp = 3
-        self.params.trans_mult_exp = trans_exp
+        self.permporo = PermPoroRelationship()
+        self.params.enable_permporo = True
         if self.grid_1D:
             self.dx = 1
             self.dy = 1
-            perm = 100 / (1 - solid_init) ** trans_exp
+            perm = 100 / self.permporo.evaluate(1 - solid_init)
             (self.nx, self.ny) = (1000, 1)
             self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=1, dx=self.dx, dy=self.dy, dz=1,
                                              permx=perm, permy=perm, permz=perm / 10, poro=1, depth=1000)
@@ -81,7 +81,7 @@ class Model(CICDModel):
 
             self.map = create_map(Lx, Ly, self.nx, self.ny)
 
-            perm = np.ones(self.nx * self.ny) * 100 / (1 - solid_init) ** trans_exp
+            perm = np.ones(self.nx * self.ny) * 100 / self.permporo.evaluate(1 - solid_init)
 
             # Add inclination in y-direction:
             self.depth = np.ones((self.nx * self.ny,)) * 1000
@@ -118,8 +118,6 @@ class Model(CICDModel):
         self.physics_type = 'kin'  # equi or kin
 
         """Reservoir"""
-        trans_exp = 3
-        self.params.trans_mult_exp = trans_exp
         if grid_1D:
             self.inj_gas_rate = 0.2
 
@@ -216,6 +214,7 @@ class Model(CICDModel):
             property_container.rel_perm_ev = rel_perm_ev
             property_container.diffusion_ev = diffusion_ev
             property_container.kinetic_rate_ev = deepcopy(kinetic_rate_ev)  # deepcopy because mass source BC doesn't work otherwise
+            property_container.permporo_mult_ev = self.permporo
 
             if not custom_physics:
                 if mass_sources[i] is not None:
@@ -337,8 +336,8 @@ class Model(CICDModel):
 
         fig, ax = plt.subplots(3, 2, figsize=(8, 5), dpi=200, facecolor='w', edgecolor='k')
         names = ['z_co2', 'z_h2o', 'z_inert', 'P', 'Sg', 'phi']
-        titles = ['$z_{CO_2}$ [-]', '$z_{H_2O}$ [-]', '$z_{w, Ca} + z_{w, CO_3}$ [-]',
-                  '$P$ [bars]', '$s_g$ [-]', '$\phi$ [-]']
+        titles = [r'$z_{CO_2}$ [-]', r'$z_{H_2O}$ [-]', r'$z_{w, Ca} + z_{w, CO_3}$ [-]',
+                  r'$P$ [bars]', r'$s_g$ [-]', r'$\phi$ [-]']
         for i in range(3):
             for j in range(2):
                 n = i + j * 3
@@ -399,8 +398,8 @@ class Model(CICDModel):
         fig, ax = plt.subplots(3, 2, figsize=(10, 6), dpi=200, facecolor='w', edgecolor='k')
         plt.set_cmap('jet')
         names = ['z_co2', 'z_h2o', 'z_inert', 'P', 'Sg', 'phi']
-        titles = ['$z_{CO_2}$ [-]', '$z_{H_2O}$ [-]', '$z_{w, Ca} + z_{w, CO_3}$ [-]',
-                  '$P$ [bars]', '$s_g$ [-]', '$\phi$ [-]']
+        titles = [r'$z_{CO_2}$ [-]', r'$z_{H_2O}$ [-]', r'$z_{w, Ca} + z_{w, CO_3}$ [-]',
+                  r'$P$ [bars]', r'$s_g$ [-]', r'$\phi$ [-]']
         for i in range(3):
             for j in range(2):
                 n = i + j * 3
@@ -529,3 +528,7 @@ class ReservoirWithSourceOperators(ReservoirOperators):
                                        * self.property.density_ev['wat'].evaluate(pressure, 0) / 18.015
 
         return 0
+
+class PermPoroRelationship:
+    def evaluate(self, poro):
+        return poro ** 3

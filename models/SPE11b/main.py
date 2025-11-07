@@ -13,10 +13,6 @@ from model_b import Model, PorPerm, Corey, layer_props
 from darts.engines import redirect_darts_output, sim_params
 from darts.engines import well_control_iface
 
-try:
-    from darts.engines import set_gpu_device
-except ImportError:
-    pass
 from fluidflower_str_b import FluidFlowerStruct
 
 #%%
@@ -26,8 +22,11 @@ def output(m, ts):
     m.output.save_data_to_h5('reservoir')
 
     # evaluate base properties
-    time_vector, property_array = m.output.output_properties(output_properties=m.physics.vars + m.output.properties,
-                                                             timestep=-1)
+    time_vector, property_array = m.output.output_properties(
+        output_properties=m.physics.vars + m.output.properties,
+        timestep=-1
+    )
+    m.output.output_to_vtk(ith_step = ts, output_data = [time_vector, property_array])
 
     # compute mass per component
     mass_per_component, mass_vapor, mass_aqueous = m.get_mass_components(property_array)
@@ -53,27 +52,33 @@ def output(m, ts):
                                                     + np.square(property_array[f'vel_{ph}_y']) \
                                                         + np.square(property_array[f'vel_{ph}_z']))
 
-        # store and plot fluxes
-        diff = np.asarray(m.physics.engine.diffusion_fluxes) # array containing diffusive fluxes per component and phase
-        disp = np.asarray(m.physics.engine.dispersion_fluxes) # array containing dispersion fluxes per component and phase
-        darcy = np.asarray(m.physics.engine.darcy_fluxes) # array containing darcy fluxes per component and phase
+        if m.specs['platform'] == 'cpu': # flux output is only enabled for CPU platform
+            # store and plot fluxes
+            diff = np.asarray(m.physics.engine.diffusion_fluxes) # array containing diffusive fluxes per component and phase
+            disp = np.asarray(m.physics.engine.dispersion_fluxes) # array containing dispersion fluxes per component and phase
+            darcy = np.asarray(m.physics.engine.darcy_fluxes) # array containing darcy fluxes per component and phase
 
-        mult = m.physics.nc * m.physics.nph
-        for id_key in ['SN']:
-            for phase_idx, phase_name in enumerate(m.physics.phases):
-                for comp_idx, comp_name in enumerate(m.components):
-                    i = phase_idx * m.physics.nc + comp_idx
-                    property_array[f'diff_fluxes_{phase_name}_{comp_name}_{id_key}'] = diff[
-                        mult * m.ids_list[id_key] + i]
-                    property_array[f'darcy_fluxes_{phase_name}_{comp_name}_{id_key}'] = darcy[
-                        mult * m.ids_list[id_key] + i]
-                    property_array[f'disp_fluxes_{phase_name}_{comp_name}_{id_key}'] = disp[
-                        mult * m.ids_list[id_key] + i]
+            mult = m.physics.nc * m.physics.nph
+            for id_key in ['SN']:
+                for phase_idx, phase_name in enumerate(m.physics.phases):
+                    for comp_idx, comp_name in enumerate(m.components):
+                        i = phase_idx * m.physics.nc + comp_idx
+                        property_array[f'diff_fluxes_{phase_name}_{comp_name}_{id_key}'] = diff[
+                            mult * m.ids_list[id_key] + i]
+                        property_array[f'darcy_fluxes_{phase_name}_{comp_name}_{id_key}'] = darcy[
+                            mult * m.ids_list[id_key] + i]
+                        property_array[f'disp_fluxes_{phase_name}_{comp_name}_{id_key}'] = disp[
+                            mult * m.ids_list[id_key] + i]
 
-    m.plot_fluxes(property_array, time_vector, ts)  # plot fluxes
+    if m.specs['platform']=='cpu':
+        m.plot_fluxes(property_array, time_vector, ts)  # plot fluxes
     m.plot_properties(property_array, time_vector, ts)  # plot properties
-    # m.my_output_to_vtk(property_array=property_array, timesteps=time_vector, ith_step=ts)  # output to vtk
+
+    # export properties
+    m.output.save_property_array(time_vector, property_array)
     m.output.save_property_array(time_vector, property_array, f'property_array_ts{ts}.h5')
+
+
 
 def post_process(m, specs):
 
@@ -180,21 +185,26 @@ nx = 840//4
 nz = 120
 zero = 1e-10
 
+
+# cpu/gpu based on platform
+platform = 'cpu'
+if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+    platform = 'gpu'
+
 model_specs = [
 
         # RHS CORRECTION WITH DISPERSION ON
     {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
-        'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT', 'post_process': None, 'gpu_device': False},
+        'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT', 'post_process': None, 'platform': platform},
 
         # RHS CORRECTION WITH DISPERSION ON - RESTART MODEL
     {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
-        'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT', 'post_process': 'POST', 'gpu_device': False},
+        'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT', 'post_process': 'POST', 'platform': platform},
 
     #{'check_rates': True, 'temperature': None, 'components': ['H2S', 'CO2', 'H2O'], 'inj_stream': [0.05-1e-10, 0.95-1e-10, 283.15], 'nx': nx, 'nz': nz, 'output_dir': 'ternary_H2S_5', 'gpu_device': None},
     #{'check_rates': True, 'temperature': None, 'components': ['C1', 'CO2', 'H2O'], 'inj_stream': [0.05-1e-10, 0.95-1e-10, 283.15], 'nx': nx, 'nz': nz, 'output_dir': 'ternary_C1_5', 'gpu_device': None},
     #{'check_rates': True, 'temperature': None, 'components': ['C1', 'H2S', 'CO2', 'H2O'], 'inj_stream': [0.04, 0.01, 0.95, 283.15], 'nx': nx, 'nz': nz, 'output_dir': '4components_5', 'gpu_device': None}
     ]
-    
 
 #%%
 
@@ -214,8 +224,10 @@ if __name__ == '__main__':
 
             if specs['dispersion']:
                 m.init_dispersion()
-            m.physics.engine.enable_flux_output()
-            m.map_mesh_faces()
+
+            if specs['platform'] == 'cpu':
+                m.physics.engine.enable_flux_output()
+                m.map_mesh_faces()
 
             # simulate a thousand years
             if specs['1000years']:
@@ -228,8 +240,9 @@ if __name__ == '__main__':
             m.output.verbose = False
 
             avg_rates = run(m, specs)
-            m.print_timers()
-            m.print_stat()
+
+            # time_vector, property_array = m.output.load_property_array('reservoir_solution.h5')
+            # time_vector1, property_array1 = m.output.load_property_array('property_array_ts3.h5')
 
             if specs['RHS'] is False:
                 time_data = m.output.store_well_time_data(["components_mass_rates"])
@@ -265,12 +278,12 @@ if __name__ == '__main__':
 
             if specs['dispersion']:
                 m.init_dispersion()
-            m.physics.engine.enable_flux_output()
-            m.map_mesh_faces()
+
+            if specs['platform'] == 'cpu':
+                m.physics.engine.enable_flux_output()
+                m.map_mesh_faces()
 
             avg_rates = post_process(m, specs)
 
         m.print_timers()
-
-
-
+        m.print_stat()

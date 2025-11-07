@@ -162,10 +162,9 @@ def run_timestep_python(m, dt, t):
     if not hasattr(m, 'slip_area'):
         m.slip_area = [0.0]
 
-    areas = calc_slip_area(m)
-    cur_area = sum(areas)
+    cur_area = m.reservoir.calc_slip_areas(engine=m.physics.engine)[0]  # only one fault here, so take 0-th index
     print('slip area = ' + str(cur_area))
-    # print(areas)
+
     if m.enable_dynamic_mode:
         if cur_area - m.slip_area[-1] > 4.2 * m.min_area:
             converged *= 0
@@ -177,15 +176,7 @@ def run_timestep_python(m, dt, t):
 
     self.timer.node['simulation'].stop()
     return converged
-def calc_slip_area(m):
-    areas = []
-    dz = np.max(m.reservoir.unstr_discr.mesh_data.points[:,2]) - np.min(m.reservoir.unstr_discr.mesh_data.points[:,2])
-    for contact in m.physics.engine.contacts:
-        cell_ids = np.array(contact.cell_ids, copy=True)
-        for i in range(cell_ids.size):
-            if contact.states[i] == contact_state.SLIP:
-                areas.append(m.reservoir.unstr_discr.faces[cell_ids[i]][4].area / dz)
-    return areas
+
 def get_output_folder(config={'mode': 'quasi_static', 'depletion': {'mode': 'uniform'}, 'friction_law': 'static'}):
     return 'sol_' + config['mode'] + '_' + config['depletion']['mode'] + '_' + config['friction_law']
 def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=False):
@@ -234,10 +225,12 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     m.physics.engine.find_equilibrium = False
 
     if m.depletion_mode == 'uniform':
-        # no fluid flow, no mechanics -> flow coupling, keeping pressure -> mechanics influencing
+        # no fluid flow
+        # no mechanics -> flow coupling, keeping pressure -> mechanics influencing
         m.reservoir.apply_geomechanics_mode(physics=m.physics, mode=2)
     else:
-        # eliminate mechanics -> flow coupling, keeping flow -> mechanics
+        # flud flow persists,
+        # no mechanics -> flow coupling, keeping flow -> mechanics
         m.reservoir.apply_geomechanics_mode(physics=m.physics, mode=0)
 
     ## timestepping
@@ -604,7 +597,38 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
     plt.close(fig)
     # plt.show()
 
-if __name__ == '__main__':
+def run_tests():
+    test_args_fault = []
+    config = {'mode': 'quasi_static',
+              'timesteps': [1.0],
+              'depletion': {'mode': 'uniform', 'value': -250.0},
+              'friction_law': 'static',
+              'mesh_file': 'meshes/new_setup_coarse.geo',
+              'cache_discretizer': False}
+    config[0] = config['friction_law']  # to make work arg[0] in for_each_model
+    test_args_fault += [config]
+    config = {'mode': 'quasi_static',
+              'timesteps': [1.0],
+              'depletion': {'mode': 'uniform', 'value': -172.4},  # -172.685 is more precise, requires finer mesh
+              'friction_law': 'slip_weakening',
+              'mesh_file': 'meshes/new_setup_coarse.geo',
+              'cache_discretizer': False}
+    config[0] = config['friction_law']  # to make work arg[0] in for_each_model
+    test_args_fault += [config]
+
+    rcode = 0
+    failed_tests = []
+    for config_i in test_args_fault:
+        rcode += run_test(args=config_i, platform='cpu')[0]
+        if rcode != 0:
+            failed_tests += [config_i]
+    if rcode != 0:
+        print('Failed tests configs: ', failed_tests)
+        print('Tests failed:', len(failed_tests))
+    else:
+        print('All tests passed successfully!')
+
+def run_all():
     cases = []
 
     config = {'mode': 'mixed',
@@ -654,3 +678,7 @@ if __name__ == '__main__':
     # labels = ['DARTS: slip_weakening']
     # output_directory = 'sol_mixed_uniform_slip_weakening'
     # plot_profiles(data_folder=output_directory, labels=labels, analytics=None, animate=True)
+
+if __name__ == '__main__':
+    run_tests()
+    #run_all()

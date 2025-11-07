@@ -147,7 +147,17 @@ def run_timestep_python(m, dt, t):
                     converged = 0
                 break
 
-        r_code = self.e.solve_linear_equation()
+        from darts.input.input_data import linear_solver_types
+        if hasattr(self, 'data_ts') and type(self.data_ts.linear_type) == linear_solver_types: # solvers via Python-exposed jacobian
+            if self.data_ts.linear_type in [linear_solver_types.CPU_PETSC_CPR, linear_solver_types.CPU_PETSC_FS]:
+                self.petsc_solve_linear_equation()
+            elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
+                self.pardiso_solve_linear_equation()
+            else:
+                raise Exception("Unknown linear solver type", self.idata.data_ts.linear_type)
+        else: # compile-tyme C++ linear solvers
+            r_code = self.e.solve_linear_equation()
+
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)
         self.timer.node["newton update"].stop()
@@ -629,14 +639,14 @@ if __name__ == '__main__':
     #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='wedge')
 
     # Unstructured hexahedral grid
-    #run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
+    run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
     # run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
     # run(case='mandel', discretizer='mech_discretizer', mesh='hex')
     # run(case='mandel', discretizer='pm_discretizer', mesh='hex')
     # run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
-    #test_all = False
-    test_all = True
+    test_all = False
+    #test_all = True
     cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
     if test_all:
         for case in cases_list:

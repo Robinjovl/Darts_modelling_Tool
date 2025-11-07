@@ -80,10 +80,6 @@ def build_output_dir(spec, base_dir="results"):
 import pickle
 from darts.engines import redirect_darts_output, sim_params
 from fluidflower_str_b import FluidFlowerStruct
-try:
-    from darts.engines import set_gpu_device
-except:
-    from darts.engines import set_num_threads
 
 # For each of the facies within the SPE11b model we define a set of operators in the physics.
 property_regions  = [0, 1, 2, 3, 4, 5, 6]
@@ -145,12 +141,14 @@ class Model(DartsModel):
         else:
             self.inj_rate = [0, 0]
 
-        if specs['gpu_device'] is False:
+        if specs['platform'] == 'cpu':
             self.platform = 'cpu'
-            set_num_threads(12)
-        else:
+            # from darts.engines import set_num_threads
+            # set_num_threads(12)
+        elif specs['platform'] == 'gpu':
             self.platform = 'gpu'
-            set_gpu_device(0)
+            # from darts.engines import set_gpu_device
+            # set_gpu_device(0)
 
     def set_wells(self):
         self.reservoir.set_wells(False)
@@ -480,31 +478,6 @@ class Model(DartsModel):
             target_cell = top_cell*nv+nv-1
             self.physics.engine.X[target_cell] = T_spec_top
         return
-
-    def my_output_to_vtk(self, property_array, timesteps, ith_step: int = None, output_directory: str = None, ):
-        self.timer.start(); self.timer.node["vtk_output"].start()
-
-        # Set default output directory
-        if output_directory is None:
-            output_directory = os.path.join(self.output_folder, 'vtk_files')
-        os.makedirs(output_directory, exist_ok=True)
-
-        # units to prop names
-        prop_names = {}
-        for i, name in enumerate(property_array.keys()):
-            prop_names[name] = name
-            
-        for t, time in enumerate(timesteps):
-            data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
-            for i, name in enumerate(property_array.keys()):
-                data[i, :] = property_array[name][t]
-
-            if ith_step is None:
-                self.reservoir.output_to_vtk(t, time, output_directory, prop_names, data)
-            else:
-                self.reservoir.output_to_vtk(ith_step, time, output_directory, prop_names, data)
-
-        self.timer.node["vtk_output"].stop(); self.timer.stop()
 
     def run(self, days: float = None, restart_dt: float = 0., save_well_data: bool = True, save_well_data_after_run: bool = False,
             save_reservoir_data: bool = True, verbose: bool = True):
