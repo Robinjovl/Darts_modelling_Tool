@@ -174,36 +174,31 @@ def run_all():
 # 4) Entry point (keeps your original sentinel)
 # --------------------------------------------
 if __name__ == '__main__':
-    match 5:
-        case 1:
-            case_geom = 'generate_5x3x4'
-        case 2:
-            case_geom = 'generate_51x51x1'
-        case 3:
-            case_geom = 'generate_51x51x1_faultmult'
-        case 4:
-            case_geom = 'generate_100x100x100'
-        # for grdecl cases, the grid and properties files must be in meshes/<case> folder, the last '_' part is ignored so can use it for naming
-        case 5:
-            case_geom = '40x40x10'
-        case 6:
-            case_geom = 'brugge'
-        case 7:
-            case_geom = 'brugge_noburdenlayers'
-    # make a choice between different physics
-    match 'geothermal':
-        case 'geothermal':
-            physics_type = 'geothermal'
-        case 'DeadOil':
-            physics_type = 'DeadOil'
-        case 'CCS':
-            physics_type = 'CCS'
-    # make a choice between different well controls
-    match 1:
-        case 1:
-            well_controls = 'rate'
-        case 2:
-            well_controls = 'bhp'
-        case 3:
-            well_controls = 'periodic'
-    ret = run(physics_type, case_geom, well_controls)
+    grid_cases = [
+        # generated cases
+        'generate_5x3x4',
+        'generate_51x51x1',
+        'generate_51x51x1_faultmult',
+        'generate_100x100x100',
+        # for grdecl cases, the grid and properties files must be in meshes/<case> folder,
+        # the last '_' part is ignored so can use it for naming
+        '40x40x10',
+        # 'brugge',
+        # 'brugge_noburdenlayers',
+    ]
+
+    PHYSICS = [
+        'geothermal',
+        'DeadOil',
+        'CCS',
+    ]
+
+    WELL_CONTROLS = [
+        'rate',
+        'bhp',
+        'periodic'
+    ]
+
+    run_all()
+
+
