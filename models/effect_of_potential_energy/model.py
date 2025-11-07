@@ -41,7 +41,10 @@ class Model(DartsModel):
         nz = 20
         dx = 10
         dy = 10
-        dz = 50
+        self.linear_inverval = 10 * np.ones(int(nz / 2))   # Reservoir interval
+        log_inverval = np.logspace(start=1, stop=2, num=int(nz / 2))   # Underburden interval
+        dz = np.concatenate((self.linear_inverval, log_inverval))
+
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
                                          permx=100, permy=100, permz=1000, hcap=2200, rcond=100, poro=0.2)
         self.reservoir.boundary_volumes['xy_plus'] = 1e20
