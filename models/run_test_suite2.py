@@ -20,6 +20,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      'GeoRising',
                      'CoaxWell',
                      'phreeqc_dissolution'
+                     'effect_of_potential_energy'
                      ]
 
 

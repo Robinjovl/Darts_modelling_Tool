@@ -1,6 +1,6 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -16,7 +16,7 @@ from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData
 
 
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -25,6 +25,7 @@ class Model(DartsModel):
         self.timer.node["initialization"].start()
 
         self.set_reservoir()
+        self.reservoir.grav_acceleration_for_spe = 9.80665
         self.zero = 1e-10
         self.set_physics(n_points=10001)
 
