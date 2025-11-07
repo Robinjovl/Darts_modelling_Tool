@@ -14,10 +14,12 @@ try:
         EquilibriumSolver,
         GaseousPhase,
         PhreeqcDatabase,
+        SupcrtDatabase,
         speciate,
     )
 except Exception as _exc:  # pragma: no cover - optional dependency
     PhreeqcDatabase = None
+    SupcrtDatabase = None
     AqueousPhase = None
     GaseousPhase = None
     MineralPhase = None
@@ -33,12 +35,15 @@ else:
 
 class Flash:
     """
-    Calculates chemical and vapour-liquid equilibrium using Reaktoro
-    with a PHREEQC thermodynamic database (phreeqc.dat).
+    Calculates chemical and vapour-liquid equilibrium using Reaktoro.
 
     This class mirrors the public runtime interface of the PHREEQC-based
     Flash in `phreeqc.py` as closely as possible, but uses Reaktoro
     for equilibrium calculations.
+
+    Supported databases:
+    - PHREEQC: phreeqc.dat
+    - Supcrtbl: supcrtbl
     """
 
     def __init__(
@@ -64,7 +69,7 @@ class Flash:
         :type gas_species: list[str] | tuple[str, ...]
         :param tolerance: convergence tolerance for the equilibrium solver
         :type tolerance: float
-        :param database_filename: path to PHREEQC database file for primary engine
+        :param database_filename: path to database file (PHREEQC or supcrtbl) for primary engine
         :type database_filename: str
         """
         if _REAKTORO_IMPORT_ERROR is not None:  # pragma: no cover
@@ -178,7 +183,7 @@ class Flash:
             water_moles = init_o_moles
             fluid_moles[self.fc_idx['H']] = init_h_moles - 2 * init_o_moles
             fluid_moles[self.fc_idx['O']] = 0
-        state.set("H2O", water_moles, "mol")
+        state.set("H2O" + self.aq_ending, water_moles, "mol")
 
         solver = EquilibriumSolver(self.system)
         op = EquilibriumOptions()
@@ -257,8 +262,8 @@ class Flash:
         aq_props = AqueousProps(state)
         kin_state = {
             'Act(H+)': props.speciesActivity("H+").val(),
-            'Act(CO2)': props.speciesActivity("CO2").val(),
-            'Act(H2O)': props.speciesActivity("H2O").val(),
+            'Act(CO2)': props.speciesActivity("CO2" + self.aq_ending).val(),
+            'Act(H2O)': props.speciesActivity("H2O" + self.aq_ending).val(),
             #'pH': aq_props.pH().val(),
         }
 
@@ -267,6 +272,8 @@ class Flash:
             id = aq_props.saturationSpecies().findWithFormula(m)
             if id < n_saturation_species:
                 kin_state[f"SR_{m}"] = aq_props.saturationRatio(id).val()
+            else:
+                kin_state[f"SR_{m}"] = 0.0
 
         return (
             nu_v,
@@ -280,9 +287,15 @@ class Flash:
         )
 
     def _build_reaktoro_system(self):
-        # Load PHREEQC database
         try:
-            self.db = PhreeqcDatabase(self.database_filename)
+            if self.database_filename == "supcrtbl":
+                # Load SUPCRT database
+                self.db = SupcrtDatabase(self.database_filename)
+                self.aq_ending = "(aq)"
+            else:
+                # Load PHREEQC database
+                self.db = PhreeqcDatabase(self.database_filename)
+                self.aq_ending = ""
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to load {self.database_filename} with Reaktoro: {exc}"
