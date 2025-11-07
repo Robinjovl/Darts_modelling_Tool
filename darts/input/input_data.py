@@ -1,6 +1,13 @@
-from typing import Union
+from enum import Enum
 
 import numpy as np
+
+
+# set PETSC solver types with negative values to easily distinguish c++ solvers and PETSC
+class linear_solver_types(Enum):
+    CPU_PETSC_CPR = -1  # CPR for flow
+    CPU_PETSC_FS = -2  # fixed stress for poromechanics
+    CPU_PARDISO = -10  # direct parallel solver
 
 
 class RockProps:
@@ -204,7 +211,7 @@ class Well:
 class WellPerforation:
     def __init__(
         self,
-        loc_ijk: Union[int, tuple],
+        loc_ijk: int | tuple,
         status: str,
         well_radius: float,
         well_index: float,
@@ -231,8 +238,8 @@ class WellData:
         self,
         name: str,
         loc_type: str,
-        loc_ijk: Union[int, tuple] = None,
-        loc_xyz: Union[float, tuple] = None,
+        loc_ijk: int | tuple = None,
+        loc_xyz: float | tuple = None,
     ):
         assert name not in self.wells, 'The well ' + name + ' has been already added!'
         w = Well(loc_type=loc_type)
@@ -249,7 +256,7 @@ class WellData:
         self,
         name: str,
         time: float,
-        loc_ijk: Union[int, tuple],
+        loc_ijk: int | tuple,
         status: str,
         well_radius: float,
         well_index: float,
@@ -407,9 +414,11 @@ class WellData:
         bhp_constraint=None,
         temperature=None,
         phase_name=None,
-        inj_composition=[],
+        inj_composition=None,
         time=0,
     ):
+        if inj_composition is None:
+            inj_composition = []
         wctrl = WellControl()
         wctrl.inj_rate_control(
             rate=rate,
@@ -421,8 +430,10 @@ class WellData:
         self.wells[name].controls.append((time, wctrl))
 
     def add_inj_bhp_control(
-        self, name, bhp, temperature=None, phase_name=None, inj_composition=[], time=0
+        self, name, bhp, temperature=None, phase_name=None, inj_composition=None, time=0
     ):
+        if inj_composition is None:
+            inj_composition = []
         wctrl = WellControl()
         wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, phase_name=phase_name)
         self.wells[name].controls.append((time, wctrl))
@@ -488,9 +499,7 @@ class InputData:
             'thermoporoelasticity',
             'none',
         ], 'input_data: Unknown type_mech'
-        for (
-            k
-        ) in (
+        for k in (
             self.__dict__.keys()
         ):  # loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
@@ -527,7 +536,7 @@ class InputData:
                         k2,
                         'is not initialized!',
                     )
-                    assert False
+                    raise AssertionError()
 
     def make_prop_arrays(self):
         """
@@ -552,9 +561,7 @@ class InputData:
                 if not np.isscalar(value):  # if np.array
                     max_n_regions = value.size
         # make arrays from scalar fields
-        for (
-            k
-        ) in (
+        for k in (
             self.__dict__.keys()
         ):  # loop over the attributes (self.rock, self.fluid, ..)
             if k not in array_obj:
