@@ -34,7 +34,7 @@ H2O_mole_frac_profile_without_pe = output['H2O'].T[:linear_interval_num_cells]
 
 m = Model()
 
-m.reservoir.grav_acceleration_for_spe = 9.80665
+# m.reservoir.grav_acceleration_for_spe = 9.80665   # This is specified in the constructor of DartsModel.
 
 m.init()
 m.set_output()
@@ -48,47 +48,48 @@ H2O_mole_frac_profile_with_pe = output['H2O'].T[:linear_interval_num_cells]
 
 y = m.reservoir.global_data['depth'][:linear_interval_num_cells]
 
-""" Compare the temperature profiles """
-plt.plot(temp_profile_without_pe - 273.15, y, color='red', marker='o', label='Without potential energy')
-plt.plot(temp_profile_with_pe - 273.15, y, color='blue', marker='*', label='With potential energy')
-
-plt.gca().invert_yaxis()
-plt.xlabel('Temperature [degree C]')
-plt.ylabel('Reservoir cell depth [meter]')
-
-plt.yticks(y)
-
-plt.legend()
-plt.grid()
-plt.tight_layout()
-plt.show()
-
-""" Compare the pressure profiles """
-plt.plot(pressure_profile_without_pe, y, color='red', marker='o', label='Without potential energy')
-plt.plot(pressure_profile_with_pe, y, color='blue', marker='*', label='With potential energy')
-
-plt.gca().invert_yaxis()
-plt.xlabel('Pressure [bar]')
-plt.ylabel('Reservoir cell depth [meter]')
-
-plt.yticks(y)
-
-plt.legend()
-plt.grid()
-plt.tight_layout()
-plt.show()
-
-""" Compare the overall mole fraction profiles """
-plt.plot(H2O_mole_frac_profile_without_pe, y, color='red', marker='o', label='Without potential energy')
-plt.plot(H2O_mole_frac_profile_with_pe, y, color='blue', marker='*', label='With potential energy')
-
-plt.gca().invert_yaxis()
-plt.xlabel('H$_2$O overall mole fraction [-]')
-plt.ylabel('Reservoir cell depth [meter]')
-
-plt.yticks(y)
-
-plt.legend()
-plt.grid()
-plt.tight_layout()
-plt.show()
+""" Compare the property profiles """
+# """ Compare the temperature profiles """
+# plt.plot(temp_profile_without_pe - 273.15, y, color='red', marker='o', label='Without potential energy')
+# plt.plot(temp_profile_with_pe - 273.15, y, color='blue', marker='*', label='With potential energy')
+#
+# plt.gca().invert_yaxis()
+# plt.xlabel('Temperature [degree C]')
+# plt.ylabel('Reservoir cell depth [meter]')
+#
+# plt.yticks(y)
+#
+# plt.legend()
+# plt.grid()
+# plt.tight_layout()
+# plt.show()
+#
+# """ Compare the pressure profiles """
+# plt.plot(pressure_profile_without_pe, y, color='red', marker='o', label='Without potential energy')
+# plt.plot(pressure_profile_with_pe, y, color='blue', marker='*', label='With potential energy')
+#
+# plt.gca().invert_yaxis()
+# plt.xlabel('Pressure [bar]')
+# plt.ylabel('Reservoir cell depth [meter]')
+#
+# plt.yticks(y)
+#
+# plt.legend()
+# plt.grid()
+# plt.tight_layout()
+# plt.show()
+#
+# """ Compare the overall mole fraction profiles """
+# plt.plot(H2O_mole_frac_profile_without_pe, y, color='red', marker='o', label='Without potential energy')
+# plt.plot(H2O_mole_frac_profile_with_pe, y, color='blue', marker='*', label='With potential energy')
+#
+# plt.gca().invert_yaxis()
+# plt.xlabel('H$_2$O overall mole fraction [-]')
+# plt.ylabel('Reservoir cell depth [meter]')
+#
+# plt.yticks(y)
+#
+# plt.legend()
+# plt.grid()
+# plt.tight_layout()
+# plt.show()
