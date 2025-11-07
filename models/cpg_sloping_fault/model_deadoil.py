@@ -2,18 +2,15 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 
-from darts.input.input_data import InputData
 from darts.engines import value_vector
 from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
-from darts.engines import well_control_iface
 
-from model_cpg import Model_CPG, fmt
-from set_case import set_input_data
-
+from model_base import Model_CPG, fmt
 
 class ModelDeadOil(Model_CPG):
     def __init__(self):
         self.zero = 1e-13
+        self.physics_type = 'deadoil'
         super().__init__()
 
     def set_physics(self):
@@ -43,7 +40,7 @@ class ModelDeadOil(Model_CPG):
                 for z in z_range:
                     # state is pressure and 1 molar fractions out of 2
                     state = [p, z]
-                    sat = self.physics.property_containers[0].compute_saturation_full(state, evaluate_PT_from_PHflash=True)
+                    sat = self.physics.property_containers[0].compute_saturation_full(state)
                     if sat > s:
                         break
                 return z
@@ -94,7 +91,7 @@ class ModelDeadOil(Model_CPG):
     def print_well_rate(self):
         inj_well = None
         for i, w in enumerate(self.reservoir.wells):
-            if self.well_is_inj(w.name):
+            if self.idata.well_is_inj(w.name):
                 inj_well = w
             else:
                 prod_well = w
@@ -113,51 +110,3 @@ class ModelDeadOil(Model_CPG):
             bhp_inj = rate_inj = 0.
         print(fmt(years), 'years:', 'OIL RATE_prod =', fmt(rate_prod), ' WATER RATE_inj =', fmt(rate_inj), 'BHP_prod =',
               fmt(bhp_prod), 'BHP_inj =', fmt(bhp_inj))
-
-    def set_input_data(self, case=''):
-        self.idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
-        set_input_data(self.idata, case)
-
-        self.idata.geom.burden_layers = 0
-
-        # this sets default properties
-        self.idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
-
-        # example - how to change the properties
-        # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
-        # well controls
-        wdata = self.idata.well_data
-        wells = wdata.wells  # short name
-        # set default injection composition
-        inj_comp = value_vector([self.zero * 100])  # injection composition - water
-
-        if 'wbhp' in case:
-            for w in wells:
-                if self.well_is_inj(w):
-                    wdata.add_inj_bhp_control(name=w, bhp=250, phase_name='water', inj_composition=inj_comp, temperature=300)  # kmol/day | bars | K
-                else:  # prod
-                    wdata.add_prd_bhp_control(name=w, bhp=100)  # kmol/day | bars
-        elif 'wrate' in case:
-            for w in wells:
-                if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=250)  # kmol/day | bars | K
-                else:  # prod
-                    wdata.add_prd_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=100)  # kmol/day | bars
-        elif 'wperiodic' in case:
-            y2d = 365.25
-            for w in wells:
-                if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
-                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
-                else:  # prod
-                    wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
-                    wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
-
-        self.idata.obl.n_points = 400
-        self.idata.obl.zero = 1e-13
-        self.idata.obl.min_p = 0.
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 10.
-        self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
