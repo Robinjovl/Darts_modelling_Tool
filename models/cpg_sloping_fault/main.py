@@ -12,7 +12,7 @@ from model_deadoil import ModelDeadOil
 from model_CO2 import ModelCCS
 
 
-def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=False):
+def run(rsv: str, physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=False):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
@@ -347,6 +347,7 @@ if __name__ == '__main__':
                                                                                             redirect_log=False,
                                                                                             platform=platform,
                                                                                             export_vtk = True,
+                                                                                            rsv=rsv
                                                                                             )
 
                     # one can read well results from pkl file to add/change well plots without re-running the model
