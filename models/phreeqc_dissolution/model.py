@@ -301,7 +301,6 @@ class Model(CICDModel):
     def set_reservoir(self, domain, nx, mesh_filename, poro_filename):
         self.domain = domain
 
-
         # permporo relationship
         self.params.enable_permporo = True
         true_initial_mean_poro = 0.3
