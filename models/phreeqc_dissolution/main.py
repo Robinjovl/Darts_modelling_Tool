@@ -6,10 +6,10 @@ from darts.engines import redirect_darts_output
 import numpy as np
 from visualization import plot_profiles, plot_new_profiles, animate_1d
 
-def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str = None, poro_filename: str = None, 
-                   output: bool = False, interpolator: str = 'multilinear', minerals: list = ['calcite'], 
+def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str = None, poro_filename: str = None,
+                   output: bool = False, interpolator: str = 'multilinear', minerals: list = ['calcite'],
                    kinetic_mechanisms: list = ['acidic', 'neutral', 'carbonate'], output_folder: str = None,
-                   n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1, 
+                   n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
                    perm_poro: str = 'power_8', platform: str = 'cpu'):
     # Make a folder
     if output_folder is None:
@@ -98,7 +98,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         ith_step += 1
         if perm_poro == 'power_8':
             m.data_ts.dt_max *= 40
-    
+
         for i in range(15):
             dt = 0.4
             m.run(days=dt)
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     #                 n_obl_mult=n_obl_mult,
     #                 interpolator='multilinear',
     #                 poro_filename='calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
-    #                 minerals=['calcite'],#, 'dolomite'],#, 'magnesite'],  
+    #                 minerals=['calcite'],#, 'dolomite'],#, 'magnesite'],
     #                 kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
     #                 h2o_injection=1.1,
     #                 co2_injection=0.1,

@@ -21,39 +21,39 @@ def setup_logger(folder):
     log_file = os.path.join(folder, 'simulation.log')
     logger = logging.getLogger(f'simulation_{os.path.basename(folder)}')
     logger.setLevel(logging.INFO)
-    
+
     # Create file handler
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
-    
+
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
-    
+
     # Create formatter
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
-    
+
     # Add handlers to logger
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
-    
+
     return logger
 
 def run_single_simulation(i, prefix, poro_folder, nx, max_ts, n_obl_mult):
     folder = os.path.join(prefix, f'{i}')
     if not os.path.exists(folder):
         os.makedirs(folder)
-    
+
     # Setup logger for this simulation
     logger = setup_logger(folder)
     logger.info(f"Starting simulation {i}")
-    
+
     try:
         poro_filename = os.path.join(poro_folder, f'porosity_{i}.txt')
         logger.info(f"Using porosity file: {poro_filename}")
-        
+
         run_simulation(domain='2D', nx=nx, output=True, max_ts=max_ts,
                             poro_filename=poro_filename,
                             output_folder=folder,
@@ -77,7 +77,7 @@ def run_batch_simulation(n_runs, nx, corr_len, max_ts, poro_folder=None, prefix=
     if poro_folder is None:
         var = 1
         poro_folder = f'spherical_{nx}_{corr_len}_{var}'
-        
+
         if prefix is None:
             prefix = 'output_2D'
 
@@ -87,19 +87,19 @@ def run_batch_simulation(n_runs, nx, corr_len, max_ts, poro_folder=None, prefix=
 
         if not os.path.exists(poro_folder):
             os.makedirs(poro_folder)
-        
+
         generate_random_field(dir=poro_folder, n_realizations=n_runs, nx=nx, len_scale=corr_len, var=var)
 
     n_obl_mult = 3
-    
+
     # Create a partial function with fixed arguments
-    run_sim = partial(run_single_simulation, 
+    run_sim = partial(run_single_simulation,
                      prefix=prefix,
                      poro_folder=poro_folder,
                      nx=nx,
                      max_ts=max_ts,
                      n_obl_mult=n_obl_mult)
-    
+
     # Run simulations in parallel with specified batch size
     with Pool(processes=n_batch) as pool:
         pool.map(run_sim, range(n_runs))
@@ -109,5 +109,5 @@ if __name__ == '__main__':
     nx = 50
     n_batch = 32
     corr_len = 5
-    run_batch_simulation(n_runs=n_runs, nx=nx, corr_len=corr_len, max_ts=5.e-5, 
+    run_batch_simulation(n_runs=n_runs, nx=nx, corr_len=corr_len, max_ts=5.e-5,
                             prefix=f'calcite_2D_{nx}_{n_runs}', n_batch=n_batch)

@@ -666,4 +666,3 @@ if __name__ == '__main__':
     animate_2x3_profiles_from_sources(h5_paths=h5_paths, labels=labels,
                                       output_folder=output_folder, ffmpeg_path=ffmpeg_path,
                                       nx_fig=12, ny_fig=8, ls=12)
-
