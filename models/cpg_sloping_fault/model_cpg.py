@@ -133,13 +133,14 @@ class Model_CPG(CICDModel):
         self.reservoir.boundary_volumes['xz_minus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['xz_plus'] = self.idata.geom.bound_volume
 
-
-            # add hcap and rcond to be saved into mesh.vtu
-            self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
-                                               'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l)})
-
-        if 'ROCKNUM' in arrays: # rock thermal properties specified in a file
-            self.reservoir.global_data.update({'rocknum': arrays['ROCKNUM']})
+        # l2g = np.array(self.reservoir.local_data, copy=False)
+        # g2l = np.array(self.reservoir.global_data, copy=False)
+        # # add hcap and rcond to be saved into mesh.vtu
+        # self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
+        #                                    'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l)})
+        #
+        # if 'ROCKNUM' in arrays: # rock thermal properties specified in a file
+        #     self.reservoir.global_data.update({'rocknum': arrays['ROCKNUM']})
     def set_wells(self):
         # add wells and perforations, 1-based IJK indices
         if hasattr(self.idata, 'schfile'):

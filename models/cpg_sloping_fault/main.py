@@ -337,16 +337,17 @@ if __name__ == '__main__':
     for physics_type in physics_list:
         for case_geom in cases_list:
             for wctrl in well_controls:
-                if physics_type == 'deadoil' and wctrl == 'wrate':
-                    continue
-                case = case_geom + '_' + wctrl
-                out_dir = 'results_' + physics_type + '_' + case
-                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
-                                                                                        case=case, out_dir=out_dir,
-                                                                                        redirect_log=False,
-                                                                                        platform=platform,
-                                                                                        export_vtk = True,
-                                                                                        )
+                for rsv in rsv_list:
+                    if physics_type == 'deadoil' and wctrl == 'wrate':
+                        continue
+                    case = case_geom + '_' + wctrl
+                    out_dir = 'results_' + physics_type + '_' + case
+                    failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
+                                                                                            case=case, out_dir=out_dir,
+                                                                                            redirect_log=False,
+                                                                                            platform=platform,
+                                                                                            export_vtk = True,
+                                                                                            )
 
                     # one can read well results from pkl file to add/change well plots without re-running the model
                     pkl1_dir = '.'

@@ -167,7 +167,7 @@ class ModelGeothermal(Model_CPG):
             assert False, 'Unknown wctrl_type' + case
 
         self.idata.obl.n_points = 100
-        self.idata.obl.min_p = 50.
+        self.idata.obl.min_p = 10.
         self.idata.obl.max_p = 400.
         self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
         self.idata.obl.max_e = 25000.  # kJ/kmol, will be overwritten in PHFlash physics
