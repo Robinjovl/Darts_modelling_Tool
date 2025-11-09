@@ -4,7 +4,7 @@ from darts.engines import timer_node
 from darts.reservoirs.struct_reservoir import StructReservoir
 
 
-class RadialStructReservoir(StructReservoir):
+class StructRadialReservoir(StructReservoir):
     def __init__(
         self,
         timer: timer_node,
