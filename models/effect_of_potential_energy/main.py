@@ -5,6 +5,7 @@ The bottom cell is considered as an infinitely large grid cell.
 """
 
 import matplotlib.pyplot as plt
+import os
 
 from model import Model
 
@@ -49,47 +50,53 @@ H2O_mole_frac_profile_with_pe = output['H2O'].T[:linear_interval_num_cells]
 y = m.reservoir.global_data['depth'][:linear_interval_num_cells]
 
 """ Compare the property profiles """
-# """ Compare the temperature profiles """
-# plt.plot(temp_profile_without_pe - 273.15, y, color='red', marker='o', label='Without potential energy')
-# plt.plot(temp_profile_with_pe - 273.15, y, color='blue', marker='*', label='With potential energy')
-#
-# plt.gca().invert_yaxis()
-# plt.xlabel('Temperature [degree C]')
-# plt.ylabel('Reservoir cell depth [meter]')
-#
-# plt.yticks(y)
-#
-# plt.legend()
-# plt.grid()
-# plt.tight_layout()
-# plt.show()
-#
-# """ Compare the pressure profiles """
-# plt.plot(pressure_profile_without_pe, y, color='red', marker='o', label='Without potential energy')
-# plt.plot(pressure_profile_with_pe, y, color='blue', marker='*', label='With potential energy')
-#
-# plt.gca().invert_yaxis()
-# plt.xlabel('Pressure [bar]')
-# plt.ylabel('Reservoir cell depth [meter]')
-#
-# plt.yticks(y)
-#
-# plt.legend()
-# plt.grid()
-# plt.tight_layout()
-# plt.show()
-#
-# """ Compare the overall mole fraction profiles """
-# plt.plot(H2O_mole_frac_profile_without_pe, y, color='red', marker='o', label='Without potential energy')
-# plt.plot(H2O_mole_frac_profile_with_pe, y, color='blue', marker='*', label='With potential energy')
-#
-# plt.gca().invert_yaxis()
-# plt.xlabel('H$_2$O overall mole fraction [-]')
-# plt.ylabel('Reservoir cell depth [meter]')
-#
-# plt.yticks(y)
-#
-# plt.legend()
-# plt.grid()
-# plt.tight_layout()
-# plt.show()
+""" Compare the temperature profiles """
+fig, ax = plt.subplots()
+ax.plot(temp_profile_without_pe - 273.15, y, color='red', marker='o', label='Without potential energy')
+ax.plot(temp_profile_with_pe - 273.15, y, color='blue', marker='*', label='With potential energy')
+
+ax.invert_yaxis()
+ax.set_xlabel('Temperature [degree C]')
+ax.set_ylabel('Reservoir cell depth [meter]')
+
+ax.set_yticks(y)
+
+ax.legend()
+ax.grid()
+fig.tight_layout()
+fig.savefig(os.path.join(m.output.output_folder, 'temperature_profiles.png'))
+plt.close(fig)
+
+""" Compare the pressure profiles """
+fig, ax = plt.subplots()
+ax.plot(pressure_profile_without_pe, y, color='red', marker='o', label='Without potential energy')
+ax.plot(pressure_profile_with_pe, y, color='blue', marker='*', label='With potential energy')
+
+ax.invert_yaxis()
+ax.set_xlabel('Pressure [bar]')
+ax.set_ylabel('Reservoir cell depth [meter]')
+
+ax.set_yticks(y)
+
+ax.legend()
+ax.grid()
+fig.tight_layout()
+fig.savefig(os.path.join(m.output.output_folder, 'pressure_profiles.png'))
+plt.close(fig)
+
+""" Compare the overall mole fraction profiles """
+fig, ax = plt.subplots()
+ax.plot(H2O_mole_frac_profile_without_pe, y, color='red', marker='o', label='Without potential energy')
+ax.plot(H2O_mole_frac_profile_with_pe, y, color='blue', marker='*', label='With potential energy')
+
+ax.invert_yaxis()
+ax.set_xlabel('H$_2$O overall mole fraction [-]')
+ax.set_ylabel('Reservoir cell depth [meter]')
+
+ax.set_yticks(y)
+
+ax.legend()
+ax.grid()
+fig.tight_layout()
+fig.savefig(os.path.join(m.output.output_folder, 'h2o_overall_mole_fraction_profiles.png'))
+plt.close(fig)
