@@ -184,7 +184,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 RHS[i * N_VARS + c] += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
 
             // Add potential energy accumulation
-            if (THERMAL && c == NE - 1)
+            if (THERMAL && c == (NE - 1))
             {
                 value_t sat_dens_sum = 0.;
                 for (uint8_t p = 0; p < NP; p++)
@@ -206,7 +206,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
 
                 // Include derivatives for potential energy term
-                if (THERMAL && c == NE - 1)
+                if (THERMAL && c == (NE - 1))
                 {
                     value_t sat_dens_der_sum = 0.;
                     for (uint8_t p = 0; p < NP; p++)
@@ -338,7 +338,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef;
 
                         // Add potential energy flux
-                        if (THERMAL && c == NE - 1)
+                        if (THERMAL && c == (NE - 1))
                         {
                             //if (p == 0)
                             //    RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
@@ -361,7 +361,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 Jac[diag_idx + c * N_VARS + v] += c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
                             }
 
-                            if (THERMAL && c == NE - 1)
+                            if (THERMAL && c == (NE - 1))
                             {
                                 //if (p == 0)
                                 //{
@@ -420,7 +420,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef;
 
 						// Add potential energy flux
-                        if (THERMAL && c == NE - 1)
+                        if (THERMAL && c == (NE - 1))
                         {
                             //if (p == 0)
                             //    RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
@@ -442,7 +442,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 Jac[jac_idx + c * N_VARS + v] -= c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
                             }
 
-                            if (THERMAL && c == NE - 1)
+                            if (THERMAL && c == (NE - 1))
                             {
                                 //if (p == 0)
                                 //{
