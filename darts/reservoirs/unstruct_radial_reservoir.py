@@ -21,7 +21,7 @@ class UnstructRadialReservoir(UnstructReservoir):
         hcap=2200.0,
     ):
         """
-        Class constructor for NearWellboreReservoir class
+        Unstructured radial reservoir class
 
         :param mesh_properties:
         :param permx: Matrix permeability in the x-direction (scalar or vector)
