@@ -521,17 +521,17 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
         {
             //if (p == 0)
             //{
-            //    jac_diag -= dt * (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_A_specific_potential_energy_up[conn_idx];
-            //    jac_offd -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
+            //    jac_diag -= dt * (phase_vol_rate_der_i * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_A_specific_potential_energy_up[conn_idx];
+            //    jac_offd -= dt * phase_vol_rate_der_j * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
             //}
             //else if (p == 1 || p == 2)
             //{
-            //    jac_diag -= dt * (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_B_specific_potential_energy_up[conn_idx];
-            //    jac_offd -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
+            //    jac_diag -= dt * (phase_vol_rate_der_i * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_B_specific_potential_energy_up[conn_idx];
+            //    jac_offd -= dt * phase_vol_rate_der_j * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
             //}
 
-            jac_diag -= dt * (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
-            jac_offd -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+            jac_diag -= dt * (phase_vol_rate_der_i * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
+            jac_offd -= dt * phase_vol_rate_der_j * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
 
             if (v == 0)
             {
@@ -578,17 +578,17 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
         {
             //if (p == 0)
             //{
-            //    jac_diag -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
-            //    jac_offd -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_A_specific_potential_energy_up[conn_idx];
+            //    jac_diag -= dt * phase_vol_rate_der_i * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
+            //    jac_offd -= dt * (phase_vol_rate_der_j * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_A_specific_potential_energy_up[conn_idx];
             //}
             //else if (p == 1 || p == 2)
             //{
-            //    jac_diag -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
-            //    jac_offd -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_B_specific_potential_energy_up[conn_idx];
+            //    jac_diag -= dt * phase_vol_rate_der_i * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
+            //    jac_offd -= dt * (phase_vol_rate_der_j * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_B_specific_potential_energy_up[conn_idx];
             //}
 
-            jac_diag -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
-            jac_offd -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
+            jac_diag -= dt * phase_vol_rate_der_i * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+            jac_offd -= dt * (phase_vol_rate_der_j * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
 
             if (v == 0)
             {
