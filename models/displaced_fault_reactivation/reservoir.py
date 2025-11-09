@@ -61,6 +61,7 @@ class UnstructReservoir(UnstructReservoirMech):
         self.idata.rock.perm = 100.0
         self.idata.other.friction = 0.7
         self.idata.other.frac_apers = 1e-5
+        self.idata.other.perm_frac = 100.0
 
         self.reservoir_depletion(idata=self.idata)
 
@@ -446,5 +447,3 @@ class UnstructReservoir(UnstructReservoirMech):
             self.pm.bc.append(matrix(bc, len(bc), 1))
         self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
-
-

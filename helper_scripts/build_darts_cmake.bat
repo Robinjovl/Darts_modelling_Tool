@@ -70,7 +70,7 @@ REM ----------------------------------------------------------------
 
 del darts\*.pyd 2> NUL
 rmdir /s /q dist 2> NUL
-  
+
 if %clean_mode%==true (
   echo - Cleaning up
   rmdir /s /q build 2> NUL
@@ -94,7 +94,7 @@ if %skip_req%==false (
   cd thirdparty
 
   echo - Install requirements: START
-  
+
   echo -- Install Eigen 3
   mkdir build
   cd build
@@ -107,7 +107,10 @@ if %skip_req%==false (
   rem -- Install Hypre
   cd hypre\src\cmbuild
   rem For debugging: -DHYPRE_ENABLE_PRINT
-  cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
+  cmake -D HYPRE_BUILD_TESTS=ON ^
+        -D HYPRE_BUILD_EXAMPLES=ON ^
+        -D HYPRE_WITH_MPI=OFF ^
+        -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error
   cd ..\..\..\
 
@@ -120,7 +123,7 @@ if %skip_req%==false (
     echo -- Install IPhreeqc: START
     cd thirdparty\build
     if not exist iphreeqc mkdir iphreeqc
-    cd iphreeqc	  
+    cd iphreeqc
 	  cmake ^
       -D CMAKE_INSTALL_PREFIX=..\..\install\iphreeqc ^
       -D BUILD_TESTING=OFF ^
@@ -177,14 +180,14 @@ echo   Building openDARTS: DONE!
 echo ========================================================================
 
 echo ************************************************************************
-echo   Building python package open-darts: START 
+echo   Building python package open-darts: START
 echo ************************************************************************
 
 python darts\print_build_info.py
 if %wheel%==true (
   echo -- build darts.whl for windows started
   copy CHANGELOG.md darts
-  rem copy VS redist libraries 
+  rem copy VS redist libraries
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
@@ -197,7 +200,7 @@ echo ************************************************************************
 echo   Building python package open-darts: DONE!
 echo ************************************************************************
 
-rem || goto :error checks exit code of command 
+rem || goto :error checks exit code of command
 rem if one of the commands fails, interrupt batch and return error code
 :error
 echo Build finished with error code %errorlevel%.
@@ -208,7 +211,7 @@ REM Help info --------------------------------------------------------
 :help_info
 echo helper_scripts\build_darts_cmake.bat [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS]
 echo    Script to install opendarts on Windows.
-echo USAGE: 
+echo USAGE:
 echo    -h : displays this help menu.
 echo    -c : cleans up build to prepare a new fresh build. Default: don't clean
 echo    -t : Enable testing: ctest of solvers. Default: don't test

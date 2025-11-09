@@ -41,15 +41,15 @@ deploy-testpypi:
         - twine upload -u $REPOUSER -p $REPOPWD --repository $REPO --verbose dist/*
     dependencies:
         # get the wheels from the build stage
-        - build-linux-3.9-ODLS
         - build-linux-3.10-ODLS
         - build-linux-3.11-ODLS
         - build-linux-3.12-ODLS
-        - build-windows-3.9-ODLS
+        - build-linux-3.13-ODLS
         - build-windows-3.10-ODLS
         - build-windows-3.11-ODLS
         - build-windows-3.12-ODLS
-        
+        - build-windows-3.13-ODLS
+
 deploy-zenodo:
     stage: deploy
     rules:
@@ -94,3 +94,48 @@ pages:
         - public
     dependencies:
         - build-linux-3.10-ODLS
+
+deploy-apptainer-image:
+    stage: deploy
+    tags:
+        - linux_tahiti_gpu
+    timeout: 4h
+    variables:
+        IMAGE_PREFIX: "open-darts"
+    rules:
+        - if: $RUN_APPTAINER_DEPLOY == "1"
+        - if: $CI_PIPELINE_SOURCE == "schedule"
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+        - when: never
+    script:
+        # Derive BUILD_KEY from the latest symlinked image name
+        - IMG_DIR="/data/open-darts-apptainer-images"
+        - LINK="$IMG_DIR/${IMAGE_PREFIX}-latest.sif"
+        - TARGET="$(readlink -f "$LINK" || echo "$LINK")"
+        - BASENAME="$(basename "$TARGET")"
+        - BUILD_KEY="$(echo "$BASENAME" | sed -n "s/^${IMAGE_PREFIX}-\([a-f0-9]\{64\}\)\.sif$/\1/p")"
+        # Fallback to the most recent matching file if symlink parse failed
+        - 'if [ -z "$BUILD_KEY" ]; then TARGET="$(ls -1t "$IMG_DIR/${IMAGE_PREFIX}-"*.sif 2>/dev/null | head -n1 || true)"; BASENAME="$(basename "$TARGET" 2>/dev/null || true)"; BUILD_KEY="$(echo "$BASENAME" | sed -n "s/^${IMAGE_PREFIX}-\([a-f0-9]\{64\}\)\.sif$/\1/p")"; fi'
+        - 'test -n "$BUILD_KEY" || { echo "Unable to determine BUILD_KEY from $LINK or $IMG_DIR" >&2; exit 2; }'
+        - echo "BUILD_KEY=$BUILD_KEY"
+        # target repo and existing tag check (skip if tag already present)
+        - REPO="$CI_REGISTRY_IMAGE"
+        - echo "REPO=$REPO"
+        - echo "Skipping remote manifest pre-check; proceeding to push"
+        # Locate built image (from shared /data path)
+        - IMG="$IMG_DIR/${IMAGE_PREFIX}-${BUILD_KEY}.sif"
+        - 'if [ ! -r "$IMG" ]; then IMG="$LINK"; fi'
+        - 'test -r "$IMG" || { echo "Apptainer image not found: $IMG" >&2; exit 2; }'
+        # Authenticate and push via ORAS (GitLab Container Registry)
+        - export APPTAINER_DOCKER_USERNAME="$CI_REGISTRY_USER"
+        - export APPTAINER_DOCKER_PASSWORD="$CI_REGISTRY_PASSWORD"
+        - echo "Logging into registry $CI_REGISTRY with Apptainer"
+        - apptainer registry login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "oras://$CI_REGISTRY" || echo "Apptainer registry login warning; continuing"
+        # Try push; if tag exists, do not fail the job
+        - |
+          if apptainer push "$IMG" "oras://$REPO/apptainer:latest"; then
+            echo "Pushed $REPO/apptainer:latest"
+          else
+            echo "Push failed"; exit 1;
+          fi

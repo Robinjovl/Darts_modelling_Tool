@@ -45,19 +45,18 @@ class Model(CICDModel):
     def set_physics(self):
         """Physical properties"""
         # Create property containers:
-        zero = 1e-8
-        components = ['CO2', 'C10', 'H2O']
-        phases = ['gas', 'oil', 'wat']
+        self.zero = 1e-8
+        components = ['CO2', 'H2O', 'SUR', 'OIL']
+        phases = ['gas', 'wat', 'oil']
         nc = len(components)
-        Mw = [44.01, 16.04, 34.081, 18.015]
+        Mw = [44.01, 18.015, 30, 50]
 
-        self.inj_composition = [1.0 - 2 * zero, zero]
-        self.ini_stream = [0.1, 0.6 - zero]
+        self.ini_stream = [self.zero, 0.8, self.zero]
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=zero/10)
+        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=self.zero/10)
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(nc-1, [1e10, 1e-10], zero)
+        property_container.flash_ev = ConstantK(nc-1, [1e10, 1e-10, 1e-10], self.zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=733)),
                                               ('oil', DensityBasic(compr=1e-5, dens0=800)),
                                               ('wat', DensityBrineCO2(components, compr=1e-6, dens0=980))])
@@ -73,7 +72,7 @@ class Model(CICDModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=1000, min_p=1, max_p=1000, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=1000, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10)
         self.physics.add_property_region(property_container)
 
         return
@@ -82,19 +81,19 @@ class Model(CICDModel):
         input_distribution = {self.physics.vars[0]: 50.,
                               self.physics.vars[1]: self.ini_stream[0],
                               self.physics.vars[2]: self.ini_stream[1],
+                              self.physics.vars[3]: self.ini_stream[2],
                               }
         return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
                                                               input_distribution=input_distribution)
 
     def set_well_controls(self):
         from darts.engines import well_control_iface
-        for i, w in enumerate(self.reservoir.wells):
-            if i == 0:
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
-                                               is_inj=True, target=20., phase_name='gas', inj_composition=self.inj_composition)
-            else:
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=50.)
+        w = self.reservoir.wells[0]
+        self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                       is_inj=False, target=50.)
+        w = self.reservoir.wells[1]
+        self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                       is_inj=False, target=50.)
 
 
 class ModelProperties(PropertyContainer):

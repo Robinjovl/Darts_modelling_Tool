@@ -17,10 +17,10 @@ maintainers = [
 description = "Open Delft Advanced Research Terra Simulator"
 readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
 dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk',
-    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4', 'h5py', 'open-darts-flash', 'phreeqpy']
+    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash', 'phreeqpy']
 
 license = {text = "LICENSE.md"}
 
@@ -43,30 +43,30 @@ documentation = "https://open-darts.readthedocs.io/en/docs"
 docs = ["myst-parser", "sphinx_rtd_theme", "sphinx", "sphinx-tabs", "sphinx_inline_tabs", "sphinxcontrib-matlabdomain", "sphinxcontrib-bibtex", "linkify-it-py", "sphinx-copybutton"]
 
 # Development dependencies for linting and formatting
-dev = ["flake8", "black", "isort"]
+dev = ["ruff", "pre-commit"]
 
-[tool.black]
+# --- Ruff configuration ---
+[tool.ruff]
 line-length = 88
-target-version = ['py310']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
+target-version = "py310"
 
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 88
-known_first_party = ["darts"]
-known_third_party = ["numba", "scipy", "pandas", "meshio", "gmsh", "iapws", "openpyxl", "pyevtk", "matplotlib", "vtk", "shapely", "igraph", "sympy", "opmcpg", "xarray", "netCDF4", "h5py", "phreeqpy"]
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+[tool.ruff.lint]
+select = [
+  "E", "F",        # pycodestyle/pyflakes
+  "I",             # import sorting (isort)
+  "UP",            # pyupgrade (safe upgrades)
+  "B",             # bugbear (useful correctness checks)
+]
+ignore = [
+  "E203", "E501",           # kept ignored as with Black-style projects
+  "F403", "F405",           # "from x import *" and re-exports (you ignored before)
+  "E722", "E731",           # bare except / lambda assignment, you ignored before
+  "C901",                   # complexity; we'll cap via mccabe below like flake8
+]
+unfixable = ["F841"]
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
