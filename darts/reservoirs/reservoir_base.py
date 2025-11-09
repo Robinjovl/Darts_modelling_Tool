@@ -1,6 +1,5 @@
 import abc
 import atexit
-from math import pi
 
 import numpy as np
 
@@ -92,13 +91,11 @@ class ReservoirBase:
         well = ms_well()
         well.name = well_name
 
-        # first put only area here, to be multiplied by segment length later
-        well.segment_volume = pi * wellbore_diameter**2 / 4
+        well.segment_diameter = wellbore_diameter
 
-        # will be updated  in add_perforation
+        # will be updated in add_perforation
         well.well_head_depth = 0
         well.well_body_depth = 0
-        well.segment_depth_increment = 0
         self.wells.append(well)
 
         return
@@ -154,37 +151,12 @@ class ReservoirBase:
             if w.name == well_name:
                 return w
 
-    def init_wells(self, verbose: bool = False):
+    @abc.abstractmethod
+    def init_wells(self):
         """
-        Function to initialize wells.
-
-        Adds perforations to the wells, adds well objects to the mesh object
-        and prepares mesh object for running simulation
-
-        :param mesh: conn_mesh object
-        :param verbose: Switch to set verbose level
+        This function adds well objects to the mesh object and prepares mesh object for running simulation
         """
-        for w in self.wells:
-            assert len(w.perforations) > 0, (
-                f"Well {w.name} does not perforate any active reservoir blocks"
-            )
-        self.mesh.add_wells(ms_well_vector(self.wells))
-
-        # connect perforations of wells (for example, for closed loop geothermal)
-        # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
-        # example {(well_1.name, well_2.name): [(w1_perf_1, w2_perf_1),(w1_perf_2, w2_perf_2)]}
-        if hasattr(self, 'connected_well_segments'):
-            for well_pair in self.connected_well_segments.keys():
-                well_1 = self.get_well(well_pair[0])
-                well_2 = self.get_well(well_pair[1])
-                for perf_pair in self.connected_well_segments[well_pair]:
-                    self.mesh.connect_segments(
-                        well_1, well_2, perf_pair[0], perf_pair[1], 1
-                    )
-
-        # allocate mesh arrays
-        self.mesh.reverse_and_sort()
-        self.mesh.init_grav_coef()
+        pass
 
     @abc.abstractmethod
     def output_to_plt(
@@ -257,6 +229,24 @@ class ReservoirBase:
         :type prop_names: list
         :param data: Data for output
         :type data: dict
+        """
+        pass
+
+    @staticmethod
+    @abc.abstractmethod
+    def get_reservoir_cell_ijk(global_idx, nx, ny):
+        """
+        This function gets the index of the reservoir cell and dimensions of the reservoir and gives the indices of the
+        reservoir cell in x, y, and z directions.
+
+        :param global_idx: Global index of the reservoir cell, which is zero-based
+        :type global_idx: int
+        :param nx: Number of reservoir cells in the x direction
+        :type nx: int
+        :param ny: Number of reservoir cells in the y direction
+        :type ny: int
+
+        :returns: Indices of the reservoir cell in x, y, and z directions, which are zero-based
         """
         pass
 

@@ -1,5 +1,6 @@
 import time
 import warnings
+from math import pi
 
 import numpy as np
 from opmcpg._cpggrid import index_vector as index_vector_cpggrid
@@ -20,7 +21,7 @@ from darts.discretizer import (
 )
 from darts.discretizer import index_vector as index_vector_discr
 from darts.discretizer import value_vector as value_vector_discr
-from darts.engines import conn_mesh, timer_node
+from darts.engines import conn_mesh, ms_well_vector, timer_node
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
 
@@ -583,9 +584,6 @@ class CPG_Reservoir(ReservoirBase):
             if len(well.perforations) == 0:  # if adding the first perforation
                 well.well_head_depth = self.depth_all_cells[res_block_local]
                 well.well_body_depth = well.well_head_depth
-                dx, dy, dz = self.discr_mesh.calc_cell_sizes(i - 1, j - 1, k - 1)
-                well.segment_depth_increment = dz
-                well.segment_volume *= well.segment_depth_increment
             else:  # update well depth
                 well.well_head_depth = min(
                     well.well_head_depth, self.depth_all_cells[res_block_local]
@@ -609,6 +607,40 @@ class CPG_Reservoir(ReservoirBase):
                 )
 
         return
+
+    def init_wells(self):
+        """
+        This function adds well objects to the mesh object and prepares mesh object for running simulation
+        """
+        for w in self.wells:
+            assert len(w.perforations) > 0, (
+                f"Well {w.name} does not have any perforations in any active reservoir blocks"
+            )
+
+            w.segment_volumes.resize(len(w.perforations))
+            for p in w.perforations:
+                segment_area = pi * w.segment_diameter**2 / 4
+                i, j, k = self.discr_mesh.get_ijk(idx=p[1], is_global=False)
+                _, _, segment_height = self.discr_mesh.calc_cell_sizes(i, j, k)
+                w.segment_volumes[p[0]] = segment_height * segment_area
+
+        self.mesh.add_wells(ms_well_vector(self.wells))
+
+        # connect perforations of wells (for example, for closed loop geothermal)
+        # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
+        # example {(well_1.name, well_2.name): [(w1_perf_1, w2_perf_1),(w1_perf_2, w2_perf_2)]}
+        if hasattr(self, 'connected_well_segments'):
+            for well_pair in self.connected_well_segments.keys():
+                well_1 = self.get_well(well_pair[0])
+                well_2 = self.get_well(well_pair[1])
+                for perf_pair in self.connected_well_segments[well_pair]:
+                    self.mesh.connect_segments(
+                        well_1, well_2, perf_pair[0], perf_pair[1], 1
+                    )
+
+        # allocate mesh arrays
+        self.mesh.reverse_and_sort()
+        self.mesh.init_grav_coef()
 
     def write_mpfa_conn_to_file(self, path='mpfa_conn.dat'):
         stencil = np.array(self.discretizer.flux_stencil, copy=False)

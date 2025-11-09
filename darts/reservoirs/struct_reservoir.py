@@ -1,4 +1,5 @@
 import os
+from math import pi
 
 import numpy as np
 from scipy.interpolate import griddata
@@ -6,6 +7,7 @@ from scipy.interpolate import griddata
 from darts.engines import (
     conn_mesh,
     index_vector,
+    ms_well_vector,
     timer_node,
     value_vector,
 )
@@ -240,6 +242,9 @@ class StructReservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wid
 
+        assert well_index >= 0
+        assert well_indexD >= 0
+
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
             well_block = len(well.perforations)
@@ -253,24 +258,7 @@ class StructReservoir(ReservoirBase):
                     res_block_local
                 ]
                 well.well_body_depth = well.well_head_depth
-                if self.discretizer.is_cpg:
-                    dx, dy, dz = self.discretizer.calc_cell_dimensions(
-                        i - 1, j - 1, k - 1
-                    )
-                    # TODO: need segment_depth_increment and segment_length logic
-                    if segment_direction == 'z_axis':
-                        well.segment_depth_increment = dz
-                    elif segment_direction == 'x_axis':
-                        well.segment_depth_increment = dx
-                    else:
-                        well.segment_depth_increment = dy
-                else:
-                    well.segment_depth_increment = self.discretizer.len_cell_zdir[
-                        i - 1, j - 1, k - 1
-                    ]
-
-                well.segment_volume *= well.segment_depth_increment
-            else:  # update well depth
+            else:  # update wellhead and well body depths
                 well.well_head_depth = min(
                     well.well_head_depth,
                     np.array(self.mesh.depth, copy=False)[res_block_local],
@@ -298,10 +286,41 @@ class StructReservoir(ReservoirBase):
                 )
             return
 
-        assert well_index >= 0
-        assert well_indexD >= 0
-
         return
+
+    def init_wells(self):
+        """
+        This function adds well objects to the mesh object and prepares mesh object for running simulation
+        """
+        for w in self.wells:
+            assert len(w.perforations) > 0, (
+                f"Well {w.name} does not have any perforations in any active reservoir blocks"
+            )
+
+            w.segment_volumes.resize(len(w.perforations))
+            for p in w.perforations:
+                segment_area = pi * w.segment_diameter**2 / 4
+                i, j, k = self.get_reservoir_cell_ijk(p[1], self.nx, self.ny)
+                segment_height = self.global_data['dz'][i, j, k]
+                w.segment_volumes[p[0]] = segment_height * segment_area
+
+        self.mesh.add_wells(ms_well_vector(self.wells))
+
+        # connect perforations of wells (for example, for closed loop geothermal)
+        # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
+        # example {(well_1.name, well_2.name): [(w1_perf_1, w2_perf_1),(w1_perf_2, w2_perf_2)]}
+        if hasattr(self, 'connected_well_segments'):
+            for well_pair in self.connected_well_segments.keys():
+                well_1 = self.get_well(well_pair[0])
+                well_2 = self.get_well(well_pair[1])
+                for perf_pair in self.connected_well_segments[well_pair]:
+                    self.mesh.connect_segments(
+                        well_1, well_2, perf_pair[0], perf_pair[1], 1
+                    )
+
+        # allocate mesh arrays
+        self.mesh.reverse_and_sort()
+        self.mesh.init_grav_coef()
 
     def find_cell_index(self, coord: list | np.ndarray) -> int:
         """
@@ -894,3 +913,10 @@ class StructReservoir(ReservoirBase):
         self.vtkobj.GRDECL_Data.GRID_type = 'CornerPoint'
         self.vtkobj.GRDECL2VTK(self.global_data['actnum'])
         # self.vtkobj.decomposeModel()
+
+    @staticmethod
+    def get_reservoir_cell_ijk(global_idx, nx, ny):
+        k = global_idx // (nx * ny)
+        j = (global_idx - k * (nx * ny)) // nx
+        i = global_idx % nx
+        return i, j, k

@@ -9,7 +9,7 @@ namespace py = pybind11;
 #if 1
 class py_well_control_iface : public well_control_iface {
 public:
- 
+
   /* Inherit the constructors */
   using well_control_iface::well_control_iface;
 
@@ -42,7 +42,7 @@ public:
   //     dt,                           /* Argument(s) */
   //     well_head_idx,
   //     n_block_size,
-	//   N_VARS, 
+	//   N_VARS,
 	//   P_VAR,
   //     X
   //   );
@@ -77,7 +77,7 @@ public:
   //     set_rate_control,         /* Name of function in C++ (must match Python name) */
   //     control_type_,            /* Argument(s) */
   //     phase_idx_,
-  //     well_control_spec_,      
+  //     well_control_spec_,
   //   );
   // }
 
@@ -89,12 +89,19 @@ void pybind_well_controls(py::module &m)
   py::class_<well_control_iface, py_well_control_iface /* <--- trampoline*/> well_control_iface(m, "well_control_iface");
   well_control_iface
     .def(py::init<index_t, index_t, bool, operator_set_gradient_evaluator_iface*, operator_set_gradient_evaluator_iface*>())
+    // methods
     .def("add_to_jacobian", &well_control_iface::add_to_jacobian)
     .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
     .def("set_bhp_control", &well_control_iface::set_bhp_control)
     .def("set_rate_control", &well_control_iface::set_rate_control)
     .def("get_well_control_type_str", &well_control_iface::get_well_control_type_str)
-    .def("get_well_control_type", &well_control_iface::get_well_control_type);
+    .def("get_well_control_type", &well_control_iface::get_well_control_type)
+    // properties
+    .def_readonly("control_type", &well_control_iface::control_type)
+    .def_readonly("phase_idx", &well_control_iface::phase_idx)
+    .def_readonly("target", &well_control_iface::target)
+    .def_readonly("inj_comp", &well_control_iface::inj_comp)
+    .def_readonly("inj_temp", &well_control_iface::inj_temp);
 
   py::enum_<well_control_iface::WellControlType>(well_control_iface, "WellControlType")
     .value("NONE", well_control_iface::WellControlType::NONE)

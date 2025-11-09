@@ -46,7 +46,6 @@ class Model(CICDModel):
         # Create property containers:
         components = ['CO2', 'C1', 'H2O']
         phases = ['gas', 'oil']
-        thermal = 0
         Mw = [44.01, 16.04, 18.015]
 
         property_container = PropertyContainer(phases_name=phases, components_name=components,
