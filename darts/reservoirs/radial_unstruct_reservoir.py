@@ -7,7 +7,7 @@ from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 
 
-class RadialUnstruct(UnstructReservoir):
+class RadialUnstructReservoir(UnstructReservoir):
     def __init__(
         self,
         timer: timer_node,
