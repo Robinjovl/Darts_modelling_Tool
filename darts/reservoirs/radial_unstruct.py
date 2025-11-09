@@ -17,8 +17,8 @@ class RadialUnstruct(UnstructReservoir):
         permy,
         permz,
         poro,
-        hcap=2200,
         rcond=181.44,
+        hcap=2200.0,
     ):
         """
         Class constructor for NearWellboreReservoir class
@@ -28,6 +28,8 @@ class RadialUnstruct(UnstructReservoir):
         :param permy: Matrix permeability in the y-direction (scalar or vector)
         :param permz: Matrix permeability in the z-direction (scalar or vector)
         :param poro: Matrix (and fracture?) porosity (scalar or vector)
+        :param rcond: Rock conductivity [kJ/m.K.day]
+        :param hcap: Rock volumetric heat capacity [kJ/m3.K]
         """
         filename = 'mesh'
 
@@ -152,7 +154,7 @@ class RadialUnstruct(UnstructReservoir):
         boundary_cells = self.discretizer.find_cells(
             self.physical_groups['boundary']['inner'], 'face'
         )
-        for nth_perf, cell_index in enumerate(boundary_cells):
+        for _nth_perf, cell_index in enumerate(boundary_cells):
             self.add_perforation(
                 well_name="P1", cell_index=cell_index, well_index=100, well_indexD=100
             )

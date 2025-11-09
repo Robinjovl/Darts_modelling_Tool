@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.engines import conn_mesh, index_vector, timer_node, value_vector
+from darts.engines import timer_node
 from darts.reservoirs.struct_reservoir import StructReservoir
 
 
@@ -21,7 +21,7 @@ class RadialStruct(StructReservoir):
         angle: float = 360.0,
         depth=0,
         rcond=181.44,
-        hcap=2200,
+        hcap=2200.0,
         op_num=0,
         boundary_volume: float = None,
     ):
@@ -49,7 +49,7 @@ class RadialStruct(StructReservoir):
         :type angle: float
         :param depth: Depth of upper layer [m]
         :param rcond: Rock conductivity [kJ/m.K.day]
-        :param hcap: Rock heat capacity [kJ/m3]
+        :param hcap: Rock volumetric heat capacity [kJ/m3.K]
         :param op_num: Operator numbers
         :param boundary_volume: Volume of outer boundary cells
         """
@@ -68,7 +68,7 @@ class RadialStruct(StructReservoir):
             dr1 = fsolve(f, dr)[0]
 
             dr = np.logspace(start=np.log10(dr), stop=np.log10(dr1), num=nr)
-        elif isinstance(dr, (int, float)):
+        elif isinstance(dr, int | float):
             '''
             Uniform grid size in radial direction
             '''
@@ -97,7 +97,7 @@ class RadialStruct(StructReservoir):
 
         # If number of cells in vertical direction is larger than 1, adjust arrays of dr, dy, dz and r
         if nz > 1:
-            if isinstance(dz, (int, float)):
+            if isinstance(dz, int | float):
                 '''
                 Uniform grid size in vertical direction
                 '''
@@ -156,8 +156,9 @@ class RadialStruct(StructReservoir):
         self.boundary_volumes['xy_minus'] = boundary_volume
 
         # radial mesh generation for VTK output
-        self.r_vertices, self.z_vertices = R0 * np.ones(nr + 1), depth_upper * np.ones(
-            nz + 1
+        self.r_vertices, self.z_vertices = (
+            R0 * np.ones(nr + 1),
+            depth_upper * np.ones(nz + 1),
         )
         if len(dr.shape) == 1:
             self.r_vertices[1:] = R0 + np.cumsum(dr[:nr])
@@ -222,7 +223,7 @@ class RadialStruct(StructReservoir):
 
     def populate_data_for_radial_vtk_output(self, data):
         new_data = {}
-        n_cells = self.reservoir.mesh.n_res_blocks
+        _n_cells = self.reservoir.mesh.n_res_blocks
         for prop, val in data.items():
             # populate r-z data to all angles
             new_data[prop] = np.tile(val, self.reservoir.nphi)
@@ -266,4 +267,4 @@ class RadialStruct(StructReservoir):
         mesh = meshio.Mesh(
             points=self.output_points, cells=self.output_cells, cell_data=cell_data
         )
-        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
+        meshio.write(f"{output_directory:s}/solution{ith_step:d}.vtk", mesh)
