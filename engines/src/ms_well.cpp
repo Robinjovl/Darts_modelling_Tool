@@ -38,7 +38,7 @@ int ms_well::add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_we
 int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data)
 {
   index_t upstream_idx;
-
+  const int sg_max = 1;
   // find upstream state
   value_t p_diff = X[well_head_idx * n_block_size + P_VAR] - X[well_body_idx * n_block_size + P_VAR];
   if (p_diff > 0)
@@ -47,6 +47,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
     upstream_idx = well_body_idx; // producer
 
   state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+  state.push_back(sg_max);
 
   rate_evaluator->evaluate(state, rates);
 
@@ -58,7 +59,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
     total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * segment_transmissibility;
   }
   time_data[name + " : energy (kJ/day)"].push_back(total_energy);
-  
+
   // Component molar rates
   index_t nc = n_vars - thermal;
   for (index_t c = 0; c < nc; c++)
@@ -115,11 +116,11 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
 int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data, index_t n_blocks)
 {
-  // calculate rate based on velocity unknown; use for decouple velocity engine. 
+  // calculate rate based on velocity unknown; use for decouple velocity engine.
 
   index_t upstream_idx;
 
-  // find the wellhead connection 
+  // find the wellhead connection
   value_t velocity = X[n_block_size * n_blocks + well_head_idx_conn];
 
 
@@ -267,4 +268,3 @@ int ms_well::cross_flow(std::vector<value_t>& X)
 
 
 ;
-
