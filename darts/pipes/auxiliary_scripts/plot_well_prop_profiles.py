@@ -17,7 +17,7 @@ def plot_well_prop_profiles(
 ):
     """
     This function is used to plot well property profiles at certain time steps. Please note that currently, the function
-    is limited to report_step_labels and report_time used below.
+    is limited to report_step_labels and report_step_times used below.
 
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
@@ -74,7 +74,7 @@ def plot_well_prop_profiles(
         "200 days",
         "365 days",
     ]
-    report_time = [
+    report_step_times = [
         0.0,
         1 / 24 / 60,  # 1 minute
         1 / 24 / 30 - 1 / 24 / 60,  # 2 minute
@@ -102,9 +102,9 @@ def plot_well_prop_profiles(
         365 - 200.001,  # 365 day
     ]
 
-    report_time = np.cumsum(report_time)
+    report_step_times = np.cumsum(report_step_times)
     report_indices = [
-        np.where(np.isclose(simulation_time, a))[0][0] for a in report_time
+        np.where(np.isclose(simulation_time, a))[0][0] for a in report_step_times
     ]
 
     # Generate a colormap for the report steps
