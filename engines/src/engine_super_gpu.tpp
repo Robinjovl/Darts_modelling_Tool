@@ -298,6 +298,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  * @tparam PC_OP Index for capillary pressure operators.
  * @tparam MULT_OP Index for permeability multiplier due to permeability-porosity relationship.
  * @tparam LAMBDA_OP Index for phase mobility operators.
+ * @tparam SAT_OP Index for phase saturation operator.
  * @tparam ENTH_OP Index for enthalpy operators.
  * @tparam TEMP_OP Index for temperature operators.
  * @tparam PRES_OP Index for pressure operators.
@@ -329,7 +330,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  */
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint8_t N_OPS,
           uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP, uint8_t GRAV_OP,
-          uint8_t PC_OP, uint8_t MULT_OP, uint8_t LAMBDA_OP, uint8_t ENTH_OP, uint8_t TEMP_OP, uint8_t PRES_OP,
+          uint8_t PC_OP, uint8_t MULT_OP, uint8_t LAMBDA_OP, uint8_t SAT_OP, uint8_t ENTH_OP, uint8_t TEMP_OP, uint8_t PRES_OP,
           bool THERMAL>
 __global__ void
 assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n_res_blocks, const bool enable_permporo,
@@ -723,7 +724,7 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
   //cudaMemset(jacobian->values_d, 0, jacobian->rows_ptr[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
 
   assemble_jacobian_array_kernel<NC, NP, NE, N_VARS, P_VAR, T_VAR, N_OPS, ACC_OP, FLUX_OP, UPSAT_OP, GRAD_OP, KIN_OP,
-                                 GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP, ENTH_OP, TEMP_OP, PRES_OP, THERMAL>
+                                 GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP, SAT_OP, ENTH_OP, TEMP_OP, PRES_OP, THERMAL>
       KERNEL_1D(mesh->n_blocks, N_VARS * N_VARS, 64)(mesh->n_blocks, mesh->n_res_blocks, params->enable_permporo,
                                                      params->phase_existence_tolerance,
                                                      dt, X_d, RHS_d,
