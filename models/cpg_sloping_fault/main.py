@@ -31,7 +31,7 @@ def run(rsv: str, physics_type : str, case: str, out_dir: str, export_vtk=True, 
     if physics_type == 'geothermal':
         m = ModelGeothermal(rsv, iapws_physics=True)
     elif physics_type == 'deadoil':
-        m = ModelDeadOil()
+        m = ModelDeadOil(rsv)
     elif physics_type == 'CCS':
         m = ModelCCS(['CO2', 'H2O'])
     else:
@@ -341,7 +341,7 @@ if __name__ == '__main__':
                     if physics_type == 'deadoil' and wctrl == 'wrate':
                         continue
                     case = case_geom + '_' + wctrl
-                    out_dir = 'results_' + physics_type + '_' + case
+                    out_dir = 'results_' + rsv+'_'+physics_type + '_' + case
                     failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
                                                                                             case=case, out_dir=out_dir,
                                                                                             redirect_log=False,
