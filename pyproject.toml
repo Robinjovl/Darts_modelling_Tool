@@ -22,7 +22,9 @@ requires-python = ">=3.10"
 dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk',
     'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash', 'phreeqpy']
 
-license = {text = "LICENSE.md"}
+#license = "Apache-2.0 (source code), GPL-3.0 (binaries)"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE.md"]
 
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -38,6 +40,24 @@ documentation = "https://open-darts.readthedocs.io/en/docs"
 [project.optional-dependencies]
 # These are groups of optional dependencies: not all users need ot install the dependencies. They are specific for a given fucntionality.
 # to install darts with this dependencies: `pip install .[docs]`
+
+# add compiled binaries (shared libraries) and some other files
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["darts"]
+exclude = ["discretizer", "engines", "models", "solvers", "docs", "thirdparty"]
+
+[tool.setuptools.package-data]
+darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.so.6']
+
+# include darts command line interface (cli.py)
+#[project.scripts]
+#darts = "darts.tools.cli:main"
+
+[console_scripts]
+darts = "darts.tools.cli:main"
 
 # Dependencies to be able to build the documentation
 docs = ["myst-parser", "sphinx_rtd_theme", "sphinx", "sphinx-tabs", "sphinx_inline_tabs", "sphinxcontrib-matlabdomain", "sphinxcontrib-bibtex", "linkify-it-py", "sphinx-copybutton"]
