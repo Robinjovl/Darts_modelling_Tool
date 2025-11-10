@@ -39,7 +39,10 @@ class RampUpRate:
         :type ramp_up_period: float
         :param inj_fluid_props: If inflow_or_outflow is "inflow", the props of the injected fluid must be specified as a dict
         with the following keys:
-            "pressure", "temperature" (for thermal scenarios), "composition", and "phase_name"
+            "composition"
+            For thermal scenarios the following keys are also required:
+                Method 1: "pressure", "temperature", "phase_name"
+                Method 2: "molar_enthalpy"
         :type inj_fluid_props: dict
         """
         assert pipe_name == pipe_geom.pipe_name, (
@@ -100,43 +103,63 @@ class RampUpRate:
             inj_fluid_props["composition"] = comp
 
             if physics.thermal:
-                assert "pressure" in inj_fluid_props, (
-                    "inj_fluid_props must contain a 'pressure' key!"
-                )
-                assert isinstance(inj_fluid_props["pressure"], float), (
-                    "Specified pressure must be a float!"
-                )
-
-                assert "temperature" in inj_fluid_props, (
-                    "inj_fluid_props must contain a 'temperature' key!"
-                )
-                assert isinstance(inj_fluid_props["temperature"], float), (
-                    "Specified temperature must be a float!"
-                )
-                assert inj_fluid_props["temperature"] > 273.15, (
-                    "Specified temperature must be in Kelvin!"
-                )
-
-                assert "phase_name" in inj_fluid_props, (
-                    "inj_fluid_props must contain a 'phase_name' key!"
-                )
-                ph_name = inj_fluid_props["phase_name"]
-                assert isinstance(ph_name, str), "Specified phase_name is not a string!"
-                assert ph_name in physics.phases, (
-                    "Specified phase_name is not in the list of the phase names in physics!"
-                )
-
-                # Calculate and store injected_fluid_molar_enthalpy
-                injected_fluid_molar_enthalpy = (
-                    physics.property_containers[0]
-                    .enthalpy_ev[ph_name]
-                    .evaluate(
-                        inj_fluid_props["pressure"],
-                        inj_fluid_props["temperature"],
-                        inj_fluid_props["composition"],
+                assert (
+                    all(
+                        i in inj_fluid_props
+                        for i in ("pressure", "temperature", "phase_name")
                     )
+                ) ^ ("molar_enthalpy" in inj_fluid_props), (
+                    "Provide either the pressure, temperature, and phase_name keys or the molar_enthalpy key in inj_fluid_props!"
                 )
-                inj_fluid_props["molar_enthalpy"] = injected_fluid_molar_enthalpy
+
+                if "pressure" in inj_fluid_props:
+                    assert isinstance(inj_fluid_props["pressure"], float), (
+                        "Specified pressure must be a float!"
+                    )
+
+                if "temperature" in inj_fluid_props:
+                    assert isinstance(inj_fluid_props["temperature"], float), (
+                        "Specified temperature must be a float!"
+                    )
+                    assert inj_fluid_props["temperature"] > 273.15, (
+                        "Specified temperature must be in Kelvin!"
+                    )
+
+                if "phase_name" in inj_fluid_props:
+                    ph_name = inj_fluid_props["phase_name"]
+                    assert isinstance(ph_name, str), (
+                        "Specified phase_name is not a string!"
+                    )
+                    assert ph_name in physics.phases, (
+                        "Specified phase_name is not in the list of the phase names in physics!"
+                    )
+
+                if "molar_enthalpy" in inj_fluid_props:
+                    assert all(
+                        i not in inj_fluid_props
+                        for i in ("pressure", "temperature", "phase_name")
+                    ), (
+                        "If molar_enthalpy is specified, pressure, temperature, phase_name must not be specified!"
+                    )
+                    assert isinstance(inj_fluid_props["molar_enthalpy"], float), (
+                        "Specified molar_enthalpy must be a float!"
+                    )
+
+                if "molar_enthalpy" not in inj_fluid_props:
+                    # Calculate and store injected_fluid_molar_enthalpy
+                    injected_fluid_molar_enthalpy = (
+                        physics.property_containers[0]
+                        .enthalpy_ev[ph_name]
+                        .evaluate(
+                            inj_fluid_props["pressure"],
+                            inj_fluid_props["temperature"],
+                            inj_fluid_props["composition"],
+                        )
+                    )
+                    inj_fluid_props["molar_enthalpy"] = injected_fluid_molar_enthalpy
+                elif "molar_enthalpy" in inj_fluid_props:
+                    # molar_enthalpy is directly specified by the user
+                    pass
 
             else:
                 assert "pressure" not in inj_fluid_props, (
