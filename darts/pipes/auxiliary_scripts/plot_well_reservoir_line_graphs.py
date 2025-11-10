@@ -144,9 +144,13 @@ def plot_well_1d_reservoir_line_graphs(
     if property_name == "temperature":
         reservoir_property_matrix -= 273.15
 
-    # Generate a colormap for the report steps
-    cmap = mpl.colormaps['jet']
-    colors = [cmap(i / len(report_step_labels)) for i in range(len(report_step_labels))]
+    # Generate a colormap for the report steps (big jumps for the first time steps, then smaller)
+    n = len(report_step_labels)
+    cmap = mpl.colormaps['jet']  # consider 'viridis' for perceptual uniformity
+    alpha = 10.0  # larger => more contrast early, flatter later
+    t = np.arange(n) / (n - 1 if n > 1 else 1)
+    t_nonlin = np.log1p(alpha * t) / np.log1p(alpha)
+    colors = [cmap(v) for v in t_nonlin]
 
     # Define markers and line styles
     markers = ['o', 's', 'd', '^', 'v', 'x', '*']
