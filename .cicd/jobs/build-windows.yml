@@ -26,6 +26,16 @@
       expire_in: 1 week
       when: always
 
+build-windows-3.13:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-windows
+    variables:
+        PY_VER: '3.13'
+        PYTHONPATH: 'D:\Python313'
+        ODLS: '-a'
+
 build-windows-3.12:
     rules:
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
@@ -59,15 +69,15 @@ build-windows-3.10:
         PYTHONPATH: 'D:\Python310'
         ODLS: '-a'
 
-build-windows-3.9:
+build-windows-3.13-ODLS:
     rules:
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
         - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-windows
     variables:
-        PY_VER: '3.9'
-        PYTHONPATH: 'D:\Python39'
-        ODLS: '-a'
+        PY_VER: '3.13'
+        PYTHONPATH: 'D:\Python313'
+        ODLS: ''         # build with open-darts linear solvers
 
 build-windows-3.12-ODLS:
     rules:
@@ -100,15 +110,4 @@ build-windows-3.10-ODLS:
     variables:
         PY_VER: '3.10'
         PYTHONPATH: 'D:\Python310'
-        ODLS: ''         # build with open-darts linear solvers
-
-
-build-windows-3.9-ODLS:
-    rules:
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL_PYTHONS == "1"
-    extends: .build-windows
-    variables:
-        PY_VER: '3.9'
-        PYTHONPATH: 'D:\Python39'
         ODLS: ''         # build with open-darts linear solvers
