@@ -61,6 +61,7 @@ class RampUpRate:
         assert inflow_or_outflow in ["inflow", "outflow"], (
             "inflow_or_outflow must be either inflow or outflow!"
         )
+        self.inflow_or_outflow = inflow_or_outflow
 
         assert isinstance(target_molar_rate, float), (
             "Specified target rate is not a float!"
