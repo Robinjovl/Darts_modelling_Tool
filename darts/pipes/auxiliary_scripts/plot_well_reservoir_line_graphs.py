@@ -9,6 +9,8 @@ Note:
     This functino can be used only for 1D reservoirs.
 """
 
+import os
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -223,10 +225,14 @@ def plot_well_1d_reservoir_line_graphs(
     ).get_frame().set_edgecolor('black')  # Optional: Add a border
     fig.tight_layout()
     fig.savefig(
-        f"{property_name}_well_reservoir_profile.pdf", dpi=300, bbox_inches="tight"
+        os.path.join(
+            coupled_model.output_folder, f"{property_name}_well_reservoir_profile.pdf"
+        )
     )
     fig.savefig(
-        f"{property_name}_well_reservoir_profile.png", dpi=300, bbox_inches="tight"
+        os.path.join(
+            coupled_model.output_folder, f"{property_name}_well_reservoir_profile.png"
+        )
     )
     plt.show()
 
