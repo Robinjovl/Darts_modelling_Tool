@@ -162,7 +162,7 @@ class RampUpRate:
             self.current_rate = target_molar_rate
         # Rate starts from zero, so initial rate is zero:
         elif ramp_up_period > 0.0:
-            self.current_rate = 0
+            self.current_rate = 0.0
 
     def update_current_molar_rate(self, simulation_time):
         """
