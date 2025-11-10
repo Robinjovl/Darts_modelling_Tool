@@ -628,11 +628,20 @@ class Pipe:
                 # Update current rate
                 sink_source.update_current_molar_rate(simulation_time)
                 rate_source = sink_source.current_rate  # Output rate is in kmol/day
-                comp_source = sink_source.inj_fluid_props["composition"]
-                Mw = self.physics.property_containers[0].Mw
-                mass_rate = sum(rate_source * np.array(comp_source) * np.array(Mw)) / (
-                    24 * 60 * 60
-                )  # must be in kg/s
+
+                if sink_source.inflow_or_outflow == "inflow":
+                    comp_source = sink_source.inj_fluid_props[
+                        "composition"
+                    ]  # in kmol/kmol
+                    Mw = self.physics.property_containers[0].Mw
+                    mass_rate = sum(
+                        rate_source * np.array(comp_source) * np.array(Mw)
+                    ) / (24 * 60 * 60)  # must be in kg/s
+                elif sink_source.inflow_or_outflow == "outflow":
+                    # TODO: For outflow, we have rate_source, which is in kmol/day, but we don't have comp_source, which
+                    # is in kmol/kmol, from the user. Instead, we have xG_mass0 and xL_mass0, which are mass fractions.
+                    # Need to see how we can get the overall composition of the source block in kmol/kmol.
+                    mass_rate = 0
 
                 pipe_internal_A = self.geometry.pipe_internal_A
 
