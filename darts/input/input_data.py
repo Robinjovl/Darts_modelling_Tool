@@ -15,7 +15,7 @@ class RockProps:
     Rock hydrodynamic properties
     """
 
-    def __init__(self, type_hydr="", type_mech=""):
+    def __init__(self, type_hydr='', type_mech=''):
         """
         :param type_hydr: if 'isothermal' - isothermal flow; if 'thermal' - thermal flow
         :param type_mech: if 'none' - mechanics off; other options: 'poroelasticity', 'thermoporoelasticity'
@@ -26,11 +26,11 @@ class RockProps:
         self.compressibility = None
         self.density = None
 
-        if type_hydr == "thermal":  # thermal properties
+        if type_hydr == 'thermal':  # thermal properties
             self.heat_capacity = None  # [kJ/m3/K]
             self.conductivity = None  # thermal conductivity [kJ/m/day/K]
 
-        if type_mech != "none":  # geomechanical properties
+        if type_mech != 'none':  # geomechanical properties
             self.E = None  # Young modulus [bars]
             self.nu = None  # Poisson ratio
             self.stiffness = None  # Stiffness tensor
@@ -38,7 +38,7 @@ class RockProps:
         else:  # only hydrodynamic
             self.compressibility = None  # [1/bar]
 
-        if type_mech == "thermoporoelasticity":  # THM
+        if type_mech == 'thermoporoelasticity':  # THM
             self.th_expn = None  # thermal expansion coefficient # [1/K] #TODO Linear?
 
     def get_permxyz(self):
@@ -68,12 +68,12 @@ class InitialSolution:
     Class for initial values
     """
 
-    def __init__(self, type="uniform"):
+    def __init__(self, type='uniform'):
         self.type = type
-        if type == "uniform":
+        if type == 'uniform':
             self.initial_pressure = None  # [bars]
             self.initial_temperature = None  # [K]
-        elif type == "gradient":
+        elif type == 'gradient':
             self.reference_depth_for_temperature = None  # [m]
             self.temperature_gradient = None  # [K/km]
             self.temperature_at_ref_depth = None  # [K]
@@ -120,8 +120,8 @@ class WellControl:
 
     def prod_rate_control(self, rate, rate_type, bhp_constraint=None, phase_name=None):
         self.reset()
-        self.type = "prod"
-        self.mode = "rate"
+        self.type = 'prod'
+        self.mode = 'rate'
         self.rate = rate
         self.rate_type = rate_type
         self.bhp_constraint = bhp_constraint
@@ -130,8 +130,8 @@ class WellControl:
 
     def prod_bhp_control(self, bhp):
         self.reset()
-        self.type = "prod"
-        self.mode = "bhp"
+        self.type = 'prod'
+        self.mode = 'bhp'
         self.bhp = bhp
 
     def inj_rate_control(
@@ -144,8 +144,8 @@ class WellControl:
         inj_composition=None,
     ):
         self.reset()
-        self.type = "inj"
-        self.mode = "rate"
+        self.type = 'inj'
+        self.mode = 'rate'
         self.rate = rate
         self.rate_type = rate_type
         self.bhp_constraint = bhp_constraint
@@ -159,8 +159,8 @@ class WellControl:
         self, bhp, temperature=None, phase_name=None, inj_composition=None
     ):
         self.reset()
-        self.type = "inj"
-        self.mode = "bhp"
+        self.type = 'inj'
+        self.mode = 'bhp'
         self.bhp = bhp
         # if thermal
         self.inj_bht = temperature  # K
@@ -199,12 +199,12 @@ class Well:
     def __init__(self, loc_type: str):
         self.controls = []  # List[WellControl]
         self.perforations = []
-        if loc_type == "ijk":
+        if loc_type == 'ijk':
             self.location = WellLocIJK()
-        elif loc_type == "xyz":
+        elif loc_type == 'xyz':
             self.location = WellLocXYZ()
         else:
-            print("Unknown loc_type", loc_type)
+            print('Unknown loc_type', loc_type)
             exit(1)
 
 
@@ -241,14 +241,14 @@ class WellData:
         loc_ijk: int | tuple = None,
         loc_xyz: float | tuple = None,
     ):
-        assert name not in self.wells, "The well " + name + " has been already added!"
+        assert name not in self.wells, 'The well ' + name + ' has been already added!'
         w = Well(loc_type=loc_type)
-        if loc_ijk is not None and loc_type == "ijk":
+        if loc_ijk is not None and loc_type == 'ijk':
             w.location.I, w.location.J, w.location.K = loc_ijk
-        elif loc_xyz is not None and loc_type == "xyz":
+        elif loc_xyz is not None and loc_type == 'xyz':
             w.location.X, w.location.Y, w.location.Z = loc_xyz
         else:
-            print("Unknown loc_type", loc_type)
+            print('Unknown loc_type', loc_type)
             exit(1)
         self.wells[name] = w
 
@@ -268,9 +268,9 @@ class WellData:
         :param time: simulation timestep, [days]
         """
         if name not in self.wells:
-            self.add_well(name=name, loc_type="ijk", loc_ijk=loc_ijk)
+            self.add_well(name=name, loc_type='ijk', loc_ijk=loc_ijk)
         eps = 1e-5
-        if status == "close":
+        if status == 'close':
             # well connections in DARTS cannot be changed during the simulation, so they can be only closed
             # and re-opened throughout timesteps. well_index and well_indexD can be changed as well.
             # multi_segment option can't be changed and should be the same for all perforations
@@ -296,7 +296,7 @@ class WellData:
         """
         if sch_fname is None:
             return
-        print("reading wells (COMPDAT) from", sch_fname)
+        print('reading wells (COMPDAT) from', sch_fname)
         well_diam = 0.152  # m.  #TODO read from the keyword parameters
         well_radius = well_diam / 2.0
 
@@ -304,7 +304,7 @@ class WellData:
         with open(sch_fname) as f:
             while keep_reading:
                 buff = f.readline()
-                if "COMPDAT" in buff:
+                if 'COMPDAT' in buff:
                     while True:  # be careful here
                         buff = f.readline()
                         if len(buff) != 0:
@@ -313,7 +313,7 @@ class WellData:
                                 CompDat[0].strip('"').strip("'")
                             )  # remove quotas (" and ')
                             if (
-                                len(CompDat) != 0 and "/" != wname
+                                len(CompDat) != 0 and '/' != wname
                             ):  # skip the empty line and '/' line
                                 # define perforation
                                 i1 = int(CompDat[1])
@@ -324,13 +324,13 @@ class WellData:
                                 well_index = None
                                 if len(CompDat) > 7:
                                     assert (
-                                        "*" not in CompDat[5] and "*" not in CompDat[6]
+                                        '*' not in CompDat[5] and '*' not in CompDat[6]
                                     ), (
-                                        "Reading SCH with default params is not supported:"
+                                        'Reading SCH with default params is not supported:'
                                         + buff
                                     )
                                     c7 = CompDat[7]
-                                    if c7 not in ["*", "/"]:
+                                    if c7 not in ['*', '/']:
                                         well_index = float(c7)
 
                                 for k in range(k1, k2 + 1):
@@ -339,16 +339,16 @@ class WellData:
                                         name=wname,
                                         time=0.0,
                                         loc_ijk=(i1, j1, k),
-                                        status="open",
+                                        status='open',
                                         well_radius=well_radius,
                                         well_index=well_index,
                                         well_indexD=0.0,
                                         multi_segment=False,
                                     )
-                            if len(CompDat) != 0 and "/" == CompDat[0]:
+                            if len(CompDat) != 0 and '/' == CompDat[0]:
                                 keep_reading = False
                                 break
-        print("WELLS read from SCH file:", len(self.wells))
+        print('WELLS read from SCH file:', len(self.wells))
 
     def add_control(
         self,
@@ -491,9 +491,9 @@ class InputData:
 
     def check(self):
         assert self.type_hydr in [
-            "isothermal",
-            "thermal",
-        ], "input_data: Unknown type_hydr"
+            'isothermal',
+            'thermal',
+        ], 'input_data: Unknown type_hydr'
         assert self.type_mech in [
             'poroelasticity',
             'thermoporoelasticity',
@@ -503,38 +503,38 @@ class InputData:
             self.__dict__.keys()
         ):  # loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
-            if not hasattr(sub_obj, "__dict__"):
+            if not hasattr(sub_obj, '__dict__'):
                 continue
             if k in [
-                "initial",
-                "mesh",
-                "sim",
-                "other",
+                'initial',
+                'mesh',
+                'sim',
+                'other',
             ]:  # do not check initial currently #TODO
                 continue
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     # either perm or permx+permy+permx should be specified
-                    if k2 == "permx" or k2 == "permy" or k2 == "permz":
-                        if sub_obj.__dict__["perm"] is not None:
+                    if k2 == 'permx' or k2 == 'permy' or k2 == 'permz':
+                        if sub_obj.__dict__['perm'] is not None:
                             continue
-                    if k2 == "perm":
+                    if k2 == 'perm':
                         if (
-                            sub_obj.__dict__["permx"] is not None
-                            and sub_obj.__dict__["permy"] is not None
-                            and sub_obj.__dict__["permz"] is not None
+                            sub_obj.__dict__['permx'] is not None
+                            and sub_obj.__dict__['permy'] is not None
+                            and sub_obj.__dict__['permz'] is not None
                         ):
                             continue
                     # if stiffness specified, then allow E and nu non-specified
-                    if k2 == "E" or k2 == "nu":
-                        if sub_obj.__dict__["stiffness"] is not None:
+                    if k2 == 'E' or k2 == 'nu':
+                        if sub_obj.__dict__['stiffness'] is not None:
                             continue
                     print(
-                        "Error in InputData check: property",
+                        'Error in InputData check: property',
                         k,
                         k2,
-                        "is not initialized!",
+                        'is not initialized!',
                     )
                     raise AssertionError()
 
@@ -545,14 +545,14 @@ class InputData:
         can be later used in operations. If some of props are not initialized (i.e. =None) they will be skipped.
         :return:
         """
-        array_obj = ["rock"]  # list of items which can be defined by regons
+        array_obj = ['rock']  # list of items which can be defined by regons
         # count number of regions (one value per region)
         max_n_regions = 1
         for k in self.__dict__.keys():  # loop over the attributes (self.rock, ..)
             if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
-            if not hasattr(sub_obj, "__dict__"):
+            if not hasattr(sub_obj, '__dict__'):
                 continue
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
@@ -567,10 +567,10 @@ class InputData:
             if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
-            if not hasattr(sub_obj, "__dict__"):
+            if not hasattr(sub_obj, '__dict__'):
                 continue
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
-                if k2 == "compressibility" or (k == "rock" and k2 == "density"):
+                if k2 == 'compressibility' or (k == 'rock' and k2 == 'density'):
                     continue
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
