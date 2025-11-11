@@ -13,7 +13,14 @@ from darts.tools.logging import redirect_all_output, abort_redirection
 from output_functions import output_vtk, output_time_data
 from itertools import product
 
-def run(physics_type, case_geom, well_controls,redirect_log = False, compare_with_ref = False):
+def run(physics_type, case_geom, well_controls, redirect_log = False, compare_with_ref = False):
+    case = case_geom + '_' + well_controls
+    out_dir = os.path.join('results', physics_type + '_' + case)
+    os.makedirs(out_dir, exist_ok=True)
+    if redirect_log:
+        log_filename = os.path.join(out_dir, 'run.log')
+        log_stream = redirect_all_output(log_filename)
+
     match physics_type:
         case 'geothermal':
             m = ModelGeothermal()
@@ -22,8 +29,6 @@ def run(physics_type, case_geom, well_controls,redirect_log = False, compare_wit
         case 'CCS':
             m = ModelCCS()
     m.physics_type = physics_type
-    case = case_geom + '_' + well_controls
-    out_dir = os.path.join('results', m.physics_type + '_' + case)
 
     # 1. set physics-specific input data
     match m.physics_type:
@@ -60,12 +65,6 @@ def run(physics_type, case_geom, well_controls,redirect_log = False, compare_wit
         m.idata.sim.DataTS.dt_first = 1e-5
 
     # now, the data is set to m.idata and will be taken there
-
-    os.makedirs(out_dir, exist_ok=True)
-    if redirect_log:
-        log_filename = os.path.join(out_dir, 'run.log')
-        log_stream = redirect_all_output(log_filename)
-
     print('----- Test started', 'physics_type:', m.physics_type, 'case:', case, ' ------')
 
     m.set_physics()
@@ -100,14 +99,15 @@ def run(physics_type, case_geom, well_controls,redirect_log = False, compare_wit
 
     output_time_data(out_dir, m, case)
 
+    if redirect_log:
+        abort_redirection(log_stream)
+
     print("Computation of the case", case, "completed")
     if compare_with_ref:
         failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
     else:
         failed, sim_time = 0, 0.0
 
-    if redirect_log:
-        abort_redirection(log_stream)
     print('Failed' if failed else 'Passed')
     return ret
 
@@ -123,7 +123,6 @@ def check_performance_local(m, case, physics_type):
 
     os.makedirs('ref', exist_ok=True)
 
-    pkl_suffix = ''
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
         pkl_suffix = '_gpu'
     elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
@@ -133,7 +132,7 @@ def check_performance_local(m, case, physics_type):
     print('pkl_suffix=', pkl_suffix)
 
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
-                             '_' + case + '_' + physics_type + '.pkl')
+                             '_' + case.replace('_rate', '_wrate') + '_' + physics_type + '.pkl')
     overwrite = 0
     if os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
@@ -175,27 +174,27 @@ def run_all():
 if __name__ == '__main__':
     grid_cases = [
         # generated cases
-        'generate_5x3x4',
+        #'generate_5x3x4',
         'generate_51x51x1',
-        'generate_51x51x1_faultmult',
-        'generate_100x100x100',
+        #'generate_51x51x1_faultmult',
+        #'generate_100x100x100',
         # for grdecl cases, the grid and properties files must be in meshes/<case> folder,
         # the last '_' part is ignored so can use it for naming
-        '40x40x10',
+        #'40x40x10',
         # 'brugge',
         # 'brugge_noburdenlayers',
     ]
 
     PHYSICS = [
         'geothermal',
-        'DeadOil',
-        'CCS',
+        #'DeadOil',
+        #'CCS',
     ]
 
     WELL_CONTROLS = [
         'rate',
-        'bhp',
-        'periodic'
+        #'bhp',
+        #'periodic'
     ]
 
     run_all()
