@@ -7,11 +7,11 @@ from darts.models.darts_model import DartsModel
 
 
 def check_jacobian(m: DartsModel):
-    """
+    '''
     Check the current jacobian and rhs from the engine for NaN values.
     :param m: model instance
     :return:
-    """
+    '''
     # get current jacobian and rhs from the engine
     np.asarray(m.physics.engine.jac_rows)
     np.asarray(m.physics.engine.jac_cols)
@@ -22,7 +22,7 @@ def check_jacobian(m: DartsModel):
     rhs = np.array(m.physics.engine.RHS, copy=False)
 
     has_nan = np.isnan(jac_vals).any()
-    assert not has_nan, "jac_vals has nan"
+    assert not has_nan, 'jac_vals has nan'
 
     has_nan = np.isnan(rhs).any()
     if has_nan:
@@ -43,21 +43,21 @@ def write_jacobian_to_pkl(m: DartsModel, filename: str):
 
     # make a dictionary
     jac = {
-        "rows": jac_rows,
-        "cols": jac_cols,
-        "diag": jac_diag,
-        "vals": jac_vals,
-        "rhs": rhs,
+        'rows': jac_rows,
+        'cols': jac_cols,
+        'diag': jac_diag,
+        'vals': jac_vals,
+        'rhs': rhs,
     }
 
     # save to PKL file
-    with open(filename, "wb") as f:
+    with open(filename, 'wb') as f:
         pickle.dump(jac, f)
 
 
 def read_jacobian_from_pkl(m, filename):
     # load pkl to dict
-    with open(filename, "rb") as f:
+    with open(filename, 'rb') as f:
         j = pickle.load(f)
 
     # extract arrays from dict
@@ -75,7 +75,7 @@ def read_jacobian_from_pkl(m, filename):
     return mat
 
 
-def plot_bcsr_matrix(mat, filename="mat.png"):
+def plot_bcsr_matrix(mat, filename='mat.png'):
     import matplotlib.pyplot as plt
 
     plt.spy(mat)

@@ -37,7 +37,7 @@ def get_table_keyword(file_name, keyword):
 def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
     read_data_mode = 0
     pos = 0
-    cache_filename = file_name + "." + keyword + ".cache"
+    cache_filename = file_name + '.' + keyword + '.cache'
 
     if cache:
         # if caching is enabled and cache file is already created, read from it
@@ -73,9 +73,9 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                         flush=True,
                     )
                     continue
-                if s_line == "INCLUDE":
+                if s_line == 'INCLUDE':
                     path = osp.abspath(osp.dirname(file_name))
-                    include = osp.join(path, f.readline().strip(" \\/\n"))
+                    include = osp.join(path, f.readline().strip(' \\/\n'))
                     a = load_single_keyword(include, keyword, def_len)
                     if a.size > 0:
                         return a
@@ -91,12 +91,12 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                 continue
             # collect all float values to numpy array
             # check for repeating values
-            if s_line.find("*") != -1:
+            if s_line.find('*') != -1:
                 b = []
                 s1 = s_line.split()
                 for x in range(s1.__len__()):
-                    if s1[x].find("*") != -1:
-                        s2 = s1[x].split("*")
+                    if s1[x].find('*') != -1:
+                        s2 = s1[x].split('*')
                         s2_add = np.ones(int(s2[0]), dtype=float)
                         s2_add.fill(s2[1])
                         b = np.append(b, s2_add)
@@ -106,7 +106,7 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                         except ValueError:
                             # in PETREL the trailing slash can be on the same line with numbers
                             # Skip the message if that is the case
-                            if s1[x] != "/":
+                            if s1[x] != '/':
                                 print("\n''", s1[x], "'' is not a float, skipping...\n")
                             continue
                         b = np.append(b, value)
@@ -134,7 +134,7 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
             pos += b.size
 
             # break when slash found
-            if line.find("/") != -1:
+            if line.find('/') != -1:
                 break
     # shrink the array to actual read length
     a.resize(pos, refcheck=False)
@@ -150,12 +150,12 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
 
 
 def save_few_keywords(fname, keys, data):
-    f = open(fname, "w")
+    f = open(fname, 'w')
     for id in range(len(keys)):
         f.write(keys[id])
         for i, val in enumerate(data[id]):
             if i % 6 == 0:
-                f.write("\n")
+                f.write('\n')
             if not isinstance(val, float):
                 f.write(str(val))
             else:

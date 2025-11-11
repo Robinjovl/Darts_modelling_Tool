@@ -84,7 +84,7 @@ class FaultProcess:
         for j in range(NY):
             for i in range(NX):
                 CellFault = self.GRDECL_Data.findCellFault([i, j, 0])
-                BdMarker, BDFaces = self.GRDECL_Data.isBoundaryCell([i, j, 1], Dim="2D")
+                BdMarker, BDFaces = self.GRDECL_Data.isBoundaryCell([i, j, 1], Dim='2D')
                 FaultIndex = sum(CellFault) - BdMarker
                 if FaultIndex > 0:  # We find a internal fault
                     # print('(%d,%d)'%(i,j),CellFault,FaultIndex,'BoundaryCell',BdMarker,BDFaces)
@@ -207,7 +207,7 @@ class FaultProcess:
             if countSP == 1 and not isBoundaryVert(self.GRDECL_Data, StartPoint):
                 # if(debug):print('SV ',StartPoint,'is a hanging vert')
                 NewEndPoint = extend_FaultLines(
-                    self.GRDECL_Data, Line, FaultLine_Extend, "StartPoint"
+                    self.GRDECL_Data, Line, FaultLine_Extend, 'StartPoint'
                 )
                 NewLine = NewEndPoint + NewLine  # +NewLine[1:]
                 NewIntersectPts.append(NewEndPoint[0])
@@ -215,21 +215,21 @@ class FaultProcess:
             if countEP == 1 and not isBoundaryVert(self.GRDECL_Data, EndPoint):
                 # if(debug): print('EV ',EndPoint,'is a hanging vert')
                 NewEndPoint = extend_FaultLines(
-                    self.GRDECL_Data, Line, FaultLine_Extend, "EndPoint"
+                    self.GRDECL_Data, Line, FaultLine_Extend, 'EndPoint'
                 )
                 NewLine = NewLine + NewEndPoint  # NewLine[:-1]+NewEndPoint#
                 NewIntersectPts.append(NewEndPoint[0])
                 flag = 1
             if flag == 1:
                 if debug:
-                    print("After", NewLine)
+                    print('After', NewLine)
                 ExtendLines.append(NewLine)
                 ExtendLineIDs.append(i)
                 FaultLine_Extend[i] = NewLine
 
         if debug:
-            print("Added EndPoint", sorted(NewIntersectPts))
-            print("Extended Lines", ExtendLineIDs)
+            print('Added EndPoint', sorted(NewIntersectPts))
+            print('Extended Lines', ExtendLineIDs)
 
         if len(ExtendLines) > 0:  # We have extenable lines
             # Step 2. Find the intersection points between newly extended lines
@@ -239,13 +239,13 @@ class FaultProcess:
                 for j, line_j in enumerate(NewLines):
                     if j > i:
                         result = line_i.intersection(line_j)
-                        if result.geom_type in ["LineString", "Point"]:
+                        if result.geom_type in ['LineString', 'Point']:
                             # print('--------',result.geom_type)
                             result = list(result.coords)
                         else:
                             if len(result) > 0:
                                 # print('--------',result.geom_type)
-                                if result.geom_type == "MultiPoint":
+                                if result.geom_type == 'MultiPoint':
                                     result = Shapely2List_MultiPoint(result)
                                 else:
                                     print(
@@ -287,12 +287,12 @@ class FaultProcess:
         if bdlines is None:
             bdlines = []
         if len(bdlines) + len(faultlines) == 0:
-            BoundaryLabels = ["Edge" + str(i) for i in range(len(self.BoundaryLines))]
-            FaultLabels = ["Fault" + str(i) for i in range(len(self.FaultLines))]
+            BoundaryLabels = ['Edge' + str(i) for i in range(len(self.BoundaryLines))]
+            FaultLabels = ['Fault' + str(i) for i in range(len(self.FaultLines))]
             Lines = self.BoundaryLines + self.FaultLines
         else:
-            BoundaryLabels = ["Edge" + str(i) for i in range(len(bdlines))]
-            FaultLabels = ["Fault" + str(i) for i in range(len(faultlines))]
+            BoundaryLabels = ['Edge' + str(i) for i in range(len(bdlines))]
+            FaultLabels = ['Fault' + str(i) for i in range(len(faultlines))]
             Lines = bdlines + faultlines
 
         Labels = BoundaryLabels + FaultLabels
@@ -351,7 +351,7 @@ def computeInternalFaultLine(GRDECL_Data, RawFaultVerts):
             SearchMarker[i] = LocID[i]
 
     if debug:
-        print("EndVerts", StartEndVerts)
+        print('EndVerts', StartEndVerts)
     # if(debug): print("All verts",Verts)
 
     def calcRelativeDist(vert1, vert2):
@@ -397,13 +397,13 @@ def computeInternalFaultLine(GRDECL_Data, RawFaultVerts):
                     print(
                         "Searching Line",
                         line_i,
-                        "Start@",
+                        'Start@',
                         Verts[StartID],
                         SearchMarker[StartID],
                     )
                 break
             if StartID == StartIDs[-1]:
-                print("\n[Error] Can not find start/End Point")
+                print('\n[Error] Can not find start/End Point')
                 print(StartID, Verts[StartID])
                 print(SearchMarker)
                 startIDs = np.nonzero(SearchMarker)[0]
@@ -458,7 +458,7 @@ def computeInternalFaultLine(GRDECL_Data, RawFaultVerts):
                 f"Line{line_i:d} Start@",
                 StartID,
                 Verts[StartID],
-                " - End@",
+                ' - End@',
                 EndID,
                 Verts[EndID],
             )
@@ -488,13 +488,13 @@ def deriveFaultLoc(GRDECL_Data, i, j, CellFault, BdMarker, BDFaces):
     vert = []
     # Find the real fault face
     if BdMarker:  # This is a boundary cell
-        if "X-" in BDFaces:
+        if 'X-' in BDFaces:
             CellFault[0] = False
-        if "X+" in BDFaces:
+        if 'X+' in BDFaces:
             CellFault[1] = False
-        if "Y-" in BDFaces:
+        if 'Y-' in BDFaces:
             CellFault[2] = False
-        if "Y+" in BDFaces:
+        if 'Y+' in BDFaces:
             CellFault[3] = False
 
     if CellFault[0]:
@@ -557,14 +557,14 @@ def isBoundaryVert(GRDECL_Data, vert):
     return True
 
 
-def extend_FaultLines(GRDECL_Data, line, OldFaults, startfrom="StartPoint or EndPoint"):
+def extend_FaultLines(GRDECL_Data, line, OldFaults, startfrom='StartPoint or EndPoint'):
     # extend a line from its start point or end point
     # the end point must on the boundary
     debug = 0
 
-    if startfrom == "StartPoint":
+    if startfrom == 'StartPoint':
         p1, p2 = line[0], line[1]
-    if startfrom == "EndPoint":
+    if startfrom == 'EndPoint':
         p1, p2 = line[-1], line[-2]
 
     if abs(p1[0] - p2[0]) < 1e-10:
@@ -588,22 +588,22 @@ def extend_FaultLines(GRDECL_Data, line, OldFaults, startfrom="StartPoint or End
 
     # Check is hit old fault line and upadte the new endpoint
     if debug:
-        print("P2P1", (p2, p1), "ExtendSeg", NextPoint, NewEndPoint)
+        print('P2P1', (p2, p1), 'ExtendSeg', NextPoint, NewEndPoint)
     ExtendedSegment = LineString([NextPoint, NewEndPoint])
     OldFaults = MultiLineString(OldFaults)
     objects = ExtendedSegment.intersection(OldFaults)
 
     if not objects.is_empty:  # We have hit point
         # print('HitGeometry',objects,objects.geom_type)
-        if objects.geom_type in ["LineString", "Point"]:
+        if objects.geom_type in ['LineString', 'Point']:
             pts = nearest_points(Point(p1), objects)
             pts = Shapely2List_MultiPoint(pts)[1]
             # print('NearestPoint',pts)
             # pts=sorted(list(objects.coords))[0]
         elif objects.geom_type in [
-            "MultiLineString",
-            "MultiPoint",
-            "GeometryCollection",
+            'MultiLineString',
+            'MultiPoint',
+            'GeometryCollection',
         ]:
             pts = nearest_points(Point(p1), objects)
             pts = Shapely2List_MultiPoint(pts)[1]
@@ -611,10 +611,10 @@ def extend_FaultLines(GRDECL_Data, line, OldFaults, startfrom="StartPoint or End
             # pts=Shapely2List_MultiLineString(objects)
             # pts=sorted([j for i in pts for j in i])[0]
         else:
-            print("Unkonwn shapely type", objects.geom_type, objects)
+            print('Unkonwn shapely type', objects.geom_type, objects)
         pts = (int(pts[0]), int(pts[1]))
         if debug:
-            print("HitPoints", pts)
+            print('HitPoints', pts)
         NewEndPoint = pts
 
     # NewLine=sorted(line+[NewEndPoint])
@@ -649,7 +649,7 @@ def simplify_Polygon(polygon):
 
 
 def deriveFaultCellSide(edge, poly):
-    """Derive the cell location and side of a edge
+    '''Derive the cell location and side of a edge
 
     A edge is always shared by two cell,
     e.g Edge15 shared by Y+ or Y- cells of (1,1,0) and (1,0,0) respectivly
@@ -663,7 +663,7 @@ def deriveFaultCellSide(edge, poly):
 
     Author:Bin Wang(binwang.0213@gmail.com)
     Date: Sep. 2018
-    """
+    '''
     debug = 0
     p1, p2 = edge[0], edge[1]
 
@@ -676,46 +676,46 @@ def deriveFaultCellSide(edge, poly):
         if debug:
             print(CellLeft, CellRight)
         if point_in_polygon(CellLeft, poly):
-            return "X-"
+            return 'X-'
         else:
-            return "X+"
+            return 'X+'
     else:  # Horizontal Line
         if debug:
-            print("Horizontal Line")
+            print('Horizontal Line')
         maxX = max(p1[0], p2[0])
         CellUp = (maxX - 0.5, p1[1] + 0.5)
         CellDown = (maxX - 0.5, p2[1] - 0.5)
         if debug:
             print(CellUp, CellDown)
         if point_in_polygon(CellUp, poly):
-            return "Y+"
+            return 'Y+'
         else:
-            return "Y-"
+            return 'Y-'
 
 
 def deriveFaultCells(CellSide, Edge, k):
-    """Derive all cell location along this edge
+    '''Derive all cell location along this edge
 
     k is the designed value of k
 
     Author:Bin Wang(binwang.0213@gmail.com)
     Date: Sep. 2018
-    """
+    '''
     CellLocs = []
     StartPos, EndPos = Edge[0], Edge[1]
     step = 1
     offset = 0
 
-    if CellSide == "X-" or CellSide == "X+":  # Horizontal Line
+    if CellSide == 'X-' or CellSide == 'X+':  # Horizontal Line
         NumEdgeNodes = int(StartPos[1] - EndPos[1])
         if NumEdgeNodes > 0:  # j change from large val to low val
             step = -1
             NumEdgeNodes = abs(NumEdgeNodes)
             offset = 1
         for j in range(StartPos[1], EndPos[1], step):
-            if CellSide == "X-":
+            if CellSide == 'X-':
                 CellLocs.append((StartPos[0] - 1, j - offset, k))
-            if CellSide == "X+":
+            if CellSide == 'X+':
                 CellLocs.append((StartPos[0], j - offset, k))
     else:  # Vertical Line
         NumEdgeNodes = int(StartPos[0] - EndPos[0])
@@ -725,37 +725,37 @@ def deriveFaultCells(CellSide, Edge, k):
             NumEdgeNodes = abs(NumEdgeNodes)
             offset = 1
         for i in range(StartPos[0], EndPos[0], step):
-            if CellSide == "Y-":
+            if CellSide == 'Y-':
                 CellLocs.append((i - offset, StartPos[1] - 1, k))
-            if CellSide == "Y+":
+            if CellSide == 'Y+':
                 CellLocs.append((i - offset, StartPos[1], k))
 
     return CellLocs
 
 
 def isFaultOnBoundaryEdge(GRDECL_Data, fault):
-    """Determine if a fault is a boundary edge
+    '''Determine if a fault is a boundary edge
 
     Fault edge (0,5)->(0,15), the constant axis is 0 which is on the boundary
 
     Author:Bin Wang(binwang.0213@gmail.com)
     Date: Sep. 2018
-    """
-    BoundaryEdge = "InternalFault"
+    '''
+    BoundaryEdge = 'InternalFault'
     NX, NY = GRDECL_Data.NX, GRDECL_Data.NY
 
     if fault[0][0] == fault[1][0]:  # Constant X coord
         X_const = fault[0][0]
         if X_const == 0:
-            BoundaryEdge = "X-"
+            BoundaryEdge = 'X-'
         if X_const == NX:
-            BoundaryEdge = "X+"
+            BoundaryEdge = 'X+'
     if fault[0][1] == fault[1][1]:  # Constant X coord
         y_const = fault[0][1]
         if y_const == 0:
-            BoundaryEdge = "Y-"
+            BoundaryEdge = 'Y-'
         if y_const == NY:
-            BoundaryEdge = "Y+"
+            BoundaryEdge = 'Y+'
 
     return BoundaryEdge
 
@@ -772,7 +772,7 @@ def Shapely2List_MultiLineString(lines):
 def Shapely2List_MultiPoint(points):
     PointList = []
     for p in points:
-        if p.geom_type == "Point":
+        if p.geom_type == 'Point':
             temp = list(p.coords)[0]
             PointList.append(tuple([int(temp[0]), int(temp[1])]))
     return PointList
@@ -787,7 +787,7 @@ def Shapely2List_MultiPolygon(polygons):
 
 
 def calcDist(Pts0=(0, 0), Pts1=(1, 1)):
-    """Calculating distance of two points"""
+    '''Calculating distance of two points'''
     return np.sqrt((Pts1[0] - Pts0[0]) ** 2 + (Pts1[1] - Pts0[1]) ** 2)
 
 
@@ -840,26 +840,26 @@ def DrawPolygons(polygons):
     # https://stackoverflow.com/questions/32141476/how-to-fill-polygons-with-colors-based-on-a-variable-in-matplotlib
 
     font = {
-        "family": "serif",
-        "color": "black",
-        "weight": "normal",
-        "size": 14,
+        'family': 'serif',
+        'color': 'black',
+        'weight': 'normal',
+        'size': 14,
     }
 
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=80, facecolor="w", edgecolor="k")
+    fig, ax = plt.subplots(figsize=(6, 6), dpi=80, facecolor='w', edgecolor='k')
 
     patches = []
     for p in polygons:
         patches.append(Patches.Polygon(np.array(p), True))
 
     p = PatchCollection(patches, cmap=matplotlib.cm.rainbow, alpha=0.8)
-    p.set_edgecolor("k")
+    p.set_edgecolor('k')
     colors = 10 * np.random.random(len(patches))
     p.set_array(np.array(colors))
     ax.add_collection(p)
     fig.colorbar(p, ax=ax)
 
-    plt.axis("equal")
+    plt.axis('equal')
     plt.gca().invert_xaxis()
     plt.title(f'Domain Decomposition Map ({len(patches):d} domains)', fontdict=font)
     plt.xlabel('X', fontdict=font)
@@ -876,10 +876,10 @@ def DrawPath(lines, labels=None, endpoints=None):
         labels = []
     plt.figure(num=None, figsize=(10, 10), dpi=80, facecolor='w', edgecolor='k')
     font = {
-        "family": "serif",
-        "color": "black",
-        "weight": "normal",
-        "size": 16,
+        'family': 'serif',
+        'color': 'black',
+        'weight': 'normal',
+        'size': 16,
     }
 
     for i, verts in enumerate(lines):
@@ -899,10 +899,10 @@ def DrawPath(lines, labels=None, endpoints=None):
     # ax.set_xlim(-2,2)
     # ax.set_ylim(-2,2)
     # plt.legend(bbox_to_anchor=(1.05, 1),loc=2, borderaxespad=0.,fontsize=10)
-    plt.axis("equal")
+    plt.axis('equal')
     plt.gca().invert_xaxis()
-    plt.title("X-Y Plane Fault Map", fontdict=font)
-    plt.xlabel("X", fontdict=font)
-    plt.ylabel("Y", fontdict=font)
+    plt.title('X-Y Plane Fault Map', fontdict=font)
+    plt.xlabel('X', fontdict=font)
+    plt.ylabel('Y', fontdict=font)
     plt.grid()
     plt.show()

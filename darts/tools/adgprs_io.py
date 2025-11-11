@@ -9,8 +9,8 @@ def get_rates(rates_filename):
 
 
 def get_h5_vars(vars_filename):
-    f = h5py.File(vars_filename, "r")
-    P_T_Zc_Sp = f.get("FLOW_TRANSPORT/PTZS")  # sometimes this is different
+    f = h5py.File(vars_filename, 'r')
+    P_T_Zc_Sp = f.get('FLOW_TRANSPORT/PTZS')  # sometimes this is different
     P = P_T_Zc_Sp[:, 0, :]
     T = P_T_Zc_Sp[:, 1, :]
     ZS = P_T_Zc_Sp[:, 2:-1, :]

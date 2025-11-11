@@ -19,7 +19,7 @@ def generate_box_3d(
     refinement_mult: bool = 1.0,
     popup=False,
 ):
-    """
+    '''
     generates a rectangular-box structured-like mesh with hexahedron (right prism) cells in the unstructured mesh format (gmsh 2).
     :param X: a box size ialong X-axis
     :param Y: a box size ialong Y-axis
@@ -34,7 +34,7 @@ def generate_box_3d(
     :param refinement_mult:
     :param popup: shoe gmsh GUI after mesh generation
     :return filename
-    """
+    '''
     gmsh.initialize()
 
     gmsh.model.add("box_3d")
@@ -234,15 +234,15 @@ def generate_box_3d(
     gmsh.model.geo.synchronize()
 
     # boundary tags
-    gmsh.model.addPhysicalGroup(2, x_minus, tags["BND_X-"])
-    gmsh.model.addPhysicalGroup(2, x_plus, tags["BND_X+"])
-    gmsh.model.addPhysicalGroup(2, y_minus, tags["BND_Y-"])
-    gmsh.model.addPhysicalGroup(2, y_plus, tags["BND_Y+"])
-    gmsh.model.addPhysicalGroup(2, z_minus, tags["BND_Z-"])
-    gmsh.model.addPhysicalGroup(2, z_plus, tags["BND_Z+"])
+    gmsh.model.addPhysicalGroup(2, x_minus, tags['BND_X-'])
+    gmsh.model.addPhysicalGroup(2, x_plus, tags['BND_X+'])
+    gmsh.model.addPhysicalGroup(2, y_minus, tags['BND_Y-'])
+    gmsh.model.addPhysicalGroup(2, y_plus, tags['BND_Y+'])
+    gmsh.model.addPhysicalGroup(2, z_minus, tags['BND_Z-'])
+    gmsh.model.addPhysicalGroup(2, z_plus, tags['BND_Z+'])
 
     # volumes
-    gmsh.model.addPhysicalGroup(3, reservoir, tags["MATRIX"])
+    gmsh.model.addPhysicalGroup(3, reservoir, tags['MATRIX'])
 
     # since we read the mesh with MshIO in c++ discretizer and it doesn't work with the msh format 4
     gmsh.option.setNumber("Mesh.MshFileVersion", 2.1)
@@ -258,7 +258,7 @@ def generate_box_3d(
         elif not is_transfinite and not is_recombine:
             filename = "tetra_3d.msh"
 
-    print("Writing ", filename)
+    print('Writing ', filename)
     gmsh.write(filename)
 
     # Launch the GUI to see the results:
@@ -271,17 +271,17 @@ def generate_box_3d(
 
 
 def write_to_vtk_with_faces(mshfile):
-    """
+    '''
     reads a mesh in gmsh format and outputs a .vtu file in VTK format
     :param mshfile: input mesh to convert
-    """
+    '''
     # Temporarily store mesh_data in copy:
     Mesh = meshio.read(mshfile)
     mesh = copy.copy(Mesh)
 
-    available_geometries = ["hexahedron", "wedge", "tetra", "quad", "triangle"]
+    available_geometries = ['hexahedron', 'wedge', 'tetra', 'quad', 'triangle']
 
-    cell_property = ["CellEntityIds"]
+    cell_property = ['CellEntityIds']
     props_num = len(cell_property)
 
     # Matrix
@@ -298,7 +298,7 @@ def write_to_vtk_with_faces(mshfile):
                 cell_data[cell_property[i]].append(
                     np.abs(
                         np.array(
-                            mesh.cell_data_dict["gmsh:physical"][ith_geometry],
+                            mesh.cell_data_dict['gmsh:physical'][ith_geometry],
                             dtype=np.int64,
                         ),
                         dtype=np.int64,
@@ -306,23 +306,23 @@ def write_to_vtk_with_faces(mshfile):
                 )
         geom_id += 1
 
-    vtk_filename = mshfile.split(".")[0] + ".vtu"
-    print("Writing ", vtk_filename)
+    vtk_filename = mshfile.split('.')[0] + '.vtu'
+    print('Writing ', vtk_filename)
     mesh = meshio.Mesh(Mesh.points, Mesh.cells, cell_data=cell_data)
     meshio.write(vtk_filename, mesh)
 
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     tags = dict()
-    tags["BND_X-"] = 991
-    tags["BND_X+"] = 992
-    tags["BND_Y-"] = 993
-    tags["BND_Y+"] = 994
-    tags["BND_Z-"] = 995
-    tags["BND_Z+"] = 996
-    tags["MATRIX"] = 99991
+    tags['BND_X-'] = 991
+    tags['BND_X+'] = 992
+    tags['BND_Y-'] = 993
+    tags['BND_Y+'] = 994
+    tags['BND_Z-'] = 995
+    tags['BND_Z+'] = 996
+    tags['MATRIX'] = 99991
 
     filename = generate_box_3d(
         X=300.0,
