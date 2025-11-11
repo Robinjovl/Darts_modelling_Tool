@@ -54,8 +54,8 @@ class Geothermal(PhysicsBase):
         components = ["H2O"]
 
         # Define phases and variables
-        phases = ["water", "steam"]
-        variables = ["pressure", "enthalpy"]
+        phases = ['water', 'steam']
+        variables = ['pressure', 'enthalpy']
         state_spec = PhysicsBase.StateSpecification.PH
 
         # Define OBL axes
@@ -130,7 +130,7 @@ class Geothermal(PhysicsBase):
 
         return
 
-    def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):
+    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
         """
         Function to set :class:`engine_nce_g` object.
 
@@ -154,9 +154,9 @@ class Geothermal(PhysicsBase):
         :param global_to_local: array of indices mapping to active elements
         """
         # Assertions of consistent depth table specification
-        assert "pressure" in input_distribution.keys() and (
-            "temperature" in input_distribution.keys()
-            or "enthalpy" in input_distribution.keys()
+        assert 'pressure' in input_distribution.keys() and (
+            'temperature' in input_distribution.keys()
+            or 'enthalpy' in input_distribution.keys()
         )
         input_depth = (
             input_depth if not np.isscalar(input_depth) else np.array([input_depth])
@@ -181,17 +181,17 @@ class Geothermal(PhysicsBase):
                 # If temperature has been provided, interpolate pressure and temperature to compute enthalpies
                 p_itor = interp1d(
                     input_depth,
-                    input_distribution["pressure"],
-                    kind="linear",
-                    fill_value="extrapolate",
+                    input_distribution['pressure'],
+                    kind='linear',
+                    fill_value='extrapolate',
                 )
                 pressure = p_itor(depths)
 
                 t_itor = interp1d(
                     input_depth,
-                    input_distribution["temperature"],
-                    kind="linear",
-                    fill_value="extrapolate",
+                    input_distribution['temperature'],
+                    kind='linear',
+                    fill_value='extrapolate',
                 )
                 temperature = t_itor(depths)
 
@@ -206,8 +206,8 @@ class Geothermal(PhysicsBase):
                 itor = interp1d(
                     input_depth,
                     input_distribution[variable],
-                    kind="linear",
-                    fill_value="extrapolate",
+                    kind='linear',
+                    fill_value='extrapolate',
                 )
                 values = itor(depths)
 
@@ -238,33 +238,33 @@ class Geothermal(PhysicsBase):
 
         # set initial pressure
         np.asarray(mesh.initial_state)[0 :: self.n_vars] = input_distribution[
-            "pressure"
+            'pressure'
         ]
 
         # interpolate pressure and temperature to compute enthalpies
         enthalpy = np.empty(mesh.n_res_blocks)
-        if "enthalpy" in input_distribution.keys():
+        if 'enthalpy' in input_distribution.keys():
             enth = (
-                np.ones(mesh.n_res_blocks) * input_distribution["enthalpy"]
-                if not np.isscalar(input_distribution["enthalpy"])
-                else input_distribution["enthalpy"]
+                np.ones(mesh.n_res_blocks) * input_distribution['enthalpy']
+                if not np.isscalar(input_distribution['enthalpy'])
+                else input_distribution['enthalpy']
             )
             enthalpy[:] = enth
-        elif not np.isscalar(input_distribution["pressure"]):
+        elif not np.isscalar(input_distribution['pressure']):
             # Pressure specified as an array
             for j in range(mesh.n_res_blocks):
                 temp = (
-                    input_distribution["temperature"][j]
-                    if not np.isscalar(input_distribution["temperature"])
-                    else input_distribution["temperature"]
+                    input_distribution['temperature'][j]
+                    if not np.isscalar(input_distribution['temperature'])
+                    else input_distribution['temperature']
                 )
-                state_pt = np.array([input_distribution["pressure"][j], temp])
+                state_pt = np.array([input_distribution['pressure'][j], temp])
                 enthalpy[j] = self.property_containers[0].compute_total_enthalpy(
                     state_pt
                 )
         else:
             state_pt = np.array(
-                [input_distribution["pressure"], input_distribution["temperature"]]
+                [input_distribution['pressure'], input_distribution['temperature']]
             )
             enth = self.property_containers[0].compute_total_enthalpy(state_pt)
             enthalpy[:] = enth

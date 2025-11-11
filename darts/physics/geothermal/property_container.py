@@ -15,7 +15,7 @@ class PropertyContainer(PropertyBase):
     nc: int = 1
     nph: int = 2
 
-    def __init__(self, property_evaluator="IAPWS"):
+    def __init__(self, property_evaluator='IAPWS'):
         """
         Constructor
         :param property_evaluator: determines what property evaluator is used, input is either 'IAPWS' or 'ADGPRS'
@@ -30,82 +30,82 @@ class PropertyContainer(PropertyBase):
         )  # Create rock_energy object
 
         # properties implemented in C++
-        if property_evaluator == "ADGPRS":
+        if property_evaluator == 'ADGPRS':
             sat_enthalpy = {
-                "water": saturated_water_enthalpy_evaluator(),
-                "steam": saturated_steam_enthalpy_evaluator(),
+                'water': saturated_water_enthalpy_evaluator(),
+                'steam': saturated_steam_enthalpy_evaluator(),
             }
             self.enthalpy_ev = {
-                "water",
-                water_enthalpy_evaluator(sat_enthalpy["water"], sat_enthalpy["steam"]),
-                "steam",
-                steam_enthalpy_evaluator(sat_enthalpy["steam"], sat_enthalpy["water"]),
+                'water',
+                water_enthalpy_evaluator(sat_enthalpy['water'], sat_enthalpy['steam']),
+                'steam',
+                steam_enthalpy_evaluator(sat_enthalpy['steam'], sat_enthalpy['water']),
             }
             sat_density = {
-                "water": saturated_water_density_evaluator(sat_enthalpy["water"]),
-                "steam": saturated_steam_density_evaluator(sat_enthalpy["steam"]),
+                'water': saturated_water_density_evaluator(sat_enthalpy['water']),
+                'steam': saturated_steam_density_evaluator(sat_enthalpy['steam']),
             }
             self.density_ev = {
-                "water": water_density_evaluator(
-                    sat_density["water"], sat_density["steam"]
+                'water': water_density_evaluator(
+                    sat_density['water'], sat_density['steam']
                 ),
-                "steam": steam_density_evaluator(
-                    sat_density["steam"], sat_density["water"]
+                'steam': steam_density_evaluator(
+                    sat_density['steam'], sat_density['water']
                 ),
             }
             self.temperature_ev = temperature_evaluator(
-                sat_enthalpy["water"], sat_enthalpy["steam"]
+                sat_enthalpy['water'], sat_enthalpy['steam']
             )
             self.saturation_ev = {
-                "water": water_saturation_evaluator(
-                    sat_density["water"],
-                    sat_density["steam"],
-                    sat_enthalpy["water"],
-                    sat_enthalpy["steam"],
+                'water': water_saturation_evaluator(
+                    sat_density['water'],
+                    sat_density['steam'],
+                    sat_enthalpy['water'],
+                    sat_enthalpy['steam'],
                 ),
-                "steam": steam_saturation_evaluator(
-                    sat_density["water"],
-                    sat_density["steam"],
-                    sat_enthalpy["water"],
-                    sat_enthalpy["steam"],
+                'steam': steam_saturation_evaluator(
+                    sat_density['water'],
+                    sat_density['steam'],
+                    sat_enthalpy['water'],
+                    sat_enthalpy['steam'],
                 ),
             }
             self.viscosity_ev = {
-                "water": water_viscosity_evaluator(self.temperature_ev),
-                "steam": steam_viscosity_evaluator(self.temperature_ev),
+                'water': water_viscosity_evaluator(self.temperature_ev),
+                'steam': steam_viscosity_evaluator(self.temperature_ev),
             }
             self.relperm_ev = {
-                "water": water_relperm_evaluator(self.saturation_ev["water"]),
-                "steam": steam_relperm_evaluator(self.saturation_ev["steam"]),
+                'water': water_relperm_evaluator(self.saturation_ev['water']),
+                'steam': steam_relperm_evaluator(self.saturation_ev['steam']),
             }
-            self.conduction_ev = {"water": ConstFunc(172.8), "steam": ConstFunc(0.0)}
+            self.conduction_ev = {'water': ConstFunc(172.8), 'steam': ConstFunc(0.0)}
 
-        elif property_evaluator == "IAPWS":
+        elif property_evaluator == 'IAPWS':
             # properties implemented in python (the IAPWS package)
             self.temperature_ev = (
                 iapws_temperature_evaluator()
             )  # Create temperature object
             self.enthalpy_ev = {
-                "water": iapws_water_enthalpy_evaluator(),
-                "steam": iapws_steam_enthalpy_evaluator(),
-                "total": iapws_total_enthalpy_evalutor(),
+                'water': iapws_water_enthalpy_evaluator(),
+                'steam': iapws_steam_enthalpy_evaluator(),
+                'total': iapws_total_enthalpy_evalutor(),
             }
             self.density_ev = {
-                "water": iapws_water_density_evaluator(),
-                "steam": iapws_steam_density_evaluator(),
+                'water': iapws_water_density_evaluator(),
+                'steam': iapws_steam_density_evaluator(),
             }
             self.saturation_ev = {
-                "water": iapws_water_saturation_evaluator(),
-                "steam": iapws_steam_saturation_evaluator(),
+                'water': iapws_water_saturation_evaluator(),
+                'steam': iapws_steam_saturation_evaluator(),
             }
             self.viscosity_ev = {
-                "water": iapws_water_viscosity_evaluator(),
-                "steam": iapws_steam_viscosity_evaluator(),
+                'water': iapws_water_viscosity_evaluator(),
+                'steam': iapws_steam_viscosity_evaluator(),
             }
-            self.conduction_ev = {"water": ConstFunc(172.8), "steam": ConstFunc(0.0)}
+            self.conduction_ev = {'water': ConstFunc(172.8), 'steam': ConstFunc(0.0)}
             self.relperm_ev = {
-                "water": iapws_water_relperm_evaluator(),
-                "steam": iapws_steam_relperm_evaluator(),
+                'water': iapws_water_relperm_evaluator(),
+                'steam': iapws_steam_relperm_evaluator(),
             }
 
         self.temperature = 0
@@ -117,12 +117,12 @@ class PropertyContainer(PropertyBase):
         self.conduction = np.zeros(2)
         self.kr = np.zeros(2)
 
-        self.output_props = {"temperature": lambda: self.temperature}
+        self.output_props = {'temperature': lambda: self.temperature}
 
     def evaluate(self, state):
         self.temperature = self.temperature_ev.evaluate(state)
 
-        for j, phase in enumerate(["water", "steam"]):
+        for j, phase in enumerate(['water', 'steam']):
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
             self.dens[j] = self.density_ev[phase].evaluate(state)
             self.dens_m[j] = self.dens[j] / self.Mw[0]
@@ -135,7 +135,7 @@ class PropertyContainer(PropertyBase):
         return
 
     def compute_total_enthalpy(self, state_pt):
-        return self.enthalpy_ev["total"].evaluate(state_pt, state_pt[-1])
+        return self.enthalpy_ev['total'].evaluate(state_pt, state_pt[-1])
 
 
 class PropertyContainerPH(PropertyBase):
@@ -145,7 +145,7 @@ class PropertyContainerPH(PropertyBase):
 
     def __init__(self):
         self.components = ["H2O"]
-        self.phases = ["water", "steam"]
+        self.phases = ['water', 'steam']
         self.nc = len(self.components)
         self.nc_fl = self.nc
         self.nph = len(self.phases)
@@ -175,22 +175,22 @@ class PropertyContainerPH(PropertyBase):
         from darts.physics.properties.viscosity import MaoDuan2009
 
         self.enthalpy_ev = {
-            "water": EoSEnthalpy(aq),
-            "steam": EoSEnthalpy(pr),
-            "total": lambda: np.nansum(self.nu * self.enthalpy),
+            'water': EoSEnthalpy(aq),
+            'steam': EoSEnthalpy(pr),
+            'total': lambda: np.nansum(self.nu * self.enthalpy),
         }
         self.density_ev = {
-            "water": Spivey2004(self.components),
-            "steam": EoSDensity(pr, comp_data.Mw),
+            'water': Spivey2004(self.components),
+            'steam': EoSDensity(pr, comp_data.Mw),
         }
         self.viscosity_ev = {
-            "water": MaoDuan2009(self.components),
-            "steam": ConstFunc(0.01),
+            'water': MaoDuan2009(self.components),
+            'steam': ConstFunc(0.01),
         }
-        self.conduction_ev = {"water": ConstFunc(172.8), "steam": ConstFunc(0.0)}
+        self.conduction_ev = {'water': ConstFunc(172.8), 'steam': ConstFunc(0.0)}
         self.relperm_ev = {
-            "water": iapws_water_relperm_evaluator(),
-            "steam": iapws_steam_relperm_evaluator(),
+            'water': iapws_water_relperm_evaluator(),
+            'steam': iapws_steam_relperm_evaluator(),
         }
 
         self.rock = [value_vector([1, 0, 273.15])]
@@ -230,7 +230,7 @@ class PropertyContainerPH(PropertyBase):
             self.mass_source,
         ]
 
-        self.output_props = {"temperature": lambda: self.temperature}
+        self.output_props = {'temperature': lambda: self.temperature}
 
     def run_flash(self, pressure, enthalpy):
         self.flash_ev.evaluate(pressure, enthalpy)

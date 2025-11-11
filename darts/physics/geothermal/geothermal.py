@@ -128,7 +128,7 @@ class GeothermalPropertiesBase(PropertyBase):
             self.mass_source,
         ]
 
-        self.output_props = {"temperature": lambda: self.temperature}
+        self.output_props = {'temperature': lambda: self.temperature}
 
     @abc.abstractmethod
     def compute_total_enthalpy(self, state_pt):
@@ -139,7 +139,7 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
     def evaluate(self, state):
         self.temperature = self.temperature_ev.evaluate(state)
 
-        for j, phase in enumerate(["water", "steam"]):
+        for j, phase in enumerate(['water', 'steam']):
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
             self.dens[j] = self.density_ev[phase].evaluate(state)
             self.dens_m[j] = self.dens[j] / self.Mw[0]
@@ -152,37 +152,37 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
         return
 
     def compute_total_enthalpy(self, state_pt):
-        return self.enthalpy_ev["total"].evaluate(state_pt, state_pt[-1])
+        return self.enthalpy_ev['total'].evaluate(state_pt, state_pt[-1])
 
 
 class GeothermalIAPWSFluidProps(FluidProps):
     def __init__(self):
         super().__init__()
 
-        self.components = ["water"]
+        self.components = ['water']
         self.phases = ["water", "steam"]
         self.temperature_ev = iapws_temperature_evaluator()  # Create temperature object
         self.enthalpy_ev = {
-            "water": iapws_water_enthalpy_evaluator(),
-            "steam": iapws_steam_enthalpy_evaluator(),
-            "total": iapws_total_enthalpy_evalutor(),
+            'water': iapws_water_enthalpy_evaluator(),
+            'steam': iapws_steam_enthalpy_evaluator(),
+            'total': iapws_total_enthalpy_evalutor(),
         }
         self.density_ev = {
-            "water": iapws_water_density_evaluator(),
-            "steam": iapws_steam_density_evaluator(),
+            'water': iapws_water_density_evaluator(),
+            'steam': iapws_steam_density_evaluator(),
         }
         self.saturation_ev = {
-            "water": iapws_water_saturation_evaluator(),
-            "steam": iapws_steam_saturation_evaluator(),
+            'water': iapws_water_saturation_evaluator(),
+            'steam': iapws_steam_saturation_evaluator(),
         }
         self.viscosity_ev = {
-            "water": iapws_water_viscosity_evaluator(),
-            "steam": iapws_steam_viscosity_evaluator(),
+            'water': iapws_water_viscosity_evaluator(),
+            'steam': iapws_steam_viscosity_evaluator(),
         }
-        self.conduction_ev = {"water": ConstFunc(172.8), "steam": ConstFunc(0.0)}
+        self.conduction_ev = {'water': ConstFunc(172.8), 'steam': ConstFunc(0.0)}
         self.relperm_ev = {
-            "water": iapws_water_relperm_evaluator(),
-            "steam": iapws_steam_relperm_evaluator(),
+            'water': iapws_water_relperm_evaluator(),
+            'steam': iapws_steam_relperm_evaluator(),
         }
 
 
@@ -268,7 +268,7 @@ class GeothermalPHFluidProps(FluidProps):
     ):
         super().__init__()
         self.components = ["H2O"]
-        self.phases = ["water", "steam"]
+        self.phases = ['water', 'steam']
 
         from dartsflash.components import CompData
         from dartsflash.libflash import (
@@ -305,16 +305,16 @@ class GeothermalPHFluidProps(FluidProps):
         from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
         from darts.physics.properties.viscosity import MaoDuan2009
 
-        self.enthalpy_ev = {"water": EoSEnthalpy(aq), "steam": EoSEnthalpy(ceos)}
+        self.enthalpy_ev = {'water': EoSEnthalpy(aq), 'steam': EoSEnthalpy(ceos)}
         self.density_ev = {
-            "water": Spivey2004(self.components),
-            "steam": EoSDensity(ceos, comp_data.Mw),
+            'water': Spivey2004(self.components),
+            'steam': EoSDensity(ceos, comp_data.Mw),
         }
         self.viscosity_ev = {
-            "water": MaoDuan2009(self.components),
-            "steam": ConstFunc(0.01),
+            'water': MaoDuan2009(self.components),
+            'steam': ConstFunc(0.01),
         }
-        self.conduction_ev = {"water": ConstFunc(172.8), "steam": ConstFunc(0.0)}
+        self.conduction_ev = {'water': ConstFunc(172.8), 'steam': ConstFunc(0.0)}
         self.relperm_ev = dict(
-            [("water", PhaseRelPerm("water")), ("steam", PhaseRelPerm("gas"))]
+            [('water', PhaseRelPerm("water")), ('steam', PhaseRelPerm("gas"))]
         )
