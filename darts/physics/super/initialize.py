@@ -9,8 +9,8 @@ class Initialize:
     def __init__(
         self,
         physics,
-        algorithm: str = "multilinear",
-        mode: str = "adaptive",
+        algorithm: str = 'multilinear',
+        mode: str = 'adaptive',
         is_barycentric: bool = False,
         aq_idx: int = None,
         h2o_idx: int = None,
@@ -31,22 +31,22 @@ class Initialize:
 
         # Index of pressure, temperature and components
         self.vars = (
-            ["pressure"]
+            ['pressure']
             + self.physics.components[:-1]
-            + (["temperature"] if self.thermal else [])
+            + (['temperature'] if self.thermal else [])
         )
         self.var_idxs = {var: i for i, var in enumerate(self.vars)}
 
         # Add evaluators of phase saturations, rhoT and dX (if kinetic reactions are defined)
         pc = physics.property_containers[0]
         self.props = {}
-        self.props.update({"rhoT": lambda: np.sum(pc.sat * pc.dens)})
+        self.props.update({'rhoT': lambda: np.sum(pc.sat * pc.dens)})
         self.props.update(
-            {"sat" + ph: lambda j=j: pc.sat[j] for j, ph in enumerate(physics.phases)}
+            {'sat' + ph: lambda j=j: pc.sat[j] for j, ph in enumerate(physics.phases)}
         )
         self.props.update(
             {
-                "x" + str(i) + ph: lambda i=i, j=j: pc.x[j, i]
+                'x' + str(i) + ph: lambda i=i, j=j: pc.x[j, i]
                 for i in range(pc.nc_fl)
                 for j, ph in enumerate(physics.phases[: pc.np_fl])
             }
@@ -62,7 +62,7 @@ class Initialize:
             )
         self.props.update(
             {
-                "dX" + str(k): lambda k=k: pc.dX[k]
+                'dX' + str(k): lambda k=k: pc.dX[k]
                 for k, kr in enumerate(pc.kinetic_rate_ev)
             }
         )
@@ -81,7 +81,7 @@ class Initialize:
             n_ops=physics.n_ops,
             axes_min=value_vector(self.physics.PT_axes_min),
             axes_max=value_vector(self.physics.PT_axes_max),
-            timer_name="initialization itor",
+            timer_name='initialization itor',
             algorithm=algorithm,
             mode=mode,
             is_barycentric=is_barycentric,
@@ -196,7 +196,7 @@ class Initialize:
         # Define thermal gradient
         if self.thermal:
             self.T = (
-                lambda i: boundary_state["temperature"]
+                lambda i: boundary_state['temperature']
                 + (self.depths[i] - self.depths[bc_idx]) * dTdh
             )
 
@@ -321,7 +321,7 @@ class Initialize:
         """
         # Find neighbouring cell for which state is known
         known_idx = cell_idx - 1 if downward else cell_idx + 1
-        rhoT_idx = self.props_idxs["rhoT"]
+        rhoT_idx = self.props_idxs['rhoT']
 
         n_vars = self.nv - self.thermal
         values0, _ = self.evaluate(X[known_idx])

@@ -67,23 +67,23 @@ class BlackOilFluidProps(FluidProps):
         self.flash_ev = flash_black_oil(pvt)
         self.density = dict(
             [
-                ("gas", DensityGas(pvt)),
-                ("oil", DensityOil(pvt)),
-                ("water", DensityWat(pvt)),
+                ('gas', DensityGas(pvt)),
+                ('oil', DensityOil(pvt)),
+                ('water', DensityWat(pvt)),
             ]
         )
         self.viscosity = dict(
-            [("gas", ViscGas(pvt)), ("oil", ViscOil(pvt)), ("water", ViscWat(pvt))]
+            [('gas', ViscGas(pvt)), ('oil', ViscOil(pvt)), ('water', ViscWat(pvt))]
         )
         self.rel_perm = dict(
             [
-                ("gas", GasRelPerm(pvt)),
-                ("oil", OilRelPerm(pvt)),
-                ("water", WatRelPerm(pvt)),
+                ('gas', GasRelPerm(pvt)),
+                ('oil', OilRelPerm(pvt)),
+                ('water', WatRelPerm(pvt)),
             ]
         )
         self.capillary_pressure = dict(
-            [("pcow", CapillaryPressurePcow(pvt)), ("pcgo", CapillaryPressurePcgo(pvt))]
+            [('pcow', CapillaryPressurePcow(pvt)), ('pcgo', CapillaryPressurePcgo(pvt))]
         )
 
 
@@ -163,8 +163,8 @@ class BlackOilProperties(PropertyContainer):
                 self.sat[0], self.sat[2]
             )
 
-        pcow = self.capillary_pressure_ev["pcow"].evaluate(self.sat[2])
-        pcgo = self.capillary_pressure_ev["pcgo"].evaluate(self.sat[0])
+        pcow = self.capillary_pressure_ev['pcow'].evaluate(self.sat[2])
+        pcgo = self.capillary_pressure_ev['pcgo'].evaluate(self.sat[0])
 
         self.pc = np.array([-pcgo, 0, pcow])
 
