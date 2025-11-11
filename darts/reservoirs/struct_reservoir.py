@@ -3,41 +3,36 @@ import os
 import numpy as np
 from scipy.interpolate import griddata
 
-from darts.engines import (
-    conn_mesh,
-    index_vector,
-    timer_node,
-    value_vector,
-)
+from darts.engines import conn_mesh, index_vector, timer_node, value_vector
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
 
 
 class StructReservoir(ReservoirBase):
     def __init__(
-        self,
-        timer: timer_node,
-        nx: int,
-        ny: int,
-        nz: int,
-        dx,
-        dy,
-        dz,
-        permx,
-        permy,
-        permz,
-        poro,
-        depth=None,
-        start_z=0,
-        rcond=0,
-        hcap=0,
-        actnum=1,
-        global_to_local=0,
-        op_num=0,
-        coord=0,
-        zcorn=0,
-        is_cpg=False,
-        cache=False,
+            self,
+            timer: timer_node,
+            nx: int,
+            ny: int,
+            nz: int,
+            dx,
+            dy,
+            dz,
+            permx,
+            permy,
+            permz,
+            poro,
+            depth=None,
+            start_z=0,
+            rcond=0,
+            hcap=0,
+            actnum=1,
+            global_to_local=0,
+            op_num=0,
+            coord=0,
+            zcorn=0,
+            is_cpg=False,
+            cache=False,
     ):
         """
         Class constructor method
@@ -135,12 +130,12 @@ class StructReservoir(ReservoirBase):
 
         volume = self.discretizer.calc_volumes()
 
-        if (
-            self.global_data['depth'] is None
-        ):  # pick z coordinates from the centers, and change the order from KJI to IJK
-            self.global_data['depth'] = self.discretizer.centroids_all_cells[
-                :, 2
-            ].flatten(order='F')
+        if self.global_data['depth'] is None:
+            centroids = self.discretizer.centroids_all_cells
+            self.global_data['depth'] = (
+                centroids[:, :, :, 2].flatten(order='F') if self.is_cpg
+                else centroids[:, 2].flatten(order='F')
+            )
 
         # apply actnum filter if needed - all arrays providing a value for a single grid block should be passed
         arrs = [
@@ -188,6 +183,19 @@ class StructReservoir(ReservoirBase):
         self.global_data['volume'] = np.array(mesh.volume, copy=True)
 
         return mesh
+
+    def get_centers(self):
+        centroids = self.discretizer.centroids_all_cells
+        if self.is_cpg:
+            centroids = np.reshape(centroids, (self.nx * self.ny * self.nz, 3), order='F')
+        c_struct = centroids[: self.n]
+        c = np.zeros((self.n, 3))
+        for i in range(self.n):
+            cv = c_struct[i]
+            c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
+        x, y, z = c[:, 0].flatten()[self.actnum == 1], c[:, 1].flatten()[self.actnum == 1], -c[:, 2].flatten()[
+            self.actnum == 1]
+        return x, y, z
 
     def set_boundary_volume(self, boundary_volumes: dict):
         # apply changes
@@ -260,6 +268,8 @@ class StructReservoir(ReservoirBase):
                     dx, dy, dz = self.discretizer.calc_cell_dimensions(
                         i - 1, j - 1, k - 1
                     )
+                    if dz == 0:
+                        dz = np.array(self.mesh.volume, copy=False)[res_block_local] / (dx * dy)
                     # TODO: need segment_depth_increment and segment_length logic
                     if segment_direction == 'z_axis':
                         well.segment_depth_increment = dz
@@ -412,18 +422,18 @@ class StructReservoir(ReservoirBase):
         return dx, dy, dz
 
     def output_to_plt(
-        self,
-        data: dict,
-        output_props: list = None,
-        lims: dict = None,
-        fig=None,
-        figsize: tuple = None,
-        axs_shape: tuple = None,
-        aspect_ratio: str = 'equal',
-        logx: bool = False,
-        plot_zeros: bool = True,
-        cmap: str = 'jet',
-        colorbar_loc: str = 'right',
+            self,
+            data: dict,
+            output_props: list = None,
+            lims: dict = None,
+            fig=None,
+            figsize: tuple = None,
+            axs_shape: tuple = None,
+            aspect_ratio: str = 'equal',
+            logx: bool = False,
+            plot_zeros: bool = True,
+            cmap: str = 'jet',
+            colorbar_loc: str = 'right',
     ):
         assert self.ndims <= 2, "No implementation exists for 3D StructReservoir"
         import matplotlib.pyplot as plt
@@ -562,10 +572,10 @@ class StructReservoir(ReservoirBase):
 
         if self.vtk_grid_type == 0:
             if (
-                (self.n == self.nx)
-                or (self.n == self.ny)
-                or (self.n == self.nz)
-                or (self.ny == 1)
+                    (self.n == self.nx)
+                    or (self.n == self.ny)
+                    or (self.n == self.nz)
+                    or (self.ny == 1)
             ):
                 self.generate_vtk_grid(
                     compute_depth_by_dz_sum=False
@@ -603,7 +613,7 @@ class StructReservoir(ReservoirBase):
             else:
                 for key, _value in cell_data.items():
                     self.vtkobj.AppendScalarData(
-                        key, cell_data[key][self.global_data['actnum'] == 1]
+                        key, cell_data[key]
                     )
 
                 self.vtkobj.Write2VTU(mesh_filename)
@@ -614,12 +624,12 @@ class StructReservoir(ReservoirBase):
         return
 
     def output_to_vtk(
-        self,
-        ith_step: int,
-        t: float,
-        output_directory: str,
-        prop_names: list,
-        data: dict,
+            self,
+            ith_step: int,
+            t: float,
+            output_directory: str,
+            prop_names: list,
+            data: dict,
     ):
         """
         Function to export results of structured reservoir at timestamp t into `.vtk` format.
@@ -649,7 +659,7 @@ class StructReservoir(ReservoirBase):
         for i, name in enumerate(prop_names):
             local_data = data[i]
             global_array = (
-                np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
+                    np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
             )
             global_array[self.discretizer.local_to_global] = local_data
             cell_data[prop_names[name]] = global_array
@@ -682,7 +692,7 @@ class StructReservoir(ReservoirBase):
         vtk_group.save()
 
     def generate_vtk_grid(
-        self, strict_vertical_layers=True, compute_depth_by_dz_sum=True
+            self, strict_vertical_layers=True, compute_depth_by_dz_sum=True
     ):
         # interpolate 2d array using grid (xx, yy) and specified method
         def interpolate_slice(xx, yy, array, method):
@@ -810,70 +820,70 @@ class StructReservoir(ReservoirBase):
         # initialize k=0 as sum of 4 neighbours
         if compute_depth_by_dz_sum:
             self.vtk_z[:, :, 0] = (
-                tops_padded[:-1, :-1]
-                + tops_padded[:-1, 1:]
-                + tops_padded[1:, :-1]
-                + tops_padded[1:, 1:]
-            ) / 4
+                                          tops_padded[:-1, :-1]
+                                          + tops_padded[:-1, 1:]
+                                          + tops_padded[1:, :-1]
+                                          + tops_padded[1:, 1:]
+                                  ) / 4
         else:
             self.vtk_z[:, :, 0] = (
-                depths_padded[:-1, :-1, 0]
-                - dz_padded[:-1, :-1, 0] / 2
-                + depths_padded[:-1, 1:, 0]
-                - dz_padded[:-1, 1:, 0] / 2
-                + depths_padded[1:, :-1, 0]
-                - dz_padded[1:, :-1, 0] / 2
-                + depths_padded[1:, 1:, 0]
-                - dz_padded[1:, 1:, 0] / 2
-            ) / 4
+                                          depths_padded[:-1, :-1, 0]
+                                          - dz_padded[:-1, :-1, 0] / 2
+                                          + depths_padded[:-1, 1:, 0]
+                                          - dz_padded[:-1, 1:, 0] / 2
+                                          + depths_padded[1:, :-1, 0]
+                                          - dz_padded[1:, :-1, 0] / 2
+                                          + depths_padded[1:, 1:, 0]
+                                          - dz_padded[1:, 1:, 0] / 2
+                                  ) / 4
         # initialize i=0
         self.vtk_x[0, :, :] = (
-            lefts_padded[:-1, :-1]
-            + lefts_padded[:-1, 1:]
-            + lefts_padded[1:, :-1]
-            + lefts_padded[1:, 1:]
-        ) / 4
+                                      lefts_padded[:-1, :-1]
+                                      + lefts_padded[:-1, 1:]
+                                      + lefts_padded[1:, :-1]
+                                      + lefts_padded[1:, 1:]
+                              ) / 4
         # initialize j=0
         self.vtk_y[:, 0, :] = (
-            fronts_padded[:-1, :-1]
-            + fronts_padded[:-1, 1:]
-            + fronts_padded[1:, :-1]
-            + fronts_padded[1:, 1:]
-        ) / 4
+                                      fronts_padded[:-1, :-1]
+                                      + fronts_padded[:-1, 1:]
+                                      + fronts_padded[1:, :-1]
+                                      + fronts_padded[1:, 1:]
+                              ) / 4
 
         # assign the rest coordinates by averaged size of neigbouring cells
         if compute_depth_by_dz_sum:
             self.vtk_z[:, :, 1:] = (
-                dz_padded[:-1, :-1, 1:-1]
-                + dz_padded[:-1, 1:, 1:-1]
-                + dz_padded[1:, :-1, 1:-1]
-                + dz_padded[1:, 1:, 1:-1]
-            ) / 4
+                                           dz_padded[:-1, :-1, 1:-1]
+                                           + dz_padded[:-1, 1:, 1:-1]
+                                           + dz_padded[1:, :-1, 1:-1]
+                                           + dz_padded[1:, 1:, 1:-1]
+                                   ) / 4
         else:
             self.vtk_z[:, :, 1:] = (
-                depths_padded[:-1, :-1, 1:-1]
-                + dz_padded[:-1, :-1, 1:-1] / 2
-                + depths_padded[:-1, 1:, 1:-1]
-                + dz_padded[:-1, 1:, 1:-1] / 2
-                + depths_padded[1:, :-1, 1:-1]
-                + dz_padded[1:, :-1, 1:-1] / 2
-                + depths_padded[1:, 1:, 1:-1]
-                + dz_padded[1:, 1:, 1:-1] / 2
-            ) / 4
+                                           depths_padded[:-1, :-1, 1:-1]
+                                           + dz_padded[:-1, :-1, 1:-1] / 2
+                                           + depths_padded[:-1, 1:, 1:-1]
+                                           + dz_padded[:-1, 1:, 1:-1] / 2
+                                           + depths_padded[1:, :-1, 1:-1]
+                                           + dz_padded[1:, :-1, 1:-1] / 2
+                                           + depths_padded[1:, 1:, 1:-1]
+                                           + dz_padded[1:, 1:, 1:-1] / 2
+                                   ) / 4
 
         self.vtk_x[1:, :, :] = (
-            dx_padded[1:-1, :-1, :-1]
-            + dx_padded[1:-1, :-1, 1:]
-            + dx_padded[1:-1, 1:, :-1]
-            + dx_padded[1:-1, 1:, 1:]
-        ) / 4
+                                       dx_padded[1:-1, :-1, :-1]
+                                       + dx_padded[1:-1, :-1, 1:]
+                                       + dx_padded[1:-1, 1:, :-1]
+                                       + dx_padded[1:-1, 1:, 1:]
+                               ) / 4
 
         self.vtk_y[:, 1:, :] = (
-            dy_padded[:-1, 1:-1, :-1]
-            + dy_padded[:-1, 1:-1, 1:]
-            + dy_padded[1:, 1:-1, :-1]
-            + dy_padded[1:, 1:-1, 1:]
-        ) / 4
+                                       dy_padded[:-1, 1:-1, :-1]
+                                       + dy_padded[:-1, 1:-1, 1:]
+                                       + dy_padded[1:, 1:-1, :-1]
+                                       + dy_padded[1:, 1:-1, 1:]
+                               ) / 4
 
         self.vtk_x = np.cumsum(self.vtk_x, axis=0)
         self.vtk_y = np.cumsum(self.vtk_y, axis=1)

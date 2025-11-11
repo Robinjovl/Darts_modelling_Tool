@@ -6,6 +6,7 @@ import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
 
+
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
     model_dir = r'.'
 
@@ -16,13 +17,12 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      '3ph_comp_w', '3ph_do', '3ph_bo',
                      'Uniform_Brugge',
                      'Chem_benchmark_new',
-                     #'CO2_foam_CCS',
+                     # 'CO2_foam_CCS',
                      'GeoRising',
                      'CoaxWell',
                      'phreeqc_dissolution',
                      'effect_of_potential_energy',
                      ]
-
 
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
@@ -35,7 +35,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
         for discr_name in ['mech_discretizer', 'pm_discretizer']:
             if case == 'bai' and discr_name == 'pm_discretizer':
-                continue # is not supported by poroelastic as bai is thermoporoelasticity
+                continue  # is not supported by poroelastic as bai is thermoporoelasticity
             for mesh in ['rect', 'wedge', 'hex']:
                 if case == 'terzaghi_two_layers' and mesh == 'hex':
                     continue
@@ -77,18 +77,20 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # CPG (C++ discr)
     test_dirs_cpg = ['cpg_sloping_fault']
     cpg_cases_list = ['generate_5x3x4']
+    rsv_list = ['cpg', 'struct']
     if iter_solvers:  # run this case only for the build with iterative solvers
         cpg_cases_list += ['generate_51x51x1', '40x40x10', '40x40x10_hcap', '40x40x10_regions']
     test_args_cpg = []
-    for case_geom in cpg_cases_list:
-        for physics_type in ['geothermal', 'deadoil']:
-            for wctrl in ['wrate', 'wbhp', 'wperiodic']:
-                if physics_type == 'deadoil' and wctrl in ['wrate', 'wperiodic']:
-                    continue  # TODO fix convergence
-                if case_geom != 'generate_5x3x4' and wctrl == 'wperiodic':
-                    continue
-                case = case_geom + '_' + wctrl
-                test_args_cpg.append([case, physics_type])
+    for rsv in rsv_list:
+        for case_geom in cpg_cases_list:
+            for physics_type in ['geothermal', 'deadoil']:
+                for wctrl in ['wrate', 'wbhp', 'wperiodic']:
+                    if physics_type == 'deadoil' and wctrl in ['wrate', 'wperiodic']:
+                        continue  # TODO fix convergence
+                    if case_geom != 'generate_5x3x4' and wctrl == 'wperiodic':
+                        continue
+                    case = case_geom + '_' + wctrl
+                    test_args_cpg.append([case, physics_type, rsv])
     test_args_cpg = [test_args_cpg]
 
     # DFN (python discr)
@@ -96,8 +98,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_cases_dfn = ['case_1']
     if test_all_models:
         test_cases_dfn += ['case_4', 'case_5']
-        #test_cases_dfn += ['whitby', 'case_3', 'case_1_burden_O1', 'case_1_burden_O2']
-        #test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
+        # test_cases_dfn += ['whitby', 'case_3', 'case_1_burden_O1', 'case_1_burden_O2']
+        # test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
     test_args_dfn = []
     for case in test_cases_dfn:
         test_args_dfn.append([case])
@@ -128,7 +130,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         n_total_mainpy += 1
         os.chdir(mdir)
         import subprocess
-        mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
+        mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'),
+                              stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
         rcode = mrun.returncode
         if not rcode:
             print('OK')
@@ -182,7 +185,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     print("Passed", n_passed, "of", n_total, "tests ")
 
     if len(sys.argv) == 1 or sys.argv[1] != 'LOG':
-        input("Press Enter to continue...") # pause the screen
+        input("Press Enter to continue...")  # pause the screen
     else:
         print('exit:', n_failed)
         # exit with code equal to number of failed models
@@ -207,11 +210,11 @@ def check_performance(mod):
     shutil.rmtree("__pycache__", ignore_errors=True)
     # create model instance
     m = mod.Model()
-    #m.params.linear_type = sim_params.cpu_superlu
+    # m.params.linear_type = sim_params.cpu_superlu
 
-    platform='cpu'
+    platform = 'cpu'
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-        platform='gpu'
+        platform = 'gpu'
 
         if os.getenv('GPU_DEVICE') != None:
             from darts.engines import set_gpu_device
@@ -244,8 +247,8 @@ def check_performance_adjoint(mod):
     failed = mod.process_adjoint()
     abort_redirection(log_stream)
 
-
     return failed
+
 
 if __name__ == '__main__':
 
@@ -274,7 +277,8 @@ if __name__ == '__main__':
         test_all_models = True
 
     iter_solvers = False
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
+    if os.getenv('ODLS') != None and os.getenv(
+            'ODLS') == '-a':  # run this case only for the build with iterative solvers
         iter_solvers = True
 
     rcode = run_testing(platform, overwrite, iter_solvers, test_all_models)

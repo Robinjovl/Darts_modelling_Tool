@@ -34,6 +34,8 @@ import inspect
 import os
 import sys
 
+from numpy import int32
+
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 parentdir2 = os.path.dirname(parentdir)
@@ -1287,9 +1289,9 @@ def make_burden_layers(
         # which are the same the values from the top reservoir layer
         property_dictionary['ACTNUM'] = np.concatenate(
             [
-                property_dictionary['ACTNUM'][: nx * ny],
+                np.ones(nx*ny).astype(int32),
                 property_dictionary['ACTNUM'],
-                property_dictionary['ACTNUM'][-nx * ny :],
+                np.ones(nx*ny).astype(int32),
             ]
         )
         # for arrays like ROCKNUM

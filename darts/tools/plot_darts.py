@@ -269,6 +269,7 @@ def plot_total_inj_water_rate_darts(
                 for i in range(0, len(darts_df[col])):
                     if darts_df[col][i] >= 0:
                         # acc_df['total'][i] += darts_df[col][i]
+                        acc_df['total'] = acc_df['total'].astype(float)
                         acc_df.loc[i, 'total'] += darts_df[col][i]
 
     ax = acc_df.plot(x='time', y='total', style=style, color=color, ax=ax, alpha=alpha)

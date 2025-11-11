@@ -55,9 +55,9 @@ class Corey:
 
 
 class ModelCCS(Model_CPG):
-    def __init__(self, comps):
+    def __init__(self, comps, rsv):
         self.zero = 1e-10
-        super().__init__()
+        super().__init__(rsv=rsv)
         self.components = comps
         self.nc = len(self.components)
 

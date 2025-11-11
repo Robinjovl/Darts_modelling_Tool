@@ -8,6 +8,9 @@ def input_data_case_40x40x10(idata: InputData, case: str):
 
     geom = idata.geom  # a short name
     well_data = idata.well_data  # a short name
+    geom.nx = 40
+    geom.ny = 40
+    geom.nz = 10
 
     # idata.gridfile is defined in get_case_files (case_base.py)
 

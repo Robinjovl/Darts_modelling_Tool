@@ -944,6 +944,9 @@ class StructDiscretizer:
             # Store grid-dimensions of segmet and permeability:
             if self.is_cpg:
                 dx, dy, dz = self.calc_cell_dimensions(i, j, k)
+                # if there is on grid at z direction
+                if dz == 0:
+                    dz = self.volume[i, j, k] / (dx * dy)
             else:
                 dx = self.len_cell_xdir[i, j, k]
                 dy = self.len_cell_ydir[i, j, k]

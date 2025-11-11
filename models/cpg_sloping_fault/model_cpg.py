@@ -7,14 +7,18 @@ from darts.reservoirs.cpg_reservoir import read_int_array, read_float_array
 from darts.tools.gen_cpg_grid import gen_cpg_grid
 
 from darts.models.cicd_model import CICDModel
+from darts.tools.keyword_file_tools import load_single_keyword
+
 
 def fmt(x):
     return '{:.3}'.format(x)
 
+
 #####################################################
 
 class Model_CPG(CICDModel):
-    def __init__(self):
+    def __init__(self, rsv):
+        self.rsv = rsv
         super().__init__()
 
     def init_input_arrays(self):
@@ -71,7 +75,8 @@ class Model_CPG(CICDModel):
                                property_dictionary=arrays,
                                burden_layer_prop_value=self.idata.rock.burden_prop)
 
-        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=self.idata.geom.minpv, faultfile=self.idata.geom.faultfile)
+        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=self.idata.geom.minpv,
+                                       faultfile=self.idata.geom.faultfile)
         # discretize right away to be able to modify the boundary volume
         self.reservoir.discretize()
 
@@ -83,31 +88,59 @@ class Model_CPG(CICDModel):
         print("Pore volume = " + str(sum(volume[:self.reservoir.mesh.n_blocks] * poro)))
 
         # imitate open-boundaries with a large volume
-        bv = self.idata.geom.bound_volume   # volume, will be assigned to each boundary cell [m3]
+        bv = self.idata.geom.bound_volume  # volume, will be assigned to each boundary cell [m3]
         self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
         self.reservoir.apply_volume_depth()
 
         l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
-        if 'RCOND' in arrays and 'HCAP' in arrays: # rock thermal properties specified in a file
-            self.reservoir.conduction = arrays['RCOND'][g2l >= 0]
-            self.reservoir.hcap = arrays['HCAP'][g2l >= 0]
-            # add hcap and rcond to be saved into mesh.vtu
-            self.reservoir.global_data.update({'heat_capacity': arrays['HCAP'], 'rock_conduction': arrays['RCOND']})
-        else:  # specify rock thermal properties based on porosity
-            poro_shale_threshold = self.idata.rock.poro_shale_threshold  # short name
-            poro = np.array(self.reservoir.mesh.poro)
-            self.reservoir.conduction[poro <= poro_shale_threshold] = self.idata.rock.conduction_shale
-            self.reservoir.conduction[poro > poro_shale_threshold] = self.idata.rock.conduction_sand
-            self.reservoir.hcap[poro <= poro_shale_threshold] = self.idata.rock.hcap_shale
-            self.reservoir.hcap[poro > poro_shale_threshold] = self.idata.rock.hcap_sand
+        self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
+                                           'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g,
+                                                                             g2l)})
 
-            # add hcap and rcond to be saved into mesh.vtu
-            self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
-                                               'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l)})
+    def init_struct_reservoir(self, arrays=None):
+        from darts.reservoirs.struct_reservoir import StructReservoir
 
-        if 'ROCKNUM' in arrays: # rock thermal properties specified in a file
-            self.reservoir.global_data.update({'rocknum': arrays['ROCKNUM']})
+        if self.idata.geom.burden_layers > 0:
+            # add over- and underburden layers
+            make_burden_layers(number_of_burden_layers=self.idata.geom.burden_layers,
+                               initial_thickness=self.idata.geom.burden_init_thickness,
+                               property_dictionary=arrays,
+                               burden_layer_prop_value=self.idata.rock.burden_prop)
+        nb = np.prod(arrays['SPECGRID'])
+        dx = np.zeros(nb)
+        dy = np.zeros(nb)
+        dz = np.zeros(nb)
+        self.reservoir = StructReservoir(self.timer, nx=arrays['SPECGRID'][0], ny=arrays['SPECGRID'][1],
+                                         nz=arrays['SPECGRID'][2],
+                                         dx=dx, dy=dy, dz=dz,
+                                         permx=arrays['PERMX'], permy=arrays['PERMY'],
+                                         permz=arrays['PERMZ'], poro=arrays['PORO'],
+                                         actnum=arrays['ACTNUM'], zcorn=arrays['ZCORN'],
+                                         coord=arrays['COORD'], is_cpg=True)
+        mesh = self.reservoir.discretize()
+        poro_shale_threshold = self.idata.rock.poro_shale_threshold  # short name
+        poro = np.array(mesh.poro)
+        cond_mesh = np.array(mesh.rock_cond, copy=False)
+        hcap_mesh = np.array(mesh.heat_capacity, copy=False)
+        cond_mesh[poro <= poro_shale_threshold] = self.idata.rock.conduction_shale
+        cond_mesh[poro > poro_shale_threshold] = self.idata.rock.conduction_sand
+        hcap_mesh[poro <= poro_shale_threshold] = self.idata.rock.hcap_shale
+        hcap_mesh[poro > poro_shale_threshold] = self.idata.rock.hcap_sand
+
+        self.reservoir.boundary_volumes['yz_minus'] = self.idata.geom.bound_volume
+        self.reservoir.boundary_volumes['yz_plus'] = self.idata.geom.bound_volume
+        self.reservoir.boundary_volumes['xz_minus'] = self.idata.geom.bound_volume
+        self.reservoir.boundary_volumes['xz_plus'] = self.idata.geom.bound_volume
+
+        # l2g = np.array(self.reservoir.local_data, copy=False)
+        # g2l = np.array(self.reservoir.global_data, copy=False)
+        # # add hcap and rcond to be saved into mesh.vtu
+        # self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
+        #                                    'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l)})
+        #
+        # if 'ROCKNUM' in arrays: # rock thermal properties specified in a file
+        #     self.reservoir.global_data.update({'rocknum': arrays['ROCKNUM']})
     def set_wells(self):
         # add wells and perforations, 1-based IJK indices
         if hasattr(self.idata, 'schfile'):
@@ -123,18 +156,21 @@ class Model_CPG(CICDModel):
                     self.reservoir.add_perforation(wname,
                                                    cell_index=perf_ijk_new,
                                                    well_index=wi, well_indexD=self.idata.geom.well_indexD,
-                                                   multi_segment=perf.multi_segment, verbose=True)
+                                                   multi_segment=perf.multi_segment, verbose=True, well_radius=0.0762)
         else:
             # add wells and perforations, 1-based indices
             for wname, wdata in self.idata.well_data.wells.items():
                 self.reservoir.add_well(wname)
-                for k in range(1 + self.idata.geom.burden_layers,  self.reservoir.nz+1-self.idata.geom.burden_layers):
+                start_index = 1 + self.idata.geom.burden_layers
+                end_index = self.reservoir.nz - self.idata.geom.burden_layers + 1
+                for k in range(start_index, end_index):
                     self.reservoir.add_perforation(wname,
                                                    cell_index=(wdata.location.I, wdata.location.J, k),
-                                                   well_index=self.idata.geom.well_index, well_indexD=self.idata.geom.well_indexD,
-                                                   multi_segment=False, verbose=True)
+                                                   well_index=self.idata.geom.well_index,
+                                                   well_indexD=self.idata.geom.well_indexD,
+                                                   multi_segment=False, verbose=True, well_radius=0.0762)
 
-    def well_is_inj(self, wname : str):  # determine well control by its name
+    def well_is_inj(self, wname: str):  # determine well control by its name
         return "INJ" in wname
 
     def do_after_step(self):
