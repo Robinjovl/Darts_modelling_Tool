@@ -4,14 +4,14 @@ from unstructured import Unstructured
 from wells import *
 
 if __name__ == "__main__":
-    geo = "fluidflower"
-    if geo == "cylinder":
+    geo = 'fluidflower'
+    if geo == 'cylinder':
         c = Cylinder(
             center=[0.0, 0.0, 0.0],
             radii=[1, 0.3],
             lc=[0.5, 0.1],
             length=3,
-            orientation="xz",
+            orientation='xz',
             angle=300,
             hole=1,
         )
@@ -19,12 +19,12 @@ if __name__ == "__main__":
         m = Unstructured(dim=3)
         m.add_shape(c)
 
-    elif geo == "circle":
+    elif geo == 'circle':
         c = Circle(
             center=[0.0, 0.0, 0.0],
             radii=[10, 4],
             lc=[2, 1],
-            orientation="yz",
+            orientation='yz',
             angle=300,
             hole=0,
         )
@@ -34,14 +34,14 @@ if __name__ == "__main__":
 
         m.extrude_mesh(length=100, layers=10, axis=0, recombine=True)
 
-    elif geo == "box":
+    elif geo == 'box':
         b = Box(
             center=[0.0, 0.0, 0.0],
             lc=[0.1, 0.1, 0.05],
             xlen=1.0,
             ylen=1.0,
             zlen=1.0,
-            orientation="yz",
+            orientation='yz',
             radii=[0.3, 0.1],
             hole=1,
         )
@@ -49,14 +49,14 @@ if __name__ == "__main__":
         m = Unstructured(dim=3)
         m.add_shape(b)
 
-    elif geo == "square":
+    elif geo == 'square':
         s = Square(
             center=[0.0, 0.0, 0.0],
             lc=[0.1, 0.1, 0.05],
             xlen=1.0,
             ylen=1.0,
             zlen=1.0,
-            orientation="yz",
+            orientation='yz',
             radii=[0.3, 0.1],
             hole=1,
         )
@@ -65,14 +65,14 @@ if __name__ == "__main__":
         m.add_shape(s)
 
         m.extrude_mesh(length=1, layers=10, axis=0, recombine=True)
-    elif geo == "layered":
+    elif geo == 'layered':
         b1 = Box(
             center=[0.0, 0.0, 0.0],
             lc=[0.1, 0.1, 0.05],
             xlen=1.0,
             ylen=1.0,
             zlen=1.0,
-            orientation="xy",
+            orientation='xy',
             radii=[],
             hole=1,
         )
@@ -82,7 +82,7 @@ if __name__ == "__main__":
             xlen=1.0,
             ylen=1.0,
             zlen=1.0,
-            orientation="xy",
+            orientation='xy',
             radii=[],
             hole=1,
         )
@@ -97,7 +97,7 @@ if __name__ == "__main__":
         m.add_shape(b2)
         # m.add_shape(c1)
         # m.add_shape(c2)
-    elif geo == "fluidflower":
+    elif geo == 'fluidflower':
         from fluidflower import FluidFlower
 
         f = FluidFlower(lc=[0.025])
@@ -124,7 +124,7 @@ if __name__ == "__main__":
                 m.refine_around_point(center, radius=0.015, lc=len(m.lc))
 
                 w = WellCell(
-                    center, lc=0.005, orientation="xz", in_surfaces=in_surfaces
+                    center, lc=0.005, orientation='xz', in_surfaces=in_surfaces
                 )
                 # w = CircularWell(center, re=0.01, lc_well=1, axs=[0, 2], in_surfaces=in_surfaces)
                 m.add_shape(w)
@@ -143,7 +143,7 @@ if __name__ == "__main__":
                     center=center,
                     ax0_len=2,
                     ax1_len=2,
-                    orientation="xy",
+                    orientation='xy',
                     radii=[0.5, 0.2, 0.1],
                     hole=True,
                 )
@@ -164,6 +164,6 @@ if __name__ == "__main__":
 
         m.lc = [0.25, 0.1, 0.05, 0.01]
 
-    filename = "mesh"
+    filename = 'mesh'
     m.write_geo(filename)
     m.generate_msh(filename)

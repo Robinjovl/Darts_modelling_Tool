@@ -61,9 +61,9 @@ class CircularWell(Well):
         ]
 
         self.curves = [
-            Curve(1, curve_type="circle", points=[2, 1, 3], embed=in_surfaces),
-            Curve(2, curve_type="circle", points=[3, 1, 4], embed=in_surfaces),
-            Curve(3, curve_type="circle", points=[4, 1, 2], embed=in_surfaces),
+            Curve(1, curve_type='circle', points=[2, 1, 3], embed=in_surfaces),
+            Curve(2, curve_type='circle', points=[3, 1, 4], embed=in_surfaces),
+            Curve(3, curve_type='circle', points=[4, 1, 2], embed=in_surfaces),
         ]
 
         self.surfaces = [Surface(1, points=[2, 3, 4, 2], curves=[1, 2, 3])]

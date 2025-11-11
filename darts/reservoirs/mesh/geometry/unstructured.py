@@ -9,7 +9,7 @@ from darts.reservoirs.mesh.geometry.shapes import Curve, Point
 
 class Unstructured(Geometry):
     extrude: dict = None
-    physical_groups = {"matrix": {}, "boundary": {}}
+    physical_groups = {'matrix': {}, 'boundary': {}}
     tags = [
         901,
         9001,
@@ -21,10 +21,10 @@ class Unstructured(Geometry):
         self, center: list, radius: float, orientation: str, angle: float
     ):
         point = center[:]
-        if orientation == "xy":
+        if orientation == 'xy':
             point[0] += np.round(radius * np.sin(angle), 5)
             point[1] += np.round(radius * np.cos(angle), 5)
-        elif orientation == "xz":
+        elif orientation == 'xz':
             point[0] += np.round(radius * np.sin(angle), 5)
             point[2] += np.round(radius * np.cos(angle), 5)
         else:  # 'yz'
@@ -45,7 +45,7 @@ class Unstructured(Geometry):
         # Find segments that are intersected by circle
         for c, curve in enumerate(curves_temp):
             if (
-                curve.active and not curve.curve_type == "circle"
+                curve.active and not curve.curve_type == 'circle'
             ):  # and not segment.index in new_segments:
                 # check if circle intersects segment
                 # first construct equation for line segment
@@ -150,17 +150,17 @@ class Unstructured(Geometry):
                     self.curves[c].active = False  # remove curve c from active curves
                     index1 = len(self.curves) + 1
                     self.curves.append(
-                        Curve(index1, curve_type="line", points=segment1)
+                        Curve(index1, curve_type='line', points=segment1)
                     )
                     self.curves_list.append(segment1)
                     index2 = len(self.curves) + 1
                     self.curves.append(
-                        Curve(index2, curve_type="line", points=segment2)
+                        Curve(index2, curve_type='line', points=segment2)
                     )
                     self.curves_list.append(segment2)
                     index3 = len(self.curves) + 1
                     self.curves.append(
-                        Curve(index3, curve_type="line", points=segment3)
+                        Curve(index3, curve_type='line', points=segment3)
                     )
                     self.curves_list.append(segment3)
 
@@ -185,13 +185,13 @@ class Unstructured(Geometry):
                     segment1 = [pointa_index, point_index]
                     index1 = len(self.curves) + 1
                     self.curves.append(
-                        Curve(index1, curve_type="line", points=segment1)
+                        Curve(index1, curve_type='line', points=segment1)
                     )
                     self.curves_list.append(segment1)
                     segment2 = [point_index, pointb_index]
                     index2 = len(self.curves) + 1
                     self.curves.append(
-                        Curve(index2, curve_type="line", points=segment2)
+                        Curve(index2, curve_type='line', points=segment2)
                     )
                     self.curves_list.append(segment2)
 
@@ -238,7 +238,7 @@ class Unstructured(Geometry):
         center: list,
         radius: float,
         surface: int = 1,
-        orientation: str = "xy",
+        orientation: str = 'xy',
         lc: int = 0,
         angle: float = 360.0,
     ):
@@ -268,7 +268,7 @@ class Unstructured(Geometry):
             self.curves.append(
                 Curve(
                     c0_index + i,
-                    curve_type="circle",
+                    curve_type='circle',
                     points=[p0_index + i + 1, p0_index, p0_index + i + 2],
                     embed=[surface],
                 )
@@ -278,7 +278,7 @@ class Unstructured(Geometry):
             self.curves.append(
                 Curve(
                     c0_index + 3,
-                    curve_type="circle",
+                    curve_type='circle',
                     points=[p0_index + 3, p0_index, p0_index + 1],
                     embed=[surface],
                 )
@@ -298,7 +298,7 @@ class Unstructured(Geometry):
             self.curves.append(
                 Curve(
                     c0_index + i,
-                    curve_type="line",
+                    curve_type='line',
                     points=[p0_index + i, p0_index + i + 1],
                     embed=in_surfaces,
                 )
@@ -311,32 +311,32 @@ class Unstructured(Geometry):
 
     def extrude_mesh(self, length: float, layers: int, axis: int, recombine: bool):
         self.extrude = {
-            "length": length,
-            "layers": layers,
-            "axis": axis,
-            "recombine": recombine,
+            'length': length,
+            'layers': layers,
+            'axis': axis,
+            'recombine': recombine,
         }
 
     def write_geo(self, filename):
         # Create geo-file:
-        f = open(filename + ".geo", "w+")
+        f = open(filename + '.geo', "w+")
 
         for i, lc in enumerate(self.lc):
             f.write(f'lc_{i:d} = {lc:f};\n')
         f.write('\n')
 
         """Write all points"""
-        f.write("// POINTS\n")
+        f.write('// POINTS\n')
         for point in self.points:
             local_text = f'Point({point.idx:d}) = {{{point.xyz[0]:8.5f}, {point.xyz[1]:8.5f}, {point.xyz[2]:8.5f}, lc_{point.lc:d} }};\n'
             f.write(local_text)
-        f.write("\n")
+        f.write('\n')
 
         """Write curves"""
-        f.write("// CURVES\n")
+        f.write('// CURVES\n')
         for curve in self.curves:
             if curve.active:
-                if curve.curve_type == "circle":
+                if curve.curve_type == 'circle':
                     f.write(
                         f'Circle({curve.idx:d}) = {{{curve.points[0]:d}, {curve.points[1]:d}, {curve.points[2]:d}}};\n'
                     )
@@ -344,10 +344,10 @@ class Unstructured(Geometry):
                     f.write(
                         f'Line({curve.idx:d}) = {{{curve.points[0]:d}, {curve.points[1]:d}}};\n'
                     )
-        f.write("\n")
+        f.write('\n')
 
         """Write Curve Loops"""
-        f.write("// CURVE LOOPS\n")
+        f.write('// CURVE LOOPS\n')
         for surface in self.surfaces:
             local_text = f'Curve Loop({surface.idx:d}) = {{'
             for curve_idx in surface.curves:
@@ -356,12 +356,12 @@ class Unstructured(Geometry):
                 else:  # -1 segment index for p < 0
                     local_text += f'{curve_idx:d}, '
             local_text = local_text[:-2]
-            local_text += "};\n"
+            local_text += '};\n'
             f.write(local_text)
-        f.write("\n")
+        f.write('\n')
 
         "Write Surfaces"
-        f.write("// SURFACES\n")
+        f.write('// SURFACES\n')
         for surface in self.surfaces:
             if surface.active:
                 if self.dim == 3 or surface.idx not in self.holes:
@@ -372,12 +372,12 @@ class Unstructured(Geometry):
                     for hole_idx in surface.holes:
                         local_text += f'{hole_idx:d}, '
                     local_text = local_text[:-2]
-                    local_text += "};\n"
+                    local_text += '};\n'
                     f.write(local_text)
-        f.write("\n")
+        f.write('\n')
 
         """Write Embedded"""
-        f.write("// EMBEDDED\n")
+        f.write('// EMBEDDED\n')
         for point in self.points:
             for surface_idx in point.embed:
                 f.write(f'Point{{{point.idx:d}}} In Surface{{{surface_idx:d}}};\n')
@@ -390,7 +390,7 @@ class Unstructured(Geometry):
         f.write('\n')
 
         """Write Physical Groups and volumes"""
-        f.write("// PHYSICAL GROUPS, EXTRUSIONS AND VOLUMES\n")
+        f.write('// PHYSICAL GROUPS, EXTRUSIONS AND VOLUMES\n')
         if self.dim == 2:
             assert self.extrude is not None, "Define extrusion"
             if self.extrude is not None:
@@ -398,7 +398,7 @@ class Unstructured(Geometry):
                 self.dim = 3
 
                 extrusion = [0, 0, 0]
-                extrusion[self.extrude["axis"]] = self.extrude["length"]
+                extrusion[self.extrude['axis']] = self.extrude['length']
 
                 # Extrude surface
                 # Write Physical Volume: out[1]
@@ -409,7 +409,7 @@ class Unstructured(Geometry):
                     f.write(
                         f'Physical Point("{name:s}", {i + self.tags[0]:d}) = {{}};\n'
                     )
-                    f.write("\n")
+                    f.write('\n')
 
                 # for i, physical_point in enumerate(self.physical_points):
                 #     f.write('Physical Curve("{:s}", {:d}) = {{}};\n'.format(physical_point.tag, i + self.tags[1]))
@@ -422,7 +422,7 @@ class Unstructured(Geometry):
 
                 # Extrude physical curves and write as Physical Surfaces
                 for i, (name, idxs) in enumerate(self.physical_curves.items()):
-                    self.physical_groups["boundary"][name] = i + self.tags[2]
+                    self.physical_groups['boundary'][name] = i + self.tags[2]
                     f.write(
                         f'Physical Surface("{name:s}", {i + self.tags[2]:d}) = {{}};\n'
                     )
@@ -434,12 +434,12 @@ class Unstructured(Geometry):
                         )
                         local_text += f'Physical Surface("{name:s}", {i + self.tags[2]:d}) += {{out[1]}};\n'
                         f.write(local_text)
-                    f.write("\n")
+                    f.write('\n')
 
                 # Extrude physical surfaces and write as Physical Volumes
                 surfaces_seen = []
                 for i, (name, idxs) in enumerate(self.physical_surfaces.items()):
-                    self.physical_groups["matrix"][name] = i + self.tags[3]
+                    self.physical_groups['matrix'][name] = i + self.tags[3]
                     f.write(
                         f'Physical Volume("{name:s}", {i + self.tags[3]:d}) = {{}};\n'
                     )
@@ -455,7 +455,7 @@ class Unstructured(Geometry):
                         local_text += f'Physical Volume("{name:s}", {i + self.tags[3]:d}) += {{out[1]}};\n'
                         f.write(local_text)
                         surfaces_seen.append(surface_idx)
-                    f.write("\n")
+                    f.write('\n')
 
                 # Extrude non-Physical surfaces that haven't been extruded yet
                 nps = len(
@@ -471,19 +471,19 @@ class Unstructured(Geometry):
                             + f'{{{surface.idx:d}}};'
                             + ' Layers{{{:d}}};'.format(self.extrude['layers'])
                         )
-                        if self.extrude["recombine"]:
-                            local_text += " Recombine;"
-                        local_text += "};\n"
+                        if self.extrude['recombine']:
+                            local_text += ' Recombine;'
+                        local_text += '};\n'
                         f.write(local_text)
 
                         # Add Physical Volume
-                        self.physical_groups["matrix"]["Volume_" + str(i + 1)] = (
+                        self.physical_groups['matrix']['Volume_' + str(i + 1)] = (
                             i + nps + self.tags[3]
                         )
                         f.write(
                             f'Physical Volume("Volume_{i + 1:d}", {i + nps + self.tags[3]:d}) = {{out[1]}};\n'
                         )
-                f.write("\n")
+                f.write('\n')
         else:
             # Write 3D
             # Add Physical Points, Curves, Surfaces
@@ -493,7 +493,7 @@ class Unstructured(Geometry):
                 for point_idx in idxs:
                     local_text += f'{point_idx:d}, '
                 local_text = local_text[:-2]
-                local_text += "};\n"
+                local_text += '};\n'
                 f.write(local_text)
 
             for i, (name, idxs) in enumerate(self.physical_curves.items()):
@@ -502,7 +502,7 @@ class Unstructured(Geometry):
                 for curve_idx in idxs:
                     local_text += f'{curve_idx:d}, '
                 local_text = local_text[:-2]
-                local_text += "};\n"
+                local_text += '};\n'
                 f.write(local_text)
 
             for i, (name, idxs) in enumerate(self.physical_surfaces.items()):
@@ -511,7 +511,7 @@ class Unstructured(Geometry):
                 for surface_idx in idxs:
                     local_text += f'{surface_idx:d}, '
                 local_text = local_text[:-2]
-                local_text += "};\n"
+                local_text += '};\n'
                 f.write(local_text)
 
             # Add Volumes
@@ -521,7 +521,7 @@ class Unstructured(Geometry):
                 for surface in surfaces:
                     local_text += f'{surface:d}, '
                 local_text = local_text[:-2]
-                local_text += "};\n"
+                local_text += '};\n'
                 f.write(local_text)
 
                 if volume.idx not in self.holes:
@@ -537,9 +537,9 @@ class Unstructured(Geometry):
                     local_text += f'{volume_idx:d}, '
                     volumes_seen.append(volume_idx)
                 local_text = local_text[:-2]
-                local_text += "};\n"
+                local_text += '};\n'
                 f.write(local_text)
-            f.write("\n")
+            f.write('\n')
 
             # Create Physical Volumes for each non-Physical volume
             npv = len(
@@ -548,13 +548,13 @@ class Unstructured(Geometry):
             for i, volume in enumerate(self.volumes):
                 if volume.idx not in volumes_seen:
                     # Add Physical Volume
-                    self.physical_groups["matrix"]["Volume_" + str(i + 1)] = (
+                    self.physical_groups['matrix']['Volume_' + str(i + 1)] = (
                         i + npv + self.tags[3]
                     )
                     f.write(
                         f'Physical Volume("Volume_{i + 1:d}", {i + npv + self.tags[3]:d}) = {{{i + 1:d}}};\n'
                     )
-            f.write("\n")
+            f.write('\n')
 
         # Find well surfaces and turn into physical surfaces
         f.write(f'Mesh {self.dim:d};  // Generate {self.dim:d}D mesh\n')
@@ -567,11 +567,11 @@ class Unstructured(Geometry):
     def generate_msh(self, filename):
         # Gmsh API
         gmsh.initialize()
-        gmsh.option.setNumber("General.Terminal", 0)
-        gmsh.open(filename + ".geo")
+        gmsh.option.setNumber('General.Terminal', 0)
+        gmsh.open(filename + '.geo')
         gmsh.model.mesh.generate(self.dim)
 
-        gmsh.write(filename + ".msh")
+        gmsh.write(filename + '.msh')
         gmsh.finalize()
 
         return
