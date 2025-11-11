@@ -198,8 +198,8 @@ class Graph:
                 edge_id_after_merge[ii],
             ) = self.status_edge_after_merge(vertex_id_from, vertex_id_to, edge)
             if (
-                status_after_merge[ii] == "collapsed"
-                or status_after_merge[ii] == "overlap"
+                status_after_merge[ii] == 'collapsed'
+                or status_after_merge[ii] == 'overlap'
             ):
                 # Edge will be ghosted:
                 ghosted_edges.append(edge)
@@ -405,7 +405,7 @@ class Graph:
         )
 
         if abs(np.sum(angles) - 360) > 1e-4:
-            print("Mmmhhh...")
+            print('Mmmhhh...')
         return angles, edge_pair
 
     def straighten_edges(self, tolerance_angle, char_len, correct_aperture):
@@ -539,17 +539,17 @@ class Graph:
                     self.vertices[self.edge_to_vertex[edges, 1], 1].T,
                 )
             ),
-            color="black",
+            color='black',
         )
-        plt.axis("equal")
+        plt.axis('equal')
         plt.plot(
             self.vertices[leaving_vertices, 0],
             self.vertices[leaving_vertices, 1],
-            ".",
-            color="red",
+            '.',
+            color='red',
         )
         plt.plot(
-            self.vertices[vertex_id, 0], self.vertices[vertex_id, 1], ".", color="blue"
+            self.vertices[vertex_id, 0], self.vertices[vertex_id, 1], '.', color='blue'
         )
         plt.show()
 
@@ -574,14 +574,14 @@ class Graph:
                     self.vertices[self.edge_to_vertex[:num_edges, 1], 1].T,
                 )
             ),
-            color="black",
+            color='black',
         )
-        plt.axis("equal")
+        plt.axis('equal')
         plt.plot(
             self.vertices[:num_vertices, 0],
             self.vertices[:num_vertices, 1],
-            ".",
-            color="red",
+            '.',
+            color='red',
         )
         plt.show()
         return 0
@@ -599,7 +599,7 @@ class Graph:
             plt.plot(
                 np.vstack((self.vertices[edge[0], 0].T, self.vertices[edge[1], 0].T)),
                 np.vstack((self.vertices[edge[0], 1].T, self.vertices[edge[1], 1].T)),
-                color="black",
+                color='black',
             )
             plt.text(
                 (self.vertices[edge[0], 0] + self.vertices[edge[1], 0]) / 2 + epsilon,
@@ -611,9 +611,9 @@ class Graph:
                 ),
                 fontsize=10,
             )
-        plt.axis("equal")
+        plt.axis('equal')
         for ii in vertices:
-            plt.plot(self.vertices[ii, 0], self.vertices[ii, 1], ".", color="red")
+            plt.plot(self.vertices[ii, 0], self.vertices[ii, 1], '.', color='red')
             plt.text(
                 self.vertices[ii, 0] + epsilon,
                 self.vertices[ii, 1] + epsilon,
@@ -707,7 +707,7 @@ class Graph:
             )  # m to km and m for aperture to cm (note: ** 2) in order to avoid extremely large values
 
             # Construct subgraph with weights in igraph and calculate shortest_path between vertices
-            g = igraph.Graph(edges=edges, edge_attrs={"weight": edge_weights})
+            g = igraph.Graph(edges=edges, edge_attrs={'weight': edge_weights})
             dist_from_to = g.shortest_paths(
                 source=vertex_from, target=vertex_to, weights=edge_weights
             )
@@ -727,7 +727,7 @@ class Graph:
             == np.sort(np.array([vertex_from, vertex_to]))
         ):
             # Edge will collapse:
-            return "collapsed", np.array([vertex_to, vertex_to]), -1
+            return 'collapsed', np.array([vertex_to, vertex_to]), -1
         else:
             # Loop over all edges in vertex_to and check of the new edge will overlap
             new_edge = np.sort(
@@ -748,9 +748,9 @@ class Graph:
                     overlap = True
                     new_edge_id = curr_edge
             if overlap:
-                return "overlap", new_edge, new_edge_id
+                return 'overlap', new_edge, new_edge_id
             else:
-                return "extension", new_edge, edge
+                return 'extension', new_edge, edge
 
     def calc_effective_aperture_and_heat_transfer_sequential(
         self,
@@ -933,19 +933,19 @@ class Graph:
         resistance = self.connectivity_merging_vertices(
             vertex_from, vertex_to, char_len * 2.5
         )
-        if "collapsed" in status_after_merging:
+        if 'collapsed' in status_after_merging:
             self.update_volume_collapsed_edge(
                 vertex_from,
                 vertex_to,
                 self.vertex_to_edge[vertex_from][
-                    status_after_merging.index("collapsed")
+                    status_after_merging.index('collapsed')
                 ],
             )
 
         for ii, status_edge in enumerate(status_after_merging):
-            if status_edge == "collapsed":
+            if status_edge == 'collapsed':
                 continue
-            elif status_edge == "overlap":
+            elif status_edge == 'overlap':
                 # Parallel:
                 old_edge_id = self.vertex_to_edge[vertex_from][ii]
                 new_edge_id = edge_id_after_merge[ii]
@@ -957,7 +957,7 @@ class Graph:
                 self.apertures[new_edge_id] = eff_aperture
                 self.heat_transfer_mult[new_edge_id] = eff_heat_transfer
                 self.update_volume_overlap_edge(old_edge_id, new_edge_id)
-            elif status_edge == "extension":
+            elif status_edge == 'extension':
                 # Sequential:
                 new_edge = edge_to_vertex_after_merging[ii]
                 collapsed_edge_id = np.intersect1d(
@@ -1017,8 +1017,8 @@ class Graph:
                 ),
                 color=colors_aper[jj, :-1],
             )
-        plt.axis("equal")
-        plt.title("Volume Weights")
+        plt.axis('equal')
+        plt.title('Volume Weights')
         plt.show()
         return
 
@@ -1060,8 +1060,8 @@ class Graph:
                 ),
                 color=colors_aper[jj, :-1],
             )
-        plt.axis("equal")
-        plt.title("Aperture Weights")
+        plt.axis('equal')
+        plt.title('Aperture Weights')
         plt.show()
         return
 
@@ -1120,7 +1120,7 @@ def create_geo_file(
 
     # Note: always end statement in GMSH with ";"
     # Note: comments in GMSH are as in C(++) "//"
-    f.write("// Geo file which meshes the input mesh from act_frac_sys.\n")
+    f.write('// Geo file which meshes the input mesh from act_frac_sys.\n')
     f.write('// Change mesh-elements size by varying "lc" below.\n\n')
 
     # Can specify the type of meshing algorithm for 2D meshing here:
@@ -1136,29 +1136,29 @@ def create_geo_file(
     f.write(f'height_res = {height_res:4.3f};\n\n')
 
     ####
-    f.write("rsv_layers = {:d};\n".format(input_data["rsv_layers"]))
+    f.write('rsv_layers = {:d};\n'.format(input_data['rsv_layers']))
 
     f.write(
-        "overburden_thickness = {:4.3f};\n".format(input_data["overburden_thickness"])
+        'overburden_thickness = {:4.3f};\n'.format(input_data['overburden_thickness'])
     )
-    f.write("overburden_layers = {:d};\n".format(input_data["overburden_layers"]))
+    f.write('overburden_layers = {:d};\n'.format(input_data['overburden_layers']))
     f.write(
-        "underburden_thickness = {:4.3f};\n".format(input_data["underburden_thickness"])
+        'underburden_thickness = {:4.3f};\n'.format(input_data['underburden_thickness'])
     )
-    f.write("underburden_layers = {:d};\n".format(input_data["underburden_layers"]))
+    f.write('underburden_layers = {:d};\n'.format(input_data['underburden_layers']))
 
     f.write(
-        "overburden_2_thickness = {:4.3f};\n".format(
-            input_data["overburden_2_thickness"]
+        'overburden_2_thickness = {:4.3f};\n'.format(
+            input_data['overburden_2_thickness']
         )
     )
-    f.write("overburden_2_layers = {:d};\n".format(input_data["overburden_2_layers"]))
+    f.write('overburden_2_layers = {:d};\n'.format(input_data['overburden_2_layers']))
     f.write(
-        "underburden_2_thickness = {:4.3f};\n".format(
-            input_data["underburden_2_thickness"]
+        'underburden_2_thickness = {:4.3f};\n'.format(
+            input_data['underburden_2_thickness']
         )
     )
-    f.write("underburden_2_layers = {:d};\n".format(input_data["underburden_2_layers"]))
+    f.write('underburden_2_layers = {:d};\n'.format(input_data['underburden_2_layers']))
 
     # Allocate memory for points_created array and counters:
     points_created = np.zeros((num_nodes_tot,), dtype=bool)
@@ -1180,11 +1180,11 @@ def create_geo_file(
         if not points_created[nodes[0]]:
             points_created[nodes[0]] = True
             point_count += 1
-            cell_size_str = "lc"
+            cell_size_str = 'lc'
             if wells is not None:
                 dist = dist_to_well(unique_nodes, nodes, 0, wells)
                 if dist < char_len:
-                    cell_size_str = "lc_well"
+                    cell_size_str = 'lc_well'
             f.write(
                 f'Point({nodes[0] + 1:d}) = {{{unique_nodes[nodes[0], 0]:8.5f}, {unique_nodes[nodes[0], 1]:8.5f}, {z_top:8.5f}, {cell_size_str:s}}};\n'
             )
@@ -1193,11 +1193,11 @@ def create_geo_file(
             points_created[nodes[1]] = True
             point_count += 1
 
-            cell_size_str = "lc"
+            cell_size_str = 'lc'
             if wells is not None:
                 dist = dist_to_well(unique_nodes, nodes, 1, wells)
                 if dist < char_len:
-                    cell_size_str = "lc_well"
+                    cell_size_str = 'lc_well'
             f.write(
                 f'Point({nodes[1] + 1:d}) = {{{unique_nodes[nodes[1], 0]:8.5f}, {unique_nodes[nodes[1], 1]:8.5f}, {z_top:8.5f}, {cell_size_str:s}}};\n'
             )
@@ -1206,11 +1206,11 @@ def create_geo_file(
         f.write(f'Line({line_count:d}) = {{{nodes[0] + 1:d}, {nodes[1] + 1:d}}};\n\n')
 
     # Store some internal variables for gmsh (used later after extrude):
-    f.write("num_points_frac = newp - 1;\n")
-    f.write("num_lines_frac = newl - 1;\n\n")
+    f.write('num_points_frac = newp - 1;\n')
+    f.write('num_lines_frac = newl - 1;\n\n')
 
     # Write the box_data (box around fracture network in which we embed the fractures)
-    f.write("// Extra points for boundary of domain:\n")
+    f.write('// Extra points for boundary of domain:\n')
     for ii in range(4):
         # For every corner of the box:
         point_count += 1
@@ -1219,7 +1219,7 @@ def create_geo_file(
         )
 
     # Add four lines for each side of the box:
-    f.write("\n// Extra lines for boundary of domain:\n")
+    f.write('\n// Extra lines for boundary of domain:\n')
     line_count += 1
     f.write(f'Line({line_count:d}) = {{{point_count - 3:d}, {point_count - 2:d}}};\n')
 
@@ -1233,41 +1233,41 @@ def create_geo_file(
     f.write(f'Line({line_count:d}) = {{{point_count - 0:d}, {point_count - 3:d}}};\n')
 
     # Make Curve loop for the boundary:
-    f.write("\n// Create line loop for boundary surface:\n")
+    f.write('\n// Create line loop for boundary surface:\n')
     f.write(
         f'Curve Loop(1) = {{{line_count - 3:d}, {line_count - 2:d}, {line_count - 1:d}, {line_count:d}}};\n'
     )
-    f.write("Plane Surface(1) = {1};\n\n")
-    f.write("Curve{1:num_lines_frac} In Surface{1};\n")
+    f.write('Plane Surface(1) = {1};\n\n')
+    f.write('Curve{1:num_lines_frac} In Surface{1};\n')
 
     # Write well locations
     if wells is not None:
-        f.write("\n// Extra points to refine the mesh around the well locations:\n")
+        f.write('\n// Extra points to refine the mesh around the well locations:\n')
         for ii in range(len(wells)):
             point_count += 1
             f.write(
                 f'Point({point_count:d}) = {{{wells[ii][0]:8.5f}, {wells[ii][1]:8.5f}, {z_top:8.5f}, lc_well}};\n'
             )
-            f.write("Point{" + str(point_count) + "} In Surface{1};\n")
+            f.write('Point{' + str(point_count) + '} In Surface{1};\n')
 
     # Extrude model (reservoir) to pseudo-3D (2.5D):
-    f.write("\n// Extrude surface with embedded features\n\n")
+    f.write('\n// Extrude surface with embedded features\n\n')
 
-    f.write("// Reservoir\n")
+    f.write('// Reservoir\n')
     f.write(
-        "sr[] = Extrude {0, 0, height_res}{ Surface {1}; Layers{rsv_layers}; Recombine;};\n"
+        'sr[] = Extrude {0, 0, height_res}{ Surface {1}; Layers{rsv_layers}; Recombine;};\n'
     )
 
-    if input_data["overburden_2_layers"] > 0:
+    if input_data['overburden_2_layers'] > 0:
         top_idx = 2
-    elif input_data["overburden_layers"] > 0:
+    elif input_data['overburden_layers'] > 0:
         top_idx = 1
     else:
         top_idx = 0
 
-    if input_data["underburden_2_layers"] > 0:
+    if input_data['underburden_2_layers'] > 0:
         bottom_idx = 2
-    elif input_data["underburden_layers"] > 0:
+    elif input_data['underburden_layers'] > 0:
         bottom_idx = 1
     else:
         bottom_idx = 0
@@ -1276,94 +1276,94 @@ def create_geo_file(
     # the newly created volume (in `out[1]') and the tags of the lateral surfaces (in `out[2]', `out[3]', ...).
 
     # reservoir top and bottom
-    surf_str_prefix = [""] * 6
-    surf_str = [""] * 6
+    surf_str_prefix = [''] * 6
+    surf_str = [''] * 6
     side_idx = 0
     for idx in range(7):
         if idx == 1:  # skip volume
             continue
-        surf_str_prefix[side_idx] = "Physical Surface(" + str(side_idx + 1) + ") = {"
+        surf_str_prefix[side_idx] = 'Physical Surface(' + str(side_idx + 1) + ') = {'
         if (
             side_idx == 0 and top_idx == 0
         ):  # if no overburden then the reservor top is a top boundary
-            surf_str[0] += "sr[" + str(side_idx) + "]"
+            surf_str[0] += 'sr[' + str(side_idx) + ']'
         if (
             side_idx == 1 and bottom_idx == 0
         ):  # if no underburden then the reservor bottom is a bottom boundary
-            surf_str[1] += "1"
+            surf_str[1] += '1'
         if side_idx > 1:  # lateral boundary
-            surf_str[side_idx] += "sr[" + str(side_idx) + "]"
+            surf_str[side_idx] += 'sr[' + str(side_idx) + ']'
         side_idx += 1
-    comments_str = ["top", "bottom", "Y-", "X+", "Y+", "X-"]
+    comments_str = ['top', 'bottom', 'Y-', 'X+', 'Y+', 'X-']
 
-    if input_data["overburden_layers"] > 0:
-        f.write("// Overburden\n")
+    if input_data['overburden_layers'] > 0:
+        f.write('// Overburden\n')
         f.write(
-            "so[] = Extrude {0, 0, overburden_thickness}{ Surface {sr[0]}; Layers{overburden_layers}; Recombine;};\n"
+            'so[] = Extrude {0, 0, overburden_thickness}{ Surface {sr[0]}; Layers{overburden_layers}; Recombine;};\n'
         )
         for side_idx in range(6):
             if side_idx == 0 and top_idx == 1:
-                if surf_str[0] != "":
-                    surf_str[0] += ","
-                surf_str[0] += "so[" + str(side_idx) + "]"
+                if surf_str[0] != '':
+                    surf_str[0] += ','
+                surf_str[0] += 'so[' + str(side_idx) + ']'
             if side_idx > 1:  # lateral boundary
-                if surf_str[side_idx] != "":
-                    surf_str[side_idx] += ","
-                surf_str[side_idx] += "so[" + str(side_idx) + "]"
-    if input_data["underburden_layers"] > 0:
-        f.write("// Underburden\n")
+                if surf_str[side_idx] != '':
+                    surf_str[side_idx] += ','
+                surf_str[side_idx] += 'so[' + str(side_idx) + ']'
+    if input_data['underburden_layers'] > 0:
+        f.write('// Underburden\n')
         f.write(
-            "su[] = Extrude {0, 0, -underburden_thickness}{ Surface {1}; Layers{underburden_layers}; Recombine;};\n"
+            'su[] = Extrude {0, 0, -underburden_thickness}{ Surface {1}; Layers{underburden_layers}; Recombine;};\n'
         )
         for side_idx in range(6):
             if side_idx == 0 and bottom_idx == 1:
-                if surf_str[1] != "":
-                    surf_str[1] += ","
-                surf_str[1] += "su[" + str(side_idx) + "]"
+                if surf_str[1] != '':
+                    surf_str[1] += ','
+                surf_str[1] += 'su[' + str(side_idx) + ']'
             if side_idx > 1:  # lateral boundary
-                if surf_str[side_idx] != "":
-                    surf_str[side_idx] += ","
-                surf_str[side_idx] += "su[" + str(side_idx) + "]"
-    if input_data["overburden_2_layers"] > 0:
-        f.write("// Overburden_2 (without fractures)\n")
+                if surf_str[side_idx] != '':
+                    surf_str[side_idx] += ','
+                surf_str[side_idx] += 'su[' + str(side_idx) + ']'
+    if input_data['overburden_2_layers'] > 0:
+        f.write('// Overburden_2 (without fractures)\n')
         f.write(
-            "so2[] = Extrude {0, 0, overburden_2_thickness}{ Surface {so[0]}; Layers{overburden_2_layers}; Recombine;};\n"
+            'so2[] = Extrude {0, 0, overburden_2_thickness}{ Surface {so[0]}; Layers{overburden_2_layers}; Recombine;};\n'
         )
         for side_idx in range(6):
             if side_idx == 0 and top_idx == 2:
-                if surf_str[0] != "":
-                    surf_str[0] += ","
-                surf_str[0] += "so2[" + str(side_idx) + "]"
+                if surf_str[0] != '':
+                    surf_str[0] += ','
+                surf_str[0] += 'so2[' + str(side_idx) + ']'
             if side_idx > 1:  # lateral boundary
-                if surf_str[side_idx] != "":
-                    surf_str[side_idx] += ","
-                surf_str[side_idx] += "so2[" + str(side_idx) + "]"
-    if input_data["underburden_2_layers"] > 0:
-        f.write("// Underburden_2 (without fractures)\n")
+                if surf_str[side_idx] != '':
+                    surf_str[side_idx] += ','
+                surf_str[side_idx] += 'so2[' + str(side_idx) + ']'
+    if input_data['underburden_2_layers'] > 0:
+        f.write('// Underburden_2 (without fractures)\n')
         f.write(
-            "su2[] = Extrude {0, 0, -underburden_2_thickness}{ Surface {su[0]}; Layers{underburden_2_layers}; Recombine;};\n"
+            'su2[] = Extrude {0, 0, -underburden_2_thickness}{ Surface {su[0]}; Layers{underburden_2_layers}; Recombine;};\n'
         )
         for side_idx in range(6):
             if side_idx == 0 and bottom_idx == 2:
-                if surf_str[1] != "":
-                    surf_str[1] += ","
-                surf_str[1] += "su2[" + str(side_idx) + "]"
+                if surf_str[1] != '':
+                    surf_str[1] += ','
+                surf_str[1] += 'su2[' + str(side_idx) + ']'
             if side_idx > 1:  # lateral boundary
-                if surf_str[side_idx] != "":
-                    surf_str[side_idx] += ","
-                surf_str[side_idx] += "su2[" + str(side_idx) + "]"
-    f.write("// Horizontal surfaces\n")
+                if surf_str[side_idx] != '':
+                    surf_str[side_idx] += ','
+                surf_str[side_idx] += 'su2[' + str(side_idx) + ']'
+    f.write('// Horizontal surfaces\n')
     for side_idx in range(6):
-        if surf_str[side_idx] != "":
+        if surf_str[side_idx] != '':
             f.write(
                 surf_str_prefix[side_idx]
                 + surf_str[side_idx]
-                + "}; // "
+                + '}; // '
                 + comments_str[side_idx]
-                + "\n"
+                + '\n'
             )
 
-    f.write("\n// Extrude fractures\n")
+    f.write('\n// Extrude fractures\n')
     frac_idx = 0
     for ii in range(act_frac_sys.shape[0]):
         f.write(f'\n// Fracture {{{ii + 1:d}}}\n')
@@ -1375,58 +1375,58 @@ def create_geo_file(
             f.write(f'Physical Surface({90000 + frac_idx:d}) = {{news - 1}};\n')
             frac_idx += 1
 
-        if input_data["overburden_layers"] > 0:
-            f.write("// Overburden\n")
+        if input_data['overburden_layers'] > 0:
+            f.write('// Overburden\n')
             f.write(
-                "fo[] = Extrude {0, 0, overburden_thickness}{ Line {fr[0]}; Layers{overburden_layers}; Recombine;};\n"
+                'fo[] = Extrude {0, 0, overburden_thickness}{ Line {fr[0]}; Layers{overburden_layers}; Recombine;};\n'
             )
             if export_frac:
                 f.write(f'Physical Surface({90000 + frac_idx:d}) = {{news - 1}};\n')
                 frac_idx += 1
 
-        if input_data["underburden_layers"] > 0:
-            f.write("// Underburden\n")
+        if input_data['underburden_layers'] > 0:
+            f.write('// Underburden\n')
             ss = str(ii + 1)
             f.write(
-                "fu[] = Extrude {0, 0, -underburden_thickness}{ Line {"
+                'fu[] = Extrude {0, 0, -underburden_thickness}{ Line {'
                 + ss
-                + "}; Layers{underburden_layers}; Recombine;};\n"
+                + '}; Layers{underburden_layers}; Recombine;};\n'
             )
             if export_frac:
                 f.write(f'Physical Surface({90000 + frac_idx:d}) = {{news - 1}};\n')
                 frac_idx += 1
 
-    f.write("\n")
-    f.write("num_surfaces_before = news;\n")
-    f.write("num_surfaces_after = news - 1;\n")
-    f.write("num_surfaces_fracs = num_surfaces_after - num_surfaces_before;\n\n")
+    f.write('\n')
+    f.write('num_surfaces_before = news;\n')
+    f.write('num_surfaces_after = news - 1;\n')
+    f.write('num_surfaces_fracs = num_surfaces_after - num_surfaces_before;\n\n')
 
-    f.write("//Reservoir\n")
+    f.write('//Reservoir\n')
     vol_idx = 1
-    f.write('Physical Volume("matrix", 9991) = {' + str(vol_idx) + "};\n")
+    f.write('Physical Volume("matrix", 9991) = {' + str(vol_idx) + '};\n')
     vol_idx += 1
-    if input_data["overburden_layers"] > 0:
-        f.write("//Overburden\n")
-        f.write('Physical Volume("matrix_ov", 9992) = {' + str(vol_idx) + "};\n")
+    if input_data['overburden_layers'] > 0:
+        f.write('//Overburden\n')
+        f.write('Physical Volume("matrix_ov", 9992) = {' + str(vol_idx) + '};\n')
         vol_idx += 1
-    if input_data["underburden_layers"] > 0:
-        f.write("//Underburden\n")
-        f.write('Physical Volume("matrix_un", 9993) = {' + str(vol_idx) + "};\n")
+    if input_data['underburden_layers'] > 0:
+        f.write('//Underburden\n')
+        f.write('Physical Volume("matrix_un", 9993) = {' + str(vol_idx) + '};\n')
         vol_idx += 1
-    if input_data["overburden_2_layers"] > 0:
-        f.write("//Overburden2\n")
-        f.write('Physical Volume("matrix_ov2", 9994) = {' + str(vol_idx) + "};\n")
+    if input_data['overburden_2_layers'] > 0:
+        f.write('//Overburden2\n')
+        f.write('Physical Volume("matrix_ov2", 9994) = {' + str(vol_idx) + '};\n')
         vol_idx += 1
-    if input_data["underburden_2_layers"] > 0:
-        f.write("//Underburden2\n")
-        f.write('Physical Volume("matrix_un2", 9995) = {' + str(vol_idx) + "};\n")
+    if input_data['underburden_2_layers'] > 0:
+        f.write('//Underburden2\n')
+        f.write('Physical Volume("matrix_un2", 9995) = {' + str(vol_idx) + '};\n')
         vol_idx += 1
 
-    f.write("\n\n")
+    f.write('\n\n')
 
     # Create mesh and perform coherency check:
-    f.write("Mesh 3;  // Generate 3D mesh\n")
-    f.write("Coherence Mesh;  // Remove duplicate entities\n")
-    f.write("//Mesh.MshFileVersion = 2.1;\n")
+    f.write('Mesh 3;  // Generate 3D mesh\n')
+    f.write('Coherence Mesh;  // Remove duplicate entities\n')
+    f.write('//Mesh.MshFileVersion = 2.1;\n')
     f.close()
     return 0

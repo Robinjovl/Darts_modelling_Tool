@@ -34,8 +34,8 @@ from .graph_code import Graph, create_geo_file
 def frac_preprocessing(
     frac_data_raw,
     char_len,
-    output_dir="",
-    filename_base="output",
+    output_dir='',
+    filename_base='output',
     merge_threshold=0.66,
     z_top=0,
     height_res=50,
@@ -112,15 +112,15 @@ def frac_preprocessing(
         frac_data_raw = np.genfromtxt(frac_data_raw)
     assert frac_data_raw.shape[1] == 4, "Data in wrong format, need N rows x 4 columns"
 
-    print("--------------------------------------")
-    print("START preprocessing fracture network")
+    print('--------------------------------------')
+    print('START preprocessing fracture network')
     tot_partitions = num_partition_x * num_partition_y
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     frac_data_raw = np.round(frac_data_raw * 10**decimals) * 10 ** (-decimals)
-    print("Remove segments of zero length and duplicate segments")
+    print('Remove segments of zero length and duplicate segments')
     frac_data_raw, apertures_raw = extract_unique_segms(frac_data_raw, apertures_raw)
     len_raw_sys = np.sqrt(
         (frac_data_raw[:, 0] - frac_data_raw[:, 2]) ** 2
@@ -137,8 +137,8 @@ def frac_preprocessing(
     act_frac_sys = frac_data_raw
     apertures = apertures_raw
     if calc_intersections_before:
-        print("START calculating initial intersections raw input fracture network")
-        print("\tNOTE: unoptimized!, can take long for very large networks")
+        print('START calculating initial intersections raw input fracture network')
+        print('\tNOTE: unoptimized!, can take long for very large networks')
         # First find all intersections:
         system_out_par, frac_order_vec_par, partition_lines = (
             calc_intersections_segm_parallel(
@@ -158,7 +158,7 @@ def frac_preprocessing(
             act_frac_sys = np.vstack((act_frac_sys, system_out_par[ii]))
             apertures = np.hstack((apertures, frac_order_vec_par[ii]))
 
-        print("DONE calculating initial intersections raw input fracture network")
+        print('DONE calculating initial intersections raw input fracture network')
         if act_frac_sys.shape != frac_data_raw.shape:
             num_intersections = int(
                 (act_frac_sys.shape[0] - frac_data_raw.shape[0]) / 2
@@ -167,9 +167,9 @@ def frac_preprocessing(
                 f'\tFound {num_intersections} intersections in raw input fracture network\n'
             )
         else:
-            print("\tNo intersections found in raw input fracture network\n")
+            print('\tNo intersections found in raw input fracture network\n')
 
-    print("Remove duplicated segments\n")
+    print('Remove duplicated segments\n')
     act_frac_sys, apertures = extract_unique_segms(act_frac_sys, apertures)
     act_frac_sys_cln = act_frac_sys
     apertures_cln = apertures
@@ -196,13 +196,13 @@ def frac_preprocessing(
         )
 
     # --------------------------------------------------------------------------
-    print("START constructing graph")
+    print('START constructing graph')
     my_graph = Graph(matrix_perm=matrix_perm)
     my_graph.add_multiple_edges(act_frac_sys_cln)
     my_graph.apertures[
         np.where(my_graph.active_edges[: my_graph.get_num_edges()])[0]
     ] = apertures_cln
-    print("DONE constructing graph\n")
+    print('DONE constructing graph\n')
 
     print(f'START main cleaning loop for l_f={char_len}')
     # print('\tNOTE: unoptimized!, can take long for very large networks or very small l_f')
@@ -240,9 +240,9 @@ def frac_preprocessing(
     # --------------------------------------------------------------------------
     if calc_intersections_after:
         print(
-            "START calculating intersections clean fracture network for coherent mesh"
+            'START calculating intersections clean fracture network for coherent mesh'
         )
-        print("\tNOTE: unoptimized!, can take long for very large networks")
+        print('\tNOTE: unoptimized!, can take long for very large networks')
         # First find all intersections:
         num_part_x = 1
         num_part_y = 1
@@ -265,7 +265,7 @@ def frac_preprocessing(
             act_frac_sys_cln = np.vstack((act_frac_sys_cln, system_out_par[ii]))
             apertures_cln = np.hstack((apertures_cln, frac_order_vec_par[ii]))
         print(
-            "DONE calculating intersections clean fracture network for coherent mesh\n"
+            'DONE calculating intersections clean fracture network for coherent mesh\n'
         )
 
     # --------------------------------------------------------------------------
@@ -282,38 +282,38 @@ def frac_preprocessing(
     filename_geo_cln = os.path.join(
         output_dir,
         filename_base
-        + "_mergefac_"
+        + '_mergefac_'
         + str(merge_threshold)
-        + "_clean_lc_"
+        + '_clean_lc_'
         + str(char_len)
-        + ".geo",
+        + '.geo',
     )
     filename_out_cln = os.path.join(
         output_dir,
         filename_base
-        + "_mergefac_"
+        + '_mergefac_'
         + str(merge_threshold)
-        + "_clean_lc_"
+        + '_clean_lc_'
         + str(char_len)
-        + ".msh",
+        + '.msh',
     )
     filename_geo_raw = os.path.join(
-        output_dir, filename_base + "_raw_lc_" + str(char_len) + ".geo"
+        output_dir, filename_base + '_raw_lc_' + str(char_len) + '.geo'
     )
     filename_out_raw = os.path.join(
-        output_dir, filename_base + "_raw_lc_" + str(char_len) + ".msh"
+        output_dir, filename_base + '_raw_lc_' + str(char_len) + '.msh'
     )
 
     # --------------------------------------------------------------------------
-    print("START writing clean fracture system to file")
+    print('START writing clean fracture system to file')
     filename_clean = os.path.join(
         output_dir,
         filename_base
-        + "_mergefac_"
+        + '_mergefac_'
         + str(merge_threshold)
-        + "_clean_lc_"
+        + '_clean_lc_'
         + str(char_len)
-        + "_fracsys.txt",
+        + '_fracsys.txt',
     )
     f = open(filename_clean, "w+")
     for frac in act_frac_sys_cln:
@@ -323,19 +323,19 @@ def frac_preprocessing(
     filename_aper_clean = os.path.join(
         output_dir,
         filename_base
-        + "_mergefac_"
+        + '_mergefac_'
         + str(merge_threshold)
-        + "_clean_lc_"
+        + '_clean_lc_'
         + str(char_len)
-        + "_aperture.txt",
+        + '_aperture.txt',
     )
     f = open(filename_aper_clean, "w+")
     for aper in apertures_cln:
         f.write(f'{aper:16.15f} \n')
     f.close()
-    print("DONE writing clean fracture system to file\n")
+    print('DONE writing clean fracture system to file\n')
 
-    print("START creating geo-file for cleaned network (input for gmsh)")
+    print('START creating geo-file for cleaned network (input for gmsh)')
     create_geo_file(
         act_frac_sys=act_frac_sys_cln,
         filename=filename_geo_cln,
@@ -348,12 +348,12 @@ def frac_preprocessing(
         input_data=input_data,
         wells=wells,
     )
-    print("DONE creating geo-file for cleaned network (input for gmsh)\n")
+    print('DONE creating geo-file for cleaned network (input for gmsh)\n')
 
-    shell_flag = os.name == "nt"
+    shell_flag = os.name == 'nt'
 
     if mesh_clean:
-        print("START meshing cleaned network")
+        print('START meshing cleaned network')
         print(
             '\tNOTE: In gmsh you need to have under Options -> Geometry -> General -> uncheck "Remove duplicate ..." otherwise meshing will crash/take too long'
         )
@@ -362,7 +362,7 @@ def frac_preprocessing(
         )
         cmd = f"gmsh {filename_geo_cln:s} -o {filename_out_cln:s} -save"
         if redirect_log:
-            filename_log = os.path.join(output_dir, filename_base + "_clean.log")
+            filename_log = os.path.join(output_dir, filename_base + '_clean.log')
             with open(filename_log, "w") as file:
                 r = subprocess.run(
                     cmd.split(),
@@ -371,7 +371,7 @@ def frac_preprocessing(
                     stderr=subprocess.STDOUT,
                     stdout=file,
                 )
-            print("Gmsh output is written to the file " + filename_log)
+            print('Gmsh output is written to the file ' + filename_log)
         else:
             r = subprocess.run(
                 cmd.split(), text=True, shell=shell_flag, capture_output=True
@@ -382,9 +382,9 @@ def frac_preprocessing(
         print('DONE meshing cleaned network.\n')
 
     # --------------------------------------------------------------------------
-    print("START writing raw fracture system to file")
+    print('START writing raw fracture system to file')
     filename_raw = os.path.join(
-        output_dir, filename_base + "_raw_lc_" + str(char_len) + "_fracsys.txt"
+        output_dir, filename_base + '_raw_lc_' + str(char_len) + '_fracsys.txt'
     )
     f = open(filename_raw, "w+")
     for frac in act_frac_sys_raw:
@@ -392,15 +392,15 @@ def frac_preprocessing(
     f.close()
 
     filename_aper_raw = os.path.join(
-        output_dir, filename_base + "_raw_lc_" + str(char_len) + "_aperture.txt"
+        output_dir, filename_base + '_raw_lc_' + str(char_len) + '_aperture.txt'
     )
     f = open(filename_aper_raw, "w+")
     for aper in apertures_raw:
         f.write(f'{aper:16.15f} \n')
     f.close()
-    print("DONE writing raw fracture system to file\n")
+    print('DONE writing raw fracture system to file\n')
 
-    print("START creating geo-file for raw network (input for gmsh)")
+    print('START creating geo-file for raw network (input for gmsh)')
     create_geo_file(
         act_frac_sys=act_frac_sys_raw,
         filename=filename_geo_raw,
@@ -414,10 +414,10 @@ def frac_preprocessing(
         char_len_well=char_len_well,
         input_data=input_data,
     )
-    print("DONE creating geo-file for raw network (input for gmsh)\n")
+    print('DONE creating geo-file for raw network (input for gmsh)\n')
 
     if mesh_raw:
-        print("START meshing raw network")
+        print('START meshing raw network')
         print(
             '\tNOTE: In gmsh you need to have under Options -> Geometry -> General -> uncheck "Remove duplicate ..." otherwise meshing will crash/take too long'
         )
@@ -426,7 +426,7 @@ def frac_preprocessing(
         )
         cmd = f"gmsh {filename_geo_raw:s} -o {filename_out_raw:s} -save"
         if redirect_log:
-            filename_log = os.path.join(output_dir, filename_base + "_raw.log")
+            filename_log = os.path.join(output_dir, filename_base + '_raw.log')
             with open(filename_log, "w") as file:
                 r = subprocess.run(
                     cmd.split(),
@@ -435,15 +435,15 @@ def frac_preprocessing(
                     stderr=subprocess.STDOUT,
                     stdout=file,
                 )
-            print("Gmsh output is written to the file " + filename_log)
+            print('Gmsh output is written to the file ' + filename_log)
         else:
             r = subprocess.run(
                 cmd.split(), text=True, shell=shell_flag, capture_output=True
             )
-        assert r.returncode == 0, "ERROR meshing raw network. Check gmsh in the PATH"
-        print("DONE meshing raw network.\n")
-    print("Preprocessing succesfully finished")
-    print("-----------------------------------")
+        assert r.returncode == 0, 'ERROR meshing raw network. Check gmsh in the PATH'
+        print('DONE meshing raw network.\n')
+    print('Preprocessing succesfully finished')
+    print('-----------------------------------')
     return 0
 
 
