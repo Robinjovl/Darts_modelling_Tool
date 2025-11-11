@@ -29,7 +29,7 @@ class water_density_property_evaluator(property_evaluator_iface):
         # temp = temperature.evaluate(state)
         temperature = temperature_region1_evaluator()
         temp = temperature.evaluate(state)
-        water_density = 1 / _Region1(temp, float(state[0]) * 0.1)["v"]
+        water_density = 1 / _Region1(temp, float(state[0]) * 0.1)['v']
         return water_density / 18.015
 
 
@@ -48,7 +48,7 @@ class iapws_enthalpy_region1_evaluator(property_evaluator_iface):
 
     def evaluate(self, state):
         return (
-            _Region1(self.temperature, float(state[0]) * 0.1)["h"] * 18.015
+            _Region1(self.temperature, float(state[0]) * 0.1)['h'] * 18.015
         )  # kJ/kmol
 
 
@@ -88,7 +88,7 @@ class iapws_total_enthalpy_evalutor(property_evaluator_iface):
             h = _Region2(temperature, P)["h"] * 18.015
         else:
             raise NotImplementedError(
-                "Variables out of bound: p=" + str(P) + " region=" + str(region)
+                'Variables out of bound: p=' + str(P) + ' region=' + str(region)
             )
         return h
 
@@ -114,11 +114,11 @@ class iapws_temperature_evaluator(property_evaluator_iface):
             T = _Backward2_T_Ph(P, h)
         else:
             raise NotImplementedError(
-                "Variables out of bound: p="
+                'Variables out of bound: p='
                 + str(state[0])
-                + " bars, h="
+                + ' bars, h='
                 + str(state[1])
-                + " kJ/kmol, region="
+                + ' kJ/kmol, region='
                 + str(region)
             )
         return T
@@ -144,11 +144,11 @@ class iapws_water_enthalpy_evaluator(property_evaluator_iface):
                 water_enth = _Region4(P, 0)["h"]
             else:
                 raise NotImplementedError(
-                    "Variables out of bound: p="
+                    'Variables out of bound: p='
                     + str(state[0])
-                    + " bars, h="
+                    + ' bars, h='
                     + str(state[1])
-                    + " kJ/kmol, region="
+                    + ' kJ/kmol, region='
                     + str(region)
                 )
         elif region == 2:
@@ -156,11 +156,11 @@ class iapws_water_enthalpy_evaluator(property_evaluator_iface):
         else:
             print(region)
             raise NotImplementedError(
-                "Variables out of bound: p="
+                'Variables out of bound: p='
                 + str(state[0])
-                + " bars, h="
+                + ' bars, h='
                 + str(state[1])
-                + " kJ/kmol, region="
+                + ' kJ/kmol, region='
                 + str(region)
             )
         return water_enth * 18.015
@@ -187,11 +187,11 @@ class iapws_steam_enthalpy_evaluator(property_evaluator_iface):
                 steam_enth = _Region4(P, 1)["h"]
             else:
                 raise NotImplementedError(
-                    "Variables out of bound: p="
+                    'Variables out of bound: p='
                     + str(state[0])
-                    + " bars, h="
+                    + ' bars, h='
                     + str(state[1])
-                    + " kJ/kmol, region="
+                    + ' kJ/kmol, region='
                     + str(region)
                 )
         elif region == 2:
@@ -200,11 +200,11 @@ class iapws_steam_enthalpy_evaluator(property_evaluator_iface):
             steam_enth = _Region2(T, P)["h"]
         else:
             raise NotImplementedError(
-                "Variables out of bound: p="
+                'Variables out of bound: p='
                 + str(state[0])
-                + " bars, h="
+                + ' bars, h='
                 + str(state[1])
-                + " kJ/kmol, region="
+                + ' kJ/kmol, region='
                 + str(region)
             )
         return steam_enth * 18.015
@@ -235,11 +235,11 @@ class iapws_water_saturation_evaluator(property_evaluator_iface):
             sw = 0
         else:
             raise NotImplementedError(
-                "Variables out of bound: p="
+                'Variables out of bound: p='
                 + str(state[0])
-                + " bars, h="
+                + ' bars, h='
                 + str(state[1])
-                + " kJ/kmol, region="
+                + ' kJ/kmol, region='
                 + str(region)
             )
         return sw
@@ -291,29 +291,29 @@ class iapws_water_density_evaluator(property_evaluator_iface):
         if region == 1:
             temperature = temperature_region1_evaluator()
             T = temperature.evaluate(state)
-            water_density = 1 / _Region1(T, P)["v"]
+            water_density = 1 / _Region1(T, P)['v']
         elif region == 4:
             T = _TSat_P(P)
             if T <= 623.15:
-                water_density = 1 / _Region4(P, 0)["v"]
+                water_density = 1 / _Region4(P, 0)['v']
             else:
                 raise NotImplementedError(
-                    "Variables out of bound: p="
+                    'Variables out of bound: p='
                     + str(state[0])
-                    + " bars, h="
+                    + ' bars, h='
                     + str(state[1])
-                    + " kJ/kmol, region="
+                    + ' kJ/kmol, region='
                     + str(region)
                 )
         elif region == 2:
             water_density = 0
         else:
             raise NotImplementedError(
-                "Variables out of bound: p="
+                'Variables out of bound: p='
                 + str(state[0])
-                + " bars, h="
+                + ' bars, h='
                 + str(state[1])
-                + " kJ/kmol, region="
+                + ' kJ/kmol, region='
                 + str(region)
             )
         return water_density
@@ -337,14 +337,14 @@ class iapws_steam_density_evaluator(property_evaluator_iface):
         elif region == 4:
             T = _TSat_P(P)
             if T <= 623.15:
-                steam_density = 1 / _Region4(P, 1)["v"]
+                steam_density = 1 / _Region4(P, 1)['v']
             else:
                 raise NotImplementedError(
-                    "Variables out of bound: p="
+                    'Variables out of bound: p='
                     + str(state[0])
-                    + " bars, h="
+                    + ' bars, h='
                     + str(state[1])
-                    + " kJ/kmol, region="
+                    + ' kJ/kmol, region='
                     + str(region)
                 )
         elif region == 2:
@@ -353,11 +353,11 @@ class iapws_steam_density_evaluator(property_evaluator_iface):
             steam_density = 1 / _Region2(T, P)["v"]
         else:
             raise NotImplementedError(
-                "Variables out of bound: p="
+                'Variables out of bound: p='
                 + str(state[0])
-                + " bars, h="
+                + ' bars, h='
                 + str(state[1])
-                + " kJ/kmol, region="
+                + ' kJ/kmol, region='
                 + str(region)
             )
         return steam_density
@@ -389,12 +389,12 @@ class Density_iapws_water:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for water density
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: water density, [kg/m3]
-        """
+        '''
         P = pressure * 0.1  # MPa
         T = temperature  # K
 
@@ -406,11 +406,11 @@ class Density_iapws_water:
         )  # warning: with P-T system, this function can't return Region 4 (two phase region)
 
         if region == 1:
-            water_density = 1 / _Region1(T, P)["v"]
+            water_density = 1 / _Region1(T, P)['v']
         elif region == 4:
             T = _TSat_P(P)
             if T <= 623.15:
-                water_density = 1 / _Region4(P, 0)["v"]
+                water_density = 1 / _Region4(P, 0)['v']
             else:
                 raise NotImplementedError(
                     "water: Incoming out of bound of IAPWS Region 4 (two phase region)"
@@ -427,12 +427,12 @@ class Density_iapws_steam:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for steam density
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: steam density, [kg/m3]
-        """
+        '''
         P = pressure * 0.1  # MPa
         T = temperature  # K
 
@@ -448,7 +448,7 @@ class Density_iapws_steam:
         elif region == 4:
             T = _TSat_P(P)
             if T <= 623.15:
-                steam_density = 1 / _Region4(P, 1)["v"]
+                steam_density = 1 / _Region4(P, 1)['v']
             else:
                 raise NotImplementedError(
                     "steam: Incoming out of bound of IAPWS Region 4 (two phase region)"
@@ -467,12 +467,12 @@ class Viscosity_iapws_water:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for water viscosity
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: water viscosity, [cP]
-        """
+        '''
         pressure * 0.1  # MPa
         T = temperature  # K
 
@@ -485,12 +485,12 @@ class Viscosity_iapws_steam:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for steam viscosity
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: steam viscosity, [cP]
-        """
+        '''
         T = temperature  # K
 
         den = Density_iapws_steam().evaluate(pressure, temperature)
@@ -502,12 +502,12 @@ class Saturation_iapws_water:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for water saturation
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: water saturation
-        """
+        '''
         P = pressure * 0.1  # MPa
         T = temperature  # K
 
@@ -539,12 +539,12 @@ class Saturation_iapws_steam:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for steam saturation
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: steam saturation
-        """
+        '''
         water_saturation = Saturation_iapws_water()
         ss = 1 - water_saturation.evaluate(pressure, temperature)
         return ss
@@ -555,12 +555,12 @@ class Relperm_iapws_water:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for water relative permeability
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: water relative permeability
-        """
+        '''
 
         water_saturation = Saturation_iapws_water()
         water_rp = water_saturation.evaluate(pressure, temperature) ** 1
@@ -572,12 +572,12 @@ class Relperm_iapws_steam:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for steam relative permeability
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: steam relative permeability
-        """
+        '''
         steam_saturation = Saturation_iapws_steam()
         steam_rp = steam_saturation.evaluate(pressure, temperature) ** 1
         return steam_rp
@@ -588,12 +588,12 @@ class Enthalpy_iapws_water:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for water enthalpy
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: water enthalpy
-        """
+        '''
         P = pressure * 0.1  # MPa
         T = temperature  # K
 
@@ -634,12 +634,12 @@ class Enthalpy_iapws_steam:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for steam enthalpy
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: steam enthalpy
-        """
+        '''
         P = pressure * 0.1  # MPa
         T = temperature  # K
 
@@ -686,12 +686,12 @@ class Conductivity_iapws_water:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for water conductivity
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: water conductivity
-        """
+        '''
         P = pressure * 0.1  # MPa
         T = temperature  # K
 
@@ -705,12 +705,12 @@ class Conductivity_iapws_steam:
         super().__init__()
 
     def evaluate(self, pressure: float, temperature: float) -> float:
-        """
+        '''
         evaluation function for steam conductivity
         :param pressure: state pressure, [bars]
         :param temperature: state temperature, [K]
         :return: steam conductivity
-        """
+        '''
         P = pressure * 0.1  # MPa
         T = temperature  # K
 

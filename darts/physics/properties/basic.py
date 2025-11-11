@@ -20,7 +20,7 @@ class PhaseRelPerm:
             self.sr = swc
             self.sr1 = sgr
             self.n = n
-        elif phase == "gas":
+        elif phase == 'gas':
             self.kre = kre
             self.sr = sgr
             self.sr1 = swc
@@ -54,7 +54,7 @@ class PhaseRelPerm_VG:  # Van Genuchten
             self.sr1 = sgr
             self.n = n
             self.m = 1 - 1 / n
-        elif phase == "gas":
+        elif phase == 'gas':
             self.kre = kre
             self.sr = sgr
             self.sr1 = swc
@@ -77,7 +77,7 @@ class PhaseRelPerm_VG:  # Van Genuchten
             else:
                 kr = np.sqrt(Se) * (1 - (1 - Se ** (1 / self.m)) ** self.m) ** 2
 
-        elif self.phase == "gas":
+        elif self.phase == 'gas':
             Se = ((1 - sat) - self.Swc) / (1 - self.Sgr - self.Swc)
             if sat >= 1 - self.sr1:
                 kr = self.kre
@@ -97,11 +97,11 @@ class CapillaryPressure:
         self.eps = 1e-3
 
     def evaluate(self, sat):
-        """
+        '''
         default evaluator of capillary pressure Pc based on pow
         :param sat: saturation
         :return: Pc
-        """
+        '''
         if self.nph > 1:
             Se = (sat[1] - self.swc) / (1 - self.swc)
             if Se < self.eps:
@@ -128,11 +128,11 @@ class CapillaryPressure_VG:  # Van Genuchten
         self.m = 1 - 1 / n
 
     def evaluate(self, sat):
-        """
+        '''
         default evaluator of capillary pressure Pc based on pow
         :param sat: saturation
         :return: Pc
-        """
+        '''
         Se = (sat - self.swc) / (1 - self.swc)
         if Se < self.eps:
             Se = self.eps
