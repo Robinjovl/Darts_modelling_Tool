@@ -35,7 +35,7 @@ class Poroelasticity(Compositional):
         max_t: float = None,
         state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
         cache: bool = False,
-        discretizer: str = "mech_discretizer",
+        discretizer: str = 'mech_discretizer',
         axes_min=None,
         axes_max=None,
         n_axes_points=None,
@@ -104,7 +104,7 @@ class Poroelasticity(Compositional):
             self.n_ops = 2 * self.n_vars
             assert not self.thermal
 
-    def set_engine(self, discretizer: str = "mech_discretizer", platform: str = "cpu"):
+    def set_engine(self, discretizer: str = 'mech_discretizer', platform: str = 'cpu'):
         """
         Function to set :class:`engine_super` object.
 
@@ -114,7 +114,7 @@ class Poroelasticity(Compositional):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        if discretizer == "mech_discretizer":
+        if discretizer == 'mech_discretizer':
             if self.thermal:
                 return eval(
                     f"engine_super_elastic_{platform}{self.nc:d}_{self.nph:d}_t"
