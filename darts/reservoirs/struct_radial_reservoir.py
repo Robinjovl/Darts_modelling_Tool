@@ -152,6 +152,7 @@ class StructRadialReservoir(StructReservoir):
         self.boundary_cells['outer'] = [(k + 1) * self.nx - 1 for k in range(self.nz)]
 
         self.boundary_volumes['yz_plus'] = boundary_volume
+        self.boundary_volumes['yz_minus'] = boundary_volume
         self.boundary_volumes['xy_plus'] = boundary_volume
         self.boundary_volumes['xy_minus'] = boundary_volume
 
