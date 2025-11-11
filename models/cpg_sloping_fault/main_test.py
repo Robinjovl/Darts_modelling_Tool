@@ -62,10 +62,9 @@ def run(physics_type, case_geom, well_controls,redirect_log = False, compare_wit
     # now, the data is set to m.idata and will be taken there
 
     os.makedirs(out_dir, exist_ok=True)
-    if 1:
-        from darts.engines import redirect_darts_output
+    if redirect_log:
         log_filename = os.path.join(out_dir, 'run.log')
-        log_stream = redirect_darts_output(log_filename)
+        log_stream = redirect_all_output(log_filename)
 
     print('----- Test started', 'physics_type:', m.physics_type, 'case:', case, ' ------')
 
@@ -166,7 +165,7 @@ def run_all():
 
         tag = f"{physics_type}__{case_geom}__{well_controls}"
         print(f"\n[START] {tag}")
-        last_ret = run(physics_type, case_geom, well_controls,redirect_log = False, compare_with_ref=True)
+        last_ret = run(physics_type, case_geom, well_controls,redirect_log = True, compare_with_ref=True)
 
     return last_ret
 
