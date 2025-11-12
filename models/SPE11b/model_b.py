@@ -188,13 +188,16 @@ class Model(DartsModel):
 
             region = 0
             molar_masses = self.physics.property_containers[region].Mw
-            mole_fractions = self.inj_stream[:nc - 1]
-            n_comp = np.zeros(nc - 1)
+            mole_fractions = self.inj_stream[:nc]
+            n_comp = np.zeros(nc)
             enth_idx = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_V")
 
             for i, well_cell in enumerate(self.reservoir.well_cells):
                 p_wellcell = self.physics.engine.X[well_cell * nv]
-                state = value_vector([p_wellcell] + self.inj_stream) if self.physics.thermal else value_vector([p_wellcell] + self.inj_stream[:-1])
+                if self.physics.thermal:
+                    state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
+                else:
+                    state = value_vector([p_wellcell] + self.inj_stream[:-2])
                 values = value_vector(np.zeros(self.physics.n_ops))
                 # values_np = np.array(values)
                 self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
@@ -204,7 +207,7 @@ class Model(DartsModel):
 
                 tot_moles = self.inj_rate[i] / avg_molar_mass
 
-                for comp_idx in range(nc - 1):
+                for comp_idx in range(nc):
                     comp_flux_idx = well_cell * nv + comp_idx  # Index
                     n_comp[comp_idx] = tot_moles * mole_fractions[comp_idx]  # Compute component moles
                     rhs[comp_flux_idx] -= n_comp[comp_idx]  # Update rhs
@@ -218,7 +221,7 @@ class Model(DartsModel):
         #     # return rhs
         #     pass
 
-    def set_physics(self, temperature: float = None, n_points: int = 10001):
+    def set_physics(self, temperature: float = None, n_points: int = 1001):
         """Physical properties"""
 
         # define the Corey parameters for each layer (rock type) according to the technical description of the CSP
@@ -265,7 +268,7 @@ class Model(DartsModel):
                                      min_z=self.zero/10, max_z=1-self.zero/10, min_t=min_t, max_t=max_t,
                                      state_spec = state_spec,
                                      cache=False)
-        self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
+        self.physics.n_axes_points[0] = 101  # sets OBL points for pressure
 
         dispersivity = 10.
         self.physics.dispersivity = {}
@@ -273,7 +276,7 @@ class Model(DartsModel):
         for i, (region, corey_params) in enumerate(corey.items()):
             diff_w = 1e-9 * 86400
             diff_g = 2e-8 * 86400
-            property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
+            property_container = ModelProperties(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
                                                    min_z=self.zero / 10, temperature=temperature)
 
             property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
@@ -296,7 +299,14 @@ class Model(DartsModel):
             property_container.output_props = {"sat_V": lambda ii=i: self.physics.property_containers[ii].sat[0],
                                                "dens_V": lambda ii=i: self.physics.property_containers[ii].dens[0],
                                                "densm_Aq": lambda ii=i: self.physics.property_containers[ii].dens_m[1],
-                                               "enthalpy_V": lambda ii=i: self.physics.property_containers[ii].enthalpy[0]}
+                                               "enthalpy_V": lambda ii=i: self.physics.property_containers[ii].enthalpy[0]
+                                               }
+
+            for j, phase_name in enumerate(phases):
+                for c, component_name in enumerate(self.components):
+                    key = f"mass_{phase_name}_{component_name}"
+                    # property_container.mass_ev[key] = mass_components(property_container, phases, phase_name, component_name)
+                    property_container.output_props[key] = lambda ii=i, jj=j, cc=c: self.physics.property_containers[ii].mass[jj, cc]
 
             for j, phase_name in enumerate(phases):
                 for c, component_name in enumerate(self.components):
@@ -1057,6 +1067,112 @@ class BrooksCorey:
             k_r = 0
 
         return k_r
+
+
+class ModelProperties(PropertyContainer):
+    def __init__(self, phases_name, components_name, Mw, temperature, min_z=1e-11):
+        # Call base class constructor
+        super().__init__(
+            phases_name,
+            components_name,
+            Mw,
+            min_z=min_z,
+            temperature=temperature,
+        )
+
+        self.mass = np.zeros((self.x.shape))
+
+    def evaluate(self, state: value_vector):
+
+        super().evaluate(state)
+
+        self.mass = self.mass_components()
+
+        return
+
+    def mass_components(self):
+        self.v_idx = self.phases_name.index('V')
+        self.aq_idx = self.phases_name.index('Aq')
+
+        sg = self.sat[self.v_idx]
+        rhoV = self.dens[self.v_idx]
+        rho_m_Aq = self.dens_m[self.aq_idx]
+        x_components = self.x[self.aq_idx]
+        y_components = self.x[self.v_idx]
+
+        # Compute molecular weight of the aqueous phase
+        MWAq = np.sum(y_components[1:, :] * self.Mw[1:], axis = 0 ) + (1 - np.sum(y_components[1:, :], axis = 0)) * self.Mw[0]
+
+        # Mass fractions in vapor phase
+        w_components_vapor = (y_components * self.Mw) / MWAq
+
+        # Calculate total mass for each component
+        # mass_components = {}
+        mass_aqueous = {}
+        mass_vapor = {}
+        for i, component_name in enumerate(self.components_name):
+            # Vapor phase mass contribution
+            mass_vapor[component_name] = w_components_vapor[i] * sg * rhoV
+
+            # Aqueous phase mass contribution
+            mass_aqueous[component_name] = (1 - sg) * x_components[i] * rho_m_Aq * self.Mw[i]
+
+            # Total mass
+            # mass_components[component_name] = mass_vapor[component_name] + mass_aqueous[component_name]
+
+            self.mass[self.v_idx][i] = mass_vapor[component_name]
+            self.mass[self.aq_idx][i] = mass_aqueous[component_name]
+
+        return
+
+
+class mass_components:
+    def __init__(self, property_container, phases, ph, component):
+        self.pc = property_container
+        self.component_names = self.pc.components_name
+        self.Mw = np.array(self.pc.Mw).reshape(-1, 1)
+        self.phases = phases
+        self.v_idx = self.phases.index('V')
+        self.aq_idx = self.phases.index('Aq')
+
+        self.ph = self.phases.index(ph)
+        self.comp = self.component_names.index(component)
+
+    def evaluate(self, pressure, temperature, zc):
+
+        # Extract properties from property_array
+        state = value_vector([pressure, *zc, temperature])
+        self.pc.evaluate(state)
+        sg = self.pc.sat[self.v_idx]
+        rhoV = self.pc.dens[self.v_idx]
+        rho_m_Aq = self.pc.dens_m[self.aq_idx]
+        x_components = self.pc.x[self.aq_idx]
+        y_components = self.pc.x[self.v_idx]
+
+        # Compute molecular weight of the aqueous phase
+        MWAq = np.sum(y_components[1:, :] * self.Mw[1:], axis = 0 ) + (1 - np.sum(y_components[1:, :], axis = 0)) * self.Mw[0]
+
+        # Mass fractions in vapor phase
+        w_components_vapor = (y_components * self.Mw) / MWAq
+
+        # Calculate total mass for each component
+        # mass_components = {}
+        mass_aqueous = {}
+        mass_vapor = {}
+        for i, component_name in enumerate(self.component_names):
+            # Vapor phase mass contribution
+            mass_vapor[component_name] = w_components_vapor[i] * sg * rhoV
+
+            # Aqueous phase mass contribution
+            mass_aqueous[component_name] = (1 - sg) * x_components[i] * rho_m_Aq * self.Mw[i]
+
+            # Total mass
+            # mass_components[component_name] = mass_vapor[component_name] + mass_aqueous[component_name]
+
+            self.pc.mass[self.v_idx][i] = mass_vapor
+            self.pc.mass[self.aq_idx][i] = mass_aqueous
+
+        return self.pc.mass[self.ph][self.comp]
 
 ######################## HIDE THIS ########################
 cmult = 86.4

@@ -153,7 +153,7 @@ def run(m, specs):
 
     for ts in range(Nt):
         print(f'----------------------------------- Simulate from year {(ts*Dt)/365} until year {((ts+1)*Dt)/365} -----------------------------------')
-        m.run(Dt, restart_dt = 1.0, save_reservoir_data = False, save_well_data = not specs['RHS'], verbose=True)
+        m.run(Dt, save_reservoir_data = False, save_well_data = not specs['RHS'], verbose=True)
 
         if specs['check_rates']:
             time_vector, property_array = m.output.output_properties(output_properties = output_props, engine=True)
@@ -179,10 +179,10 @@ def run(m, specs):
 #%%
 
 """Define realization ID"""
-Nt = 1
-Dt = 365/2
-nx = 840//4
-nz = 120
+Nt = 100
+Dt = 365
+nx = 170
+nz = 60
 zero = 1e-10
 
 
@@ -192,18 +192,14 @@ if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
     platform = 'gpu'
 
 model_specs = [
-
         # RHS CORRECTION WITH DISPERSION ON
-    {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
+    {'check_rates': True, 'temperature': 273.15+40, '1000years': 1, 'RHS': True, 'components': ['H2O', 'CO2'], 'inj_stream': [zero, 1-zero, 283.15],
         'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT', 'post_process': None, 'platform': platform},
 
         # RHS CORRECTION WITH DISPERSION ON - RESTART MODEL
-    {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
+    {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': True, 'components': ['H2O', 'CO2'], 'inj_stream': [zero, 1-zero, 283.15],
         'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT', 'post_process': 'POST', 'platform': platform},
 
-    #{'check_rates': True, 'temperature': None, 'components': ['H2S', 'CO2', 'H2O'], 'inj_stream': [0.05-1e-10, 0.95-1e-10, 283.15], 'nx': nx, 'nz': nz, 'output_dir': 'ternary_H2S_5', 'gpu_device': None},
-    #{'check_rates': True, 'temperature': None, 'components': ['C1', 'CO2', 'H2O'], 'inj_stream': [0.05-1e-10, 0.95-1e-10, 283.15], 'nx': nx, 'nz': nz, 'output_dir': 'ternary_C1_5', 'gpu_device': None},
-    #{'check_rates': True, 'temperature': None, 'components': ['C1', 'H2S', 'CO2', 'H2O'], 'inj_stream': [0.04, 0.01, 0.95, 283.15], 'nx': nx, 'nz': nz, 'output_dir': '4components_5', 'gpu_device': None}
     ]
 
 #%%
@@ -231,9 +227,9 @@ if __name__ == '__main__':
 
             # simulate a thousand years
             if specs['1000years']:
-                for i in range(100):
+                for i in range(specs['1000years']):
                     print(f'-------- Year {i}/100 --------')
-                    m.run(365, restart_dt=365 / 2, save_reservoir_data=False, save_well_data=False)
+                    m.run(365, restart_dt=365, save_reservoir_data=False, save_well_data=False)
                 m.physics.engine.t = 0.
                 m.output.save_data_to_h5(kind='reservoir')
                 m.inj_rate = [3024, 0]
