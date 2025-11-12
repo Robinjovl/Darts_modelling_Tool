@@ -23,14 +23,15 @@ def plot_well_1d_reservoir_line_graphs(
     primary_vars_and_phase_props_file_address: str,
     h5_well_data: dict,
     coupled_model: DartsModel,
-    report_step_labels: list,
-    report_step_times: list,
+    report_time_labels: list,
+    reported_times: list,
     *,
     property_name: str,
     legend_loc: str = 'upper right',
 ):
     """
-    This function is used to plot well-reservoir property profiles at certain time steps.
+    This function is used to plot well-reservoir property profiles at certain time steps. It can be used only for
+    1D reservoirs.
 
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
@@ -39,19 +40,21 @@ def plot_well_1d_reservoir_line_graphs(
     :type h5_well_data: dict
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
-    :param report_step_labels: List of labels of reported steps
-    :type report_step_labels: list
-    :param report_step_times: List of times of reported steps
-    :type report_step_times: list
+    :param report_time_labels: List of labels of reported times
+    :type report_time_labels: list
+    :param reported_times: List of reported times [day]
+    :type reported_times: list
     :param property_name: Name of the property to plot
     :type property_name: str
     :param legend_loc: Legend location
     :type legend_loc: str
     """
+    output_folder = coupled_model.output_folder
+
     dx = coupled_model.reservoir.global_data['dx']
     assert dx.ndim == 3 and dx.shape[1:] == (1, 1), f"Expected (*,1,1), got {dx.shape}"
 
-    assert len(report_step_labels) == len(report_step_times), (
+    assert len(report_time_labels) == len(reported_times), (
         "Number of report step labels must be equal to number of report step times!"
     )
 
@@ -110,16 +113,16 @@ def plot_well_1d_reservoir_line_graphs(
 
     simulation_time = h5_well_data["dynamic"]["time"]
 
-    report_step_times = np.cumsum(report_step_times)
     report_indices = [
-        np.where(np.isclose(simulation_time, a))[0][0] for a in report_step_times
+        np.where(np.isclose(simulation_time, a))[0][0] for a in reported_times
     ]
 
     # Load primary vars and phase props for well
     well_data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
 
     # Fast load; infer low-memory dtypes
-    reservoir_data_frame = pd.read_csv("all_solutions.csv", low_memory=False)
+    all_solutions_csv_path = os.path.join(output_folder, "all_solutions.csv")
+    reservoir_data_frame = pd.read_csv(all_solutions_csv_path, low_memory=False)
 
     # Ensure stable ordering
     tvals = np.array(sorted(reservoir_data_frame["Timestep"].unique()))
@@ -145,7 +148,7 @@ def plot_well_1d_reservoir_line_graphs(
         reservoir_property_matrix -= 273.15
 
     # Generate a colormap for the report steps (big jumps for the first time steps, then smaller)
-    n = len(report_step_labels)
+    n = len(report_time_labels)
     cmap = mpl.colormaps['jet']  # consider 'viridis' for perceptual uniformity
     alpha = 10.0  # larger => more contrast early, flatter later
     t = np.arange(n) / (n - 1 if n > 1 else 1)
@@ -156,7 +159,7 @@ def plot_well_1d_reservoir_line_graphs(
     markers = ['o', 's', 'd', '^', 'v', 'x', '*']
     linestyles = ['-', '--', '-.', ':']
 
-    # --- Build the plot ---
+    # Start plotting
     fig, ax = plt.subplots(figsize=(6, 5))  # single compact panel
     y_r, offset, rmin, rmax = stacked_y_axis_linear_log(
         ax,
@@ -186,7 +189,7 @@ def plot_well_1d_reservoir_line_graphs(
             linewidth=2.0,  # match linewidth
             markersize=4.0,  # match markersize
             color=color,
-            label=report_step_labels[idx],
+            label=report_time_labels[idx],
         )
 
         reservoir_prop_profile = reservoir_property_matrix[idx, :]
@@ -222,21 +225,17 @@ def plot_well_1d_reservoir_line_graphs(
     ax.grid(True, which="both", linestyle=":", linewidth=0.6, alpha=0.6)
 
     plt.legend(
-        fontsize=7,
+        fontsize=6,
         loc=legend_loc,
         title="Report steps",
         title_fontsize=10,
     ).get_frame().set_edgecolor('black')  # Optional: Add a border
     fig.tight_layout()
     fig.savefig(
-        os.path.join(
-            coupled_model.output_folder, f"{property_name}_well_reservoir_profile.pdf"
-        )
+        os.path.join(output_folder, f"{property_name}_well_reservoir_profile.pdf")
     )
     fig.savefig(
-        os.path.join(
-            coupled_model.output_folder, f"{property_name}_well_reservoir_profile.png"
-        )
+        os.path.join(output_folder, f"{property_name}_well_reservoir_profile.png")
     )
     plt.show()
 
