@@ -12,7 +12,7 @@ import sys
 def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : int, tags : dict, filename : str = None,
                     is_transfinite : bool = True, is_recombine : bool  = True, refinement_mult : bool = 1.0,
                     fault_refinement_mult = 1.0, fault_angle : float = None, z_minus_hybrid = False, two_rocks = False,
-                    msh_ver=2.1, popup=False, Xc=None, Yc=None, Zc=None, rsv_top=None, rsv_bottom=None):
+                    msh_ver=2.1, popup=False, Xc=None, Yc=None, Zc=None, rsv_top=None, rsv_bottom=None, rsv_xy=None):
     '''
     generates a rectangular-box structured-like mesh with hexahedron (right prism) cells in the unstructured mesh format (gmsh 2).
     :param X: a box size along X-axis
@@ -285,7 +285,11 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
                         reservoir.append(id)
                 else:  # depths list is specified
                     if two_rocks:
-                        if rsv_top >= z[k] > rsv_bottom:
+                        from functools import reduce
+                        rsv = reduce(np.logical_and, [ rsv_top >= z[k], z[k] > rsv_bottom,
+                                                      -rsv_xy <= y[j],  y[j] <= rsv_xy,
+                                                      -rsv_xy <= x[i],  x[i] <= rsv_xy])
+                        if rsv:#rsv_top >= z[k] > rsv_bottom:
                             reservoir_1.append(id)
                         else:
                             reservoir_2.append(id)
@@ -435,20 +439,22 @@ if __name__ == '__main__':
         write_to_vtk_with_faces(filename)
     
     if True:  # rsv_top < rsv < rsv_bottom (tag MATRIX_1) and non-rsv (tag MATRIX_2)
-        rsv_top = 2100
-        rsv_bottom = 2200
+        rsv_top = 2100.
+        rsv_bottom = 2200.
+        rsv_xy = 1000.
         
         # small
         #x_list = np.array([-2000, -1000, 0, 1000, 2000])
         #z_list = -1 * np.array([0,1000,1500,rsv_top,rsv_bottom,3000,4000])
         
+        #case = '34_34_57'  # z 0 - 5 km 
         x_list = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
         z_list = -np.hstack([np.arange(0, rsv_top - 100 + 1, 100),
                                  np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
                                  rsv_bottom + 100,
                                  np.arange(rsv_bottom + 200, 5000 + 1, 100)])
         filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault, 
-                                   Xc=x_list, Yc=x_list, Zc=z_list, rsv_top=-rsv_top, rsv_bottom=-rsv_bottom, 
+                                   Xc=x_list, Yc=x_list, Zc=z_list, rsv_top=-rsv_top, rsv_bottom=-rsv_bottom, rsv_xy=rsv_xy,
                                    msh_ver=4.2, # geos fails with a negative volume issue for gmsh 2.1 format https://github.com/GEOS-DEV/GEOS/issues/2154
                                    two_rocks=True, is_transfinite=True, is_recombine=True, popup=True)
         
