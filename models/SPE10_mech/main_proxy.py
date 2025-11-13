@@ -87,9 +87,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     ux_last = np.array(msh_last.cell_data['ux']).flatten()
     uy_last = np.array(msh_last.cell_data['uy']).flatten()
     uz_last = np.array(msh_last.cell_data['uz']).flatten()
-    delta_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] * bars2mpa #  XX
-    delta_Syy_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 1] * bars2mpa #  YY
-    delta_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] * bars2mpa # ZZ
+    delta_Sxx_last = np.array(msh_last.cell_data['delta_eff_stress'])[0, :, 0] * bars2mpa #  XX
+    delta_Syy_last = np.array(msh_last.cell_data['delta_eff_stress'])[0, :, 1] * bars2mpa #  YY
+    delta_Szz_last = np.array(msh_last.cell_data['delta_eff_stress'])[0, :, 2] * bars2mpa # ZZ
     qx_last = np.array(msh_last.cell_data['strain'])[0, :, 0]  #  XX
     qy_last = np.array(msh_last.cell_data['strain'])[0, :, 1]  #  YY
     qz_last = np.array(msh_last.cell_data['strain'])[0, :, 2]  # ZZ
@@ -113,14 +113,14 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     print('\tprisms all', prisms.shape[0])
 
     #TODO do not use the whole mesh - use only the permeable part, assuming there is no p,T change in the impermeable part
-    #rsv = poro > m.idata.rock.poro_non_rsv  # reservoir (permeable) cells only for use in the proxy
-    rsv = poro > 0 # use all cells in the proxy
+    rsv = poro > m.idata.rock.poro_non_rsv  # reservoir (permeable) cells only for use in the proxy
+    #rsv = poro > 0 # use all cells in the proxy
     delta_pressure_rsv = delta_pressure[rsv]
     delta_temperature_rsv = delta_temperature[rsv]
     prisms_rsv = prisms[rsv, :]
     print('\tprisms rsv', prisms.shape[0])
 
-    # where to compare the results - middle XYZ
+    # centroids are only used for THM data plotting, they are not used in proxy
     centroids = np.zeros((prisms.shape[0], 3))
     centroids[:, 0] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # Y
     centroids[:, 1] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # X
@@ -130,7 +130,6 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     bounds = [0]*n_dim
     for k in range(n_dim):
         bounds[k] = centroids[:, k].min(), centroids[:, k].max()
-
 
     def find_cell_by_point(point):
         # find an index of the cell, closest to the desired point
@@ -266,7 +265,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         return strain[0], strain[1], strain[2], stress[0], stress[1], stress[2]  # Sxx, Syy, Szz
 
 
-    def get_proxy_displs(eval_points):  # Y,X,Z 
+    def get_proxy_displs(eval_points):  # Y,X,Z
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points_eps = eval_points + eps
         #eval_points_eps = eval_points_eps.transpose()
@@ -436,6 +435,42 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     ######################################
     
+    # keep only one prism - for debugging
+    if False:
+        prisms_rsv = prisms_rsv[0,:] 
+        delta_pressure_rsv = delta_pressure_rsv[0:1]
+        
+        #prisms_rsv[:] = [-500., 500., -500., 500.,  2200.,  2100.]  # OK
+        prisms_rsv[:] = [-12000., 12000., -12000., 12000.,  2200.,  2100.] # not good Uz
+        
+        print(prisms_rsv)
+        
+        def f_my(z):
+            eval_points = np.array([450., 450., z])
+            ux_prx, uy_prx, uz_prx = get_proxy_displs(eval_points)
+            print('my:', z, uz_prx*1000)
+            
+        f_my(0.)
+        f_my(2000.)
+        f_my(4000.)
+        f_my(5000.)
+    
+        # check with python's version
+        if False:
+            from compaction import displacement_x_component, displacement_y_component, displacement_z_component
+            def f_compaction(z):
+                eval_points = np.array([450., 450., z])
+                uz_c = displacement_z_component(eval_points, prisms_rsv, delta_pressure_rsv, g.poisson, g.young, np.array([]), g.thermal_expansion)
+                print('f_compaction', z, uz_c)
+                
+            f_compaction(0.)
+            f_compaction(2000.)
+            f_compaction(4000.)
+            f_compaction(5000.)
+            
+        return
+    ######################################
+    
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
     #points_xy['center'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
@@ -585,6 +620,9 @@ if __name__ == '__main__':
     #case = '16_16_15'
     case = '34_34_57'  # z 0 - 5 km 
     #case = '34_34_65'  # z 0 - 10 km
+    
+    #case = '34_34_15'
+    #case = '16_16_65'
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -600,17 +638,18 @@ if __name__ == '__main__':
     #wells_types_list += ['doublet']
     
     # for THM solver run
-    #n_years = 1
-    n_years = 2
+    n_years = 1
+    #n_years = 2
     #n_years = 5
     #n_years = 10
     #n_years = 30
     #n_years = 50
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
-    
-    #sim_time = 90 # days
-    #report_step = 90  # days
+
+    # short run
+    sim_time = 90 # days
+    report_step = sim_time  # days
     
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
     #timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
