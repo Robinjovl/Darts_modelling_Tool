@@ -70,3 +70,9 @@ quote-style = "preserve"
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"darts.physics.properties" = ["databases/*"]
