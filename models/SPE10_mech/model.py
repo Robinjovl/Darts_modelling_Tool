@@ -84,8 +84,8 @@ class Model(THMCModel):
         self.idata.rock.density = 2650. # kg/m63
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
-        #self.idata.rock.biot = 1  # rock compressibility will be 0
-        self.idata.rock.biot = 0.6
+        self.idata.rock.biot = 1  # rock compressibility will be 0
+        #self.idata.rock.biot = 0.8  # 0.8 to match dp with geos
         self.idata.rock.E = 1.e+4 * E  # convert units to bars
         self.idata.rock.nu = 0.25  # poisson ratio
 
@@ -94,8 +94,8 @@ class Model(THMCModel):
         self.idata.other.rsv_bottom = 2200# [m]
         
         # lateral reservoir boundaries
-        #self.idata.other.rsv_xy = 1000   # laterally limited (rsv width will be self.rsv_xy*2)
-        self.idata.other.rsv_xy = 100000  # "infinite" laterally
+        self.idata.other.rsv_xy = 1000   # laterally limited (rsv width will be self.rsv_xy*2)
+        #self.idata.other.rsv_xy = 100000  # "infinite" laterally
 
         # rock properties for outside reservoir boundaries part of the mesh
         self.idata.rock.poro_non_rsv = 0.001
@@ -119,7 +119,7 @@ class Model(THMCModel):
 
         # TODO: Only for a single-phase physics
         self.idata.fluid.Mw = 18.015 # water molar weight, [g/mol]
-        self.idata.fluid.compressibility = 1.45e-5  # [1/bar]
+        self.idata.fluid.compressibility = 4.4e-5  # [1/bar]
         self.idata.fluid.viscosity = 1.0  # [cP]
         self.idata.fluid.density = 1000. # [kg/m^3]
 
