@@ -57,6 +57,7 @@ public:
 
     segments_volumes = {};
     segments_depths = {};
+    segments_lengths = {};
     num_segments = 0;
     ms_type = MS_Type::EPM;
     with_lateral_heat_transfer = false;
@@ -153,8 +154,9 @@ public:
   value_t segment_diameter;
   value_t segment_roughness;
 
-  std::vector<value_t> segments_depths;
   std::vector<value_t> segments_volumes;
+  std::vector<value_t> segments_depths;
+  std::vector<value_t> segments_lengths;
   index_t num_segments;
   std::vector<value_t> init_state;
 
@@ -174,9 +176,6 @@ public:
 
   std::vector<value_t> phase_vels;                             // phase velocities for DFM wells
   std::vector<value_t> phase_vels_ders;                        // phase velocities derivatives for DFM wells
-  std::vector<value_t> segment_spe;               // specific potential energy for DFM segments
-  std::vector<value_t> conn_spe;                  // specific potential energy for DFM connections
-  //std::vector<value_t> phase_specific_potential_energy_up;     // phase specific potential energy upwinded over each DFM connection
 
   operator_set_evaluator_iface* rate_evaluator;
   operator_set_gradient_evaluator_iface *rate_etor_ad;  //adjoint method

@@ -15,7 +15,9 @@ class conn_mesh
 public:
   conn_mesh () {};                                          // default constructor
 
-  int init_grav_coef(value_t grav_const = 9.80665e-5);      // discretize ms wells into reservoir
+  int init_grav_coef(value_t grav_const = 9.80665e-5);      // initialize gravity coefficient for all the connections
+
+  int init_spe(value_t grav_acceleration_for_spe = 0.);     // initialize specific potential energy for all the connections (grav_acceleration_for_spe is in m/s^2)
 
   int get_res_tran(std::vector<value_t> &res_tran,
                    std::vector<value_t> &res_tranD);        // get trans for reservoir part
@@ -173,9 +175,7 @@ public:
     value_t trans, value_t transD, const uint8_t P_VAR);
 
   /// @brief reverse connections and sort them by both row and col
-  int reverse_and_sort(std::vector<ms_well*>& wells);
-  /// @brief store one-way connection spe, and reverse and sort them by both row and col
-  int reverse_and_sort_conn_spe(std::vector<ms_well*>& wells);
+  int reverse_and_sort();
   /// @brief reverse connections and sort them by both row and col for a one-way property at all connections
   std::vector<value_t> reverse_and_sort_one_way_prop(std::vector<value_t> phase_velocities);
   /// @brief reverse connections and sort them by both row and col for derivatives of velocities at all connections
@@ -284,9 +284,8 @@ public:
   std::vector<value_t> cell_spe;
   /// [n_conns * 2] array of two-way specific potential energy at connections
   std::vector<value_t> conn_spe;
-  ///// [n_conns * 2] array of two-way upwinded specific potential energy of phases at connections
-  //std::vector<value_t> phase_A_specific_potential_energy_up;
-  //std::vector<value_t> phase_B_specific_potential_energy_up;
+  /// [n_blocks] array of thickness of mesh blocks (this array is used in conn_mesh::init_spe)
+  std::vector<value_t> cell_thickness;
 
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;
