@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 class Kinetics:
@@ -245,80 +244,7 @@ def _load_kinetic_registry(db_path: Path) -> dict:
     return data
 
 
-# Global reference for validators; set by KineticRate at construction time
-KINETIC_REGISTRY: dict | None = None
-
-
-class MineralSpec(BaseModel):
-    """Pydantic schema for a single-mineral kinetic configuration.
-
-    Example:
-        mineral_name='CaCO3', mechanisms=['acidic', 'neutral', 'carbonate']
-    """
-
-    mineral_name: str
-    mechanisms: list[str]
-
-    model_config = ConfigDict(extra='forbid')
-
-    @field_validator('mineral_name')
-    @classmethod
-    def validate_mineral_name(cls, value: str) -> str:
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError("'mineral_name' must be a non-empty string")
-        mineral_key = value.strip()
-        if (
-            not isinstance(KINETIC_REGISTRY, dict)
-            or mineral_key not in KINETIC_REGISTRY
-        ):
-            supported = (
-                sorted(KINETIC_REGISTRY.keys())
-                if isinstance(KINETIC_REGISTRY, dict)
-                else []
-            )
-            raise ValueError(f"Unsupported mineral '{value}'. Supported: {supported}")
-        return mineral_key
-
-    @field_validator('mechanisms')
-    @classmethod
-    def validate_mechanisms(cls, value: list[str], info) -> list[str]:
-        if not isinstance(value, list | tuple) or len(value) == 0:
-            raise ValueError("'mechanisms' must be a non-empty list of strings")
-        clean: list[str] = []
-        for mech in value:
-            if not isinstance(mech, str):
-                raise ValueError("Mechanism names must be strings")
-            mk = mech.strip().lower()
-            if mk not in {'acidic', 'neutral', 'carbonate'}:
-                raise ValueError(
-                    "Unsupported mechanism '{mk}'. Supported: ['acidic','neutral','carbonate']"
-                )
-            if mk not in clean:
-                clean.append(mk)
-        return clean
-
-
-class ReactionSurfaceAreaSpec(BaseModel):
-    """Spec for reaction surface area evaluator used by KineticRate.
-
-    Currently supports a linear evaluator only.
-    """
-
-    model_config = ConfigDict(extra='forbid')
-
-    kind: str = Field(default='linear', pattern='^(linear)$')
-    initial_area_per_mol: float = Field(gt=0)
-
-
-class KineticRateSpec(MineralSpec):
-    """Pydantic spec for constructing a KineticRate instance.
-
-    Inherits mineral/mechanism validation; adds `min_z` and surface area spec.
-    """
-
-    min_z: float = Field(gt=0)
-    surface_area: ReactionSurfaceAreaSpec
-    kinetic_database: str | Path = 'PalandriKharaka'
+_SUPPORTED_MECHANISMS = {'acidic', 'neutral', 'carbonate'}
 
 
 class LinearReactionSurfaceArea:
@@ -407,18 +333,12 @@ class KineticRate:
         self.min_z = min_z
         self.surface_area_ev = surface_area_ev
 
-        # Resolve and load database
         db_path = _resolve_kinetic_db_path(kinetic_database)
-        global KINETIC_REGISTRY
-        KINETIC_REGISTRY = _load_kinetic_registry(db_path)
+        registry = _load_kinetic_registry(db_path)
 
-        # Validate and normalize inputs against the loaded registry
-        try:
-            spec = MineralSpec(mineral_name=mineral_name, mechanisms=mechanisms)
-        except ValidationError as exc:
-            raise exc
-        self.mineral = spec.mineral_name
-        mech_defs = KINETIC_REGISTRY[self.mineral]
+        self.mineral = self._validate_mineral(mineral_name, registry)
+        mech_defs = registry[self.mineral]
+        normalized_mechs = self._validate_mechanisms(mechanisms, mech_defs)
         self.mechanisms = [
             ReactionMechanism(
                 name=mech,
@@ -429,7 +349,7 @@ class KineticRate:
                 p=mech_defs[mech]['p'],
                 q=mech_defs[mech]['q'],
             )
-            for mech in mechanisms
+            for mech in normalized_mechs
         ]
 
     def evaluate(self, kin_state, solid_saturation, rho_s, temperature):
@@ -473,19 +393,37 @@ class KineticRate:
         kinetic_rate = kinetic_rate * 60 * 60 * 24 / 1000
         return kinetic_rate
 
-    @classmethod
-    def from_spec(cls, spec: KineticRateSpec) -> 'KineticRate':
-        """Construct a KineticRate instance from a validated KineticRateSpec."""
-        # Build surface area evaluator (extensible by kind)
-        if spec.surface_area.kind == 'linear':
-            sa_ev = LinearReactionSurfaceArea(spec.surface_area.initial_area_per_mol)
-        else:
-            raise ValueError(f"Unsupported surface area kind: {spec.surface_area.kind}")
+    @staticmethod
+    def _validate_mineral(mineral_name: str, registry: dict) -> str:
+        if not isinstance(mineral_name, str) or not mineral_name.strip():
+            raise ValueError("'mineral_name' must be a non-empty string")
+        mineral_key = mineral_name.strip()
+        if mineral_key not in registry:
+            supported = sorted(registry.keys())
+            raise ValueError(
+                f"Unsupported mineral '{mineral_name}'. Supported: {supported}"
+            )
+        return mineral_key
 
-        return cls(
-            min_z=spec.min_z,
-            mineral_name=spec.mineral_name,
-            mechanisms=spec.mechanisms,
-            surface_area_ev=sa_ev,
-            kinetic_database=spec.kinetic_database,
-        )
+    @staticmethod
+    def _validate_mechanisms(mechanisms, mech_defs: dict) -> list[str]:
+        if not isinstance(mechanisms, list | tuple) or len(mechanisms) == 0:
+            raise ValueError("'mechanisms' must be a non-empty list of strings")
+        clean: list[str] = []
+        for mech in mechanisms:
+            if not isinstance(mech, str):
+                raise ValueError("Mechanism names must be strings")
+            mk = mech.strip().lower()
+            if mk not in _SUPPORTED_MECHANISMS:
+                raise ValueError(
+                    f"Unsupported mechanism '{mech}'. "
+                    f"Supported: {sorted(_SUPPORTED_MECHANISMS)}"
+                )
+            if mk not in mech_defs:
+                raise ValueError(
+                    f"Mechanism '{mk}' is not available for this mineral. "
+                    f"Available: {sorted(mech_defs.keys())}"
+                )
+            if mk not in clean:
+                clean.append(mk)
+        return clean

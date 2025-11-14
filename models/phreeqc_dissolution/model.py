@@ -117,7 +117,8 @@ class Model(CICDModel):
                  poro_filename: str = None, minerals: list = ['calcite'],
                  kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
                  n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
-                 inj_rate: float = None, perm_poro: str = 'power_8', flash: str = 'phreeqc'):
+                 inj_rate: float = None, perm_poro: str = 'power_8', flash: str = 'phreeqc',
+                 database: str = 'phreeqc'):
         # Call base class constructor
         super().__init__()
 
@@ -133,6 +134,7 @@ class Model(CICDModel):
         self.inj_rate = inj_rate
         self.perm_poro = perm_poro
         self.flash = flash
+        self.database = database
 
         self.set_reservoir(domain=domain, nx=nx, mesh_filename=mesh_filename, poro_filename=poro_filename)
         self.set_physics()
@@ -185,7 +187,7 @@ class Model(CICDModel):
             Mw = {'Solid_CaCO3': 100.0869, 'Ca': 40.078, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
             self.n_points = list(self.n_obl_mult * np.array([101, 201, 101, 101, 101], dtype=np.intp))
             self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.3]
-            self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.01, 0.02, 0.37]
+            self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.03, 0.03, 0.37]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                                [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
@@ -267,7 +269,7 @@ class Model(CICDModel):
         property_container = PropertyContainer(phases_name=self.phases, components_name=self.elements, Mw=Mw,
                                             stoich_matrix=stoich_matrix, kinetic_mechanisms=self.kinetic_mechanisms,
                                             min_z=self.obl_min, temperature=self.temperature,
-                                            fc_mask=self.fc_mask, flash=self.flash)
+                                            fc_mask=self.fc_mask, flash=self.flash, database=self.database)
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
                                          np.ones(self.nc - self.n_solid)]) * 5.2e-10 * 86400) for ph in self.phases}

@@ -26,7 +26,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     m = Model(domain=domain, nx=nx, mesh_filename=mesh_filename, poro_filename=poro_filename,
               minerals=minerals, kinetic_mechanisms=kinetic_mechanisms, n_obl_mult=n_obl_mult,
               co2_injection=co2_injection, h2o_injection=h2o_injection, inj_rate=inj_rate,
-              perm_poro=perm_poro, flash=flash)
+              perm_poro=perm_poro, flash=flash, database=database)
 
     # Initialize model
     m.init(itor_type=interpolator, platform=platform, verbose=True, n_solid=len(minerals))

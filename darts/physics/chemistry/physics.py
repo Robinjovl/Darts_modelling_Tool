@@ -1,4 +1,4 @@
-from darts.engines import *
+from darts.engines import timer_node, value_vector
 from darts.physics.base.operators_base import WellControlOperators, WellInitOperators
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
@@ -17,17 +17,18 @@ class ElementBasedReactiveFlow(Compositional):
 
     def __init__(
         self,
-        timer,
-        elements,
-        n_points,
-        axes_min,
-        axes_max,
+        timer: timer_node,
+        elements: list[str],
+        phases: list[str],
+        n_points: int | list[int],
+        axes_min: list[float],
+        axes_max: list[float],
         properties,
-        platform='cpu',
-        itor_type='multilinear',
-        itor_mode='adaptive',
-        itor_precision='d',
-        cache=True,
+        platform: str = 'cpu',
+        itor_type: str = 'multilinear',
+        itor_mode: str = 'adaptive',
+        itor_precision: str = 'd',
+        cache: bool = True,
     ):
         """
         Constructor for ElementBasedReactiveFlow class.
@@ -35,6 +36,8 @@ class ElementBasedReactiveFlow(Compositional):
         :type timer: timer_node
         :param elements: List of elements
         :type elements: list
+        :param phases: List of phases
+        :type phases: List
         :param n_points: Number of points
         :type n_points: int
         :param axes_min: Minimum axes values
@@ -55,7 +58,6 @@ class ElementBasedReactiveFlow(Compositional):
         :type cache: bool
         """
         vars = ["p"] + elements[:-1]
-        phases = ['vapor', 'liquid']
         self.initial_operators = {}
 
         super().__init__(
