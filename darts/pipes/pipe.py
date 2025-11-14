@@ -630,13 +630,13 @@ class Pipe:
                 rate_source = sink_source.current_rate  # Output rate is in kmol/day
 
                 if sink_source.inflow_or_outflow == "inflow":
-                    comp_source = sink_source.inj_fluid_props[
-                        "composition"
-                    ]  # in kmol/kmol
+                    # comp_source in kmol/kmol
+                    comp_source = sink_source.inj_fluid_props["composition"]
                     Mw = self.physics.property_containers[0].Mw
+                    # mass_rate in kg/s
                     mass_rate = sum(
                         rate_source * np.array(comp_source) * np.array(Mw)
-                    ) / (24 * 60 * 60)  # must be in kg/s
+                    ) / (24 * 60 * 60)
                 elif sink_source.inflow_or_outflow == "outflow":
                     # TODO: For outflow, we have rate_source, which is in kmol/day, but we don't have comp_source, which
                     # is in kmol/kmol, from the user. Instead, we have xG_mass0 and xL_mass0, which are mass fractions.
@@ -832,9 +832,8 @@ class Pipe:
             self.vG_der *= 24 * 60 * 60
             self.vL_der *= 24 * 60 * 60
 
-        self.is_first_first_iter = (
-            False  # Only for the first iteration of the first time step is true
-        )
+        # is_first_first_iter is true only for the first iteration of the first time step.
+        self.is_first_first_iter = False
 
         return phase_velocities
 
@@ -961,6 +960,7 @@ class Pipe:
 
     def calc_profile_parameter(self):
         pg = self.geometry
+        num_interfaces = self.geometry.num_interfaces
         [rhoM0_vM0, _, _, _] = self.velocities0
         [xG_mass0_face, xL_mass0_face, sG0_face, rhoG0_face, rhoL0_face] = (
             self.iter_phases_props0_face
@@ -1020,8 +1020,8 @@ class Pipe:
             eta0 = (beta0 - self.B) / (1 - self.B)  # B is calculated in the constructor
             C00_filtered = self.Cmax / (1 + (self.Cmax - 1) * eta0**2)
 
-            C00 = np.ones(self.geometry.num_interfaces)  # C00 all ones first
-            self.C00 = np.ones(self.geometry.num_interfaces)
+            C00 = np.ones(num_interfaces)  # C00 all ones first
+            self.C00 = np.ones(num_interfaces)
             self.C00_filtered = np.ones(len(indices))
 
             for i, idx in enumerate(indices):
@@ -1030,18 +1030,18 @@ class Pipe:
             self.C00_filtered = C00_filtered
             self.C00 = C00
             # Set all profile parameters equal to 1
-            # self.C00 = np.ones(self.geometry.num_interfaces)
+            # self.C00 = np.ones(num_interfaces)
 
         else:
             self.C00_filtered = 1
-            # self.C00 = np.ones(self.geometry.num_interfaces)
+            # self.C00 = np.ones(num_interfaces)
 
     def calc_drift_velocity(self):
+        num_interfaces = self.geometry.num_interfaces
         # if np.all(self.C00 == 1):
-        #     vD0 = np.zeros(self.geometry.num_interfaces)
+        #     vD0 = np.zeros(num_interfaces)
         # else:
         if any(0 < sG < 1 for sG in self.iter_phases_props0_face[2]):
-            # pg = self.geometry
             [_, _, sG0_face, rhoG0_face, rhoL0_face] = self.iter_phases_props0_face
             [_, vM0, _, _] = self.velocities0
 
@@ -1056,9 +1056,8 @@ class Pipe:
             # Calculate the K function to make a smooth transition of drift velocity between
             # the bubble-rise and film-flooding stages
             K0_filtered = np.zeros(len(self.C00_filtered))
-            if (
-                type(self.Ku0_filtered) is float
-            ):  # If type of self.Ku0_filtered is float, this turns it into a list.
+            # If type of self.Ku0_filtered is float, this if block turns it into a list.
+            if type(self.Ku0_filtered) is float:
                 self.Ku0_filtered = [self.Ku0_filtered]
 
             for index, value in enumerate(indices):
@@ -1094,9 +1093,8 @@ class Pipe:
                     + (1 - sG0_face_filtered) * rhoL0_face_filtered
                 )
             )  # gas mass fraction [dimensionless]
-            G0 = (
-                rhoM0_face_filtered * abs(vM0_filtered)
-            )  # Total mass flux (or total mass flow rate per unit cross-sectional area) [kg/m2/s]
+            # Calculate G0: the total mass flux (or total mass flow rate per unit cross-sectional area) [kg/m2/s]
+            G0 = rhoM0_face_filtered * abs(vM0_filtered)
             numerator = np.zeros(len(X0))
             for i in range(len(X0)):
                 numerator[i] = np.linalg.det(
@@ -1116,9 +1114,8 @@ class Pipe:
             )
 
             # Calculate drift velocity
-            vD0 = np.zeros(self.geometry.num_interfaces)  # vD0 all zeros first
+            vD0 = np.zeros(num_interfaces)  # vD0 all zeros first
             for index, value in enumerate(indices):
-                # Ignore the consideration of the adjustment function for the mist flow regime for now
                 vD0[value] = (
                     (1 - self.C00_filtered[index] * sG0_face_filtered[index])
                     * self.vC0_filtered[index]
@@ -1137,7 +1134,7 @@ class Pipe:
                 )
                 # vD0[value] = (1 - self.C00_filtered[index] * sG0_face_filtered[index]) * self.vC0_filtered[index] * K0_filtered[index] * self.m[value] / (self.C00_filtered[index] * sG0_face_filtered[index] * np.sqrt(rhoG0_face_filtered[index] / rhoL0_face_filtered[index]) + 1 - self.C00_filtered[index] * sG0_face_filtered[index])
         else:
-            vD0 = np.zeros(self.geometry.num_interfaces)
+            vD0 = np.zeros(num_interfaces)
         self.vD0 = -vD0  # I multiplied the drift velocity by -1 because I changed the positive direction of the well from top to bottom.
 
     def evaluate_phase_velocities_and_derivatives(
