@@ -36,11 +36,15 @@ public:
                                          const std::vector<double> &axes_min,
                                          const std::vector<double> &axes_max);
 
-   /**
-     * @brief Construct interpolator with explicit axis node coordinates (non-uniform spacing)
-     *
-     * @param[in] axis_nodes  Coordinates of supporting points along each axis
-     */
+  /**
+    * @brief Construct interpolator with explicit axis node coordinates (non-uniform spacing)
+    *
+    * @param[in] axis_nodes  Coordinates of supporting points along each axis.
+    *                        Every axis_nodes[i] vector must contain monotonic coordinates and
+    *                        its size must match axes_points[i].  Supplying explicit nodes allows
+    *                        the adaptive interpolator to work on anisotropic grids without
+    *                        sacrificing the original adaptive fill strategy.
+    */
    multilinear_adaptive_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
                                          const std::vector<int> &axes_points,
                                          const std::vector<double> &axes_min,

@@ -49,6 +49,8 @@ void multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_point_c
     index_t axis_idx = remainder_idx / axis_point_mult[i];
     remainder_idx = remainder_idx % axis_point_mult[i];
     const double *axis_nodes_ptr = this->axis_nodes_flat.data() + this->axis_nodes_offset[i];
+    // axis_nodes_flat keeps the exact coordinate of every supporting point (uniform or not),
+    // so we simply fetch the value instead of recomputing min + idx * step on the fly.
     coordinates[i] = axis_nodes_ptr[axis_idx];
   }
 }
@@ -108,6 +110,7 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_
     const double *axis_nodes_ptr = this->axis_nodes_flat.data() + this->axis_nodes_offset[i];
     const double *axis_inv_dx_ptr = this->axis_inv_dx_flat.empty() ? nullptr : this->axis_inv_dx_flat.data() + this->axis_cells_offset[i];
     const uint32_t *axis_bin_ptr = this->axis_bin_left_idx_flat.empty() ? nullptr : this->axis_bin_left_idx_flat.data() + this->axis_bin_offset[i];
+    // axis_low / mult / axis_inv_dx_local are derived together to avoid redundant lookups.
     int axis_idx = get_axis_interval_index_low_mult_nonuniform<value_t>(point[i],
                                                                         axis_nodes_ptr,
                                                                         axis_inv_dx_ptr,

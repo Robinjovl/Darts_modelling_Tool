@@ -129,6 +129,7 @@ __forceinline__ __host__ __device__ int get_axis_interval_index_low_mult(double 
   return axis_interval_index;
 }
 
+// Fallback binary search used only when the coarse bin + correction path fails (e.g. heavy extrapolation).
 __forceinline__ __host__ __device__ int locate_axis_interval_binary(double axis_value,
                                                                     const double *axis_nodes,
                                                                     int axis_points)
@@ -162,6 +163,8 @@ __forceinline__ __host__ __device__ int locate_axis_interval_binary(double axis_
   return axis_points - 2;
 }
 
+// Locate the interval containing axis_value on a non-uniform axis by combining a coarse bin lookup
+// with a small correction loop (bounded by MAX_CORRECTION_STEPS).
 __forceinline__ __host__ __device__ int get_axis_interval_index_nonuniform(double axis_value,
                                                                            const double *axis_nodes,
                                                                            const uint32_t *axis_bin_left_idx,
@@ -219,6 +222,7 @@ __forceinline__ __host__ __device__ int get_axis_interval_index_nonuniform(doubl
     axis_interval_index = axis_points - 2;
   }
 
+  // Keep the correction bounded to guarantee constant work per axis, independent of refinement density.
   const int MAX_CORRECTION_STEPS = 4;
   int correction_steps = 0;
   while (axis_value < axis_nodes[axis_interval_index] && axis_interval_index > 0 && correction_steps < MAX_CORRECTION_STEPS)

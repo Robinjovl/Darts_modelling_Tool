@@ -21,6 +21,11 @@ public:
      * @param[in] axes_points                   Number of supporting points (minimum 2) along axes
      * @param[in] axes_min                      Minimum value for each axis
      * @param[in] axes_max                      Maximum for each axis
+     * @param[in] axis_nodes                    Optional explicit coordinates of supporting points along each axis.
+     *                                          When nullptr, a uniform mesh defined by axes_min/axes_max/axes_points
+     *                                          is assumed.  When provided, every axis_nodes[i] vector must contain
+     *                                          monotonically increasing coordinates and its length must be equal
+     *                                          to axes_points[i].
      */
     interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                       const std::vector<int> &axes_points,
@@ -147,6 +152,9 @@ public:
     uint64_t get_n_points_used() const;
 
 protected:
+    // The binning helper limits the number of linear scans required during interval lookup.
+    // A small constant number of bins per axis proved sufficient in profiling, therefore
+    // we keep memory footprint predictable by capping the number of bins.
     static constexpr int MAX_AXIS_BINS = 1024;
     const std::vector<int> axes_points;                       ///< number of supporting points along each axis
     const std::vector<double> axes_min;                       ///< minimum at each axis
@@ -156,14 +164,14 @@ protected:
     std::vector<double> axes_step;     ///< the distance between neighbor supporting points for each axis
     std::vector<double> axes_step_inv; ///< inverse of step (to avoid division)
 
-    std::vector<double> axis_nodes_flat;        ///< flattened node coordinates for each axis
-    std::vector<double> axis_inv_dx_flat;       ///< flattened inverse spacing (per cell) for each axis
-    std::vector<size_t> axis_nodes_offset;      ///< offsets for axis_nodes_flat per axis
-    std::vector<size_t> axis_cells_offset;      ///< offsets for axis_inv_dx_flat per axis
-    std::vector<uint32_t> axis_bin_left_idx_flat; ///< flattened coarse bin -> left cell lookup
-    std::vector<size_t> axis_bin_offset;        ///< offsets for bin lookup tables per axis
-    std::vector<int> axis_bin_count;            ///< number of coarse bins per axis
-    std::vector<double> axis_bin_inv_width;     ///< inverse coarse bin width per axis
+    std::vector<double> axis_nodes_flat;        ///< Flattened coordinates of all axis nodes (size = sum axes_points).
+    std::vector<double> axis_inv_dx_flat;       ///< Flattened inverse spacing (per cell) for each axis.
+    std::vector<size_t> axis_nodes_offset;      ///< Prefix sums that map an axis index to its slice inside axis_nodes_flat.
+    std::vector<size_t> axis_cells_offset;      ///< Prefix sums for axis_inv_dx_flat (there are axes_points[i]-1 cells per axis).
+    std::vector<uint32_t> axis_bin_left_idx_flat; ///< Coarse bin -> candidate cell index lookup tables for every axis.
+    std::vector<size_t> axis_bin_offset;        ///< Prefix sums pointing to the start of each axis' bin table.
+    std::vector<int> axis_bin_count;            ///< Number of coarse bins created for every axis.
+    std::vector<double> axis_bin_inv_width;     ///< Inverse bin width used to map coordinates into bin indices.
 
     uint64_t n_interpolations; ///< Number of interpolations that took place
     __uint128_t n_points_total;   ///< Total number of parametrization points

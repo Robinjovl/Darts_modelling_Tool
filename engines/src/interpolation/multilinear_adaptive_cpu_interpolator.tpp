@@ -31,6 +31,8 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
     : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max, &axis_nodes)
 
 {
+  // Nothing extra is required here — axis_nodes are forwarded to the base class, which
+  // performs validation, flattens the coordinates and precomputes inverse spacings.
 }
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
@@ -126,6 +128,7 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
       index_t index = offset * static_cast<index_t>(N_DIMS) + static_cast<index_t>(i);
       const double *axis_nodes_ptr = this->axis_nodes_flat.data() + this->axis_nodes_offset[i];
       const uint32_t *axis_bin_ptr = this->axis_bin_left_idx_flat.empty() ? nullptr : this->axis_bin_left_idx_flat.data() + this->axis_bin_offset[i];
+      // Use the non-uniform interval lookup to compute the hypercube index that contains the requested point.
       int axis_idx = get_axis_interval_index_nonuniform(points[index],
                                                         axis_nodes_ptr,
                                                         axis_bin_ptr,

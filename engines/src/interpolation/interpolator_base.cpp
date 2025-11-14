@@ -28,6 +28,8 @@ interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_po
     axis_bin_count.resize(n_dims, 0);
     axis_bin_inv_width.resize(n_dims, 0.0);
 
+    // Each axis is stored consecutively inside the flattened buffers.  Pre-compute offsets
+    // so we can slice axis_nodes_flat/axis_inv_dx_flat without extra multiplications inside hot loops.
     for (int dim = 0; dim < n_dims; ++dim)
     {
         axis_nodes_offset[dim + 1] = axis_nodes_offset[dim] + static_cast<size_t>(axes_points[dim]);
@@ -37,6 +39,8 @@ interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_po
     axis_nodes_flat.resize(axis_nodes_offset.back());
     axis_inv_dx_flat.resize(axis_cells_offset.back());
 
+    // axis_nodes is optional: the adaptive interpolators still default to uniform grids,
+    // therefore we only treat the pointer as valid when it carries per-axis vectors.
     const bool has_custom_nodes = axis_nodes != nullptr && axis_nodes->size() == static_cast<size_t>(n_dims);
     if (axis_nodes != nullptr && !has_custom_nodes)
     {
@@ -66,6 +70,7 @@ interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_po
             }
         }
 
+        // Per-cell inverse spacing (1/dx) is stored explicitly to avoid divisions during interpolation.
         for (int i = 0; i < n_points_dim - 1; ++i)
         {
             double dx = axis_nodes_ptr[i + 1] - axis_nodes_ptr[i];
@@ -76,6 +81,8 @@ interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_po
             axis_inv_dx_ptr[i] = 1.0 / dx;
         }
 
+        // Build a compact coarse bin table that quickly guesses the interval which contains a point.
+        // The table resolution scales with the number of intervals but is capped to keep memory bounded.
         const int intervals = std::max(n_points_dim - 1, 1);
         const int proposed_bins = std::max(1, std::min(MAX_AXIS_BINS, intervals * 4));
         axis_bin_count[dim] = proposed_bins;
@@ -86,6 +93,7 @@ interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_po
         axis_bin_inv_width[dim] = (bin_width > 0.0) ? (1.0 / bin_width) : 0.0;
     }
 
+    // Materialize all bin tables in a single contiguous vector for cache-friendly access at runtime.
     axis_bin_left_idx_flat.resize(axis_bin_offset.back());
     for (int dim = 0; dim < n_dims; ++dim)
     {
