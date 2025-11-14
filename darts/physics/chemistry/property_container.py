@@ -28,6 +28,7 @@ class PropertyContainer(PropertyContainer):
         rate_ann_mat=None,
         temperature=None,
         fc_mask=None,
+        database='phreeqc',
         flash='phreeqc',
     ):
         """
@@ -54,6 +55,8 @@ class PropertyContainer(PropertyContainer):
         :type temperature: float | None
         :param fc_mask: Fluid component mask
         :type fc_mask: List[bool]
+        :param database: Database for equilibrium solver ('phreeqc', 'pitzer', 'supcrtbl')
+        :type database: str
         :param flash: Flash type
         :type flash: str (phreeqc or reaktoro)
         """
@@ -98,19 +101,32 @@ class PropertyContainer(PropertyContainer):
         # Define custom evaluators
         self.rock_density_ev = {}
         self.rock_compr_ev = {}
+        # validate and prepare database identifier for chosen flash backend
+        allowed_databases = {'phreeqc', 'pitzer', 'supcrtbl'}
+        db_key = str(database).lower()
+        if db_key not in allowed_databases:
+            raise ValueError(
+                f"Invalid database: {database}. Allowed: {sorted(allowed_databases)}"
+            )
         if flash == 'phreeqc':
+            # PHREEQC backend expects .dat filenames
+            db_filename = f"{db_key}.dat"
             self.flash_ev = PhreeqcFlash(
                 min_z=self.min_z,
                 minerals=self.minerals,
                 components=self.components_name[self.fc_mask],
                 temperature=self.temperature,
+                database_filename=db_filename,
             )
         elif flash == 'reaktoro':
+            # Reaktoro expects 'supcrtbl' without .dat; PHREEQC DBs with .dat
+            db_filename = 'supcrtbl' if db_key == 'supcrtbl' else f"{db_key}.dat"
             self.flash_ev = ReaktoroFlash(
                 min_z=self.min_z,
                 minerals=self.minerals,
                 components=self.components_name[self.fc_mask],
                 temperature=self.temperature,
+                database_filename=db_filename,
             )
         else:
             raise ValueError(f'Invalid flash type: {flash}')
