@@ -1,6 +1,352 @@
+import os
+
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
+
+matplotlib.use("Agg")
+import inspect
+from builtins import zip as _zip
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import wraps
+
+
+def plot_well_multithreaded(out_dirs, time_data_dfs, n_threads=4):
+    def _plot_single(df, x, y_cols, xlabel, ylabel, title, path):
+        fig, ax = plt.subplots(figsize=(5, 3))
+        for col in y_cols:
+            ax.plot(df[x].to_numpy(), df[col].to_numpy())
+        ax.set_xlabel(xlabel)
+        if ylabel:
+            ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        if len(y_cols) > 1:
+            ax.legend(fontsize=6, loc="best", frameon=False)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        fig.savefig(path, bbox_inches="tight", dpi=100)
+        plt.close(fig)
+
+    plt.rcParams.update(
+        {
+            "figure.dpi": 100,
+            "axes.grid": True,
+            "axes.titlesize": 12,
+            "axes.labelsize": 12,
+            "lines.linewidth": 2,
+            "figure.autolayout": False,
+            "savefig.pad_inches": 0.1,
+            "text.usetex": False,
+            "lines.antialiased": False,
+        }
+    )
+
+    from builtins import zip as _zip
+
+    key_units = {
+        "volumetric": "[m3/day]",
+        "mass_rate": "[kg/day]",
+        "molar_rate": "[kmol/day]",
+        "advective_heat": "[kJ/day]",
+        "BHT": "[°C]",
+        "BHP": "[bar]",
+    }
+
+    for out_dir, time_data_df in _zip(out_dirs, time_data_dfs, strict=False):
+        os.makedirs(out_dir, exist_ok=True)
+
+        jobs = []
+        for key in time_data_df.keys():
+            ylabel = next(
+                (unit for name, unit in key_units.items() if name in key), None
+            )
+            if n_threads:
+                jobs.append(
+                    (
+                        time_data_df[["time", key]].copy(),
+                        "time",
+                        [key],
+                        "time [days]",
+                        ylabel,
+                        key,
+                        os.path.join(out_dir, "fast", f"{key}.png"),
+                    )
+                )
+
+        if n_threads and jobs:
+            os.makedirs(os.path.join(out_dir, "fast"), exist_ok=True)
+            nthreads = min(2, os.cpu_count() or 4)
+            print(
+                f"[plot_well_time_data_fast] Starting {len(jobs)} plots on {nthreads} threads..."
+            )
+
+            # Use threads — zero pickling, zero startup delay
+            with ThreadPoolExecutor(max_workers=nthreads) as ex:
+                futures = [ex.submit(_plot_single, *args) for args in jobs]
+                for _ in as_completed(futures):
+                    pass  # could add tqdm here for progress
+
+
+def plot_well_time_data_2(out_dirs, time_data_dfs):
+    """
+    Make plots out of the time data dataframe.
+    """
+
+    plt.rcParams.update(
+        {
+            "figure.dpi": 100,
+            "axes.grid": True,
+            "axes.titlesize": 12,
+            "axes.labelsize": 12,
+            "lines.linewidth": 2,
+            "figure.autolayout": False,
+            "savefig.pad_inches": 0.1,
+            "text.usetex": False,
+            "lines.antialiased": False,
+        }
+    )
+
+    def _plot_single(y_valid, y_label, title, out_dir):
+        ax = time_data_df.plot(
+            x="time",
+            y=y_valid,
+            xlabel="time [days]",
+            ylabel=y_label,
+            title=title,
+            grid=True,
+        )
+        fig = ax.get_figure()
+        fig.savefig(
+            os.path.join(out_dir, f"{title}.png"),
+            dpi=100,
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
+        return 0
+
+    # import warnings
+    from builtins import zip as _zip
+
+    for out_dir, time_data_df in _zip(out_dirs, time_data_dfs, strict=False):
+        os.makedirs(out_dir, exist_ok=True)
+
+        # required_attrs = ["wells", "components", "phases", "perfs"]
+        # for attr in required_attrs:
+        # if attr not in time_data_df.attrs:
+        # warnings.warn(
+        #     f"DataFrame in {out_dir} is missing attribute '{attr}'. "
+        #     f"Plots depending on it may be incomplete.",
+        #     UserWarning,
+        # )
+
+        wells = time_data_df.attrs.get("wells", [])
+        components = time_data_df.attrs.get("components", [])
+        phases = time_data_df.attrs.get("phases", [])
+        perfs = time_data_df.attrs.get("perfs", [])
+
+        rate_list = {
+            'volumetric_rate': ' [m3/day]',
+            'mass_rate': ' [kg/day]',
+            'molar_rate': ' [kmol/day]',
+            'advective_heat': ' [kJ]',
+        }
+        type_list = ['perf', 'at_wh', 'by_sum_perfs']
+
+        # for the phases
+        for typ in type_list:
+            os.makedirs(os.path.join(out_dir, 'phases', typ), exist_ok=True)
+            dir = os.path.join(out_dir, 'phases', typ)
+            if typ == 'perf':
+                for phase in phases:
+                    for rate in rate_list:
+                        for perf in perfs:
+                            y = [f"well_{perf}_{rate}_{phase}"]
+                            y_valid = [col for col in y if col in time_data_df.columns]
+                            if y_valid:
+                                _plot_single(
+                                    y_valid, rate + rate_list[rate], y_valid[0], dir
+                                )
+            else:
+                for well in wells:
+                    for phase in phases:
+                        for rate in rate_list:
+                            y = [f"well_{well}_{rate}_{phase}_{typ}"]
+                            y_valid = [col for col in y if col in time_data_df.columns]
+                            if y_valid:
+                                _plot_single(
+                                    y_valid, rate + rate_list[rate], y_valid[0], dir
+                                )
+
+        # for the components
+        for typ in type_list:
+            os.makedirs(os.path.join(out_dir, 'component', typ), exist_ok=True)
+            dir = os.path.join(out_dir, 'component', typ)
+            if typ == 'perf':
+                for component in components:
+                    for rate in {'molar_rate': ' [kmol/day]'}:
+                        for perf in perfs:
+                            y = [f"well_{perf}_{rate}_{component}"]
+                            y_valid = [col for col in y if col in time_data_df.columns]
+                            if y_valid:
+                                _plot_single(
+                                    y_valid, rate + rate_list[rate], y_valid[0], dir
+                                )
+
+            else:
+                for component in components:
+                    for rate in {'molar_rate': ' [kmol/day]'}:
+                        y = [f"well_{well}_{rate}_{component}_{typ}"]
+                        y_valid = [col for col in y if col in time_data_df.columns]
+                        if y_valid:
+                            _plot_single(
+                                y_valid, rate + rate_list[rate], y_valid[0], dir
+                            )
+
+        # BHP and BHT
+        bottom_hole_list = {"BHP": " [bar]", "BHT": " [°C]"}
+        for well in wells:
+            for key, unit in bottom_hole_list.items():
+                y = [f"well_{well}_{key}"]
+                y_valid = [col for col in y if col in time_data_df.columns]
+                if y_valid:
+                    ax = time_data_df.plot(
+                        x="time",
+                        y=y_valid,
+                        xlabel="time [days]",
+                        ylabel=unit,
+                        title=well,
+                        grid=True,
+                    )
+                    fig = ax.get_figure()
+                    fig.savefig(
+                        os.path.join(out_dir, f"{y_valid[0]}.png"),
+                        dpi=100,
+                        bbox_inches="tight",
+                    )
+                    plt.close(fig)
+
+    return 0
+
+
+def multi_fig_decorator(f):
+    df_arg_name = next(iter(inspect.signature(f).parameters))
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if args:
+            df, *args = args
+        else:
+            df = kwargs.pop(df_arg_name)
+
+        # Identify x and y columns
+        x_col = "time" if "time" in df.columns else None
+        y_cols = [c for c in df.columns if c != x_col]
+
+        figs = {}
+        for col in y_cols:
+            # keep 'time' and current y-column only
+            keep_cols = [col]
+            if x_col:
+                keep_cols.insert(0, x_col)
+            sub_df = df[keep_cols].copy()
+
+            # Defensive: skip if column has no data
+            if sub_df[col].dropna().empty:
+                continue
+
+            kwargs[df_arg_name] = sub_df
+            kwargs.setdefault("x_label", "time [days]" if x_col else "index")
+            kwargs.setdefault("y_label", col)
+
+            fig = f(*args, **kwargs)
+            figs[col] = fig
+
+        return figs
+
+    return wrapper
+
+
+@multi_fig_decorator
+def my_figure_generator_function(df, x_label="time [days]", y_label=None):
+    # determine x and y columns
+    x = df["time"] if "time" in df.columns else df.index
+    y_cols = [c for c in df.columns if c != "time"]
+    if not y_cols:
+        return None  # safety: skip if no y-column found
+
+    key_units = {
+        "volumetric": "Volumetric rate [m3/day]",
+        "mass_rate": "Mass rate [kg/day]",
+        "molar_rate": "Molar rate [kmol/day]",
+        "advective_heat": "Advective heat rate [kJ/day]",
+        "BHT": "Temperature [°C]",
+        "BHP": "Pressure [bar]",
+    }
+
+    col = y_cols[0]
+    y_label = next((unit for name, unit in key_units.items() if name in col), None)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x, y=df[col], name=col))
+    fig.update_layout(
+        xaxis_title=x_label,
+        yaxis_title=y_label,
+        title=f"{col} vs {x_label}",
+        margin=dict(l=60, r=20, t=40, b=50),
+    )
+    fig.update_yaxes(tickformat=".2f")  # show full numbers without M/k suffix
+    return fig
+
+
+def html_plot(out_dirs, time_data_dfs):
+    for out_dir, time_data in _zip(out_dirs, time_data_dfs, strict=False):
+        figs = my_figure_generator_function(time_data)
+
+        if 1:
+            import os
+
+            import plotly.io as pio
+
+            os.makedirs(out_dir, exist_ok=True)
+            for name, fig in figs.items():
+                pio.write_html(
+                    fig,
+                    file=os.path.join(out_dir, f"{name}.html"),
+                    include_plotlyjs='cdn',
+                    auto_open=False,
+                )
+        else:
+            import os
+            import zipfile
+
+            import plotly.io as pio
+
+            with zipfile.ZipFile(
+                os.path.join(out_dir, "plots.zip"), "w", zipfile.ZIP_DEFLATED
+            ) as zf:
+                for name, fig in figs.items():
+                    html_bytes = pio.to_html(
+                        fig, include_plotlyjs="cdn", full_html=False
+                    ).encode("utf-8")
+                    zf.writestr(f"{name}.html", html_bytes)
+            print(f"Packed {len(figs)} figures into plots.zip")
+
+    return 0
+
+
+def plot_wells_output(out_dirs, time_data_dfs, n_threads=4, format='png'):
+    if format == 'png':
+        if n_threads:
+            plot_well_multithreaded(out_dirs, time_data_dfs, n_threads)
+        else:
+            plot_well_time_data_2(out_dirs, time_data_dfs)
+
+    elif format == 'html':
+        html_plot(out_dirs, time_data_dfs)
+
+    return 0
 
 
 def plot_phase_rate_darts(
