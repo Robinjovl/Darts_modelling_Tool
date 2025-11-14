@@ -172,6 +172,7 @@ protected:
     std::vector<size_t> axis_bin_offset;        ///< Prefix sums pointing to the start of each axis' bin table.
     std::vector<int> axis_bin_count;            ///< Number of coarse bins created for every axis.
     std::vector<double> axis_bin_inv_width;     ///< Inverse bin width used to map coordinates into bin indices.
+    bool nonuniform_axes_enabled;               ///< True when explicit axis nodes are provided.
 
     uint64_t n_interpolations; ///< Number of interpolations that took place
     __uint128_t n_points_total;   ///< Total number of parametrization points
@@ -180,6 +181,8 @@ protected:
 
     std::vector<double> new_point_coords;    ///< intermediate storage for supporting point generation
     std::vector<double> new_operator_values; ///< intermediate storage for supporting point generation
+
+    bool has_nonuniform_axes() const { return nonuniform_axes_enabled; }
 
 private:
     int n_dims; ///< number of dimensions in parameter space

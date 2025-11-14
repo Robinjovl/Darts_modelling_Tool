@@ -126,16 +126,25 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
     for (uint8_t i = 0; i < N_DIMS; ++i)
     {
       index_t index = offset * static_cast<index_t>(N_DIMS) + static_cast<index_t>(i);
-      const double *axis_nodes_ptr = this->axis_nodes_flat.data() + this->axis_nodes_offset[i];
-      const uint32_t *axis_bin_ptr = this->axis_bin_left_idx_flat.empty() ? nullptr : this->axis_bin_left_idx_flat.data() + this->axis_bin_offset[i];
-      // Use the non-uniform interval lookup to compute the hypercube index that contains the requested point.
-      int axis_idx = get_axis_interval_index_nonuniform(points[index],
-                                                        axis_nodes_ptr,
-                                                        axis_bin_ptr,
-                                                        this->axis_bin_count[i],
-                                                        this->axes_min_internal[i], this->axes_max_internal[i],
-                                                        this->axis_bin_inv_width[i],
-                                                        this->axes_points[i]);
+      int axis_idx = 0;
+      if (this->has_nonuniform_axes())
+      {
+        const double *axis_nodes_ptr = this->axis_nodes_flat.data() + this->axis_nodes_offset[i];
+        const uint32_t *axis_bin_ptr = this->axis_bin_left_idx_flat.empty() ? nullptr : this->axis_bin_left_idx_flat.data() + this->axis_bin_offset[i];
+        axis_idx = get_axis_interval_index_nonuniform(points[index],
+                                                      axis_nodes_ptr,
+                                                      axis_bin_ptr,
+                                                      this->axis_bin_count[i],
+                                                      this->axes_min_internal[i], this->axes_max_internal[i],
+                                                      this->axis_bin_inv_width[i],
+                                                      this->axes_points[i]);
+      }
+      else
+      {
+        axis_idx = get_axis_interval_index<value_t>(points[index],
+                                                    this->axes_min_internal[i], this->axes_max_internal[i],
+                                                    this->axes_step_inv_internal[i], this->axes_points[i]);
+      }
       hypercube_idx += static_cast<index_t>(axis_idx) * this->axis_hypercube_mult[i];
     }
     (void)this->get_hypercube_data(hypercube_idx);

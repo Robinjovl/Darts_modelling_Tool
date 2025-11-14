@@ -44,7 +44,8 @@ public:
   multilinear_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                                 const std::vector<int> &axes_points,
                                 const std::vector<double> &axes_min,
-                                const std::vector<double> &axes_max);
+                                const std::vector<double> &axes_max,
+                                const std::vector<std::vector<double>> *axis_nodes = nullptr);
 
   /**
      * @brief Get the number of dimensions in interpolation space

@@ -39,9 +39,8 @@ interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_po
     axis_nodes_flat.resize(axis_nodes_offset.back());
     axis_inv_dx_flat.resize(axis_cells_offset.back());
 
-    // axis_nodes is optional: the adaptive interpolators still default to uniform grids,
-    // therefore we only treat the pointer as valid when it carries per-axis vectors.
     const bool has_custom_nodes = axis_nodes != nullptr && axis_nodes->size() == static_cast<size_t>(n_dims);
+    nonuniform_axes_enabled = has_custom_nodes;
     if (axis_nodes != nullptr && !has_custom_nodes)
     {
         throw std::invalid_argument("axis_nodes must either be null or contain entries for all axes");
@@ -81,48 +80,58 @@ interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_po
             axis_inv_dx_ptr[i] = 1.0 / dx;
         }
 
-        // Build a compact coarse bin table that quickly guesses the interval which contains a point.
-        // The table resolution scales with the number of intervals but is capped to keep memory bounded.
-        const int intervals = std::max(n_points_dim - 1, 1);
-        const int proposed_bins = std::max(1, std::min(MAX_AXIS_BINS, intervals * 4));
-        axis_bin_count[dim] = proposed_bins;
-        axis_bin_offset[dim + 1] = axis_bin_offset[dim] + static_cast<size_t>(proposed_bins);
+        if (nonuniform_axes_enabled)
+        {
+            // Build a compact coarse bin table that quickly guesses the interval which contains a point.
+            // The table resolution scales with the number of intervals but is capped to keep memory bounded.
+            const int intervals = std::max(n_points_dim - 1, 1);
+            const int proposed_bins = std::max(1, std::min(MAX_AXIS_BINS, intervals * 4));
+            axis_bin_count[dim] = proposed_bins;
+            axis_bin_offset[dim + 1] = axis_bin_offset[dim] + static_cast<size_t>(proposed_bins);
 
-        const double axis_span = axis_nodes_ptr[n_points_dim - 1] - axis_nodes_ptr[0];
-        const double bin_width = proposed_bins > 0 ? axis_span / proposed_bins : 0.0;
-        axis_bin_inv_width[dim] = (bin_width > 0.0) ? (1.0 / bin_width) : 0.0;
+            const double axis_span = axis_nodes_ptr[n_points_dim - 1] - axis_nodes_ptr[0];
+            const double bin_width = proposed_bins > 0 ? axis_span / proposed_bins : 0.0;
+            axis_bin_inv_width[dim] = (bin_width > 0.0) ? (1.0 / bin_width) : 0.0;
+        }
     }
 
-    // Materialize all bin tables in a single contiguous vector for cache-friendly access at runtime.
-    axis_bin_left_idx_flat.resize(axis_bin_offset.back());
-    for (int dim = 0; dim < n_dims; ++dim)
+    if (nonuniform_axes_enabled)
     {
-        const int n_points_dim = axes_points[dim];
-        if (n_points_dim < 2)
-            continue;
-        const double *axis_nodes_ptr = axis_nodes_flat.data() + axis_nodes_offset[dim];
-        uint32_t *bin_ptr = axis_bin_left_idx_flat.data() + axis_bin_offset[dim];
-        const int bins = axis_bin_count[dim];
-        if (bins <= 0)
-            continue;
-        const double min_v = axis_nodes_ptr[0];
-        const double max_v = axis_nodes_ptr[n_points_dim - 1];
-        const double span = max_v - min_v;
-        const double bin_width = (bins > 0) ? span / bins : 0.0;
-        int current_idx = 0;
-        for (int b = 0; b < bins; ++b)
+        // Materialize all bin tables in a single contiguous vector for cache-friendly access at runtime.
+        axis_bin_left_idx_flat.resize(axis_bin_offset.back());
+        for (int dim = 0; dim < n_dims; ++dim)
         {
-            double x = min_v + b * bin_width;
-            while (current_idx + 1 < n_points_dim && axis_nodes_ptr[current_idx + 1] <= x)
+            const int n_points_dim = axes_points[dim];
+            if (n_points_dim < 2)
+                continue;
+            const double *axis_nodes_ptr = axis_nodes_flat.data() + axis_nodes_offset[dim];
+            uint32_t *bin_ptr = axis_bin_left_idx_flat.data() + axis_bin_offset[dim];
+            const int bins = axis_bin_count[dim];
+            if (bins <= 0)
+                continue;
+            const double min_v = axis_nodes_ptr[0];
+            const double max_v = axis_nodes_ptr[n_points_dim - 1];
+            const double span = max_v - min_v;
+            const double bin_width = (bins > 0) ? span / bins : 0.0;
+            int current_idx = 0;
+            for (int b = 0; b < bins; ++b)
             {
-                ++current_idx;
+                double x = min_v + b * bin_width;
+                while (current_idx + 1 < n_points_dim && axis_nodes_ptr[current_idx + 1] <= x)
+                {
+                    ++current_idx;
+                }
+                if (current_idx > n_points_dim - 2)
+                {
+                    current_idx = n_points_dim - 2;
+                }
+                bin_ptr[b] = static_cast<uint32_t>(current_idx);
             }
-            if (current_idx > n_points_dim - 2)
-            {
-                current_idx = n_points_dim - 2;
-            }
-            bin_ptr[b] = static_cast<uint32_t>(current_idx);
         }
+    }
+    else
+    {
+        axis_bin_left_idx_flat.clear();
     }
 
     //use double to avoid overflow
