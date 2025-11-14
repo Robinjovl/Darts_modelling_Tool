@@ -48,7 +48,8 @@ void multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_point_c
   {
     index_t axis_idx = remainder_idx / axis_point_mult[i];
     remainder_idx = remainder_idx % axis_point_mult[i];
-    coordinates[i] = this->axes_min[i] + this->axes_step[i] * axis_idx;
+    const double *axis_nodes_ptr = this->axis_nodes_flat.data() + this->axis_nodes_offset[i];
+    coordinates[i] = axis_nodes_ptr[axis_idx];
   }
 }
 
@@ -100,18 +101,27 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_
   index_t hypercube_idx = 0;
   value_t axis_low[N_DIMS];
   value_t mult[N_DIMS];
+  value_t axis_inv_dx_local[N_DIMS];
 
   for (int i = 0; i < N_DIMS; ++i)
   {
-    int axis_idx = get_axis_interval_index_low_mult<value_t>(point[i],
-                                                             this->axes_min_internal[i], this->axes_max_internal[i], this->axes_step_internal[i],
-                                                             this->axes_step_inv_internal[i], axes_points[i],
-                                                             &axis_low[i], &mult[i]);
+    const double *axis_nodes_ptr = this->axis_nodes_flat.data() + this->axis_nodes_offset[i];
+    const double *axis_inv_dx_ptr = this->axis_inv_dx_flat.empty() ? nullptr : this->axis_inv_dx_flat.data() + this->axis_cells_offset[i];
+    const uint32_t *axis_bin_ptr = this->axis_bin_left_idx_flat.empty() ? nullptr : this->axis_bin_left_idx_flat.data() + this->axis_bin_offset[i];
+    int axis_idx = get_axis_interval_index_low_mult_nonuniform<value_t>(point[i],
+                                                                        axis_nodes_ptr,
+                                                                        axis_inv_dx_ptr,
+                                                                        axis_bin_ptr,
+                                                                        this->axis_bin_count[i],
+                                                                        this->axes_min_internal[i], this->axes_max_internal[i],
+                                                                        this->axis_bin_inv_width[i],
+                                                                        axes_points[i],
+                                                                        &axis_low[i], &mult[i], &axis_inv_dx_local[i]);
     hypercube_idx += static_cast<index_t>(axis_idx) * axis_hypercube_mult[i];
   }
   const hypercube_data_t &hypercube = this->get_hypercube_data(hypercube_idx);
   interpolate_point_with_derivatives<value_t, N_DIMS, N_OPS>(point, hypercube.data(),
-                                                             &axis_low[0], &mult[0], this->axes_step_inv_internal.data(),
+                                                             &axis_low[0], &mult[0], &axis_inv_dx_local[0],
                                                              values,
                                                              derivatives);
 

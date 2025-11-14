@@ -1,6 +1,8 @@
 #ifndef D89802AE_4C88_4BCD_88D1_1B45D12E933F
 #define D89802AE_4C88_4BCD_88D1_1B45D12E933F
 
+#include <cstdint>
+
 // define those to avoid warning indication in syntax check for non-nvcc compilers
 #ifndef __NVCC__
 #define __forceinline__
@@ -10,15 +12,15 @@
 
 /**
  * @brief Get the index of interval, which containes specified point coordinate, for specified axis
- * 
+ *
  * @tparam service_value_t - floating point type used for axis parameters
  * @param axis_values - state values, coordinates of point to interpolate
- * @param i - index of axis 
+ * @param i - index of axis
  * @param axis_min - array of minimim values for axes (left parametrization limit)
  * @param axis_max - array of maximum values for axes (right parametrization limit)
  * @param axis_step_inv - array of inverted values of axes intervals lengths
  * @param axis_points - array of numbers of supporting points for axes
- * @return axis interval index 
+ * @return axis interval index
  */
 template <typename service_value_t>
 __forceinline__ __host__ __device__ unsigned int get_axis_idx(const value_t *axis_values, int i,
@@ -124,6 +126,168 @@ __forceinline__ __host__ __device__ int get_axis_interval_index_low_mult(double 
 
   *axis_low = axis_interval_index * axis_step + axis_min;
   *axis_mult = (axis_value - *axis_low) * axis_step_inv;
+  return axis_interval_index;
+}
+
+__forceinline__ __host__ __device__ int locate_axis_interval_binary(double axis_value,
+                                                                    const double *axis_nodes,
+                                                                    int axis_points)
+{
+  int left = 0;
+  int right = axis_points - 2;
+
+  while (left <= right)
+  {
+    int mid = (left + right) / 2;
+    value_t low = axis_nodes[mid];
+    value_t high = axis_nodes[mid + 1];
+    if (axis_value < low)
+    {
+      right = mid - 1;
+    }
+    else if (axis_value >= high)
+    {
+      left = mid + 1;
+    }
+    else
+    {
+      return mid;
+    }
+  }
+
+  if (axis_value < axis_nodes[0])
+  {
+    return 0;
+  }
+  return axis_points - 2;
+}
+
+__forceinline__ __host__ __device__ int get_axis_interval_index_nonuniform(double axis_value,
+                                                                           const double *axis_nodes,
+                                                                           const uint32_t *axis_bin_left_idx,
+                                                                           int axis_bin_count,
+                                                                           double axis_min, double axis_max,
+                                                                           double axis_bin_inv_width,
+                                                                           int axis_points)
+{
+  if (axis_points <= 1)
+  {
+    return 0;
+  }
+
+  int axis_interval_index = 0;
+  if (axis_bin_left_idx != nullptr && axis_bin_count > 0 && axis_bin_inv_width > 0.0)
+  {
+    int bin = static_cast<int>((axis_value - axis_min) * axis_bin_inv_width);
+    if (bin < 0)
+    {
+      bin = 0;
+    }
+    else if (bin >= axis_bin_count)
+    {
+      bin = axis_bin_count - 1;
+    }
+    axis_interval_index = static_cast<int>(axis_bin_left_idx[bin]);
+  }
+  else
+  {
+    value_t axis_range = axis_nodes[axis_points - 1] - axis_nodes[0];
+    if (axis_range > 0.0)
+    {
+      value_t ratio = (axis_value - axis_nodes[0]) / axis_range;
+      if (ratio <= 0.0)
+      {
+        axis_interval_index = 0;
+      }
+      else if (ratio >= 1.0)
+      {
+        axis_interval_index = axis_points - 2;
+      }
+      else
+      {
+        axis_interval_index = static_cast<int>(ratio * (axis_points - 1));
+      }
+    }
+  }
+
+  if (axis_interval_index < 0)
+  {
+    axis_interval_index = 0;
+  }
+  if (axis_interval_index > axis_points - 2)
+  {
+    axis_interval_index = axis_points - 2;
+  }
+
+  const int MAX_CORRECTION_STEPS = 4;
+  int correction_steps = 0;
+  while (axis_value < axis_nodes[axis_interval_index] && axis_interval_index > 0 && correction_steps < MAX_CORRECTION_STEPS)
+  {
+    --axis_interval_index;
+    ++correction_steps;
+  }
+
+  correction_steps = 0;
+  while (axis_value >= axis_nodes[axis_interval_index + 1] && axis_interval_index < axis_points - 2 && correction_steps < MAX_CORRECTION_STEPS)
+  {
+    ++axis_interval_index;
+    ++correction_steps;
+  }
+
+  if (axis_value < axis_nodes[0])
+  {
+    axis_interval_index = 0;
+    if (axis_value < axis_min)
+    {
+      printf("Interpolation warning: axis is out of limits (%lf; %lf) with value %lf, extrapolation is applied\n", axis_min, axis_max, axis_value);
+    }
+    return axis_interval_index;
+  }
+  if (axis_value > axis_nodes[axis_points - 1])
+  {
+    axis_interval_index = axis_points - 2;
+    if (axis_value > axis_max)
+    {
+      printf("Interpolation warning: axis is out of limits (%lf; %lf) with value %lf, extrapolation is applied\n", axis_min, axis_max, axis_value);
+    }
+    return axis_interval_index;
+  }
+
+  if (!(axis_value >= axis_nodes[axis_interval_index] && axis_value < axis_nodes[axis_interval_index + 1]))
+  {
+    axis_interval_index = locate_axis_interval_binary(axis_value, axis_nodes, axis_points);
+  }
+
+  return axis_interval_index;
+}
+
+template <typename value_t>
+__forceinline__ __host__ __device__ int get_axis_interval_index_low_mult_nonuniform(double axis_value,
+                                                                                    const double *axis_nodes,
+                                                                                    const double *axis_inv_dx,
+                                                                                    const uint32_t *axis_bin_left_idx,
+                                                                                    int axis_bin_count,
+                                                                                    double axis_min, double axis_max,
+                                                                                    double axis_bin_inv_width,
+                                                                                    int axis_points,
+                                                                                    value_t *axis_low,
+                                                                                    value_t *axis_mult,
+                                                                                    value_t *axis_inv_dx_value)
+{
+  int axis_interval_index = get_axis_interval_index_nonuniform(axis_value,
+                                                               axis_nodes,
+                                                               axis_bin_left_idx,
+                                                               axis_bin_count,
+                                                               axis_min,
+                                                               axis_max,
+                                                               axis_bin_inv_width,
+                                                               axis_points);
+
+  *axis_low = static_cast<value_t>(axis_nodes[axis_interval_index]);
+  value_t inv_dx = axis_inv_dx != nullptr ? static_cast<value_t>(axis_inv_dx[axis_interval_index])
+                                          : static_cast<value_t>(1.0 / (axis_nodes[axis_interval_index + 1] - axis_nodes[axis_interval_index]));
+  *axis_inv_dx_value = inv_dx;
+  *axis_mult = (axis_value - *axis_low) * inv_dx;
   return axis_interval_index;
 }
 

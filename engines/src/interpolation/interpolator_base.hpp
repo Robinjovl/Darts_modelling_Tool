@@ -3,6 +3,8 @@
 
 #include <array>
 #include <limits>
+#include <vector>
+#include <cstdint>
 
 #include "evaluator_iface.h"
 
@@ -14,7 +16,7 @@ class interpolator_base : public operator_set_gradient_evaluator_cpu
 public:
     /**
      * @brief Construct an interpolator with predefined parametrization space
-     * 
+     *
      * @param[in] supporting_point_evaluator    Object used to compute operator values at supporting points
      * @param[in] axes_points                   Number of supporting points (minimum 2) along axes
      * @param[in] axes_min                      Minimum value for each axis
@@ -23,11 +25,12 @@ public:
     interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                       const std::vector<int> &axes_points,
                       const std::vector<double> &axes_min,
-                      const std::vector<double> &axes_max);
+                      const std::vector<double> &axes_max,
+                      const std::vector<std::vector<double>> *axis_nodes = nullptr);
 
     /**
      * @brief Initialize interpolator, perform internal sanity checks unavailable at construction time
-     * 
+     *
      * @return int 0 if successful
      */
     virtual int init();
@@ -77,9 +80,9 @@ public:
 
      /**
       * @brief Write interpolator data to file
-      * 
+      *
       * @param filename name of the file
-      * @return int error code 
+      * @return int error code
       */
     virtual int write_to_file(const std::string filename)
     {
@@ -95,7 +98,7 @@ public:
     virtual int get_n_dims() const = 0;
 
     /**
-     * @brief Get the number of operators 
+     * @brief Get the number of operators
      *        Virtual, to be overriden by a child class
      *
      */
@@ -138,12 +141,13 @@ public:
     /**
      * @brief Get the number of supporting points used (evaluated through supporting_point_evaluator)
      *        The number is equal to n_points_total for static interpolation methods
-     * 
+     *
      * @return the number of supporting points used
      */
     uint64_t get_n_points_used() const;
 
 protected:
+    static constexpr int MAX_AXIS_BINS = 1024;
     const std::vector<int> axes_points;                       ///< number of supporting points along each axis
     const std::vector<double> axes_min;                       ///< minimum at each axis
     const std::vector<double> axes_max;                       ///< maximum of each axis
@@ -151,6 +155,15 @@ protected:
 
     std::vector<double> axes_step;     ///< the distance between neighbor supporting points for each axis
     std::vector<double> axes_step_inv; ///< inverse of step (to avoid division)
+
+    std::vector<double> axis_nodes_flat;        ///< flattened node coordinates for each axis
+    std::vector<double> axis_inv_dx_flat;       ///< flattened inverse spacing (per cell) for each axis
+    std::vector<size_t> axis_nodes_offset;      ///< offsets for axis_nodes_flat per axis
+    std::vector<size_t> axis_cells_offset;      ///< offsets for axis_inv_dx_flat per axis
+    std::vector<uint32_t> axis_bin_left_idx_flat; ///< flattened coarse bin -> left cell lookup
+    std::vector<size_t> axis_bin_offset;        ///< offsets for bin lookup tables per axis
+    std::vector<int> axis_bin_count;            ///< number of coarse bins per axis
+    std::vector<double> axis_bin_inv_width;     ///< inverse coarse bin width per axis
 
     uint64_t n_interpolations; ///< Number of interpolations that took place
     __uint128_t n_points_total;   ///< Total number of parametrization points
