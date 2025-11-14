@@ -1,16 +1,73 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM Parse args: -e (editable), --with-deps (install dependencies)
+REM Parse args: -e (editable), -j/--jobs N, --with-deps (install dependencies)
 set "EDITABLE=0"
 set "WITH_DEPS=0"
-for %%A in (%*) do (
-  if /I "%%~A"=="-e" set "EDITABLE=1"
-  if /I "%%~A"=="--editable" set "EDITABLE=1"
-  if /I "%%~A"=="--with-deps" set "WITH_DEPS=1"
+set "JOBS=8"
+
+:parse_args
+if "%~1"=="" goto :args_done
+set "ARG=%~1"
+if /I "%ARG%"=="-e" (
+  set "EDITABLE=1"
+  shift
+  goto :parse_args
 )
+if /I "%ARG%"=="--editable" (
+  set "EDITABLE=1"
+  shift
+  goto :parse_args
+)
+if /I "%ARG%"=="--with-deps" (
+  set "WITH_DEPS=1"
+  shift
+  goto :parse_args
+)
+if /I "%ARG%"=="--jobs" (
+  if "%~2"=="" (
+    echo Error: -j requires a numeric argument
+    exit /b 1
+  )
+  call :__validate_num "%~2" || ( echo Error: -j requires a numeric argument & exit /b 1 )
+  set "JOBS=%~2"
+  shift
+  shift
+  goto :parse_args
+)
+if /I "%ARG:~0,2%"=="-j" (
+  set "NUM=%ARG:~2%"
+  if not "%NUM%"=="" (
+    call :__validate_num "%NUM%" || ( echo Error: -j requires a numeric argument & exit /b 1 )
+    set "JOBS=%NUM%"
+    shift
+    goto :parse_args
+  ) else (
+    if "%~2"=="" (
+      echo Error: -j requires a numeric argument
+      exit /b 1
+    )
+    call :__validate_num "%~2" || ( echo Error: -j requires a numeric argument & exit /b 1 )
+    set "JOBS=%~2"
+    shift
+    shift
+    goto :parse_args
+  )
+)
+shift
+goto :parse_args
+
+:args_done
 
 copy CHANGELOG.md darts || exit /b 1
+
+echo Building C++ extensions...
+if exist "build\" (
+  pushd build
+  make -j%JOBS% || exit /b 1
+  make install || exit /b 1
+  popd
+)
 
 if "%EDITABLE%"=="1" (
   if "%WITH_DEPS%"=="1" (
@@ -38,3 +95,11 @@ if "%WITH_DEPS%"=="1" (
 ) else (
   python -m pip install --no-deps --force-reinstall "dist\%WHEEL%" || exit /b 1
 )
+
+:__validate_num
+REM Returns ERRORLEVEL 0 if argument is all digits, else 1
+setlocal
+set "VAL=%~1"
+if "%VAL%"=="" ( endlocal & exit /b 1 )
+for /f "delims=0123456789" %%i in ("%VAL%") do ( endlocal & exit /b 1 )
+endlocal & exit /b 0
