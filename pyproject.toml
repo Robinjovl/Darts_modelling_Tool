@@ -75,4 +75,5 @@ max-complexity = 10
 include-package-data = true
 
 [tool.setuptools.package-data]
+"darts" = ["*.pyd", "*.so", "*.dll", "CHANGELOG.md", "build_info.txt", "libstdc++.so.6"]
 "darts.physics.properties" = ["databases/*"]
