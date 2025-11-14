@@ -1183,7 +1183,11 @@ class Output:
         plt.close('all')
 
     def store_well_time_data(
-        self, types_of_well_rates: list = None, save_output_files: bool = False
+        self,
+        types_of_well_rates: list = None,
+        save_output_files: bool = False,
+        perforation_rates: bool = False,
+        wellhead_rates: bool = True,
     ):
         """
         Compute and store well time data including rates and bottom-hole conditions (BHT and BHP).
@@ -1244,28 +1248,32 @@ class Output:
                 0
             ].physics_type == "geothermal_engine":
                 continue
-            # Compute perforation rates
-            rates_perfs = self.calc_rates_at_connections(
-                h5_well_data,
-                perfs_conn_ids,
-                geometric_WI,
-                self.physics.thermal,
-                rate_type,
-            )
-            # Store perforation rates
-            self.store_perf_rates(time_data_dict, rates_perfs, rate_type)
-            # Store well rates by summing perforation rates
-            self.store_well_rates_sums(time_data_dict, rates_perfs, rate_type)
-            # Compute wellhead rates
-            rates_wellhead = self.calc_rates_at_connections(
-                h5_well_data,
-                well_head_conn_ids,
-                well_head_conn_trans,
-                self.physics.thermal,
-                rate_type,
-            )
-            # Store wellhead rates
-            self.store_wellhead_rates(time_data_dict, rates_wellhead, rate_type)
+
+            if perforation_rates:
+                # Compute perforation rates
+                rates_perfs = self.calc_rates_at_connections(
+                    h5_well_data,
+                    perfs_conn_ids,
+                    geometric_WI,
+                    self.physics.thermal,
+                    rate_type,
+                )
+                # Store perforation rates
+                self.store_perf_rates(time_data_dict, rates_perfs, rate_type)
+                # Store well rates by summing perforation rates
+                self.store_well_rates_sums(time_data_dict, rates_perfs, rate_type)
+
+            if wellhead_rates:
+                # Compute wellhead rates
+                rates_wellhead = self.calc_rates_at_connections(
+                    h5_well_data,
+                    well_head_conn_ids,
+                    well_head_conn_trans,
+                    self.physics.thermal,
+                    rate_type,
+                )
+                # Store wellhead rates
+                self.store_wellhead_rates(time_data_dict, rates_wellhead, rate_type)
 
         # Export time_data_dict
         if save_output_files:
@@ -1770,7 +1778,7 @@ class Output:
                 indices.append(id[0])
         return np.array(indices, dtype=np.intp)
 
-    def plot_well_time_data(self, types_of_well_rates: list = None):
+    def plot_well_time_data(self, pkl_well_file=None, types_of_well_rates: list = None):
         """
         Plots well time data that are specified in the list types_of_well_time_data over time, including
         phase_molar_rates, phase_mass_rates, phase_volumetric_rates, component_molar_rates, component_mass_rates,
@@ -1794,7 +1802,10 @@ class Output:
 
         self.create_perf_dirs(main_dir)
 
-        df = pd.read_pickle(os.path.join(self.output_folder, "well_time_data.pkl"))
+        if pkl_well_file is None:
+            df = pd.read_pickle(os.path.join(self.output_folder, "well_time_data.pkl"))
+        else:
+            df = pd.read_pickle(pkl_well_file)
         time = df["time"]
 
         # Specify types of well rates that will be plotted if types_of_well_rates is not entered by the user
