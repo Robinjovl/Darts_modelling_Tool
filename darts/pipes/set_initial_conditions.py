@@ -52,7 +52,7 @@ class SingleAmbientTemperature:
         self.pipe_geom = pipe_geom
         self.physics = physics
         self.ambient_temperature = ambient_temperature
-        self.pipe_head_pressure = pipe_head_pressure * 1e5  # Convert bar to Pa
+        self.pipe_head_pressure = pipe_head_pressure
         assert pipe_head_segment_index in (
             0,
             self.pipe_geom.num_segments - 1,
@@ -113,10 +113,10 @@ class SingleAmbientTemperature:
             density = (
                 self.physics.property_containers[0]
                 .density_ev[phase_name]
-                .evaluate(p * 1e-5, temp, initial_phase_composition)
+                .evaluate(p, temp, initial_phase_composition)
             )
 
-            return g * density
+            return g * density * 1e-5  # Convert Pascal to bar
 
         p_head1 = self.pipe_head_pressure  # Initial solution for the ODE
         if (
@@ -153,10 +153,9 @@ class SingleAmbientTemperature:
 
             p_seg_interfaces = p_seg_interfaces[::-1]
 
-        self.p_init_segments = p_seg_interfaces[0::2] * 1e-5  # Convert Pa to bar
-        _p_init_interfaces = (
-            p_seg_interfaces[1::2] * 1e-5
-        )  # Convert Pa to bar   # Pressures at interfaces are calculated. Maybe, they'll be used later.
+        self.p_init_segments = p_seg_interfaces[0::2]
+        # Pressures at interfaces are calculated. Maybe, they'll be used later.
+        _p_init_interfaces = p_seg_interfaces[1::2]
 
     def assemble_initial_conditions_vector(self):
         self.initial_conditions_vector[0 :: self.physics.n_vars] = self.p_init_segments
@@ -243,7 +242,7 @@ class LinearAmbientTemperature:
         self.pipe_name = pipe_name
         self.pipe_geom = pipe_geom
         self.physics = physics
-        self.pipe_head_pressure = pipe_head_pressure * 1e5  # Convert bar to Pa
+        self.pipe_head_pressure = pipe_head_pressure
         self.pipe_head_temperature = pipe_head_temperature
         self.temp_grad = temp_grad
         assert pipe_head_segment_index in (
@@ -326,10 +325,10 @@ class LinearAmbientTemperature:
             density = (
                 self.physics.property_containers[0]
                 .density_ev[phase_name]
-                .evaluate(p * 1e-5, temp, initial_phase_composition)
+                .evaluate(p, temp, initial_phase_composition)
             )
 
-            return g * density
+            return g * density * 1e-5  # Convert Pas to bar
 
         p_head1 = self.pipe_head_pressure  # Initial solution for the ODE
         if self.pipe_head_segment_index == 0:
@@ -371,10 +370,9 @@ class LinearAmbientTemperature:
 
             p_seg_interfaces = p_seg_interfaces[::-1]
 
-        self.p_init_segments = p_seg_interfaces[0::2] * 1e-5  # Convert Pa to bar
-        _p_init_interfaces = (
-            p_seg_interfaces[1::2] * 1e-5
-        )  # Convert Pa to bar   # Pressures at interfaces are calculated. Maybe, they'll be used later.
+        self.p_init_segments = p_seg_interfaces[0::2]
+        # Pressures at interfaces are calculated. Maybe, they'll be used later.
+        _p_init_interfaces = p_seg_interfaces[1::2]
 
     def assemble_initial_conditions_vector(self):
         self.initial_conditions_vector[0 :: self.physics.n_vars] = self.p_init_segments
