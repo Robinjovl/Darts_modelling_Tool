@@ -114,40 +114,52 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             # extra column with temperature in celsius
             if 'BHT' in k:
                 time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
-                time_data.drop(columns=k, inplace=True)
+
+    def add_data_frame_attributes(time_data):
+        time_data.attrs["phases"] = list(m.physics.phases)
+        time_data.attrs["components"] = list(m.physics.components)
+        time_data.attrs["perfs"] = [f"{w.name}_perf_{i}" for w in m.reservoir.wells for i, _ in enumerate(w.perforations)]
+        time_data.attrs["wells"] = [w.name for w in m.reservoir.wells]
 
     if not(m.idata.supress_all_output):
         # COMPUTE TIME DATA
-        td = m.output.store_well_time_data()
+        td = m.output.store_well_time_data(
+            perforation_rates = True,
+            wellhead_rates = True
+            # ["phase_volumetric_rates"]
+        )
         time_data = pd.DataFrame.from_dict(td)
-        # add_columns_time_data(time_data)
+        add_columns_time_data(time_data)
+        add_data_frame_attributes(time_data)
         time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
-        writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data.xlsx'))
-        time_data.to_excel(writer, sheet_name='time_data')
-        writer.close()
 
         # COMPUTE TIME DATA AT FIXED REPORTING STEPS
-        time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
-        add_columns_time_data(time_data_report)
+        if 1:
+            mask = (time_data['time'] % 365.25 == 0)
+            time_data_report = time_data.loc[mask].copy()
+        else:
+            time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
+        # add_columns_time_data(time_data_report)
+
+        # add time in years
+        # time_data_report['time (years)'] = time_data_report['time'] / 365.25
         time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
 
-        # filter time_data_report and write to xlsx
-        # list the column names that should be removed
-        press_gridcells = time_data_report.filter(like='reservoir').columns.tolist()
-        chem_cols = time_data_report.filter(like='Kmol').columns.tolist()
-        # remove columns from data
-        time_data_report.drop(columns=press_gridcells + chem_cols, inplace=True)
-        # add time in years
-        time_data_report['Time (years)'] = time_data_report['time'] / 365.25
-        writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data_report.xlsx'))
-        time_data_report.to_excel(writer, sheet_name='time_data_report')
-        writer.close()
+        # write both DataFrames to one Excel file
+        excel_path = os.path.join(out_dir, 'time_data.xlsx')
+        with pd.ExcelWriter(excel_path) as writer:
+            time_data.to_excel(writer, sheet_name='time_data', index=False)
+            time_data_report.to_excel(writer, sheet_name='time_data_report', index=False)
 
-        m.output.store_well_time_data(save_output_files=True)
-        m.output.plot_well_time_data()
+        # if 1:
+            # m.output.plot_well_time_data(types_of_well_rates = ["phase_volumetric_rates"]) # use this function instead if you want plots of all the perforations
+            # plot_well_time_data_2(m, time_data)
+
+            # plot_results(wells=m.idata.well_data.wells.keys(), well_is_inj=m.idata.well_is_inj,
+            #              time_data_list=[time_data], time_data_report_list=[time_data_report], label_list=[None],
+            #              physics_type=m.physics_type, out_dir=out_dir, case=case)
 
     m.print_timers()
-
 
     if compare_with_ref:
         failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
@@ -158,7 +170,12 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         abort_redirection(log_stream)
     print('Failed' if failed else 'Passed')
 
-    return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
+    return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj, m
+
+
+
+
+#%%
 
 ##########################################################################################################
 def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, label_list, physics_type, out_dir):
@@ -288,17 +305,17 @@ if __name__ == '__main__':
             platform = 'gpu'
 
     physics_list = []
-    physics_list += ['geothermal']
+    # physics_list += ['geothermal']
 
-    # physics_list += ['CCS']
+    physics_list += ['CCS']
     # physics_list += ['deadoil']
 
     cases_list = []
     cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
+    # cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
-    #cases_list += ['generate_100x100x100']
-    #cases_list += ['40x40x10']
+    # cases_list += ['generate_100x100x100']
+    # cases_list += ['40x40x10']
     #cases_list += ['40x40x10_hcap']
     #cases_list += ['40x40x10_regions']
 
@@ -314,7 +331,7 @@ if __name__ == '__main__':
                     continue
                 case = case_geom + '_' + wctrl
                 out_dir = 'results_' + physics_type + '_' + case
-                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
+                failed, sim_time, time_data, time_data_report, wells, well_is_inj, m = run(physics_type=physics_type,
                                                                                         case=case, out_dir=out_dir,
                                                                                         redirect_log=False,
                                                                                         platform=platform,
@@ -337,6 +354,17 @@ if __name__ == '__main__':
                 #time_data_report_list = [time_data_report_1, time_data_report]
                 #label_list = ['1', 'current']
 
-                plot_results(wells=wells, well_is_inj=well_is_inj,
-                             time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
-                             physics_type=physics_type, out_dir=out_dir)
+                import time
+                start = time.time()
+                plot_wells(['plot_wells'], time_data_list, n_threads = 0, format = 'png')
+                # m.output.plot_well_time_data('results_CCS_generate_5x3x4_wrate/time_data.pkl')
+                stop = time.time()
+                print(stop-start)
+
+
+
+                # Time each function over multiple runs
+
+                # plot_results(wells=wells, well_is_inj=well_is_inj,
+                #              time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
+                #              physics_type=physics_type, out_dir=out_dir)
