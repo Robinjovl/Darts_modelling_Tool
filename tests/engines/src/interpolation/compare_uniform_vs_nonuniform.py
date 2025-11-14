@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 import time
-from typing import List, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -47,7 +47,7 @@ class Linear(operator_set_evaluator_iface):
         return 0
 
 
-DEFAULT_AXIS_NODES: List[List[float]] = [
+DEFAULT_AXIS_NODES: list[list[float]] = [
     [0.0, 0.001, 0.01, 0.05, 0.2, 0.5, 1.0],
     [1.0, 1.02, 1.05, 1.2, 1.5, 2.0, 3.0, 4.0],
     [-5.0, -2.0, -1.0, -0.4, -0.1, 0.0, 0.1],
@@ -202,7 +202,12 @@ def main():
     ) = _prepare_buffers(states, args.n_ops, n_dim)
 
     uniform_time = _time_interpolator(
-        interpolator_uniform, states_vec, block_idx, values_buf, dvalues_buf, args.repeats
+        interpolator_uniform,
+        states_vec,
+        block_idx,
+        values_buf,
+        dvalues_buf,
+        args.repeats,
     )
     uniform_values = np.asarray(values_buf).copy()
     uniform_dvalues = np.asarray(dvalues_buf).copy()
@@ -227,8 +232,7 @@ def main():
     print("=== Uniform vs. Non-uniform interpolation benchmark ===")
     print(f"Dimensions: {n_dim}, operators: {args.n_ops}, states per run: {n_states}")
     print(
-        f"Uniform grid    : {uniform_time:.6f} s "
-        f"({throughput_uniform:,.0f} states/s)"
+        f"Uniform grid    : {uniform_time:.6f} s ({throughput_uniform:,.0f} states/s)"
     )
     print(
         f"Non-uniform grid: {nonuniform_time:.6f} s "
@@ -244,4 +248,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
