@@ -80,7 +80,7 @@ struct interpolator_exposer
           .def_readwrite("point_data", &interpolator_class::point_data)
           .def("get_hypercube_indexes", &interpolator_class::get_hypercube_indexes);
       }
-      else if constexpr ( (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>> || 
+      else if constexpr ( (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>> ||
                            std::is_same_v<interpolator_class, linear_static_cpu_interpolator<i_t, N_DIMS, N_OPS>>) )
       {
         py::class_<interpolator_class,
@@ -133,7 +133,7 @@ struct interpolator_exposer
     // expose_class<uint64_t, float, multilinear_adaptive_cpu_interpolator<uint64_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
 
     // linear adaptive with 64/128 bit index and 64 bit data
-    expose_class<uint64_t, double, linear_adaptive_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
+    //expose_class<uint64_t, double, linear_adaptive_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
     expose_class<__uint128_t, double, linear_adaptive_cpu_interpolator<__uint128_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
     //expose_class<uint64_t, double, linear_static_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_static_cpu_interpolator");
     // we expose static versions only when needed
