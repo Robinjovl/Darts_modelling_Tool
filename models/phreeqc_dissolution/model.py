@@ -282,7 +282,7 @@ class Model(CICDModel):
             property_container.rock_density_ev[min] = DensityBasic(compr=props['compressibility'], dens0=props['density'], p0=1.)
 
         # Create instance of (own) physics class:
-        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points,
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points, phases=self.phases,
                                           axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
                                           cache=False)
 
