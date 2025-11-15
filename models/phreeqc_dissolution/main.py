@@ -12,7 +12,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
                    n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
                    inj_rate: float = None, perm_poro: str = 'power_8', platform: str = 'cpu',
                    ni_dt_increase_cutoff: int = 5, ni_dt_decrease_cutoff: int = 8, n_good_ts: int = 10, report_timesteps = None,
-                   flash: str = 'phreeqc'):
+                   flash: str = 'phreeqc', database: str = 'phreeqc'):
     # Make a folder
     if output_folder is None:
         output_folder = f'output_{domain}_{nx}_' + '_'.join(minerals) + \

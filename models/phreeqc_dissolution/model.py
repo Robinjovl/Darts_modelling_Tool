@@ -12,6 +12,10 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
 from darts.engines import sim_params, well_control_iface, value_vector, timer_node
+from darts.physics.properties.kinetics import (
+    KineticRate,
+    LinearReactionSurfaceArea,
+)
 
 from iapws._iapws import _Viscosity
 from conversions import convert_composition, correct_composition, calculate_injection_stream, \
@@ -267,14 +271,25 @@ class Model(CICDModel):
 
         # Create property containers:
         property_container = PropertyContainer(phases_name=self.phases, components_name=self.elements, Mw=Mw,
-                                            stoich_matrix=stoich_matrix, kinetic_mechanisms=self.kinetic_mechanisms,
-                                            min_z=self.obl_min, temperature=self.temperature,
+                                            stoich_matrix=stoich_matrix, min_z=self.obl_min, temperature=self.temperature,
                                             fc_mask=self.fc_mask, flash=self.flash, database=self.database)
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
                                          np.ones(self.nc - self.n_solid)]) * 5.2e-10 * 86400) for ph in self.phases}
         property_container.rel_perm_ev = {ph: CustomRelPerm(2) for ph in self.phases}
         property_container.viscosity_ev = { self.phases[0]: GasViscosity(), self.phases[1]: LiquidViscosity() }
+
+        # kinetics
+        surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)
+        property_container.kinetic_rate_ev = {
+            m: KineticRate(
+                min_z=self.obl_min,
+                mineral_name=m.split('_', 1)[1],
+                mechanisms=self.kinetic_mechanisms,
+                surface_area_ev=surface_area_ev,
+            )
+            for m in property_container.minerals
+        }
 
         # Mineral properties
         for min, props in rock_props.items():
