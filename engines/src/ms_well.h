@@ -57,7 +57,6 @@ public:
 
     segments_volumes = {};
     segments_depths = {};
-    segments_lengths = {};
     num_segments = 0;
     ms_type = MS_Type::EPM;
     with_lateral_heat_transfer = false;
@@ -156,7 +155,6 @@ public:
 
   std::vector<value_t> segments_volumes;
   std::vector<value_t> segments_depths;
-  std::vector<value_t> segments_lengths;
   index_t num_segments;
   std::vector<value_t> init_state;
 

@@ -339,8 +339,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
                                index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind,
                                value_t *op_vals_arr, value_t *op_vals_arr_n, value_t *op_ders_arr,
                                value_t *tran, value_t *tranD, value_t *hcap, value_t *rock_cond, value_t *poro,
-                               value_t *PV, value_t *RV, value_t *grav_coef, value_t *kin_fac,
-                               value_t *cell_spe, value_t *conn_spe)
+                               value_t *PV, value_t *RV, value_t *grav_coef, value_t *kin_fac, value_t *cell_spe)
 {
   // Each matrix block row is processed by N_VARS * N_VARS threads
   // Memory access is coalesced for most data, while communications minimized
@@ -501,7 +500,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
           // Add potential energy flux
           if (THERMAL && c == (NE - 1))
           {
-              rhs -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+              rhs -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
           }
 
           jac_offd -= c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
@@ -514,13 +513,13 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
 
         if (THERMAL && c == (NE - 1))
         {
-            jac_diag -= dt * (phase_vol_rate_der_i * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
-            jac_offd -= dt * phase_vol_rate_der_j * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+            jac_diag -= dt * (phase_vol_rate_der_i * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * cell_spe[i];
+            jac_offd -= dt * phase_vol_rate_der_j * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
 
             if (v == 0)
             {
-                jac_diag += dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
-                jac_offd -= dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+                jac_diag += dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
+                jac_offd -= dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
             }
         }
       }
@@ -542,7 +541,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
           // Add potential energy flux
           if (THERMAL && c == (NE - 1))
           {
-              rhs -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+              rhs -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
           }
 
           jac_diag += c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
@@ -555,13 +554,13 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
 
         if (THERMAL && c == (NE - 1))
         {
-            jac_diag -= dt * phase_vol_rate_der_i * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
-            jac_offd -= dt * (phase_vol_rate_der_j * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
+            jac_diag -= dt * phase_vol_rate_der_i * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
+            jac_offd -= dt * (phase_vol_rate_der_j * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * cell_spe[j];
 
             if (v == 0)
             {
-                jac_diag += dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
-                jac_offd -= dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+                jac_diag += dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
+                jac_offd -= dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
             }
         }
       }
@@ -670,7 +669,6 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   allocate_device_data(mesh->kin_factor, &mesh_kin_factor_d);
   allocate_device_data(mesh->grav_coef, &mesh_grav_coef_d);
   allocate_device_data(mesh->cell_spe, &mesh_cell_spe_d);
-  allocate_device_data(mesh->conn_spe, &mesh_conn_spe_d);
 
   copy_data_to_device(RV, RV_d);
   copy_data_to_device(mesh->heat_capacity, mesh_hcap_d);
@@ -680,7 +678,6 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   copy_data_to_device(mesh->kin_factor, mesh_kin_factor_d);
   copy_data_to_device(mesh->grav_coef, mesh_grav_coef_d);
   copy_data_to_device(mesh->cell_spe, mesh_cell_spe_d);
-  copy_data_to_device(mesh->conn_spe, mesh_conn_spe_d);
 
   return 0;
 }

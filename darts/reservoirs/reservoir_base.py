@@ -133,7 +133,6 @@ class ReservoirBase:
             well.segments_volumes = value_vector(well_geometry.segments_volumes)
             well.well_transmissibility = well_geometry.pipe_internal_A
             well.segments_depths = value_vector(well_geometry.TVD_segments)
-            well.segments_lengths = value_vector(well_geometry.segments_lengths)
             well.num_segments = well_geometry.num_segments
 
         self.wells.append(well)
