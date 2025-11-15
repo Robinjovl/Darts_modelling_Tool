@@ -14,3 +14,8 @@ There is a list of supported/non-supported features:
 * Mesh
   * A mesh should contain at least 2 cells (to have at least one cell-cell connection), so 1-cell mesh is not supported
   * The mesh format gmsh 2.1 for unstructured mesh is supported; format 4 is not (due to thirdparty/MeshIO)
+* Inclusion of specific potential energy in the energy conservation equation
+  * To consider specific potential energy in the energy conservation equation:
+      1. Open this Python module `darts>reservoirs>reservoir_base.py`
+      2. In the constructor of the class `ReservoirBase`, the variable `grav_acc_for_spe` is defined, which is the gravitational acceleration used for calculation of specific potential energy.
+      3. The value is zero by default. Change the value of this variable by overwriting it for your desired planet in m/^s (Earth: 9.80665)
