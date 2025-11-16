@@ -219,8 +219,8 @@ class PropertyOperators(operator_set_evaluator_iface):
     z_{1}, ..., z_{n_m} - mineral molar fractions in rock + fluid mixture
     z_{n_m+1}, ..., z_{n_c-1} - fluid molar fractions in fluid only
     values:
-    - molar fractions of aqueous fluid species in fluid only
-    - molar fractions of vapourous fluid species in fluid only
+    - molar fractions of aqueous fluid species in aqueous phase
+    - molar fractions of vapourous fluid species in vapour phase
     - vapour saturation in fluid only
     - porosity
     - activity of H+
@@ -239,8 +239,8 @@ class PropertyOperators(operator_set_evaluator_iface):
         super().__init__()
         self.property = properties
         self.props_name = (
-            ['z' + prop for prop in properties.flash_ev.aqueous_species]
-            + ['z' + prop for prop in properties.flash_ev.gas_species]
+            ['x' + prop for prop in properties.flash_ev.aqueous_species]
+            + ['x' + prop for prop in properties.flash_ev.gas_species]
             + ['satV']
             + ['porosity']
             + ['Act(H+)', 'Act(CO2)']
