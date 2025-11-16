@@ -1556,10 +1556,10 @@ class Output:
         block_m = h5_well_data["static"]["block_m"]
         block_p = h5_well_data["static"]["block_p"]
         cell_id = h5_well_data["dynamic"]["cell_id"]
-        cell_m = self.find_values_in_an_array(block_m[conn_ids], cell_id)  # well cells
-        cell_p = self.find_values_in_an_array(
-            block_p[conn_ids], cell_id
-        )  # reservoir cells
+        # Line below gets indices of the cells which are connected to the cells in cell_p
+        cell_m = self.find_values_in_an_array(block_m[conn_ids], cell_id)
+        # Line below gets indices of the cells which are connected to the cells in cell_m
+        cell_p = self.find_values_in_an_array(block_p[conn_ids], cell_id)
         num_conn = len(conn_ids)
         assert cell_m.size == num_conn and cell_p.size == num_conn
 
@@ -1570,9 +1570,8 @@ class Output:
         p_idx = h5_well_data["dynamic"]["variable_names"].index("pressure")
         if thermal:
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                t_idx = h5_well_data["dynamic"]["variable_names"].index(
-                    "temperature"
-                )  # This does not work for geothermal engine
+                # Line below does not work for geothermal engine
+                t_idx = h5_well_data["dynamic"]["variable_names"].index("temperature")
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
                 pass
             else:
@@ -1603,9 +1602,9 @@ class Output:
             )
 
         batch_size = num_ts * num_conn
-        flat_states = states.reshape(batch_size, self.physics.n_vars)
+        states_2d = states.reshape(batch_size, self.physics.n_vars)
 
-        states_vec = value_vector(flat_states.ravel())
+        states_vec = value_vector(states_2d.ravel())
 
         if rate_type in [
             "phase_molar_rates",
@@ -1670,9 +1669,7 @@ class Output:
             ops = values_reshaped[:, op_start : op_start + pc.nph]
         elif rate_type == "component_molar_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
-            ops = values_reshaped[
-                :, op_start : op_start + pc.nc_fl * pc.nph
-            ]  # molar ops
+            ops = values_reshaped[:, op_start : op_start + pc.nc_fl * pc.nph]
         elif rate_type == "component_mass_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
             molar_ops = values_reshaped[:, op_start : op_start + pc.nc_fl * pc.nph]
@@ -1685,9 +1682,9 @@ class Output:
 
             # Calc heat operators for the dead state (1 atm and 15 deg C)
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                flat_states[:, p_idx] = 1.01325  # Dead pressure (1 atm)
-                flat_states[:, t_idx] = 273.15 + 15  # Dead temperature (15 deg C)
-                states_vec_dead = value_vector(flat_states.ravel())
+                states_2d[:, p_idx] = 1.01325  # Dead pressure (1 atm)
+                states_2d[:, t_idx] = 273.15 + 15  # Dead temperature (15 deg C)
+                states_vec_dead = value_vector(states_2d.ravel())
                 self.physics.well_ctrl_itor.evaluate_with_derivatives(
                     states_vec_dead, index_vector(block_idx), values, dvalues
                 )
