@@ -638,7 +638,7 @@ def animate_2x3_profiles_from_sources(
     print("Animation written to", out_mp4)
     return out_mp4
 
-def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, n_cols=4, plot_saturation=False):
+def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, h5_labels, n_cols=4, plot_saturation=False):
     """
     Read all .h5 files in `folder_name` and plot profiles analogous to `plot_profiles` for selected timesteps.
 
@@ -683,8 +683,15 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, n_cols=4
     if n_cols > 5:
         ax_mag = fig.add_subplot(gs[0, 5], sharex=ax_p)
 
+    if len(h5_paths) == 1:
+        color_var = ['r']
+        color_unvar = ['b']
+    else:
+        color_var = ['b', 'r', 'g', 'm', 'orange', 'c', 'k']
+        color_unvar = ['b', 'r', 'g', 'm', 'orange', 'c', 'k']
+
     linestyles = ['-', '--', ':', '-.']
-    for h5_path in h5_paths:
+    for i, h5_path in enumerate(h5_paths):
         with h5py.File(h5_path, 'r') as f:
             prop_names = f['dynamic/properties_name'].asstr()[...]
             props = f['dynamic/properties'][:]       # shape (nt, nc, nprops)
@@ -702,24 +709,24 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, n_cols=4
 
             ls = linestyles[j]
             color = 'r'
-            ax_p.plot(x, vars[ti, :, np.where(var_names == 'p')[0][0]], linestyle=ls, color=color, label='pressure')
+            ax_p.plot(x, vars[ti, :, np.where(var_names == 'p')[0][0]], linestyle=ls, color=color_var[i], label='pressure')
 
-            ax_o.plot(x, vars[ti, :, np.where(var_names == 'O')[0][0]], linestyle=ls, color=color, label='O')
-            ax_h.plot(x, props[ti, :, np.where(prop_names == 'H')[0][0]], linestyle=ls, color='b', label='H')
-            ax_ca.plot(x, vars[ti, :, np.where(var_names == 'Ca')[0][0]], linestyle=ls, color=color, label='Ca')
-            ax_c.plot(x, vars[ti, :, np.where(var_names == 'C')[0][0]], linestyle=ls, color=color, label='C')
+            ax_o.plot(x, vars[ti, :, np.where(var_names == 'O')[0][0]], linestyle=ls, color=color_var[i], label='O')
+            ax_h.plot(x, props[ti, :, np.where(prop_names == 'H')[0][0]], linestyle=ls, color=color_unvar[i], label='H')
+            ax_ca.plot(x, vars[ti, :, np.where(var_names == 'Ca')[0][0]], linestyle=ls, color=color_var[i], label='Ca')
+            ax_c.plot(x, vars[ti, :, np.where(var_names == 'C')[0][0]], linestyle=ls, color=color_var[i], label='C')
 
-            ax_poro.plot(x, props[ti, :, np.where(prop_names == 'porosity')[0][0]], linestyle=ls, color='b', label='porosity')
-            ax_caco3.plot(x, vars[ti, :, np.where(var_names == 'Solid_CaCO3')[0][0]], linestyle=ls, color=color, label='CaCO3(s)')
+            ax_poro.plot(x, props[ti, :, np.where(prop_names == 'porosity')[0][0]], linestyle=ls, color=color_unvar[i], label='porosity')
+            ax_caco3.plot(x, vars[ti, :, np.where(var_names == 'Solid_CaCO3')[0][0]], linestyle=ls, color=color_var[i], label='CaCO3(s)')
 
             if plot_saturation:
-                ax_satv.plot(x, props[ti, :, np.where(prop_names == 'satV')[0][0]], linestyle=ls, color='b', label='vapour saturation')
+                ax_satv.plot(x, props[ti, :, np.where(prop_names == 'satV')[0][0]], linestyle=ls, color=color_unvar[i], label='vapour saturation')
 
             if n_cols > 4:
                 ax_dol.plot(x, vars[ti, :, np.where(var_names == 'Solid_CaMg(CO3)2')[0][0]], linestyle=ls, color=color, label='CaMg(CO3)2(s)')
                 ax_mg.plot(x, vars[ti, :, np.where(var_names == 'Mg')[0][0]], linestyle=ls, color=color, label='Mg')
             if n_cols > 5:
-                ax_mag.plot(x, vars[ti, :, np.where(var_names == 'Solid_MgCO3')[0][0]], linestyle=ls, color=color, label='MgCO3(s)')
+                ax_mag.plot(x, vars[ti, :, np.where(var_names == 'Solid_MgCO3')[0][0]], linestyle=ls, color=color_var[i], label='MgCO3(s)')
 
     ax_ca.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
     ax_o.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
@@ -743,7 +750,7 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, n_cols=4
     ax_c.set_xlabel('distance, mm', fontsize=fs)
     ax_poro.set_xlabel('distance, mm', fontsize=fs)
     if plot_saturation:
-        ax_satv.set_ylim(-0.001, 0.201)
+        ax_satv.set_ylim(-0.001, 0.251)
         ax_satv.set_xlabel('distance, mm', fontsize=fs)
         ax_satv.set_ylabel('vapour saturation', fontsize=fs)
     else:
@@ -764,12 +771,19 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, n_cols=4
         ax_mag.set_ylabel('zMgCO3(s)', fontsize=fs)
 
     # custom legend for time mapping on ax[1]
-    legend_font_size = 16
+    legend_font_size = 14
     legend_lines = [Line2D([0], [0], color='k', linestyle=style)
                     for style in linestyles[:len(time_indices)]]
     legend_labels = [f't = {times[ti]:.2f} h' for ti in time_indices]
     ax_p.legend(legend_lines, legend_labels, loc='upper right',
                 prop={'size': legend_font_size}, framealpha=0.9)
+
+    if len(h5_paths) > 1 and plot_saturation:
+        legend_lines = [Line2D([0], [0], color=color)
+                        for color in color_var[:len(h5_paths)]]
+        ax_satv.legend(legend_lines, h5_labels, loc='upper right',
+                    prop={'size': legend_font_size}, framealpha=0.9)
+
     #
     # fig.tight_layout()
     fig.subplots_adjust(wspace=0.5)
@@ -778,12 +792,46 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, n_cols=4
     fig.savefig(outname, dpi=300)
     plt.close(fig)
 
-def plot_properties_from_h5(h5_paths, time_indices, output_folder, fname, props_to_plot, nrows=2, ncols=4, nx_fig=18):
+def plot_properties_from_h5(h5_paths, time_indices, output_folder, fname, props_to_plot, h5_labels, nrows=2, ncols=4, nx_fig=18):
     fig, ax = plt.subplots(ncols=ncols, nrows=nrows, sharex=True, figsize=(nx_fig, 8))
 
     linestyles = ['-', '--', ':', '-.']
+    colors = ['b', 'r', 'g', 'm', 'orange', 'c', 'k']
 
-    for h5_path in h5_paths:
+    def _xz_variants(label: str):
+        variants = [label]
+        if label and label[0] in ('x', 'z'):
+            swapped = ('z' if label[0] == 'x' else 'x') + label[1:]
+            if swapped not in variants:
+                variants.append(swapped)
+        return variants
+
+    def _special_variant(label: str):
+        if label and len(label) > 1 and label[0] in ('x', 'z') and label[1:] == 'CaHCO3+':
+            return label[0] + 'Ca(HCO3)+'
+        return None
+
+    def _find_property_index(label, prop_names_arr):
+        if not label:
+            return None
+        for candidate in _xz_variants(label):
+            idx = np.where(prop_names_arr == candidate)[0]
+            if len(idx) > 0:
+                return idx[0]
+
+            special_candidate = _special_variant(candidate)
+            if special_candidate:
+                idx = np.where(prop_names_arr == special_candidate)[0]
+                if len(idx) > 0:
+                    return idx[0]
+
+            if not candidate.endswith('(aq)'):
+                idx = np.where(prop_names_arr == f'{candidate}(aq)')[0]
+                if len(idx) > 0:
+                    return idx[0]
+        return None
+
+    for i, h5_path in enumerate(h5_paths):
         with h5py.File(h5_path, 'r') as f:
             prop_names = f['dynamic/properties_name'].asstr()[...]
             props = f['dynamic/properties'][:]       # shape (nt, nc, nprops)
@@ -800,13 +848,15 @@ def plot_properties_from_h5(h5_paths, time_indices, output_folder, fname, props_
                 continue
 
             ls = linestyles[j]
-            color = 'b'
 
             i_prop = 0
             for k in range(nrows):
                 for l in range(ncols):
-                    ax[k, l].plot(x, props[ti, :, np.where(prop_names == props_to_plot[i_prop])[0][0]], color=color, linestyle=ls, label=props_to_plot[i_prop])
-                    i_prop += 1
+                    idd = _find_property_index(props_to_plot[i_prop], prop_names)
+                    if idd is None:
+                        continue
+                    ax[k, l].plot(x, props[ti, :, idd], color=colors[i], linestyle=ls, label=props_to_plot[i_prop])
+                    i_prop = i_prop + 1
 
     fs = 18
     i_prop = 0
@@ -828,6 +878,12 @@ def plot_properties_from_h5(h5_paths, time_indices, output_folder, fname, props_
     legend_labels = [f't = {times[ti]:.2f} h' for ti in time_indices]
     ax[0,0].legend(legend_lines, legend_labels, loc='center right',
                 prop={'size': legend_font_size}, framealpha=0.9)
+
+    if len(h5_paths) > 1:
+        legend_lines = [Line2D([0], [0], color=color)
+                        for color in colors[:len(h5_paths)]]
+        ax[1,0].legend(legend_lines, h5_labels, loc='upper right',
+                    prop={'size': legend_font_size}, framealpha=0.9)
 
     fig.tight_layout()
     # fig.subplots_adjust(wspace=0.5)
@@ -1119,6 +1175,46 @@ def convergence_pictures():
     output_cfl = '.\\convergence_study\\cfl_conv_new.png'
     plot_temporal_convergence_1d(h5_paths=h5_paths, labels=labels, output_figure=output_figure, output_cfl=output_cfl)
 
+def comparison_solvers_databases():
+    # 1ph calcite
+    output_folder = 'cmp_solvers'
+
+    # 1ph calcite
+    h5_paths = [os.path.join('cmp_solvers/output_1D_1000_calcite_9_0.1_ts_0.0001_phreeqc_phreeqc', 'nx1000.h5'),
+                os.path.join('cmp_solvers/output_1D_1000_calcite_9_0.1_ts_0.0001_phreeqc_pitzer', 'nx1000.h5'),
+                os.path.join('cmp_solvers/output_1D_1000_calcite_9_0.1_ts_0.0001_reaktoro_phreeqc', 'nx1000.h5'),
+                os.path.join('cmp_solvers/output_1D_1000_calcite_9_0.1_ts_0.0001_reaktoro_supcrtbl', 'nx1000.h5')]
+    h5_labels = ['phreeqc: phreeqc', 'phreeqc: pitzer', 'reaktoro: phreeqc', 'reaktoro: supcrtbl']
+    time_indices = [1, 2, 3, 13]
+    plot_unknowns_from_h5(h5_paths=h5_paths, output_folder=output_folder,
+                          fname='vars_calcite_1ph_1D.png', time_indices=time_indices, h5_labels=h5_labels,
+                          plot_saturation=True)
+    # props = ['xH2O', 'xCO2', 'xHCO3-', 'xCaHCO3+',
+    #          'x(CO2)2', 'xCa+2', 'SR_CaCO3', 'rate_CaCO3', 'xOH-', 'xH+',
+    #          'xCH4', 'xCO3-2', 'xCaCO3', 'xCaOH+', 'xH2', 'xO2']
+    props = ['xH2O', 'xCO2', 'xHCO3-', 'xCaHCO3+', 'x(CO2)2',
+             'xCa+2', 'SR_CaCO3', 'rate_CaCO3']
+    plot_properties_from_h5(h5_paths=h5_paths, time_indices=time_indices, output_folder=output_folder,
+                            h5_labels=h5_labels, fname='props_calcite_1ph_1D.png', props_to_plot=props, nrows=2, ncols=4)
+
+    # 2ph calcite
+    h5_paths = [os.path.join('cmp_solvers/output_1D_1000_calcite_9_1.0_ts_0.0001_phreeqc_phreeqc', 'nx1000.h5'),
+                os.path.join('cmp_solvers/output_1D_1000_calcite_9_1.0_ts_0.0001_phreeqc_pitzer', 'nx1000.h5'),
+                #os.path.join('cmp_solvers/output_1D_1000_calcite_9_1.0_ts_0.0001_phreeqc_supcrtbl', 'nx1000.h5'),
+                os.path.join('cmp_solvers/output_1D_1000_calcite_9_1.0_ts_0.0001_reaktoro_phreeqc', 'nx1000.h5'),
+                os.path.join('cmp_solvers/output_1D_1000_calcite_9_1.0_ts_5e-05_reaktoro_supcrtbl', 'nx1000.h5')
+                ]
+    h5_labels = ['phreeqc: phreeqc', 'phreeqc: pitzer', 'reaktoro: phreeqc', 'reaktoro: supcrtbl']
+    time_indices = [1, 2, 3, 13]
+    plot_unknowns_from_h5(h5_paths=h5_paths, output_folder=output_folder,
+                          fname='vars_calcite_2ph_1D.png', time_indices=time_indices, h5_labels=h5_labels,
+                          plot_saturation=True)
+    props = ['xH2O', 'xCO2', 'xHCO3-', 'xCaHCO3+', 'x(CO2)2',
+            'xCa+2', 'xCO2(g)', 'xH2O(g)', 'SR_CaCO3', 'rate_CaCO3']
+    plot_properties_from_h5(h5_paths=h5_paths, time_indices=time_indices, output_folder=output_folder, h5_labels=h5_labels,
+                            fname='props_calcite_2ph_1D.png', props_to_plot=props, nrows=2, ncols=5)
+
+
 if __name__ == '__main__':
     # output_folder = 'c:\work\packages\open-darts\models\phreeqc_dissolution\data_for_seminar\output_1D_1000'
     ffmpeg_path = r'c:\work\packages\ffmpeg-6.0\bin\ffmpeg.exe'
@@ -1202,3 +1298,4 @@ if __name__ == '__main__':
                             fname='props_calcite_dolomite_2ph_1D.png', props_to_plot=props, nrows=2, ncols=5)
 
     # convergence_pictures()
+    # comparison_solvers_databases()

@@ -1,4 +1,5 @@
 import numpy as np
+from math import fabs
 import h5py
 import os
 
@@ -16,6 +17,8 @@ from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
 )
+from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
+from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
 
 from iapws._iapws import _Viscosity
 from conversions import convert_composition, correct_composition, calculate_injection_stream, \
@@ -272,12 +275,36 @@ class Model(CICDModel):
         # Create property containers:
         property_container = PropertyContainer(phases_name=self.phases, components_name=self.elements, Mw=Mw,
                                             stoich_matrix=stoich_matrix, min_z=self.obl_min, temperature=self.temperature,
-                                            fc_mask=self.fc_mask, flash=self.flash, database=self.database)
+                                            fc_mask=self.fc_mask)
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
                                          np.ones(self.nc - self.n_solid)]) * 5.2e-10 * 86400) for ph in self.phases}
         property_container.rel_perm_ev = {ph: CustomRelPerm(2) for ph in self.phases}
         property_container.viscosity_ev = { self.phases[0]: GasViscosity(), self.phases[1]: LiquidViscosity() }
+
+        # flash, also here to be able to setup modified PHREEQC/reaktoro flashes
+        if self.flash == 'phreeqc':
+            # PHREEQC backend expects .dat filenames
+            db_filename = f"{self.database}.dat"
+            property_container.flash_ev = PhreeqcFlash(
+                min_z=property_container.min_z,
+                minerals=property_container.minerals,
+                components=property_container.components_name[property_container.fc_mask],
+                temperature=property_container.temperature,
+                database_filename=db_filename,
+            )
+        elif self.flash == 'reaktoro':
+            # Reaktoro expects 'supcrtbl' without .dat; PHREEQC DBs with .dat
+            db_filename = 'supcrtbl' if self.database == 'supcrtbl' else f"{self.database}.dat"
+            property_container.flash_ev = ReaktoroFlash(
+                min_z=property_container.min_z,
+                minerals=property_container.minerals,
+                components=property_container.components_name[property_container.fc_mask],
+                temperature=property_container.temperature,
+                database_filename=db_filename,
+            )
+        else:
+            raise ValueError(f'Invalid flash type: {self.flash}')
 
         # kinetics
         surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)
