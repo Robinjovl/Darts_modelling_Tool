@@ -47,12 +47,13 @@ def _make_multilinear(evaluator, axes_points, axes_min, axes_max, axis_nodes=Non
             value_vector(axes_max),
         )
     else:
+        axis_nodes_vectors = [value_vector(nodes) for nodes in axis_nodes]
         interpolator = ctor(
             evaluator,
             index_vector(axes_points),
             value_vector(axes_min),
             value_vector(axes_max),
-            axis_nodes,
+            axis_nodes_vectors,
         )
     interpolator.init()
     interpolator.init_timer_node(timer_node())

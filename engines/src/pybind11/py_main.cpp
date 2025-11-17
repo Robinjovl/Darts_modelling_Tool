@@ -1,5 +1,6 @@
 #include "py_globals.h"
 #include <pybind11/numpy.h>
+#include <cstring>
 namespace py = pybind11;
 
 void pybind_pm_discretizer(py::module &);
@@ -59,7 +60,7 @@ PYBIND11_MODULE(engines, m)
       .def(py::pickle(
           [](const std::vector<index_t>& p) { // __getstate__
               py::tuple t(p.size());
-              for (int i = 0; i < p.size(); i++)
+              for (size_t i = 0; i < p.size(); i++)
                   t[i] = p[i];
 
               return t;
@@ -67,13 +68,37 @@ PYBIND11_MODULE(engines, m)
           [](py::tuple t) { // __setstate__
               std::vector<index_t> p(t.size());
 
-              for (int i = 0; i < p.size(); i++)
+              for (size_t i = 0; i < p.size(); i++)
                   p[i] = t[i].cast<index_t>();
 
               //p.setExtra(t[1].cast<int>());
 
               return p;
           })) \
+      .def(py::init([](py::object obj) {
+        std::vector<index_t> result;
+        if (py::isinstance<py::array>(obj))
+        {
+          py::array arr = py::cast<py::array>(obj);
+          py::array_t<index_t, py::array::c_style | py::array::forcecast> coerced(arr);
+          auto buf = coerced.request();
+          if (buf.ndim != 1)
+          {
+            throw std::runtime_error("index_vector expects a 1-D array");
+          }
+          const auto len = static_cast<size_t>(buf.shape[0]);
+          result.resize(len);
+          std::memcpy(result.data(), buf.ptr, len * sizeof(index_t));
+        }
+        else
+        {
+          for (auto item : obj)
+          {
+            result.push_back(py::cast<index_t>(item));
+          }
+        }
+        return result;
+      }), "Construct from a Python iterable or 1-D NumPy array.")
       .def("resize",
           (void (std::vector<index_t>::*) (size_t count)) & std::vector<index_t>::resize,
           "changes the number of elements stored") \
@@ -84,7 +109,7 @@ PYBIND11_MODULE(engines, m)
       .def(py::pickle(
           [](const std::vector<value_t> &p) { // __getstate__
             py::tuple t(p.size());
-            for (int i = 0; i < p.size(); i++)
+            for (size_t i = 0; i < p.size(); i++)
               t[i] = p[i];
 
             return t;
@@ -92,24 +117,76 @@ PYBIND11_MODULE(engines, m)
           [](py::tuple t) { // __setstate__
             std::vector<value_t> p(t.size());
 
-            for (int i = 0; i < p.size(); i++)
+            for (size_t i = 0; i < p.size(); i++)
               p[i] = t[i].cast<value_t>();
 
             //p.setExtra(t[1].cast<int>());
 
             return p;
           })) \
+      .def(py::init([](py::object obj) {
+        std::vector<value_t> result;
+        if (py::isinstance<py::array>(obj))
+        {
+          py::array arr = py::cast<py::array>(obj);
+          py::array_t<value_t, py::array::c_style | py::array::forcecast> coerced(arr);
+          auto buf = coerced.request();
+          if (buf.ndim != 1)
+          {
+            throw std::runtime_error("value_vector expects a 1-D array");
+          }
+          const auto len = static_cast<size_t>(buf.shape[0]);
+          result.resize(len);
+          std::memcpy(result.data(), buf.ptr, len * sizeof(value_t));
+        }
+        else
+        {
+          for (auto item : obj)
+          {
+            result.push_back(py::cast<value_t>(item));
+          }
+        }
+        return result;
+      }), "Construct from a Python iterable or 1-D NumPy array.")
       .def("resize",
           (void (std::vector<value_t>::*) (size_t count)) &std::vector<value_t>::resize,
           "changes the number of elements stored") \
       .def("to_numpy", [](std::vector<value_t>& vec) {
           return to_numpy(vec);  // Call the conversion function
       }, "Converts the vector to a NumPy array");
-	  
-  
+  py::bind_vector<std::vector<std::vector<value_t>>>(m, "vector_value_vector", py::module_local(true))
+      .def(py::pickle(
+          [](const std::vector<std::vector<value_t>> &p) {
+            py::tuple outer(p.size());
+            for (size_t i = 0; i < p.size(); ++i)
+            {
+              py::list inner;
+              for (auto v : p[i])
+              {
+                inner.append(v);
+              }
+              outer[i] = inner;
+            }
+            return outer;
+          },
+          [](py::tuple t) {
+            std::vector<std::vector<value_t>> p(t.size());
+            for (size_t i = 0; i < t.size(); ++i)
+            {
+              auto list_obj = t[i].cast<py::list>();
+              p[i].reserve(list_obj.size());
+              for (auto item : list_obj)
+              {
+                p[i].push_back(item.cast<value_t>());
+              }
+            }
+            return p;
+          }));
+
+
   // Logging related bindings
   py::module_ m_logging = m.def_submodule(
-    "logging", 
+    "logging",
     "A submodule for logging related functionalities."
   );
   py::enum_<logging::LoggingLevel>(m_logging, "LoggingLevel")
@@ -120,10 +197,10 @@ PYBIND11_MODULE(engines, m)
     .value("CRITICAL", logging::LoggingLevel::CRITICAL)
     .export_values();
   m_logging.def(
-    "log", 
+    "log",
     py::overload_cast<const std::string&, logging::LoggingLevel>(
       &logging::log
-    ),  
+    ),
     "Adds a message to logs.",
     py::arg("message"),
     py::arg("level") = logging::LoggingLevel::INFO
@@ -135,49 +212,49 @@ PYBIND11_MODULE(engines, m)
     py::arg("level")
   );
   m_logging.def(
-    "duplicate_output_to_file", 
-    &logging::duplicate_output_to_file, 
+    "duplicate_output_to_file",
+    &logging::duplicate_output_to_file,
     "Duplicates outputs to a file.",
     py::arg("file_path"));
   m_logging.def("flush", &logging::flush, "Flushes output streams.");
   m_logging.def(
-    "debug", 
-    &logging::debug, 
-    "Detailed information, typically only of interest to a developer " 
+    "debug",
+    &logging::debug,
+    "Detailed information, typically only of interest to a developer "
     "trying to diagnose a problem.",
     py::arg("message")
   );
   m_logging.def(
-    "info", 
-    &logging::info, 
+    "info",
+    &logging::info,
     "Confirmation that things are working as expected.",
     py::arg("message")
   );
   m_logging.def(
-    "warning", 
-    &logging::warning, 
+    "warning",
+    &logging::warning,
     "An indication that something unexpected happened, or that a problem might "
     "occur in the near future (e.g. ‘disk space low’). The software is still "
     "working as expected.",
     py::arg("message")
   );
   m_logging.def(
-    "error", 
-    &logging::error, 
+    "error",
+    &logging::error,
     "Due to a more serious problem, the software has not been able to perform "
     "some function.",
     py::arg("message")
   );
   m_logging.def(
-    "critical", 
-    &logging::critical, 
+    "critical",
+    &logging::critical,
     "A serious error, indicating that the program itself may be unable to "
     "continue running.",
     py::arg("message")
   );
   // end pybind logging
 
-	  
+
   py::bind_vector<std::vector<ms_well *>>(m, "ms_well_vector");
   py::bind_vector<std::vector<operator_set_gradient_evaluator_iface *>>(m, "op_vector");
   py::bind_map<std::map<std::string, timer_node>>(m, "timer_map");

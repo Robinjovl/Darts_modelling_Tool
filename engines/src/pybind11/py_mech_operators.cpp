@@ -30,9 +30,7 @@ void pybind_mech_operators(py::module &m)
 		.def_readwrite("porosities", &mech_operators::porosities) \
 		.def_readwrite("velocities", &mech_operators::velocity) \
 		.def_readwrite("face_unknowns", &mech_operators::face_unknowns);
-	py::bind_vector<std::vector<std::vector<value_t>>>(m, "vector_value_vector");
 	py::bind_vector<std::vector<std::vector<std::vector<value_t>>>>(m, "vector_vector_value_vector");
 };
 
 #endif /* PYBIND11_ENABLED */
-
