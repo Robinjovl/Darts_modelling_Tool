@@ -29,15 +29,15 @@ class OperatorsBase(operator_set_evaluator_iface):
 
         self.extrapolation_flag = extrapolation_flag
         self.dz = dz
-        assert (
-            self.nc <= 2 or not extrapolation_flag or dz is not None
-        ), "Please provide dz for extrapolation"
+        assert self.nc <= 2 or not extrapolation_flag or dz is not None, (
+            "Please provide dz for extrapolation"
+        )
 
     def apply_extrapolation(self, state, values):
         # Find composition, if last composition is negative, apply extrapolation
         zc = np.append(state[1 : self.nc], 1 - np.sum(state[1 : self.nc]))
 
-        if zc[-1] < 0.99 * self.eps_z and self.extrapolation_flag:
+        if len(zc) > 2 and zc[-1] < 0.99 * self.eps_z and self.extrapolation_flag:
             self.extrapolate(state, values)
             return 1
         else:
