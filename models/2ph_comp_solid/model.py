@@ -229,7 +229,7 @@ class Model(CICDModel):
 
         axs[2][2].plot(1 - Ss, 'b')
         axs[2][2].set_xlabel('x [m]', font_dict_axes)
-        axs[2][2].set_ylabel('$\phi$ [-]', font_dict_axes)
+        axs[2][2].set_ylabel(r'$\phi$ [-]', font_dict_axes)
         axs[2][2].set_title('Porosity', fontdict=font_dict_title)
 
         left = 0.05  # the left side of the subplots of the figure

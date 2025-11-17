@@ -119,7 +119,7 @@ class Initialize:
             extrapolation_flag=self.physics.extrapolation_flag,
             dz=self.physics.dz,
         )
-        self.itor = physics.create_interpolator(
+        self.itor, n_ops = physics.create_interpolator(
             evaluator=self.etor,
             n_ops=physics.n_ops,
             axes_min=value_vector(self.physics.PT_axes_min),
@@ -129,6 +129,7 @@ class Initialize:
             mode=mode,
             is_barycentric=is_barycentric,
         )
+        self.n_ops = n_ops
 
     def evaluate(self, Xi: list):
         """
@@ -142,8 +143,8 @@ class Initialize:
         """
         # Interpolate values and derivatives in property_itor
         state_idxs = index_vector([0])
-        values = value_vector(np.zeros(self.physics.n_ops))
-        derivs = value_vector(np.zeros(self.physics.n_ops * self.nv))
+        values = value_vector(np.zeros(self.n_ops))
+        derivs = value_vector(np.zeros(self.n_ops * self.nv))
 
         self.itor.evaluate_with_derivatives(
             value_vector(Xi), state_idxs, values, derivs

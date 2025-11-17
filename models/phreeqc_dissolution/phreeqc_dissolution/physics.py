@@ -47,7 +47,7 @@ class PhreeqcDissolution(Compositional):
         self.comp_itor = {}
         self.property_itor = {}
         for region in self.regions:
-            self.acc_flux_itor[region] = self.create_interpolator(evaluator=self.reservoir_operators[region],
+            self.acc_flux_itor[region], _ = self.create_interpolator(evaluator=self.reservoir_operators[region],
                                                           timer_name='reservoir interpolation',
                                                           n_ops=self.n_ops,
                                                           axes_min=self.axes_min,
@@ -60,7 +60,7 @@ class PhreeqcDissolution(Compositional):
 
             # ==============================================================================================================
             # Create initialization & porosity evaluator
-            self.comp_itor[region] = self.create_interpolator(evaluator=self.initial_operators[region],
+            self.comp_itor[region], _ = self.create_interpolator(evaluator=self.initial_operators[region],
                                                       timer_name='comp %d interpolation' % region,
                                                       n_ops=self.input_data_struct.n_init_ops,
                                                       axes_min=self.axes_min,
@@ -73,7 +73,7 @@ class PhreeqcDissolution(Compositional):
 
             # ==============================================================================================================
             # Create property interpolator:
-            self.property_itor[region] = self.create_interpolator(evaluator=self.property_operators[region],
+            self.property_itor[region], _ = self.create_interpolator(evaluator=self.property_operators[region],
                                                       timer_name='property %d interpolation' % region,
                                                       n_ops=self.input_data_struct.n_prop_ops,
                                                       axes_min=self.axes_min,
@@ -86,12 +86,12 @@ class PhreeqcDissolution(Compositional):
 
         self.acc_flux_w_itor = self.acc_flux_itor[0]
 
-        self.well_ctrl_itor = self.create_interpolator(self.well_ctrl_operators, n_ops=self.well_ctrl_operators.n_ops,
+        self.well_ctrl_itor, _ = self.create_interpolator(self.well_ctrl_operators, n_ops=self.well_ctrl_operators.n_ops,
                                                        axes_min=self.axes_min, axes_max=self.axes_max,
                                                        timer_name='well controls interpolation',
                                                        platform=platform, algorithm=itor_type, mode=itor_mode,
                                                        precision=itor_precision)
-        self.well_init_itor = self.create_interpolator(self.well_init_operators, n_ops=self.well_init_operators.n_ops,
+        self.well_init_itor, _ = self.create_interpolator(self.well_init_operators, n_ops=self.well_init_operators.n_ops,
                                                        axes_min=value_vector(self.PT_axes_min),
                                                        axes_max=value_vector(self.PT_axes_max),
                                                        timer_name='well initialization',

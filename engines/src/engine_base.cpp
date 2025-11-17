@@ -1929,7 +1929,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		}
 		/* ---- end check solid compositions ---- */
 
-		// // /* ---- check fluid compositions ---- */
+		/* ---- check fluid compositions ---- */ 		
 		sum_z = 0.;
 		z_corrected = false;
 		for (index_t c = n_solid; c < nc - 1; c++)

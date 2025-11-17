@@ -29,6 +29,7 @@
  * @tparam GRAV_OP Index for gravity operators.
  * @tparam PC_OP Index for capillary pressure operators.
  * @tparam MULT_OP Index for permeability multiplier due to permeability-porosity relationship.
+ * @tparam LAMBDA_OP Index for phase mobility operators.
  *
  * @param[in] n_res_blocks Number of reservoir blocks.
  * @param[in] enable_permporo Flag to activate permeability multiplier due to permeability-porosity relationship.
@@ -46,7 +47,7 @@
  * @param[in] dt Time step size.
  */
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t N_OPS, uint8_t FLUX_OP,
-          uint8_t GRAV_OP, uint8_t PC_OP, uint8_t MULT_OP>
+          uint8_t GRAV_OP, uint8_t PC_OP, uint8_t MULT_OP, uint8_t LAMBDA_OP>
 __global__ void
 reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permporo,
                       value_t *X, value_t *op_vals_arr, index_t *op_num, index_t *rows,
@@ -111,7 +112,7 @@ reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permpo
       if (phase_p_diff < 0)
       {
         for (uint8_t c = 0; c < NC; c++)
-          phase_flux += op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[i] + c];
+          phase_flux += op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[i] + c];
 
         if (phase_flux != 0.0)
             phase_flux *= -trans_mult * tran[conn_idx] * phase_p_diff / op_vals_arr[i * N_OPS + GRAV_OP + p];
@@ -119,7 +120,7 @@ reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permpo
       else
       {
         for (uint8_t c = 0; c < NC; c++)
-          phase_flux += op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[j] + c];
+          phase_flux += op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[j] + c];
 
         if (phase_flux != 0.0)
           phase_flux *= -trans_mult * tran[conn_idx] * phase_p_diff / op_vals_arr[j * N_OPS + GRAV_OP + p];
@@ -296,6 +297,8 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  * @tparam GRAV_OP Index for gravity operators.
  * @tparam PC_OP Index for capillary pressure operators.
  * @tparam MULT_OP Index for permeability multiplier due to permeability-porosity relationship.
+ * @tparam LAMBDA_OP Index for phase mobility operators.
+ * @tparam SAT_OP Index for phase saturation operator.
  * @tparam ENTH_OP Index for enthalpy operators.
  * @tparam TEMP_OP Index for temperature operators.
  * @tparam PRES_OP Index for pressure operators.
@@ -326,8 +329,8 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  * @param[in] kin_fac Kinetic factor array.
  */
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint8_t N_OPS,
-          uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP,
-          uint8_t GRAV_OP, uint8_t PC_OP, uint8_t MULT_OP, uint8_t ENTH_OP, uint8_t TEMP_OP, uint8_t PRES_OP,
+          uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP, uint8_t GRAV_OP,
+          uint8_t PC_OP, uint8_t MULT_OP, uint8_t LAMBDA_OP, uint8_t SAT_OP, uint8_t ENTH_OP, uint8_t TEMP_OP, uint8_t PRES_OP,
           bool THERMAL>
 __global__ void
 assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n_res_blocks, const bool enable_permporo,
@@ -336,7 +339,8 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
                                index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind,
                                value_t *op_vals_arr, value_t *op_vals_arr_n, value_t *op_ders_arr,
                                value_t *tran, value_t *tranD, value_t *hcap, value_t *rock_cond, value_t *poro,
-                               value_t *PV, value_t *RV, value_t *grav_coef, value_t *kin_fac)
+                               value_t *PV, value_t *RV, value_t *grav_coef, value_t *kin_fac,
+                               value_t *cell_spe, value_t *conn_spe)
 {
   // Each matrix block row is processed by N_VARS * N_VARS threads
   // Memory access is coalesced for most data, while communications minimized
@@ -381,6 +385,18 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
     // Add reaction term to diagonal of reservoir cells (here the volume is pore volume or block volume):
     if (i < n_res_blocks)
       rhs += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
+
+    // Add potential energy accumulation
+    if (THERMAL && c == (NE - 1))
+    {
+        value_t sat_dens_sum = 0.;
+        for (uint8_t p = 0; p < NP; p++)
+        {
+            sat_dens_sum += op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p]
+                            - op_vals_arr_n[i * N_OPS + SAT_OP + p] * op_vals_arr_n[i * N_OPS + GRAV_OP + p];
+        }
+        rhs += PV[i] * cell_spe[i] * sat_dens_sum;
+    }
   }
 
   jac_diag = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
@@ -389,6 +405,18 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   if (i < n_res_blocks)
   {
     jac_diag += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
+  }
+
+  // Include derivatives for potential energy term
+  if (THERMAL && c == (NE - 1))
+  {
+      value_t sat_dens_der_sum = 0.;
+      for (uint8_t p = 0; p < NP; p++)
+      {
+          sat_dens_der_sum += op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]
+                              + op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v];
+      }
+      jac_diag += PV[i] * cell_spe[i] * sat_dens_der_sum; // der of potential energy accumulation term
   }
 
   // if thermal is enabled, full up the last equation
@@ -443,9 +471,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
     { // loop over number of phases for convective operator
 
       // calculate gravity term for phase p
-      value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] +
-                             op_vals_arr[j * N_OPS + GRAV_OP + p]) /
-                            2;
+      value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
 
       // p = 1 means oil phase, it's reference phase. pw=po-pcow, pg=po-(-pcog).
       value_t phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
@@ -454,40 +480,90 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
       value_t grav_pc_der_i;
       value_t grav_pc_der_j;
 
-      grav_pc_der_i = -(op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
-      grav_pc_der_j = -(op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
-
-      double phase_gamma_p_diff = trans_mult * tran[conn_idx] * dt * phase_p_diff;
+      grav_pc_der_i = (op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
+      grav_pc_der_j = (op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
 
       if (phase_p_diff < 0)
       {
+        // calculate phase volumetric rate
+        value_t phase_volumetric_rate = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * phase_p_diff;
+
+        // calculate partial derivatives for phase volumetric rates
+        value_t phase_vol_rate_der_i = tran[conn_idx] * (op_ders_arr[(i * N_OPS + LAMBDA_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[i * N_OPS + LAMBDA_OP + p] * grav_pc_der_i);
+        value_t phase_vol_rate_der_j = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * grav_pc_der_j;
+
         // mass and energy outflow with effect of gravity and capillarity
-        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
+        value_t c_flux_coef = trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
         if (v == 0)
         {
-          rhs -= phase_p_diff * c_flux; // flux operators only
-          jac_offd -= c_flux;
-          jac_diag += c_flux;
+          rhs -= phase_volumetric_rate * c_flux_coef;
+
+          // Add potential energy flux
+          if (THERMAL && c == NE - 1)
+          {
+              rhs -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+          }
+
+          jac_offd -= c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
+          jac_diag += c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
         }
-        jac_diag -= (phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
-                     tran[conn_idx] * dt * phase_p_diff * trans_mult_der_i * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c]);
-        jac_diag += c_flux * grav_pc_der_i;
-        jac_offd += c_flux * grav_pc_der_j;
+        jac_diag -= (phase_volumetric_rate * trans_mult * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
+                     phase_volumetric_rate * trans_mult_der_i * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt);
+        jac_diag -= phase_vol_rate_der_i * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
+        jac_offd -= phase_vol_rate_der_j * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
+
+        if (THERMAL && c == NE - 1)
+        {
+            jac_diag -= dt * (phase_vol_rate_der_i * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
+            jac_offd -= dt * phase_vol_rate_der_j * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+
+            if (v == 0)
+            {
+                jac_diag += dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+                jac_offd -= dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+            }
+        }
       }
       else
       {
+        // calculate phase volumetric rate
+        value_t phase_volumetric_rate = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * phase_p_diff;
+
+        // calculate partial derivatives for phase volumetric rates
+        value_t phase_vol_rate_der_i = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * grav_pc_der_i;
+        value_t phase_vol_rate_der_j = tran[conn_idx] * (op_ders_arr[(j * N_OPS + LAMBDA_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[j * N_OPS + LAMBDA_OP + p] * grav_pc_der_j);
+
         // mass and energy inflow with effect of gravity and capillarity
-        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
+        value_t c_flux_coef = trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
         if (v == 0)
         {
-          rhs -= phase_p_diff * c_flux; // flux operators only
-          jac_diag += c_flux;           //-= Jac[jac_idx + c * N_VARS];
-          jac_offd -= c_flux;           // -tran[conn_idx] * dt * op_vals[NC + c];
+          rhs -= phase_volumetric_rate * c_flux_coef;
+
+          // Add potential energy flux
+          if (THERMAL && c == NE - 1)
+          {
+              rhs -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+          }
+
+          jac_diag += c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
+          jac_offd -= c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
         }
-        jac_offd -= (phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
-                     tran[conn_idx] * dt * phase_p_diff * trans_mult_der_j * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c]);
-        jac_diag += c_flux * grav_pc_der_i;
-        jac_offd += c_flux * grav_pc_der_j;
+        jac_offd -= (phase_volumetric_rate * trans_mult * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
+                     phase_volumetric_rate * trans_mult_der_j * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt);
+        jac_diag -= phase_vol_rate_der_i * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+        jac_offd -= phase_vol_rate_der_j * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+
+        if (THERMAL && c == NE - 1)
+        {
+            jac_diag -= dt * phase_vol_rate_der_i * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+            jac_offd -= dt * (phase_vol_rate_der_j * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * conn_spe[conn_idx];
+
+            if (v == 0)
+            {
+                jac_diag += dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+                jac_offd -= dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * conn_spe[conn_idx];
+            }
+        }
       }
     } // end of loop over number of phases for convective operator with gravity and capillarity
 
@@ -593,6 +669,8 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   allocate_device_data(mesh->poro, &mesh_poro_d);
   allocate_device_data(mesh->kin_factor, &mesh_kin_factor_d);
   allocate_device_data(mesh->grav_coef, &mesh_grav_coef_d);
+  allocate_device_data(mesh->cell_spe, &mesh_cell_spe_d);
+  allocate_device_data(mesh->conn_spe, &mesh_conn_spe_d);
 
   copy_data_to_device(RV, RV_d);
   copy_data_to_device(mesh->heat_capacity, mesh_hcap_d);
@@ -601,6 +679,8 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   copy_data_to_device(mesh->poro, mesh_poro_d);
   copy_data_to_device(mesh->kin_factor, mesh_kin_factor_d);
   copy_data_to_device(mesh->grav_coef, mesh_grav_coef_d);
+  copy_data_to_device(mesh->cell_spe, mesh_cell_spe_d);
+  copy_data_to_device(mesh->conn_spe, mesh_conn_spe_d);
 
   return 0;
 }
@@ -612,14 +692,15 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
   //cudaMemset(jacobian->values_d, 0, jacobian->rows_ptr[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
 
   assemble_jacobian_array_kernel<NC, NP, NE, N_VARS, P_VAR, T_VAR, N_OPS, ACC_OP, FLUX_OP, UPSAT_OP, GRAD_OP, KIN_OP,
-                                 GRAV_OP, PC_OP, MULT_OP, ENTH_OP, TEMP_OP, PRES_OP, THERMAL>
+                                 GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP, SAT_OP, ENTH_OP, TEMP_OP, PRES_OP, THERMAL>
       KERNEL_1D(mesh->n_blocks, N_VARS * N_VARS, 64)(mesh->n_blocks, mesh->n_res_blocks, params->enable_permporo,
                                                      params->phase_existence_tolerance,
                                                      dt, X_d, RHS_d,
                                                      jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
                                                      op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
                                                      mesh_tran_d, mesh_tranD_d, mesh_hcap_d, mesh_rcond_d, mesh_poro_d,
-                                                     PV_d, RV_d, mesh_grav_coef_d, mesh_kin_factor_d);
+                                                     PV_d, RV_d, mesh_grav_coef_d, mesh_kin_factor_d,
+                                                     mesh_cell_spe_d, mesh_conn_spe_d);
 
   if (!mesh->velocity_appr.empty()) // reconstruction of phase velocities
   {
@@ -629,7 +710,7 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
       exit(-1);
     }
 
-    reconstruct_velocities<NC, NP, NE, N_VARS, P_VAR, N_OPS, FLUX_OP, GRAV_OP, PC_OP, MULT_OP>
+    reconstruct_velocities<NC, NP, NE, N_VARS, P_VAR, N_OPS, FLUX_OP, GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP>
         KERNEL_1D(mesh->n_res_blocks, 1, 64)(mesh->n_res_blocks, params->enable_permporo,
                                         X_d, op_vals_arr_d, mesh_op_num_d, jacobian->rows_ptr_d,
                                         jacobian->cols_ind_d, mesh_tran_d, mesh_grav_coef_d,

@@ -18,7 +18,7 @@ upload_wheels:
         - build-linux-3.10
         - build-windows-3.10
 
-upload_wheels_gse:
+.upload_wheels_oahu:
     stage: deploy
     image: python:3.10
     rules:
@@ -31,7 +31,7 @@ upload_wheels_gse:
         - cp $wheel $GSEWHEELSPATH
     dependencies:
         # get the wheels from the build stage
-        - build-linux-3.10-gpu
+        - build-linux-oahu-3.10-gpu
 
 upload_wheels_odls:
     stage: deploy
