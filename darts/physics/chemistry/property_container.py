@@ -1,11 +1,5 @@
 import numpy as np
 
-from darts.physics.properties.kinetics import (
-    KineticRate,
-    LinearReactionSurfaceArea,
-)
-from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
-from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
 from darts.physics.super.property_container import PropertyContainer
 
 
@@ -20,7 +14,6 @@ class PropertyContainer(PropertyContainer):
         phases_name,
         components_name,
         Mw,
-        kinetic_mechanisms,
         stoich_matrix,
         nc_sol=0,
         np_sol=0,
@@ -28,8 +21,6 @@ class PropertyContainer(PropertyContainer):
         rate_ann_mat=None,
         temperature=None,
         fc_mask=None,
-        database='phreeqc',
-        flash='phreeqc',
     ):
         """
         Constructor for PropertyContainer class.
@@ -39,8 +30,6 @@ class PropertyContainer(PropertyContainer):
         :type components_name: List[str]
         :param Mw: Dictionary of molar weights of components [kg/kmol]
         :type Mw: Dict[str, float]
-        :param kinetic_mechanisms: List of kinetic mechanisms
-        :type kinetic_mechanisms: List[str]
         :param stoich_matrix: Stoichiometric matrix
         :type stoich_matrix: np.ndarray
         :param nc_sol: Number of components in solid phase
@@ -55,10 +44,6 @@ class PropertyContainer(PropertyContainer):
         :type temperature: float | None
         :param fc_mask: Fluid component mask
         :type fc_mask: List[bool]
-        :param database: Database for equilibrium solver ('phreeqc', 'pitzer', 'supcrtbl')
-        :type database: str
-        :param flash: Flash type
-        :type flash: str (phreeqc or reaktoro)
         """
         super().__init__(
             phases_name=phases_name,
@@ -101,47 +86,6 @@ class PropertyContainer(PropertyContainer):
         # Define custom evaluators
         self.rock_density_ev = {}
         self.rock_compr_ev = {}
-        # validate and prepare database identifier for chosen flash backend
-        allowed_databases = {'phreeqc', 'pitzer', 'supcrtbl'}
-        db_key = str(database).lower()
-        if db_key not in allowed_databases:
-            raise ValueError(
-                f"Invalid database: {database}. Allowed: {sorted(allowed_databases)}"
-            )
-        if flash == 'phreeqc':
-            # PHREEQC backend expects .dat filenames
-            db_filename = f"{db_key}.dat"
-            self.flash_ev = PhreeqcFlash(
-                min_z=self.min_z,
-                minerals=self.minerals,
-                components=self.components_name[self.fc_mask],
-                temperature=self.temperature,
-                database_filename=db_filename,
-            )
-        elif flash == 'reaktoro':
-            # Reaktoro expects 'supcrtbl' without .dat; PHREEQC DBs with .dat
-            db_filename = 'supcrtbl' if db_key == 'supcrtbl' else f"{db_key}.dat"
-            self.flash_ev = ReaktoroFlash(
-                min_z=self.min_z,
-                minerals=self.minerals,
-                components=self.components_name[self.fc_mask],
-                temperature=self.temperature,
-                database_filename=db_filename,
-            )
-        else:
-            raise ValueError(f'Invalid flash type: {flash}')
-
-        # Build one evaluator per mineral using the single-mineral API
-        surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)
-        self.kinetic_rate_ev = {
-            m: KineticRate(
-                min_z=self.min_z,
-                mineral_name=m.split('_', 1)[1],
-                mechanisms=kinetic_mechanisms,
-                surface_area_ev=surface_area_ev,
-            )
-            for m in self.minerals
-        }
 
     def evaluate(self, state):
         """

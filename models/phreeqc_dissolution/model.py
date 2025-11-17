@@ -1,4 +1,5 @@
 import numpy as np
+from math import fabs
 import h5py
 import os
 
@@ -12,6 +13,12 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
 from darts.engines import sim_params, well_control_iface, value_vector, timer_node
+from darts.physics.properties.kinetics import (
+    KineticRate,
+    LinearReactionSurfaceArea,
+)
+from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
+from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
 
 from iapws._iapws import _Viscosity
 from conversions import convert_composition, correct_composition, calculate_injection_stream, \
@@ -117,7 +124,8 @@ class Model(CICDModel):
                  poro_filename: str = None, minerals: list = ['calcite'],
                  kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
                  n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
-                 inj_rate: float = None, perm_poro: str = 'power_8', flash: str = 'phreeqc'):
+                 inj_rate: float = None, perm_poro: str = 'power_8', flash: str = 'phreeqc',
+                 database: str = 'phreeqc'):
         # Call base class constructor
         super().__init__()
 
@@ -133,6 +141,7 @@ class Model(CICDModel):
         self.inj_rate = inj_rate
         self.perm_poro = perm_poro
         self.flash = flash
+        self.database = database
 
         self.set_reservoir(domain=domain, nx=nx, mesh_filename=mesh_filename, poro_filename=poro_filename)
         self.set_physics()
@@ -185,7 +194,7 @@ class Model(CICDModel):
             Mw = {'Solid_CaCO3': 100.0869, 'Ca': 40.078, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
             self.n_points = list(self.n_obl_mult * np.array([101, 201, 101, 101, 101], dtype=np.intp))
             self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.3]
-            self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.01, 0.02, 0.37]
+            self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.03, 0.03, 0.37]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                                [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
@@ -265,14 +274,49 @@ class Model(CICDModel):
 
         # Create property containers:
         property_container = PropertyContainer(phases_name=self.phases, components_name=self.elements, Mw=Mw,
-                                            stoich_matrix=stoich_matrix, kinetic_mechanisms=self.kinetic_mechanisms,
-                                            min_z=self.obl_min, temperature=self.temperature,
-                                            fc_mask=self.fc_mask, flash=self.flash)
+                                            stoich_matrix=stoich_matrix, min_z=self.obl_min, temperature=self.temperature,
+                                            fc_mask=self.fc_mask)
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
                                          np.ones(self.nc - self.n_solid)]) * 5.2e-10 * 86400) for ph in self.phases}
         property_container.rel_perm_ev = {ph: CustomRelPerm(2) for ph in self.phases}
         property_container.viscosity_ev = { self.phases[0]: GasViscosity(), self.phases[1]: LiquidViscosity() }
+
+        # flash, also here to be able to setup modified PHREEQC/reaktoro flashes
+        if self.flash == 'phreeqc':
+            # PHREEQC backend expects .dat filenames
+            db_filename = f"{self.database}.dat"
+            property_container.flash_ev = PhreeqcFlash(
+                min_z=property_container.min_z,
+                minerals=property_container.minerals,
+                components=property_container.components_name[property_container.fc_mask],
+                temperature=property_container.temperature,
+                database_filename=db_filename,
+            )
+        elif self.flash == 'reaktoro':
+            # Reaktoro expects 'supcrtbl' without .dat; PHREEQC DBs with .dat
+            db_filename = 'supcrtbl' if self.database == 'supcrtbl' else f"{self.database}.dat"
+            property_container.flash_ev = ReaktoroFlash(
+                min_z=property_container.min_z,
+                minerals=property_container.minerals,
+                components=property_container.components_name[property_container.fc_mask],
+                temperature=property_container.temperature,
+                database_filename=db_filename,
+            )
+        else:
+            raise ValueError(f'Invalid flash type: {self.flash}')
+
+        # kinetics
+        surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)
+        property_container.kinetic_rate_ev = {
+            m: KineticRate(
+                min_z=self.obl_min,
+                mineral_name=m.split('_', 1)[1],
+                mechanisms=self.kinetic_mechanisms,
+                surface_area_ev=surface_area_ev,
+            )
+            for m in property_container.minerals
+        }
 
         # Mineral properties
         for min, props in rock_props.items():
@@ -280,7 +324,7 @@ class Model(CICDModel):
             property_container.rock_density_ev[min] = DensityBasic(compr=props['compressibility'], dens0=props['density'], p0=1.)
 
         # Create instance of (own) physics class:
-        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points,
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points, phases=self.phases,
                                           axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
                                           cache=False)
 

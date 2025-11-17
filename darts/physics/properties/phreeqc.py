@@ -12,10 +12,6 @@ try:
 except ImportError:
     from phreeqpy.iphreeqc.phreeqc_com import IPhreeqc
 
-
-# Pydantic is used to validate user-provided kinetic configuration
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
 # Databases directory co-located with this module
 _DEFAULT_DB_DIR = Path(__file__).parent / 'databases'
 
@@ -41,45 +37,6 @@ def _resolve_phreeqc_db_path(db_spec: str | os.PathLike) -> str:
             return str(path.resolve())
     # Fall back to provided string; load will likely fail but error will be clear
     return str(candidate)
-
-
-# -----------------------------
-# Pydantic input schema
-# -----------------------------
-class FlashSpec(BaseModel):
-    """Pydantic spec for constructing a Flash instance.
-
-    This model is JSON-schema friendly and validates only user inputs.
-    """
-
-    model_config = ConfigDict(extra='forbid')
-
-    min_z: float = Field(gt=0)
-    minerals: list[str] = Field(min_length=1)
-    components: list[str] = Field(min_length=1)
-    temperature: float | None = None
-    tolerance: float = (1e-10,)
-    database_filename: str = ('phreeqc.dat',)
-    # Optional overrides
-    backup_database_filename: str = 'pitzer.dat'
-    gas_species: list[str] = ['CO2(g)', 'H2O(g)']
-
-    @field_validator('minerals')
-    @classmethod
-    def _validate_minerals(cls, value: list[str]) -> list[str]:
-        if not all(isinstance(m, str) and m.strip() for m in value):
-            raise ValueError('minerals must be non-empty strings')
-        return [m.strip() for m in value]
-
-    @field_validator('components')
-    @classmethod
-    def _validate_components(cls, comps: list[str]) -> list[str]:
-        comps = [c.strip() for c in comps]
-        # Require at least H and O due to water-formation logic
-        for required in ('H', 'O'):
-            if required not in comps:
-                raise ValueError(f"components must include '{required}'")
-        return comps
 
 
 class Flash:
@@ -321,30 +278,6 @@ class Flash:
             database.load_database(resolved)
         except Exception as e:
             warnings.warn(f"Failed to load '{resolved}': {e}.", Warning, stacklevel=2)
-
-    @classmethod
-    def from_spec(cls, spec: FlashSpec) -> 'Flash':
-        """Construct a Flash instance from a validated FlashSpec.
-
-        Converts JSON-friendly inputs to runtime types and applies optional
-        overrides for databases and gas settings.
-        :param spec: FlashSpec instance
-        :type spec: FlashSpec
-        :return: Flash instance
-        :rtype: Flash
-        """
-        inst = cls(
-            min_z=spec.min_z,
-            minerals=spec.minerals,
-            components=spec.components,
-            temperature=spec.temperature,
-            gas_species=spec.gas_species,
-            tolerance=spec.tolerance,
-            database_filename=spec.database_filename,
-            backup_database_filename=spec.backup_database_filename,
-        )
-
-        return inst
 
     def interpret_results(self, database, water_mass):
         """
