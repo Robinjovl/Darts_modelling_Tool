@@ -29,6 +29,7 @@ class Initialize:
         self.nv = physics.n_vars
         self.thermal = physics.thermal
         self.nc = self.nv - self.thermal
+        self.nph = physics.nph
 
         # Index of pressure, temperature and components
         self.vars = (
@@ -40,8 +41,43 @@ class Initialize:
 
         # Add evaluators of phase saturations, rhoT and dX (if kinetic reactions are defined)
         pc = physics.property_containers[0]
-        self.props = {}
-        self.props.update({'rhoT': lambda: np.sum(pc.sat * pc.dens)})
+        continuous_sat = lambda: np.sum(
+            [pc.sat[j] for j in range(pc.np_fl) if pc.kr[j] > 1e-8]
+        )
+        self.props = {
+            'rhoT': lambda: np.sum(
+                [pc.sat[j] * pc.dens[j] for j in range(pc.np_fl) if pc.kr[j] > 1e-8]
+            )
+            / continuous_sat(),
+            'pressure': lambda: pc.pressure,
+            'temperature': lambda: pc.temperature,
+        }
+        self.props.update(
+            {
+                comp: lambda i=i: np.nansum(pc.nu * pc.x[:, i])
+                for i, comp in enumerate(self.physics.components)
+            }
+        )
+        self.props.update(
+            {
+                'm_' + comp: lambda i=i: np.nansum(
+                    pc.dens_m * pc.sat * pc.x[:, i] * pc.Mw[i]
+                )
+                for i, comp in enumerate(self.physics.components)
+            }
+        )  # kg/m3 of component i
+        self.props.update(
+            {
+                'pot' + ph: lambda j=j: pc.pressure - pc.pc[j]
+                for j, ph in enumerate(self.physics.phases)
+            }
+        )
+        self.props.update(
+            {
+                'mob' + ph: lambda j=j: pc.kr[j] / pc.mu[j] if pc.mu[j] else 0.0
+                for j, ph in enumerate(physics.phases)
+            }
+        )
         self.props.update(
             {'sat' + ph: lambda j=j: pc.sat[j] for j, ph in enumerate(physics.phases)}
         )
@@ -200,16 +236,17 @@ class Initialize:
                     f"Not the right number of variables specified for well-defined system of equations in block {i}, need {self.nv - 1 - self.thermal}"
                 )
 
-        # Define thermal gradient
-        if self.thermal:
-            self.T = (
-                lambda i: boundary_state['temperature']
-                + (self.depths[i] - self.depths[bc_idx]) * dTdh
-            )
-
         # Set state in known cell
         X = np.zeros((nb, self.nv))
         X[bc_idx] = np.array([boundary_state[v] for v in self.vars])
+        values0, _ = self.evaluate(X[bc_idx])
+
+        # Define thermal gradient
+        if self.thermal:
+            self.T = (
+                lambda i: values0[self.props_idxs['temperature']]
+                + (self.depths[i] - self.depths[bc_idx]) * dTdh
+            )
 
         # Solve cells from specified cell upwards
         for i in range(bc_idx, 0, -1):
@@ -224,52 +261,64 @@ class Initialize:
 
         return X.flatten()
 
+    def init_depth_table(
+        self,
+        depth_bottom: float,
+        depth_top: float,
+        depth_known: float,
+        X0: np.ndarray,
+        nb: int = 100,
+        dTdh: float = 0.03,
+    ):
+        if nb == 1:
+            self.depths = np.array([depth_known])
+            bc_idx = 0
+        else:
+            # Check input and create depths
+            assert depth_bottom >= depth_top, "Top depth is below bottom depth"
+            assert depth_top <= depth_known <= depth_bottom, (
+                "Known depth is not in range [bottom, top]"
+            )
+            self.depths = np.linspace(start=depth_top, stop=depth_bottom, num=nb)
+            bc_idx = (np.fabs(self.depths - depth_known)).argmin()
+            self.depths[bc_idx] = depth_known
+
+        # Define thermal gradient
+        values0, _ = self.evaluate(X0)
+        if self.thermal:
+            self.T = (
+                lambda i: values0[self.props_idxs['temperature']]
+                + (self.depths[i] - self.depths[bc_idx]) * dTdh
+            )
+
+        # Set state in known cell
+        X = np.zeros((nb, self.nv))
+        X[bc_idx] = X0
+
+        return X, bc_idx
+
     def solve_state(
         self,
         Xi: list,
-        primary_specs: dict = None,
-        secondary_specs: dict = None,
+        specs: dict,
         max_iter: int = 100,
     ):
         """
-        Solve for all depths
+        Solve for boundary state
 
         :param Xi: State
         :type Xi: list
-        :param primary_specs: Primary specifications
-        :type primary_specs: dict
-        :param secondary_specs: Secondary specifications
-        :type secondary_specs: dict
+        :param specs: Specifications (primary and secondary variables)
+        :type specs: dict
         :param max_iter: Maximum number of iterations
         """
         assert (
-            int(
-                np.sum(
-                    [not np.isnan(np.float64(spec)) for spec in primary_specs.values()]
-                )
-                + np.sum(
-                    [
-                        not np.isnan(np.float64(spec))
-                        for spec in secondary_specs.values()
-                    ]
-                )
-            )
+            int(np.sum([not np.isnan(np.float64(spec)) for spec in specs.values()]))
             == self.nv
         ), (
             "Not enough variables specified for well-defined system of equations, {} specified but {} needed".format(
                 int(
-                    np.sum(
-                        [
-                            not np.isnan(np.float64(spec))
-                            for spec in primary_specs.values()
-                        ]
-                    )
-                    + np.sum(
-                        [
-                            not np.isnan(np.float64(spec))
-                            for spec in secondary_specs.values()
-                        ]
-                    )
+                    np.sum([not np.isnan(np.float64(spec)) for spec in specs.values()])
                 ),
                 self.nv,
             )
@@ -280,29 +329,16 @@ class Initialize:
             Jac = np.zeros((self.nv, self.nv))
             values, derivs = self.evaluate(Xi)
 
-            # Specification of primary variables
-            j1 = 0
-            for var, spec in primary_specs.items():
-                if not np.isnan(np.float64(spec)):
-                    var_idx = self.var_idxs[var]
-                    Xi[var_idx] = spec
-
-                    res[j1] = Xi[var_idx] - spec
-                    Jac[j1, :] = 0.0
-                    Jac[j1, var_idx] = 1.0
-                    j1 += 1
-
-            # Specification of secondary variables
-            j2 = 0
-            for var, spec in secondary_specs.items():
+            # Specification equations of primary and secondary variables defined in self.props
+            res_idx = 0
+            for var, spec in specs.items():
                 if not np.isnan(np.float64(spec)):
                     prop_idx = self.props_idxs[var]
-                    res_idx = j1 + j2
                     res[res_idx] = values[prop_idx] - spec
 
                     for jj in range(self.nv):
                         Jac[res_idx, jj] = derivs[prop_idx * self.nv + jj]
-                    j2 += 1
+                    res_idx += 1
 
             # Solve Newton step
             dX = np.linalg.solve(Jac, res)
@@ -326,9 +362,13 @@ class Initialize:
                 ),
             )
 
-            Xi -= beta * dX
+            beta = 1.0 if beta == 1.0 else beta * 0.1
+            Xi[1:-1] -= beta * dX[1:-1]
+            Xi[0] -= dX[0]
+            Xi[-1] -= dX[-1]
 
-            if np.linalg.norm(res) < 1e-10:
+            norm = np.linalg.norm(res)
+            if norm < 1e-10:
                 return Xi
 
         print("MAX ITER REACHED FOR INITIALIZATION", Xi)
@@ -349,6 +389,9 @@ class Initialize:
         # Find neighbouring cell for which state is known
         known_idx = cell_idx - 1 if downward else cell_idx + 1
         rhoT_idx = self.props_idxs['rhoT']
+        pot_idx = self.props_idxs['pot' + self.physics.phases[0]]
+        mob_idx = self.props_idxs['mob' + self.physics.phases[0]]
+        sat_idx = self.props_idxs['sat' + self.physics.phases[0]]
 
         n_vars = self.nv - self.thermal
         values0, _ = self.evaluate(X[known_idx])
@@ -357,7 +400,7 @@ class Initialize:
 
         # Solve nonlinear unknowns
         # Initialize using same composition, recalculate pressure and evaluate temperature gradient
-        X[cell_idx, 0] = X[known_idx, 0] + values0[rhoT_idx] * (gh1 - gh0)
+        X[cell_idx, 0] = values0[pot_idx] + values0[rhoT_idx] * (gh1 - gh0)
         X[cell_idx, 1:] = X[known_idx, 1:]
         if self.thermal:
             X[cell_idx, -1] = self.T(cell_idx)
@@ -370,37 +413,51 @@ class Initialize:
             # Evaluate operators and derivatives at current state Xi
             values1, derivs1 = self.evaluate(X[cell_idx])
 
-            # Pressure equation
+            # Zero mass flux equations for fluid phases
             mgh = (values1[rhoT_idx] + values0[rhoT_idx]) * (gh1 - gh0) / 2
-            res[0] = X[known_idx, 0] + mgh - X[cell_idx, 0]
-            Jac[0, 0] -= 1.0
-            for j in range(n_vars):
-                Jac[0, j] += derivs1[rhoT_idx * self.nv + j] * (gh1 - gh0) / 2
+            # j1, j2 = 0, 0
+            for j in range(self.physics.nph):
+                # Potential difference of phase j: P[1] - Pc[1] - (P[2] - Pc[2]) + mgh[av]
+                potential_diff = values0[pot_idx + j] - values1[pot_idx + j] + mgh
+                # potential = X[known_idx, 0] + mgh - values0[pc_idx + j] - X[cell_idx, 0] + values1[pc_idx + j]
 
-            # Specification equation
-            j1 = 0
-            for var, spec in self.primary_specs.items():
-                if not np.isnan(np.float64(spec[cell_idx])):
-                    var_idx = self.var_idxs[var]
-                    X[cell_idx, var_idx] = spec[cell_idx]
+                if j == 0:
+                    if (
+                        values1[sat_idx + j]
+                        < self.secondary_specs['sr' + self.physics.phases[j]][cell_idx]
+                    ):
+                        # res_idx = j1 + j2 + n_vars
+                        res[j] = (
+                            values1[sat_idx + j]
+                            - self.secondary_specs['sr' + self.physics.phases[j]][
+                                cell_idx
+                            ]
+                        )
 
-                    res_idx = j1 + 1
-                    res[res_idx] = X[cell_idx, var_idx] - spec[cell_idx]
-                    Jac[res_idx, :] = 0.0
-                    Jac[res_idx, var_idx] = 1.0
-                    j1 += 1
-
-            # Specification of secondary variables
-            j2 = 0
-            for var, spec in self.secondary_specs.items():
-                if not np.isnan(np.float64(spec[cell_idx])):
-                    prop_idx = self.props_idxs[var]
-                    res_idx = j1 + j2 + 1
-                    res[res_idx] = values1[prop_idx] - spec[cell_idx]
-
-                    for jj in range(n_vars):
-                        Jac[res_idx, jj] = derivs1[prop_idx * self.nv + jj]
-                    j2 += 1
+                        for k in range(n_vars):
+                            Jac[j, k] = derivs1[(sat_idx + j) * self.nv + k]
+                        # j2 += 1
+                    else:
+                        res[j] = values1[mob_idx + j] * potential_diff
+                        for k in range(self.nv):
+                            Jac[j, k] += values1[mob_idx + j] * (
+                                -derivs1[(pot_idx + j) * self.nv + k]
+                                + derivs1[rhoT_idx * self.nv + k] * (gh1 - gh0) / 2
+                            )
+                            Jac[j, k] += (
+                                derivs1[(mob_idx + j) * self.nv + k] * potential_diff
+                            )
+                else:
+                    res[j] = potential_diff
+                    for k in range(self.nv):
+                        Jac[j, k] += (
+                            -derivs1[(pot_idx + j) * self.nv + k]
+                            + derivs1[rhoT_idx * self.nv + k] * (gh1 - gh0) / 2
+                        )
+                    # res[j] = values1[mob_idx + j] * potential_diff
+                    # for k in range(self.nv):
+                    #     Jac[j, k] += values1[mob_idx + j] * (-derivs1[(pot_idx + j) * self.nv + k] + derivs1[rhoT_idx * self.nv + k] * (gh1 - gh0) / 2)
+                    #     Jac[j, k] += derivs1[(mob_idx + j) * self.nv + k] * potential_diff
 
             # Solve Newton step
             dX = np.linalg.solve(Jac, res)
@@ -429,7 +486,181 @@ class Initialize:
             X[cell_idx, :n_vars] -= beta * dX
 
             if np.linalg.norm(res) < 1e-10:
+                print(X[cell_idx])
+                print(values1)
                 return X
 
         print("MAX ITER REACHED FOR INITIALIZATION", X[cell_idx, :])
+        return X
+
+    def solve_region(
+        self,
+        X: np.ndarray,
+        mobile_phases: list,
+        wetting_phase: str,
+        residual_saturations: dict,
+        bc_idx: int,
+        specs: dict = None,
+        downward: bool = True,
+        region_idx: int = 0,
+        max_iter: int = 100,
+    ):
+        """
+        Solve for specific depth
+
+        :param X: State vector of all depths
+        :type X: np.ndarray
+        :param cell_idx: Index of cell to solve
+        :param downward: Bool to indicate if known cell is above or below
+        :param max_iter: Maximum number of iterations
+        """
+        # Set primary and secondary specs to empty dictionary if None
+        specs = specs if specs is not None else {}
+
+        # Find indices of phases and properties
+        mobile_phases_idxs = [self.physics.phases.index(ph) for ph in mobile_phases]
+        wetting_phase_idx = self.physics.phases.index(wetting_phase)
+
+        temp_idx = self.props_idxs['temperature']
+        rhoT_idx = self.props_idxs['rhoT']
+        pot_idx = self.props_idxs['pot' + self.physics.phases[0]]
+        mob_idx = self.props_idxs['mob' + self.physics.phases[0]]
+        sat_idx = self.props_idxs['sat' + self.physics.phases[0]]
+
+        n_vars = self.nv  # - self.thermal
+
+        # Solve cells from specified cell upwards
+        cell_range = (
+            range(bc_idx, len(self.depths) - 1) if downward else range(bc_idx, 0, -1)
+        )
+        for i in cell_range:
+            # Find neighbouring cell for which state is known
+            cell_idx = i + 1 if downward else i - 1
+            known_idx = cell_idx - 1 if downward else cell_idx + 1
+
+            values0, _ = self.evaluate(X[known_idx])
+            gh0 = 9.81 * self.depths[known_idx] * 1e-5
+            gh1 = 9.81 * self.depths[cell_idx] * 1e-5
+
+            # Solve nonlinear unknowns
+            # Initialize using same composition, recalculate pressure and evaluate temperature gradient
+            X[cell_idx, 0] = values0[pot_idx] + values0[rhoT_idx] * (gh1 - gh0)
+            X[cell_idx, 1:] = X[known_idx, 1:]
+
+            for _it in range(max_iter):
+                # nc variables for pressure and nc-1 compositions, temperature is calculated from gradient
+                res = np.zeros(n_vars)
+                Jac = np.zeros((n_vars, n_vars))
+
+                # Evaluate operators and derivatives at current state Xi
+                values1, derivs1 = self.evaluate(X[cell_idx])
+
+                # Zero mass flux equations for fluid phases
+                mgh = (values1[rhoT_idx] + values0[rhoT_idx]) * (gh1 - gh0) / 2
+                # j1, j2 = 0, 0
+                for j, phase_idx in enumerate(mobile_phases_idxs):
+                    # Potential difference of phase j: P[1] - Pc[1] - (P[2] - Pc[2]) + mgh[av]
+                    potential_diff = (
+                        values0[pot_idx + phase_idx]
+                        - values1[pot_idx + phase_idx]
+                        + mgh
+                    )
+
+                    if j == wetting_phase_idx:
+                        if (
+                            values1[sat_idx + phase_idx]
+                            < residual_saturations[mobile_phases[j]]
+                        ):
+                            res[j] = (
+                                values1[sat_idx + phase_idx]
+                                - residual_saturations[mobile_phases[j]]
+                            )
+
+                            for k in range(n_vars):
+                                Jac[j, k] = derivs1[(sat_idx + phase_idx) * self.nv + k]
+                        else:
+                            res[j] = values1[mob_idx + phase_idx] * potential_diff
+                            for k in range(n_vars):
+                                Jac[j, k] += values1[mob_idx + phase_idx] * (
+                                    -derivs1[(pot_idx + phase_idx) * self.nv + k]
+                                    + derivs1[rhoT_idx * self.nv + k] * (gh1 - gh0) / 2
+                                )
+                                Jac[j, k] += (
+                                    derivs1[(mob_idx + phase_idx) * self.nv + k]
+                                    * potential_diff
+                                )
+                    else:
+                        res[j] = potential_diff
+                        for k in range(n_vars):
+                            Jac[j, k] += (
+                                -derivs1[(pot_idx + phase_idx) * self.nv + k]
+                                + derivs1[rhoT_idx * self.nv + k] * (gh1 - gh0) / 2
+                            )
+
+                # Specification equation
+                res_idx = len(mobile_phases)
+                for var, spec in specs.items():
+                    spec_ = (
+                        np.float64(spec[cell_idx])
+                        if hasattr(spec, '__len__')
+                        else np.float64(spec)
+                    )
+                    if not np.isnan(spec_):
+                        prop_idx = self.props_idxs[var]
+                        res[res_idx] = values1[prop_idx] - spec_
+
+                        for jj in range(n_vars):
+                            Jac[res_idx, jj] = derivs1[prop_idx * self.nv + jj]
+                        res_idx += 1
+
+                if self.thermal:
+                    res[-1] = values1[temp_idx] - self.T(cell_idx)
+                    for k in range(n_vars):
+                        Jac[-1, k] = derivs1[temp_idx * self.nv + k]
+
+                # Solve Newton step
+                dX = np.linalg.solve(Jac, res)
+
+                # Calculate damping factor to remain within all positive mole fractions
+                betas_min = np.array(
+                    [
+                        X[cell_idx, i] / dX[i] if np.fabs(dX[i]) > 0.0 else np.nan
+                        for i in range(1, self.nc)
+                    ]
+                )
+                betas_max = np.array(
+                    [
+                        -(1.0 - X[cell_idx, i]) / dX[i]
+                        if np.fabs(dX[i]) > 0.0
+                        else np.nan
+                        for i in range(1, self.nc)
+                    ]
+                )
+                beta = min(
+                    1.0,
+                    min(
+                        (
+                            np.amin(betas_min[betas_min > 0.0])
+                            if len(betas_min[betas_min > 0.0]) > 0
+                            else 1.0
+                        ),
+                        (
+                            np.amin(betas_max[betas_max > 0.0])
+                            if len(betas_max[betas_max > 0.0]) > 0
+                            else 1.0
+                        ),
+                    ),
+                )
+
+                beta = 1.0 if beta == 1.0 else beta * 0.1
+                X[cell_idx, 1:-1] -= beta * dX[1:-1]
+                X[cell_idx, 0] -= dX[0]
+                X[cell_idx, -1] -= dX[-1]
+
+                norm = np.linalg.norm(res)
+                if norm < 1e-10:
+                    break
+
+            if _it > max_iter:
+                print("MAX ITER REACHED FOR INITIALIZATION", X[cell_idx, :])
         return X

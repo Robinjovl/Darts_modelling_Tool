@@ -240,8 +240,8 @@ class PropertyContainer(PropertyBase):
 
     def evaluate_mass_source(self, pressure, temperature, zc):
         self.dX = np.zeros(len(self.kinetic_rate_ev))
-        for j, reaction in self.kinetic_rate_ev.items():
-            dm, self.dX[j] = reaction.evaluate(
+        for _j, reaction in self.kinetic_rate_ev.items():
+            dm, self.dX[_j] = reaction.evaluate(
                 pressure, temperature, self.x, self.sat[-1]
             )
             self.mass_source += dm
@@ -266,6 +266,7 @@ class PropertyContainer(PropertyBase):
         self.ph = self.run_flash(
             pressure, temperature, zc, evaluate_PT=self.evaluate_PT_bool
         )
+        self.pressure = pressure
         self.temperature = (
             self.flash_ev.get_flash_results().temperature
             if not isinstance(self.flash_ev, int)
@@ -338,7 +339,7 @@ class PropertyContainer(PropertyBase):
         if self.energy_source_ev:
             self.energy_source += self.energy_source_ev.evaluate(state)
 
-        for j, reaction in self.kinetic_rate_ev.items():
+        for _, reaction in self.kinetic_rate_ev.items():
             self.energy_source += reaction.evaluate_enthalpy(
                 pressure, self.temperature, self.x, self.sat[-1]
             )
