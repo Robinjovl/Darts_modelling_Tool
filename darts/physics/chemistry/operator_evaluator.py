@@ -64,6 +64,7 @@ class ReservoirOperators(OperatorsSuper):
         # state and values numpy vectors:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
+        values_np[:] = 0
 
         # pore pressure
         _p = state_np[0]
@@ -87,7 +88,6 @@ class ReservoirOperators(OperatorsSuper):
         ne = nc
 
         """ CONSTRUCT OPERATORS HERE """
-        values_np[:] = 0.0
 
         """ Alpha operator represents accumulation term: """
         values_np[self.ACC_OP : self.ACC_OP + ns] = z[:ns] * rho_t
@@ -123,11 +123,12 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Gravity and Capillarity operators """
         # E3-> gravity
-        values_np[self.GRAV_OP + self.property.ph] = 0
+        values_np[self.GRAV_OP + self.property.ph] = self.property.dens[
+            self.property.ph
+        ]
 
         # E4-> capillarity
-        for i in range(nph):
-            values_np[self.PC_OP + i] = 0
+        values_np[self.PC_OP + self.property.ph] = self.property.pc[self.property.ph]
 
         """ Permeability multiplier k/kmax """
         # E5_> permeability multiplier due to permporo relationship
@@ -149,7 +150,22 @@ class ReservoirOperators(OperatorsSuper):
         # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
         values_np[self.PRES_OP] = state_np[0]
 
+        if self.thermal:
+            self.evaluate_thermal(state_np, values_np)
+
         return 0
+
+    def evaluate_thermal(self, state, values):
+        """
+        Class methods which evaluates the state operators for the element-based
+        formulation of reactive flow physics for thermal case.
+        :param state: state variables [p, z_{1}, ..., z_{n_m}, z_{n_m+1}, ..., z_{n_c-1}, T]
+        :type state: value_vector
+        :param values: values of the operators (used for storing the operator values)
+        :type values: value_vector
+        :rtype: int
+        """
+        pass  # TODO: implement thermal evaluation
 
 
 class CoversionOperators(ReservoirOperators):

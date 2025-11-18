@@ -132,6 +132,8 @@ class PropertyContainer(PropertyContainer):
 
         self.x = np.array([y, x])
 
+        self.pc = self.capillary_pressure_ev.evaluate(self.sat_overall)
+
         for j in self.ph:
             M = np.sum(self.Mw_array * self.x[j])
             self.dens[j] = self.dens_m[j] * M
