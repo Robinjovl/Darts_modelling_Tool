@@ -103,6 +103,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     const std::vector<index_t>& op_num = mesh->op_num;
     const std::vector<value_t>& cell_spe = mesh->cell_spe;
+    const std::vector<bool>& is_dfm_conn = mesh->is_dfm_conn;
 
     value_t* Jac = jacobian->get_values();
     index_t* diag_ind = jacobian->get_diag_ind();
@@ -350,21 +351,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             if (i == j)
                 continue;
 
-            bool DFM_conn = false;
-            for (ms_well* w : wells)
-            {
-                if (w->ms_type == ms_well::MS_Type::DFM)
-                {
-                    if (i >= w->well_head_idx &&
-                        i < (w->well_head_idx + w->num_segments) &&
-                        j >= w->well_head_idx &&
-                        j < (w->well_head_idx + w->num_segments))
-                    {
-                        DFM_conn = true;   // if it is a connection in the DFM-MS well, DFM_conn is true
-                        break;
-                    }
-                }
-            }
+            bool DFM_conn = is_dfm_conn[conn_idx];
 
             // fluxes for current connection
             if (enabled_flux_output)

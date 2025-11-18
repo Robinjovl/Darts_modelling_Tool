@@ -525,13 +525,14 @@ conn_mesh::init_pme_mech_discretizer(
 }
 
 int
-conn_mesh::add_conn (index_t block_m, index_t block_p, value_t trans, value_t transD)
+conn_mesh::add_conn (index_t block_m, index_t block_p, value_t trans, value_t transD, bool is_dfm_conn)
 {
   one_way_block_m.push_back (block_m);
   one_way_block_p.push_back (block_p);
   one_way_tran.push_back (trans);
   if (one_way_tranD.size())
     one_way_tranD.push_back (transD);
+  one_way_is_dfm_conn.push_back(is_dfm_conn);
 
   n_conns++;
   return 0;
@@ -825,27 +826,40 @@ conn_mesh::reverse_and_sort()
   get_res_tran(test_t, test_tD);
   set_res_tran(test_t, test_tD);
 
+  is_dfm_conn = reverse_and_sort_one_way_prop(one_way_is_dfm_conn);
+
   return 0;
 }
 
-std::vector<value_t>
-conn_mesh::reverse_and_sort_one_way_prop(std::vector<value_t> one_way_prop)
+template <typename T>
+std::vector<T>
+conn_mesh::reverse_and_sort_one_way_prop(const std::vector<T>& one_way_prop)
 {
-	std::vector<value_t> two_way_prop(n_conns);
-	for (index_t j = 0; j < n_conns / 2; ++j) {
-		two_way_prop[one_way_to_conn_index_forward[j]] = one_way_prop[j]; // m->p
-		two_way_prop[one_way_to_conn_index_reverse[j]] = one_way_prop[j]; // p->m (same value or negate if needed)
+	std::vector<T> two_way_prop(n_conns);
+	for (index_t j = 0; j < n_conns / 2; ++j)
+	{
+		two_way_prop[one_way_to_conn_index_forward[j]] = one_way_prop[j];  // m->p
+		two_way_prop[one_way_to_conn_index_reverse[j]] = one_way_prop[j];  // p->m (same value or negate if needed)
 	}
 
 	return two_way_prop;
 }
+
+// Explicit instantiations for double to make it visible
+template std::vector<double>
+conn_mesh::reverse_and_sort_one_way_prop<double>(const std::vector<double>&);
+
+// Explicit instantiations for bool to make it visible
+template std::vector<bool>
+conn_mesh::reverse_and_sort_one_way_prop<bool>(const std::vector<bool>&);
 
 using MixedType = std::variant<int, std::vector<value_t>>;
 std::vector<MixedType>
 conn_mesh::reverse_and_sort_velocities_derivatives(std::vector<MixedType> one_way_phase_velocities_derivatives)
 {
 	std::vector<MixedType> two_way_phase_velocities_derivatives(n_conns);
-	for (index_t j = 0; j < n_conns / 2; ++j) {
+	for (index_t j = 0; j < n_conns / 2; ++j)
+	{
 		two_way_phase_velocities_derivatives[one_way_to_conn_index_forward[j]] = one_way_phase_velocities_derivatives[j]; // m->p
 		two_way_phase_velocities_derivatives[one_way_to_conn_index_reverse[j]] = one_way_phase_velocities_derivatives[j]; // p->m (same value or negate if needed)
 	}
@@ -1861,8 +1875,11 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   n_perfs = 0;
   n_res_conns = n_conns;
 
+  // All the connections in the connection list until now are reservoir connections, so one_way_is_dfm_conn is set to false for all reservoir connections in the following line
+  one_way_is_dfm_conn.insert(one_way_is_dfm_conn.end(), n_res_conns, false);
+
   // Wells are modeled as a 1D sequence of small grid blocks representing segments,
-  // which are connected to the reservoir. In addition, there is one more grid block
+  // which are connected to the reservoir. For EPM wells, however, there is one more grid block
   // per well, which is at the top, connected to the first well segment,
   // served as a container for well control equations.
 
@@ -1879,7 +1896,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
       index_t i_w, i_r;
       value_t wi, wid;
       std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
-      add_conn(i_w + well_head_idx + 1, i_r, wi, wid);
+      add_conn(i_w + well_head_idx + 1, i_r, wi, wid, false);
       n_perfs++;
       n_segments = max(n_segments, i_w + 1);
     }
@@ -1894,7 +1911,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 	{
 		for (index_t p = 0; p < n_segments; p++)
 		{
-			add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0); // connection between them
+			add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, false); // connection between them
 		}
 	}
 	// connections between segments of DFM well
@@ -1902,7 +1919,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 	{
 		for (index_t seg = 0; seg < (wells[iw]->num_segments - 1); seg++)
 		{
-			add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0); // connection between them
+			add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0, true); // connection between them
 		}
 
 		if (wells[iw]->with_lateral_heat_transfer)
@@ -1929,7 +1946,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 				if (i_w_in_perforations == false)
 				{
 					value_t wi = 0.0;
-					add_conn(i_w + wells[iw]->well_head_idx, i_r, wi, wid);
+					add_conn(i_w + wells[iw]->well_head_idx, i_r, wi, wid, false);
 				}
 			}
 		}
@@ -2009,7 +2026,7 @@ int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int i
 	if (verbose)
 		cout << "Added connection between well " << well1->name << " head idx=" << well1->well_head_idx << " segment idx="  << iseg1 << " and well " <<
 																								well2->name << " head idx=" << well2->well_head_idx << " segment idx="  << iseg2 << endl;
-	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->well_transmissibility, 0);
+	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->well_transmissibility, 0, false);
 	return 0;
 }
 

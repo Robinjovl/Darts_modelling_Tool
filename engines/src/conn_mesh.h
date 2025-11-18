@@ -170,14 +170,15 @@ public:
 
   /// @brief add a new connection to connection list
   int add_conn(index_t block_m, index_t block_p,
-    value_t trans, value_t transD);
+    value_t trans, value_t transD, bool is_dfm_conn);
   int add_conn_block(index_t block_m, index_t block_p,
     value_t trans, value_t transD, const uint8_t P_VAR);
 
   /// @brief reverse connections and sort them by both row and col
   int reverse_and_sort();
   /// @brief reverse connections and sort them by both row and col for a one-way property at all connections
-  std::vector<value_t> reverse_and_sort_one_way_prop(std::vector<value_t> phase_velocities);
+  template <typename T>
+  std::vector<T> reverse_and_sort_one_way_prop(const std::vector<T>& one_way_prop);
   /// @brief reverse connections and sort them by both row and col for derivatives of velocities at all connections
   using MixedType = std::variant<int, std::vector<value_t>>;
   std::vector<MixedType> reverse_and_sort_velocities_derivatives(std::vector<MixedType> phase_velocities_derivatives);
@@ -207,6 +208,8 @@ public:
   std::vector<value_t> tran;
   /// [n_conns] array of diffusion transissibility values for given connection (transmis value)
   std::vector<value_t> tranD;
+  /// [n_conns] array that shows if it is a DFM connection or not
+  std::vector<bool> is_dfm_conn;
   /// [n_conns] array of heat conduction transissibility values for given connection (transmis value)
   std::vector<value_t> tran_heat_cond;
   /// [n_conns] array of transmissibilities that describe the forces due to thermal dilation
@@ -353,6 +356,7 @@ private:
   std::vector <value_t> one_way_tran_heat_cond;
   std::vector <value_t> one_way_tranD;
   std::vector <value_t> one_way_tran_th_expn;
+  std::vector <bool> one_way_is_dfm_conn;
   // arrays for multi-point approximation
   std::vector<index_t> one_way_stencil;
   std::vector<index_t> one_way_offset;
