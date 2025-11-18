@@ -295,8 +295,8 @@ python3 darts/print_build_info.py
 # build darts.whl
 if [[ "$wheel" == true ]]; then
     cp CHANGELOG.md darts
-    python3 setup.py clean
-    python3 setup.py build bdist_wheel 2>&1 | tee make_wheel.log
+    python3 -m pip install --upgrade build 2>&1 | tee make_wheel.log
+    python3 -m build --wheel 2>&1 | tee -a make_wheel.log
     echo -e "-- Python wheel generated! \n"
 fi
 

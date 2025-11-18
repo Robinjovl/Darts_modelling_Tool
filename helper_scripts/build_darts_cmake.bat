@@ -191,7 +191,8 @@ if %wheel%==true (
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-  python setup.py build bdist_wheel --plat-name=win-amd64 > make_wheel.log || goto :error
+  python -m pip install --upgrade build > make_wheel.log || goto :error
+  python -m build --wheel >> make_wheel.log || goto :error
   echo -- Python wheel generated!
 )
 python -m pip install . >> make_wheel.log
