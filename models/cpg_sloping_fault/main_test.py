@@ -38,7 +38,7 @@ def run(physics_type, case_geom, well_controls, redirect_log = False, compare_wi
             m.idata = set_input_data_deadoil()
         case 'CCS':
             m.idata = set_input_data_co2()
-
+    m.timer.node["initialization"].start()
     # 2. set default input data, generic parameters
     # including time stepping and convergence parameters, boundary conditions and rock properties for all cases and default rock properties
     set_input_data_base(m.idata, case_geom)
@@ -60,9 +60,9 @@ def run(physics_type, case_geom, well_controls, redirect_log = False, compare_wi
 
     if 'geothermal' not in m.physics_type:
         m.idata.geom.burden_layers = 0
-
-    if 'CCS' not in m.physics_type:
-        m.idata.sim.DataTS.dt_first = 1e-5
+    #
+    # if 'CCS' not in m.physics_type:
+    #     m.idata.sim.DataTS.dt_first = 1e-5
 
     # now, the data is set to m.idata and will be taken there
     print('----- Test started', 'physics_type:', m.physics_type, 'case:', case, ' ------')
@@ -80,14 +80,14 @@ def run(physics_type, case_geom, well_controls, redirect_log = False, compare_wi
     # time stepping and convergence parameters
     m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
 
-    m.timer.node["initialization"].stop()
+
 
     m.init()
     m.set_output(output_folder=out_dir, all_phase_props=True, verbose=True)
     m.set_well_controls_idata()
 
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
-
+    m.timer.node["initialization"].stop()
     ret = m.run_simulation()
 
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
@@ -174,8 +174,8 @@ def run_all():
 if __name__ == '__main__':
     grid_cases = [
         # generated cases
-        #'generate_5x3x4',
-        'generate_51x51x1',
+        'generate_5x3x4',
+        # 'generate_51x51x1',
         #'generate_51x51x1_faultmult',
         #'generate_100x100x100',
         # for grdecl cases, the grid and properties files must be in meshes/<case> folder,

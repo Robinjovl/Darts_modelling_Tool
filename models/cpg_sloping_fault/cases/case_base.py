@@ -27,7 +27,7 @@ def set_input_data_base(idata: InputData, case: str):
 
     # time stepping and convergence parameters
     idata.sim.DataTS = DataTS(n_vars=0)
-    idata.sim.DataTS.dt_first = 0.001
+    idata.sim.DataTS.dt_first = 0.01
     idata.sim.DataTS.dt_mult = 2
     idata.sim.DataTS.dt_max = 92
     idata.sim.DataTS.newton_tol = 1e-2
