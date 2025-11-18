@@ -14,7 +14,7 @@ namespace py = pybind11;
 void pybind_mesh_conn(py::module &m)
 {
   using namespace pybind11::literals;
-  
+
   py::class_<conn_mesh>(m, "conn_mesh", "Class for connection-based mesh and it`s properties")
 	  .def(py::init<>())
 	  //methods
@@ -39,11 +39,11 @@ void pybind_mesh_conn(py::module &m)
 	  .def("init_pm", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm)
 	  .def("init_pm_mech_discretizer", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
-		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, 
+		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&,
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm_mech_discretizer)
 	  .def("init_pme_mech_discretizer", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&,
-		std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, 
+		std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&,
 		index_t, index_t, index_t)) & conn_mesh::init_pme_mech_discretizer)
 	  .def("add_conn", &conn_mesh::add_conn)
 	  //.def("add_conn_mpfa", &conn_mesh::add_conn_mpfa)
@@ -57,6 +57,7 @@ void pybind_mesh_conn(py::module &m)
 	  .def("add_wells", &conn_mesh::add_wells)
 	  .def("add_wells_mpfa", &conn_mesh::add_wells_mpfa)
 	  .def("init_grav_coef", &conn_mesh::init_grav_coef, "Initialize gravity coefficients for every connection", "grav_const"_a = 9.80665e-5)
+	  .def("init_spe", &conn_mesh::init_spe, "Initialize specific potential energy for every cell", "grav_acceleration_for_spe"_a = 0.)
 	  .def("get_res_tran", &conn_mesh::get_res_tran, "Get reservoir transmissibilities", "tran"_a, "tranD"_a)
 	  .def("set_res_tran", &conn_mesh::set_res_tran, "Set reservoir transmissibilities", "tran"_a, "tranD"_a)
 	  .def("get_wells_tran", &conn_mesh::get_wells_tran, "Get well indexes", "tran"_a)
@@ -75,6 +76,7 @@ void pybind_mesh_conn(py::module &m)
 	  .def_readwrite("velocity", &conn_mesh::velocity)
 	  .def_readwrite("op_num", &conn_mesh::op_num)
 	  .def_readwrite("depth", &conn_mesh::depth)
+	  .def_readwrite("cell_spe", &conn_mesh::cell_spe)
 	  .def_readwrite("heat_capacity", &conn_mesh::heat_capacity)
 	  .def_readwrite("rock_cond", &conn_mesh::rock_cond)
 	  .def_readwrite("kin_factor", &conn_mesh::kin_factor)
