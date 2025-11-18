@@ -696,8 +696,7 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                                      jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
                                                      op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
                                                      mesh_tran_d, mesh_tranD_d, mesh_hcap_d, mesh_rcond_d, mesh_poro_d,
-                                                     PV_d, RV_d, mesh_grav_coef_d, mesh_kin_factor_d,
-                                                     mesh_cell_spe_d, mesh_conn_spe_d);
+                                                     PV_d, RV_d, mesh_grav_coef_d, mesh_kin_factor_d, mesh_cell_spe_d);
 
   if (!mesh->velocity_appr.empty()) // reconstruction of phase velocities
   {
