@@ -70,7 +70,7 @@ struct interpolator_exposer
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
           .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>()) /*.def("benchmark", &interpolator_class::benchmark, "Init by nc and rate operators") \*/
           // Optional constructor overload that accepts explicit axis nodes for non-uniform grids.
-          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &, const std::vector<std::vector<double>> &>(), py::keep_alive<1, 2>())
+          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &, std::vector<std::vector<value_t>> &>(), py::keep_alive<1, 2>())
           .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
             "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
           .def("init_timer_node", &interpolator_class::init_timer_node,
