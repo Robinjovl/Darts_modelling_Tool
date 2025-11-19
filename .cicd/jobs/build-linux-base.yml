@@ -8,7 +8,7 @@
         - echo 'before build-linux'
         - apt-get update -qq && apt-get install -y -qq smbclient libjpeg-dev
         - export PY_SUFFIX=`python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"`
-        - pip install wheel
+        - python -m pip install --upgrade pip setuptools wheel
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
         - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS -p
