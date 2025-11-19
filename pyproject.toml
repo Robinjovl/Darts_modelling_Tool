@@ -48,7 +48,8 @@ dev = ["ruff", "pre-commit"]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["darts"]
+where = ["."]
+include = ["darts*"]
 exclude = ["discretizer", "engines", "models", "solvers", "docs", "thirdparty"]
 
 [tool.setuptools.package-data]
