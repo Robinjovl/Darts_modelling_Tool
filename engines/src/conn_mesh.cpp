@@ -9,19 +9,19 @@
 #include <assert.h>
 
 using namespace std;
-int 
+int
 conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, std::vector<value_t>& tran, std::vector<value_t>& tranD)
 {
   int diff_trans;
 
   diff_trans = tranD.size();
   n_conns = tran.size();
-  
+
   one_way_block_m = block_m;
   one_way_block_p = block_p;
   one_way_tran = tran;
   one_way_tranD = tranD;
-  
+
   n_res_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
   n_res_blocks = std::max(n_res_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
 
@@ -187,7 +187,7 @@ conn_mesh::init_mpsa(std::vector<index_t>& block_m,
 	std::vector<index_t>& _sstencil,
 	std::vector<index_t>& _sst_offset,
 	std::vector<value_t>& _stran,
-	uint8_t _n_dim, 
+	uint8_t _n_dim,
 	index_t _n_matrix, index_t _n_bounds, index_t _n_fracs)
 {
 	n_vars = _n_dim;
@@ -425,13 +425,13 @@ conn_mesh::init_pm_mech_discretizer(
   one_way_stencil = _stencil;
   one_way_offset = _st_offset;
 
-  one_way_hooke = _hooke;			
+  one_way_hooke = _hooke;
   one_way_hooke_rhs = _hooke_rhs;
-  one_way_biot = _biot;			
+  one_way_biot = _biot;
   one_way_biot_rhs = _biot_rhs;
-  one_way_darcy = _darcy;			
+  one_way_darcy = _darcy;
   one_way_darcy_rhs = _darcy_rhs;
-  one_way_vol_strain = _vol_strain;			
+  one_way_vol_strain = _vol_strain;
   one_way_vol_strain_rhs = _vol_strain_rhs;
 
   n_matrix = _n_matrix;
@@ -541,7 +541,7 @@ int
 conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value_t transD, const uint8_t P_VAR)
 {
   // for pm_discretizer output
-  vector<value_t> tblock_pos(n_vars * n_vars, 0.0), tblock_neg(n_vars * n_vars, 0.0), 
+  vector<value_t> tblock_pos(n_vars * n_vars, 0.0), tblock_neg(n_vars * n_vars, 0.0),
 				trhs(n_vars, 0.0), tblock_zero(n_vars * n_vars, 0.0);
   tblock_pos[P_VAR * n_vars + P_VAR] = trans;
   tblock_neg[P_VAR * n_vars + P_VAR] = -trans;
@@ -560,7 +560,7 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
 	one_way_tran.insert(one_way_tran.end(), tblock_neg.begin(), tblock_neg.end());
 	one_way_tran.insert(one_way_tran.end(), tblock_pos.begin(), tblock_pos.end());
 	one_way_rhs.insert(one_way_rhs.end(), trhs.begin(), trhs.end());
-  }	
+  }
   if (one_way_flux.size()) one_way_flux.insert(one_way_flux.end(), trhs.begin(), trhs.end());
   if (one_way_gravity_flux.size()) one_way_gravity_flux.insert(one_way_gravity_flux.end(), trhs.begin(), trhs.end());
 
@@ -747,7 +747,7 @@ conn_mesh::reverse_and_sort()
     }
 
     // reverse
-    
+
     idx = tmp_index[one_way_block_p[j]]++;
     block_m[idx] = one_way_block_p[j];
     block_p[idx] = one_way_block_m[j];
@@ -817,6 +817,7 @@ conn_mesh::reverse_and_sort()
 
   // with reversed connections
   n_conns *= 2;
+  n_res_conns *= 2;
 
   std::vector<value_t> test_t;
   std::vector<value_t> test_tD;
@@ -965,7 +966,7 @@ conn_mesh::reverse_and_sort_dvel()
 
 
 	// renumerate correct velocity mapper
-	// sorting one_way_block_m and one_way_block_p 
+	// sorting one_way_block_m and one_way_block_p
 	int ctr = 0;
 	for (index_t j = 0; j < n_conns; j++)
 	{
@@ -1070,7 +1071,7 @@ conn_mesh::reverse_and_sort_mpfa()
 	tran.resize(n_two_way_stencil);
 	if (diff_trans)
 		tranD.resize(n_two_way_stencil);
-	if (thermal_trans) 
+	if (thermal_trans)
 		tran_heat_cond.resize(n_two_way_stencil);
 	stencil.resize(n_two_way_stencil);
 	offset.resize(n_two_way_conns + 1);
@@ -1124,7 +1125,7 @@ conn_mesh::reverse_and_sort_mpsa()
     cout << "Processing mesh: " << n_blocks << " reservoir blocks including " << n_bounds << " boundary blocks, " << n_conns << " connections\n";
 
     cell_stencil.resize(n_blocks);
-    struct ClosestCmp { 
+    struct ClosestCmp {
         index_t second;
         index_t conn_id;
         bool operator()(const ClosestCmp& a, const ClosestCmp& b)
@@ -1199,7 +1200,7 @@ conn_mesh::reverse_and_sort_mpsa()
             offset[conn_counter] = s_acc;
 			if (one_way_flux.size()) copy_n(one_way_flux.begin() + n_vars * conn_id, n_vars, flux.begin() + n_vars * conn_counter);
 			conn_counter++;
- 
+
             //size = one_way_fst_offset[conn_id + 1] - one_way_fst_offset[conn_id];
             //ind.resize(size);
             //iota(ind.begin(), ind.end(), one_way_fst_offset[conn_id]);
@@ -1317,7 +1318,7 @@ conn_mesh::reverse_and_sort_pm()
 	rhs_biot.resize(n_two_way_conns * n_vars);
 	if (one_way_rhs_face.size())
 	  rhs_face.resize(n_two_way_conns * n_vars);
-	
+
 	for (index_t i = 0; i < n_blocks; i++)
 	{
 		const auto& cur_cell = t_idxs[i];
@@ -1352,10 +1353,10 @@ conn_mesh::reverse_and_sort_pm()
 
 			// store sorted conn ids
 			it = std::find(contact_cell_ids.begin(), contact_cell_ids.end(), std::make_pair(i, conn.second));
-			if ( it != contact_cell_ids.end() )	
+			if ( it != contact_cell_ids.end() )
 				fault_conn_id[std::distance(contact_cell_ids.begin(), it)].push_back(conn_counter);
 			it = std::find(contact_cell_ids.begin(), contact_cell_ids.end(), std::make_pair(conn.second, i));
-			if (it != contact_cell_ids.end())	
+			if (it != contact_cell_ids.end())
 				fault_conn_id[std::distance(contact_cell_ids.begin(), it)].push_back(conn_counter);
 
 			sorted_conn_ids[conn_counter] = conn_id;
@@ -1489,7 +1490,7 @@ conn_mesh::reverse_and_sort_pm_mech_discretizer()
 	  block_p[conn_counter] = conn.second;
 	  offset[conn_counter] = s_acc;
 	  conn_id = conn.conn_id;
-	  
+
 	  copy_n(one_way_hooke_rhs.begin() + conn_id * n_dim, n_dim, hooke_rhs.begin() + conn_counter * n_dim);
 	  copy_n(one_way_biot_rhs.begin() + conn_id * n_dim, n_dim, biot_rhs.begin() + conn_counter * n_dim);
 	  darcy_rhs[conn_counter] = one_way_darcy_rhs[conn_id];
@@ -1733,11 +1734,27 @@ conn_mesh::init_grav_coef(value_t grav_const)
   return 0;
 }
 
+int conn_mesh::init_spe(value_t grav_acceleration_for_spe)
+{
+	// Calculate and store specific potential energy (spe) at cell centroids
+	cell_spe.assign(n_blocks, 0);
+
+	for (size_t i = 0; i < depth.size(); i++)
+	{
+		// It is multiplied by -1 because for spe height needs to be used instead of depth
+		// It is multiplied by 1e-3 to convert Joule to kilo Joule
+		// Use depth[0] as the reference depth
+		cell_spe[i] = - (depth[i] - depth[0]) * grav_acceleration_for_spe * 1e-3;
+	}
+
+	return 0;
+}
+
 int conn_mesh::get_res_tran(std::vector<value_t>& res_tran, std::vector<value_t>& res_tranD)
 {
   res_tran.resize(n_one_way_conns_res);
-  
-  
+
+
   for (index_t j = 0; j < n_one_way_conns_res; ++j)
   {
     res_tran[j] = tran[one_way_to_conn_index_forward[j]];
@@ -1790,7 +1807,7 @@ int conn_mesh::get_wells_tran(std::vector<value_t>& well_tran)
       well_tran[i++] = tran[j];
     }
   }
-  
+
   return 0;
 }
 
@@ -1805,7 +1822,7 @@ int conn_mesh::set_wells_tran(std::vector<value_t>& well_tran)
       // update correspondent forward and reverse connections
       tran[one_way_to_conn_index_forward[conn_index_to_one_way[j]]] = well_tran[i];
       tran[one_way_to_conn_index_reverse[conn_index_to_one_way[j]]] = well_tran[i];
-      
+
       i++;
     }
   }
@@ -1817,8 +1834,9 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 {
   index_t well_head_idx = n_res_blocks;
   n_perfs = 0;
+  n_res_conns = n_conns;
 
-  // Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments, 
+  // Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments,
   // which are connected to the reservoir. In addition, there is one more grid block (H-block)
   // per well, which is at the top, connected to the first well segment,
   // served as a container for well control equations.
@@ -1828,7 +1846,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   {
     wells[iw]->well_head_idx = well_head_idx; // well head
     wells[iw]->well_body_idx = well_head_idx + 1; // well body
-    
+
     index_t n_segments = 0;
     // connections between well segments and reservoir
     for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
@@ -1939,7 +1957,7 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 	heat_capacity.resize(heat_capacity.size() + dofs_num);
 	//rock_cond.resize(n_blocks + n_bounds);
 
-	// Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments, 
+	// Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments,
 	// which are connected to the reservoir. In addition, there is one more grid block (H-block)
 	// per well, which is at the top, connected to the first well segment,
 	// served as a container for well control equations.
