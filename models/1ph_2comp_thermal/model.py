@@ -9,6 +9,16 @@ from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 
+class WaterVisc():  # not checked, taking from ChatGPT
+    def __init__(self):
+        self.A = 2.414e-2  # kPa·s
+        self.B = 247.8
+        self.C = 140.0
+
+    def evaluate(self, temperature):
+        visc = self.A * 10 ** (self.B / (temperature - self.C))
+        return visc
+
 
 class Model(CICDModel):
     def __init__(self):
@@ -18,9 +28,9 @@ class Model(CICDModel):
         # measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
-        nx = 500
+        nx = 1000
         perm = 100
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1000.0 / nx, dy=1.0, dz=1, poro=0.2,
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=600 / nx, dy=1.0, dz=1, poro=0.2,
                                          permx=perm, permy=perm, permz=perm, hcap=2000, rcond=100, depth=1000)
 
         """Physical properties"""
@@ -32,7 +42,7 @@ class Model(CICDModel):
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014))])
-        property_container.viscosity_ev = dict([('wat', ConstFunc(0.3))])
+        property_container.viscosity_ev = dict([('wat', WaterVisc())])
         property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18))])
         property_container.conductivity_ev = dict([('wat', ConstFunc(75))])
 
@@ -110,7 +120,7 @@ class ModelProperties(PropertyContainer):
         M = np.sum(self.x[j, :] * self.Mw)
         self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure)  # output in [kg/m3]
         self.dens_m[j] = self.dens[j] / M
-        self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
+        self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(self.temperature)  # output in [cp]
 
         self.sat[j] = 1
         self.kr[j] = 1
