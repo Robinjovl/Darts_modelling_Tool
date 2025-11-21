@@ -182,6 +182,8 @@ public:
   /// @brief reverse connections and sort them by both row and col for derivatives of velocities at all connections
   using MixedType = std::variant<int, std::vector<value_t>>;
   std::vector<MixedType> reverse_and_sort_velocities_derivatives(std::vector<MixedType> phase_velocities_derivatives);
+  /// @brief negate MixedType
+  MixedType negate_mixed_type(const MixedType& x);
   /// @brief reverse connections and renumerate velocity mappers and sort them by both row and col
   int reverse_and_sort_dvel();
   /// @brief reverse mpsa connections and sort them by both row and col

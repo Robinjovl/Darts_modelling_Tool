@@ -838,8 +838,8 @@ conn_mesh::reverse_and_sort_one_way_prop(const std::vector<T>& one_way_prop)
 	std::vector<T> two_way_prop(n_conns);
 	for (index_t j = 0; j < n_conns / 2; ++j)
 	{
-		two_way_prop[one_way_to_conn_index_forward[j]] = one_way_prop[j];  // m->p
-		two_way_prop[one_way_to_conn_index_reverse[j]] = one_way_prop[j];  // p->m (same value or negate if needed)
+		two_way_prop[one_way_to_conn_index_forward[j]] = -one_way_prop[j];  // m->p
+		two_way_prop[one_way_to_conn_index_reverse[j]] = one_way_prop[j];  // p->m
 	}
 
 	return two_way_prop;
@@ -860,11 +860,33 @@ conn_mesh::reverse_and_sort_velocities_derivatives(std::vector<MixedType> one_wa
 	std::vector<MixedType> two_way_phase_velocities_derivatives(n_conns);
 	for (index_t j = 0; j < n_conns / 2; ++j)
 	{
-		two_way_phase_velocities_derivatives[one_way_to_conn_index_forward[j]] = one_way_phase_velocities_derivatives[j]; // m->p
-		two_way_phase_velocities_derivatives[one_way_to_conn_index_reverse[j]] = one_way_phase_velocities_derivatives[j]; // p->m (same value or negate if needed)
+		two_way_phase_velocities_derivatives[one_way_to_conn_index_forward[j]] = negate_mixed_type(one_way_phase_velocities_derivatives[j]); // m->p
+		two_way_phase_velocities_derivatives[one_way_to_conn_index_reverse[j]] = one_way_phase_velocities_derivatives[j]; // p->m
 	}
 
 	return two_way_phase_velocities_derivatives;
+}
+
+MixedType
+conn_mesh::negate_mixed_type(const MixedType& x)
+{
+	return std::visit([](auto&& arg) -> MixedType
+		{
+		using T = std::decay_t<decltype(arg)>;
+
+		if constexpr (std::is_same_v<T, int>)
+		{
+			// int means "no derivative", we just return it unchanged.
+			return arg;
+		}
+		else if constexpr (std::is_same_v<T, std::vector<value_t>>)
+		{
+			T result = arg;
+			for (auto& v : result)
+				v = -v;
+			return result;
+		}
+		}, x);
 }
 
 int

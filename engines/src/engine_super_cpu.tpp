@@ -400,168 +400,35 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             // [2] fill offdiagonal part + contribute to diagonal, only fluid part is considered in energy equation
             for (uint8_t p = 0; p < NP; p++)
             { // loop over number of phases for convective operator
-
-                // calculate gravity term for phase p
-                value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
-
-                // p = 1 means oil phase, it's reference phase. pw=po-pcow, pg=po-(-pcog).
-                value_t phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
-
-                // calculate partial derivatives for gravity and capillary terms
+                value_t phase_p_diff;
                 value_t grav_pc_der_i[N_VARS];
                 value_t grav_pc_der_j[N_VARS];
-                for (uint8_t v = 0; v < N_VARS; v++)
+                if (!DFM_conn)
                 {
-                    grav_pc_der_i[v] = (op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
-                    grav_pc_der_j[v] = (op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
+                    // calculate gravity term for phase p
+                    value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+
+                    // p = 1 means oil phase, it's reference phase. pw=po-pcow, pg=po-(-pcog).
+                    phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
+
+                    // calculate partial derivatives for gravity and capillary terms
+                    for (uint8_t v = 0; v < N_VARS; v++)
+                    {
+                        grav_pc_der_i[v] = (op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
+                        grav_pc_der_j[v] = (op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
+                    }
+                }
+                else if (DFM_conn)
+                {
+                    if (p == 0)
+                        phase_p_diff = phase_A_vels[conn_idx]; // value of phase_p_diff is not important, only its sign is used
+                    else if (p == 1)
+                        phase_p_diff = phase_B_vels[conn_idx]; // value of phase_p_diff is not important, only its sign is used
+                    else if (p == 2)
+                        phase_p_diff = phase_B_vels[conn_idx]; // value of phase_p_diff is not important, only its sign is used
                 }
 
                 phase_fluxes[p] = 0.0;
-
-                if (DFM_conn)
-                {
-                    if (j > i)
-                    {
-                        if (p == 0)
-                        {
-                            if (phase_A_vels[conn_idx] >= 0)
-                            {
-                                phase_p_diff = -1;   // nagative (its value is not important)
-                                phase_A_vels[conn_idx] = -phase_A_vels[conn_idx];
-
-                                std::visit([&](auto& element) {
-                                    using T = std::decay_t<decltype(element)>;
-                                    if constexpr (std::is_same_v<T, std::vector<value_t>>)
-                                    {
-                                        for (auto& val : element)
-                                        {
-                                            val = -val;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        throw std::runtime_error("Unexpected type in phase_A_vels_ders");
-                                    }
-                                    }, phase_A_vels_ders[conn_idx]);
-
-                            }
-                            else if (phase_A_vels[conn_idx] < 0)
-                            {
-                                phase_p_diff = 1;   // positive (its value is not important)
-                                phase_A_vels[conn_idx] = -phase_A_vels[conn_idx];
-
-                                std::visit([&](auto& element) {
-                                    using T = std::decay_t<decltype(element)>;
-                                    if constexpr (std::is_same_v<T, std::vector<value_t>>)
-                                    {
-                                        for (auto& val : element)
-                                        {
-                                            val = -val;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        throw std::runtime_error("Unexpected type in phase_A_vels_ders");
-                                    }
-                                    }, phase_A_vels_ders[conn_idx]);
-
-                            }
-                        }
-                        else if (p == 1)
-                        {
-                            if (phase_B_vels[conn_idx] >= 0)
-                            {
-                                phase_p_diff = -1;   // nagative (its value is not important)
-                                phase_B_vels[conn_idx] = -phase_B_vels[conn_idx];
-
-                                std::visit([&](auto& element) {
-                                    using T = std::decay_t<decltype(element)>;
-                                    if constexpr (std::is_same_v<T, std::vector<value_t>>)
-                                    {
-                                        for (auto& val : element)
-                                        {
-                                            val = -val;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        throw std::runtime_error("Unexpected type in phase_B_vels_ders");
-                                    }
-                                    }, phase_B_vels_ders[conn_idx]);
-
-                            }
-                            else if (phase_B_vels[conn_idx] < 0)
-                            {
-                                phase_p_diff = 1;   // positive (its value is not important)
-                                phase_B_vels[conn_idx] = -phase_B_vels[conn_idx];
-
-                                std::visit([&](auto& element) {
-                                    using T = std::decay_t<decltype(element)>;
-                                    if constexpr (std::is_same_v<T, std::vector<value_t>>)
-                                    {
-                                        for (auto& val : element)
-                                        {
-                                            val = -val;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        throw std::runtime_error("Unexpected type in phase_B_vels_ders");
-                                    }
-                                    }, phase_B_vels_ders[conn_idx]);
-
-                            }
-                        }
-                        else if (p == 2)
-                        {
-                            if (phase_B_vels[conn_idx] >= 0)
-                            {
-                                phase_p_diff = -1;   // nagative (its value is not important)
-                            }
-                            else if (phase_B_vels[conn_idx] < 0)
-                            {
-                                phase_p_diff = 1;   // positive (its value is not important)
-                            }
-                        }
-                    }
-
-                    if (j < i)
-                    {
-                        if (p == 0)
-                        {
-                            if (phase_A_vels[conn_idx] >= 0)
-                            {
-                                phase_p_diff = 1;   // positive (its value is not important)
-                            }
-                            else if (phase_A_vels[conn_idx] < 0)
-                            {
-                                phase_p_diff = -1;   // nagative (its value is not important)
-                            }
-                        }
-                        else if (p == 1)
-                        {
-                            if (phase_B_vels[conn_idx] >= 0)
-                            {
-                                phase_p_diff = 1;   // positive (its value is not important)
-                            }
-                            else if (phase_B_vels[conn_idx] < 0)
-                            {
-                                phase_p_diff = -1;   // nagative (its value is not important)
-                            }
-                        }
-                        else if (p == 2)
-                        {
-                            if (phase_B_vels[conn_idx] >= 0)
-                            {
-                                phase_p_diff = 1;   // positive (its value is not important)
-                            }
-                            else if (phase_B_vels[conn_idx] < 0)
-                            {
-                                phase_p_diff = -1;   // nagative (its value is not important)
-                            }
-                        }
-                    }
-                }
 
                 if (phase_p_diff < 0)
                 {
