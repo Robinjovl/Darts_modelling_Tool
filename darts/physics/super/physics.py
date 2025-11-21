@@ -115,7 +115,7 @@ class Compositional(PhysicsBase):
         else:
             n_axes_points = index_vector(n_axes_points)
 
-        self.is_coupled_well_res_model = False
+        self.has_DFM_well = False
 
         # Call PhysicsBase constructor
         super().__init__(
@@ -165,7 +165,7 @@ class Compositional(PhysicsBase):
                 self.property_containers[region], self.thermal
             )
 
-        if not self.is_coupled_well_res_model:
+        if not self.has_DFM_well:
             if self.thermal:
                 self.well_operators = ReservoirOperators(
                     self.property_containers[self.regions[0]], self.thermal
@@ -174,7 +174,7 @@ class Compositional(PhysicsBase):
                 self.well_operators = WellOperators(
                     self.property_containers[self.regions[0]], self.thermal
                 )
-        elif self.is_coupled_well_res_model:
+        elif self.has_DFM_well:
             self.well_operators = WellOperators(
                 self.property_containers[self.regions[0]], self.thermal
             )

@@ -53,13 +53,13 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   engine_base::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
   this->expose_jacobian();
 
-  // If at least a DFM well is used, set has_DFM to true.
-  has_DFM = false;
+  // If the model has at least a DFM well, set has_DFM_well to true.
+  has_DFM_well = false;
   for (ms_well* w : wells)
   {
       if (w->ms_type == ms_well::MS_Type::DFM)
       {
-          has_DFM = true;
+          has_DFM_well = true;
           break;
       }
   }
@@ -148,7 +148,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     std::vector<MixedType> phase_A_vels_ders;
     std::vector<MixedType> phase_B_vels_ders;
 
-    if (has_DFM)
+    if (has_DFM_well)
     {
         // --- Start evaluating phase velocities and derivatives in DFM wells
         std::vector<value_t> one_way_phase_A_vels;

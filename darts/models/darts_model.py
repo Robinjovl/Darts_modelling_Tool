@@ -155,7 +155,7 @@ class DartsModel:
         assert self.reservoir is not None, "Reservoir object has not been defined"
         self.reservoir.init_reservoir(verbose)
         self.set_wells()
-        self.is_coupled_well_res_model = self.physics.is_coupled_well_res_model = any(
+        self.has_DFM_well = self.physics.has_DFM_well = any(
             well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
         )
 
@@ -704,29 +704,31 @@ class DartsModel:
         residual_history = []
         for i in range(max_newt + 1):
             # Update well phase velocities and derivatives if DFM wells are used
-            if self.is_coupled_well_res_model:
+            if self.has_DFM_well:
                 self.update_dfm_well_phase_velocities_and_derivatives(
                     dt, t, self.iter_counter
                 )
 
-            self.physics.engine.assemble_linear_system(
-                dt
-            )  # assemble Jacobian and residual of reservoir and well blocks
-            self.apply_rhs_flux(dt, t)  # apply RHS flux
-            if self.is_coupled_well_res_model:
+            # assemble Jacobian and residual of reservoir and well blocks
+            self.physics.engine.assemble_linear_system(dt)
+
+            # apply RHS flux
+            self.apply_rhs_flux(dt, t)
+
+            if self.has_DFM_well:
                 self.apply_dfm_well_lateral_heat_flux(dt, t)
+
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
 
-            if not self.is_coupled_well_res_model:
+            if not self.has_DFM_well:
                 self.physics.engine.newton_residual_last_dt = (
                     self.physics.engine.calc_newton_residual()
                 )  # calc norm of residual
-            elif (
-                self.is_coupled_well_res_model
-            ):  # TODO Function line_search is not updated for the coupled model.
+            # TODO Function line_search is not updated for the coupled model.
+            elif self.has_DFM_well:
                 # Method is either 1 or 2
                 self.physics.engine.newton_residual_last_dt = (
                     self.physics.engine.calc_coupled_well_reservoir_residual(
@@ -848,10 +850,6 @@ class DartsModel:
                 )
                 w.phase_vels = value_vector(well_phase_v)
                 w.phase_vels_ders = value_vector(well_phase_v_d)
-
-                # if self.physics.property_containers[0].thermal:
-                #     phase_specific_potential_energy_up = self.wells[w.name].evaluate_upwinded_phase_specific_potential_energy(w, well_phase_v)
-                #     w.phase_specific_potential_energy_up = value_vector(phase_specific_potential_energy_up)
 
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:

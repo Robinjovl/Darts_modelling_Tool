@@ -72,8 +72,8 @@ public:
   // Define extra class property stoichiometric coefficient of the reaction (now hard coded, but has to become input?, maybe required to be placed somewhere else?):
   std::vector<index_t> stoich_coef;
 
-  // If the model has DFM wells or not
-  bool has_DFM;
+  // If the model has at least a DFM well or not
+  bool has_DFM_well;
 
   // number of variables per jacobian matrix block
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;

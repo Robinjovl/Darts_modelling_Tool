@@ -28,7 +28,7 @@ struct engine_super_exposer
     py::class_<engine_super_cpu<NC, NP, THERMAL>, engine_base>(m, short_name.c_str(), long_name.c_str())   \
       .def(py::init<>()) \
       .def("init", (int (engine_super_cpu<NC, NP, THERMAL>::*)(conn_mesh*, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) & engine_super_cpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>())
-      .def_property_readonly("has_DFM", [](const engine_super_cpu<NC, NP, THERMAL>& self) { return self.has_DFM; }, "True if the model has DFM wells");
+      .def_property_readonly("has_DFM_well", [](const engine_super_cpu<NC, NP, THERMAL>& self) { return self.has_DFM_well; }, "True if the model has at least a DFM well");
 	}
 };
 
