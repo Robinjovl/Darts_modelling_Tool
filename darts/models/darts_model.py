@@ -91,26 +91,31 @@ class DartsModel:
         engines_pbi()
         discretizer_pbi()
         package_pbi()
-        self.timer = timer_node()  # Create time_node object for time record
-        self.timer.start()  # Start time record
-        self.timer.node["simulation"] = (
-            timer_node()
-        )  # Create timer.node called "simulation" to record simulation time
+
+        # Create time_node object for time record
+        self.timer = timer_node()
+
+        # Start time record
+        self.timer.start()
+
+        # Create timer.node called "simulation" to record simulation time
+        self.timer.node["simulation"] = timer_node()
+
         self.timer.node["newton update"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
         self.timer.node["output"] = timer_node()
-        self.timer.node["initialization"] = (
-            timer_node()
-        )  # Create timer.node called "initialization" to record initialization time
-        self.timer.node[
-            "initialization"
-        ].start()  # Start recording "initialization" time
 
-        self.params = (
-            sim_params()
-        )  # Create sim_params object to set simulation parameters
+        # Create timer.node called "initialization" to record initialization time
+        self.timer.node["initialization"] = timer_node()
 
-        self.timer.node["initialization"].stop()  # Stop recording "initialization" time
+        # Start recording "initialization" time
+        self.timer.node["initialization"].start()
+
+        # Create sim_params object to set simulation parameters
+        self.params = sim_params()
+
+        # Stop recording "initialization" time
+        self.timer.node["initialization"].stop()
 
     def init(
         self,
