@@ -30,7 +30,9 @@ class Model(CICDModel):
         self.set_physics(n_points=10001)
 
         self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3,
-                            tol_linear=1e-5, it_newton=10, it_linear=50)
+                            tol_linear=1e-5, it_newton=10, it_linear=50,
+                            runtime=50, # This runtime will be used when CI test is conducted without the main file
+                            )
 
         self.timer.node["initialization"].stop()
 
