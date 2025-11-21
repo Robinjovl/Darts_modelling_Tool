@@ -19,6 +19,7 @@ class ReservoirBase:
     def __init__(self, timer: timer_node, cache: bool = False):
         # Initialize timer for initialization and caching
         self.timer = timer.node["initialization"]
+
         self.cache = cache
         self.wells = []
 
@@ -41,9 +42,8 @@ class ReservoirBase:
 
         It calls discretize() to generate mesh object and adds the wells with perforations to the mesh.
         """
-        if not hasattr(
-            self, "mesh"
-        ):  # to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
+        # if block is used to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
+        if not hasattr(self, "mesh"):
             self.mesh = self.discretize(verbose)
         return
 
