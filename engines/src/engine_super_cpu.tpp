@@ -400,6 +400,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             // [2] fill offdiagonal part + contribute to diagonal, only fluid part is considered in energy equation
             for (uint8_t p = 0; p < NP; p++)
             { // loop over number of phases for convective operator
+
                 value_t phase_p_diff;
                 value_t grav_pc_der_i[N_VARS];
                 value_t grav_pc_der_j[N_VARS];
