@@ -97,7 +97,7 @@ class Model(DartsModel):
             "I2": [5100.0, 0.0, 700.0]
         }
 
-        if 0:
+        if 1:
             from fluidflower_str_b import FluidFlowerStruct
             self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
                                                 layers_to_regions=layers_to_regions,
@@ -124,8 +124,8 @@ class Model(DartsModel):
 
         if specs['platform'] == 'cpu':
             self.platform = 'cpu'
-            from darts.engines import set_num_threads
-            set_num_threads(16)
+            # from darts.engines import set_num_threads
+            # set_num_threads(16)
         elif specs['platform'] == 'gpu':
             self.platform = 'gpu'
             from darts.engines import set_gpu_device

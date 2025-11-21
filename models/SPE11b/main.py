@@ -20,6 +20,10 @@ except ImportError:
     pass
 from fluidflower_str_b import FluidFlowerStruct
 
+# import os
+# print("PID =", os.getpid())
+# input("Attach VS and press Enter...")
+
 #%% FUNCTIONS
 
 def build_output_dir(spec, base_dir="results"):
@@ -36,7 +40,7 @@ def build_output_dir(spec, base_dir="results"):
     return os.path.join(base_dir, dir_name)
 
 def output(m, ts):
-    # save reservoir solution
+    # save reservoir solutionkj
     m.output.save_data_to_h5('reservoir')
 
     # evaluate base properties
@@ -259,14 +263,13 @@ else:
     platform = 'cpu'
 
 model_specs = [
-
-    {'check_rates': True, 'temperature': 45 + 273.15, '1000years': None, 'RHS': False, 'components': ['CO2', 'H2O'],
-         'inj_stream': [1-zero, 283.15], 'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None,
+    {'check_rates': True, 'temperature': None, '1000years': None, 'RHS': False, 'components': ['CO2', 'H2O'],
+         'inj_stream': [1-zero, 283.15], 'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None,
             'post_process': None, 'platform': platform},
 
-    {'check_rates': True, 'temperature': 60 + 273.15, '1000years': 0, 'RHS': True, 'components': ['CO2', 'H2O'],
-         'inj_stream': [1-zero, 283.15], 'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None,
-            'post_process': None, 'platform': platform},
+    # {'check_rates': True, 'temperature': 60 + 273.15, '1000years': 0, 'RHS': True, 'components': ['CO2', 'H2O'],
+    #      'inj_stream': [1-zero, 283.15], 'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None,
+    #         'post_process': None, 'platform': platform},
 
     # {'check_rates': True, 'temperature': None, '1000years': 5, 'RHS': True, 'components': ['CO2', 'H2O'],
     #      'inj_stream': [1-zero, 283.15], 'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None,
@@ -354,6 +357,8 @@ if __name__ == '__main__':
             # m.output.set_phase_properties()
             m.output.set_units()
             m.output.print_simulation_parameters()
+
+            m.output.output_properties(output_properties = m.output.properties)
 
             if specs['dispersion']:
                 m.init_dispersion()
