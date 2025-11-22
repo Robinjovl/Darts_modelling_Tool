@@ -47,13 +47,13 @@ class StructRadialReservoir(StructReservoir):
         :type R1: float
         :param angle: Angle of radial slice [degrees], default is 360
         :type angle: float
-        :param depth: Depth of upper layer [m]
+        :param depth: Depth of centroid of top layer [m]
         :param rcond: Rock conductivity [kJ/m.K.day]
         :param hcap: Rock volumetric heat capacity [kJ/m3.K]
         :param op_num: Operator numbers
         :param boundary_volume: Volume of outer boundary cells
         """
-        depth_upper = depth
+        depth_top = depth
         if logspace:
             '''
             Near-centre refined grid
@@ -117,9 +117,17 @@ class StructRadialReservoir(StructReservoir):
             dy = dy.reshape(nr, 1, nz)
             dz = dz.reshape(nr, 1, nz)
 
-            self.z = np.cumsum(dz[0, 0, :]) + depth - 0.5 * dz[0, 0, 0]
+            # Depth of exterface of the top block
+            z_top_exterface = depth - 0.5 * dz[0, 0, 0]
+            # Depth of top faces of all blocks
+            z_top_faces = z_top_exterface + np.concatenate(
+                ([0.0], np.cumsum(dz[0, 0, :-1]))
+            )
+            # Depths of centroids of all blocks
+            self.z = z_top_faces + dz[0, 0, :] / 2.0
 
-            depth = np.cumsum(dz, axis=2) + depth - 0.5 * dz[0, ...]
+            depth = z_top_faces[None, None, :] + dz / 2.0
+
         else:
             self.z = np.array([depth])
 
@@ -159,14 +167,14 @@ class StructRadialReservoir(StructReservoir):
         # radial mesh generation for VTK output
         self.r_vertices, self.z_vertices = (
             R0 * np.ones(nr + 1),
-            depth_upper * np.ones(nz + 1),
+            depth_top * np.ones(nz + 1),
         )
         if len(dr.shape) == 1:
             self.r_vertices[1:] = R0 + np.cumsum(dr[:nr])
         else:
             self.r_vertices[1:] = R0 + np.cumsum(dr[:nr, 0, 0])
         self.z_vertices[1:] = (
-            depth_upper + np.cumsum(dz[0, 0, :]) if nz > 1 else depth_upper + dz
+            depth_top + np.cumsum(dz[0, 0, :]) if nz > 1 else depth_top + dz
         )
         self.generate_quarter_radial_grid(
             r_vert=self.r_vertices,
