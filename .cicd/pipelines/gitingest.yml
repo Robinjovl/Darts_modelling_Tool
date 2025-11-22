@@ -1,0 +1,5 @@
+stages:
+    - ingest
+
+include:
+  - local: '.cicd/jobs/gitingest.yml'

@@ -1,23 +1,37 @@
-stages:
-    - pre_commit
-    - build_images
-    - build
-    - test
-    - deploy
-    - ingest
+workflow:
+  name: '$PIPELINE_TYPE:$CI_COMMIT_REF_NAME'
+  rules:
+    - if: $ENABLE_GITINGEST == "1"
+      variables:
+        PIPELINE_TYPE: 'gitingest'
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        PIPELINE_TYPE: 'default'
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+      variables:
+        PIPELINE_TYPE: 'default'
+    - if: $CI_COMMIT_TAG
+      variables:
+        PIPELINE_TYPE: 'default'
+    - when: never
 
-include:
-  - local: '.cicd/jobs/pre-commit.yml'
-  - local: '.cicd/jobs/build-images.yml'
-  - local: '.cicd/jobs/build-linux.yml'
-  - local: '.cicd/jobs/build-windows.yml'
-  - local: '.cicd/jobs/build-linux-gpu.yml'
-  - local: '.cicd/jobs/build-linux-valgrind.yml'
-  - local: '.cicd/jobs/test-linux.yml'
-  - local: '.cicd/jobs/test-windows.yml'
-  - local: '.cicd/jobs/test-linux-gpu.yml'
-  - local: '.cicd/jobs/valgrind-check.yml'
-  # - local: '.cicd/jobs/vtune-profile.yml'
-  - local: '.cicd/jobs/upload-wheels.yml'
-  - local: '.cicd/jobs/deploy.yml'
-  - local: '.cicd/jobs/gitingest.yml'
+stages:
+    - orchestrate
+
+default-pipeline:
+    stage: orchestrate
+    trigger:
+        include:
+            - local: '.cicd/pipelines/default.yml'
+        strategy: depend
+    rules:
+        - if: $PIPELINE_TYPE == "default"
+
+gitingest-pipeline:
+    stage: orchestrate
+    trigger:
+        include:
+            - local: '.cicd/pipelines/gitingest.yml'
+        strategy: depend
+    rules:
+        - if: $PIPELINE_TYPE == "gitingest"
