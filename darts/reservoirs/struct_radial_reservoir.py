@@ -48,12 +48,18 @@ class StructRadialReservoir(StructReservoir):
         :param angle: Angle of radial slice [degrees], default is 360
         :type angle: float
         :param depth: Depth of centroid of top layer [m]
+        :type depth: float
         :param rcond: Rock conductivity [kJ/m.K.day]
         :param hcap: Rock volumetric heat capacity [kJ/m3.K]
         :param op_num: Operator numbers
         :param boundary_volume: Volume of outer boundary cells
         """
-        depth_top = depth
+        # Get top exterface depth for VTK output
+        if isinstance(dz, int | float):
+            top_exterface_depth = depth - dz / 2
+        else:
+            top_exterface_depth = depth - dz[0] / 2
+
         if logspace:
             '''
             Near-centre refined grid
@@ -167,14 +173,16 @@ class StructRadialReservoir(StructReservoir):
         # radial mesh generation for VTK output
         self.r_vertices, self.z_vertices = (
             R0 * np.ones(nr + 1),
-            depth_top * np.ones(nz + 1),
+            top_exterface_depth * np.ones(nz + 1),
         )
         if len(dr.shape) == 1:
             self.r_vertices[1:] = R0 + np.cumsum(dr[:nr])
         else:
             self.r_vertices[1:] = R0 + np.cumsum(dr[:nr, 0, 0])
         self.z_vertices[1:] = (
-            depth_top + np.cumsum(dz[0, 0, :]) if nz > 1 else depth_top + dz
+            top_exterface_depth + np.cumsum(dz[0, 0, :])
+            if nz > 1
+            else top_exterface_depth + dz
         )
         self.generate_quarter_radial_grid(
             r_vert=self.r_vertices,
