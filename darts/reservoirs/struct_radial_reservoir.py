@@ -212,6 +212,9 @@ class StructRadialReservoir(StructReservoir):
             r_vert += 0.1
         phi, z, r = np.meshgrid(phi_vert, z_vert, r_vert, indexing='ij')
 
+        # Flip depth sign for VTK (positive z in DARTS is downward, while negative z in ParaView is downward)
+        z = -z
+
         cells = []
         cell_data = {'cell_id': [np.zeros((nr - 1) * (nz - 1) * (nphi - 1))]}
         for k in range(nphi - 1):
