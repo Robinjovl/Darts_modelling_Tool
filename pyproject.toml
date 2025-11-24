@@ -22,7 +22,7 @@ requires-python = ">=3.10"
 dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk',
     'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash', 'phreeqpy']
 
-license = "Apache-2.0"
+license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.md"]
 
 classifiers = [
