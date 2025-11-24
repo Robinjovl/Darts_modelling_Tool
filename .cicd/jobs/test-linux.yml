@@ -49,17 +49,17 @@
       when: always
       expire_in: 1 week
 
-#test-linux-3.13-ODLS:
-#    rules:
-#        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-#        - if: $TEST_ALL_PYTHONS == "1"
-#    extends: .test-linux
-#    variables:
-#        PY_VER: '3.13'        # for python image selection in .test-linux
-#        PY_SUF: 'cp313-cp313' # for python path selection in .test-linux
-#        ODLS: ''              # test with open-darts linear solvers
-#    needs:
-#        - build-linux-3.13-ODLS
+test-linux-3.13-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.13'        # for python image selection in .test-linux
+        PY_SUF: 'cp313-cp313' # for python path selection in .test-linux
+        ODLS: ''              # test with open-darts linear solvers
+    needs:
+        - build-linux-3.13-ODLS
 
 test-linux-3.12-ODLS:
     rules:
@@ -100,17 +100,17 @@ test-linux-3.10-ODLS:
     needs:
         - build-linux-3.10-ODLS
 
-#test-linux-3.13:
-#    rules:
-#        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-#        - if: $TEST_ALL_PYTHONS == "1"
-#    extends: .test-linux
-#    variables:
-#        PY_VER: '3.13'        # for python image selection in .test-linux
-#        PY_SUF: 'cp313-cp313' # for python path selection in .test-linux
-#        ODLS: '-a'
-#    needs:
-#        - build-linux-3.13
+test-linux-3.13:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.13'        # for python image selection in .test-linux
+        PY_SUF: 'cp313-cp313' # for python path selection in .test-linux
+        ODLS: '-a'
+    needs:
+        - build-linux-3.13
 
 test-linux-3.12:
     rules:

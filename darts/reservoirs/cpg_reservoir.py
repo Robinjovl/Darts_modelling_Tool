@@ -158,7 +158,6 @@ class CPG_Reservoir(ReservoirBase):
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
         self.mesh.depth = darts.engines.value_vector(self.discr_mesh.depths)
         self.mesh.volume = darts.engines.value_vector(self.discr_mesh.volumes)
-
         self.bc = np.array(self.mesh.bc, copy=False)
 
         # rock thermal properties

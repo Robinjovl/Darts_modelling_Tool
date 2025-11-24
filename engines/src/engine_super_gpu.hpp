@@ -101,7 +101,6 @@ public:
   value_t *mesh_poro_d;       // [n_blocks] porosity for each block
   value_t *mesh_kin_factor_d; // [n_blocks] kin factor for each block
   value_t *mesh_grav_coef_d;  // [n_conns] porosity for each block
-  value_t *mesh_cell_spe_d;   // [n_blocks] specific potential energy for each block
 };
 
 #include "engine_super_gpu.tpp"

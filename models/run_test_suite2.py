@@ -19,8 +19,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      #'CO2_foam_CCS',
                      'GeoRising',
                      'CoaxWell',
-                     'phreeqc_dissolution',
-                     'effect_of_potential_energy',
+                     'phreeqc_dissolution'
                      ]
 
 

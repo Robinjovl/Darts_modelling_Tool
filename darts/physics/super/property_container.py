@@ -251,11 +251,12 @@ class PropertyContainer(PropertyBase):
 
     def evaluate(self, state: value_vector):
         """
-        Evaluate the phase properties. Phase properties used only in the energy conservation equation
-        are evaluated using a different method.
+        Class methods which evaluates the state operators for the element based physics
 
         :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
         :type state: value_vector
+
+        :return: updated value for operators, stored in values
         """
         # Composition vector and pressure from state:
         pressure, temperature, zc = self.get_state(state)
@@ -310,10 +311,10 @@ class PropertyContainer(PropertyBase):
 
     def evaluate_thermal(self, state):
         """
-        Evaluate the phase properties used only in the energy conservation equation
-
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
-        :type state: value_vector
+        Class methods which evaluates the state operators for the element based physics
+        :param state: state variables [pres, comp_0, ..., comp_N-1]
+        :param values: values of the operators (used for storing the operator values)
+        :return: updated value for operators, stored in values
         """
         # Composition vector and pressure from state:
         pressure, temperature, zc = self.get_state(state)
