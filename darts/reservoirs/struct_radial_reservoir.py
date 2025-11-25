@@ -24,6 +24,7 @@ class StructRadialReservoir(StructReservoir):
         hcap=2200.0,
         op_num=0,
         boundary_volume: float = None,
+        innermost_block_volume: float = None,
     ):
         """
         Structured radial reservoir class (1D/2D). Has option to create logarithmically increasing element size.
@@ -166,9 +167,11 @@ class StructRadialReservoir(StructReservoir):
         self.boundary_cells['outer'] = [(k + 1) * self.nx - 1 for k in range(self.nz)]
 
         self.boundary_volumes['yz_plus'] = boundary_volume
-        self.boundary_volumes['yz_minus'] = boundary_volume
         self.boundary_volumes['xy_plus'] = boundary_volume
         self.boundary_volumes['xy_minus'] = boundary_volume
+
+        if innermost_block_volume is not None:
+            self.boundary_volumes['yz_minus'] = innermost_block_volume
 
         # radial mesh generation for VTK output
         self.r_vertices, self.z_vertices = (
