@@ -362,7 +362,6 @@ target_link_libraries(engines_engines
     opendarts_compiler_flags
     linear_solvers
     engines_interpolator
-    Eigen3::Eigen
 	HYPRE::HYPRE
     pybind11::pybind11
 )

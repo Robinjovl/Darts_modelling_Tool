@@ -46,7 +46,6 @@ target_link_libraries(engines_mechanics
     engines_global
     engines_interpolator
 	opendarts_discretizer
-    Eigen3::Eigen
 	HYPRE::HYPRE
     pybind11::pybind11
 )

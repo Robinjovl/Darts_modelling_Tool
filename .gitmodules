@@ -1,8 +1,3 @@
-[submodule "thirdparty/eigen"]
-	path = thirdparty/eigen
-	url = https://gitlab.com/libeigen/eigen.git
-    branch = master
-
 [submodule "thirdparty/MshIO"]
 	path = thirdparty/MshIO
 	url = https://github.com/qnzhou/MshIO.git

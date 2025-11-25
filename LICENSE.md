@@ -26,10 +26,6 @@ Iterative linear solvers and preconditioners
 [License Apache 2.0](https://github.com/hypre-space/hypre/blob/master/LICENSE-APACHE)
 [License MIT](https://github.com/hypre-space/hypre/blob/master/LICENSE-MIT)
 
-- [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page)
-Used in [SVD for poromechanics](/engines/src/mech/matrix.hpp).
-[License](https://gitlab.com/libeigen/eigen/-/blob/master/COPYING.APACHE)
-
 - [MshIO](https://github.com/qnzhou/MshIO/)
 Used for unstructured grid processing in discretizer.
 The source code is located [discretizer](discretizer/src/mesh/mshio).
