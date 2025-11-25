@@ -77,7 +77,7 @@ class Model(CICDModel, OptModuleSettings):
             self.physics = Geothermal(self.idata, self.timer)
         else:
             # Define fluid components, phases and Flash object
-            from dartsflash.libflash import PXFlash, FlashParams, EoS
+            from dartsflash.libflash import StateSpecification, PXFlash, FlashParams, EoS
             from dartsflash.libflash import CubicEoS, AQEoS
             from dartsflash.components import CompData
             phases = ['water', 'steam']
@@ -106,7 +106,7 @@ class Model(CICDModel, OptModuleSettings):
             zero = 1e-10
             property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, min_z=zero / 10)
 
-            property_container.flash_ev = PXFlash(flash_params, PXFlash.ENTHALPY)
+            property_container.flash_ev = PXFlash(flash_params, StateSpecification.ENTHALPY)
 
             # properties implemented in python
             from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
@@ -114,9 +114,9 @@ class Model(CICDModel, OptModuleSettings):
             from darts.physics.properties.viscosity import MaoDuan2009
             from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
             property_container.enthalpy_ev = {'water': EoSEnthalpy(aq),
-                                              'steam': EoSEnthalpy(ceos)}
+                                              'steam': EoSEnthalpy(ceos, root_flag=EoS.RootFlag.MAX)}
             property_container.density_ev = {'water': Spivey2004(components),
-                                             'steam': EoSDensity(ceos, comp_data.Mw)}
+                                             'steam': EoSDensity(ceos, comp_data.Mw, root_flag=EoS.RootFlag.MAX)}
             property_container.viscosity_ev = {'water': MaoDuan2009(components),
                                                'steam': ConstFunc(0.01)}
             property_container.conductivity_ev = {'water': ConstFunc(172.8),
