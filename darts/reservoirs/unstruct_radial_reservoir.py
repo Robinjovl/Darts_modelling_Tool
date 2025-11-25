@@ -23,11 +23,20 @@ class UnstructRadialReservoir(UnstructReservoir):
         """
         Unstructured radial reservoir class
 
+        :param timer: Timer from DartsModel class
+        :type timer: timer_node
         :param mesh_properties:
-        :param permx: Matrix permeability in the x-direction (scalar or vector)
-        :param permy: Matrix permeability in the y-direction (scalar or vector)
-        :param permz: Matrix permeability in the z-direction (scalar or vector)
-        :param poro: Matrix (and fracture?) porosity (scalar or vector)
+        :type mesh_properties: MeshProperties
+        :param angle: Angle of radial slice [degrees], default is 360
+        :type angle: float
+        :param permx: Matrix permeability in the x-direction
+        :type permx: float or vector
+        :param permy: Matrix permeability in the y-direction
+        :type permy: float or vector
+        :param permz: Matrix permeability in the z-direction
+        :type permz: float or vector
+        :param poro: Matrix (and fracture?) porosity
+        :type poro: float or vector
         :param rcond: Rock conductivity [kJ/m.K.day]
         :param hcap: Rock volumetric heat capacity [kJ/m3.K]
         """

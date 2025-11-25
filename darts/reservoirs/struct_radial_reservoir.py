@@ -19,7 +19,7 @@ class StructRadialReservoir(StructReservoir):
         R0: float = 0.0,
         R1: float = None,
         angle: float = 360.0,
-        depth=0,
+        depth: float = 0,
         rcond=181.44,
         hcap=2200.0,
         op_num=0,
@@ -54,6 +54,11 @@ class StructRadialReservoir(StructReservoir):
         :param hcap: Rock volumetric heat capacity [kJ/m3.K]
         :param op_num: Operator numbers
         :param boundary_volume: Volume of outer boundary cells
+        :type boundary_volume: float
+        :param innermost_block_volume: Volume of the innermost block. This can be used if the user needs to set a large
+        volume to the innermost grid block. This can be useful when using the DFM well model as a standalone wellbore
+        model in open-DARTS.
+        :type innermost_block_volume: float
         """
         # Get top exterface depth for VTK output
         if isinstance(dz, int | float):
