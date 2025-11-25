@@ -99,3 +99,4 @@ def set_input_data_base(idata: InputData, case: str):
     ############################################################################
 
     idata.well_is_inj = lambda wname : "INJ" in wname  # determine well type by well's name
+    idata.compute_all_output_properties = True  # evaluate all properties such as density, viscosity, saturation, etc
