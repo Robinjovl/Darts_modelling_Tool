@@ -115,7 +115,6 @@ target_link_libraries(opendarts_discretizer
     discretizer_build_info
     discretizer_mesh
     discretizer_linalg
-	  Eigen3::Eigen
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)
@@ -170,7 +169,6 @@ target_sources(discretizer_linalg
 target_link_libraries(discretizer_linalg
   INTERFACE
     opendarts_compiler_flags
-	  Eigen3::Eigen
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

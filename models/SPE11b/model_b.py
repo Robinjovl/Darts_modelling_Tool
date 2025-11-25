@@ -237,13 +237,13 @@ class Model(DartsModel):
         nc, ni = comp_data.nc, comp_data.ni
         # len(components)
         flash_params = FlashParams(comp_data)
-        flash_params.add_eos("PR", CubicEoS(comp_data, CubicEoS.PR))
-        flash_params.add_eos("AQ", AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
-                                                      AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
-                                                      AQEoS.CompType.ion: AQEoS.Jager2003
-                                                      }))
-        pr = flash_params.eos_params["PR"].eos
-        aq = flash_params.eos_params["AQ"].eos
+        pr = CubicEoS(comp_data, CubicEoS.PR)
+        aq = AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
+                               AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
+                               AQEoS.CompType.ion: AQEoS.Jager2003
+                               })
+        flash_params.add_eos("PR", pr)
+        flash_params.add_eos("AQ", aq)
         flash_params.eos_order = ["PR", "AQ"]
         phases = ["V", "Aq"]
 
