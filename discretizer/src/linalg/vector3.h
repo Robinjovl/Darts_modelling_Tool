@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <array>
+#include <cstdint>
 #include "linalg/matrix.h"
 
 namespace linalg
