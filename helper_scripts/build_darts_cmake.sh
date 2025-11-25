@@ -127,15 +127,13 @@ if [[ "$skip_req" == false ]]; then
     # update submodules
     echo -e "\n- Update submodules: START \n"
     # clean-up previous versions.
-    rm -rf thirdparty/eigen \
-            thirdparty/pybind11 \
+    rm -rf thirdparty/pybind11 \
             thirdparty/MshIO \
             thirdparty/hypre \
             thirdparty/iphreeqc
     # synchronize & update submodules
     git submodule sync --recursive
     git submodule update --init --recursive -- \
-            thirdparty/eigen \
             thirdparty/pybind11 \
             thirdparty/MshIO \
             thirdparty/hypre
@@ -149,13 +147,7 @@ if [[ "$skip_req" == false ]]; then
     echo -e "\n- Install requirements: START \n"
     cd thirdparty
 
-    echo -e "\n-- Install EIGEN 3 \n"
-    mkdir -p build/eigen
-    cd build/eigen
-    cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  &> ../../../make_eigen.log
-    make install -j $NT &>> ../../../make_eigen.log
-    cd ../../
-
+    mkdir -p build
     echo -e "\n-- Install Hypre: START\n"
     cd hypre/src/cmbuild
     # Setup hypre build with no MPI support (we only use single processor)
