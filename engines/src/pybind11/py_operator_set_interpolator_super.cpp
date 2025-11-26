@@ -56,13 +56,13 @@ void pybind_operator_set_interpolator_super(py::module &m)
     ABPair<2, 0>,     // poroelasticity, pm engine
 
     /*  engine_super_elastic_*
-        N_OPS = (2 * NP + 2) * NC + 6 * NP + 4
+        N_OPS = (2 * NP + 2) * NC + 7 * NP + 4
     */
     // NP = 1: A =  4, B =  8
-    ABPair<4, 12>,     // poroelasticity, single-phase
+    ABPair<4, 11>,     // poroelasticity, single-phase
 
     // NP = 1: A =  6, B =  12
-    ABPair<6, 20>     // poroelasticity, two-phase
+    ABPair<6, 18>     // poroelasticity, two-phase
   >(m);
 }
 
