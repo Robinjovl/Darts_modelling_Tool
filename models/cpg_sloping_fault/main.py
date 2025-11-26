@@ -301,7 +301,6 @@ if __name__ == '__main__':
     #cases_list += ['40x40x10']
     #cases_list += ['40x40x10_hcap']
     #cases_list += ['40x40x10_regions']
-    #cases_list += ['brugge']
 
     well_controls = []
     well_controls += ['wrate']
