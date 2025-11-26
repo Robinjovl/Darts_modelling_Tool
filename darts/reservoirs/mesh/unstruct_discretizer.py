@@ -533,7 +533,8 @@ class UnstructDiscretizer:
         self.vtk_output_nodes_to_cells = {'fracture': {}, 'matrix': {}}
         self.vtk_output_cell_idxs = {'fracture': {}, 'matrix': {}}
         cell_count = 0
-        for geometry in self.geom_order:
+
+        for geometry in self.mesh_data.cell_data_dict['gmsh:physical'].keys():
             tags = self.mesh_data.cell_data_dict['gmsh:physical'][geometry]
             nodes = {}
             cell_idxs = {}
