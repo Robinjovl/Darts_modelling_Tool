@@ -344,7 +344,7 @@ class UnstructReservoir(ReservoirBase):
                                 ).tolist()
                         else:
                             cell_data[prop][ith_geometry] += data.flatten()[
-                                cell_idxs 
+                                cell_idxs
                             ].tolist()
                         ith_geometry += 1
                     # Fill matrix cells with zeros
