@@ -18,7 +18,6 @@ class StructRadialReservoir(StructReservoir):
         logspace: bool = False,
         R0: float = 0.0,
         R1: float = None,
-        angle: float = 360.0,
         depth: float = 0,
         rcond=181.44,
         hcap=2200.0,
@@ -46,8 +45,6 @@ class StructRadialReservoir(StructReservoir):
         :type R0: float
         :param R1: Outer radius [m], only needs to be specified with logspace
         :type R1: float
-        :param angle: Angle of radial slice [degrees], default is 360
-        :type angle: float
         :param depth: Depth of centroid of top layer [m]
         :type depth: float
         :param rcond: Rock conductivity [kJ/m.K.day]
@@ -105,7 +102,7 @@ class StructRadialReservoir(StructReservoir):
                 for i in range(nr)
             ]
         )
-        dy = angle / (360.0 * dr) * A_r
+        dy = A_r / dr
 
         # If number of cells in vertical direction is larger than 1, adjust arrays of dr, dy, dz and r
         if nz > 1:
