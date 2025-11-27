@@ -22,7 +22,7 @@ deploy-testpypi:
         REPOPWD: $TESTPYPIPWD
 
 # pick all whl ODLS-artifacts (windows/linux, different python versions) and upload to test pipy
-# TODO auto-increment package version (in setup.py and .gitlab-ci.yml) and add git tag; now it is done manually
+# TODO auto-increment package version (in pyproject.toml and .gitlab-ci.yml) and add git tag; now it is done manually
 .deploy-pypi:
     stage: deploy
     # just for twine
@@ -44,7 +44,7 @@ deploy-testpypi:
         - build-linux-3.10-ODLS
         - build-linux-3.11-ODLS
         - build-linux-3.12-ODLS
-        - build-linux-3.13-ODLS
+        #- build-linux-3.13-ODLS
         - build-windows-3.10-ODLS
         - build-windows-3.11-ODLS
         - build-windows-3.12-ODLS

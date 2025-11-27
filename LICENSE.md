@@ -18,8 +18,13 @@ Python binding with C++. Used to expose several components of C++ implementation
 
 - [SuperLU](https://github.com/xiaoyeli/superlu)
 Direct linear solver for systems with sparse matrices.
-Used in the darts-linear-solvers module that implements linear algebra functionality for openDARTS. Note that openDARTS does not use SuperLU_DIST version.
+Used in the darts-linear-solvers module that implements linear algebra functionality for openDARTS. Note that open-DARTS does not use SuperLU_DIST version.
 [License](https://github.com/xiaoyeli/superlu/blob/master/License.txt)
+
+- [hypre](https://github.com/hypre-space/hypre)
+Iterative linear solvers and preconditioners
+[License Apache 2.0](https://github.com/hypre-space/hypre/blob/master/LICENSE-APACHE)
+[License MIT](https://github.com/hypre-space/hypre/blob/master/LICENSE-MIT)
 
 - [MshIO](https://github.com/qnzhou/MshIO/)
 Used for unstructured grid processing in discretizer.
@@ -31,13 +36,13 @@ It is not used in models yet.
 Used in [struct-reservoir](/darts/reservoirs/struct_reservoir.py) to write VTK files.
 [License BSD 3-Clause License](https://github.com/BinWang0213/PyGRDECL/blob/master/LICENSE)
 
-- [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page)
-Used in [SVD for poromechanics](/engines/src/mech/matrix.hpp).
-[License](https://gitlab.com/libeigen/eigen/-/blob/master/COPYING.APACHE)
-
 - [Fracture-Preprocessing-Code](https://github.com/MakeLikePaperrr/Fracture-Preprocessing-Code).
 Used in [darts/tools](/darts/tools/fracture_network).
 [License MIT](https://github.com/MakeLikePaperrr/Fracture-Preprocessing-Code/blob/main/LICENSE)
+
+- [iPHREEQC](https://github.com/usgs-coupled/iphreeqc)
+Used in models with kinetic reactions.
+[Terms of use](https://phreeqcusers.org/index.php/topic,1007.msg2892.html#msg2892)
 
 ## Data
 

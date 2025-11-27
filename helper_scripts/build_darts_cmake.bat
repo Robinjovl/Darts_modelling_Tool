@@ -82,7 +82,6 @@ if %skip_req%==false (
   rmdir /s /q thirdparty\eigen thirdparty\pybind11 thirdparty\MshIO thirdparty\hypre
   git submodule sync --recursive
   git submodule update --init --recursive -- ^
-             thirdparty\eigen ^
              thirdparty\pybind11 ^
              thirdparty\MshIO ^
              thirdparty\hypre || goto :error
@@ -94,15 +93,7 @@ if %skip_req%==false (
   cd thirdparty
 
   echo - Install requirements: START
-
-  echo -- Install Eigen 3
   mkdir build
-  cd build
-  mkdir eigen
-  cd eigen
-  cmake -D CMAKE_INSTALL_PREFIX=..\..\install ..\..\eigen\ > ..\..\..\make_eigen.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:%NT% >> ..\..\..\make_eigen.log || goto :error
-  cd ..\..
 
   rem -- Install Hypre
   cd hypre\src\cmbuild
@@ -191,7 +182,8 @@ if %wheel%==true (
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-  python setup.py build bdist_wheel --plat-name=win-amd64 > make_wheel.log || goto :error
+  python -m pip install --upgrade build > make_wheel.log || goto :error
+  python -m build --wheel >> make_wheel.log || goto :error
   echo -- Python wheel generated!
 )
 python -m pip install . >> make_wheel.log

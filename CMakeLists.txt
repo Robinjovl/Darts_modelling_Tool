@@ -227,9 +227,6 @@ message(CHECK_START "Importing thirdparty libraries")
 unset(thirdparty_missing_components)
 
 if(NOT ONLY_SOLVERS)
-  #   thirdparty/eigen ---------------------------------------------------------
-  include(thirdparty/thirdparty_eigen.cmake)
-
   #   thirdparty/pybind11 ------------------------------------------------------
   include(thirdparty/thirdparty_pybind11.cmake)
 endif()

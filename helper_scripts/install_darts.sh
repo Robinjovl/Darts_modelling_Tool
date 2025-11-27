@@ -45,8 +45,8 @@ if [ $EDITABLE -eq 1 ]; then
   fi
 else
   # Now build the wheel with extensions included
-  python3 setup.py clean
-  python3 setup.py build bdist_wheel
+  python3 -m pip install build
+  python3 -m build --wheel
   WHEEL_PATH=$(ls -t dist/*.whl | head -n1)
   if [ $WITH_DEPS -eq 1 ]; then
     python3 -m pip install "file://$PWD/${WHEEL_PATH}"
