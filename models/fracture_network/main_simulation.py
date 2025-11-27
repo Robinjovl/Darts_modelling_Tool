@@ -58,7 +58,9 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
         m.run(size_report_step)
 
         if ith_step % output_vtk_period == 0:
-            m.output.output_to_vtk(ith_step=ith_step+1, output_directory=output_directory)
+            timesteps, property_array = m.output.output_properties(output_properties=output_properties_with_temperature,
+                                                                   timestep=ith_step+1, engine=True)
+            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step+1, output_directory=output_directory)
 
         sim_time += size_report_step
         m.print_range(sim_time, part='cells')
