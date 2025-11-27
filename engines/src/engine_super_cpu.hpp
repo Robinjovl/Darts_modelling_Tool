@@ -64,12 +64,12 @@ public:
   // extra operators
   const static uint8_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
   const static uint8_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
-  const static uint8_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP + 2 * NP;
-  const static uint8_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP + 2 * NP + 1;
-  const static uint8_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP + 2 * NP + 1 + NP;
-  const static uint8_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP + 2 * NP + 1 + NP + NP;
-  const static uint8_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP + 2 * NP + 1 + NP + NP + NP;
-  const static uint8_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP + 2 * NP + 1 + NP + NP + NP + 1;
+  const static uint8_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;
+  const static uint8_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1;
+  const static uint8_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
+  const static uint8_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
+  const static uint8_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
+  const static uint8_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
   
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
