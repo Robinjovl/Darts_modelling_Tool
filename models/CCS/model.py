@@ -28,7 +28,7 @@ class Model(DartsModel):
         self.set_physics(zero, n_points=1001, temperature=None)
 
         self.inj_stream = [0.00005]
-        self.inj_stream += [350.] if self.physics.thermal else []
+        self.t_inj = 350.
         self.p_inj = 100.
         self.p_prod = 50.
 
@@ -37,34 +37,32 @@ class Model(DartsModel):
 
         self.timer.node["initialization"].stop()
 
+    def set_reservoir(self, nr, dr, nz, dz, poro, perm):
+        self.seg_ratio = 1
 
-    def set_reservoir(self):
-        nx = 100
-        ny = 1
-        nz = 40
-        nb = nx * ny * nz
-        dz = 2
-        depth = np.zeros(nb)
-        n_layer = nx*ny
-        for k in range(nz):
-            depth[k*n_layer:(k+1)*n_layer] = 1000 + k * dz
+        from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
+        self.reservoir = StructRadialReservoir(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, permr=perm, permz=perm/10, poro=poro,
+                                               hcap=2200, rcond=100, R1=1000, logspace=True, boundary_volume=4.3e7)
+        # self.reservoir.well_dict = {'I1': [(1, 1, k+1) for k in range(1, self.reservoir.nz-1)]}
+        # self.reservoir.well_dict = {'I1': [(1, 1, k + 1) for k in range(10, 20)]}
+        # self.reservoir.well_dict = {'I1': [(1, 1, self.reservoir.nz)]}
+        #self.boundary_flux = True
 
-        self.x_axes = np.logspace(-0.3, 2, nx)
-        dx = np.tile(self.x_axes, nz)
-
-        self.reservoir = StructReservoir(self.timer, nx, ny, nz, dx=dx, dy=10, dz=dz,
-                                         permx=100, permy=100, permz=10, hcap=2200, rcond=100, poro=0.2, depth=depth)
+        self.reservoir.boundary_volumes['xy_plus'] = 1e10
+        self.reservoir.boundary_volumes['xy_minus'] = 1e10
 
         return
 
     def set_wells(self):
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, self.reservoir.nz), well_index=100, well_indexD=100)
-
-        self.reservoir.add_well("P1")
-        for k in range(self.reservoir.nz):
-            self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, self.reservoir.ny, k+1),
-                                           well_index=100, well_indexD=100)
+        from darts.reservoirs.reservoir_base import ReservoirBase
+        if 0:  # type(self.reservoir).set_wells is not ReservoirBase.set_wells:
+            # If the function has not been overloaded, pass
+            self.reservoir.set_wells()
+        else:
+            self.reservoir.add_well("I1")
+            for k in range(4, 20):
+                self.reservoir.add_perforation("I1", cell_index=(1, 1, k + 1), well_radius=0.2, well_indexD=0,
+                                               verbose=True, multi_segment=self.ms_well_flag)
 
     def set_physics(self,  zero, n_points, temperature=None, temp_inj=350.):
         """Physical properties"""
@@ -156,8 +154,8 @@ class Model(DartsModel):
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=self.p_inj, inj_composition=self.inj_stream[:-1],
-                                               inj_temp=self.inj_stream[-1])
+                                               is_inj=True, target=self.p_inj, inj_composition=self.inj_stream,
+                                               inj_temp=self.t_inj)
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=self.p_prod)

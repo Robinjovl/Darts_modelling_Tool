@@ -12,44 +12,37 @@ filename = 'out'
 
 # define the model
 m = Model()
+
 # init the model
+m.ms_well_flag = True
 m.init()
 # set the output
 m.set_output()
 
-x = np.cumsum(m.x_axes)
-y = np.linspace(m.reservoir.nz*2+1, 0, m.reservoir.nz)
-X, Y = np.meshgrid(x, y)
+""" DEFINE OUTPUT """
+props = ['satV', 'rho_g']
+output_props = ['pressure'] + props if not m.physics.thermal else ['pressure', 'temperature'] + props
+# output_props += ['y' + comp for comp in m.components[2:]]
+lims = {'pressure': [m.p_inj - 10, m.p_inj + 10.], 'temperature': [m.t_inj - 30., m.t_init + 10.], 'satV': [1-m.swc, 1.]}
+lims.update({'satLCO2': [0., 1.]})
+aspect = 'equal'  # 'equal', 'auto' or float
+cmap = 'RdBu_r'
+logx = True
 
-properties = m.physics.vars + m.physics.property_operators[0].props_name
-print_props = m.physics.vars + ['satV', 'xCO2', 'yH2O']
-timesteps, output = m.output.output_properties(output_properties=print_props, timestep=0)
-nv = m.physics.n_vars
+timestep, property_array = m.output.output_properties(output_properties=output_props, timestep=-1)
 
-fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
-for i, ith_prop in enumerate(print_props):
-    if m.reservoir.nz > 1:
-        prop = axs[i].pcolormesh(X, Y, output[ith_prop].reshape(m.reservoir.nz, m.reservoir.nx))
-        plt.colorbar(prop, ax=axs[i])
-    else:
-        axs[i].plot(output[ith_prop])
-    axs[i].set_title(ith_prop)
-
+m.reservoir.output_to_plt(data=property_array, output_props=output_props, lims=lims, plot_zeros=False,
+                          aspect_ratio=aspect, logx=logx, cmap=cmap)
+# m.output.output_to_vtk(ith_step=0, output_properties=output_props)  # initial conditions
 plt.savefig('step0.png', format='png')
 
 for t in range(2):
     m.run(200)
 
-    timesteps, output = m.output.output_properties(output_properties=print_props, timestep=t+1)
+    timesteps, output = m.output.output_properties(output_properties=output_props, timestep=t+1)
 
-    fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
-    for i, ith_prop in enumerate(print_props):
-        if m.reservoir.nz > 1:
-            prop = axs[i].pcolormesh(X, Y, output[ith_prop].reshape(m.reservoir.nz, m.reservoir.nx))
-            plt.colorbar(prop, ax=axs[i])
-        else:
-            axs[i].plot(output[ith_prop])
-        axs[i].set_title(ith_prop + str(t+1))
+    m.reservoir.output_to_plt(data=property_array, output_props=output_props, lims=lims, plot_zeros=False,
+                              aspect_ratio=aspect, logx=logx, cmap=cmap)
 
     plt.savefig('step' + str(t+1) + '.png', format='png')
 
