@@ -388,19 +388,48 @@ class Model(CICDModel):
                                              permx=perm, permy=perm, permz=perm, poro=self.poro, depth=depth)
         elif self.domain == '2D':
             # grid
-            self.domain_sizes = np.array([0.09, 0.09, 0.006])
-            self.domain_cells = np.array([nx, nx, 1])
-            self.n_res_blocks = np.prod(self.domain_cells)
-            self.cell_sizes = self.domain_sizes / self.domain_cells
+            if mesh_filename is None:
+                self.domain_sizes = np.array([0.09, 0.09, 0.006])
+                self.domain_cells = np.array([nx, nx, 1])
+                self.n_res_blocks = np.prod(self.domain_cells)
+                self.cell_sizes = self.domain_sizes / self.domain_cells
 
-            # properties
-            depth = 1                      # m
+                self.volume = np.prod(self.domain_sizes)
+                self.reservoir = StructReservoir(timer=self.timer,
+                                                nx=self.domain_cells[0], ny=self.domain_cells[1], nz=self.domain_cells[2],
+                                                dx=self.cell_sizes[0], dy=self.cell_sizes[1], dz=self.cell_sizes[2],
+                                                permx=perm, permy=perm, permz=perm, poro=1, depth=1)
+                self.inj_cells = self.domain_cells[0] * np.arange(self.domain_cells[1])
+            else:
+                self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0,
+                                                mesh_file=mesh_filename, poro=1)
+                self.reservoir.physical_tags['matrix'] = [99991]
+                self.reservoir.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
+                self.reservoir.init_reservoir()
+                self.volume = np.asarray(self.reservoir.mesh.volume).sum()
+                self.n_res_blocks = self.reservoir.mesh.n_blocks
+
+                # identifying injection/production cells
+                # for wedge
+                angle = np.pi / 3 # regular triangle
+                a = 2 / 3 * np.sqrt(self.volume / self.reservoir.mesh.n_blocks / 0.006 / np.sin(angle))
+                max_x = self.reservoir.discretizer.mesh_data.points[:, 0].max()
+                # initial guesses
+                self.inj_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 0] < 1.5 * a)[0]
+                self.prd_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 0] > max_x - 1.5 * a)[0]
+                # exact filtering
+                self.inj_cells = [id for id in self.inj_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 0] < 1e-4 * a) > 2]
+                self.prd_cells = [id for id in self.prd_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 0] > max_x - 1e-4 * a) > 2]
+                self.inj_cells = np.array(self.inj_cells, dtype=np.intp)
+                self.prd_cells = np.array(self.prd_cells, dtype=np.intp)
+
             # porosity
             if poro_filename == None:
                 poro = true_initial_mean_poro + np.random.uniform(-0.1, 0.1, self.n_res_blocks)
             else:
                 poro = true_initial_mean_poro + 0.05 * np.loadtxt(poro_filename).flatten()
-                assert np.prod(self.domain_cells) == poro.size
+                if mesh_filename is None:
+                    assert np.prod(self.domain_cells) == poro.size
             poro[poro < 1.e-4] = 1.e-4
             poro[poro > 1 - 1.e-4] = 1 - 1.e-4
 
@@ -414,19 +443,11 @@ class Model(CICDModel):
                 self.solid_sat[:, 0] = 0.7 * (1 - poro)
                 self.solid_sat[:, 1] = 0.2 * (1 - poro)
                 self.solid_sat[:, 2] = 0.1 * (1 - poro)
-
-            self.inj_cells = self.domain_cells[0] * np.arange(self.domain_cells[1])
-
-            self.volume = np.prod(self.domain_sizes)
-            self.reservoir = StructReservoir(self.timer,
-                                             nx=self.domain_cells[0], ny=self.domain_cells[1], nz=self.domain_cells[2],
-                                             dx=self.cell_sizes[0], dy=self.cell_sizes[1], dz=self.cell_sizes[2],
-                                             permx=perm, permy=perm, permz=perm, poro=self.poro, depth=depth)
         elif self.domain == '3D':
             depth = 1
             mesh_file = mesh_filename
             self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0,
-                                               mesh_file=mesh_file, poro=poro)
+                                               mesh_file=mesh_file, poro=1)
             self.reservoir.physical_tags['matrix'] = [99991]
             self.reservoir.physical_tags['boundary'] = [991, 992, 993]
             self.reservoir.init_reservoir()
@@ -522,12 +543,12 @@ class Model(CICDModel):
         #                                    well_indexD=well_index)
 
         self.reservoir.add_well("P1", wellbore_diameter=d_w)
-        if self.domain == '3D':
+        if isinstance(self.reservoir, UnstructReservoir):
             for idx in self.prd_cells:
                 self.reservoir.add_perforation(well_name='P1', cell_index=idx, multi_segment=False,
                                                verbose=True, well_radius=r_w, well_index=well_index,
                                                well_indexD=well_index)
-        else:
+        elif isinstance(self.reservoir, StructReservoir):
             for idx in range(self.domain_cells[1]):
                 self.reservoir.add_perforation(well_name='P1', cell_index=(self.domain_cells[0], idx + 1, 1), multi_segment=False,
                                                verbose=True, well_radius=r_w, well_index=well_index,
