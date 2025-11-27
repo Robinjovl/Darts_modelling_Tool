@@ -3,6 +3,8 @@
 # add CHANGELOG to a wheel
 cp CHANGELOG.md darts
 
+python3 -m pip install build 
+
 # build a wheel
 python3 -m build --wheel
 
