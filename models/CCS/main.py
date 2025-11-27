@@ -15,7 +15,7 @@ m = Model()
 # init the model
 m.init()
 # set the output
-m.set_output()
+m.set_output(verbose = True)
 
 x = np.cumsum(m.x_axes)
 y = np.linspace(m.reservoir.nz*2+1, 0, m.reservoir.nz)

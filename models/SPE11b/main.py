@@ -250,9 +250,9 @@ def store_performance_data(output, stat, timer):
 
 """Define realization ID"""
 Nt = 1
-Dt = 36.5
-nx = 840//4
-nz = 120//2
+Dt = 365
+nx = 840//6
+nz = 120//4
 zero = 1e-10
 
 
@@ -263,8 +263,8 @@ else:
     platform = 'cpu'
 
 model_specs = [
-    {'check_rates': True, 'temperature': None, '1000years': None, 'RHS': False, 'components': ['CO2', 'H2O'],
-         'inj_stream': [1-zero, 283.15], 'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None,
+    {'check_rates': True, 'temperature': None, '1000years': 10, 'RHS': True, 'components': ['CO2', 'H2O'],
+         'inj_stream': [1-zero, 283.15], 'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None,
             'post_process': None, 'platform': platform},
 
     # {'check_rates': True, 'temperature': 60 + 273.15, '1000years': 0, 'RHS': True, 'components': ['CO2', 'H2O'],
@@ -298,7 +298,6 @@ model_specs = [
     ]
 
 #%% RUN MODEL
-
 
 # ---- process performance stats
 performance_output = {
@@ -349,16 +348,16 @@ if __name__ == '__main__':
         if specs['post_process'] is None:
             m.init(discr_type='tpfa', platform=m.platform)
             m.print_stat()
-            # m.set_output(output_folder = m.output_dir,
-            #              sol_filename = 'reservoir_solution.h5',
-            #              save_initial = False,
-            #              precision = 'd',
-            #              verbose = True)
-            # # m.output.set_phase_properties()
+            m.set_output(output_folder = m.output_dir,
+                         sol_filename = 'reservoir_solution.h5',
+                         save_initial = True,
+                         precision = 'd',
+                         verbose = True)
+            # m.output.set_phase_properties()
             # m.output.set_units()
             # m.output.print_simulation_parameters()
 
-            m.run(1.0, restart_dt=1.0, save_reservoir_data=False, save_well_data=False, verbose=True)
+            # m.run(1.0, restart_dt=1.0, save_reservoir_data=False, save_well_data=False, verbose=True)
             # m.output.output_properties(output_properties = m.output.properties)
 
             if specs['dispersion']:
@@ -379,10 +378,7 @@ if __name__ == '__main__':
             m.output.verbose = False
 
             # ---- run model
-
-
-
-            # avg_rates = run(m, specs)
+            avg_rates = run(m, specs)
 
             # time_vector, property_array = m.output.load_property_array('reservoir_solution.h5')
             # time_vector1, property_array1 = m.output.load_property_array('property_array_ts3.h5')
