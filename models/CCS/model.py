@@ -23,7 +23,6 @@ class Model(DartsModel):
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
-        self.set_reservoir()
         zero = 1e-10
         self.set_physics(zero, n_points=1001, temperature=None)
 

@@ -13,6 +13,34 @@ filename = 'out'
 # define the model
 m = Model()
 
+# lower detfurth
+(nr, nz) = (1000, 24)
+if 1:
+    poro = np.ones((nr, nz)) * 0.001
+    perm = np.ones((nr, nz)) * 0.001
+    poro[:, 4:20] = 0.2
+    perm[:, 4:20] = 20
+    perm[:, 6:12] = 100
+else:
+    poro = np.ones((nr, nz)) * 0.075
+    perm = np.ones((nr, nz)) * 0.29
+    # upper detfurth
+    perm[:, :16] = 12.6
+    # hardegsen
+    poro[:, :10] = 0.09
+    perm[:, :10] = 24
+    # hardegsen high perm
+    poro[:, :8] = 0.2
+    perm[:, :8] = 550
+    # hardegsen
+    poro[:, :6] = 0.09
+    perm[:, :6] = 24
+    # caprock
+    poro[:, :4] = 0.01
+    perm[:, :4] = 0.01
+
+m.set_reservoir(nr=nr, dr=1., nz=nz, dz=5, poro=poro.flatten(order='F'), perm=perm.flatten(order='F'))
+
 # init the model
 m.ms_well_flag = True
 m.init()
