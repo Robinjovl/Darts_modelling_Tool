@@ -1,6 +1,8 @@
 rem add CHANGELOG to a wheel
 copy CHANGELOG.md darts || exit /b 1
 
+python -m pip install build
+
 rem Build a wheel
 python -m build --wheel || exit /b 1
 
