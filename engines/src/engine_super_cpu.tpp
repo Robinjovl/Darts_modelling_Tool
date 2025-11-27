@@ -474,25 +474,27 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
                         // Add diffusion terms to Jacobian:
                         for (uint8_t v = 0; v < N_VARS; v++){
+                            // wrt gradient 
                             Jac[diag_idx + c * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
                             Jac[jac_idx + c * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
                             if (c < NC) {
+                                // wrt saturation 
                                 Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
                                     mesh->poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
-                                    
                                 Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
                                     mesh->poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
 
+                                // wrt density 
                                 Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
-                                    mesh->poro[i] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + UPSAT_OP + p] / 2;
-                                    
+                                    mesh->poro[i] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + UPSAT_OP + p] / 2
                                 Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
                                     mesh->poro[j] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[j * N_OPS + UPSAT_OP + p] / 2;
 							}
                             else 
-                            // energy 
+                            // energy equation 
                             {
+                                // wrt saturation 
                                 Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
                                         mesh->poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
                                 Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
@@ -660,11 +662,6 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         for (uint8_t d = 0; d < ND; d++)
                             avg_velocity[d] = (darcy_velocities[vel_idx_i + p * ND + d] + darcy_velocities[vel_idx_j + p * ND + d]) / 2.0;
 
-                        // phase molar density
-                        // value_t molar_density = 0.0;
-                        // for (uint8_t k = 0; k < NC; k++)
-                        //    molar_density += (op_vals_arr[i * N_OPS + FLUX_OP + p * NE + k] + op_vals_arr[j * N_OPS + FLUX_OP + p * NE + k]) / 2;
-
                         value_t molar_density = (op_vals_arr[i * N_OPS + DENS_OP + p] + op_vals_arr[j * N_OPS + DENS_OP + p]) / 2;
 
                         for (uint8_t c = 0; c < NC; c++)
@@ -688,21 +685,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             if (enabled_flux_output) cur_dispersion_fluxes[p * NC + c] = -disp * grad_con;
 
                             // Add diffusion terms to Jacobian:
-                            for (uint8_t v = 0; v < N_VARS; v++)
-                            {
-                                // fraction gradient derivatives
+                            for (uint8_t v = 0; v < N_VARS; v++){
                                 Jac[diag_idx + c * N_VARS + v] += disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
                                 Jac[jac_idx + c * N_VARS + v] -= disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
-                                // molar density derivatives
-                                // for (uint8_t k = 0; k < NC; k++)
-                                // {
-                                //    Jac[diag_idx + c * N_VARS + v] += -dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + k) * N_VARS + v] / 2;
-                                //    Jac[jac_idx + c * N_VARS + v] += -dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + k) * N_VARS + v] / 2;
-                                // }
                                 Jac[diag_idx + c * N_VARS + v] += -dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(i * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
                                 Jac[jac_idx + c * N_VARS + v] += -dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(j * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
-
                             }
 
                             // respective heat fluxes
@@ -719,14 +707,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                   Jac[diag_idx + NC * N_VARS + v] += avg_enthalpy * disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
                                   Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
-                                  // molar density derivatives
-                                  // for (uint8_t k = 0; k < NC; k++)
-                                  // {
-                                  //    Jac[diag_idx + NC * N_VARS + v] += -avg_enthalpy * dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + k) * N_VARS + v] / 2;
-                                  //    Jac[jac_idx + NC * N_VARS + v] += -avg_enthalpy * dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + k) * N_VARS + v] / 2;
-                                  // }
-                                  Jac[diag_idx + NC * N_VARS + v] += -avg_enthalpy * dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(i * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
-                                  Jac[jac_idx + NC * N_VARS + v] += -avg_enthalpy * dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(j * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
+                                  Jac[diag_idx + NC * N_VARS + v] -= avg_enthalpy * dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(i * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
+                                  Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(j * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
 
                                   // enthalpy
                                   Jac[diag_idx + NC * N_VARS + v] -= op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2;
