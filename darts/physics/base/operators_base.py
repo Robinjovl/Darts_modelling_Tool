@@ -32,11 +32,11 @@ class WellControlOperators(OperatorsBase):
         self.n_ops = 2 + self.nph * 4
 
     def evaluate(self, state, values):
-        vec_state_as_np = state.to_numpy()
-        vec_values_as_np = values.to_numpy()
-        vec_values_as_np[:] = 0
+        state_np = state.to_numpy()
+        values_np = values.to_numpy()
+        values_np[:] = 0
 
-        self.property.evaluate(vec_state_as_np)
+        self.property.evaluate(state_np)
 
         # Store rate controls
         mobility = (
@@ -45,25 +45,25 @@ class WellControlOperators(OperatorsBase):
 
         # Molar rate
         idx = 0
-        vec_values_as_np[idx + self.property.ph] = (
+        values_np[idx + self.property.ph] = (
             self.property.dens_m[self.property.ph] * mobility
         )
 
         # Mass rate
         idx += self.nph
-        vec_values_as_np[idx + self.property.ph] = (
+        values_np[idx + self.property.ph] = (
             self.property.dens[self.property.ph] * mobility
         )
 
         # Volumetric rate
         idx += self.nph
-        vec_values_as_np[idx + self.property.ph] = mobility
+        values_np[idx + self.property.ph] = mobility
 
         # Advective heat rate
         idx += self.nph
         if self.thermal:
-            self.property.evaluate_thermal(vec_state_as_np)
-            vec_values_as_np[idx + self.property.ph] = (
+            self.property.evaluate_thermal(state_np)
+            values_np[idx + self.property.ph] = (
                 self.property.enthalpy[self.property.ph]
                 * self.property.dens_m[self.property.ph]
                 * mobility
@@ -71,8 +71,8 @@ class WellControlOperators(OperatorsBase):
 
         # Store P, T and composition of current state
         idx += self.nph
-        vec_values_as_np[idx + 0] = state[0]
-        vec_values_as_np[idx + 1] = self.property.temperature
+        values_np[idx + 0] = state[0]
+        values_np[idx + 1] = self.property.temperature
 
         return 0
 
@@ -87,17 +87,15 @@ class WellInitOperators(OperatorsBase):
         self.is_pt = is_pt
 
     def evaluate(self, state_pt, values):
-        vec_values_as_np = values.to_numpy()
-        vec_values_as_np[:] = 0
+        values_np = values.to_numpy()
+        values_np[:] = 0
 
         if not self.thermal:
-            vec_values_as_np[0] = self.property.temperature
+            values_np[0] = self.property.temperature
         elif self.is_pt:
-            vec_values_as_np[0] = state_pt[-1]
+            values_np[0] = state_pt[-1]
         else:
-            vec_values_as_np[0] = self.property.compute_total_enthalpy(
-                state_pt=state_pt
-            )
+            values_np[0] = self.property.compute_total_enthalpy(state_pt=state_pt)
 
         return 0
 
@@ -136,12 +134,14 @@ class PropertyOperators(OperatorsBase):
         :param values: Vector for storage of operator values
         :type values: darts.engines.value_vector
         """
-        _ = self.property.evaluate(state)
+        state_np = state.to_numpy()
+        values_np = values.to_numpy()
+        _ = self.property.evaluate(state_np)
         if self.thermal:
-            _ = self.property.evaluate_thermal(state)
+            _ = self.property.evaluate_thermal(state_np)
 
         for i, prop in enumerate(self.props_name):
             output = self.props[prop]()
-            values[i] = output if not np.isnan(output) else 0.0
+            values_np[i] = output if not np.isnan(output) else 0.0
 
         return 0
