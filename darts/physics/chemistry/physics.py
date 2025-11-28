@@ -2,7 +2,7 @@ from darts.engines import timer_node, value_vector
 from darts.physics.base.operators_base import WellControlOperators, WellInitOperators
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
-    CoversionOperators,
+    ConversionOperators,
     PropertyOperators,
     ReservoirOperators,
 )
@@ -86,7 +86,7 @@ class ElementBasedReactiveFlow(Compositional):
             self.reservoir_operators[region] = ReservoirOperators(
                 self.property_containers[region]
             )
-            self.initial_operators[region] = CoversionOperators(
+            self.initial_operators[region] = ConversionOperators(
                 self.property_containers[region]
             )
             self.property_operators[region] = PropertyOperators(

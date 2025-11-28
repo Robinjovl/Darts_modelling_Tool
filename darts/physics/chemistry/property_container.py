@@ -1,9 +1,11 @@
 import numpy as np
 
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.super.property_container import (
+    PropertyContainer as BasePropertyContainer,
+)
 
 
-class PropertyContainer(PropertyContainer):
+class PropertyContainer(BasePropertyContainer):
     """
     This is the Property container class for the element-based reactive flow model.
     Chemical equilibrium is calculated using third-party geochemical equilibrium solver.

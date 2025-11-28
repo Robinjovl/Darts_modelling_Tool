@@ -168,7 +168,7 @@ class ReservoirOperators(OperatorsSuper):
         pass  # TODO: implement thermal evaluation
 
 
-class CoversionOperators(ReservoirOperators):
+class ConversionOperators(ReservoirOperators):
     """
     Operator required for initialization, to convert given volume fraction to molar one
     Therefore, it works with state DIFFERENT from ReservoirOperators:
@@ -181,7 +181,7 @@ class CoversionOperators(ReservoirOperators):
 
     def __init__(self, properties):
         """
-        Constructor for CoversionOperators class.
+        Constructor for ConversionOperators class.
         :param properties: Property container object
         :type properties: user-defined or built-in PropertyContainer class
         """

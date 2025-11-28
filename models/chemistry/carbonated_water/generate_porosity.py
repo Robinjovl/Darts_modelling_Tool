@@ -6,7 +6,7 @@ import meshio
 
 def generate_random_field(nx=100, len_scale=8, var=1):
     x = y = range(nx)
-    model = gs.Spherical(dim=2, var=1, len_scale=len_scale)
+    model = gs.Spherical(dim=2, var=var, len_scale=len_scale)
     srf = gs.SRF(model)
     field = srf((x, y), mesh_type='structured')
 
@@ -29,7 +29,6 @@ def generate_random_field_unstructured_mesh(len_scale, mesh_file):
     np.savetxt(f'core_{len_scale}.txt', field)
     # srf.plot()
 
-# generate_random_field(nx=50, len_scale=5, var=1)
+# generate_random_field(nx=1600, len_scale=160, var=1)
 mesh_file = './input/core_60k.msh'
 generate_random_field_unstructured_mesh(len_scale=0.01, mesh_file=mesh_file)
-

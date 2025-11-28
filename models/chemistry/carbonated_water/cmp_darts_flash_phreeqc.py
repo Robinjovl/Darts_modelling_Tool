@@ -1,24 +1,22 @@
-import numpy as np
-
-from model import ModelProperties
-from phreeqc_dissolution.conversions import convert_composition, calculate_injection_stream, \
-    get_mole_fractions, convert_rate, bar2atm
 import warnings
 
-from dartsflash.libflash import NegativeFlash, FlashParams, InitialGuess
-from dartsflash.libflash import CubicEoS, AQEoS
+import numpy as np
 from dartsflash.components import CompData
+from dartsflash.libflash import (
+    AQEoS,
+    CubicEoS,
+    FlashParams,
+    InitialGuess,
+    NegativeFlash,
+)
+from matplotlib import pyplot as plt
+from phreeqc_dissolution.conversions import bar2atm, convert_composition
 
 try:
     from phreeqpy.iphreeqc.phreeqc_com import IPhreeqc
 except ImportError:
     from phreeqpy.iphreeqc.phreeqc_dll import IPhreeqc
 
-import matplotlib
-# matplotlib.use('pgf')
-# matplotlib.rc('pgf', texsystem='pdflatex', preamble=r'\usepackage{color}')
-from matplotlib import pyplot as plt
-from matplotlib import rcParams
 plt.rc('xtick',labelsize=16)
 plt.rc('ytick',labelsize=16)
 plt.rc('legend',fontsize=16)
@@ -38,7 +36,7 @@ def load_database(database, db_path):
     try:
         database.load_database(db_path)
     except Exception as e:
-        warnings.warn(f"Failed to load '{db_path}': {e}.", Warning)
+        warnings.warn(f"Failed to load '{db_path}': {e}.", Warning, stacklevel=2)
 
 def interpret_results(database):
     results_array = np.array(database.get_selected_output_array()[2])
@@ -112,7 +110,7 @@ def run_phreeqc(pressure, temperature, z_h2o_init):
     # phreeqc.phreeqc.SelectedOutputFileOn = True
 
     phreeqc_template = f"""
-    USER_PUNCH            
+    USER_PUNCH
     -headings    H(mol)      O(mol)      C(mol)      Ca(mol)      Vol_aq   SI            SR            ACT("H+") ACT("CO2") ACT("H2O") {species_headings}
     10 PUNCH    TOTMOLE("H") TOTMOLE("O") TOTMOLE("C") TOTMOLE("Ca") SOLN_VOL SI("Calcite") SR("Calcite") ACT("H+") ACT("CO2") ACT("H2O") {species_punch}
 
@@ -140,8 +138,8 @@ def run_phreeqc(pressure, temperature, z_h2o_init):
     -convergence_tolerance  1e-10
 
     GAS_PHASE 1
-    pressure  {{pressure:.4f}}       
-    temp      {{temperature:.2f}}  
+    pressure  {{pressure:.4f}}
+    temp      {{temperature:.2f}}
     CO2(g)     0
 
     PRINT
@@ -199,7 +197,7 @@ def run_phreeqc(pressure, temperature, z_h2o_init):
         phreeqc.run_string(input_string)
         nu_v, x, y, rho_phases, kin_state, fluid_volume, species_molalities = interpret_results(phreeqc)
     except Exception as e:
-        warnings.warn(f"Failed to run PHREEQC: {e}", Warning)
+        warnings.warn(f"Failed to run PHREEQC: {e}", Warning, stacklevel=2)
         print(
             f"h20_mass={water_mass}, p={pressure}, Ca={fluid_moles[fc_idx['Ca']]}, C={fluid_moles[fc_idx['C']]}, O={fluid_moles[fc_idx['O']]}, H={fluid_moles[fc_idx['H']]}")
         pitzer.run_string(input_string)
@@ -239,11 +237,9 @@ def get_element_composition(z_h2o, z_co2):
     return np.array([z_c, z_o, z_h])
 
 def run_darts_flash(pressure, temperature, z_h2o_init):
-    min_z = 1e-11
-
     # input state
     components = ["H2O", "CO2"]
-    zc = [z_h2o_init, 1. - z_h2o_init] # pure water [1 - min_z, min_z]
+    zc = [z_h2o_init, 1. - z_h2o_init]
 
     # darts-flash
     comp_data = CompData(components, setprops=True)
@@ -255,7 +251,7 @@ def run_darts_flash(pressure, temperature, z_h2o_init):
                                                  }))
     flash_params.eos_order = ["PR", "AQ"]
     darts_flash = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
-    error_output = darts_flash.evaluate(pressure, temperature, zc)
+    darts_flash.evaluate(pressure, temperature, zc)
     flash_results = darts_flash.get_flash_results()
     nu = np.array(flash_results.nu)
     x = np.array(flash_results.X).reshape(2, 2)
@@ -326,5 +322,3 @@ def run_comparison():
 
 
 run_comparison()
-
-
