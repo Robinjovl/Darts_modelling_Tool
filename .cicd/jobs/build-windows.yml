@@ -4,12 +4,24 @@
     tags:
         - windows-shell
     needs: []
+    variables:
+        CONDA_BASE: 'D:\miniconda3'
+        CONDA_ENV: "darts-win-${CI_JOB_ID}"
     script:
         # Load MS Build Tools environment to the powershell
+        - $ErrorActionPreference = 'Stop'
         - D:\BuildTools\build_vars.ps1
-        # Add python folder to PATH
-        - $env:PATH +=";" + $env:PYTHONPATH + ";" + $env:PYTHONPATH + "\Scripts"
-        - $env:PY_SUFFIX=python.exe -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
+        # Bootstrap Miniconda env
+        - if (-not $env:CONDA_BASE) { $env:CONDA_BASE = 'D:\miniconda3' }
+        - $condaExe = Join-Path $env:CONDA_BASE 'Scripts\conda.exe'
+        - if (-not (Test-Path $condaExe)) { throw "Unable to find conda executable at $condaExe" }
+        - Write-Host "Using Miniconda root $env:CONDA_BASE and env $env:CONDA_ENV"
+        - (& $condaExe "shell.powershell" "hook") | Out-String | Invoke-Expression
+        - $env:CONDA_ENV_PATH = Join-Path $env:CONDA_BASE "envs\$env:CONDA_ENV"
+        - if (Test-Path $env:CONDA_ENV_PATH) { conda env remove --name $env:CONDA_ENV --yes }
+        - conda create --name $env:CONDA_ENV python=$env:PY_VER --yes -q
+        - conda activate $env:CONDA_ENV
+        - $env:PY_SUFFIX=python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
         # make sure wheel package could be installed
         - python -m pip install --upgrade pip setuptools wheel
         # copy VS redist libraries
@@ -19,6 +31,11 @@
         - echo "ODLS:" $env:ODLS
         # compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
+        - conda deactivate
+    after_script:
+        - if (-not $env:CONDA_BASE) { $env:CONDA_BASE = 'D:\miniconda3' }
+        - $condaExe = Join-Path $env:CONDA_BASE 'Scripts\conda.exe'
+        - if (Test-Path $condaExe) { & $condaExe env remove --name $env:CONDA_ENV --yes }
     artifacts:
       paths:
         - '*.log'
@@ -33,7 +50,6 @@ build-windows-3.13:
     extends: .build-windows
     variables:
         PY_VER: '3.13'
-        PYTHONPATH: 'D:\Python313'
         ODLS: '-a'
 
 build-windows-3.12:
@@ -43,7 +59,6 @@ build-windows-3.12:
     extends: .build-windows
     variables:
         PY_VER: '3.12'
-        PYTHONPATH: 'D:\Python312'
         ODLS: '-a'
 
 build-windows-3.11:
@@ -53,7 +68,6 @@ build-windows-3.11:
     extends: .build-windows
     variables:
         PY_VER: '3.11'
-        PYTHONPATH: 'D:\Python311'
         ODLS: '-a'
 
 build-windows-3.10:
@@ -66,7 +80,6 @@ build-windows-3.10:
     extends: .build-windows
     variables:
         PY_VER: '3.10'
-        PYTHONPATH: 'D:\Python310'
         ODLS: '-a'
 
 build-windows-3.13-ODLS:
@@ -76,7 +89,6 @@ build-windows-3.13-ODLS:
     extends: .build-windows
     variables:
         PY_VER: '3.13'
-        PYTHONPATH: 'D:\Python313'
         ODLS: ''         # build with open-darts linear solvers
 
 build-windows-3.12-ODLS:
@@ -86,7 +98,6 @@ build-windows-3.12-ODLS:
     extends: .build-windows
     variables:
         PY_VER: '3.12'
-        PYTHONPATH: 'D:\Python312'
         ODLS: ''         # build with open-darts linear solvers
 
 build-windows-3.11-ODLS:
@@ -96,7 +107,6 @@ build-windows-3.11-ODLS:
     extends: .build-windows
     variables:
         PY_VER: '3.11'
-        PYTHONPATH: 'D:\Python311'
         ODLS: ''         # build with open-darts linear solvers
 
 build-windows-3.10-ODLS:
@@ -109,5 +119,4 @@ build-windows-3.10-ODLS:
     extends: .build-windows
     variables:
         PY_VER: '3.10'
-        PYTHONPATH: 'D:\Python310'
         ODLS: ''         # build with open-darts linear solvers
