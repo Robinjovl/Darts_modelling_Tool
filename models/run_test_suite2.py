@@ -14,7 +14,7 @@ def _ensure_parent_dir(path):
         os.makedirs(parent, exist_ok=True)
 
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
-    model_dir = r'.'
+    model_dir = os.path.abspath(r'.')
     _ensure_parent_dir(os.path.join(model_dir, '_logs', 'placeholder'))
 
     # set model list to run
@@ -131,10 +131,16 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if iter_solvers:  # run this case only for the build with iterative solvers
         accepted_dirs += [ 'SPE11b']
     n_total_mainpy = 0
+    models_root = model_dir
     for mdir in accepted_dirs:
         print('running main.py for model', mdir)
         n_total_mainpy += 1
-        os.chdir(mdir)
+        model_path = os.path.join(models_root, mdir)
+        if not os.path.isdir(model_path):
+            print(f'SKIP: directory "{model_path}" not found')
+            failed_models_main += [mdir + ' (main.py missing dir)']
+            continue
+        os.chdir(model_path)
         stdout_path = os.path.join('..', '_logs', mdir + '_mainpy.log')
         stderr_path = os.path.join('..', '_logs', mdir + '_mainpy_err.log')
         _ensure_parent_dir(stdout_path)
@@ -147,7 +153,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         else:
             print('FAIL')
             failed_models_main += [mdir + ' (main.py)']
-        os.chdir('..')
+        os.chdir(models_root)
     n_total += n_total_mainpy
 
     # discretizer tests
