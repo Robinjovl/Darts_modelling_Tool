@@ -127,6 +127,10 @@ if %skip_req%==false (
   echo - Install requirements: DONE!
 )
 
+if %phreeqc%==true (
+  call :ensure_reaktoro_conda || goto :error
+)
+
 echo ========================================================================
 echo   Building openDARTS: START
 echo ========================================================================
@@ -214,6 +218,33 @@ echo    -a : Update private artifacts bos_solvers (instead of openDARTS solvers)
 echo    -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
 echo    -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug
 echo    -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4
-echo    -p : Enable Phreeqc. Default: false
+echo    -p : Enable Phreeqc + Reaktoro (requires Conda). Default: false
 goto :eof
 REM ----------------------------------------------------------------
+
+:ensure_reaktoro_conda
+python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('reaktoro') else 1)" >NUL 2>&1
+if %errorlevel%==0 (
+  echo -- Reaktoro already available in current Python interpreter.
+  exit /b 0
+)
+
+where conda >NUL 2>&1
+if errorlevel 1 (
+  echo Error: 'conda' command not found. Install Conda and activate an environment before using -p.
+  exit /b 1
+)
+
+if "%CONDA_PREFIX%"=="" (
+  echo Error: CONDA_PREFIX is empty. Activate the target Conda environment (e.g., "conda activate rkt") before using -p.
+  exit /b 1
+)
+
+set "REAKTORO_LOG=%cd%\make_reaktoro.log"
+echo -- Install Reaktoro via conda (prefix %CONDA_PREFIX%). Full log: %REAKTORO_LOG%
+>> "%REAKTORO_LOG%" (
+  echo + conda install -y -c conda-forge -p "%CONDA_PREFIX%" reaktoro
+)
+call conda install -y -c conda-forge -p "%CONDA_PREFIX%" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
+echo -- Install Reaktoro: DONE!
+exit /b 0

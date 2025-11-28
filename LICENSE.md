@@ -44,6 +44,10 @@ Used in [darts/tools](/darts/tools/fracture_network).
 Used in models with kinetic reactions.
 [Terms of use](https://phreeqcusers.org/index.php/topic,1007.msg2892.html#msg2892)
 
+- [Reaktoro](https://reaktoro.org/)
+Used to provide the alternative thermodynamic engine for chemistry flashes.
+[License](https://github.com/reaktoro/reaktoro/blob/main/LICENSE)
+
 ## Data
 
 The data used as input for the models is distributed under CC0 Creative Commons Public Domain Dedication license.
