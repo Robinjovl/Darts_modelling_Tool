@@ -9,15 +9,17 @@
         CONDA_ENV: "darts-win-${CI_JOB_ID}"
     script:
         # Load MS Build Tools environment to the powershell
-        - $ErrorActionPreference = 'Stop'
+        - $prevEAP = $ErrorActionPreference
+        - $ErrorActionPreference = 'Continue'   # build_vars.ps1 emits benign Set-Content warnings
         - D:\BuildTools\build_vars.ps1
+        - $ErrorActionPreference = $prevEAP
         # Bootstrap Miniconda env
         - if (-not $env:CONDA_BASE) { $env:CONDA_BASE = 'D:\miniconda3' }
         - $condaExe = Join-Path $env:CONDA_BASE 'Scripts\conda.exe'
         - if (-not (Test-Path $condaExe)) { throw "Unable to find conda executable at $condaExe" }
         - Write-Host "Using Miniconda root $env:CONDA_BASE and env $env:CONDA_ENV"
         - (& $condaExe "shell.powershell" "hook") | Out-String | Invoke-Expression
-        - $env:CONDA_ENV_PATH = Join-Path $env:CONDA_BASE "envs\$env:CONDA_ENV"
+        - $env:CONDA_ENV_PATH = Join-Path $env:CONDA_BASE ('envs\' + $env:CONDA_ENV)
         - if (Test-Path $env:CONDA_ENV_PATH) { conda env remove --name $env:CONDA_ENV --yes }
         - conda create --name $env:CONDA_ENV python=$env:PY_VER --yes -q
         - conda activate $env:CONDA_ENV
@@ -31,11 +33,11 @@
         - echo "ODLS:" $env:ODLS
         # compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
-        - conda deactivate
+        - if (Get-Command conda -ErrorAction SilentlyContinue) { conda deactivate }
     after_script:
         - if (-not $env:CONDA_BASE) { $env:CONDA_BASE = 'D:\miniconda3' }
         - $condaExe = Join-Path $env:CONDA_BASE 'Scripts\conda.exe'
-        - if (Test-Path $condaExe) { & $condaExe env remove --name $env:CONDA_ENV --yes }
+        - if ($env:CONDA_ENV) { $envPath = Join-Path $env:CONDA_BASE ('envs\' + $env:CONDA_ENV); if ((Test-Path $condaExe) -and (Test-Path $envPath)) { & $condaExe env remove --name $env:CONDA_ENV --yes } else { Write-Host "Conda cleanup skipped (env missing)" } }
     artifacts:
       paths:
         - '*.log'
