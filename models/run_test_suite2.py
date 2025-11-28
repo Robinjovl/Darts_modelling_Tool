@@ -6,8 +6,16 @@ import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
 
+
+def _ensure_parent_dir(path):
+    """Create parent directory for the provided file path if missing."""
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent, exist_ok=True)
+
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
     model_dir = r'.'
+    _ensure_parent_dir(os.path.join(model_dir, '_logs', 'placeholder'))
 
     # set model list to run
 
@@ -127,9 +135,13 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         print('running main.py for model', mdir)
         n_total_mainpy += 1
         os.chdir(mdir)
-        import subprocess
-        mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
-        rcode = mrun.returncode
+        stdout_path = os.path.join('..', '_logs', mdir + '_mainpy.log')
+        stderr_path = os.path.join('..', '_logs', mdir + '_mainpy_err.log')
+        _ensure_parent_dir(stdout_path)
+        _ensure_parent_dir(stderr_path)
+        with open(stdout_path, 'w') as stdout_file, open(stderr_path, 'w') as stderr_file:
+            mrun = subprocess.run(["python", "main.py", platform], stdout=stdout_file, stderr=stderr_file)
+            rcode = mrun.returncode
         if not rcode:
             print('OK')
         else:
@@ -201,6 +213,7 @@ def check_performance(mod):
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed
     log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
+    _ensure_parent_dir(log_file)
     f = open(log_file, "w")
     f.close()
     log_stream = redirect_all_output(log_file)
@@ -236,6 +249,7 @@ def check_performance_adjoint(mod):
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed
     log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
+    _ensure_parent_dir(log_file)
     f = open(log_file, "w")
     f.close()
     log_stream = redirect_all_output(log_file)

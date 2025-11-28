@@ -11,6 +11,12 @@ import signal
 
 original_stdout = os.dup(1)
 
+def _ensure_parent_dir(path):
+    """Create parent directory for the provided file path if missing."""
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent, exist_ok=True)
+
 def _sigterm_handler():
     print("received SIGABRT")
     sys.exit()
@@ -151,6 +157,7 @@ def run_single_test(dir, module_name, args, ret_value, platform):
         print("Running {:<30}".format(dir + ': ' + args_str), flush=True)
         log_file = os.path.join(os.path.join(os.path.abspath(os.pardir), '_logs'),
                                 str(dir) + '_' + args_str + '.log')
+        _ensure_parent_dir(log_file)
         f = open(log_file, 'w')
         f.close()
         log_stream = redirect_all_output(log_file)
@@ -177,8 +184,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
     os.chdir(root_path)
 
     logs_folder = os.path.join(os.path.abspath(os.pardir), '_logs')
-    if not os.path.exists(logs_folder):
-        os.makedirs(logs_folder)
+    os.makedirs(logs_folder, exist_ok=True)
 
     failed = []
     n_tot = 0
@@ -190,6 +196,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
 
             # erase previous log file if existed
             log_file = os.path.join(logs_folder, str(dir) + '_' + str(arg[0]) + '.log')
+            _ensure_parent_dir(log_file)
             f = open(log_file, "w")
             f.close()
             log_stream = redirect_all_output(log_file)
