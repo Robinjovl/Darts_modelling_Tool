@@ -41,7 +41,7 @@ Used in [darts/tools](/darts/tools/fracture_network).
 [License MIT](https://github.com/MakeLikePaperrr/Fracture-Preprocessing-Code/blob/main/LICENSE)
 
 - [iPHREEQC](https://github.com/usgs-coupled/iphreeqc)
-Used in models with kinetic reactions. 
+Used in models with kinetic reactions.
 [Terms of use](https://phreeqcusers.org/index.php/topic,1007.msg2892.html#msg2892)
 
 ## Data
