@@ -1,5 +1,4 @@
 import numpy as np
-from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
 
 from darts.physics.super.physics import Compositional
@@ -70,7 +69,6 @@ class Model(DartsModel):
         # Fluid components, ions and solid
         components = ["H2O", "CO2"]
         phases = ["Aq", "V"]
-        nc = len(components)
         comp_data = CompData(components, setprops=True)
 
         pr = CubicEoS(comp_data, CubicEoS.PR)
@@ -114,7 +112,8 @@ class Model(DartsModel):
         property_container.output_props = {"satA": lambda: property_container.sat[0],
                                            "satV": lambda: property_container.sat[1],
                                            "xCO2": lambda: property_container.x[0, 1],
-                                           "yH2O": lambda: property_container.x[1, 0]
+                                           "yH2O": lambda: property_container.x[1, 0],
+                                           "rhoV": lambda: property_container.dens[0],
                                            }
 
         self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=zero/10,
@@ -125,9 +124,6 @@ class Model(DartsModel):
 
     def set_initial_conditions(self):
         if 1:
-            dz = self.reservoir.global_data['dz'][0, 0, :]
-
-            # zH2O = 1
             from darts.physics.super.initialize import Initialize
             # depth corresponding to boundary_idx = 10
             b_depth = self.reservoir.global_data['depth'].min() + (self.reservoir.global_data['depth'].max() - self.reservoir.global_data['depth'].min()) / 4.
