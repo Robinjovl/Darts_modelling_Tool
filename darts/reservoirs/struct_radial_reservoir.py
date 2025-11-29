@@ -57,7 +57,7 @@ class StructRadialReservoir(StructReservoir):
         model in open-DARTS.
         :type innermost_block_volume: float
         """
-        # Get top exterface depth for VTK output
+        # Get top exterface (external or boundary face) depth for VTK output
         if isinstance(dz, int | float):
             top_exterface_depth = depth - dz / 2
         else:
