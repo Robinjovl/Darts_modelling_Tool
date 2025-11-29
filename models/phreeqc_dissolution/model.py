@@ -509,7 +509,7 @@ class Model(CICDModel):
 
     def set_rhs_flux(self, t: float = None):
         nv = self.physics.n_vars
-        nb = self.reservoir.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_blocks
         rhs_flux = np.zeros(nb * nv)
 
         rho_m_h20 = 1000 / 18.015 # kmol/m3
