@@ -347,7 +347,7 @@ class UnstructReservoir(ReservoirBase):
                                 ).tolist()
                         else:
                             cell_data[prop][ith_geometry] += data.flatten()[
-                                cell_idxs - self.discretizer.mat_cells_tot
+                                cell_idxs
                             ].tolist()
                         ith_geometry += 1
                     # Fill matrix cells with zeros
@@ -486,7 +486,7 @@ class UnstructReservoir(ReservoirBase):
                             ).tolist()
                     else:
                         cell_data[prop][ith_geometry] += data.flatten()[
-                            cell_idxs - self.discretizer.mat_cells_tot
+                            cell_idxs
                         ].tolist()
                     ith_geometry += 1
                 # Fill matrix cells with zeros

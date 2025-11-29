@@ -13,7 +13,7 @@
 #include <iostream>
 #include <limits>
 #include <iomanip>
-#include <Eigen/Dense>
+
 #define EQUALITY_TOLERANCE 1.E-10
 
 namespace linalg

@@ -217,7 +217,7 @@ class Model(DartsModel):
         #     # rhs = np.zeros(self.reservoir.mesh.n_res_blocks * self.physics.n_vars)
         #     # return rhs
         #     pass
-        
+
     def set_physics(self, temperature: float = None, n_points: int = 10001):
         """Physical properties"""
 
@@ -237,13 +237,13 @@ class Model(DartsModel):
         nc, ni = comp_data.nc, comp_data.ni
         # len(components)
         flash_params = FlashParams(comp_data)
-        flash_params.add_eos("PR", CubicEoS(comp_data, CubicEoS.PR))
-        flash_params.add_eos("AQ", AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
-                                                      AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
-                                                      AQEoS.CompType.ion: AQEoS.Jager2003
-                                                      }))
-        pr = flash_params.eos_params["PR"].eos
-        aq = flash_params.eos_params["AQ"].eos
+        pr = CubicEoS(comp_data, CubicEoS.PR)
+        aq = AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
+                               AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
+                               AQEoS.CompType.ion: AQEoS.Jager2003
+                               })
+        flash_params.add_eos("PR", pr)
+        flash_params.add_eos("AQ", aq)
         flash_params.eos_order = ["PR", "AQ"]
         phases = ["V", "Aq"]
 
@@ -256,14 +256,14 @@ class Model(DartsModel):
         else:
             thermal = False
             state_spec = Compositional.StateSpecification.P
-            
+
         pres_in = 210 # (pressure at depth of well 1 will be 300 bar)
         min_t = 273.15 if temperature is None else None
         max_t = 373.15 if temperature is None else None
         self.physics = Compositional(self.components, phases, timer=self.timer,
                                      n_points=n_points, min_p=200, max_p=450,
                                      min_z=self.zero/10, max_z=1-self.zero/10, min_t=min_t, max_t=max_t,
-                                     state_spec = state_spec, 
+                                     state_spec = state_spec,
                                      cache=False)
         self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
 
@@ -302,7 +302,7 @@ class Model(DartsModel):
                 for c, component_name in enumerate(self.components):
                     key = f"x_{phase_name}_{component_name}"
                     property_container.output_props[key] = lambda ii=i, jj=j, cc=c: self.physics.property_containers[ii].x[jj, cc]
-            
+
             if region == 0 or region == 6:
                 self.physics.dispersivity[region] = np.zeros((self.physics.nph, self.physics.nc))
             else:
@@ -335,23 +335,23 @@ class Model(DartsModel):
         if 1:
             pres_in = 212
             input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
-            
+
             self.input_distribution = {"pressure": [pres_in, pres_in + input_depths[1] * 0.09775]}
             for i in range(self.nc):
                 if self.components[i] == 'H2O':
                     self.input_distribution[self.components[i]] = [1-(self.nc-1)*self.zero, 1-(self.nc-1)*self.zero]
                 else:
                     self.input_distribution[self.components[i]] = [self.zero, self.zero]
-                
+
             if self.specs['temperature'] is None:
                 self.input_distribution["temperature"] = [313.4, 342.9]
-    
-            self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, 
+
+            self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
                                                                  input_depth=input_depths,
                                                                  input_distribution=self.input_distribution)
         else:
             self.temp = lambda depth: 273.15 + 70. - depth * 0.025
-            
+
             depths = np.asarray(self.reservoir.mesh.depth)
             min_depth = np.min(depths)
             max_depth = np.max(depths)
@@ -378,13 +378,13 @@ class Model(DartsModel):
                 # need 1 specification: H2O = 1-zero
                 # primary_specs["H2O"][:] = 1.-self.zero
                 primary_specs["CO2"][:] = self.zero
-                
+
             else:
                 # H2O-CO2-C1, initially pure brine
                 # need 2 specifications: H2O = 1-(nc-1)*zero, CO2 = zero
                 primary_specs["H2S"][:] = self.zero
                 primary_specs["CO2"][:] = self.zero
-                
+
             if self.salinity:
                 # + ions, need extra specification for ion molality
                 # H2O cannot be specified because of salinity, last component instead
@@ -399,7 +399,7 @@ class Model(DartsModel):
                   ([self.zero] if nc > 2 else []) +  # CO2
                   ([1. - 0.98 - mol[known_idx] * 0.98 / 55.509] if self.salinity else []) +  # last component if ions
                   ([temp_I1] if init.thermal else []))  # temperature
-            X0 = init.solve_state(X0, primary_specs={'pressure': pres_I1, 
+            X0 = init.solve_state(X0, primary_specs={'pressure': pres_I1,
                                                      'temperature': temp_I1 if init.thermal else None} |
                                                     {comp: primary_specs[comp][known_idx] for comp in self.components},
                                   secondary_specs=known_specs)
@@ -410,7 +410,7 @@ class Model(DartsModel):
                             primary_specs=primary_specs, secondary_specs=secondary_specs,
                             boundary_state=boundary_state, dTdh=0.025).reshape((nb, self.physics.n_vars))
 
-            self.physics.set_initial_conditions_from_depth_table(mesh = self.reservoir.mesh, 
+            self.physics.set_initial_conditions_from_depth_table(mesh = self.reservoir.mesh,
                                                                  input_depth = init.depths,
                                                                  input_distribution = {v: X[:, i] for i, v in enumerate(self.physics.vars)})
 
@@ -435,16 +435,16 @@ class Model(DartsModel):
             self.y_components.append(property_array[f'x_V_{component_name}'][0])
             # self.x_components.append(property_array['x' + component_name][0])
             # self.y_components.append(property_array['y' + component_name][0])
-            
+
         self.x_components, self.y_components = np.array(self.x_components), np.array(self.y_components)
-        
+
         # Compute molecular weight of the aqueous phase
         MWAq = np.sum(self.y_components[1:, :] * Mw[1:], axis = 0 ) + (1 - np.sum(self.y_components[1:, :], axis = 0)) * Mw[0]
-    
+
         # Mass fractions in vapor phase
         w_components_vapor = (self.y_components * Mw) / MWAq
-    
-        # Pore volume 
+
+        # Pore volume
         V = np.array(self.reservoir.mesh.volume, copy=False)[:self.reservoir.n]
         phi = np.array(self.reservoir.mesh.poro, copy=False)[:self.reservoir.n]
 
@@ -455,13 +455,13 @@ class Model(DartsModel):
         for i, component_name in enumerate(component_names):
             # Vapor phase mass contribution
             mass_vapor[component_name] = phi * V * w_components_vapor[i] * sg * rhoV
-            
+
             # Aqueous phase mass contribution
             mass_aqueous[component_name] = phi * V * (1 - sg) * self.x_components[i] * rho_m_Aq * Mw[i]
-            
+
             # Total mass
             mass_components[component_name] = mass_vapor[component_name] + mass_aqueous[component_name]
-    
+
         return mass_components, mass_vapor, mass_aqueous
 
     def set_top_bot_temp(self):
@@ -1093,4 +1093,4 @@ layer_props = {900001: PorPerm(type='7', poro=1e-6, perm=1e-6, anisotropy=[1, 1,
                900031: PorPerm(type='7', poro=1e-6, perm=1e-6, anisotropy=[1, 1, 0.1], rcond=2.0 * cmult),
                900032: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
                }
-######################## ######################## ######################## 
+######################## ######################## ########################
