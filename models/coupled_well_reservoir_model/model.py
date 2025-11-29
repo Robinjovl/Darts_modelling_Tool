@@ -87,7 +87,7 @@ class Model(CICDModel):
         flash_params.eos_params["PR"].root_order = [EoS.MAX, EoS.MIN]
 
         params = flash_params.eos_params["PR"]
-        params.initial_guesses = [i for i in range(comp_data.nc)]
+        params.trial_comps = [i for i in range(comp_data.nc)]
         params.stability_tol = 1e-8
         params.stability_switch_tol = 1e-10
         params.stability_max_iter = 50
