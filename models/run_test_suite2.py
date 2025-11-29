@@ -12,7 +12,6 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # set model list to run
 
     accepted_dirs = [
-        'coupled_well_reservoir_model',
         '2ph_comp', '2ph_comp_solid', '2ph_do',
         '2ph_geothermal', '2ph_geothermal_mass_flux',
         '3ph_comp_w', '3ph_do', '3ph_bo',
@@ -25,12 +24,15 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         'effect_of_potential_energy',
                      ]
 
-
-    if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
-        accepted_dirs += ['2ph_do_thermal_mpfa']
-
-    if platform == 'cpu':  # this model doesn't converge well, so we skip it on GPU
-        accepted_dirs += ['2ph_do_thermal']
+    if platform == 'cpu':
+        accepted_dirs += [
+            # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
+            '2ph_do_thermal_mpfa',
+            # Coupled well-reservoir modeling using DFM wells is implemented only for CPU
+            'coupled_well_reservoir_model',
+            # 2ph_do_thermal doesn't converge well, so we skip it on GPU
+            '2ph_do_thermal',
+        ]
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
