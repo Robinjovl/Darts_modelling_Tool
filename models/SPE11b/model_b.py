@@ -202,8 +202,10 @@ class Model(DartsModel):
                     temp_idx = well_cell * nv + nv - 1  # Last equation index (temperature)
                     rhs[temp_idx] -= enthV * np.sum(n_comp)
             return rhs
-        else:
-            pass
+        # else:
+        #     # rhs = np.zeros(self.reservoir.mesh.n_res_blocks * self.physics.n_vars)
+        #     # return rhs
+        #     pass
 
     def set_physics(self, temperature: float = None, n_points: int = 10001):
         """Physical properties"""
