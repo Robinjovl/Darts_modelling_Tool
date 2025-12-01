@@ -235,10 +235,6 @@ else
     echo -e "\n- Requirements already installed \n"
 fi
 
-if [[ "$phreeqc" == true ]]; then
-    ensure_reaktoro_conda
-fi
-
 if [[ "$bos_solvers_artifact" == true ]]; then
     bos_solvers_dir=$PWD"/engines/lib/darts_linear_solvers"
 fi
@@ -328,6 +324,10 @@ fi
 
 # installing python package with -e flag for interactive install (changes will be applied live)
 python3 -m pip install . 2>&1 | tee -a make_wheel.log
+
+if [[ "$phreeqc" == true ]]; then
+    ensure_reaktoro_conda
+fi
 
 echo -e "\n************************************************************************"
 echo "| Building python package open-darts: DONE! "

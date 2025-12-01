@@ -9,14 +9,13 @@
     script:
         # Load MS Build Tools environment to the powershell
         - $condaBinPath = 'D:\miniconda3\condabin'
-        - if (-not ($env:PATH.Split(';') -contains $condaBinPath)) { $env:PATH = "$condaBinPath;$env:PATH" }
-        - Write-Host "PATH=$env:PATH"
+        - if (-not ($env:PATH.Split(';') -contains $condaBinPath)) { $env:PATH = "$condaBinPath;$env:PATH" }`
         - D:\BuildTools\init_conda.bat
         - conda create --name $env:CONDA_ENV python=$env:PY_VER --yes -q
         - conda activate $env:CONDA_ENV
-        # Add python folder to PATH
-        - $env:PATH +=";" + $env:PYTHONPATH + ";" + $env:PYTHONPATH + "\Scripts"
-        - $env:PY_SUFFIX=python.exe -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
+        # # Add python folder to PATH # for pure Python
+        # - $env:PATH +=";" + $env:PYTHONPATH + ";" + $env:PYTHONPATH + "\Scripts"
+        # - $env:PY_SUFFIX=python.exe -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
         # make sure wheel package could be installed
         - python -m pip install --upgrade pip setuptools wheel
         # copy VS redist libraries

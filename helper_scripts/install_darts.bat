@@ -73,6 +73,7 @@ if exist "build\" (
 if "%EDITABLE%"=="1" (
   if "%WITH_DEPS%"=="1" (
     python -m pip install -e . || exit /b 1
+    call :ensure_reaktoro_conda || exit /b 1
   ) else (
     python -m pip install --no-deps -e . || exit /b 1
   )
@@ -93,9 +94,37 @@ rem reinstall the wheel (without dependencies to make it faster)
 :foundwheel
 if "%WITH_DEPS%"=="1" (
   python -m pip install "dist\%WHEEL%" || exit /b 1
+  call :ensure_reaktoro_conda || exit /b 1
 ) else (
   python -m pip install --no-deps --force-reinstall "dist\%WHEEL%" || exit /b 1
 )
+
+goto :eof
+
+:ensure_reaktoro_conda
+python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('reaktoro') else 1)" >nul 2>&1
+if %errorlevel%==0 (
+  exit /b 0
+)
+
+where conda >nul 2>&1
+if errorlevel 1 (
+  echo Warning: 'conda' command not found; please install Reaktoro manually \(conda install -c conda-forge reaktoro\).
+  exit /b 0
+)
+
+if "%CONDA_PREFIX%"=="" (
+  echo Warning: CONDA_PREFIX is empty; activate the target Conda environment before running install_darts.bat to auto-install Reaktoro.
+  exit /b 0
+)
+
+set "REAKTORO_LOG=%cd%\make_reaktoro.log"
+>> "%REAKTORO_LOG%" (
+  echo + conda install -y -c conda-forge -p "%CONDA_PREFIX%" reaktoro
+)
+call conda install -y -c conda-forge -p "%CONDA_PREFIX%" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
+echo -- Install Reaktoro: DONE!
+exit /b 0
 
 :__validate_num
 REM Returns ERRORLEVEL 0 if argument is all digits, else 1

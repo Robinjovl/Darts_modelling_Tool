@@ -127,10 +127,6 @@ if %skip_req%==false (
   echo - Install requirements: DONE!
 )
 
-if %phreeqc%==true (
-  call :ensure_reaktoro_conda || goto :error
-)
-
 echo ========================================================================
 echo   Building openDARTS: START
 echo ========================================================================
@@ -191,6 +187,10 @@ if %wheel%==true (
   echo -- Python wheel generated!
 )
 python -m pip install . >> make_wheel.log
+
+if %phreeqc%==true (
+  call :ensure_reaktoro_conda || goto :error
+)
 
 echo ************************************************************************
 echo   Building python package open-darts: DONE!
