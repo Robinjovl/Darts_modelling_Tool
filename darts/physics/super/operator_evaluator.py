@@ -350,11 +350,8 @@ class WellOperators(OperatorsSuper):
             * self.property.enthalpy[self.property.ph]
         )  # fluid enthalpy (kJ/m3)
         # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
-        values[self.ACC_OP + self.nc] += self.phi_s * np.sum(
-            self.property.sat[self.np_fl : self.np_fl + self.ns]
-            * self.property.dens_m[self.np_fl : self.np_fl + self.ns]
-            * self.property.enthalpy[self.np_fl : self.np_fl + self.ns]
-        )
+        # well does not support solid
+
         # Enthalpy to internal energy conversion
         values[self.ACC_OP + self.nc] -= 100 * pressure
 
@@ -372,8 +369,6 @@ class WellOperators(OperatorsSuper):
         )
 
         """ Delta operator for reaction """
-        # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
-        values[self.KIN_OP + self.nc] = self.property.energy_source
 
         # Phase enthalpy
         for j in range(self.nph):
