@@ -7,7 +7,10 @@ from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, sim_params, well_control_iface, timer_node
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
-from darts.physics.chemistry.property_container import PropertyContainer
+from darts.physics.chemistry.property_container import (
+    OutputPropertyContainer,
+    PropertyContainer,
+)
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.input.input_data import linear_solver_types
@@ -222,12 +225,14 @@ class Model(CICDModel):
                 surface_area_ev=surface_area_ev,
             )
 
+        output_property_container = OutputPropertyContainer(property_container)
+
         # Create instance of (own) physics class:
         self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=self.phases, n_points=self.n_points,
                                           axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
                                           cache=False)
 
-        self.physics.add_property_region(property_container, 0)
+        self.physics.add_property_region(property_container, output_property_container, 0)
 
         return
 

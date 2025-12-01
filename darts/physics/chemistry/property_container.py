@@ -160,3 +160,113 @@ class PropertyContainer(BasePropertyContainer):
                 self.dens_m_solid[i],
                 self.temperature,
             )
+
+
+class OutputPropertyContainer:
+    """
+    Helper that prepares chemistry species-based output properties
+
+    state:
+    p - pressure in [bar]
+    z_{1}, ..., z_{n_m} - mineral molar fractions in rock + fluid mixture
+    z_{n_m+1}, ..., z_{n_c-1} - fluid molar fractions in fluid only
+
+    output properties:
+    - molar fractions of aqueous fluid species in aqueous phase
+    - molar fractions of vapourous fluid species in vapour phase
+    - vapour saturation in fluid only
+    - porosity
+    - activity of H+
+    - activity of CO2
+    - saturation ratio of minerals
+    - reaction rate of minerals
+    """
+
+    def __init__(self, property_container, props_name: list[str] | None = None):
+        self.property = property_container
+        self.nc = property_container.nc
+        self.nph = property_container.nph
+
+        self.x = np.zeros(len(self.property.flash_ev.aqueous_species))
+        self.y = np.zeros(len(self.property.flash_ev.gas_species))
+        self.satV = 0.0
+        self.porosity = 0.0
+        self.ActH = 0.0
+        self.ActCO2 = 0.0
+        self.SR = np.zeros(len(self.property.flash_ev.mineral_names))
+        self.kin_rates = np.zeros(len(self.property.rock_compr_ev.keys()))
+
+        self.output_props = {
+            **{
+                'x_' + species: (lambda i=i: self.x[i])
+                for i, species in enumerate(self.property.flash_ev.aqueous_species)
+            },
+            **{
+                'y_' + species: (lambda i=i: self.y[i])
+                for i, species in enumerate(self.property.flash_ev.gas_species)
+            },
+            'satV': lambda: self.satV,
+            'porosity': lambda: self.porosity,
+            'ActH': lambda: self.ActH,
+            'ActCO2': lambda: self.ActCO2,
+            **{
+                'SR_' + mineral: (lambda i=i: self.SR[i])
+                for i, mineral in enumerate(self.property.flash_ev.mineral_names)
+            },
+            **{
+                'rate_' + mineral: (lambda i=i: self.kin_rates[i])
+                for i, mineral in enumerate(self.property.flash_ev.mineral_names)
+            },
+        }
+
+    def evaluate(self, state):
+        (
+            nu_v,
+            _,
+            _,
+            rho_phases,
+            kin_state,
+            _,
+            molar_aq_fractions,
+            molar_gas_fractions,
+        ) = self.property.flash_ev.evaluate(state)
+
+        self.x[:] = molar_aq_fractions
+        self.y[:] = molar_gas_fractions
+
+        nu_s_minerals = state[self.property.s_mask_state]
+        nu_s = nu_s_minerals.sum()
+        dens_m_solid = np.array(
+            [
+                v.evaluate(state[0]) / self.property.Mw[k]
+                for k, v in self.property.rock_density_ev.items()
+            ]
+        )
+        nu_s_rho_s = (nu_s_minerals / dens_m_solid).sum()
+        nu_v = nu_v * (1 - nu_s)
+        nu_a = 1 - nu_v - nu_s
+        rho_a, rho_v = rho_phases['aq'], rho_phases['gas']
+
+        if nu_v > 0:
+            denom = nu_v / rho_v + nu_a / rho_a + nu_s_rho_s
+            sv = nu_v / rho_v / denom
+        else:
+            denom = nu_a / rho_a + nu_s_rho_s
+            sv = 0
+        sa = nu_a / rho_a / denom
+        ss = nu_s_rho_s / denom
+        sv_sa_sum = sv + sa
+        self.satV = sv / sv_sa_sum if sv_sa_sum > 0 else 0.0
+        self.porosity = 1 - ss
+
+        sat_minerals = nu_s_minerals / dens_m_solid / denom
+        self.ActH = kin_state['Act(H+)']
+        self.ActCO2 = kin_state['Act(CO2)']
+
+        for i, mineral in enumerate(self.property.flash_ev.mineral_names):
+            self.SR[i] = kin_state['SR_' + mineral]
+
+        for i, k in enumerate(self.property.rock_compr_ev.keys()):
+            self.kin_rates[i] = self.property.kinetic_rate_ev[k].evaluate(
+                kin_state, sat_minerals[i], dens_m_solid[i], self.property.temperature
+            )

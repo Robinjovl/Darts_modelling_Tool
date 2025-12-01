@@ -8,7 +8,10 @@ from darts.models.output import Output
 from darts.models.cicd_model import CICDModel
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
-from darts.physics.chemistry.property_container import PropertyContainer
+from darts.physics.chemistry.property_container import (
+    OutputPropertyContainer,
+    PropertyContainer,
+)
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
@@ -46,8 +49,8 @@ class MyOutput(Output):
         self.prop_dvalues = value_vector([0.] * n_prop_ops * n_res_blocks * n_vars)
 
         # extend units
-        op = self.physics.property_operators[next(iter(self.physics.property_operators))]
-        self.variable_units.update({name: '' for name in op.props_name})
+        op = self.physics.output_property_containers[next(iter(self.physics.output_property_containers))]
+        self.variable_units.update({name: '' for name in op.output_props.keys()})
         self.variable_units['porosity'] = ''
         self.variable_units[op.property.components_name[op.property.fc_mask][-1]] = ''
 
@@ -74,7 +77,7 @@ class MyOutput(Output):
             property_array[prop] = np.array([self.prop_values_np[i::n_interp_size]])
 
         # hydrogen
-        property = self.physics.property_operators[next(iter(self.physics.property_operators))].property
+        property = self.physics.property_containers[next(iter(self.physics.property_containers))]
         fc = property.components_name[property.fc_mask]
         property_array[fc[-1]] = 1 - sum(property_array[c] for c in fc[:-1])
 
@@ -323,12 +326,12 @@ class Model(CICDModel):
             property_container.rock_compr_ev[min] = ConstFunc(props['compressibility'])
             property_container.rock_density_ev[min] = DensityBasic(compr=props['compressibility'], dens0=props['density'], p0=1.)
 
-        # Create instance of (own) physics class:
-        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points, phases=self.phases,
-                                          axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
-                                          cache=False)
+        output_property_container = OutputPropertyContainer(property_container)
 
-        self.physics.add_property_region(property_container, 0)
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points, phases=self.phases,
+                                    axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
+                                    cache=False)
+        self.physics.add_property_region(property_container, output_property_container, 0)
 
         # Compute injection stream
         mole_water, mole_co2 = calculate_injection_stream(self.h2o_injection, self.co2_injection, self.temperature, self.pressure_init) # input - m3 of water, co2
