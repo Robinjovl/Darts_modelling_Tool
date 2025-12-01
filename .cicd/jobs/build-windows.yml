@@ -8,7 +8,10 @@
         CONDA_ENV: "darts-win-${CI_JOB_ID}"
     script:
         # Load MS Build Tools environment to the powershell
-        - .\helper_scripts\init_conda.bat
+        - $condaBinPath = 'D:\miniconda3\condabin'
+        - if (-not ($env:PATH.Split(';') -contains $condaBinPath)) { $env:PATH = "$condaBinPath;$env:PATH" }
+        - Write-Host "PATH=$env:PATH"
+        - D:\BuildTools\init_conda.bat
         - conda create --name $env:CONDA_ENV python=$env:PY_VER --yes -q
         - conda activate $env:CONDA_ENV
         # Add python folder to PATH
