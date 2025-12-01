@@ -266,9 +266,7 @@ class WellOperators(OperatorsSuper):
             self.property.sat[: self.np_fl] * self.property.dens_m[: self.np_fl]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
-        # self.phi_f = 1.
-        self.phi_s = np.sum(zc[self.nc_fl :])
-        self.phi_f = 1.0 - self.phi_s
+        self.phi_f = 1.0
 
         """ CONSTRUCT OPERATORS HERE """
 
