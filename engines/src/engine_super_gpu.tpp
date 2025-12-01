@@ -602,21 +602,41 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
         else
           phase_presence_mult = 0.0;
 
-        value_t diff_mob_ups_m = dt * phase_presence_mult * tranD[conn_idx] * (poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
-                                                                              poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) * 0.5;
+        value_t diff_mob_ups_m = 0.0;
+        if (c < NC)
+        {
+          //// molecular diffusion
+          diff_mob_ups_m = dt * phase_presence_mult * tranD[conn_idx] * (poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+                                                                            poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+          // w.r.t. mole fraction's gradient
+          jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+          jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+          // w.r.t. saturation & rock compressibility
+          jac_diag -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+          jac_offd -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+          // w.r.t. density
+          jac_diag -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + UPSAT_OP + p] / 2;
+          jac_offd -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[j * N_OPS + UPSAT_OP + p] / 2;
+        }
+        else
+        {
+          //// heat conduction in fluid
+          diff_mob_ups_m = dt * phase_presence_mult * tranD[conn_idx] * (poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+                                                                          poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+          // w.r.t. mole fraction's gradient
+          jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+          jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+          // w.r.t. saturation & rock compressibility
+          jac_diag -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5;
+          jac_offd -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5;
+        }
 
         if (v == 0)
         {
           rhs -= diff_mob_ups_m * grad_con; // diffusion term
         }
 
-        // Add diffusion terms to Jacobian:
-        jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-        jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-
-        jac_diag -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5;
-        jac_offd -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5;
-
+        // advection of energy together with fickian transport
         if constexpr (THERMAL)
         {
           if (c < NC)
@@ -631,13 +651,23 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
 
             index_t diag_energy = diag_ind[i] * N_VARS_SQ + NC * N_VARS + v;
             index_t jac_energy = csr_idx * N_VARS_SQ + NC * N_VARS + v;
-
+            // w.r.t. mole fraction's gradient
             atomicAdd(&Jac[diag_energy], avg_enthalpy * diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v]);
             atomicAdd(&Jac[jac_energy], -avg_enthalpy * diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v]);
 
-            atomicAdd(&Jac[diag_energy], -avg_enthalpy * grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5);
-            atomicAdd(&Jac[jac_energy], -avg_enthalpy * grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5);
+            // w.r.t. saturation & rock compressibility
+            atomicAdd(&Jac[diag_energy], -avg_enthalpy * grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] *
+                                      op_vals_arr[i * N_OPS + DENS_OP + p] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5);
+            atomicAdd(&Jac[jac_energy], -avg_enthalpy * grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] *
+                                      op_vals_arr[j * N_OPS + DENS_OP + p] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5);
 
+            // w.r.t. density
+            atomicAdd(&Jac[diag_energy], -avg_enthalpy * grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] *
+                                      op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + UPSAT_OP + p] * 0.5);
+            atomicAdd(&Jac[jac_energy], -avg_enthalpy * grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] *
+                                      op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[j * N_OPS + UPSAT_OP + p] * 0.5);
+
+            // w.r.t. enthalpy
             atomicAdd(&Jac[diag_energy], -op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * diff_mob_ups_m * grad_con * 0.5);
             atomicAdd(&Jac[jac_energy], -op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * diff_mob_ups_m * grad_con * 0.5);
           }
