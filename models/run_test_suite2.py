@@ -12,9 +12,14 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # set model list to run
 
     accepted_dirs = [
-        '2ph_comp', '2ph_comp_solid', '2ph_do',
-        '2ph_geothermal', '2ph_geothermal_mass_flux',
-        '3ph_comp_w', '3ph_do', '3ph_bo',
+        '2ph_comp',
+        '2ph_comp_solid',
+        '2ph_do',
+        '2ph_geothermal',
+        '2ph_geothermal_mass_flux',
+        '3ph_comp_w',
+        '3ph_do',
+        '3ph_bo',
         'Uniform_Brugge',
         'Chem_benchmark_new',
         #'CO2_foam_CCS',

@@ -246,37 +246,6 @@ class ReservoirOperators(OperatorsSuper):
         return 0
 
 
-class GeomechanicsReservoirOperators(ReservoirOperators):
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
-
-        self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
-        self.n_ops = self.ROCK_DENS_OP + 1
-
-    def evaluate(self, state, values):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
-        :return: updated value for operators, stored in values
-        """
-        # Reservoir operators
-        super().evaluate(state, values)
-
-        # Rock density operator
-        self.n_ops = self.ROCK_DENS_OP + 1
-        # TODO: function of matrix pressure = I1 / 3 = (s_xx + s_yy + s_zz) / 3
-        values.to_numpy()[self.ROCK_DENS_OP] = self.property.rock_density_ev.evaluate()
-
-        return 0
-
-    def print_operators(self, state, values):
-        """Method for printing operators, grouped"""
-        super().print_operators(state, values)
-        print("ROCK DENSITY", values[self.ROCK_DENS_OP])
-        return
-
-
 class WellOperators(OperatorsSuper):
     def evaluate(self, state, values):
         """
@@ -417,6 +386,37 @@ class WellOperators(OperatorsSuper):
         values[self.TEMP_OP] = self.property.temperature
 
         return 0
+
+
+class GeomechanicsReservoirOperators(ReservoirOperators):
+    def __init__(self, property_container: PropertyContainer, thermal: bool):
+        super().__init__(property_container, thermal)  # Initialize base-class
+
+        self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
+        self.n_ops = self.ROCK_DENS_OP + 1
+
+    def evaluate(self, state, values):
+        """
+        Class methods which evaluates the state operators for the element based physics
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
+        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
+        :return: updated value for operators, stored in values
+        """
+        # Reservoir operators
+        super().evaluate(state, values)
+
+        # Rock density operator
+        self.n_ops = self.ROCK_DENS_OP + 1
+        # TODO: function of matrix pressure = I1 / 3 = (s_xx + s_yy + s_zz) / 3
+        values.to_numpy()[self.ROCK_DENS_OP] = self.property.rock_density_ev.evaluate()
+
+        return 0
+
+    def print_operators(self, state, values):
+        """Method for printing operators, grouped"""
+        super().print_operators(state, values)
+        print("ROCK DENSITY", values[self.ROCK_DENS_OP])
+        return
 
 
 class SinglePhaseGeomechanicsOperators(OperatorsBase):
