@@ -1,10 +1,10 @@
 """
 Single-component (CO2), 2-phase (gas and liquid) system
 Injection of liquid CO2 into a well and reservoir containing gaseous CO2
-Using pressure and enthalpy as primary variables since pressure and temperature do not work in such scenarios.
 
-    - If the first method of residual norm calculation is used: tol_newton=1e-16
-      If the second method of residual norm calculation is used: tol_newton=1e-3
+Notes:
+    When using a DFM well for a two-phase system, the order of phases is important: first the low density phase (gas),
+    second the high density phase (liquid)
 """
 
 import numpy as np
