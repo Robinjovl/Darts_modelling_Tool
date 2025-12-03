@@ -83,7 +83,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     well_geom = next(iter(coupled_model.wells.values())).geometry
 
     # Get well depth array and number of segments
-    segments_depths = well_geom.z
+    segment_depths = well_geom.z
     num_segments = well_geom.num_segments
 
     # Get reservoir radial distance array: strictly positive, non-zero start
@@ -169,7 +169,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     fig, ax = plt.subplots(figsize=(6, 5))  # single compact panel
     y_r, offset, rmin, rmax = stacked_y_axis_linear_log(
         ax,
-        segments_depths,
+        segment_depths,
         reservoir_radial_distance,
         gap_ratio=0.05,
         n_ticks_well=5,
@@ -189,7 +189,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
 
         ax.plot(
             well_prop_profile,
-            segments_depths,
+            segment_depths,
             linestyle=linestyle,
             marker=marker,
             linewidth=2.0,  # match linewidth
@@ -320,7 +320,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     well_geom = next(iter(coupled_model.wells.values())).geometry
 
     # Get well depth array and number of segments
-    segments_depths = well_geom.z
+    segment_depths = well_geom.z
     num_segments = well_geom.num_segments
 
     # Get reservoir radial distance array: strictly positive, non-zero start
@@ -394,7 +394,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     # fig, ax = plt.subplots(figsize=(6, 5))  # single compact panel
     y_r, offset, rmin, rmax = stacked_y_axis_linear_log(
         ax,
-        segments_depths,
+        segment_depths,
         reservoir_radial_distance,
         gap_ratio=0.05,
         n_ticks_well=5,
@@ -410,7 +410,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
 
         ax.plot(
             well_prop_profile,
-            segments_depths,
+            segment_depths,
             linestyle=linestyle,
             marker=marker,
             linewidth=2.0,  # match linewidth
@@ -461,7 +461,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
 
 def stacked_y_axis_linear_log(
     ax,
-    segments_depths,
+    segment_depths,
     reservoir_radial_distance,
     *,
     gap_ratio=0.04,
@@ -475,8 +475,8 @@ def stacked_y_axis_linear_log(
 
     :param ax: The desired matplotlib axes
     :type ax: matplotlib.axes.Axes
-    :param segments_depths: The array of the depths of the segment centroids
-    :type segments_depths: array-like
+    :param segment_depths: The array of the depths of the segment centroids
+    :type segment_depths: array-like
     :param reservoir_radial_distance: The array of the radial distance of the reservoir cells (strictly positive)
     :type reservoir_radial_distance: array-like
     :param gap_ratio: Visual gap between the well and reservoir parts as a fraction of z-span
@@ -489,7 +489,7 @@ def stacked_y_axis_linear_log(
     :param add_minor: Add log minor ticks in reservoir part
     :type add_minor: bool
     """
-    z = np.asarray(segments_depths, float)
+    z = np.asarray(segment_depths, float)
     r = np.asarray(reservoir_radial_distance, float)
 
     z0, z1 = float(z[0]), float(z[-1])

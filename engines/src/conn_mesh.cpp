@@ -2023,8 +2023,8 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 	  }
 	  else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	  {
-		  std::copy(wells[iw]->segments_depths.begin(), wells[iw]->segments_depths.end(), depth.begin() + wells[iw]->well_head_idx);
-		  std::copy(wells[iw]->segments_volumes.begin(), wells[iw]->segments_volumes.end(), volume.begin() + wells[iw]->well_head_idx);
+		  std::copy(wells[iw]->segment_depths.begin(), wells[iw]->segment_depths.end(), depth.begin() + wells[iw]->well_head_idx);
+		  std::copy(wells[iw]->segment_volumes.begin(), wells[iw]->segment_volumes.end(), volume.begin() + wells[iw]->well_head_idx);
 		  std::fill(poro.begin() + wells[iw]->well_head_idx, poro.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 1);
 		  std::fill(op_num.begin() + wells[iw]->well_head_idx, op_num.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
 		  std::fill(heat_capacity.begin() + wells[iw]->well_head_idx, heat_capacity.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);

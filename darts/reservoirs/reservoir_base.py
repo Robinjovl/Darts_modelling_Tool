@@ -128,11 +128,11 @@ class ReservoirBase:
             assert well_geometry is not None, (
                 "For DFM, well_geometry must be specified!"
             )
-            # segments_volumes are the volumes of all the segments of the wellbore from the wellhead segment to
+            # segment_volumes are the volumes of all the segments of the wellbore from the wellhead segment to
             # the lowermost perforated or non-perforated segment.
-            well.segments_volumes = value_vector(well_geometry.segments_volumes)
+            well.segment_volumes = value_vector(well_geometry.segment_volumes)
             well.well_transmissibility = well_geometry.pipe_internal_A
-            well.segments_depths = value_vector(well_geometry.TVD_segments)
+            well.segment_depths = value_vector(well_geometry.TVD_segments)
             well.num_segments = well_geometry.num_segments
 
         self.wells.append(well)

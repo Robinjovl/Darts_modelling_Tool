@@ -48,8 +48,8 @@ void pybind_ms_well(py::module& m)
 
         // only used for DFM wells
         .def_readwrite("ms_type", &ms_well::ms_type)
-        .def_readwrite("segments_volumes", &ms_well::segments_volumes)
-        .def_readwrite("segments_depths", &ms_well::segments_depths)
+        .def_readwrite("segment_volumes", &ms_well::segment_volumes)
+        .def_readwrite("segment_depths", &ms_well::segment_depths)
         .def_readwrite("num_segments", &ms_well::num_segments)
         .def_readwrite("init_state", &ms_well::init_state)
         .def_readwrite("phase_vels", &ms_well::phase_vels)

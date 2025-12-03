@@ -45,7 +45,7 @@ def plot_well_prop_profiles(
 
     # Select the last num_segments cells (wellbore segments)
     num_segments = well_geom.num_segments
-    segments_depths = well_geom.z
+    segment_depths = well_geom.z
 
     report_step_labels = [
         "Initial conditions",
@@ -133,7 +133,7 @@ def plot_well_prop_profiles(
         line_style = line_styles[idx % len(line_styles)]  # Cycle through line styles
         plt.plot(
             pressure,
-            segments_depths,
+            segment_depths,
             marker=marker,
             linestyle=line_style,
             color=color,
@@ -190,7 +190,7 @@ def plot_well_prop_profiles(
         line_style = line_styles[idx % len(line_styles)]  # Cycle through line styles
         plt.plot(
             z_c,
-            segments_depths,
+            segment_depths,
             marker=marker,
             linestyle=line_style,
             color=color,
@@ -250,7 +250,7 @@ def plot_well_prop_profiles(
         line_style = line_styles[idx % len(line_styles)]  # Cycle through line styles
         plt.plot(
             temp - 273.15,
-            segments_depths,
+            segment_depths,
             marker=marker,
             linestyle=line_style,
             color=color,
@@ -305,7 +305,7 @@ def plot_well_prop_profiles(
         line_style = line_styles[idx % len(line_styles)]  # Cycle through line styles
         plt.plot(
             sG,
-            segments_depths,
+            segment_depths,
             marker=marker,
             linestyle=line_style,
             color=color,

@@ -10,7 +10,7 @@ class PipeGeometry:
     def __init__(
         self,
         pipe_name: str,
-        segments_lengths,
+        segment_lengths,
         pipe_ID: float,
         inclination_angle=0,
         wall_roughness: float = 5e-5 * meter(),
@@ -23,8 +23,8 @@ class PipeGeometry:
 
         :param pipe_name: Name of the pipe
         :type pipe_name: str
-        :param segments_lengths: Lengths of the segments from top to bottom [meter]
-        :type segments_lengths: list or numpy.ndarray
+        :param segment_lengths: Lengths of the segments from top to bottom [meter]
+        :type segment_lengths: list or numpy.ndarray
         :param pipe_ID: Internal diameter of the pipe [meter]
         :type pipe_ID: float
         :param inclination_angle: Inclination angle of the pipe relative to vertical direction [degree]
@@ -37,13 +37,13 @@ class PipeGeometry:
 
         self.pipe_name = pipe_name
 
-        if isinstance(segments_lengths, list):
-            self.segments_lengths = np.array(segments_lengths)
-        elif isinstance(segments_lengths, np.ndarray):
-            self.segments_lengths = segments_lengths
+        if isinstance(segment_lengths, list):
+            self.segment_lengths = np.array(segment_lengths)
+        elif isinstance(segment_lengths, np.ndarray):
+            self.segment_lengths = segment_lengths
         else:
             raise TypeError(
-                f"segments_lengths of the pipe {pipe_name} is neither a list nor a numpy array!"
+                f"segment_lengths of the pipe {pipe_name} is neither a list nor a numpy array!"
             )
 
         if isinstance(inclination_angle, list):
@@ -62,19 +62,19 @@ class PipeGeometry:
         self.wall_roughness = wall_roughness
 
         # Calculate additional geometry properties
-        self.pipe_length = sum(segments_lengths)
+        self.pipe_length = sum(segment_lengths)
         self.pipe_IR = self.pipe_ID / 2
         self.pipe_internal_A = math.pi * self.pipe_IR**2
         self.perimeter = 2 * math.pi * self.pipe_IR
-        self.segments_volumes = self.pipe_internal_A * self.segments_lengths
+        self.segment_volumes = self.pipe_internal_A * self.segment_lengths
         self.inclination_angle_radian = np.radians(self.inclination_angle_degree)
-        self.num_segments = len(self.segments_lengths)
+        self.num_segments = len(self.segment_lengths)
         self.num_interfaces = self.num_segments - 1
 
         # Get segments centroids
         z = []
         current_z = 0
-        for length in self.segments_lengths:
+        for length in self.segment_lengths:
             centroid = current_z + length / 2
             z.append(centroid)
             # Move to the starting point of the next segment
@@ -93,7 +93,7 @@ class PipeGeometry:
         self.D = np.append(self.D, self.D[-1])
 
         # Get interfaces positions
-        self.z_interfaces = np.cumsum(self.segments_lengths)[
+        self.z_interfaces = np.cumsum(self.segment_lengths)[
             :-1
         ]  # [:-1] removes the last exterface position
 
@@ -157,7 +157,7 @@ class PETREL_PipeGeometry(PipeGeometry):
 
         # Compute segment length
         segments_length = np.abs(max_MD - min_MD) / num_segments
-        segments_lengths = segments_length * np.ones(num_segments)
+        segment_lengths = segments_length * np.ones(num_segments)
 
         # Initialize list for inclination angles
         inclination_angles_deg = []
@@ -219,7 +219,7 @@ class PETREL_PipeGeometry(PipeGeometry):
 
         super().__init__(
             pipe_name,
-            segments_lengths,
+            segment_lengths,
             pipe_ID,
             conn_inclination_angles_deg,
             wall_roughness,

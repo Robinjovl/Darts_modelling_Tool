@@ -55,8 +55,8 @@ public:
     segment_roughness = 0;
     well_type = PRODUCER;
 
-    segments_volumes = {};
-    segments_depths = {};
+    segment_volumes = {};
+    segment_depths = {};
     num_segments = 0;
     ms_type = MS_Type::EPM;
     with_lateral_heat_transfer = false;
@@ -153,8 +153,8 @@ public:
   value_t segment_diameter;
   value_t segment_roughness;
 
-  std::vector<value_t> segments_volumes;
-  std::vector<value_t> segments_depths;
+  std::vector<value_t> segment_volumes;
+  std::vector<value_t> segment_depths;
   index_t num_segments;
   std::vector<value_t> init_state;
 
