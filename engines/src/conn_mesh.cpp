@@ -826,32 +826,36 @@ conn_mesh::reverse_and_sort()
   get_res_tran(test_t, test_tD);
   set_res_tran(test_t, test_tD);
 
-  is_dfm_conn = reverse_and_sort_one_way_prop(one_way_is_dfm_conn);
+  two_way_double.resize(n_conns);
+  two_way_bool.resize(n_conns);
+  is_dfm_conn = reverse_and_sort_one_way_bool(one_way_is_dfm_conn);
 
   return 0;
 }
 
-template <typename T>
-std::vector<T>
-conn_mesh::reverse_and_sort_one_way_prop(const std::vector<T>& one_way_prop)
+std::vector<double>
+conn_mesh::reverse_and_sort_one_way_double(const std::vector<double>& one_way_double)
 {
-	std::vector<T> two_way_prop(n_conns);
 	for (index_t j = 0; j < n_conns / 2; ++j)
 	{
-		two_way_prop[one_way_to_conn_index_forward[j]] = -one_way_prop[j];  // m->p
-		two_way_prop[one_way_to_conn_index_reverse[j]] = one_way_prop[j];  // p->m
+		two_way_double[one_way_to_conn_index_forward[j]] = -one_way_double[j];  // m->p
+		two_way_double[one_way_to_conn_index_reverse[j]] = one_way_double[j];  // p->m
 	}
 
-	return two_way_prop;
+	return two_way_double;
 }
 
-// Explicit instantiations for double to make it visible
-template std::vector<double>
-conn_mesh::reverse_and_sort_one_way_prop<double>(const std::vector<double>&);
+std::vector<bool>
+conn_mesh::reverse_and_sort_one_way_bool(const std::vector<bool>& one_way_bool)
+{
+	for (index_t j = 0; j < n_conns / 2; ++j)
+	{
+		two_way_bool[one_way_to_conn_index_forward[j]] = -one_way_bool[j];  // m->p
+		two_way_bool[one_way_to_conn_index_reverse[j]] = one_way_bool[j];  // p->m
+	}
 
-// Explicit instantiations for bool to make it visible
-template std::vector<bool>
-conn_mesh::reverse_and_sort_one_way_prop<bool>(const std::vector<bool>&);
+	return two_way_bool;
+}
 
 using MixedType = std::variant<int, std::vector<value_t>>;
 std::vector<MixedType>

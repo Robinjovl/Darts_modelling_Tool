@@ -176,9 +176,10 @@ public:
 
   /// @brief reverse connections and sort them by both row and col
   int reverse_and_sort();
-  /// @brief reverse connections and sort them by both row and col for a one-way property at all connections
-  template <typename T>
-  std::vector<T> reverse_and_sort_one_way_prop(const std::vector<T>& one_way_prop);
+  /// @brief reverse connections and sort them by both row and col for a one-way double array at all connections
+  std::vector<double> reverse_and_sort_one_way_double(const std::vector<double>& one_way_double);
+  /// @brief reverse connections and sort them by both row and col for a one-way bool array at all connections
+  std::vector<bool> reverse_and_sort_one_way_bool(const std::vector<bool>& one_way_bool);
   /// @brief reverse connections and sort them by both row and col for derivatives of velocities at all connections
   using MixedType = std::variant<int, std::vector<value_t>>;
   std::vector<MixedType> reverse_and_sort_velocities_derivatives(std::vector<MixedType> phase_velocities_derivatives);
@@ -212,6 +213,10 @@ public:
   std::vector<value_t> tranD;
   /// [n_conns] array that shows if it is a DFM connection or not
   std::vector<bool> is_dfm_conn;
+  /// [n_conns] array of two way doubles
+  std::vector<double> two_way_double;
+  /// [n_conns] array of two way bools
+  std::vector<bool> two_way_bool;
   /// [n_conns] array of heat conduction transissibility values for given connection (transmis value)
   std::vector<value_t> tran_heat_cond;
   /// [n_conns] array of transmissibilities that describe the forces due to thermal dilation

@@ -230,8 +230,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), w->n_segments, 0);
             }
         }
-        phase_A_vels = mesh->reverse_and_sort_one_way_prop(one_way_phase_A_vels);
-        phase_B_vels = mesh->reverse_and_sort_one_way_prop(one_way_phase_B_vels);
+        phase_A_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_A_vels);
+        phase_B_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_B_vels);
 
         phase_A_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_A_vels_ders);
         phase_B_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_B_vels_ders);
