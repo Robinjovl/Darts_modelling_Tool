@@ -654,7 +654,7 @@ if __name__ == '__main__':
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
     #timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
     timestep = 1
-    #timestep = 5
+    #timestep = 4
     
     #run_thm = True
     run_thm = False

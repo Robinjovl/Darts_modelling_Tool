@@ -296,7 +296,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 # https://en.wikipedia.org/wiki/Hooke%27s_law, In matrix form, Hooke's law for isotropic materials can be written as
                 if 'strain' not in cell_data: cell_data['strain'] = []
                 cell_data['strain'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
-                stress = cell_data['delta_tot_stress'][-1]
+                stress = cell_data['delta_eff_stress'][-1]
                 E = cell_data['E'][-1]
                 poisson = cell_data['poisson'][-1]
                 cell_data['strain'][-1][:, 0] = -(stress[:, 0] - poisson * (stress[:, 1] + stress[:, 2])) / E
