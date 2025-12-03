@@ -299,6 +299,7 @@ class UnstructReservoir(UnstructReservoirMech):
         self.p_init0 = 350.0
         self.porosity = 0.16 #0.15
         self.permx, self.permy, self.permz = idata.rock.get_permxyz()
+        self.frac_apers = self.idata.other.frac_apers
         physical_tags = {}
         physical_tags['matrix'] = [99991, 99992, 99993]
         physical_tags['fracture_boundary'] = [1, 2]
