@@ -644,21 +644,21 @@ def run_all():
               'depletion': {'mode': 'well', 'value': -250.0},
               'friction_law': 'slip_weakening',
               'mesh_file': 'meshes/new_setup_coarse.geo'}
-    #cases += [config]
+    cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],
               'depletion': {'mode': 'uniform', 'value': -250.0},
               'friction_law': 'static',
               'mesh_file': 'meshes/new_setup_coarse.geo'}
-    cases += [config]
+    #cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],
               'depletion': {'mode': 'uniform', 'value': -172.4}, # -172.685 is more precise, requires finer mesh
               'friction_law': 'slip_weakening',
               'mesh_file': 'meshes/new_setup_coarse.geo'}
-    cases += [config]
+    #cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': 25 * [1.0],
@@ -680,5 +680,5 @@ def run_all():
     # plot_profiles(data_folder=output_directory, labels=labels, analytics=None, animate=True)
 
 if __name__ == '__main__':
-    run_tests()
-    #run_all()
+    #run_tests()
+    run_all()
