@@ -493,8 +493,9 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
             from matplotlib.animation import FuncAnimation
             from matplotlib import rcParams
             # substitute with your own path to FFMPEG installation
+            # https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z
             rcParams['animation.ffmpeg_path'] = r'c:\work\packages\ffmpeg-6.0\bin\ffmpeg.exe'
-
+            rcParams['animation.ffmpeg_path'] = r'C:\software\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe'
             times, files = read_pvd(os.path.join(data_folder, 'solution_fault.pvd'))
             max_nt = len(files)
             time_text = stress[0].text(0.07, 0.2, 'time = ' + str(24 * 60 * times[0]) + ' minutes', fontsize=12, rotation='horizontal', transform=fig.transFigure)
@@ -543,7 +544,7 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
                     days = int(times[i])
                     minutes = int(24 * 60 * times[i]) - 24 * 60 * days
                     msec = int(86400 * 1000 * times[i]) - 86400 * 1000 * days - 60000 * minutes
-                    time_text.set_text('time = ' + str(days) + ' day ' + str(minutes) + ' min ' + str(msec) + ' msec')
+                    time_text.set_text('step=' + str(i) + ' time = ' + str(days) + ' day ' + str(minutes) + ' min ' + str(msec) + ' msec')
 
                     for i in range(n_plots):
                         depth_lims = stress[i].get_ylim()

@@ -121,6 +121,7 @@ class Model(THMCModel):
             #                                well_index=well_index)
 
             pt_right = np.array([x, (-self.reservoir.a + self.reservoir.b) / 2, 0.0])
+            print('well perforation location prod:', pt_right)
             self.id_prod = np.linalg.norm(centroids - pt_right, axis=1).argmin()
 
             self.reservoir.add_well("PROD001", depth=self.reservoir.unstr_discr.depth_all_cells[self.id_prod])
