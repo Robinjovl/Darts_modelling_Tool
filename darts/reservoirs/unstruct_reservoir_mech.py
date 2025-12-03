@@ -1439,6 +1439,18 @@ class UnstructReservoirMech:
                             * (cell_size + start_geom_cell_id) : props_num
                         ]
                     )
+                    if self.cell_property[i] == 'p':
+                        pressure = cell_data[cell_property[i]][-1]
+                        if not hasattr(self, 'pressure_initial'):
+                            self.pressure_initial = pressure.copy()
+
+                delta_pressure = pressure - self.pressure_initial
+                if 'delta_pressure' not in cell_data:
+                    cell_data['delta_pressure'] = []
+                cell_data['delta_pressure'].append(
+                    np.zeros(self.n_matrix, dtype=np.float64)
+                )
+                cell_data['delta_pressure'][-1][:] = delta_pressure
 
                 if 'eps_vol' not in cell_data:
                     cell_data['eps_vol'] = []
@@ -1471,6 +1483,80 @@ class UnstructReservoirMech:
                         6 * start_geom_cell_id + i : 6
                         * (start_geom_cell_id + cell_size) : 6
                     ]
+
+                if True:  # ith_step == 0:
+                    if 'E' not in cell_data:
+                        cell_data['E'] = []
+                    if 'poisson' not in cell_data:
+                        cell_data['poisson'] = []
+                    cell_data['E'].append(np.zeros(cell_size, dtype=np.float64))
+                    cell_data['poisson'].append(np.zeros(cell_size, dtype=np.float64))
+                    E = self.unstr_discr.E
+                    poisson = self.unstr_discr.nu
+                    cell_data['E'][-1][:] = E[
+                        list(E.keys())[0]
+                    ]  # TODO for heterogeneous
+                    cell_data['poisson'][-1][:] = poisson[
+                        list(poisson.keys())[0]
+                    ]  # TODO for heterogeneous
+
+                    if 'eff_stress' not in cell_data:
+                        cell_data['eff_stress'] = []
+                    cell_data['eff_stress'].append(
+                        np.zeros((self.n_matrix, 6), dtype=np.float64)
+                    )
+                    for j in range(6):
+                        cell_data['eff_stress'][-1][:, j] = (
+                            np.fabs(cell_data['tot_stress'][-1][:, j]) - pressure
+                        )
+
+                    if hasattr(self, 'tot_stress_initial'):
+                        if 'delta_tot_stress' not in cell_data:
+                            cell_data['delta_tot_stress'] = []
+                        cell_data['delta_tot_stress'].append(
+                            np.zeros((cell_size, 6), dtype=np.float64)
+                        )
+                        for j in range(6):
+                            cell_data['delta_tot_stress'][-1][:, j] = (
+                                total_stress[j::6] - self.tot_stress_initial[j::6]
+                            )
+
+                        if 'delta_eff_stress' not in cell_data:
+                            cell_data['delta_eff_stress'] = []
+                        cell_data['delta_eff_stress'].append(
+                            np.zeros((self.n_matrix, 6), dtype=np.float64)
+                        )
+                        for j in range(6):
+                            cell_data['delta_eff_stress'][-1][:, j] = (
+                                cell_data['delta_tot_stress'][-1][:, j] - delta_pressure
+                            )
+
+                        # compute strain from stress and geomech props
+                        # https://en.wikipedia.org/wiki/Hooke%27s_law, In matrix form, Hooke's law for isotropic materials can be written as
+                        if 'strain' not in cell_data:
+                            cell_data['strain'] = []
+                        cell_data['strain'].append(
+                            np.zeros((self.n_matrix, 6), dtype=np.float64)
+                        )
+                        stress = cell_data['delta_eff_stress'][-1]
+                        E = cell_data['E'][-1]
+                        poisson = cell_data['poisson'][-1]
+                        cell_data['strain'][-1][:, 0] = (
+                            -(stress[:, 0] - poisson * (stress[:, 1] + stress[:, 2]))
+                            / E
+                        )
+                        cell_data['strain'][-1][:, 1] = (
+                            -(stress[:, 1] - poisson * (stress[:, 0] + stress[:, 2]))
+                            / E
+                        )
+                        cell_data['strain'][-1][:, 2] = (
+                            -(stress[:, 2] - poisson * (stress[:, 0] + stress[:, 1]))
+                            / E
+                        )
+                        for k in range(3, 6):  # shear part
+                            cell_data['strain'][-1][:, k] = (
+                                -(2.0 + 2.0 * poisson) * stress[:, k] / E
+                            )
 
                 if engine.momentum_inertia > 0.0 and dt != 0:  # dynamic simulation
                     # velocity
@@ -1606,6 +1692,12 @@ class UnstructReservoirMech:
             meshio.write(f"{output_directory:s}/solution_fault{ith_step:d}.vtu", mesh)
 
         print(f'Writing data to VTK file for {ith_step:d}-th reporting step')
+
+        if not hasattr(self, 'displs_initial'):
+            self.displs_initial = dict()
+        if not hasattr(self, 'tot_stress_initial'):
+            self.tot_stress_initial = total_stress.copy()
+
         return 0
 
     def write_pvd_file(self, ith_step, time, output_directory):
