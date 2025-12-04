@@ -5,15 +5,32 @@ from scipy.interpolate import griddata as gd
 from matplotlib import pyplot as plt
 
 output_directory = 'sol_mixed_well_slip_weakening'
-n_timesteps = 1500 # tha last vtk file suffix
-timestep_stride = 100   # plot every timestep_stride's timestep
 
-#n_timesteps = 500  # tha last vtk file suffix
-#timestep_stride = 10   # plot every timestep_stride's timestep
+timestep_start = 350
+timestep_end = 600
+timestep_stride = 10
+
+timestep_start = 1
+timestep_end = 1500
+timestep_stride = 100
+
+timestep_start = 1
+timestep_end = 370
+timestep_stride = 30
+
+timestep_start = 350
+timestep_end = 700
+timestep_stride = 50
+
+timestep_start = 700
+timestep_end = 1500
+timestep_stride = 100
+
+tstep_plot = np.arange(timestep_start, timestep_end, timestep_stride)
 
 def plot():
     vtk_files = []
-    for ti in range(1, n_timesteps, timestep_stride):
+    for ti in tstep_plot:
         vtk_files.append(os.path.join(output_directory, 'solution' + str(ti) + '.vtu'))
 
     # Define points along the well and at the surface
@@ -55,54 +72,56 @@ def plot():
 
     # Plot strain_yy along the well
     for k, strain_yy_well in enumerate(strain_yy_well_list):
-        plt.plot(y_range_well+2000., strain_yy_well, label='tstep_'+str(k*timestep_stride + 1))#, marker='.')
-    plt.xlabel('Depth, m.')
+        plt.plot(y_range_well, strain_yy_well, label='tstep_'+str(tstep_plot[k]))#, marker='.')
+    plt.xlabel('Y-coordinate, m.')
     plt.title('Strain YY change along the well')
     plt.ylabel('Strain YY change')
     plt.legend()
     plt.grid()
     plt.savefig(os.path.join(output_directory, 'strain_yy_well.png'))
-    plt.show()
+    #plt.show()
     plt.close()
 
     # Plot strain_xx along the surface
     for k, strain_xx_surface in enumerate(strain_xx_surface_list):
-        plt.plot(x_range_surface, strain_xx_surface, label='tstep_'+str(k*timestep_stride + 1))#, marker='.')
+        plt.plot(x_range_surface, strain_xx_surface, label='tstep_'+str(tstep_plot[k]))#, marker='.')
     plt.xlabel('X-coordinate, m.')
     plt.title('Strain XX change along the line at the surface')
     plt.ylabel('Strain XX change')
     plt.legend()
     plt.grid()
     plt.savefig(os.path.join(output_directory, 'strain_xx_surface.png'))
-    plt.show()
+    #plt.show()
     plt.close()
 
     ############# fault
-    vtk_files_fault = []
-    for ti in range(1, n_timesteps, timestep_stride):
-        vtk_files_fault.append(os.path.join(output_directory, 'solution_fault' + str(ti) + '.vtu'))
+    if False:
+        vtk_files_fault = []
+        for ti in tstep_plot:
+            vtk_files_fault.append(os.path.join(output_directory, 'solution_fault' + str(ti) + '.vtu'))
 
-    slip_max_list = []
-    tstep_list = []
-    for k, filename in enumerate(vtk_files_fault):
-        centroids, props, __, __ = read_vtk(filename=filename, props=['f_local'])
-        slip_y = props['f_local'][0][:, 1] # Y
-        slip_max_list.append(slip_y.max())
-        tstep_list.append(k*timestep_stride + 1)
+        slip_max_list = []
+        tstep_list = []
+        for k, filename in enumerate(vtk_files_fault):
+            centroids, props, __, __ = read_vtk(filename=filename, props=['f_local'])
+            slip_y = props['f_local'][0][:, 1] # Y
+            slip_max_list.append(slip_y.max())
+            tstep_list.append(tstep_plot[k])
 
-    # Plot slip max over time
-    plt.plot(tstep_list, slip_max_list)
-    plt.xlabel('Timestep index')
-    plt.title('Max. slip (Y), m.')
-    plt.ylabel('Slip')
-    plt.grid()
-    plt.savefig(os.path.join(output_directory, 'fault_slip.png'))
-    plt.show()
-    plt.close()
+        # Plot slip max over time
+        plt.plot(tstep_list, slip_max_list)
+        plt.xlabel('Timestep index')
+        plt.title('Max. slip (Y), mm.')
+        plt.ylabel('Slip')
+        plt.grid()
+        plt.savefig(os.path.join(output_directory, 'fault_slip.png'))
+        #plt.show()
+        plt.close()
 
 if __name__ == '__main__':
-    #plot()
-
-    labels = ['DARTS']
-    from main import plot_profiles
-    plot_profiles(data_folder=output_directory, labels=labels, analytics=None, animate=True)
+    if True:
+        plot()
+    else:
+        labels = ['DARTS']
+        from main import plot_profiles
+        plot_profiles(data_folder=output_directory, labels=labels, analytics=None, animate=True)
