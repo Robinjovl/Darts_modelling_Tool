@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.cicd_model import DartsModel
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -9,6 +9,7 @@ from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 
+# Simplified water viscosity correlation as function of T
 class WaterVisc():  # not checked, taking from ChatGPT
     def __init__(self):
         self.A = 2.414e-2  # kPa·s
@@ -19,15 +20,16 @@ class WaterVisc():  # not checked, taking from ChatGPT
         visc = self.A * 10 ** (self.B / (temperature - self.C))
         return visc
 
-
-class Model(CICDModel):
+# describe model class
+class Model(DartsModel):
     def __init__(self):
         # call base class constructor
         super().__init__()
 
-        # measure time spend on reading/initialization
+        # measure time spend on model initialization
         self.timer.node["initialization"].start()
 
+        """Reservoir definition """
         nx = 1000
         perm = 100
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=600 / nx, dy=1.0, dz=1, poro=0.2,
@@ -48,17 +50,16 @@ class Model(CICDModel):
 
         property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
 
-        # create physics
+        """Create physics"""
         thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=0, max_p=1000, min_z=self.zero / 10, max_z=1-self.zero / 10,
                                      min_t=273.15 + 20, max_t=273.15 + 200)
         self.physics.add_property_region(property_container)
-
         self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=1)
 
-
+        # end of initialization
         self.timer.node["initialization"].stop()
 
 
@@ -87,7 +88,7 @@ class Model(CICDModel):
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=180.)
 
-
+# Simplified property evaluation for single-phase model`
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, min_z):
         # Call base class constructor
