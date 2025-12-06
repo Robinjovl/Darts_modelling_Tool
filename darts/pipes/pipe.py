@@ -1,6 +1,8 @@
 """
 Differences between this script and the DFM velocity evaluator in the standalone well model:
 - https://gitlab.com/open-darts/open-darts/-/commit/b0aa26cb9beb90a10bb1b4e3db5291399607f46d
+Revert the density averaging method here (now it is similar to DWell):
+- https://gitlab.com/open-darts/open-darts/-/commit/0c584d57e8cd20c270057763f3b6bc916cbc695e
 
 Notes:
     - The kinetic energy is not added to the energy conservation equation of the coupled model yet, while it was in the
