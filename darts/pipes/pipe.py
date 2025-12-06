@@ -422,18 +422,6 @@ class Pipe:
 
         """ Calculate phase props of previous time step at interfaces """
         if iter_counter == 0 and flag == 1:
-            # Method 1
-            # # xG_mass0_face and xL_mass0_face for IFT calculation
-            # # xG_mass0_face = (xG_mass0[0:-1] + xG_mass0[1:]) / 2
-            # # xL_mass0_face = (xL_mass0[0:-1] + xL_mass0[1:]) / 2
-            # xG_mass0_face = xG_mass0[0:-1]
-            # xL_mass0_face = xL_mass0[0:-1]
-            #
-            # sG0_face = (sG0[0:-1] + sG0[1:]) / 2
-            # rhoG0_face = (rhoG0[0:-1] + rhoG0[1:]) / 2
-            # rhoL0_face = (rhoL0[0:-1] + rhoL0[1:]) / 2
-
-            # Method 2
             sG0_face = (sG0[0:-1] + sG0[1:]) / 2
 
             # Initialize arrays to store interface properties
@@ -441,6 +429,7 @@ class Pipe:
             rhoL0_face = np.zeros(num_segments - 1)
             miuG0_face = np.zeros(num_segments - 1)
             miuL0_face = np.zeros(num_segments - 1)
+            # xG_mass0_face and xL_mass0_face for IFT calculation
             xG_mass0_face = np.zeros((num_segments - 1, nc))
             xL_mass0_face = np.zeros((num_segments - 1, nc))
 
@@ -497,12 +486,6 @@ class Pipe:
             ]
 
         """ Calculate phase props of current time step at interfaces """
-        # Method 1
-        # sG_face = (sG[0:-1] + sG[1:])/2
-        # rhoG_face = (rhoG[0:-1] + rhoG[1:]) / 2
-        # rhoL_face = (rhoL[0:-1] + rhoL[1:]) / 2
-
-        # Method 2
         sG_face = (sG[0:-1] + sG[1:]) / 2
         if self.diff_method == "OBL":
             sG_face_der = (sG_der[0:-1, :] + sG_der[1:, :]) / 2
