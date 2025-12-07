@@ -64,6 +64,15 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
       }
   }
 
+  // Initialize variables for phase velocities at all connections including DFM wells
+  phase_A_vels.resize(mesh_->n_conns);
+  phase_B_vels.resize(mesh_->n_conns);
+
+  // Initialize variables for derivatives of phase velocities at all connections including DFM wells
+  vel_der_size = N_VARS * 2;   // multiplied by 2 because velocity at connection is differentiated with respect to primary vars of two adjacent blocks
+  phase_A_vels_ders.resize(mesh_->n_conns * vel_der_size);
+  phase_B_vels_ders.resize(mesh_->n_conns * vel_der_size);
+
   return 0;
 }
 
@@ -94,6 +103,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     index_t n_blocks = mesh->n_blocks;
     index_t n_res_blocks = mesh->n_res_blocks;
     index_t n_conns = mesh->n_conns;
+    index_t n_res_conns = mesh->n_res_conns;
     const std::vector<value_t>& tran = mesh->tran;
     const std::vector<value_t>& tranD = mesh->tranD;
     const std::vector<value_t>& hcap = mesh->heat_capacity;
@@ -139,31 +149,22 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     // fill fourier_fluxes with zeros
     std::fill(fourier_fluxes.begin(), fourier_fluxes.end(), 0.0);
 
-    // Declare variables for phase velocities in DFM wells (defined at connections)
-    std::vector<value_t> phase_A_vels;
-    std::vector<value_t> phase_B_vels;
-
-    // Declare variables for derivatives of phase velocities in DFM wells
-    using MixedType = std::variant<int, std::vector<value_t>>;
-    std::vector<MixedType> phase_A_vels_ders;
-    std::vector<MixedType> phase_B_vels_ders;
-
     if (has_DFM_well)
     {
-        // --- Start evaluating phase velocities and derivatives in DFM wells
+        // --- Start evaluating phase velocities and derivatives for all connections including DFM wells
         std::vector<value_t> one_way_phase_A_vels;
         std::vector<value_t> one_way_phase_B_vels;
 
-        std::vector<MixedType> one_way_phase_A_vels_ders;
-        std::vector<MixedType> one_way_phase_B_vels_ders;
+        std::vector<value_t> one_way_phase_A_vels_ders;
+        std::vector<value_t> one_way_phase_B_vels_ders;
 
         // Zero velocities at reservoir connections, which will remain unused. These velocities won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
-        one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), mesh->n_res_conns / 2, 0);
-        one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), mesh->n_res_conns / 2, 0);
+        one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), n_res_conns / 2, 0);
+        one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), n_res_conns / 2, 0);
 
         // Derivatives of phase velocities at reservoir connections, which will remain unused
-        one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), mesh->n_res_conns / 2, 0);
-        one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), mesh->n_res_conns / 2, 0);
+        one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), n_res_conns / 2 * vel_der_size, 0);
+        one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), n_res_conns / 2 * vel_der_size, 0);
         for (ms_well* w : wells)
         {
             index_t n_perfs = w->perforations.size();
@@ -172,8 +173,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), n_perfs, 0);
 
             // Derivatives of phase velocities at perforation, which will remain unused
-            one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), n_perfs, 0);
-            one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), n_perfs, 0);
+            one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), n_perfs * vel_der_size, 0);
+            one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), n_perfs * vel_der_size, 0);
 
             if (w->ms_type == ms_well::MS_Type::DFM)
             {
@@ -194,19 +195,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 std::vector<value_t> well_phase_A_v_d(well_phase_v_d.begin(), well_phase_v_d.begin() + half_size_vel_der);
                 std::vector<value_t> well_phase_B_v_d(well_phase_v_d.begin() + half_size_vel_der, well_phase_v_d.end());
 
-                size_t chunk_size = 2 * N_VARS;
-                for (size_t i = 0; i < well_phase_A_v_d.size(); i += chunk_size)
-                {
-                    // Extract a chunk of size 2 * N_VARS
-                    std::vector<value_t> chunk_A(well_phase_A_v_d.begin() + i, well_phase_A_v_d.begin() + i + chunk_size);
-                    // Insert the chunk into phase_A_veloc_ders
-                    one_way_phase_A_vels_ders.push_back(chunk_A);
-
-                    // Extract a chunk of size 2 * N_VARS
-                    std::vector<value_t> chunk_B(well_phase_B_v_d.begin() + i, well_phase_B_v_d.begin() + i + chunk_size);
-                    // Insert the chunk into phase_A_veloc_ders
-                    one_way_phase_B_vels_ders.push_back(chunk_B);
-                }
+                one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), well_phase_A_v_d.begin(), well_phase_A_v_d.end());
+                one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), well_phase_B_v_d.begin(), well_phase_B_v_d.end());
 
                 if (w->with_lateral_heat_transfer)
                 {
@@ -215,8 +205,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), w->num_segments - w->perforations.size(), 0);
 
                     // Derivatives of phase velocities at connections of lateral heat transfer, which will remain unused
-                    one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), w->num_segments - w->perforations.size(), 0);
-                    one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), w->num_segments - w->perforations.size(), 0);
+                    one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), (w->num_segments - w->perforations.size()) * vel_der_size, 0);
+                    one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), (w->num_segments - w->perforations.size()) * vel_der_size, 0);
                 }
             }
             else if (w->ms_type == ms_well::MS_Type::EPM)
@@ -226,16 +216,16 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), w->n_segments, 0);
 
                 // Derivatives of phase velocities at the connection of EPM wells, which will remain unused
-                one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), w->n_segments, 0);
-                one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), w->n_segments, 0);
+                one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), w->n_segments * vel_der_size, 0);
+                one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), w->n_segments * vel_der_size, 0);
             }
         }
         phase_A_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_A_vels);
         phase_B_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_B_vels);
 
-        phase_A_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_A_vels_ders);
-        phase_B_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_B_vels_ders);
-        // --- End evaluating phase velocities and derivatives in DFM wells
+        phase_A_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_A_vels_ders, N_VARS);
+        phase_B_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_B_vels_ders, N_VARS);
+        // --- End evaluating phase velocities and derivatives for all connections including DFM wells
     }
 
     CFL_max = 0;
@@ -434,16 +424,16 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 if (phase_p_diff < 0)
                 {
                     // mass and energy outflow
-                    // calculate phase volumetric rate and partial derivatives for phase volumetric rates
+                    // calculate phase volumetric rate and partial derivatives for phase volumetric rate
                     value_t phase_volumetric_rate;
                     value_t phase_vol_rate_der_i[N_VARS];
                     value_t phase_vol_rate_der_j[N_VARS];
                     if (!DFM_conn)
                     {
-                        // calculate phase volumetric rate using Darcy's law for reservoir connections
+                        // calculate phase volumetric rate at reservoir connection using Darcy's law
                         phase_volumetric_rate = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * phase_p_diff;
 
-                        // calculate partial derivatives for phase volumetric rates
+                        // calculate partial derivatives of phase volumetric rate at reservoir connection
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             phase_vol_rate_der_i[v] = tran[conn_idx] * (op_ders_arr[(i * N_OPS + LAMBDA_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[i * N_OPS + LAMBDA_OP + p] * grav_pc_der_i[v]);
@@ -452,8 +442,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     }
                     else if (DFM_conn)
                     {
-                        // calculate phase volumetric rate for multi-segment well connections using the drift-flux model (DFM)
-                        // The multi-segment well only works for a maximum of three phases.
+                        // calculate phase volumetric rate at DFM well connection
+                        // The DFM well only works for a maximum of three phases.
                         value_t phase_velocity;
                         if (p == 0)
                             phase_velocity = phase_A_vels[conn_idx];
@@ -462,36 +452,24 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
 
-                        // calculate partial derivatives for phase volumetric rates
+                        // get partial derivatives of phase volumetric rate at DFM well connection
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             value_t phase_velocity_der_i;
                             value_t phase_velocity_der_j;
                             if (p == 0)
                             {
-                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_A_vels_ders[conn_idx]))
-                                {
-                                    index_t a = (i < j) ? 0 : N_VARS;
-                                    index_t b = (i < j) ? N_VARS : 0;
-                                    phase_velocity_der_i = (*vec_ptr)[a + v];
-                                    phase_velocity_der_j = (*vec_ptr)[b + v];
-                                }
-                                else {
-                                    std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
-                                }
+                                index_t a = (i < j) ? 0 : N_VARS;
+                                index_t b = (i < j) ? N_VARS : 0;
+                                phase_velocity_der_i = phase_A_vels_ders[conn_idx * vel_der_size + a + v];
+                                phase_velocity_der_j = phase_A_vels_ders[conn_idx * vel_der_size + b + v];
                             }
                             else if (p == 1 || p == 2)
                             {
-                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_vels_ders[conn_idx]))
-                                {
-                                    index_t a = (i < j) ? 0 : N_VARS;
-                                    index_t b = (i < j) ? N_VARS : 0;
-                                    phase_velocity_der_i = (*vec_ptr)[a + v];
-                                    phase_velocity_der_j = (*vec_ptr)[b + v];
-                                }
-                                else {
-                                    std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
-                                }
+                                index_t a = (i < j) ? 0 : N_VARS;
+                                index_t b = (i < j) ? N_VARS : 0;
+                                phase_velocity_der_i = phase_B_vels_ders[conn_idx * vel_der_size + a + v];
+                                phase_velocity_der_j = phase_B_vels_ders[conn_idx * vel_der_size + b + v];
                             }
 
                             phase_vol_rate_der_i[v] = wells[0]->well_transmissibility * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_i);
@@ -560,16 +538,16 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 else
                 {
                     // mass and energy inflow
-                    // calculate phase volumetric rate and partial derivatives for phase volumetric rates
+                    // calculate phase volumetric rate and partial derivatives for phase volumetric rate
                     value_t phase_volumetric_rate;
                     value_t phase_vol_rate_der_i[N_VARS];
                     value_t phase_vol_rate_der_j[N_VARS];
                     if (!DFM_conn)
                     {
-                        // calculate phase volumetric rate for reservoir connections using Darcy's law
+                        // calculate phase volumetric rate at reservoir connection using Darcy's law
                         phase_volumetric_rate = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * phase_p_diff;
 
-                        // calculate partial derivatives for phase volumetric rates
+                        // calculate partial derivatives of phase volumetric rate at reservoir connection
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             phase_vol_rate_der_i[v] = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * grav_pc_der_i[v];
@@ -578,7 +556,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     }
                     else if (DFM_conn)
                     {
-                        // calculate phase volumetric rate for multi-segment well connections using the drift-flux model (DFM)
+                        // calculate phase volumetric rate at DFM well connection
                         // The multi-segment well only works for a maximum of three phases.
                         value_t phase_velocity;
                         if (p == 0)
@@ -588,36 +566,24 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity;
 
-                        // calculate partial derivatives for phase volumetric rates
+                        // get partial derivatives of phase volumetric rate at DFM well connection
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             value_t phase_velocity_der_i;
                             value_t phase_velocity_der_j;
                             if (p == 0)
                             {
-                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_A_vels_ders[conn_idx]))
-                                {
-                                    index_t a = (i < j) ? 0 : N_VARS;
-                                    index_t b = (i < j) ? N_VARS : 0;
-                                    phase_velocity_der_i = (*vec_ptr)[a + v];
-                                    phase_velocity_der_j = (*vec_ptr)[b + v];
-                                }
-                                else {
-                                    std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
-                                }
+                                index_t a = (i < j) ? 0 : N_VARS;
+                                index_t b = (i < j) ? N_VARS : 0;
+                                phase_velocity_der_i = phase_A_vels_ders[conn_idx * vel_der_size + a + v];
+                                phase_velocity_der_j = phase_A_vels_ders[conn_idx * vel_der_size + b + v];
                             }
                             else if (p == 1 || p == 2)
                             {
-                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_vels_ders[conn_idx]))
-                                {
-                                    index_t a = (i < j) ? 0 : N_VARS;
-                                    index_t b = (i < j) ? N_VARS : 0;
-                                    phase_velocity_der_i = (*vec_ptr)[a + v];
-                                    phase_velocity_der_j = (*vec_ptr)[b + v];
-                                }
-                                else {
-                                    std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
-                                }
+                                index_t a = (i < j) ? 0 : N_VARS;
+                                index_t b = (i < j) ? N_VARS : 0;
+                                phase_velocity_der_i = phase_B_vels_ders[conn_idx * vel_der_size + a + v];
+                                phase_velocity_der_j = phase_B_vels_ders[conn_idx * vel_der_size + b + v];
                             }
 
                             phase_vol_rate_der_i[v] = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity_der_i;

@@ -75,6 +75,15 @@ public:
   // If the model has at least a DFM well or not
   bool has_DFM_well;
 
+  // Declare variables for phase velocities at all connections including DFM wells
+  std::vector<value_t> phase_A_vels;
+  std::vector<value_t> phase_B_vels;
+
+  // Declare variables for derivatives of phase velocities at all connections including DFM wells
+  size_t vel_der_size;
+  std::vector<value_t> phase_A_vels_ders;
+  std::vector<value_t> phase_B_vels_ders;
+
   // number of variables per jacobian matrix block
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 

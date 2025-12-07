@@ -857,40 +857,20 @@ conn_mesh::reverse_and_sort_one_way_bool(const std::vector<bool>& one_way_bool)
 	return two_way_bool;
 }
 
-using MixedType = std::variant<int, std::vector<value_t>>;
-std::vector<MixedType>
-conn_mesh::reverse_and_sort_velocities_derivatives(std::vector<MixedType> one_way_phase_velocities_derivatives)
+std::vector<value_t>
+conn_mesh::reverse_and_sort_velocities_derivatives(std::vector<value_t> one_way_phase_velocities_derivatives, index_t N_VARS)
 {
-	std::vector<MixedType> two_way_phase_velocities_derivatives(n_conns);
+	std::vector<value_t> two_way_phase_velocities_derivatives(n_conns * N_VARS * 2);   // multiplied by 2 because velocity at connection is differentiated with respect to primary vars of two adjacent blocks
 	for (index_t j = 0; j < n_conns / 2; ++j)
 	{
-		two_way_phase_velocities_derivatives[one_way_to_conn_index_forward[j]] = negate_mixed_type(one_way_phase_velocities_derivatives[j]); // m->p
-		two_way_phase_velocities_derivatives[one_way_to_conn_index_reverse[j]] = one_way_phase_velocities_derivatives[j]; // p->m
+		for (uint8_t v = 0; v < N_VARS * 2; v++)
+		{
+			two_way_phase_velocities_derivatives[one_way_to_conn_index_forward[j] * N_VARS * 2 + v] = -one_way_phase_velocities_derivatives[j * N_VARS * 2 + v]; // m->p
+			two_way_phase_velocities_derivatives[one_way_to_conn_index_reverse[j] * N_VARS * 2 + v] = one_way_phase_velocities_derivatives[j * N_VARS * 2 + v]; // p->m
+		}
 	}
 
 	return two_way_phase_velocities_derivatives;
-}
-
-MixedType
-conn_mesh::negate_mixed_type(const MixedType& x)
-{
-	return std::visit([](auto&& arg) -> MixedType
-		{
-		using T = std::decay_t<decltype(arg)>;
-
-		if constexpr (std::is_same_v<T, int>)
-		{
-			// int means "no derivative", we just return it unchanged.
-			return arg;
-		}
-		else if constexpr (std::is_same_v<T, std::vector<value_t>>)
-		{
-			T result = arg;
-			for (auto& v : result)
-				v = -v;
-			return result;
-		}
-		}, x);
 }
 
 int
