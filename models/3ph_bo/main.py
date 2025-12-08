@@ -59,16 +59,11 @@ if __name__ == '__main__':
         # n.run(300, restart_dt=1e-3)
         n.print_timers()
 
-        # compute well time data
-        time_data_dict = n.output.store_well_time_data()
+        # compute and save well time data
+        time_data_dict = n.output.store_well_time_data(save_output_files=True)
 
-        # save well time data
-        time_data_df = pd.DataFrame.from_dict(time_data_dict)
-        time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
-        writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
-        time_data_df.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
-
+        # plot well time data
+        # time_data_df = pd.DataFrame.from_dict(time_data_dict)
         # time_data_df.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])\
         #     .get_figure().savefig(n.output_folder + '/BHP.png', dpi=100, bbox_inches='tight')
         # time_data_df.plot(x='time', y=['well_P1_volumetric_rate_gas_at_wh', 'well_P1_volumetric_rate_oil_at_wh', 'well_P1_volumetric_rate_water_at_wh'])\

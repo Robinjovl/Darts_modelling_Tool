@@ -1186,7 +1186,8 @@ class Output:
         self, types_of_well_rates: list = None, save_output_files: bool = False
     ):
         """
-        Compute and store well time data including rates and bottom-hole conditions (BHT and BHP).
+        Compute and store well time data including rates and bottom-hole conditions (BHT and BHP)
+
         Rates are calculated for each perforation and also total rate of each well. Total rates are calculated using
         two different methods:
         1- summing up the rates of perforations
@@ -1202,8 +1203,6 @@ class Output:
         :type types_of_well_rates: list
         :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default false
         :type save_output_files: bool
-
-        Well data is saved as a *.pkl file and .xlsx file in the dartsmodel.output_folder.
         """
         # Start timer for store_well_time_data
         self.timer.start()

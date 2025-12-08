@@ -63,24 +63,19 @@ if __name__ == '__main__':
         n.print_timers()
         n.print_stat()
 
-        # compute well time data
-        time_data_dict = n.output.store_well_time_data()
+        # compute and save well time data
+        time_data_dict = n.output.store_well_time_data(save_output_files=True)
 
-        # save well time data
-        time_data_df = pd.DataFrame.from_dict(time_data_dict)
-        time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
-        writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
-        time_data_df.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
-
-        # td['well_I1_molar_rate_wat_at_wh'] = td['well_I1_molar_rate_wat_at_wh'].round(2)
-        # td.plot(x='time', y=['well_I1_molar_rate_wat_at_wh'], style='-o')\
+        # plot well time data
+        # time_data_df = pd.DataFrame.from_dict(time_data_dict)
+        # time_data_df['well_I1_molar_rate_wat_at_wh'] = time_data_df['well_I1_molar_rate_wat_at_wh'].round(2)
+        # time_data_df.plot(x='time', y=['well_I1_molar_rate_wat_at_wh'], style='-o')\
         #     .get_figure().savefig(n.output_folder + '/inj_molar_rates_water.png', dpi=100, bbox_inches='tight')
         #
-        # td.plot(x='time', y=['well_P1_BHP'], style='-o')\
+        # time_data_df.plot(x='time', y=['well_P1_BHP'], style='-o')\
         #     .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
         #
-        # td.plot(x='time', y=['well_P1_volumetric_rate_wat_at_wh', 'well_P1_volumetric_rate_wat_by_sum_perfs'], ylim=(-1, 0))\
+        # time_data_df.plot(x='time', y=['well_P1_volumetric_rate_wat_at_wh', 'well_P1_volumetric_rate_wat_by_sum_perfs'], ylim=(-1, 0))\
         #     .get_figure().savefig(n.output_folder + '/prd_volumetric_rates.png', dpi=100, bbox_inches='tight')
 
     else:

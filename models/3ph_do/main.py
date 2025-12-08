@@ -61,19 +61,13 @@ if __name__ == '__main__':
         n.print_timers()
         n.print_stat()
 
-        # compute well time data
-        time_data_dict = n.output.store_well_time_data()
+        # compute and save well time data
+        time_data_dict = n.output.store_well_time_data(save_output_files=True)
 
-        # save well time data
-        time_data_df = pd.DataFrame.from_dict(time_data_dict)
-        time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
-        writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
-        time_data_df.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
-
-        # td.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])
-        # td.plot(x='time', y=['well_P1_mass_rate_g_at_wh', 'well_P1_mass_rate_o_at_wh', 'well_P1_mass_rate_w_at_wh'])
-        # td.plot(x='time', y=['well_P1_volumetric_rate_gas_at_wh', 'well_P1_volumetric_rate_oil_at_wh', 'well_P1_volumetric_rate_wat_at_wh'])
+        # time_data_df = pd.DataFrame.from_dict(time_data_dict)
+        # time_data_df.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])
+        # time_data_df.plot(x='time', y=['well_P1_mass_rate_g_at_wh', 'well_P1_mass_rate_o_at_wh', 'well_P1_mass_rate_w_at_wh'])
+        # time_data_df.plot(x='time', y=['well_P1_volumetric_rate_gas_at_wh', 'well_P1_volumetric_rate_oil_at_wh', 'well_P1_volumetric_rate_wat_at_wh'])
         # plt.show()
 
     else:
