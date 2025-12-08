@@ -1072,7 +1072,6 @@ class DartsModel:
             # If the function has not been overloaded, pass
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
-        # n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
         rhs += self.set_rhs_flux(t) * dt
         return
 
