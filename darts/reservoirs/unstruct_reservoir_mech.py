@@ -1415,6 +1415,9 @@ class UnstructReservoirMech:
 
         dX = np.asarray(engine.dX, copy=False)
 
+        if not hasattr(self, 'displs_initial'):
+            self.displs_initial = dict()
+
         # Matrix
         Mesh.cells = []
         cell_data = {}
@@ -1433,12 +1436,23 @@ class UnstructReservoirMech:
                 for i in range(props_num):
                     if cell_property[i] not in cell_data:
                         cell_data[cell_property[i]] = []
-                    cell_data[cell_property[i]].append(
-                        property_array[
-                            props_num * start_geom_cell_id + i : props_num
-                            * (cell_size + start_geom_cell_id) : props_num
-                        ]
-                    )
+
+                    if self.cell_property[i] in ['ux', 'uy', 'uz']:
+                        cell_data[cell_property[i]].append(
+                            property_array[
+                                props_num * start_geom_cell_id + i : props_num
+                                * (cell_size + start_geom_cell_id) : props_num
+                            ]
+                            - self.displs_initial[self.cell_property[i]]
+                        )
+                    else:
+                        cell_data[cell_property[i]].append(
+                            property_array[
+                                props_num * start_geom_cell_id + i : props_num
+                                * (cell_size + start_geom_cell_id) : props_num
+                            ]
+                        )
+
                     if self.cell_property[i] == 'p':
                         pressure = cell_data[cell_property[i]][-1]
                         if not hasattr(self, 'pressure_initial'):
@@ -1693,8 +1707,6 @@ class UnstructReservoirMech:
 
         print(f'Writing data to VTK file for {ith_step:d}-th reporting step')
 
-        if not hasattr(self, 'displs_initial'):
-            self.displs_initial = dict()
         if not hasattr(self, 'tot_stress_initial'):
             self.tot_stress_initial = total_stress.copy()
 
