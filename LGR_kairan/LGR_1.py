@@ -173,7 +173,8 @@ class Model(DartsModel):
                 imag_idx = j*nxim + i # index of 5*5 grid
                 imag_fine_to_local[imag_idx] = k # index of 3*3 grid
                 k += 1
-        # 这里直接写真实的邻居的index，使得可以多次进行refinement
+        # Here, the actual neighbour index is directly specified, 
+        # enabling multiple refinements to be performed.
         coarse_idx_inj ={'left': 5,
                      'right': 7,
                      'up': 1,
@@ -217,9 +218,11 @@ class Model(DartsModel):
         for cm, cp, t, tt in zip(cmi_fc,cpi_fc, Ti_fc, Ti_therm_fc):
             if cm in imag_fine_to_local and cp in image_coarse_to_level0_inj:
                 fine_local = imag_fine_to_local[cm]
-                coarse_global = image_coarse_to_level0_inj[cp] #将imag的周围网格index map到了level0中的index
+                #Mapped the surrounding grid indices of imag to the indices within level0
+                coarse_global = image_coarse_to_level0_inj[cp] 
             elif cp in imag_fine_to_local and cm in image_coarse_to_level0_inj:
-                fine_local = imag_fine_to_local[cp] #将imag的3*3区域的index转换成step2中的index
+                 #Convert the index of the 3×3 region in imag to the index in step 2.
+                fine_local = imag_fine_to_local[cp]
                 coarse_global = image_coarse_to_level0_inj[cm]
             else:
                 continue
@@ -233,9 +236,9 @@ class Model(DartsModel):
         for cm,cp,t,tt in zip(cmi_fc,cpi_fc, Ti_fc, Ti_therm_fc):
             if cm in imag_fine_to_local and cp in image_coarse_to_level0_prd:
                 fine_local = imag_fine_to_local[cm]
-                coarse_global = image_coarse_to_level0_prd[cp] #将imag的周围网格index map到了level0中的index
+                coarse_global = image_coarse_to_level0_prd[cp] 
             elif cp in imag_fine_to_local and cm in image_coarse_to_level0_prd:
-                fine_local = imag_fine_to_local[cp] #将imag的3*3区域的index转换成step2中的index
+                fine_local = imag_fine_to_local[cp] 
                 coarse_global = image_coarse_to_level0_prd[cm]
             else:
                 continue
@@ -385,8 +388,10 @@ class LGRReservoir(ReservoirBase):
     
          return mesh
 
-    # Perforation 这块的问题在于如果找到LGR之后，井所在cell的global index
-    # 目前需要用户自己计算好传入well block的global index 和 cell index    
+    # The issue with this section lies in the fact that once the LGR is located，
+    # the global index of the cell containing the well
+    # currently requires the user to manually compute both the global index and 
+    # cell index before passing them to the well block.       
     def add_perforation(
         self,
         well_name: str,
