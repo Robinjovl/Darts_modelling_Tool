@@ -8,8 +8,12 @@
         CONDA_ENV: "darts-win-${CI_JOB_ID}"
     script:
         # Load MS Build Tools environment to the powershell
+        - D:\BuildTools\build_vars.ps1
         - $condaBinPath = 'D:\miniconda3\condabin'
         - if (-not ($env:PATH.Split(';') -contains $condaBinPath)) { $env:PATH = "$condaBinPath;$env:PATH" }`
+        - $condaRoot = Split-Path $condaBinPath -Parent
+        - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
+        - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
         - D:\BuildTools\init_conda.bat
         - conda create --name $env:CONDA_ENV python=$env:PY_VER --yes -q
         - conda activate $env:CONDA_ENV
@@ -26,6 +30,11 @@
         # compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
     after_script:
+        - $condaBinPath = 'D:\miniconda3\condabin'
+        - if (-not ($env:PATH.Split(';') -contains $condaBinPath)) { $env:PATH = "$condaBinPath;$env:PATH" }`
+        - $condaRoot = Split-Path $condaBinPath -Parent
+        - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
+        - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
         - conda deactivate
         - conda env remove --name $env:CONDA_ENV --yes
     artifacts:
