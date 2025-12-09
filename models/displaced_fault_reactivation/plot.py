@@ -6,29 +6,49 @@ from matplotlib import pyplot as plt
 
 output_directory = 'sol_mixed_well_slip_weakening'
 
-timestep_start = 350
-timestep_end = 600
-timestep_stride = 10
-
+#
 timestep_start = 1
 timestep_end = 1500
 timestep_stride = 100
 
-timestep_start = 1
-timestep_end = 370
-timestep_stride = 30
+# before the fault slip
+#timestep_start = 1
+#timestep_end = 370
+#timestep_stride = 30
 
-timestep_start = 350
-timestep_end = 700
-timestep_stride = 50
+# during the fault slip
+#timestep_start = 350
+#timestep_end = 700
+#timestep_stride = 50
 
-timestep_start = 700
-timestep_end = 1500
-timestep_stride = 100
+# after the fault slip
+#timestep_start = 700
+#timestep_end = 1500
+#timestep_stride = 100
 
 tstep_plot = np.arange(timestep_start, timestep_end, timestep_stride)
 
-def plot():
+def plot_contour(array_dict, output_folder, points_x=None, points_y=None, layer=0):
+    # plot contours XY plane, 1 layer by z
+    for arr_name, arr in array_dict.items():
+        if len(arr.shape) == 3:
+            arr_layer = arr[:, :, layer]
+        else:
+            arr_layer = arr
+        if points_x is None or points_y is None:
+            cs = plt.contourf(arr_layer, levels=10)
+        else:
+            cs = plt.contourf(points_x, points_y, arr_layer, levels=10)
+        plt.colorbar(cs)
+        #plt.gca().set_aspect('equal')
+        #plt.tight_layout()
+        plt.xlabel('Time(days)')
+        plt.ylabel('Coordinate(m)')
+        plt.title(arr_name)
+        plt.savefig(os.path.join(output_folder, arr_name + '.png'))
+        plt.close()
+
+def plot_strain():
     vtk_files = []
     for ti in tstep_plot:
         vtk_files.append(os.path.join(output_directory, 'solution' + str(ti) + '.vtu'))
@@ -94,6 +114,28 @@ def plot():
     #plt.show()
     plt.close()
 
+    ############ contour
+    # surface
+    n_timesteps = len(strain_xx_surface_list)
+    n_points = strain_xx_surface_list[0].size
+    strain_2d = np.zeros((n_points, n_timesteps))
+    for k in range(n_timesteps):
+        strain_2d[:, k] = strain_xx_surface_list[k]
+    array_dict = {'Strain_XX_change_surface_contour': strain_2d}
+    plot_contour(array_dict, points_x=tstep_plot, points_y=x_range_surface, output_folder=output_directory)
+    # well
+    n_timesteps = len(strain_yy_well_list)
+    n_points = strain_yy_well_list[0].size
+    strain_2d = np.zeros((n_points, n_timesteps))
+    for k in range(n_timesteps):
+        strain_2d[:, k] = strain_yy_well_list[k]
+    array_dict = {'Strain_ZZ_change_well_contour': strain_2d}
+    plot_contour(array_dict, points_x=tstep_plot, points_y=y_range_well, output_folder=output_directory)
+    # well rsv part
+    y_range_well_rsv = (-350 < y_range_well) & (y_range_well < 350)
+    array_dict = {'Strain_ZZ_change_well_contour_rsv': strain_2d[y_range_well_rsv, :]}
+    plot_contour(array_dict, points_x=tstep_plot, points_y=y_range_well[y_range_well_rsv], output_folder=output_directory)
+
     ############# fault
     if False:
         vtk_files_fault = []
@@ -118,9 +160,10 @@ def plot():
         #plt.show()
         plt.close()
 
+
 if __name__ == '__main__':
     if True:
-        plot()
+        plot_strain()
     else:
         labels = ['DARTS']
         from main import plot_profiles
