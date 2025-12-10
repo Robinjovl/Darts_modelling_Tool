@@ -1,14 +1,9 @@
 import numpy as np
-import pandas as pd
 from scipy import interpolate
 
 from darts.input.input_data import InputData
-from darts.engines import value_vector
-from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
-from darts.engines import well_control_iface
 
-from model_cpg import Model_CPG, fmt
-from set_case import set_input_data
+from model_base import Model_CPG, fmt
 
 from dataclasses import dataclass
 from darts.engines import well_control_iface
@@ -55,23 +50,23 @@ class Corey:
 
 
 class ModelCCS(Model_CPG):
-    def __init__(self, comps):
+    def __init__(self):
         self.zero = 1e-10
         super().__init__()
-        self.components = comps
+        self.components = ['CO2', 'H2O']
         self.nc = len(self.components)
+        self.physics_type = 'CCS'
 
     def set_physics(self):
         corey_params = Corey(nw=1.5, ng=1.5, swc=0.32, sgc=0.10, krwe=1.0, krge=1.0, labda=2.,
                              p_entry=2, pcmax=300, c2=1.5)
         self.salinity = 0
 
-        self.ini = value_vector([1 - self.zero])
-
         # Fluid components, ions and solid
         comp_data = CompData(self.components, setprops=True)
         nc, ni = comp_data.nc, comp_data.ni
-        # len(components)
+        self.ini = [self.zero]
+
         flash_params = FlashParams(comp_data)
         flash_params.add_eos("PR", CubicEoS(comp_data, CubicEoS.PR))
         flash_params.add_eos("AQ", AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
@@ -89,7 +84,6 @@ class ModelCCS(Model_CPG):
                                      min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
                                      min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
                                      state_spec=state_spec, cache=False)
-        #self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
 
         self.physics.dispersivity = {}
 
@@ -202,66 +196,6 @@ class ModelCCS(Model_CPG):
 
     def print_well_rate(self):
         return
-
-    def set_input_data(self, case=''):
-        self.idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
-        set_input_data(self.idata, case)
-        self.idata.sim.DataTS.dt_first = 1e-5
-
-        self.idata.geom.burden_layers = 0
-
-        # this sets default properties
-        self.idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
-
-        # example - how to change the properties
-        # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
-        # well controls
-        wdata = self.idata.well_data
-        wells = wdata.wells  # short name
-        # set default injection composition
-        inj_comp = value_vector([self.zero])  # injection composition - water
-
-        if 'wbhp' in case:
-            for w in wells:
-                if self.well_is_inj(w):
-                    wdata.add_inj_bhp_control(name=w, bhp=250, phase_name='gas',
-                                              inj_composition=inj_comp, temperature=350)  # kmol/day | bars | K
-                else:  # prod
-                    wdata.add_prd_bhp_control(name=w, bhp=100)  # kmol/day | bars
-        elif 'wrate' in case:
-            for w in wells:
-                if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
-                                               phase_name='wat', inj_composition=inj_comp, bhp_constraint=250)  # kmol/day | bars | K
-                else:  # prod
-                    wdata.add_prd_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
-                                               phase_name='gas', bhp_constraint=100)  # kmol/day | bars
-        elif 'wperiodic' in case:
-            y2d = 2*365.25
-            nper = 4
-            for w in wells:
-                if self.well_is_inj(w):  # inject water
-                    for y in range(nper):
-                        wdata.add_inj_rate_control(time=2*y*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE,
-                                                   phase_name='wat', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
-                        wdata.add_inj_rate_control(time=(2*y+1)*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
-                                                   phase_name='wat', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
-                else:  # prod
-                    for y in range(nper):
-                        wdata.add_prd_rate_control(time=2*y*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE,
-                                                   phase_name='gas', bhp_constraint=70)  # kmol/day | bars
-                        wdata.add_prd_rate_control(time=(2*y+1)*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
-                                                   phase_name='gas', bhp_constraint=70)  # kmol/day | bars
-
-        self.idata.obl.n_points = 400
-        self.idata.obl.zero = 1e-13
-        self.idata.obl.min_p = 0.
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 10.
-        self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
-
 
 class ModBrooksCorey:
     def __init__(self, corey, phase):

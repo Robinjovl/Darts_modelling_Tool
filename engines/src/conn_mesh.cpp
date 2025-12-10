@@ -9,6 +9,8 @@
 #include <assert.h>
 
 using namespace std;
+int 
+int
 int
 conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, std::vector<value_t>& tran, std::vector<value_t>& tranD)
 {
@@ -36,6 +38,7 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   depth.assign(n_res_blocks, 0);
   heat_capacity.assign(n_res_blocks, 0);
   rock_cond.assign(n_res_blocks, 0);
+  cell_thickness.assign(n_res_blocks, 0);
 
   // kinetic property
   kin_factor.assign(n_res_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
@@ -1747,6 +1750,44 @@ int conn_mesh::init_spe(value_t grav_acceleration_for_spe)
 		cell_spe[i] = - (depth[i] - depth[0]) * grav_acceleration_for_spe * 1e-3;
 	}
 
+	// Calculate and store specific potential energy (spe) at connections
+	conn_spe.assign(n_conns, 0);
+
+	value_t half_dz_m;
+	value_t half_dz_p;
+	value_t z_m;
+	value_t z_p;
+	value_t z_conn;
+	for (index_t j = 0; j < n_conns; ++j)
+	{
+		half_dz_m = cell_thickness[block_m[j]] / 2;
+		half_dz_p = cell_thickness[block_p[j]] / 2;
+		z_m = depth[block_m[j]];
+		z_p = depth[block_p[j]];
+		z_conn = (half_dz_m * z_p + half_dz_p * z_m) / (half_dz_m + half_dz_p);
+
+		// It is multiplied by -1 because for spe height needs to be used instead of depth
+		// It is multiplied by 1e-3 to convert Joule to kilo Joule
+		// Use depth[0] as the reference depth
+		conn_spe[j] = - (z_conn - depth[0]) * grav_acceleration_for_spe * 1e-3;
+	}
+
+	return 0;
+}
+
+int conn_mesh::init_spe(value_t grav_acceleration_for_spe)
+{
+	// Calculate and store specific potential energy (spe) at cell centroids
+	cell_spe.assign(n_blocks, 0);
+
+	for (size_t i = 0; i < depth.size(); i++)
+	{
+		// It is multiplied by -1 because for spe height needs to be used instead of depth
+		// It is multiplied by 1e-3 to convert Joule to kilo Joule
+		// Use depth[0] as the reference depth
+		cell_spe[i] = - (depth[i] - depth[0]) * grav_acceleration_for_spe * 1e-3;
+	}
+
 	return 0;
 }
 
@@ -1876,6 +1917,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   initial_state.resize(n_blocks * n_vars);
   op_num.resize(n_blocks);
   depth.resize(n_blocks + n_bounds);
+  cell_thickness.resize(n_blocks);
 
   heat_capacity.resize(n_blocks);
   rock_cond.resize(n_blocks + n_bounds);
@@ -1901,6 +1943,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
         rock_cond[w_i] = rock_cond[r_i];
         // depth of well segments
         depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+		cell_thickness[wells[iw]->well_head_idx + p] = cell_thickness[r_i];
       }
     }
   }
