@@ -42,7 +42,7 @@ def plot_contour(array_dict, output_folder, points_x=None, points_y=None, layer=
         plt.colorbar(cs)
         #plt.gca().set_aspect('equal')
         #plt.tight_layout()
-        plt.xlabel('Time(days)')
+        plt.xlabel('Timestep index')
         plt.ylabel('Coordinate(m)')
         plt.title(arr_name)
         plt.savefig(os.path.join(output_folder, arr_name + '.png'))
