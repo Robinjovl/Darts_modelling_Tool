@@ -4,31 +4,24 @@ from main import read_vtk
 from scipy.interpolate import griddata as gd
 from matplotlib import pyplot as plt
 
-output_directory = 'sol_mixed_well_slip_weakening'
+vtk_directory = 'sol_mixed_well_slip_weakening'
+output_directory = os.path.join(vtk_directory, 'plots')
+os.makedirs(output_directory, exist_ok=True)
 
-#
-timestep_start = 1
-timestep_end = 1500
-timestep_stride = 100
+def add_tstep_range_plot(tstep_plot_dict, name : str, timestep_start : int, timestep_end : int, timestep_stride : int):
+    tstep_plot = np.arange(timestep_start, timestep_end, timestep_stride)
+    tstep_plot_dict[name] = tstep_plot
 
-# before the fault slip
-#timestep_start = 1
-#timestep_end = 370
-#timestep_stride = 30
+tstep_plot_dict = dict()
 
-# during the fault slip
-#timestep_start = 350
-#timestep_end = 700
-#timestep_stride = 50
+#add_tstep_range_plot(tstep_plot_dict, name='all_step10', timestep_start = 1, timestep_end = 1500, timestep_stride = 10)
+#add_tstep_range_plot(tstep_plot_dict, name='all_step1', timestep_start = 1, timestep_end = 1500, timestep_stride = 1)
+#add_tstep_range_plot(tstep_plot_dict, name='before_slip', timestep_start = 1,   timestep_end = 370,  timestep_stride = 1)
+#add_tstep_range_plot(tstep_plot_dict, name='during_slip', timestep_start = 350, timestep_end = 700,  timestep_stride = 1)
+#add_tstep_range_plot(tstep_plot_dict, name='after_slip',  timestep_start = 700, timestep_end = 1500, timestep_stride = 1)
+add_tstep_range_plot(tstep_plot_dict, name='after_slip2',  timestep_start = 1300, timestep_end = 1500, timestep_stride = 1)
 
-# after the fault slip
-#timestep_start = 700
-#timestep_end = 1500
-#timestep_stride = 100
-
-tstep_plot = np.arange(timestep_start, timestep_end, timestep_stride)
-
-def plot_contour(array_dict, output_folder, points_x=None, points_y=None, layer=0):
+def plot_contour(fname_prefix, array_dict, output_folder, points_x=None, points_y=None, layer=0):
     # plot contours XY plane, 1 layer by z
     for arr_name, arr in array_dict.items():
         if len(arr.shape) == 3:
@@ -45,13 +38,15 @@ def plot_contour(array_dict, output_folder, points_x=None, points_y=None, layer=
         plt.xlabel('Timestep index')
         plt.ylabel('Coordinate(m)')
         plt.title(arr_name)
-        plt.savefig(os.path.join(output_folder, arr_name + '.png'))
+        plt.savefig(os.path.join(output_folder, fname_prefix + arr_name + '.png'))
         plt.close()
 
-def plot_strain():
+def plot_strain(tstep_plot_name, tstep_plot):
+    fname_prefix = tstep_plot_name + '_'
+
     vtk_files = []
     for ti in tstep_plot:
-        vtk_files.append(os.path.join(output_directory, 'solution' + str(ti) + '.vtu'))
+        vtk_files.append(os.path.join(vtk_directory, 'solution' + str(ti) + '.vtu'))
 
     # Define points along the well and at the surface
     y_range_well = np.arange(2000., -2000., -100.)
@@ -69,16 +64,28 @@ def plot_strain():
 
     strain_yy_well_list = []
     strain_xx_surface_list = []
+    v_y_well_list = []
     for k, filename in enumerate(vtk_files):
-        centroids, props, __, __ = read_vtk(filename=filename, props=['strain'])
+        centroids, props, __, __ = read_vtk(filename=filename, props=['strain', 'v_y'])
 
+        # Voight notation
         strain_xx = props['strain'][0][:, 0]
         strain_yy = props['strain'][0][:, 1]
         #strain_zz = props['strain'][0][:, 2]
 
+        if 'v_y' not in props.keys():
+            v_y = np.zeros_like(strain_yy)
+        else:
+            v_y = props['v_y'][0]
+
         # interpolate the solution (arr) from cell centers to given set of points
         strain_yy_well = gd((centroids[:, 0], centroids[:, 1], centroids[:, 2]), \
                                          strain_yy,
+                            (points_well[:,0], points_well[:,1], points_well[:,2]),
+                            method='nearest')
+
+        v_y_well = gd((centroids[:, 0], centroids[:, 1], centroids[:, 2]), \
+                                         v_y,
                             (points_well[:,0], points_well[:,1], points_well[:,2]),
                             method='nearest')
 
@@ -90,6 +97,8 @@ def plot_strain():
         strain_yy_well_list.append(strain_yy_well)
         strain_xx_surface_list.append(strain_xx_surface)
 
+        v_y_well_list.append(v_y_well)
+
     # Plot strain_yy along the well
     for k, strain_yy_well in enumerate(strain_yy_well_list):
         plt.plot(y_range_well, strain_yy_well, label='tstep_'+str(tstep_plot[k]))#, marker='.')
@@ -98,7 +107,7 @@ def plot_strain():
     plt.ylabel('Strain YY change')
     plt.legend()
     plt.grid()
-    plt.savefig(os.path.join(output_directory, 'strain_yy_well.png'))
+    plt.savefig(os.path.join(output_directory, fname_prefix + 'strain_yy_well.png'))
     #plt.show()
     plt.close()
 
@@ -110,7 +119,19 @@ def plot_strain():
     plt.ylabel('Strain XX change')
     plt.legend()
     plt.grid()
-    plt.savefig(os.path.join(output_directory, 'strain_xx_surface.png'))
+    plt.savefig(os.path.join(output_directory,  fname_prefix + 'strain_xx_surface.png'))
+    #plt.show()
+    plt.close()
+
+    # Plot strain_yy along the well
+    for k, v_y_well in enumerate(v_y_well_list):
+        plt.plot(y_range_well, v_y_well, label='tstep_'+str(tstep_plot[k]))#, marker='.')
+    plt.xlabel('Y-coordinate, m.')
+    plt.title('Velocity Y along the well')
+    plt.ylabel('Velocity Y')
+    plt.legend()
+    plt.grid()
+    plt.savefig(os.path.join(output_directory,  fname_prefix + 'velocity_y_well.png'))
     #plt.show()
     plt.close()
 
@@ -122,7 +143,7 @@ def plot_strain():
     for k in range(n_timesteps):
         strain_2d[:, k] = strain_xx_surface_list[k]
     array_dict = {'Strain_XX_change_surface_contour': strain_2d}
-    plot_contour(array_dict, points_x=tstep_plot, points_y=x_range_surface, output_folder=output_directory)
+    plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=x_range_surface, output_folder=output_directory)
     # well
     n_timesteps = len(strain_yy_well_list)
     n_points = strain_yy_well_list[0].size
@@ -130,17 +151,26 @@ def plot_strain():
     for k in range(n_timesteps):
         strain_2d[:, k] = strain_yy_well_list[k]
     array_dict = {'Strain_ZZ_change_well_contour': strain_2d}
-    plot_contour(array_dict, points_x=tstep_plot, points_y=y_range_well, output_folder=output_directory)
+    plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=y_range_well, output_folder=output_directory)
     # well rsv part
     y_range_well_rsv = (-350 < y_range_well) & (y_range_well < 350)
     array_dict = {'Strain_ZZ_change_well_contour_rsv': strain_2d[y_range_well_rsv, :]}
-    plot_contour(array_dict, points_x=tstep_plot, points_y=y_range_well[y_range_well_rsv], output_folder=output_directory)
+    plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=y_range_well[y_range_well_rsv], output_folder=output_directory)
+
+    # well
+    n_timesteps = len(v_y_well_list)
+    n_points = v_y_well_list[0].size
+    strain_2d = np.zeros((n_points, n_timesteps))
+    for k in range(n_timesteps):
+        strain_2d[:, k] = v_y_well_list[k]
+    array_dict = {'Velocity_Y_well_contour': strain_2d}
+    plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=y_range_well, output_folder=output_directory)
 
     ############# fault
     if False:
         vtk_files_fault = []
         for ti in tstep_plot:
-            vtk_files_fault.append(os.path.join(output_directory, 'solution_fault' + str(ti) + '.vtu'))
+            vtk_files_fault.append(os.path.join(vtk_directory, 'solution_fault' + str(ti) + '.vtu'))
 
         slip_max_list = []
         tstep_list = []
@@ -156,15 +186,17 @@ def plot_strain():
         plt.title('Max. slip (Y), mm.')
         plt.ylabel('Slip')
         plt.grid()
-        plt.savefig(os.path.join(output_directory, 'fault_slip.png'))
+        plt.savefig(os.path.join(output_directory,  fname_prefix + 'fault_slip.png'))
         #plt.show()
         plt.close()
 
 
 if __name__ == '__main__':
-    if True:
-        plot_strain()
+    if True: # 1d and 2d plots
+        for tstep_plot_name in tstep_plot_dict.keys():
+            plot_strain(tstep_plot_name, tstep_plot_dict[tstep_plot_name])
     else:
+        # save animated video
         labels = ['DARTS']
         from main import plot_profiles
         plot_profiles(data_folder=output_directory, labels=labels, analytics=None, animate=True)
