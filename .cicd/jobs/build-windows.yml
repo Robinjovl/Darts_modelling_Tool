@@ -14,20 +14,17 @@
         - $condaRoot = Split-Path $condaBinPath -Parent
         - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
         - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
-        - D:\BuildTools\init_conda.bat
+        # Initialize conda environment
         - conda create --name $env:CONDA_ENV python=$env:PY_VER --yes -q
         - conda activate $env:CONDA_ENV
-        # # Add python folder to PATH # for pure Python
-        # - $env:PATH +=";" + $env:PYTHONPATH + ";" + $env:PYTHONPATH + "\Scripts"
-        # - $env:PY_SUFFIX=python.exe -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
-        # make sure wheel package could be installed
+        # Make sure wheel package could be installed
         - python -m pip install --upgrade pip setuptools wheel
-        # copy VS redist libraries
+        # Copy VS redist libraries
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
         - echo "ODLS:" $env:ODLS
-        # compile and make the wheel
+        # Compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
     after_script:
         - $condaBinPath = 'D:\miniconda3\condabin'
