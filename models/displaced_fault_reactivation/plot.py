@@ -5,6 +5,9 @@ from scipy.interpolate import griddata as gd
 from matplotlib import pyplot as plt
 
 vtk_directory = 'sol_mixed_well_slip_weakening'
+prop_names = ['strain', 'v_y', 'strain_rate']
+
+
 output_directory = os.path.join(vtk_directory, 'plots')
 os.makedirs(output_directory, exist_ok=True)
 
@@ -15,11 +18,11 @@ def add_tstep_range_plot(tstep_plot_dict, name : str, timestep_start : int, time
 tstep_plot_dict = dict()
 
 #add_tstep_range_plot(tstep_plot_dict, name='all_step10', timestep_start = 1, timestep_end = 1500, timestep_stride = 10)
-#add_tstep_range_plot(tstep_plot_dict, name='all_step1', timestep_start = 1, timestep_end = 1500, timestep_stride = 1)
+add_tstep_range_plot(tstep_plot_dict, name='all_step1', timestep_start = 1, timestep_end = 1500, timestep_stride = 1)
 #add_tstep_range_plot(tstep_plot_dict, name='before_slip', timestep_start = 1,   timestep_end = 370,  timestep_stride = 1)
 #add_tstep_range_plot(tstep_plot_dict, name='during_slip', timestep_start = 350, timestep_end = 700,  timestep_stride = 1)
 #add_tstep_range_plot(tstep_plot_dict, name='after_slip',  timestep_start = 700, timestep_end = 1500, timestep_stride = 1)
-add_tstep_range_plot(tstep_plot_dict, name='after_slip2',  timestep_start = 1300, timestep_end = 1500, timestep_stride = 1)
+#add_tstep_range_plot(tstep_plot_dict, name='after_slip2',  timestep_start = 1300, timestep_end = 1500, timestep_stride = 1)
 
 def plot_contour(fname_prefix, array_dict, output_folder, points_x=None, points_y=None, layer=0):
     # plot contours XY plane, 1 layer by z
@@ -63,15 +66,23 @@ def plot_strain(tstep_plot_name, tstep_plot):
     points_surface[:,2] = 250.
 
     strain_yy_well_list = []
+    strain_rate_yy_well_list = []
     strain_xx_surface_list = []
     v_y_well_list = []
     for k, filename in enumerate(vtk_files):
-        centroids, props, __, __ = read_vtk(filename=filename, props=['strain', 'v_y'])
+        centroids, props, __, __ = read_vtk(filename=filename, props=prop_names)
 
         # Voight notation
         strain_xx = props['strain'][0][:, 0]
         strain_yy = props['strain'][0][:, 1]
         #strain_zz = props['strain'][0][:, 2]
+
+        if 'strain_rate' in props.keys():
+            strain_rate_xx = props['strain_rate'][0][:, 0]
+            strain_rate_yy = props['strain_rate'][0][:, 1]
+        else:
+            strain_rate_xx = np.zeros_like(strain_xx)
+            strain_rate_yy = np.zeros_like(strain_yy)
 
         if 'v_y' not in props.keys():
             v_y = np.zeros_like(strain_yy)
@@ -81,6 +92,11 @@ def plot_strain(tstep_plot_name, tstep_plot):
         # interpolate the solution (arr) from cell centers to given set of points
         strain_yy_well = gd((centroids[:, 0], centroids[:, 1], centroids[:, 2]), \
                                          strain_yy,
+                            (points_well[:,0], points_well[:,1], points_well[:,2]),
+                            method='nearest')
+
+        strain_rate_yy_well = gd((centroids[:, 0], centroids[:, 1], centroids[:, 2]), \
+                                         strain_rate_yy,
                             (points_well[:,0], points_well[:,1], points_well[:,2]),
                             method='nearest')
 
@@ -95,6 +111,7 @@ def plot_strain(tstep_plot_name, tstep_plot):
                             method='nearest')
 
         strain_yy_well_list.append(strain_yy_well)
+        strain_rate_yy_well_list.append(strain_rate_yy_well)
         strain_xx_surface_list.append(strain_xx_surface)
 
         v_y_well_list.append(v_y_well)
@@ -108,6 +125,18 @@ def plot_strain(tstep_plot_name, tstep_plot):
     plt.legend()
     plt.grid()
     plt.savefig(os.path.join(output_directory, fname_prefix + 'strain_yy_well.png'))
+    #plt.show()
+    plt.close()
+
+    # Plot strain_yy along the well
+    for k, strain_rate_yy_well in enumerate(strain_rate_yy_well_list):
+        plt.plot(y_range_well, strain_rate_yy_well, label='tstep_'+str(tstep_plot[k]))#, marker='.')
+    plt.xlabel('Y-coordinate, m.')
+    plt.title('Strain rate YY change along the well')
+    plt.ylabel('Strain rate YY change')
+    plt.legend()
+    plt.grid()
+    plt.savefig(os.path.join(output_directory, fname_prefix + 'strain_rate_yy_well.png'))
     #plt.show()
     plt.close()
 
@@ -144,18 +173,27 @@ def plot_strain(tstep_plot_name, tstep_plot):
         strain_2d[:, k] = strain_xx_surface_list[k]
     array_dict = {'Strain_XX_change_surface_contour': strain_2d}
     plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=x_range_surface, output_folder=output_directory)
-    # well
+    # well - strain
     n_timesteps = len(strain_yy_well_list)
     n_points = strain_yy_well_list[0].size
     strain_2d = np.zeros((n_points, n_timesteps))
     for k in range(n_timesteps):
         strain_2d[:, k] = strain_yy_well_list[k]
-    array_dict = {'Strain_ZZ_change_well_contour': strain_2d}
+    array_dict = {'Strain_YY_change_well_contour': strain_2d}
     plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=y_range_well, output_folder=output_directory)
-    # well rsv part
+    # well rsv part - strain
     y_range_well_rsv = (-350 < y_range_well) & (y_range_well < 350)
-    array_dict = {'Strain_ZZ_change_well_contour_rsv': strain_2d[y_range_well_rsv, :]}
+    array_dict = {'Strain_YY_change_well_contour_rsv': strain_2d[y_range_well_rsv, :]}
     plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=y_range_well[y_range_well_rsv], output_folder=output_directory)
+    # well - strain rate
+    n_timesteps = len(strain_rate_yy_well_list)
+    n_points = strain_rate_yy_well_list[0].size
+    strain_2d = np.zeros((n_points, n_timesteps))
+    for k in range(n_timesteps):
+        strain_2d[:, k] = strain_rate_yy_well_list[k]
+    array_dict = {'Strain_rate_YY_change_well_contour': strain_2d}
+    plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=y_range_well, output_folder=output_directory)
+
 
     # well
     n_timesteps = len(v_y_well_list)

@@ -1438,6 +1438,11 @@ class UnstructReservoirMech:
                         cell_data[cell_property[i]] = []
 
                     if self.cell_property[i] in ['ux', 'uy', 'uz']:
+                        if self.cell_property[i] not in self.displs_initial:
+                            self.displs_initial[self.cell_property[i]] = property_array[
+                                props_num * start_geom_cell_id + i : props_num
+                                * (cell_size + start_geom_cell_id) : props_num
+                            ]
                         cell_data[cell_property[i]].append(
                             property_array[
                                 props_num * start_geom_cell_id + i : props_num
@@ -1572,7 +1577,25 @@ class UnstructReservoirMech:
                                 -(2.0 + 2.0 * poisson) * stress[:, k] / E
                             )
 
-                if engine.momentum_inertia > 0.0 and dt != 0:  # dynamic simulation
+                        # compute strain rate
+                        if 'strain_rate' not in cell_data:
+                            cell_data['strain_rate'] = []
+                        cell_data['strain_rate'].append(
+                            np.zeros((self.n_matrix, 6), dtype=np.float64)
+                        )
+                        days2sec = 86400.0
+                        if not hasattr(self, 'strain_prev'):
+                            cell_data['strain_rate'][-1][:, :] = 0.0
+                        else:
+                            cell_data['strain_rate'][-1] = (
+                                (cell_data['strain'][-1] - self.strain_prev)
+                                / dt
+                                / days2sec
+                            )
+                        self.strain_prev = cell_data['strain'][-1]
+
+                # if engine.momentum_inertia > 0.0 and dt != 0:  # dynamic simulation
+                if dt != 0:
                     # velocity
                     days2sec = 86400
                     if 'v_x' not in cell_data:
@@ -1604,6 +1627,34 @@ class UnstructReservoirMech:
                         ]
                         / dt
                         / days2sec
+                    )
+                else:
+                    if 'v_x' not in cell_data:
+                        cell_data['v_x'] = []
+                    if 'v_y' not in cell_data:
+                        cell_data['v_y'] = []
+                    if 'v_z' not in cell_data:
+                        cell_data['v_z'] = []
+                    cell_data['v_x'].append(
+                        dX[
+                            props_num * start_geom_cell_id : props_num
+                            * (cell_size + start_geom_cell_id) : props_num
+                        ]
+                        * 0.0
+                    )
+                    cell_data['v_y'].append(
+                        dX[
+                            props_num * start_geom_cell_id + 1 : props_num
+                            * (cell_size + start_geom_cell_id) : props_num
+                        ]
+                        * 0.0
+                    )
+                    cell_data['v_z'].append(
+                        dX[
+                            props_num * start_geom_cell_id + 2 : props_num
+                            * (cell_size + start_geom_cell_id) : props_num
+                        ]
+                        * 0.0
                     )
 
                 if 'cell_id' not in cell_data:

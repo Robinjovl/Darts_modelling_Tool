@@ -62,7 +62,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
                 m.reservoir.write_to_vtk(m.output_directory, m.ith_step + 1, m.physics.engine, dt)
                 m.ith_step += 1
                 if m.ith_step > 1000:
-                    os._exit()
+                    exit(0)
 
             if m.physics.engine.n_newton_last_dt < 4:
                 dt *= 1.5
