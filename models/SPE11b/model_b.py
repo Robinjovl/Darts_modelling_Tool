@@ -63,7 +63,18 @@ class PorPerm:
 
 # endregion
 
+def build_output_dir(spec, base_dir=""):
+    iso_tag = "iso" if spec.get("temperature") is not None else "niso"
+    rhs_tag = "rhs" if spec.get("RHS") else "wells"
+    disp_tag = "disp" if spec.get("dispersion") else "nodisp"
+    components = "-".join(spec.get("components", []))
+    nx = spec.get("nx", "nx?")
+    nz = spec.get("nz", "nz?")
+    device = 'CPU' if spec.get('gpu_device') is False else 'GPU'
 
+    # Construct folder name
+    dir_name = f"{iso_tag}__{rhs_tag}__{disp_tag}__{components}__nx{nx}_nz{nz}_{device}"
+    return os.path.join(base_dir, dir_name)
 
 ########
 import pickle
@@ -82,7 +93,7 @@ class Model(DartsModel):
         self.nc = len(self.components)
         self.zero = 1e-10
         self.salinity = 0
-
+        
         """Define physics"""
         self.set_physics(temperature=specs['temperature'], n_points=1001)
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4, tol_newton=1e-3,
@@ -91,12 +102,13 @@ class Model(DartsModel):
         self.data_ts.eta = np.ones(self.physics.n_vars)
         self.params.nonlinear_norm_type = self.params.LINF  # linf if you use m.set_rhs() for injection
 
+
         """Define the reservoir and wells """
         well_centers = {
             "I1": [2700.0, 0.0, 300.0],
             "I2": [5100.0, 0.0, 700.0]
         }
-
+        
         if 1:
             from fluidflower_str_b import FluidFlowerStruct
             self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
@@ -107,8 +119,8 @@ class Model(DartsModel):
             self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
                                                 layers_to_regions=layers_to_regions,
                                                     model_specs=specs, well_centers=well_centers)
-
-
+                    
+        
         self.nx, self.ny, self.nz = self.reservoir.nx, self.reservoir.ny, self.reservoir.nz
         self.grid = np.meshgrid(np.linspace((8400 / self.nx / 2), 8400 - (8400 / self.nx / 2), self.nx),
                            np.linspace((1200 / self.nz / 2), 1200 - (1200 / self.nz / 2), self.nz))
@@ -120,12 +132,12 @@ class Model(DartsModel):
         if specs['1000years'] is False:
             self.inj_rate = [inj_rate, self.zero]
         else:
-            self.inj_rate = [self.zero, self.zero]
+            self.inj_rate = [0, 0]
 
         if specs['platform'] == 'cpu':
             self.platform = 'cpu'
             # from darts.engines import set_num_threads
-            # set_num_threads(16)
+            # set_num_threads(8)
         elif specs['platform'] == 'gpu':
             self.platform = 'gpu'
             from darts.engines import set_gpu_device
@@ -138,23 +150,15 @@ class Model(DartsModel):
     def set_well_controls(self):
         if self.specs['RHS'] is False:
             for i, w in enumerate(self.reservoir.wells):
-
-                self.reservoir.mesh.op_num[self.reservoir.wells[i]
-                                           .well_head_idx] = 0 #self.reservoir.mesh.op_num[self.reservoir.well_cells[i]]
-
-                self.reservoir.mesh.op_num[self.reservoir.wells[i]
-                                           .well_body_idx] = 0 #self.reservoir.mesh.op_num[self.reservoir.well_cells[i]]
-
-                self.physics.set_well_controls(wctrl=w.control,
-                                               control_type=well_control_iface.MASS_RATE,
-                                               is_inj=True,
-                                               target=self.inj_rate[i],
-                                               phase_name='V',
-                                               inj_composition=self.inj_stream[:-1],
+                self.physics.set_well_controls(wctrl = w.control,
+                                               control_type = well_control_iface.MASS_RATE,
+                                               is_inj = True,
+                                               target = self.inj_rate[i],
+                                               phase_name = 'V',
+                                               inj_composition = self.inj_stream[:-1],
                                                inj_temp = self.inj_stream[-1]
                                                )
-                print(
-                    f'Set well {w.name} to {self.inj_rate[i]} kg/day with {self.inj_stream[:-1]} {self.components[:-1]} at 10°C...')
+                print(f'Set well {w.name} to {self.inj_rate[i]} kg/day with {self.inj_stream[:-1]} {self.components[:-1]} at 10°C...')
             return
         else:
             pass
@@ -177,13 +181,16 @@ class Model(DartsModel):
 
             region = 0
             molar_masses = self.physics.property_containers[region].Mw
-            mole_fractions = self.inj_stream[:nc - 1]
-            n_comp = np.zeros(nc - 1)
+            mole_fractions = self.inj_stream[:nc]
+            n_comp = np.zeros(nc)
             enth_idx = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_V")
 
             for i, well_cell in enumerate(self.reservoir.well_cells):
                 p_wellcell = self.physics.engine.X[well_cell * nv]
-                state = value_vector([p_wellcell] + self.inj_stream) if self.physics.thermal else value_vector([p_wellcell] + self.inj_stream[:-1])
+                if self.physics.thermal:
+                    state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
+                else:
+                    state = value_vector([p_wellcell] + self.inj_stream[:-2])
                 values = value_vector(np.zeros(self.physics.n_ops))
                 # values_np = np.array(values)
                 self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
@@ -193,7 +200,7 @@ class Model(DartsModel):
 
                 tot_moles = self.inj_rate[i] / avg_molar_mass
 
-                for comp_idx in range(nc - 1):
+                for comp_idx in range(nc):
                     comp_flux_idx = well_cell * nv + comp_idx  # Index
                     n_comp[comp_idx] = tot_moles * mole_fractions[comp_idx]  # Compute component moles
                     rhs[comp_flux_idx] -= n_comp[comp_idx]  # Update rhs
@@ -202,10 +209,13 @@ class Model(DartsModel):
                     temp_idx = well_cell * nv + nv - 1  # Last equation index (temperature)
                     rhs[temp_idx] -= enthV * np.sum(n_comp)
             return rhs
-        else:
-            pass
 
-    def set_physics(self, temperature: float = None, n_points: int = 10001):
+        # else:
+        #     # rhs = np.zeros(self.reservoir.mesh.n_res_blocks * self.physics.n_vars)
+        #     # return rhs
+        #     pass
+        
+    def set_physics(self, temperature: float = None, n_points: int = 1001):
         """Physical properties"""
 
         # define the Corey parameters for each layer (rock type) according to the technical description of the CSP
@@ -218,7 +228,7 @@ class Model(DartsModel):
             5: Corey(nw=1.5, ng=1.5, swc=0.10, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.025602, pcmax=300, c2=1.5),
             6: Corey(nw=1.5, ng=1.5, swc=1e-8, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1e-2, pcmax=300, c2=1.5)
         }
-
+        
         # Fluid components, ions and solid
         comp_data = CompData(self.components, setprops=True)
         nc, ni = comp_data.nc, comp_data.ni
@@ -243,16 +253,16 @@ class Model(DartsModel):
         else:
             thermal = False
             state_spec = Compositional.StateSpecification.P
-
+            
         pres_in = 210 # (pressure at depth of well 1 will be 300 bar)
         min_t = 273.15 if temperature is None else None
-        max_t = 373.15 if temperature is None else None
+        max_t = 373.15 + 100 if temperature is None else None
         self.physics = Compositional(self.components, phases, timer=self.timer,
-                                     n_points=n_points, min_p=200-100, max_p=450+100,
+                                     n_points=n_points, min_p=200, max_p=450,
                                      min_z=self.zero/10, max_z=1-self.zero/10, min_t=min_t, max_t=max_t,
-                                     state_spec = state_spec,
+                                     state_spec = state_spec, 
                                      cache=False)
-        #self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
+        self.physics.n_axes_points[0] = 101  # sets OBL points for pressure
 
         dispersivity = 10.
         self.physics.dispersivity = {}
@@ -289,7 +299,7 @@ class Model(DartsModel):
                 for c, component_name in enumerate(self.components):
                     key = f"x_{phase_name}_{component_name}"
                     property_container.output_props[key] = lambda ii=i, jj=j, cc=c: self.physics.property_containers[ii].x[jj, cc]
-
+            
             if region == 0 or region == 6:
                 self.physics.dispersivity[region] = np.zeros((self.physics.nph, self.physics.nc))
             else:
@@ -297,7 +307,7 @@ class Model(DartsModel):
                 disp[0, :] /= diff_g
                 disp[1, :] /= diff_w
                 self.physics.dispersivity[region] = disp
-
+                
     def init_dispersion(self):
         # activate reconstruction of velocities
         self.reconstruct_velocities()
@@ -317,28 +327,84 @@ class Model(DartsModel):
             dispersivity_d = self.physics.engine.get_dispersivity_d()
             allocate_device_data(self.physics.engine.dispersivity, dispersivity_d)
             copy_data_to_device(self.physics.engine.dispersivity, dispersivity_d)
+            
+    def reconstruct_velocities(self):
+        # velocity discretization
+        values, offset = self.reservoir.discretizer.discretize_velocities(
+            cell_m=np.asarray(self.reservoir.mesh.block_m),
+            cell_p=np.asarray(self.reservoir.mesh.block_p),
+            geom_coef=np.asarray(self.reservoir.mesh.tranD),
+            n_res_blocks=self.reservoir.mesh.n_res_blocks,
+        )
+        self.reservoir.mesh.velocity_appr.resize(len(values))
+        self.reservoir.mesh.velocity_offset.resize(len(offset))
+
+        velocity_appr = np.asarray(self.reservoir.mesh.velocity_appr)
+        velocity_appr[:] = values #/ (8400. / self.reservoir.nx * 1.)
+        velocity_offset = np.asarray(self.reservoir.mesh.velocity_offset)
+        velocity_offset[:] = offset
+
+        # specify molar weights to get rid of molar density multiplier in flux terms
+        nc = self.physics.nc
+        self.physics.engine.molar_weights.resize(nc * len(self.physics.regions))
+        molar_weights = np.asarray(self.physics.engine.molar_weights)
+        for i, region in enumerate(self.physics.regions):
+            molar_weights[i * nc : (i + 1) * nc] = self.physics.property_containers[
+                region
+            ].Mw
+
+        # resize storage for velocities inside engine
+        self.physics.engine.darcy_velocities.resize(
+            self.reservoir.mesh.n_res_blocks * self.physics.nph * 3
+        )
+
+        # allocate & transfer data to device
+        if self.platform == "gpu":
+            from darts.engines import allocate_device_data, copy_data_to_device
+
+            # velocity_appr
+            velocity_appr_d = self.physics.engine.get_velocity_appr_d()
+            allocate_device_data(self.reservoir.mesh.velocity_appr, velocity_appr_d)
+            copy_data_to_device(self.reservoir.mesh.velocity_appr, velocity_appr_d)
+            # velocity_offset_d
+            velocity_offset_d = self.physics.engine.get_velocity_offset_d()
+            allocate_device_data(self.reservoir.mesh.velocity_offset, velocity_offset_d)
+            copy_data_to_device(self.reservoir.mesh.velocity_offset, velocity_offset_d)
+            # darcy_velocities_d
+            darcy_velocities_d = self.physics.engine.get_darcy_velocities_d()
+            allocate_device_data(
+                self.physics.engine.darcy_velocities, darcy_velocities_d
+            )
+            # molar_weights_d
+            molar_weights_d = self.physics.engine.get_molar_weights_d()
+            allocate_device_data(self.physics.engine.molar_weights, molar_weights_d)
+            copy_data_to_device(self.physics.engine.molar_weights, molar_weights_d)
+            # op_num_d
+            op_num_d = self.physics.engine.get_op_num_d()
+            allocate_device_data(self.reservoir.mesh.op_num, op_num_d)
+            copy_data_to_device(self.reservoir.mesh.op_num, op_num_d)
 
     def set_initial_conditions(self):
-        if 1:
+        if 0:
             pres_in = 212
             input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
-
+            
             self.input_distribution = {"pressure": [pres_in, pres_in + input_depths[1] * 0.09775]}
             for i in range(self.nc):
                 if self.components[i] == 'H2O':
                     self.input_distribution[self.components[i]] = [1-(self.nc-1)*self.zero, 1-(self.nc-1)*self.zero]
                 else:
                     self.input_distribution[self.components[i]] = [self.zero, self.zero]
-
+                
             if self.specs['temperature'] is None:
                 self.input_distribution["temperature"] = [313.4, 342.9]
-
-            self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
+    
+            self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, 
                                                                  input_depth=input_depths,
                                                                  input_distribution=self.input_distribution)
         else:
             self.temp = lambda depth: 273.15 + 70. - depth * 0.025
-
+            
             depths = np.asarray(self.reservoir.mesh.depth)
             min_depth = np.min(depths)
             max_depth = np.max(depths)
@@ -365,13 +431,13 @@ class Model(DartsModel):
                 # need 1 specification: H2O = 1-zero
                 # primary_specs["H2O"][:] = 1.-self.zero
                 primary_specs["CO2"][:] = self.zero
-
+                
             else:
                 # H2O-CO2-C1, initially pure brine
                 # need 2 specifications: H2O = 1-(nc-1)*zero, CO2 = zero
                 primary_specs["H2S"][:] = self.zero
                 primary_specs["CO2"][:] = self.zero
-
+                
             if self.salinity:
                 # + ions, need extra specification for ion molality
                 # H2O cannot be specified because of salinity, last component instead
@@ -386,7 +452,7 @@ class Model(DartsModel):
                   ([self.zero] if nc > 2 else []) +  # CO2
                   ([1. - 0.98 - mol[known_idx] * 0.98 / 55.509] if self.salinity else []) +  # last component if ions
                   ([temp_I1] if init.thermal else []))  # temperature
-            X0 = init.solve_state(X0, primary_specs={'pressure': pres_I1,
+            X0 = init.solve_state(X0, primary_specs={'pressure': pres_I1, 
                                                      'temperature': temp_I1 if init.thermal else None} |
                                                     {comp: primary_specs[comp][known_idx] for comp in self.components},
                                   secondary_specs=known_specs)
@@ -397,13 +463,13 @@ class Model(DartsModel):
                             primary_specs=primary_specs, secondary_specs=secondary_specs,
                             boundary_state=boundary_state, dTdh=0.025).reshape((nb, self.physics.n_vars))
 
-            self.physics.set_initial_conditions_from_depth_table(mesh = self.reservoir.mesh,
+            self.physics.set_initial_conditions_from_depth_table(mesh = self.reservoir.mesh, 
                                                                  input_depth = init.depths,
                                                                  input_distribution = {v: X[:, i] for i, v in enumerate(self.physics.vars)})
 
     def set_str_boundary_volume_multiplier(self):
-        self.reservoir.boundary_volumes['yz_minus'] = 5e4 * (1200 / self.reservoir.nz)
-        self.reservoir.boundary_volumes['yz_plus']  = 5e4 * (1200 / self.reservoir.nz)
+        self.reservoir.boundary_volumes['yz_minus'] = 5e9 * (1200 / self.reservoir.nz)
+        self.reservoir.boundary_volumes['yz_plus']  = 5e9 * (1200 / self.reservoir.nz)
         return
 
     def get_mass_components(self, property_array):
@@ -422,16 +488,16 @@ class Model(DartsModel):
             self.y_components.append(property_array[f'x_V_{component_name}'][0])
             # self.x_components.append(property_array['x' + component_name][0])
             # self.y_components.append(property_array['y' + component_name][0])
-
+            
         self.x_components, self.y_components = np.array(self.x_components), np.array(self.y_components)
-
+        
         # Compute molecular weight of the aqueous phase
         MWAq = np.sum(self.y_components[1:, :] * Mw[1:], axis = 0 ) + (1 - np.sum(self.y_components[1:, :], axis = 0)) * Mw[0]
-
+    
         # Mass fractions in vapor phase
         w_components_vapor = (self.y_components * Mw) / MWAq
-
-        # Pore volume
+    
+        # Pore volume 
         V = np.array(self.reservoir.mesh.volume, copy=False)[:self.reservoir.n]
         phi = np.array(self.reservoir.mesh.poro, copy=False)[:self.reservoir.n]
 
@@ -442,13 +508,13 @@ class Model(DartsModel):
         for i, component_name in enumerate(component_names):
             # Vapor phase mass contribution
             mass_vapor[component_name] = phi * V * w_components_vapor[i] * sg * rhoV
-
+            
             # Aqueous phase mass contribution
             mass_aqueous[component_name] = phi * V * (1 - sg) * self.x_components[i] * rho_m_Aq * Mw[i]
-
+            
             # Total mass
             mass_components[component_name] = mass_vapor[component_name] + mass_aqueous[component_name]
-
+    
         return mass_components, mass_vapor, mass_aqueous
 
     def set_top_bot_temp(self):
@@ -564,7 +630,7 @@ class Model(DartsModel):
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
-        # self.data_ts.newton_tol_wel_mult = 1e2
+        self.data_ts.newton_tol_wel_mult = 1e2
 
         self.timer.node['simulation'].start()
         for i in range(max_newt + 1):
@@ -634,8 +700,8 @@ class Model(DartsModel):
     def set_well_rhs(self, Dt, inj_rate, event1, event2):
         if self.physics.engine.t >= 25 * Dt and self.physics.engine.t < 50 * Dt and event1:
             print('At 25 years, start injecting in the second well')
-            #self.inj_rate = [inj_rate, inj_rate]
-            self.inj_rate = [inj_rate, self.zero]
+            self.inj_rate = [inj_rate, inj_rate]
+            #self.inj_rate = [inj_rate, self.zero]
             event1 = False
         elif self.physics.engine.t >= 50 * Dt and event2:
             print('At 50 years, stop injection for both wells')
@@ -1081,4 +1147,4 @@ layer_props = {900001: PorPerm(type='7', poro=1e-6, perm=1e-6, anisotropy=[1, 1,
                900031: PorPerm(type='7', poro=1e-6, perm=1e-6, anisotropy=[1, 1, 0.1], rcond=2.0 * cmult),
                900032: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
                }
-######################## ######################## ########################
+######################## ######################## ######################## 
