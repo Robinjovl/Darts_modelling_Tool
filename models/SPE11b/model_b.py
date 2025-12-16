@@ -209,7 +209,6 @@ class Model(DartsModel):
                     temp_idx = well_cell * nv + nv - 1  # Last equation index (temperature)
                     rhs[temp_idx] -= enthV * np.sum(n_comp)
             return rhs
-
         # else:
         #     # rhs = np.zeros(self.reservoir.mesh.n_res_blocks * self.physics.n_vars)
         #     # return rhs
