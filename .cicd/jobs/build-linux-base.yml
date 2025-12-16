@@ -1,38 +1,30 @@
 .build-linux:
     stage: build
-    image: "python:$PY_VER"
+    image: "${CI_REGISTRY_IMAGE}/linux-builder"
     # Will be executed on runner with linux tag - that assumed to run on linux host
     tags:
         - linux
+    variables:
+        CONDA_ENV: "darts"
     before_script:
         - echo 'before build-linux'
-        - apt-get update -qq && apt-get install -y -qq smbclient libjpeg-dev
+        - source /opt/conda/bin/activate
+        - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
+        - conda activate ${CONDA_ENV}
         - export PY_SUFFIX=`python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"`
         - python -m pip install --upgrade pip setuptools wheel
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
         - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS -p
+    after_script:
+        - conda deactivate || true
+        - conda env remove -n ${CONDA_ENV} --yes || true
+    needs:
+    - job: docker-image-builder
+      optional: true
     artifacts:
       paths:
         - './dist/*.whl'
         - '*.log'
       expire_in: 1 week
       when: always
-
-.build-linux-dockcross:
-    extends: .build-linux
-    # Dockcross is an image specifically made for building Python wheels, based on CentOS 7 with old glibc - it will run on even old systems
-    image: "${CI_REGISTRY_IMAGE}/linux-builder"
-    # Install samba client to upload build results to shared folder TODO remove
-    before_script:
-        - sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-        - sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-        # Install EPEL from 'extras' (no external URL)
-        - yum -y -q install epel-release || true
-        - yum clean all && yum makecache fast && yum repolist
-        - yum install -y -q samba-client libjpeg-turbo-devel
-
-        - export PATH="/opt/python/$PY_SUF/bin:$PATH"
-    needs:
-    - job: docker-image-builder
-      optional: true
