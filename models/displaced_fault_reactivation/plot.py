@@ -12,15 +12,15 @@ output_directory = os.path.join(vtk_directory, 'plots')
 os.makedirs(output_directory, exist_ok=True)
 
 def add_tstep_range_plot(tstep_plot_dict, name : str, timestep_start : int, timestep_end : int, timestep_stride : int):
-    tstep_plot = np.arange(timestep_start, timestep_end, timestep_stride)
+    tstep_plot = np.arange(timestep_start, timestep_end, timestep_stride, dtype=np.int32)
     tstep_plot_dict[name] = tstep_plot
 
 tstep_plot_dict = dict()
 
 #add_tstep_range_plot(tstep_plot_dict, name='all_step10', timestep_start = 1, timestep_end = 1500, timestep_stride = 10)
-add_tstep_range_plot(tstep_plot_dict, name='all_step1', timestep_start = 1, timestep_end = 1500, timestep_stride = 1)
+#add_tstep_range_plot(tstep_plot_dict, name='all_step1', timestep_start = 1, timestep_end = 1500, timestep_stride = 1)
 #add_tstep_range_plot(tstep_plot_dict, name='before_slip', timestep_start = 1,   timestep_end = 370,  timestep_stride = 1)
-#add_tstep_range_plot(tstep_plot_dict, name='during_slip', timestep_start = 350, timestep_end = 700,  timestep_stride = 1)
+add_tstep_range_plot(tstep_plot_dict, name='during_slip', timestep_start = 350, timestep_end = 1000,  timestep_stride = 1)
 #add_tstep_range_plot(tstep_plot_dict, name='after_slip',  timestep_start = 700, timestep_end = 1500, timestep_stride = 1)
 #add_tstep_range_plot(tstep_plot_dict, name='after_slip2',  timestep_start = 1300, timestep_end = 1500, timestep_stride = 1)
 
@@ -34,7 +34,11 @@ def plot_contour(fname_prefix, array_dict, output_folder, points_x=None, points_
         if points_x is None or points_y is None:
             cs = plt.contourf(arr_layer, levels=10)
         else:
-            cs = plt.contourf(points_x, points_y, arr_layer, levels=10)
+            if False:
+                cs = plt.contourf(points_x, points_y, arr_layer, levels=10)
+            else:
+                x1, y1 = np.meshgrid(points_x, points_y)
+                cs = plt.scatter(x1, y1, c=arr_layer, s=0.001) # point size i s
         plt.colorbar(cs)
         #plt.gca().set_aspect('equal')
         #plt.tight_layout()
@@ -47,20 +51,27 @@ def plot_contour(fname_prefix, array_dict, output_folder, points_x=None, points_
 def plot_strain(tstep_plot_name, tstep_plot):
     fname_prefix = tstep_plot_name + '_'
 
+    import pyvista as pv
+    pvd_filename = os.path.join(vtk_directory, 'solution.pvd')
+    reader = pv.get_reader(pvd_filename)
+    t_steps = np.asarray(reader.time_values)[tstep_plot]
+    print("Timesteps for plotting:", t_steps[:5], '...', t_steps[-5:])
+
     vtk_files = []
     for ti in tstep_plot:
         vtk_files.append(os.path.join(vtk_directory, 'solution' + str(ti) + '.vtu'))
 
     # Define points along the well and at the surface
-    y_range_well = np.arange(2000., -2000., -100.)
-    n_points = y_range_well.size
-    points_well = np.zeros((n_points, 3))
+    y_range_well = np.arange(2000., -2000., -1.)
+    n_points_well = y_range_well.size
+    points_well = np.zeros((n_points_well, 3))
     points_well[:,0] = 500.
     points_well[:,1] = y_range_well
     points_well[:,2] = 250.
 
     x_range_surface = np.arange(-2000., 2000., 100.)
-    points_surface = np.zeros((n_points, 3))
+    n_points_surface = x_range_surface.size
+    points_surface = np.zeros((n_points_surface, 3))
     points_surface[:,0] = x_range_surface
     points_surface[:,1] = 2200. # 50m depth from surface
     points_surface[:,2] = 250.
@@ -173,7 +184,7 @@ def plot_strain(tstep_plot_name, tstep_plot):
         strain_2d[:, k] = strain_xx_surface_list[k]
     array_dict = {'Strain_XX_change_surface_contour': strain_2d}
     plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=x_range_surface, output_folder=output_directory)
-    # well - strain
+    # well - strain change
     n_timesteps = len(strain_yy_well_list)
     n_points = strain_yy_well_list[0].size
     strain_2d = np.zeros((n_points, n_timesteps))
@@ -181,7 +192,7 @@ def plot_strain(tstep_plot_name, tstep_plot):
         strain_2d[:, k] = strain_yy_well_list[k]
     array_dict = {'Strain_YY_change_well_contour': strain_2d}
     plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=y_range_well, output_folder=output_directory)
-    # well rsv part - strain
+    # well rsv part - strain change
     y_range_well_rsv = (-350 < y_range_well) & (y_range_well < 350)
     array_dict = {'Strain_YY_change_well_contour_rsv': strain_2d[y_range_well_rsv, :]}
     plot_contour(fname_prefix, array_dict, points_x=tstep_plot, points_y=y_range_well[y_range_well_rsv], output_folder=output_directory)
