@@ -32,7 +32,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     report_time_labels: list,
     reported_times: list,
     *,
-    property_name: str,
+    prop_name: str,
     legend_loc: str = 'upper right',
 ):
     """
@@ -50,12 +50,12 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     :type report_time_labels: list
     :param reported_times: List of reported times [day]
     :type reported_times: list
-    :param property_name: Name of the property to plot
-    :type property_name: str
+    :param prop_name: Name of the property to plot
+    :type prop_name: str
     :param legend_loc: Legend location
     :type legend_loc: str
     """
-    output_folder = coupled_model.output_folder
+    output_folder_path = coupled_model.output_folder
 
     dx = coupled_model.reservoir.global_data['dx']
     assert dx.ndim == 3 and dx.shape[1:] == (1, 1), f"Expected (*,1,1), got {dx.shape}"
@@ -64,16 +64,16 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         "Number of report step labels must be equal to number of report step times!"
     )
 
-    assert property_name in ["pressure", "temperature", "sL"]
-    if property_name == "pressure":
+    assert prop_name in ["pressure", "temperature", "sL"]
+    if prop_name == "pressure":
         prop_name_in_well_output = "Pressure"
         prop_name_in_reservoir_output = "pressure"
         xlabel = "Pressure [bar]"
-    elif property_name == "temperature":
+    elif prop_name == "temperature":
         prop_name_in_well_output = "Temperature"
         prop_name_in_reservoir_output = "temperature"
         xlabel = "Temperature [\u00b0C]"
-    elif property_name == "sL":
+    elif prop_name == "sL":
         prop_name_in_well_output = "sL"
         prop_name_in_reservoir_output = "sat_LCO2"
         xlabel = "Liquid volume fraction [-]"
@@ -127,7 +127,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     well_data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
 
     # Fast load; infer low-memory dtypes
-    all_solutions_csv_path = os.path.join(output_folder, "all_solutions.csv")
+    all_solutions_csv_path = os.path.join(output_folder_path, "all_solutions.csv")
     reservoir_data_frame = pd.read_csv(all_solutions_csv_path, low_memory=False)
 
     # Ensure stable ordering
@@ -150,7 +150,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         return matrix_full[:, :num_res_cells]  # keep only the first num_res_cells
 
     reservoir_property_matrix = to_matrix(prop_name_in_reservoir_output)
-    if property_name == "temperature":
+    if prop_name == "temperature":
         reservoir_property_matrix -= 273.15
 
     # Generate a colormap for the report steps (big jumps for the first time steps, then smaller)
@@ -180,7 +180,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         well_prop_profile = well_data_frame[prop_name_in_well_output][
             report_index * num_segments : (report_index + 1) * num_segments
         ]
-        if property_name == "temperature":
+        if prop_name == "temperature":
             well_prop_profile -= 273.15
 
         color = colors[idx]  # Assign color from the colormap
@@ -238,10 +238,10 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     ).get_frame().set_edgecolor('black')  # Optional: Add a border
     fig.tight_layout()
     fig.savefig(
-        os.path.join(output_folder, f"{property_name}_well_reservoir_profile.pdf")
+        os.path.join(output_folder_path, f"{prop_name}_well_reservoir_profile.pdf")
     )
     fig.savefig(
-        os.path.join(output_folder, f"{property_name}_well_reservoir_profile.png")
+        os.path.join(output_folder_path, f"{prop_name}_well_reservoir_profile.png")
     )
     plt.show()
 
@@ -253,7 +253,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     report_time_labels: list,
     reported_times: list,
     *,
-    property_name: str,
+    prop_name: str,
     ax,
     legend_label: str,
     legend_title: str,
@@ -277,8 +277,8 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     :type report_time_labels: list
     :param reported_times: List of reported times [day]
     :type reported_times: list
-    :param property_name: Name of the property to plot
-    :type property_name: str
+    :param prop_name: Name of the property to plot
+    :type prop_name: str
     :param ax: Axes to plot on. This is needed to plot all the plots of different scenarios in the same axes.
     :type ax: matplotlib.axes.Axes
     :param legend_label: Label of the plot for the legend
@@ -301,16 +301,16 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
         "Number of report step labels must be equal to number of report step times!"
     )
 
-    assert property_name in ["pressure", "temperature", "sL"]
-    if property_name == "pressure":
+    assert prop_name in ["pressure", "temperature", "sL"]
+    if prop_name == "pressure":
         prop_name_in_well_output = "Pressure"
         prop_name_in_reservoir_output = "pressure"
         xlabel = "Pressure [bar]"
-    elif property_name == "temperature":
+    elif prop_name == "temperature":
         prop_name_in_well_output = "Temperature"
         prop_name_in_reservoir_output = "temperature"
         xlabel = "Temperature [\u00b0C]"
-    elif property_name == "sL":
+    elif prop_name == "sL":
         prop_name_in_well_output = "sL"
         prop_name_in_reservoir_output = "sat_LCO2"
         xlabel = "Liquid volume fraction [-]"
@@ -387,7 +387,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
         return matrix_full[:, :num_res_cells]  # keep only the first num_res_cells
 
     reservoir_property_matrix = to_matrix(prop_name_in_reservoir_output)
-    if property_name == "temperature":
+    if prop_name == "temperature":
         reservoir_property_matrix -= 273.15
 
     # Start plotting
@@ -405,7 +405,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
         well_prop_profile = well_data_frame[prop_name_in_well_output][
             report_index * num_segments : (report_index + 1) * num_segments
         ]
-        if property_name == "temperature":
+        if prop_name == "temperature":
             well_prop_profile -= 273.15
 
         ax.plot(
