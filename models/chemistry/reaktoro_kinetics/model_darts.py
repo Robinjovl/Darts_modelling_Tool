@@ -50,8 +50,8 @@ class MyOutput(Output):
         self.prop_dvalues = value_vector([0.] * n_prop_ops * n_res_blocks * n_vars)
 
         # extend units
-        op = self.physics.property_operators[next(iter(self.physics.property_operators))]
-        self.variable_units.update({name: '' for name in op.props_name})
+        op = self.physics.output_property_containers[next(iter(self.physics.output_property_containers))]
+        self.variable_units.update({name: '' for name in op.output_props.keys()})
         self.variable_units['porosity'] = ''
         self.variable_units[op.property.components_name[op.property.fc_mask][-1]] = ''
 
@@ -78,7 +78,7 @@ class MyOutput(Output):
             property_array[prop] = np.array([self.prop_values_np[i::n_interp_size]])
 
         # hydrogen
-        property = self.physics.property_operators[next(iter(self.physics.property_operators))].property
+        property = self.physics.property_containers[next(iter(self.physics.property_containers))]
         fc = property.components_name[property.fc_mask]
         property_array[fc[-1]] = 1 - sum(property_array[c] for c in fc[:-1])
 
@@ -117,8 +117,8 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
         self.set_reservoir()
         self.set_physics()
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=2, tol_linear=1e-6, it_newton=15, it_linear=200)
-        # self.params.linear_type = sim_params.cpu_superlu
+        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-5, tol_linear=1e-6, it_newton=15, it_linear=200)
+        self.params.linear_type = sim_params.cpu_superlu
 
         self.runtime = 1
         self.timer.node["initialization"].stop()
@@ -130,6 +130,7 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
+        self.min_z = 1e-11
         # ambient conditions
         self.temperature = 298.15         # K
         self.pressure_init = 1            # bar
@@ -145,17 +146,17 @@ class Model(CICDModel):
 
         # convert to compostion
         fluid_moles = 3 * h2o_mole + 3 * co2_mole + 2 * o2_mole
-        self.zCa = 0.0 / fluid_moles
-        self.zMg = 0.0 / fluid_moles
-        self.zC = co2_mole / fluid_moles
-        self.zO = (h2o_mole + 2 * (co2_mole + o2_mole)) / fluid_moles
-        self.zH = 2 * h2o_mole / fluid_moles
+        self.zCa = max(self.min_z, 0.0 / fluid_moles)
+        self.zMg = max(self.min_z, 0.0 / fluid_moles)
+        self.zC = max(self.min_z, co2_mole / fluid_moles)
+        self.zO = max(self.min_z, (h2o_mole + 2 * (co2_mole + o2_mole)) / fluid_moles)
+        self.zH = max(self.min_z, 2 * h2o_mole / fluid_moles)
         solid_moles = calcite_mole + dolomite_mole + magnesite_mole
-        self.zCalcite = calcite_mole / (solid_moles + fluid_moles)
-        self.zDolomite = dolomite_mole / (solid_moles + fluid_moles)
-        self.zMagnesite = magnesite_mole / (solid_moles + fluid_moles)
+        self.zCalcite = max(self.min_z, calcite_mole / (solid_moles + fluid_moles))
+        self.zDolomite = max(self.min_z, dolomite_mole / (solid_moles + fluid_moles))
+        self.zMagnesite = max(self.min_z, magnesite_mole / (solid_moles + fluid_moles))
 
-        self.obl_min = 1e-11
+        self.obl_min = self.min_z / 10
         self.phases = ['gas', 'liq']
 
         self.minerals = ['calcite', 'dolomite', 'magnesite']
@@ -217,7 +218,7 @@ class Model(CICDModel):
         for m in property_container.minerals:
             rho_m = property_container.rock_density_ev[m].evaluate(self.pressure_init, self.temperature) / property_container.Mw[m]
             area_per_mol = area_per_volume / rho_m / 1000.0 # m2/mol
-            surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=area_per_mol)
+            surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=area_per_mol * 10)
             property_container.kinetic_rate_ev[m] = KineticRate(
                 min_z=self.obl_min,
                 mineral_name=m.split('_', 1)[1],
@@ -280,18 +281,19 @@ class Model(CICDModel):
         for i in range(max_newt + 1):
             np.asarray(self.physics.engine.X)[::self.physics.n_vars] = self.pressure_init
 
-            self.physics.engine.assemble_linear_system(
-                dt
-            )  # assemble Jacobian and residual of reservoir and well blocks
+            # assemble Jacobian and residual of reservoir and well blocks
+            self.physics.engine.assemble_linear_system(dt)
+
             self.apply_rhs_flux(dt, t)  # apply RHS flux
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
 
-            self.physics.engine.newton_residual_last_dt = (
-                self.physics.engine.calc_newton_residual()
-            )  # calc norm of residual
+            # calc norm of residual
+            RHS = np.asarray(self.physics.engine.RHS)
+            self.physics.engine.newton_residual_last_dt = np.linalg.norm(RHS)
+            # self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()
 
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
@@ -307,77 +309,37 @@ class Model(CICDModel):
                     print("Stationary point detected!")
                 break
 
-            self.physics.engine.well_residual_last_dt = (
-                self.physics.engine.calc_well_residual()
-            )
-            residual_history.append(
-                (
-                    self.physics.engine.newton_residual_last_dt,  # matrix residual
-                    self.physics.engine.well_residual_last_dt,  # well residual
-                    1.0,
-                )
-            )  # Newton update coefficient
-
-            # print(f'Newton iteration {i}: residual = {self.physics.engine.newton_residual_last_dt}')
+            residual_history.append(self.physics.engine.newton_residual_last_dt)
+            print(f'Newton iteration {i}: residual = {self.physics.engine.newton_residual_last_dt}')
 
             self.physics.engine.n_newton_last_dt = i
             #  check tolerance if it converges
-            if (
-                self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol
-                and self.physics.engine.well_residual_last_dt
-                < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult
-            ) or self.physics.engine.n_newton_last_dt == max_newt:
+            if self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol or \
+                    self.physics.engine.n_newton_last_dt == max_newt:
                 if i > 0:  # min_i_newton
                     break
 
-            # line search
             if (
-                self.data_ts.line_search
-                and i > 0
-                and residual_history[-1][0] > 0.9 * residual_history[-2][0]
-            ):
-                coef = np.array([0.0, 1.0])
-                history = np.array([residual_history[-2], residual_history[-1]])
-                residual_history[-1] = self.line_search(dt, t, coef, history, verbose)
-                max_residual[i] = residual_history[-1][0]
-
-                # check stationary point after line search
-                counter = 0
-                for j in range(i):
-                    denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                    if (
-                        abs(max_residual[i] - max_residual[j]) / denom
-                        < self.data_ts.newton_tol_stationary
-                    ):
-                        counter += 1
-                if counter > 2:
-                    if verbose:
-                        print("Stationary point detected!")
-                    break
-            else:
-                if (
-                    type(self.data_ts.linear_type) is linear_solver_types
-                ):  # solvers via Python interface
-                    if self.data_ts.linear_type in [
-                        linear_solver_types.CPU_PETSC_CPR,
-                        linear_solver_types.CPU_PETSC_FS,
-                    ]:
-                        self.petsc_solve_linear_equation()
-                    elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                        self.pardiso_solve_linear_equation()
-                    else:
-                        raise Exception(
-                            "Unknown linear solver type", self.data_ts.linear_type
-                        )
-                else:  # compile-tyme C++ linear solvers
-                    self.physics.engine.solve_linear_equation()
-                self.timer.node["newton update"].start()
-                self.physics.engine.apply_newton_update(dt)
-                self.timer.node["newton update"].stop()
+                type(self.data_ts.linear_type) is linear_solver_types
+            ):  # solvers via Python interface
+                if self.data_ts.linear_type in [
+                    linear_solver_types.CPU_PETSC_CPR,
+                    linear_solver_types.CPU_PETSC_FS,
+                ]:
+                    self.petsc_solve_linear_equation()
+                elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
+                    self.pardiso_solve_linear_equation()
+                else:
+                    raise Exception(
+                        "Unknown linear solver type", self.data_ts.linear_type
+                    )
+            else:  # compile-tyme C++ linear solvers
+                self.physics.engine.solve_linear_equation()
+            self.timer.node["newton update"].start()
+            self.physics.engine.apply_newton_update(dt)
+            self.timer.node["newton update"].stop()
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
-
-        self.data_ts.newton_tol = 1e-6
 
         self.timer.node["simulation"].stop()
         return converged

@@ -1,17 +1,19 @@
 import numpy as np
 import os
-from model import Model
+from model_darts import Model as DartsModel
+from model_reaktoro import Model as ReaktoroModel
 from darts.engines import redirect_darts_output
 import h5py
 import matplotlib.pyplot as plt
 
+from reaktplot import *
 
-def run_simulation():
+def run_darts_simulation():
     output_folder = 'output'
     if not os.path.exists(output_folder): os.makedirs(output_folder)
     redirect_darts_output(os.path.join(output_folder, 'log.txt'))
 
-    m = Model()
+    m = DartsModel()
     m.init(platform='cpu', n_solid=len(m.minerals))
     m.set_output(output_folder=output_folder)
     m.data_ts.dt_first = 1e-5
@@ -41,7 +43,7 @@ def run_simulation():
 
     return m.output.output_folder, m.output.sol_filepath
 
-def plot_properties(output_folder, h5_file_path):
+def plot_darts_properties(output_folder, h5_file_path):
     with h5py.File(h5_file_path, 'r') as f:
         time = f['dynamic/time'][:]
         # props
@@ -53,13 +55,13 @@ def plot_properties(output_folder, h5_file_path):
 
     fig, ax = plt.subplots(nrows=2, sharex=True, figsize=(6, 8))
 
-    ax[0].plot(time, props[:, 0, np.where(props_names == 'xCa+2')[0][0]], color='b', label='xCa2+')
-    ax[0].plot(time, props[:, 0, np.where(props_names == 'xMg+2')[0][0]], color='r', label='xMg2+')
+    ax[0].plot(time, props[:, 0, np.where(props_names == 'x_Ca+2')[0][0]], color='b', label='xCa2+')
+    ax[0].plot(time, props[:, 0, np.where(props_names == 'x_Mg+2')[0][0]], color='r', label='xMg2+')
     ax[1].plot(time, vars[:, 0, np.where(vars_names == 'Solid_CaCO3')[0][0]], color='b', label='zCalcite')
     ax[1].plot(time, vars[:, 0, np.where(vars_names == 'Solid_CaMg(CO3)2')[0][0]], color='r', label='zDolomite')
     ax[1].plot(time, vars[:, 0, np.where(vars_names == 'Solid_MgCO3')[0][0]], color='g', label='zMagnesite')
 
-    ax[0].set_ylabel('zCa2+, zMg2+')
+    ax[0].set_ylabel('xCa2+, xMg2+')
     ax[1].set_ylabel('zCalcite, zDolomite, zMagnesite')
     ax[1].set_xlabel('Time, days')
     ax[0].legend()
@@ -69,7 +71,56 @@ def plot_properties(output_folder, h5_file_path):
     fig.savefig(os.path.join(output_folder, 'properties.png'))
     plt.show()
 
+def run_reaktoro_simulation():
+    m = ReaktoroModel()
+    m.run()
+    return m
+
+def plot_reaktoro_properties(model):
+    # Mg2+ and Ca2+ over time
+    fig = Figure()
+    fig.title("AQUEOUS SPECIES AMOUNTS OVER TIME")
+    fig.xaxisTitle("Time [day]")
+    fig.yaxisTitle("Amount [mol]")
+    fig.drawLine(model.table["Time"], model.table["Ca+2"], "Ca<sup>2+</sup>")
+    fig.drawLine(model.table["Time"], model.table["Mg+2"], "Mg<sup>2+</sup>")
+    # fig.show()
+    fig.save(file=os.path.join(model.output_folder, 'reaktoro_properties.png'))
+
+    # Calcite, Dolomite, Magnesite over time
+    fig = Figure()
+    fig.title("MINERALS AMOUNTS OVER TIME")
+    fig.xaxisTitle("Time [day]")
+    fig.yaxisTitle("Amount [mol]")
+    fig.drawLine(model.table["Time"], model.table["Calcite"], "Calcite")
+    fig.drawLine(model.table["Time"], model.table["Dolomite"], "Dolomite")
+    fig.drawLine(model.table["Time"], model.table["Magnesite"], "Magnesite")
+    fig.save(file=os.path.join(model.output_folder, 'reaktoro_minerals.png'))
+
+    # pH over time
+    fig = Figure()
+    fig.title("PH OVER TIME")
+    fig.xaxisTitle("Time [day]")
+    fig.yaxisTitle("pH")
+    fig.drawLine(model.table["Time"], model.table["pH"], "pH")
+    fig.save(file=os.path.join(model.output_folder, 'reaktoro_pH.png'))
+
+    # Reaction rates over time
+    fig = Figure()
+    fig.title("REACTION RATES OVER TIME")
+    fig.xaxisTitle("Time [day]")
+    fig.yaxisTitle("Reaction rate [mol/s]")
+    fig.drawLine(model.table["Time"], model.table["RateCalcite"], "RateCalcite")
+    fig.drawLine(model.table["Time"], model.table["RateDolomite"], "RateDolomite")
+    fig.drawLine(model.table["Time"], model.table["RateMagnesite"], "RateMagnesite")
+    fig.save(file=os.path.join(model.output_folder, 'reaktoro_reaction_rates.png'))
+
 
 if __name__ == '__main__':
-    output_folder, h5_file_path = run_simulation()
-    plot_properties(output_folder=output_folder, h5_file_path=h5_file_path)
+    # open-darts simulation
+    output_folder_darts, h5_file_path_darts = run_darts_simulation()
+    plot_darts_properties(output_folder=output_folder_darts, h5_file_path=h5_file_path_darts)
+
+    # reaktoro simulation
+    # model = run_reaktoro_simulation()
+    # plot_reaktoro_properties(model=model)
