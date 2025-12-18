@@ -18,7 +18,8 @@ class OperatorsSuper(OperatorsBase):
         # Operator order
         self.ACC_OP = 0  # accumulation operator - ne
         self.FLUX_OP = self.ACC_OP + self.ne  # flux operator - ne * nph
-        self.UPSAT_OP = self.FLUX_OP + self.ne * self.nph  # c*sat operator - nph
+        self.DENS_OP = self.FLUX_OP + self.ne * self.nph  # density operator
+        self.UPSAT_OP = self.DENS_OP + self.nph  # saturation operator
         self.GRAD_OP = self.UPSAT_OP + self.nph  # gradient operator - ne * nph
         self.KIN_OP = self.GRAD_OP + self.ne * self.nph  # kinetic operator - ne
         self.GRAV_OP = self.KIN_OP + self.ne  # gravity operator - nph
@@ -35,6 +36,7 @@ class OperatorsSuper(OperatorsBase):
         self.op_names = [
             (self.ACC_OP, "ACC"),
             (self.FLUX_OP, "FLUX"),
+            (self.DENS_OP, "DENS"),
             (self.UPSAT_OP, "UPSAT"),
             (self.GRAD_OP, "GRAD"),
             (self.KIN_OP, "KIN"),
@@ -117,8 +119,13 @@ class ReservoirOperators(OperatorsSuper):
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
             ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
+        """ molar density operator """
+        values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
+            self.property.ph
+        ]
+
         """ Gamma operator for diffusion (same for thermal and isothermal) """
-        # fluid diffusive flux sat: c_r phi_f s_j (-)
+        # fluid diffusive flux sat: c_r phi_f s_j rho_mj [kmol/m3] (kmol/m3)
         values_np[self.UPSAT_OP + self.property.ph] = (
             self.compr * self.phi_f * self.property.sat[self.property.ph]
         )
@@ -130,14 +137,10 @@ class ReservoirOperators(OperatorsSuper):
         """ Chi operator for diffusion """
         for j in self.property.ph:
             D = self.property.diffusion_ev[self.property.phases_name[j]].evaluate()
-            # fluid diffusive flux: D_cj [m2/day] x_cj [-] rho_mj [kmol/m3] (kmol/m.day)
+            # fluid diffusive flux: D_cj [m2/day] x_cj [-] (m2/day)
             values_np[
                 self.GRAD_OP + j * self.ne : self.GRAD_OP + j * self.ne + self.nc_fl
-            ] = (
-                D[: self.nc_fl]
-                * self.property.x[j][: self.nc_fl]
-                * self.property.dens_m[j]
-            )
+            ] = D[: self.nc_fl] * self.property.x[j][: self.nc_fl]
 
         """ Delta operator for reaction """
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
