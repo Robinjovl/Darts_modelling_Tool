@@ -128,7 +128,6 @@ class ReservoirOperators(OperatorsSuper):
         # fluid diffusive flux sat: c_r phi_f s_j rho_mj [kmol/m3] (kmol/m3)
         values_np[self.UPSAT_OP + self.property.ph] = (
             self.compr * self.phi_f * self.property.sat[self.property.ph]
-            # * self.property.dens_m[self.property.ph]
         )
         # solid diffusive flux sat: c_r z_s* (-)
         values_np[self.UPSAT_OP + self.np_fl : self.UPSAT_OP + self.np_fl + self.ns] = (
