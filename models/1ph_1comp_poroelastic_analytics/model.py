@@ -181,20 +181,20 @@ class Model(THMCModel):
             self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         elif case == 'bai':
             self.idata.rock.porosity = 0.2
-            self.idata.rock.perm = 4.e+6 / 0.9869
-            self.idata.rock.E = 0.06  # in bars
-            self.idata.rock.nu = 0.4
-            self.idata.rock.biot = 1.0
+            self.idata.rock.perm = 4.e+6 / 0.9869  # [mD]
+            self.idata.rock.E = 0.06  # Young modulus [bars]
+            self.idata.rock.nu = 0.4  # Poisson ratio
+            self.idata.rock.biot = 1.0 # Biot coefficient
             self.idata.rock.compressibility = get_rock_compressibility(
                 kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-            self.idata.rock.th_expn = 9.0 * 1.E-7
-            self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
-            self.idata.rock.conductivity = 0.836 * 86400.0 * 1000 # [kJ/m/day/K]
-            self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]
+            self.idata.rock.th_expn = 9.0 * 1.E-7  # [1/K]
+            self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu) # # Couchy book formula 4.19a, 4.21a
+            self.idata.rock.conductivity = 0.836 * 86400.0 # [kJ/m/day/K]
+            self.idata.rock.heat_capacity = 167.2 # [kJ/m3/K]
             self.idata.rock.th_expn_poro = 0.0   # mechanical term in porosity update
-            self.idata.fluid.compressibility = 0.0  #TODO why zero here
-            self.idata.fluid.viscosity = 1.0
+            self.idata.fluid.compressibility = 0.0
+            self.idata.fluid.viscosity = 1.0  # [cP]
 
             self.idata.other.F = -1.e-5
 

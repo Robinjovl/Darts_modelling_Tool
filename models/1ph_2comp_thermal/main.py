@@ -8,15 +8,14 @@ import matplotlib.pyplot as plt
 
 redirect_darts_output('run.log')
 
+# initialize model
 n = Model()
-# n.params.linear_type = n.params.linear_solver_t.cpu_superlu
 n.init()
 n.set_output()
 time_data_filename = n.output_folder + "/darts_time_data.pkl"
 
+# run model
 n.run(1000)
-# n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
-# n.run_python(300, restart_dt=1e-3)
 n.print_timers()
 n.print_stat()
 
@@ -31,12 +30,15 @@ time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
 writer.close()
 
 
+# plot solution
 Xn = np.array(n.physics.engine.X, copy=False)
 nc = n.physics.nc + n.physics.thermal
 nb = n.reservoir.mesh.n_res_blocks
 
 plt.figure(num=1, figsize=(12, 8), dpi=100)
-for i in range(nc if nc < 3 else 3):
-    plt.subplot(310 + (i + 1))
+str_title = ["pressure", 'water fraction', 'temperature']
+for i in range(nc):
+    plt.subplot(nc * 100 + 10 + (i + 1))
     plt.plot(Xn[i:nb*nc:nc])
+    plt.title(str_title[i])
 plt.savefig('out.png')
