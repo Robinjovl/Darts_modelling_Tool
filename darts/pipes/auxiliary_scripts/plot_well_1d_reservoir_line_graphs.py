@@ -137,25 +137,29 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     # Make an index to pivot quickly
     df_idx = reservoir_data_frame.set_index(["Timestep", "CellID"]).sort_index()
 
-    def to_matrix(column):
+    def to_matrix(prop_name):
         """
-        Return a (nT, num_res_cells) matrix for the given column (trimmed).
+        Return a (num_report_times, num_res_cells) matrix for the given property name
         """
         full_idx = pd.MultiIndex.from_product(
             [tvals, sorted(reservoir_data_frame["CellID"].unique())],
             names=["Timestep", "CellID"],
         )
-        s = df_idx[column].reindex(full_idx)
-        matrix_full = s.values.reshape(len(tvals), -1)  # all cells
-        return matrix_full[:, :num_res_cells]  # keep only the first num_res_cells
+        s = df_idx[prop_name].reindex(full_idx)
+        matrix_full = s.values.reshape((len(tvals), -1))
+        reservoir_prop_matrix = matrix_full[
+            :, :num_res_cells
+        ]  # keep only the first num_res_cells
 
-    reservoir_property_matrix = to_matrix(prop_name_in_reservoir_output)
+        return reservoir_prop_matrix
+
+    reservoir_prop_matrix = to_matrix(prop_name_in_reservoir_output)
     if prop_name == "temperature":
-        reservoir_property_matrix -= 273.15
+        reservoir_prop_matrix -= 273.15
 
     # Generate a colormap for the report steps (big jumps for the first time steps, then smaller)
     n = len(report_time_labels)
-    cmap = mpl.colormaps['jet']  # consider 'viridis' for perceptual uniformity
+    cmap = mpl.colormaps['jet']
     alpha = 10.0  # larger => more contrast early, flatter later
     t = np.arange(n) / (n - 1 if n > 1 else 1)
     t_nonlin = np.log1p(alpha * t) / np.log1p(alpha)
@@ -166,12 +170,12 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     linestyles = ['-', '--', '-.', ':']
 
     # Start plotting
-    fig, ax = plt.subplots(figsize=(6, 5))  # single compact panel
+    fig, ax = plt.subplots(figsize=(6, 5))
     y_r, offset, rmin, rmax = stacked_y_axis_linear_log(
         ax,
         segment_depths,
         reservoir_radial_distance,
-        gap_ratio=0.05,
+        gap_ratio=0.06,
         n_ticks_well=5,
         add_minor=True,
     )
@@ -198,7 +202,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
             label=report_time_labels[idx],
         )
 
-        reservoir_prop_profile = reservoir_property_matrix[idx, :]
+        reservoir_prop_profile = reservoir_prop_matrix[idx, :]
         ax.plot(
             reservoir_prop_profile,
             y_r(reservoir_radial_distance),
@@ -227,7 +231,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     )  # optional: ticks point outward
     ax.spines['right'].set_visible(True)
 
-    # (optional) subtle grid
+    # Add subtle grid
     ax.grid(True, which="both", linestyle=":", linewidth=0.6, alpha=0.6)
 
     plt.legend(
@@ -374,29 +378,33 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     # Make an index to pivot quickly
     df_idx = reservoir_data_frame.set_index(["Timestep", "CellID"]).sort_index()
 
-    def to_matrix(column):
+    def to_matrix(prop_name):
         """
-        Return a (nT, num_res_cells) matrix for the given column (trimmed).
+        Return a (num_report_times, num_res_cells) matrix for the given property name
         """
         full_idx = pd.MultiIndex.from_product(
             [tvals, sorted(reservoir_data_frame["CellID"].unique())],
             names=["Timestep", "CellID"],
         )
-        s = df_idx[column].reindex(full_idx)
-        matrix_full = s.values.reshape(len(tvals), -1)  # all cells
-        return matrix_full[:, :num_res_cells]  # keep only the first num_res_cells
+        s = df_idx[prop_name].reindex(full_idx)
+        matrix_full = s.values.reshape((len(tvals), -1))
+        reservoir_prop_matrix = matrix_full[
+            :, :num_res_cells
+        ]  # keep only the first num_res_cells
 
-    reservoir_property_matrix = to_matrix(prop_name_in_reservoir_output)
+        return reservoir_prop_matrix
+
+    reservoir_prop_matrix = to_matrix(prop_name_in_reservoir_output)
     if prop_name == "temperature":
-        reservoir_property_matrix -= 273.15
+        reservoir_prop_matrix -= 273.15
 
     # Start plotting
-    # fig, ax = plt.subplots(figsize=(6, 5))  # single compact panel
+    # fig, ax = plt.subplots(figsize=(6, 5))
     y_r, offset, rmin, rmax = stacked_y_axis_linear_log(
         ax,
         segment_depths,
         reservoir_radial_distance,
-        gap_ratio=0.05,
+        gap_ratio=0.06,
         n_ticks_well=5,
         add_minor=True,
     )
@@ -419,7 +427,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
             label=legend_label,
         )
 
-        reservoir_prop_profile = reservoir_property_matrix[idx, :]
+        reservoir_prop_profile = reservoir_prop_matrix[idx, :]
         ax.plot(
             reservoir_prop_profile,
             y_r(reservoir_radial_distance),
@@ -448,7 +456,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     )  # optional: ticks point outward
     ax.spines['right'].set_visible(True)
 
-    # (optional) subtle grid
+    # Add subtle grid
     ax.grid(True, which="both", linestyle=":", linewidth=0.6, alpha=0.6)
 
     plt.legend(
