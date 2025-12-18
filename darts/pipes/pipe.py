@@ -11,6 +11,8 @@ Notes:
 
 import math
 
+from scipy.optimize import fsolve
+
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.set_initial_conditions import (
@@ -858,48 +860,31 @@ class Pipe:
         Re0 = self.calc_Reynolds_number(vM0, self.rhoM0_face, self.miuM0, pg.pipe_ID)
         """ End calculating the Reynolds number """
 
-        ff0 = []
-        for i in range(pg.num_interfaces):
-            if Re0[i] == 0:
-                ff0.append(0)
+        self.ff0 = np.zeros(pg.num_interfaces)
 
-            elif Re0[i] != 0:
-                if Re0[i] < 2400:
-                    ff0.append(16 / Re0[i])
-                elif Re0[i] > 2400:
-                    # T2Well
-                    # ff0.append((1 / (-4 * math.log10(2 * pg.wall_roughness / (3.7 * pg.pipe_ID) - (5.02 / Re0[i])
-                    #             * math.log10(2 * pg.wall_roughness / (3.7 * pg.pipe_ID) + 13 / Re0[i])))) ** 2)
+        # Laminar connections (Re==0 stays 0)
+        lam = (Re0 > 0.0) & (Re0 < 2400.0)
+        self.ff0[lam] = 16.0 / Re0[lam]
 
-                    # # Chen's correlation (The explicit form of Colebrook-White's correlation)
-                    # relative_roughness = pg.wall_roughness / pg.pipe_ID
-                    # Fanning_friction_factor = (1 / (-4 * math.log10(relative_roughness / 3.7065 - 5.0452 / Re0[i] * math.log10(relative_roughness ** 1.1098 / 2.8257 + (7.149 / Re0[i]) ** 0.8981)))) ** 2
-                    # ff0.append(Fanning_friction_factor)
+        # Turbulent connections
+        turb_idx = np.nonzero(Re0 > 2400.0)[0]
 
-                    # Define Colebrook-White correlation
-                    from scipy.optimize import fsolve
+        initial_guess = 0.005
+        relative_roughness = pg.wall_roughness / pg.pipe_ID
+        for i in turb_idx:
+            # Colebrook-White correlation (implicit method)
+            self.ff0[i] = fsolve(
+                self.colebrook, initial_guess, args=(Re0[i], relative_roughness)
+            )[0]
+            # self.ff0[i] = fsolve(self.colebrook, initial_guess, args=(Re0[i], relative_roughness), xtol=1e-10)[0]
 
-                    def colebrook(f, Re, relative_roughness):
-                        # Ensure the friction factor doesn't go negative or zero
-                        if f <= 0:
-                            # Return a large value to prevent sqrt of negative number
-                            return 1e6
-                        return 1 / math.sqrt(f) + 4 * math.log10(
-                            relative_roughness / 3.7065 + (1.2613 / (Re * math.sqrt(f)))
-                        )
+            # # T2Well
+            # self.ff0[i] = ((1 / (-4 * math.log10(2 * relative_roughness / 3.7 - 5.02 / Re0[i]
+            #                 * math.log10(2 * relative_roughness / 3.7 + 13 / Re0[i])))) ** 2)
 
-                    # Initial guess for f
-                    initial_guess = 0.005
-
-                    # Solve for f using fsolve
-                    Fanning_friction_factor = fsolve(
-                        colebrook,
-                        initial_guess,
-                        args=(Re0[i], pg.wall_roughness / pg.pipe_ID),
-                    )[0]
-                    ff0.append(Fanning_friction_factor)
-
-        self.ff0 = np.array(ff0)
+            # # Chen's correlation (The explicit form of Colebrook-White's correlation)
+            # self.ff0[i] = (1 / (-4 * math.log10(relative_roughness / 3.7065 - 5.0452 / Re0[i]
+            #                 * math.log10(relative_roughness ** 1.1098 / 2.8257 + (7.149 / Re0[i]) ** 0.8981)))) ** 2
 
         return self.ff0
 
@@ -917,6 +902,25 @@ class Pipe:
         Re0 = rho * abs(v) * pipe_ID / miu
 
         return Re0
+
+    @staticmethod
+    def colebrook(f, Re, relative_roughness):
+        """
+        Calculate the friction factor using the Colebrook-White correlation (implicit method)
+
+        :param f: Guessed Fanning friction factor
+        :param Re: Reynolds number
+        :param relative_roughness: Pipe relative roughness
+        """
+        # Ensure the friction factor doesn't go negative or zero
+        # Return a large value to prevent sqrt of negative number
+        if f <= 0:
+            return 1e6
+
+        sqrt_f = math.sqrt(f)
+        return 1.0 / sqrt_f + 4.0 * math.log10(
+            relative_roughness / 3.7065 + (1.2613 / (Re * sqrt_f))
+        )
 
     def calc_profile_parameter(self):
         pg = self.geometry
