@@ -700,7 +700,7 @@ class Pipe:
         if iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
             self.vD0 = np.zeros(num_interfaces)
         elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
-            self.calc_drift_velocity()
+            self.update_drift_velocity()
 
         # If the differentiation method is OBL, preallocate derivative matrices
         if self.diff_method == "OBL":
@@ -828,7 +828,7 @@ class Pipe:
 
         # Calculate adjusted-mixture density
         if iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
-            self.calc_profile_parameter()
+            self.update_profile_parameter()
         elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
             # At the beginning, there is no flow, so C00 is considered 1 everywhere.
             self.C00 = np.ones(self.geometry.num_interfaces)
@@ -922,7 +922,7 @@ class Pipe:
             relative_roughness / 3.7065 + (1.2613 / (Re * sqrt_f))
         )
 
-    def calc_profile_parameter(self):
+    def update_profile_parameter(self):
         pg = self.geometry
         num_interfaces = self.geometry.num_interfaces
         [rhoM0_vM0, _, _, _] = self.velocities0
@@ -1000,7 +1000,7 @@ class Pipe:
             self.C00_filtered = 1
             # self.C00 = np.ones(num_interfaces)
 
-    def calc_drift_velocity(self):
+    def update_drift_velocity(self):
         num_interfaces = self.geometry.num_interfaces
         # if np.all(self.C00 == 1):
         #     vD0 = np.zeros(num_interfaces)
