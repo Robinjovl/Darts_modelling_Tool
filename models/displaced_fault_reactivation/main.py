@@ -644,7 +644,7 @@ def run_all():
               'timesteps': 5 * np.ones(4),
               'depletion': {'mode': 'well', 'value': -250.0},
               'friction_law': 'slip_weakening',
-              'mesh_file': 'meshes/new_setup_coarse.geo'}
+              'mesh_file': 'meshes/new_setup_coarse_longer.geo'}
     cases += [config]
 
     config = {'mode': 'quasi_static',

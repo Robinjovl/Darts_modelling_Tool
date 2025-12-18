@@ -7,7 +7,7 @@ Y2 = D;
 b = 150;
 Lplus = b + 300;
 phi = 70 * Pi / 180;
-lc = 300;
+lc = 100;
 mult = 0.5;
 mult1 = 0.01;
 
@@ -96,4 +96,4 @@ Physical Curve(FRAC_BOUND_FREE) = {121, 17, 13, 14, 15, 16, 25, 22, 64, 63}; //,
 
 Mesh 3;
 Coherence Mesh;
-Mesh.MshFileVersion = 2.1;                                                     numerable IDisposable GetPreamble RuntimeFieldHandle nStdHandle GetStdHandle SafeHandle findFileHandle SafeFileHandle moduleHandle RuntimeTypeHandle CloseHandle G
+Mesh.MshFileVersion = 2.1;
