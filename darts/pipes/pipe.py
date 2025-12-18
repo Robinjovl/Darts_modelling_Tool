@@ -843,7 +843,21 @@ class Pipe:
 
     def calc_Fanning_friction_factor(self):
         pg = self.geometry
-        Re0 = self.calc_Reynolds_number()
+
+        """ Start calculating the Reynolds number """
+        _, _, sG0, _, _, miuG0, miuL0 = self.iter_phases_props0
+
+        _, _, sG0_face, _, _, miuG0_face, miuL0_face = self.iter_phases_props0_face
+        [_, vM0, _, _] = self.velocities0
+
+        # Saturation-weighted average is used to calculate the mixture viscosity of two phases. The method is used in
+        # Beggs and Brill's book: Eq. 1.38
+        # My production engineering notebook: Pressure drop calc in wellbore for 2-phase flow with Beggs and Brill's method
+        self.miuM0 = sG0_face * miuG0_face + (1 - sG0_face) * miuL0_face
+
+        Re0 = self.calc_Reynolds_number(vM0, self.rhoM0_face, self.miuM0, pg.pipe_ID)
+        """ End calculating the Reynolds number """
+
         ff0 = []
         for i in range(pg.num_interfaces):
             if Re0[i] == 0:
@@ -889,22 +903,20 @@ class Pipe:
 
         return self.ff0
 
-    def calc_Reynolds_number(self):
-        _, _, sG0, _, _, miuG0, miuL0 = self.iter_phases_props0
+    @staticmethod
+    def calc_Reynolds_number(v, rho, miu, pipe_ID):
+        """
+        Calculate the Reynolds number
 
-        _, _, sG0_face, _, _, miuG0_face, miuL0_face = self.iter_phases_props0_face
-        [_, vM0, _, _] = self.velocities0
+        :param v: Fluid velocity
+        :param rho: Fluid density
+        :param miu: Fluid viscosity
+        :param pipe_ID: Pipe inside diameter
+        """
 
-        # Saturation-weighted average is used to calculate the mixture viscosity of two phases. The method is used in
-        # Beggs and Brill's book: Eq. 1.38
-        # My production engineering notebook: Pressure drop calc in wellbore for 2-phase flow with Beggs and Brill's method
-        self.miuM0 = sG0_face * miuG0_face + (1 - sG0_face) * miuL0_face
+        Re0 = rho * abs(v) * pipe_ID / miu
 
-        pg = self.geometry
-
-        self.Re0 = self.rhoM0_face * abs(vM0) * pg.pipe_ID / self.miuM0
-
-        return self.Re0
+        return Re0
 
     def calc_profile_parameter(self):
         pg = self.geometry
