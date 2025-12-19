@@ -276,10 +276,6 @@ public:
   std::vector<value_t> mob_multiplier;
   /// [n_blocks] array of specific potential energy of mesh blocks
   std::vector<value_t> cell_spe;
-  /// [n_blocks] array of thickness of mesh blocks
-  std::vector<value_t> cell_thickness;
-  /// [n_conns * 2] array of two-way specific potential energy at connections
-  std::vector<value_t> conn_spe;
 
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;

@@ -89,6 +89,7 @@ for /f "delims=" %%F in ('dir /b /a:-d /o:-d dist\*.whl') do (
 echo No wheel found in dist\*.whl
 exit /b 1
 
+rem reinstall the wheel (without dependencies to make it faster)
 :foundwheel
 if "%WITH_DEPS%"=="1" (
   python -m pip install "dist\%WHEEL%" || exit /b 1

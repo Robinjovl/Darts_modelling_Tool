@@ -63,7 +63,7 @@ class PorPerm:
 
 # endregion
 
-def build_output_dir(spec, base_dir="results"):
+def build_output_dir(spec, base_dir=""):
     iso_tag = "iso" if spec.get("temperature") is not None else "niso"
     rhs_tag = "rhs" if spec.get("RHS") else "wells"
     disp_tag = "disp" if spec.get("dispersion") else "nodisp"
@@ -79,7 +79,6 @@ def build_output_dir(spec, base_dir="results"):
 ########
 import pickle
 from darts.engines import redirect_darts_output, sim_params
-from fluidflower_str_b import FluidFlowerStruct
 
 # For each of the facies within the SPE11b model we define a set of operators in the physics.
 property_regions  = [0, 1, 2, 3, 4, 5, 6]
@@ -95,29 +94,14 @@ class Model(DartsModel):
         self.zero = 1e-10
         self.salinity = 0
 
-        """ set up output directory """
-        if self.specs['output_dir'] is None:
-            self.specs["output_dir"] = build_output_dir(self.specs)
-
-        if self.specs['post_process'] is None:
-            self.output_dir = self.specs['output_dir']
-        else:
-            self.output_dir = os.path.join(self.specs['output_dir'], self.specs['post_process'])
-
-        # save specs to a .pkl file
-        os.makedirs(self.output_dir, exist_ok=True)
-        with open(os.path.join(self.output_dir, 'specs.pkl'), 'wb') as f:
-            pickle.dump(self.specs, f)
-
-        redirect_darts_output(os.path.join(self.output_dir, 'model.log'))
-
         """Define physics"""
         self.set_physics(temperature=specs['temperature'], n_points=1001)
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-3, tol_newton=1e-3,
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4, tol_newton=1e-3,
                             it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
-        self.params.newton_params[0] = 0.10
+        self.params.newton_params[0] = 0.05
         self.data_ts.eta = np.ones(self.physics.n_vars)
         self.params.nonlinear_norm_type = self.params.LINF  # linf if you use m.set_rhs() for injection
+
 
         """Define the reservoir and wells """
         well_centers = {
@@ -125,9 +109,18 @@ class Model(DartsModel):
             "I2": [5100.0, 0.0, 700.0]
         }
 
-        self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
-                                            layers_to_regions=layers_to_regions,
-                                                model_specs=specs, well_centers=well_centers)
+        if 1:
+            from fluidflower_str_b import FluidFlowerStruct
+            self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
+                                                layers_to_regions=layers_to_regions,
+                                                    model_specs=specs, well_centers=well_centers)
+        else:
+            from fluidflower_str_b_homo import FluidFlowerStruct
+            self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
+                                                layers_to_regions=layers_to_regions,
+                                                    model_specs=specs, well_centers=well_centers)
+
+
         self.nx, self.ny, self.nz = self.reservoir.nx, self.reservoir.ny, self.reservoir.nz
         self.grid = np.meshgrid(np.linspace((8400 / self.nx / 2), 8400 - (8400 / self.nx / 2), self.nx),
                            np.linspace((1200 / self.nz / 2), 1200 - (1200 / self.nz / 2), self.nz))
@@ -144,11 +137,11 @@ class Model(DartsModel):
         if specs['platform'] == 'cpu':
             self.platform = 'cpu'
             # from darts.engines import set_num_threads
-            # set_num_threads(12)
+            # set_num_threads(8)
         elif specs['platform'] == 'gpu':
             self.platform = 'gpu'
-            # from darts.engines import set_gpu_device
-            # set_gpu_device(0)
+            from darts.engines import set_gpu_device
+            set_gpu_device(1)
 
     def set_wells(self):
         self.reservoir.set_wells(False)
@@ -188,13 +181,16 @@ class Model(DartsModel):
 
             region = 0
             molar_masses = self.physics.property_containers[region].Mw
-            mole_fractions = self.inj_stream[:nc - 1]
-            n_comp = np.zeros(nc - 1)
+            mole_fractions = self.inj_stream[:nc]
+            n_comp = np.zeros(nc)
             enth_idx = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_V")
 
             for i, well_cell in enumerate(self.reservoir.well_cells):
                 p_wellcell = self.physics.engine.X[well_cell * nv]
-                state = value_vector([p_wellcell] + self.inj_stream) if self.physics.thermal else value_vector([p_wellcell] + self.inj_stream[:-1])
+                if self.physics.thermal:
+                    state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
+                else:
+                    state = value_vector([p_wellcell] + self.inj_stream[:-2])
                 values = value_vector(np.zeros(self.physics.n_ops))
                 # values_np = np.array(values)
                 self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
@@ -204,7 +200,7 @@ class Model(DartsModel):
 
                 tot_moles = self.inj_rate[i] / avg_molar_mass
 
-                for comp_idx in range(nc - 1):
+                for comp_idx in range(nc):
                     comp_flux_idx = well_cell * nv + comp_idx  # Index
                     n_comp[comp_idx] = tot_moles * mole_fractions[comp_idx]  # Compute component moles
                     rhs[comp_flux_idx] -= n_comp[comp_idx]  # Update rhs
@@ -237,13 +233,13 @@ class Model(DartsModel):
         nc, ni = comp_data.nc, comp_data.ni
         # len(components)
         flash_params = FlashParams(comp_data)
-        flash_params.add_eos("PR", CubicEoS(comp_data, CubicEoS.PR))
-        flash_params.add_eos("AQ", AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
-                                                      AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
-                                                      AQEoS.CompType.ion: AQEoS.Jager2003
-                                                      }))
-        pr = flash_params.eos_params["PR"].eos
-        aq = flash_params.eos_params["AQ"].eos
+        pr = CubicEoS(comp_data, CubicEoS.PR)
+        aq = AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
+                               AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
+                               AQEoS.CompType.ion: AQEoS.Jager2003
+                               })
+        flash_params.add_eos("PR", pr)
+        flash_params.add_eos("AQ", aq)
         flash_params.eos_order = ["PR", "AQ"]
         phases = ["V", "Aq"]
 
@@ -259,13 +255,13 @@ class Model(DartsModel):
 
         pres_in = 210 # (pressure at depth of well 1 will be 300 bar)
         min_t = 273.15 if temperature is None else None
-        max_t = 373.15 if temperature is None else None
+        max_t = 373.15 + 100 if temperature is None else None
         self.physics = Compositional(self.components, phases, timer=self.timer,
                                      n_points=n_points, min_p=200, max_p=450,
                                      min_z=self.zero/10, max_z=1-self.zero/10, min_t=min_t, max_t=max_t,
                                      state_spec = state_spec,
                                      cache=False)
-        self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
+        self.physics.n_axes_points[0] = 101  # sets OBL points for pressure
 
         dispersivity = 10.
         self.physics.dispersivity = {}
@@ -331,8 +327,64 @@ class Model(DartsModel):
             allocate_device_data(self.physics.engine.dispersivity, dispersivity_d)
             copy_data_to_device(self.physics.engine.dispersivity, dispersivity_d)
 
+    def reconstruct_velocities(self):
+        # velocity discretization
+        values, offset = self.reservoir.discretizer.discretize_velocities(
+            cell_m=np.asarray(self.reservoir.mesh.block_m),
+            cell_p=np.asarray(self.reservoir.mesh.block_p),
+            geom_coef=np.asarray(self.reservoir.mesh.tranD),
+            n_res_blocks=self.reservoir.mesh.n_res_blocks,
+        )
+        self.reservoir.mesh.velocity_appr.resize(len(values))
+        self.reservoir.mesh.velocity_offset.resize(len(offset))
+
+        velocity_appr = np.asarray(self.reservoir.mesh.velocity_appr)
+        velocity_appr[:] = values #/ (8400. / self.reservoir.nx * 1.)
+        velocity_offset = np.asarray(self.reservoir.mesh.velocity_offset)
+        velocity_offset[:] = offset
+
+        # specify molar weights to get rid of molar density multiplier in flux terms
+        nc = self.physics.nc
+        self.physics.engine.molar_weights.resize(nc * len(self.physics.regions))
+        molar_weights = np.asarray(self.physics.engine.molar_weights)
+        for i, region in enumerate(self.physics.regions):
+            molar_weights[i * nc : (i + 1) * nc] = self.physics.property_containers[
+                region
+            ].Mw
+
+        # resize storage for velocities inside engine
+        self.physics.engine.darcy_velocities.resize(
+            self.reservoir.mesh.n_res_blocks * self.physics.nph * 3
+        )
+
+        # allocate & transfer data to device
+        if self.platform == "gpu":
+            from darts.engines import allocate_device_data, copy_data_to_device
+
+            # velocity_appr
+            velocity_appr_d = self.physics.engine.get_velocity_appr_d()
+            allocate_device_data(self.reservoir.mesh.velocity_appr, velocity_appr_d)
+            copy_data_to_device(self.reservoir.mesh.velocity_appr, velocity_appr_d)
+            # velocity_offset_d
+            velocity_offset_d = self.physics.engine.get_velocity_offset_d()
+            allocate_device_data(self.reservoir.mesh.velocity_offset, velocity_offset_d)
+            copy_data_to_device(self.reservoir.mesh.velocity_offset, velocity_offset_d)
+            # darcy_velocities_d
+            darcy_velocities_d = self.physics.engine.get_darcy_velocities_d()
+            allocate_device_data(
+                self.physics.engine.darcy_velocities, darcy_velocities_d
+            )
+            # molar_weights_d
+            molar_weights_d = self.physics.engine.get_molar_weights_d()
+            allocate_device_data(self.physics.engine.molar_weights, molar_weights_d)
+            copy_data_to_device(self.physics.engine.molar_weights, molar_weights_d)
+            # op_num_d
+            op_num_d = self.physics.engine.get_op_num_d()
+            allocate_device_data(self.reservoir.mesh.op_num, op_num_d)
+            copy_data_to_device(self.reservoir.mesh.op_num, op_num_d)
+
     def set_initial_conditions(self):
-        if 1:
+        if 0:
             pres_in = 212
             input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
 
@@ -415,8 +467,8 @@ class Model(DartsModel):
                                                                  input_distribution = {v: X[:, i] for i, v in enumerate(self.physics.vars)})
 
     def set_str_boundary_volume_multiplier(self):
-        self.reservoir.boundary_volumes['yz_minus'] = 5e4 * (1200 / self.reservoir.nz)
-        self.reservoir.boundary_volumes['yz_plus']  = 5e4 * (1200 / self.reservoir.nz)
+        self.reservoir.boundary_volumes['yz_minus'] = 5e9 * (1200 / self.reservoir.nz)
+        self.reservoir.boundary_volumes['yz_plus']  = 5e9 * (1200 / self.reservoir.nz)
         return
 
     def get_mass_components(self, property_array):
@@ -648,6 +700,7 @@ class Model(DartsModel):
         if self.physics.engine.t >= 25 * Dt and self.physics.engine.t < 50 * Dt and event1:
             print('At 25 years, start injecting in the second well')
             self.inj_rate = [inj_rate, inj_rate]
+            #self.inj_rate = [inj_rate, self.zero]
             event1 = False
         elif self.physics.engine.t >= 50 * Dt and event2:
             print('At 50 years, stop injection for both wells')

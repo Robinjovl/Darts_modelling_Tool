@@ -227,9 +227,6 @@ message(CHECK_START "Importing thirdparty libraries")
 unset(thirdparty_missing_components)
 
 if(NOT ONLY_SOLVERS)
-  #   thirdparty/eigen ---------------------------------------------------------
-  include(thirdparty/thirdparty_eigen.cmake)
-
   #   thirdparty/pybind11 ------------------------------------------------------
   include(thirdparty/thirdparty_pybind11.cmake)
 endif()
@@ -334,13 +331,22 @@ if(WITH_PHREEQC)
     set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/bin/IPhreeqc.dll")
     set(IPHREEQC_RENAME "IPhreeqc.dll")
   else()
-    set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/lib64/libIPhreeqc.so")
     set(IPHREEQC_RENAME "libIPhreeqc.so")
+    # Debian-based distros install to lib/, RHEL to lib64/. Search both.
+    find_library(
+      IPHREEQC_LINK
+      NAMES IPhreeqc iphreeqc
+      PATHS "${IPHREEQC_ROOT}"
+      PATH_SUFFIXES lib64 lib lib/x86_64-linux-gnu
+      NO_DEFAULT_PATH
+    )
   endif()
 
   # make sure the link exists
-  if(NOT EXISTS "${IPHREEQC_LINK}")
-    message(FATAL_ERROR "IPhreeqc shared library link not found: ${IPHREEQC_LINK}")
+  if(NOT IPHREEQC_LINK OR IPHREEQC_LINK STREQUAL "IPHREEQC_LINK-NOTFOUND")
+    message(FATAL_ERROR
+      "IPhreeqc shared library not found under ${IPHREEQC_ROOT} "
+      "(checked lib64, lib, lib/x86_64-linux-gnu)")
   endif()
 
   # resolve symlinks (on Windows this just canonicalizes the path)

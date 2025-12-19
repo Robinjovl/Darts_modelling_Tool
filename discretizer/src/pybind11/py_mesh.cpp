@@ -46,16 +46,6 @@ void pybind_mesh(py::module &m)
 		.def("generate_adjacency_matrix", &Mesh::generate_adjacency_matrix)
 		.def("gmsh_mesh_processing", &Mesh::gmsh_mesh_processing)
 		.def("get_global_index", &Mesh::get_global_index)
-
-		// Return (i, j, k) as a Python tuple
-		.def("get_ijk",
-			[](const Mesh& self, index_t idx, bool is_global) {
-				int i, j, k;
-				self.get_ijk(idx, i, j, k, is_global);
-				return py::make_tuple(i, j, k);
-			},
-			py::arg("idx"), py::arg("is_global"))
-
 		.def("get_ijk_as_str", &Mesh::get_ijk_as_str)
 		.def("calc_cell_sizes", &Mesh::calc_cell_sizes)
 		.def("write_int_array_to_file", &Mesh::write_array_to_file<index_t>)
