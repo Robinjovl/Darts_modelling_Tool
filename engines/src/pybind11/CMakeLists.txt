@@ -40,11 +40,19 @@ set(OD_ENGINES_HEAVY_PY_TUS
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_mp_cpu.cpp
 )
 
-set_source_files_properties(
-  ${OD_ENGINES_HEAVY_PY_TUS}
-  PROPERTIES
-    COMPILE_OPTIONS "-O1;-g0;-fno-var-tracking-assignments"
-)
+if (MSVC)
+  set_source_files_properties(
+    ${OD_ENGINES_HEAVY_PY_TUS}
+    PROPERTIES
+      COMPILE_OPTIONS "/O1;/bigobj"
+  )
+else()
+  set_source_files_properties(
+    ${OD_ENGINES_HEAVY_PY_TUS}
+    PROPERTIES
+      COMPILE_OPTIONS "-O1;-g0;-fno-var-tracking-assignments"
+  )
+endif()
 
 # Then the public headers
 set(OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES
