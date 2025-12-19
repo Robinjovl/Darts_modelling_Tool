@@ -2,20 +2,10 @@
 #define D89802AE_4C88_4BCD_88D1_1B45D12E933F
 
 // define those to avoid warning indication in syntax check for non-nvcc compilers
-// use inline so header-defined helpers do not violate ODR in multiple translation units
-// use platform-appropriate forceinline to keep header-defined helpers inline-only
 #ifndef __NVCC__
-#  ifdef _MSC_VER
-#    ifndef __forceinline__
-#      define __forceinline__ __forceinline
-#    endif
-#  else
-#    ifndef __forceinline__
-#      define __forceinline__ inline __attribute__((always_inline))
-#    endif
-#  endif
-#  define __host__
-#  define __device__
+#define __forceinline__
+#define __host__
+#define __device__
 #endif
 
 /**
