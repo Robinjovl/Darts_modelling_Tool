@@ -64,7 +64,15 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         "Number of report step labels must be equal to number of report step times!"
     )
 
-    assert prop_name in ["pressure", "temperature", "sL"]
+    assert prop_name in [
+        "pressure",
+        "temperature",
+        "sL",
+        "rhoG",
+        "rhoL",
+        "miuG",
+        "miuL",
+    ]
     if prop_name == "pressure":
         prop_name_in_well_output = "Pressure"
         prop_name_in_reservoir_output = "pressure"
@@ -77,6 +85,22 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         prop_name_in_well_output = "sL"
         prop_name_in_reservoir_output = "sat_LCO2"
         xlabel = "Liquid volume fraction [-]"
+    elif prop_name == "rhoG":
+        prop_name_in_well_output = "rhoG"
+        prop_name_in_reservoir_output = "rho_gas"
+        xlabel = r"Gas density [kg/m$^3$]"
+    elif prop_name == "rhoL":
+        prop_name_in_well_output = "rhoL"
+        prop_name_in_reservoir_output = "rho_LCO2"
+        xlabel = r"Liquid density [kg/m$^3$]"
+    elif prop_name == "miuG":
+        prop_name_in_well_output = "miuG"
+        prop_name_in_reservoir_output = "miu_gas"
+        xlabel = "Gas viscosity [cP]"
+    elif prop_name == "miuL":
+        prop_name_in_well_output = "miuL"
+        prop_name_in_reservoir_output = "miu_LCO2"
+        xlabel = "Liquid viscosity [cP]"
 
     # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
     # and assigns it to well_geom.
