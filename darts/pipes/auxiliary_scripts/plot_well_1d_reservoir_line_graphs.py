@@ -33,7 +33,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     reported_times: list,
     *,
     prop_name: str,
-    legend_loc: str = 'upper right',
+    legend_loc: str = 'best',
 ):
     """
     This function is used to plot well-reservoir property profiles at certain reported times for a scenario.
@@ -264,7 +264,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     color: str,
     marker: str,
     linestyle: str,
-    legend_loc: str = 'upper right',
+    legend_loc: str = 'best',
 ):
     """
     This function is used to plot well-reservoir property profiles at certain reported times for different scenarios.
@@ -599,7 +599,7 @@ def stacked_y_axis_linear_log(
     ax.text(
         LEFT_OFFSET,
         ydata_to_axes(y_res_mid_data),
-        rf"$r_{{\mathrm{{reservoir}}}}\,[\mathrm{{m}}]$ (log$_{{{log_base}}}$)",
+        r"$r_\mathrm{reservoir}\,[\mathrm{m}]$ (logarithmic)",
         transform=ax.transAxes,
         rotation=90,
         va='center',
