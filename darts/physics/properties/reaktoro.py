@@ -209,7 +209,7 @@ class Flash:
                 np.zeros(len(self.gas_species), dtype=float),
             )
 
-        volume_liters = props.volume().val()  # m3
+        volume_m3 = props.volume().val()  # m3
         elem_moles_aq = props.elementAmountsInPhase("AqueousPhase").asarray()
         elem_moles_gas = props.elementAmountsInPhase("GaseousPhase").asarray()
         elem_moles_aq_sum = elem_moles_aq.sum()
@@ -281,7 +281,7 @@ class Flash:
             y,
             rho_phases,
             kin_state,
-            volume_liters,
+            volume_m3,
             species_aq_molar_fractions,
             species_gas_molar_fractions,
         )
