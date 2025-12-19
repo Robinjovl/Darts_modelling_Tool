@@ -49,8 +49,8 @@ void Mesh::gmsh_mesh_processing(string filename, const PhysicalTags& tags)
 }
 
 // fills:
-// nodes, elems, elems_of_node, elem_nodes, elem_nodes_sorted, 
-// elem_type_map, region_ranges, region_elems_num, 
+// nodes, elems, elems_of_node, elem_nodes, elem_nodes_sorted,
+// elem_type_map, region_ranges, region_elems_num,
 // volumes, centroids
 void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags& tags)
 {
@@ -90,7 +90,7 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags& tags)
 	// reserve memory for arrays
 	elems.reserve(num_of_elements);
 	volumes.resize(num_of_elements);
-	centroids.resize(num_of_elements); 
+	centroids.resize(num_of_elements);
 	element_tags.resize(num_of_elements);
 	elem_nodes.reserve(MAX_PTS_PER_3D_ELEM * num_of_elements);
 	elem_nodes_sorted.reserve(MAX_PTS_PER_3D_ELEM * num_of_elements);
@@ -114,7 +114,7 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags& tags)
 	uint8_t stride;
 	index_t counter = 0, offset = 0;
 	for (const auto& region : elem_order)
-	{	
+	{
 		region_ranges[region].first = counter;
 		for (const auto& block : spec.elements.entity_blocks)
 		{
@@ -171,7 +171,7 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags& tags)
 #endif // DEBUG_TRANS
 				//std::cout << "volume: " << el.volume << std::endl;
 				//std::cout << "centroid: " << el.c << "\n" << std::endl;
-			
+
 
 				elems.push_back(el);
 			}
@@ -184,7 +184,7 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags& tags)
 	assert(*std::max_element(elem_nodes.begin(), elem_nodes.end()) < num_of_nodes);
 
 	// reserve elem types map
-	for (auto& type : elem_type_map) 
+	for (auto& type : elem_type_map)
 	{
 		type.second.reserve(elems.size());
 	}
@@ -194,7 +194,7 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags& tags)
 	elems_of_node_offset[0] = 0;
 	std::partial_sum(num_elems_of_node.begin(), num_elems_of_node.end(), elems_of_node_offset.begin() + 1);
 	std::fill(num_elems_of_node.begin(), num_elems_of_node.end(), 0);
-	
+
 	elems_of_node.resize(offset);
 	index_t node_id, pos;
 	if (elems.size() != num_of_elements)
@@ -236,7 +236,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 
 	index_t nebr_id, counter = 0, offset = 0, node_id;
 	size_t len;
-	
+
 	// vector of cell's indices pairs to check if particular one was already created
 	vector<vector<index_t>> conn_set;
 	conn_set.resize(num_of_elements);
@@ -268,7 +268,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 		for (index_t l = el1.pts_offset; l < el1.pts_offset + el1.n_pts; l++)
 		{
 			node_id = elem_nodes[l];
-			// loop through all elements that share this node 
+			// loop through all elements that share this node
 			for (index_t k = elems_of_node_offset[node_id]; k < elems_of_node_offset[node_id + 1]; k++)
 			{
 				nebr_id = elems_of_node[k];
@@ -311,7 +311,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 						elem_nodes_sorted.data() + el2.pts_offset, elem_nodes_sorted.data() + el2.pts_offset + el2.n_pts,
 						std::back_inserter(intersect));
 					len = intersect.size() - len;
-					assert(len > 0); // intersection of nodes sets for two elements which have common node, should be nonzero 
+					assert(len > 0); // intersection of nodes sets for two elements which have common node, should be nonzero
 					if (len > 2)
 					{
 						conn_type_it = CONN_TYPE_TABLE.find({ el1.loc, el2.loc });
@@ -324,7 +324,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 							conn.pts_offset = offset;
 							conn.n_pts = static_cast<uint8_t>(len);
 							conn_nodes.insert(conn_nodes.end(), intersect.end() - len, intersect.end());
-							conn.elem_id1 = el1.elem_id;	
+							conn.elem_id1 = el1.elem_id;
 							conn.elem_id2 = el2.elem_id;
 							conn.calculate_centroid(nodes, conn_nodes);
 							conn.calculate_area(nodes, conn_nodes);
@@ -356,7 +356,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 							counter++;
 						}
 					}
-					else if (len == 2) 
+					else if (len == 2)
 					{
 						if (el1.loc == FRACTURE && el2.loc == FRACTURE)
 						{
@@ -365,7 +365,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 							conn.pts_offset = offset;
 							conn.n_pts = static_cast<uint8_t>(len);
 							conn_nodes.insert(conn_nodes.end(), intersect.end() - len, intersect.end());
-							conn.elem_id1 = el1.elem_id;	
+							conn.elem_id1 = el1.elem_id;
 							conn.elem_id2 = el2.elem_id;
 							conn.calculate_centroid(nodes, conn_nodes);
 							conn.calculate_area(nodes, conn_nodes);
@@ -388,7 +388,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 	elem_nodes_sorted.clear();
 
 	//// erase matrix-matrix connections across faults
-	// find the indices of remaining connections 
+	// find the indices of remaining connections
 	vector<index_t> conns_to_remain;
 	conns_to_remain.reserve(region_ranges[FRACTURE].second - region_ranges[FRACTURE].first);
 	auto it_faults = fault_nodes.cend();
@@ -401,7 +401,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 			if (it_faults == fault_nodes.end())
 				conns_to_remain.push_back(conn.conn_id);
 		}
-		else 
+		else
 			conns_to_remain.push_back(conn.conn_id);
 	}
 	// copy what remains
@@ -458,7 +458,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 
 // uses: conns, num_of_elements
 // fills: adj_matrix, adj_matrix_cols, adj_matrix_offset
-void Mesh::generate_adjacency_matrix() 
+void Mesh::generate_adjacency_matrix()
 {
 	steady_clock::time_point t1, t2;
 
@@ -478,15 +478,15 @@ void Mesh::generate_adjacency_matrix()
 		adj_2d[i].reserve(MAX_CONNS_PER_ELEM);
 		conn_signs[i].reserve(MAX_CONNS_PER_ELEM);
 	}
-	
+
 	// Append connections per element to 2D array
-	for (auto& conn : conns) 
+	for (auto& conn : conns)
 	{
 		auto& conn_size1 = conn_per_element[conn.elem_id1];
 		adj_2d[conn.elem_id1].push_back(conn.conn_id);
 		conn_signs[conn.elem_id1].push_back(true);
 		conn_size1++;
-		
+
 		if (conn.type != MAT_BOUND && conn.type != FRAC_BOUND)
 		{
 			auto& conn_size2 = conn_per_element[conn.elem_id2];
@@ -496,7 +496,7 @@ void Mesh::generate_adjacency_matrix()
 		}
 	}
 
-	// Reserve space 
+	// Reserve space
 	adj_matrix.reserve(2 * conns.size());
 	adj_matrix_cols.reserve(2 * conns.size());
 	adj_matrix_offset.reserve(num_of_elements + 1);
@@ -523,16 +523,16 @@ void Mesh::generate_adjacency_matrix()
 	}
 
 	t2 = steady_clock::now();
-	cout << "Adjacency matrix:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl; 
+	cout << "Adjacency matrix:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
 }
 
 // fills:
-// nodes, elems, elems_of_node, elem_nodes, elem_nodes_sorted, 
+// nodes, elems, elems_of_node, elem_nodes, elem_nodes_sorted,
 // elem_type_map, region_ranges, region_elems_num, //TODO
 // volumes, centroids
 // nx, ny, nz, bnd_faces_num2
 
-// print internal arrays to screen (for debugging) 
+// print internal arrays to screen (for debugging)
 void Mesh::print_elems_nodes()
 {
 	cout << "Elements:\n";
@@ -548,7 +548,7 @@ void Mesh::print_elems_nodes()
 		{
 			index_t node_id = elem_nodes[l];
 			cout << "\t Node=" << node_id << " Elems:\t";
-			// loop through all elements that share this node 
+			// loop through all elements that share this node
 			for (index_t k = elems_of_node_offset[node_id]; k < elems_of_node_offset[node_id + 1]; k++)
 			{
 				index_t nebr_id = elems_of_node[k];
@@ -582,7 +582,7 @@ void Mesh::calc_cell_nodes(const int i, const int j, const int k,
 	//   |           |
 	// pind[2]-----pind[3]
 	//   |
-	//   V  
+	//   V
 	// J-axis
 
 	// get depths from zcorn array in ZCORN array
@@ -629,7 +629,7 @@ void Mesh::calc_cell_nodes(const int i, const int j, const int k,
 }
 
 //i,j,k are 0-based
-std::array<value_t, 3> 
+std::array<value_t, 3>
 Mesh::calc_cell_sizes(const int i, const int j, const int k) const
 {
 	std::array<double, 8> X;
@@ -748,12 +748,12 @@ void Mesh::print_arrays() const
 
 		//if (i < 500 )
 		cout<<idx<<" "<<ijk_str<<" C="<<centroids[counter]<<"\tV="<<volumes[counter]<<"\tDX="<<d[0]<<"\tDY="<<d[1]<<"\tDZ="<<d[2]<<"\n";
-		
+
 		counter++;
 	}//loop by cells
 }
 
-// 
+//
 void Mesh::write_cell_sizes(std::string fname) const
 {
 	std::vector<value_t> dx, dy, dz;
@@ -874,7 +874,7 @@ Mesh::get_nodes_array() const
 std::vector<int>
 Mesh::cpg_elems_nodes(
 	const int _number_of_nodes,
-	const int num_of_cells,// number of active cells 
+	const int num_of_cells,// number of active cells
 	const int number_of_faces,
 	const std::vector<double>& node_coords,
 	const std::vector<int>& face_nodes,
@@ -898,12 +898,12 @@ Mesh::cpg_elems_nodes(
 
 	// create elements for cells, faces will be processed later
 
-	// fill elem_nodes and 
+	// fill elem_nodes and
 	// collect nodes that belong to each face or cell, using intermediate sets to remove duplicates
-	std::map<int, std::set<index_t>> elems_of_node_set; // map<node, elem_face_set> - use set to make elements from nodes unique 
+	std::map<int, std::set<index_t>> elems_of_node_set; // map<node, elem_face_set> - use set to make elements from nodes unique
 	std::map<int, std::set<index_t>> face_nodes_set; // map<face, node_set> - use set to make nodes from faces unique
 
-	// calculate temporary array shift_faces 
+	// calculate temporary array shift_faces
 	// will be used for shift faces indexes to remove internal (non-boundary) faces from faces indexation
 	int bnd_faces_num = 0;
 	for (int f = 0, non_bnd_faces_counter = 0; f < cell_facepos[num_of_cells]; ++f) {
@@ -1085,14 +1085,14 @@ Mesh::cpg_elems_nodes(
 // fills: cell volumes, cell centroids, cell depths
 void Mesh::cpg_cell_props(
 	const int _number_of_nodes,
-	const int num_of_cells,// number of active cells 
+	const int num_of_cells,// number of active cells
 	const int number_of_faces,
 	const std::vector<double>& cell_volumes,
 	const std::vector<double>& cell_centroids,
 	const std::vector<int>& global_cell,
 	const std::vector<double>& face_areas,
 	const std::vector<double>& face_centroids,
-	const int bnd_faces_num, 
+	const int bnd_faces_num,
 	const std::vector<int>& face_order)
 {
 	volumes.resize(num_of_cells + bnd_faces_num);
@@ -1130,7 +1130,7 @@ void Mesh::cpg_cell_props(
 // centers computed for original face, not the splitted face because of fault
 // these centers will used in compute half-trans to make this consistent with reservoir simulators
 void Mesh::cpg_connections(
-	const int num_of_cells,// number of active cells 
+	const int num_of_cells,// number of active cells
 	const int number_of_faces,
 	const std::vector<double>& node_coords,
 	const std::vector<int>& face_nodes,
@@ -1148,9 +1148,6 @@ void Mesh::cpg_connections(
 	std::map<int, int> face_nodes_set; // map<face, node_set> - use set to make nodes from faces unique
 	conns.reserve(number_of_faces);
 
-	unordered_set<std::pair<index_t, index_t>>::const_iterator it;
-	pair<index_t, index_t> ids;
-	ElemConnectionTable::const_iterator conn_type_it;
 	std::vector<double_t> x, y, z; // only for the current face direction (face_tag)
 	x.reserve(100); y.reserve(100); z.reserve(100);
 
@@ -1200,7 +1197,7 @@ void Mesh::cpg_connections(
 				z.push_back(nodes[node_idx].z);
 			}
 
-			// take two top and two bottom points 
+			// take two top and two bottom points
 			// calculate the 'original' face center as arithmetic mean of these 4 nodes
 			Vector3 center_orig_face;
 			for (int ii = 0; ii < x.size(); ii++) {
