@@ -226,7 +226,7 @@ class Model(CICDModel):
                 surface_area_ev=surface_area_ev,
             )
 
-        output_property_container = OutputPropertyContainer(property_container)
+        output_property_container = MyOutputPropertyContainer(property_container)
 
         # Create instance of (own) physics class:
         self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=self.phases, n_points=self.n_points,
@@ -405,3 +405,29 @@ class Flash(ReaktoroFlash):
         self.gas_species = [
             sp.name() for sp in self.system.phases()[phase_idx].species()
         ]
+
+class MyOutputPropertyContainer(OutputPropertyContainer):
+    def __init__(self, property_container, props_name: list[str] | None = None):
+        super().__init__(property_container, props_name)
+
+        self.dens_m = np.zeros(2)
+        self.sat = np.zeros(2)
+        self.dens_m_solid = np.zeros(len(self.property.flash_ev.mineral_names))
+        self.sat_minerals = np.zeros(len(self.property.flash_ev.mineral_names))
+
+        for i, ph in enumerate(self.property.phases_name):
+            self.output_props['dens_m_' + ph] = lambda i=i: self.dens_m[i]
+            self.output_props['sat_' + ph] = lambda i=i: self.sat[i]
+
+        for i, m in enumerate(self.property.flash_ev.mineral_names):
+            self.output_props['dens_m_solid_' + m] = lambda i=i: self.dens_m_solid[i]
+            self.output_props['sat_' + m] = lambda i=i: self.sat_minerals[i]
+
+    def evaluate(self, state):
+        super().evaluate(state)
+        self.property.evaluate(state)
+
+        self.dens_m = self.property.dens_m
+        self.sat = self.property.sat
+        self.dens_m_solid = self.property.dens_m_solid
+        self.sat_minerals = self.property.sat_minerals
