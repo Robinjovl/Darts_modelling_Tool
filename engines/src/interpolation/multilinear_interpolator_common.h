@@ -4,8 +4,9 @@
 #include <cstdint>
 
 // define those to avoid warning indication in syntax check for non-nvcc compilers
+// use inline so header-defined helpers do not violate ODR in multiple translation units
 #ifndef __NVCC__
-#define __forceinline__
+#define __forceinline__ inline __attribute__((always_inline))
 #define __host__
 #define __device__
 #endif
