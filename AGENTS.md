@@ -21,3 +21,8 @@ darts <absolute-path-to-model-folder>/main.py
 ```bash
 ./helper_scripts/install_darts.sh -e
 ```
+
+### Git rules
+
+- Baseline branch is `development`
+- Keep commits focused and include a brief but descriptive message.
