@@ -100,6 +100,11 @@ class ReservoirOperators(OperatorsSuper):
                 self.property.x[j] * self.property.dens_m[j]
             )
 
+        """ molar density operator """
+        values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
+            self.property.ph
+        ]
+
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         for j in range(nph):
             values_np[self.UPSAT_OP + j] = (
@@ -109,9 +114,7 @@ class ReservoirOperators(OperatorsSuper):
         """ Chi operator for diffusion """
         for j in self.property.ph:
             values_np[self.GRAD_OP + j * self.ne : self.GRAD_OP + (j + 1) * self.ne] = (
-                self.property.diffusivity[j]
-                * self.property.x[j]
-                * self.property.dens_m[j]
+                self.property.diffusivity[j] * self.property.x[j]
             )
 
         """ Delta operator for reaction """
