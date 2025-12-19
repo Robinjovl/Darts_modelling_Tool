@@ -391,7 +391,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 	// find the indices of remaining connections 
 	vector<index_t> conns_to_remain;
 	conns_to_remain.reserve(region_ranges[FRACTURE].second - region_ranges[FRACTURE].first);
-	unordered_set<set<index_t>>::const_iterator it_faults;
+	auto it_faults = fault_nodes.cend();
 	for (const auto& conn : conns)
 	{
 		if (conn.type == MAT_MAT)
