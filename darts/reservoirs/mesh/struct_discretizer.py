@@ -909,15 +909,21 @@ class StructDiscretizer:
         self, i, j, k, well_ID=0.3048, segment_direction="z_axis", skin=0
     ):
         """
-        This method calculates the well index for each well segment/perforation
+        Calculate the well index for each well perforation
 
         :param i: "human" counting of x-location coordinate of perforation
+        :type i: int
         :param j: "human" counting of y-location coordinate of perforation
+        :param j: int
         :param k: "human" counting of z-location coordinate of perforation
+        :type k: int
         :param well_ID: Internal diameter of the wellbore
+        :type well_ID: float
         :param segment_direction: direction of the segment inside the reservoir block
-        :param skin: skin factor for pressure loss around well-bore due to formation damage
-        :return well_index: well-index of the perforation
+        :type segment_direction: str
+        :param skin: skin factor for pressure loss around wellbore due to formation damage
+        :type skin: float
+        :return well_index: Well index of the perforation
         """
         assert i > 0, "Perforation block coordinate should be positive"
         assert j > 0, "Perforation block coordinate should be positive"
@@ -1028,17 +1034,28 @@ class StructDiscretizer:
         skin=None,
     ):
         """
-        This method calculates the perforation transmissibility for perforations in coupled well-reservoir models
+        Calculate the perforation transmissibility for perforations in coupled well-reservoir models.
+        The difference between this function and the function `calc_well_index` is that this function has two methods
+        for perforation transmissibility calculation:
+            1- The modified form of the Darcy's law using the Peaceman model
+            2- The Darcy's law without any modification (used if the reservoir block connected to the perforation is
+            small.
 
         :param i: "human" counting of x-location coordinate of perforation
+        :type i: int
         :param j: "human" counting of y-location coordinate of perforation
+        :type j: int
         :param k: "human" counting of z-location coordinate of perforation
+        :type k: int
         :param segment_direction: Direction of the segment inside the reservoir block
+        :type segment_direction: str
         :param with_peaceman: If True, the perforation transmissibility is calculated using the Peaceman model;
         otherwise, the simple Darcy's law is used.
-        :param skin: Skin factor for pressure loss around well-bore due to formation damage. This can be specified only
+        :type with_peaceman: bool
+        :param skin: Skin factor for pressure loss around wellbore due to formation damage. This can be specified only
         when the Peaceman model is used (with_peaceman is True).
-        :return well_index: well-index of the perforation
+        :type skin: float
+        :return well_index: Well index of the perforation
         """
         assert i > 0, "Perforation block coordinate should be positive"
         assert j > 0, "Perforation block coordinate should be positive"
