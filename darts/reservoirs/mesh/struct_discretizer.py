@@ -3,7 +3,8 @@ import numpy as np
 
 class StructDiscretizer:
     # Define Darcy constant for changes to correct units:
-    darcy_constant = 0.0085267146719160104986876640419948
+    darcy_constant = 0.008526714671916010498687664041998
+    # darcy_constant = 1e-3 * 9.869233e-13 * 1e5 * 24 * 60 * 60 / 1e-3 --> u = m/day
 
     def __init__(
         self,

@@ -69,7 +69,7 @@ class Model(CICDModel):
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
-                                     min_t=273.15 + 20, max_t=273.15 + 200)
+                                     min_t=273.15, max_t=273.15 + 200)
         self.physics.add_property_region(property_container)
 
         return

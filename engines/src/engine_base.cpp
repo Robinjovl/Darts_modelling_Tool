@@ -1394,7 +1394,7 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 		}
 	}
 	sprintf(buffer2, "%s %s )\n%s", line, buffer, line);
-	//std::cout << buffer2 << std::flush;
+	std::cout << buffer2 << std::flush;
 
 	return 0;
 }
@@ -2037,9 +2037,9 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		}
 		/* ---- end check fluid compositions ---- */
 	}
-	//if (n_solid_corrected || n_fluid_corrected)
-	//	std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
-	//	  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
+	if (n_solid_corrected || n_fluid_corrected)
+		std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2095,8 +2095,8 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 		}
 	}
 
-	//if (n_corrected)
-	//	std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_corrected)
+		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2386,8 +2386,8 @@ void engine_base::apply_local_chop_correction(std::vector<value_t> &X, std::vect
 			}
 		}
 	}
-	//if (n_corrected)
-	//	std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_corrected)
+		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2428,8 +2428,8 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 			}
 		}
 	}
-	//if (n_corrected)
-	//	std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_corrected)
+		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2475,7 +2475,7 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 	}
 	else if (params->log_transform == 1)
 	{
-		//std::cout << "!!!Using local chop for log-transform of variables is not tested properly, proceed with caution!!!" << std::endl;
+		std::cout << "!!!Using local chop for log-transform of variables is not tested properly, proceed with caution!!!" << std::endl;
 		for (int i = 0; i < mesh->n_blocks; i++)
 		{
 			ratio = 1.0;
@@ -2509,8 +2509,8 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 			}
 		}
 	}
-	//if (n_corrected)
-	//	std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_corrected)
+		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX)

@@ -25,7 +25,8 @@ class my_own_acc_flux_etor(OperatorsBase):
         # Operator order
         self.ACC_OP = 0  # accumulation operator - ne
         self.FLUX_OP = self.ACC_OP + self.ne  # flux operator - ne * nph
-        self.UPSAT_OP = self.FLUX_OP + self.ne * self.nph  # c*sat operator - nph
+        self.DENS_OP = self.FLUX_OP + self.ne * self.nph  # density operator
+        self.UPSAT_OP = self.DENS_OP + self.nph  # saturation operator
         self.GRAD_OP = self.UPSAT_OP + self.nph  # gradient operator - ne * nph
         self.KIN_OP = self.GRAD_OP + self.ne * self.nph  # kinetic operator - ne
         self.GRAV_OP = self.KIN_OP + self.ne  # gravity operator - nph
@@ -37,6 +38,24 @@ class my_own_acc_flux_etor(OperatorsBase):
         self.TEMP_OP = self.ENTH_OP + self.nph  # temperature operator - 1
         self.PRES_OP = self.TEMP_OP + 1  # pressure operator - 1
         self.n_ops = self.PRES_OP + 1
+
+        # Operator names
+        self.op_names = [
+            (self.ACC_OP, "ACC"),
+            (self.FLUX_OP, "FLUX"),
+            (self.DENS_OP, "DENS"),
+            (self.UPSAT_OP, "UPSAT"),
+            (self.GRAD_OP, "GRAD"),
+            (self.KIN_OP, "KIN"),
+            (self.GRAV_OP, "GRAV"),
+            (self.PC_OP, "PC"),
+            (self.MULT_OP, "MULT"),
+            (self.LAMBDA_OP, "LAMBDA"),
+            (self.SAT_OP, "SAT"),
+            (self.ENTH_OP, "ENTH"),
+            (self.TEMP_OP, "TEMP"),
+            (self.PRES_OP, "PRES"),
+        ]
 
     def comp_out_of_bounds(self, vec_composition):
         # Check if composition sum is above 1 or element comp below 0, i.e. if point is unphysical:
@@ -109,14 +128,19 @@ class my_own_acc_flux_etor(OperatorsBase):
         for j in range(nph):
             values_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + nc] = self.property.x[j] * self.property.dens_m[j]
 
+        """ molar density operator """
+        values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
+            self.property.ph
+        ]
+
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         for j in range(nph):
             values_np[self.UPSAT_OP + j] = self.property.rock_compr.mean() * self.property.sat[j]
 
         """ Chi operator for diffusion """
         for j in self.property.ph:
-            values_np[self.GRAD_OP + j * self.ne:self.GRAD_OP + (j + 1) * self.ne] = self.property.diffusivity[j] * \
-                                                                    self.property.x[j] * self.property.dens_m[j]
+            values_np[self.GRAD_OP + j * self.ne:self.GRAD_OP + (j + 1) * self.ne] = \
+                                        self.property.diffusivity[j] * self.property.x[j]
 
         """ Delta operator for reaction """
         for i in range(ne):
