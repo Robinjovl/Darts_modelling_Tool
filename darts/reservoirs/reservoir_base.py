@@ -90,7 +90,7 @@ class ReservoirBase:
         self,
         well_name: str,
         ms_well_type: ms_well.MS_Type,
-        well_ID: float = 0.15,
+        well_diameter: float = 0.15,
         well_geometry: PipeGeometry = None,
     ) -> None:
         """
@@ -102,10 +102,10 @@ class ReservoirBase:
         ms_well.MS_Type.EPM: For the Equivalent Porous Medium model
         ms_well.MS_Type.DFM: For the Drift-Flux model
         :type ms_well_type: ms_well.MS_Type
-        :param well_ID: Well inside diameter. If well_ms_type is EPM, this input argument is needed. If well_ms_type
-        is DFM, this will be extracted from well_geometry.
-        :type well_ID: float
-        :param well_geometry: Geometry of the well. If well_ms_type is DFM, this input argument must be specified.
+        :param well_diameter: Well inside diameter. If ms_well_type is EPM, this input argument is needed. If
+        ms_well_type is DFM, this will be extracted from well_geometry.
+        :type well_diameter: float
+        :param well_geometry: Geometry of the well. If ms_well_type is DFM, this input argument must be specified.
         :type well_geometry: PipeGeometry
         """
         well = ms_well()
@@ -118,7 +118,7 @@ class ReservoirBase:
             )
             # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
             # the segment in front of the reservoir cell which is perforated.
-            well.segment_volume = pi / 4 * well_ID**2
+            well.segment_volume = pi / 4 * well_diameter**2
             # will be updated in add_perforation
             well.well_head_depth = 0
             well.well_body_depth = 0
@@ -145,7 +145,7 @@ class ReservoirBase:
         well_name: str,
         res_cell_idx: int | tuple,
         well_seg_idx: int = None,
-        well_ID: float = 0.3048,
+        well_diameter: float = 0.3048,
         well_index: float = None,
         well_indexD: float = None,
         segment_direction: str = "z_axis",
@@ -162,7 +162,7 @@ class ReservoirBase:
         :type res_cell_idx: int or tuple
         :param well_seg_idx: Index of well segment to be perforated
         :type well_seg_idx: int
-        :param well_ID: Internal diameter of the wellbore
+        :param well_diameter: Internal diameter of the wellbore
         :param well_index: Well index, default is calculated inside
         :param well_indexD: Thermal well index, default is calculated inside
         :param segment_direction: X-, Y- or Z-direction, default is `z_axis`

@@ -906,7 +906,7 @@ class StructDiscretizer:
         return cell_m_local, cell_p_local, tran_local, tran_thermal_local, arrays_local
 
     def calc_well_index(
-        self, i, j, k, well_ID=0.3048, segment_direction="z_axis", skin=0
+        self, i, j, k, well_diameter=0.3048, segment_direction="z_axis", skin=0
     ):
         """
         Calculate the well index for each well perforation
@@ -917,8 +917,8 @@ class StructDiscretizer:
         :param j: int
         :param k: "human" counting of z-location coordinate of perforation
         :type k: int
-        :param well_ID: Internal diameter of the wellbore
-        :type well_ID: float
+        :param well_diameter: Internal diameter of the wellbore
+        :type well_diameter: float
         :param segment_direction: direction of the segment inside the reservoir block
         :type segment_direction: str
         :param skin: skin factor for pressure loss around wellbore due to formation damage
@@ -959,7 +959,7 @@ class StructDiscretizer:
             ky = self.perm_y_cell[i, j, k]
             kz = self.perm_z_cell[i, j, k]
 
-            well_radius = well_ID / 2
+            well_radius = well_diameter / 2
 
             if segment_direction == "z_axis":
                 if kx * ky != 0:
@@ -1028,7 +1028,7 @@ class StructDiscretizer:
         i,
         j,
         k,
-        well_ID,
+        well_diameter,
         segment_direction="z_axis",
         with_peaceman=False,
         skin=None,
@@ -1093,7 +1093,7 @@ class StructDiscretizer:
             ky = self.perm_y_cell[i, j, k]
             _kz = self.perm_z_cell[i, j, k]
 
-            well_radius = well_ID / 2
+            well_radius = well_diameter / 2
 
             if segment_direction == "z_axis":
                 if with_peaceman:

@@ -205,7 +205,7 @@ class Model(CICDModel):
 
         # Well with a single perforation
         well_1_perforated_segment = well_1_geometry.num_segments
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_ID=well_1_geometry.pipe_ID)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_diameter=well_1_geometry.pipe_ID)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]

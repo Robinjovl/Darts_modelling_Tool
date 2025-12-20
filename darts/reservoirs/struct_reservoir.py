@@ -212,7 +212,7 @@ class StructReservoir(ReservoirBase):
         well_name: str,
         res_cell_idx: int | tuple,
         well_seg_idx: int = None,
-        well_ID: float = 0.1524,
+        well_diameter: float = 0.1524,
         well_index: float = None,
         well_indexD: float = 0.0,
         segment_direction: str = "z_axis",
@@ -233,7 +233,12 @@ class StructReservoir(ReservoirBase):
                 "If the well is of the EPM type, well_seg_idx must not be specified!"
             )
             res_block_local, wi, wid = self.discretizer.calc_well_index(
-                i, j, k, well_ID=well_ID, segment_direction=segment_direction, skin=skin
+                i,
+                j,
+                k,
+                well_diameter=well_diameter,
+                segment_direction=segment_direction,
+                skin=skin,
             )
         elif well.ms_type == ms_well.MS_Type.DFM:
             assert well_seg_idx is not None, (
@@ -247,7 +252,7 @@ class StructReservoir(ReservoirBase):
                     i,
                     j,
                     k,
-                    well_ID=well_ID,
+                    well_diameter=well_diameter,
                     segment_direction=segment_direction,
                     with_peaceman=with_peaceman_for_coupled_well_reservoir,
                     skin=skin,

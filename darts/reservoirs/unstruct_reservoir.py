@@ -172,7 +172,7 @@ class UnstructReservoir(ReservoirBase):
         well_name: str,
         res_cell_idx: int,
         well_seg_idx: int = None,
-        well_ID: float = 0.3048,
+        well_diameter: float = 0.3048,
         well_index: float = None,
         well_indexD: float = None,
         segment_direction: str = "z_axis",
@@ -207,7 +207,7 @@ class UnstructReservoir(ReservoirBase):
         if well_index is None or well_indexD is None:
             # calculate well index and get local index of reservoir block
             wi, wid = self.discretizer.calc_equivalent_well_index(
-                res_cell_idx, well_ID, skin
+                res_cell_idx, well_diameter, skin
             )
             well_index = wi if well_index is None else well_index
             well_indexD = wid if well_indexD is None else well_indexD
