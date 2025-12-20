@@ -4044,9 +4044,13 @@ class UnstructDiscretizer:
         """
         works only for wedge 2.5D extruded cells
         approximate calculation: triangle -> square with the same area -> Peaceman formula
-        :param res_block: cell block index
+
+        :param res_block: reservoir block index
+        :type res_block: int
         :param well_diameter: well inside diameter [m]
-        :param skin: skin
+        :type well_diameter: float
+        :param skin: skin factor
+        :type skin: float
         :return: well_index, well_index_thermal
         """
         well_radius = well_diameter / 2

@@ -181,9 +181,11 @@ class UnstructReservoir(ReservoirBase):
         verbose: bool = False,
     ):
         """
-        Calculate the well index for each well perforation
+        Function to add a perforation to the well
 
-        :param well_seg_idx: This is only currently used for struct_reservoir
+        :param well_seg_idx: Currently, this is only used for struct_reservoir.
+        :param res_cell_idx: Index of reservoir cell to be perforated
+        :type res_cell_idx: Reservoir cell index for the unstructured reservoir grid must be an integer.
         """
         well = self.get_well(well_name)
 

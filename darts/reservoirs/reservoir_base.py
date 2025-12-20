@@ -154,7 +154,7 @@ class ReservoirBase:
         verbose: bool = False,
     ):
         """
-        Function to add perforations to well objects.
+        Function to add a perforation to the well
 
         :param well_name: Name of well to add perforation to
         :type well_name: str
@@ -163,12 +163,20 @@ class ReservoirBase:
         :param well_seg_idx: Index of well segment to be perforated
         :type well_seg_idx: int
         :param well_diameter: Internal diameter of the wellbore
+        :type well_diameter: float
         :param well_index: Well index, default is calculated inside
+        :type well_index: float
         :param well_indexD: Thermal well index, default is calculated inside
-        :param segment_direction: X-, Y- or Z-direction, default is `z_axis`
-        :param skin: default is 0.0
-        :param multi_segment: default is False
+        :type well_indexD: float
+        :param segment_direction: X-, Y- or Z-direction
+        :type segment_direction: str
+        :param skin: Skin factor
+        :type skin: float
+        :param multi_segment: Whether the EPM well model uses a separate well segment per perforation, or a single
+        well segment for all perforations of the wellbore.
+        :type multi_segment: bool
         :param verbose: Switch to set verbose level
+        :type verbose: bool
         """
         pass
 

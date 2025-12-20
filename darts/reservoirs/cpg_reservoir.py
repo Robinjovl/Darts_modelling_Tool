@@ -534,7 +534,7 @@ class CPG_Reservoir(ReservoirBase):
     def add_perforation(
         self,
         well_name: str,
-        res_cell_idx: int | tuple,
+        res_cell_idx: tuple,
         well_segment_idx: int = None,
         well_diameter: float = 0.3048,
         well_index: float = None,
@@ -545,7 +545,9 @@ class CPG_Reservoir(ReservoirBase):
         verbose: bool = False,
     ):
         """
-        Function to add perforations to wells.
+        Function to add a perforation to the well
+
+        :param well_seg_idx: Currently, this is only used for struct_reservoir.
         """
         well = self.get_well(well_name)
 

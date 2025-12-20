@@ -1169,17 +1169,20 @@ class UnstructReservoirMech:
         self.wells.append(well)
         return 0
 
-    def add_perforation(self, well, res_block, well_index):
+    def add_perforation(self, well, res_cell_idx: int, well_index: float):
         """
-        Class method which ads perforation to each (existing!) well
-        :param well: data object which contains data of the particular well
-        :param res_block: reservoir block in which the well has a perforation
+        Function to add a perforation to the well
+
+        :param well: data object which contains data of the desired well
+        :param res_cell_idx: index of reservoir cell to be perforated
+        :type res_cell_idx: int
         :param well_index: well index (productivity index)
+        :type well_index: float
         :return:
         """
         well_block = 0
         well.perforations = well.perforations + [
-            (well_block, res_block, well_index, 0.0)
+            (well_block, res_cell_idx, well_index, 0.0)
         ]
         return 0
 

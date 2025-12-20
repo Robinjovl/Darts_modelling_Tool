@@ -210,7 +210,7 @@ class StructReservoir(ReservoirBase):
     def add_perforation(
         self,
         well_name: str,
-        res_cell_idx: int | tuple,
+        res_cell_idx: tuple,
         well_seg_idx: int = None,
         well_diameter: float = 0.1524,
         well_index: float = None,
@@ -222,7 +222,7 @@ class StructReservoir(ReservoirBase):
         verbose: bool = False,
     ):
         """
-        Function to add perforations to wells.
+        Function to add a perforation to the well
         """
         well = self.get_well(well_name)
 
