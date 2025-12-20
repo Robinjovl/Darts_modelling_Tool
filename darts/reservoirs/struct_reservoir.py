@@ -216,7 +216,7 @@ class StructReservoir(ReservoirBase):
         well_index: float = None,
         well_indexD: float = 0.0,
         segment_direction: str = "z_axis",
-        skin: float = 0,
+        skin: float = 0.0,
         multi_segment: bool = None,
         with_peaceman_for_coupled_well_reservoir: bool = False,
         verbose: bool = False,

@@ -176,12 +176,12 @@ class UnstructReservoir(ReservoirBase):
         well_index: float = None,
         well_indexD: float = None,
         segment_direction: str = "z_axis",
-        skin: float = 0,
+        skin: float = 0.0,
         multi_segment: bool = False,
         verbose: bool = False,
     ):
         """
-        Function to add perforations to wells.
+        Calculate the well index for each well perforation
 
         :param well_seg_idx: This is only currently used for struct_reservoir
         """

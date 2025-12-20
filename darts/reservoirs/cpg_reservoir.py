@@ -308,16 +308,23 @@ class CPG_Reservoir(ReservoirBase):
         return
 
     def calc_well_index(
-        self, i, j, k, well_diameter=0.1524, segment_direction="z_axis", skin=0
+        self, i, j, k, well_diameter=0.1524, segment_direction="z_axis", skin=0.0
     ):
         """
-        Class method which construct the well index for each well segment/perforation
+        Calculate the well index for each well perforation
+
         :param i: "human" counting of x-location coordinate of perforation
+        :type i: int
         :param j: "human" counting of y-location coordinate of perforation
+        :type j: int
         :param k: "human" counting of z-location coordinate of perforation
+        :type k: int
         :param well_diameter: internal diameter of the wellbore
+        :type well_diameter: float
         :param segment_direction: direction in which the segment perforates the reservoir block
+        :type segment_direction: str
         :param skin: skin factor for pressure loss around well-bore due to formation damage
+        :type skin: float
         :return well_index: well-index of particular perforation
         """
         assert i > 0, "Perforation block coordinate should be positive"

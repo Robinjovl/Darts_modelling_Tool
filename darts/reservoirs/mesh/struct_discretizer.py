@@ -906,7 +906,7 @@ class StructDiscretizer:
         return cell_m_local, cell_p_local, tran_local, tran_thermal_local, arrays_local
 
     def calc_well_index(
-        self, i, j, k, well_diameter=0.3048, segment_direction="z_axis", skin=0
+        self, i, j, k, well_diameter=0.3048, segment_direction="z_axis", skin=0.0
     ):
         """
         Calculate the well index for each well perforation

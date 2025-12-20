@@ -149,7 +149,7 @@ class ReservoirBase:
         well_index: float = None,
         well_indexD: float = None,
         segment_direction: str = "z_axis",
-        skin: float = 0,
+        skin: float = 0.0,
         multi_segment: bool = False,
         verbose: bool = False,
     ):
@@ -166,7 +166,7 @@ class ReservoirBase:
         :param well_index: Well index, default is calculated inside
         :param well_indexD: Thermal well index, default is calculated inside
         :param segment_direction: X-, Y- or Z-direction, default is `z_axis`
-        :param skin: default is 0
+        :param skin: default is 0.0
         :param multi_segment: default is False
         :param verbose: Switch to set verbose level
         """
