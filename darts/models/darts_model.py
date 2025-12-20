@@ -713,9 +713,7 @@ class DartsModel:
         for i in range(max_newt + 1):
             # Update well phase velocities and derivatives if DFM wells are used
             if self.has_DFM_well:
-                self.update_dfm_well_phase_velocities_and_derivatives(
-                    dt, t, self.iter_counter
-                )
+                self.update_dfm_well_vels_and_ders(dt, t, self.iter_counter)
 
             # assemble Jacobian and residual of reservoir and well blocks
             self.physics.engine.assemble_linear_system(dt)
@@ -831,9 +829,9 @@ class DartsModel:
         self.timer.node["simulation"].stop()
         return converged
 
-    def update_dfm_well_phase_velocities_and_derivatives(self, dt, t, iter_counter):
+    def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):
         """
-        Updates phase velocities and their corresponding derivatives in DFM wells
+        Update phase velocities and their corresponding derivatives in DFM wells
 
         :param dt: Time step size [day]
         :type dt: float
