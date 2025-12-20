@@ -166,9 +166,8 @@ class ReservoirOperators(OperatorsSuper):
         )
 
         """ Saturation operator for phase volumetric calculations in the wellbore """
-        # Not used for reservoir
         # phase saturation: s_j [-]
-        # values_np[self.SAT_OP + self.property.ph] = self.property.sat[self.property.ph]
+        values_np[self.SAT_OP + self.property.ph] = self.property.sat[self.property.ph]
 
         """ Pressure operator """
         # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
