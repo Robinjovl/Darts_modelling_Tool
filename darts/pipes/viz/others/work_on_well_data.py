@@ -1,7 +1,7 @@
 """
 Figure 16-a
 This script can be used to plot the desired well property profile for different scenarios
-(stored_primary_vars_and_phase_props.pkl files) at final conditions within an axes.
+(well_primary_vars_and_phase_props.pkl files) at final conditions within an axes.
 """
 
 import matplotlib.pyplot as plt

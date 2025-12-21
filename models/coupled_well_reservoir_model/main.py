@@ -81,6 +81,6 @@ else:
     h5_well_data = load_hdf5_to_dict(well_data_file_path)
     save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model)
 
-    primary_vars_and_phase_props_file_address = os.path.join(coupled_model.output.output_folder, "stored_primary_vars_and_phase_props.pkl")
+    primary_vars_and_phase_props_file_address = os.path.join(coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl")
     plot_heat_map_pcolormesh(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, save_as="pdf", font_size=22, with_title=False)
     plot_heat_map_contourf(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, save_as="pdf", font_size=22, y_axis_tick_interval=200, with_title=False)

@@ -1,9 +1,9 @@
 """
-This script can be used to plot the desired property, which is stored in stored_primary_vars_and_phase_props.pkl,
+This script can be used to plot the desired property, which is stored in well_primary_vars_and_phase_props.pkl,
 for the desired wellbore segment, e.g., 0 for the wellhead and num_segments - 1 for the bottom-hole, over time for
 different scenarios saved in different output folders each of which containing the following two files:
     - well_data.h5
-    - stored_primary_vars_and_phase_props.pkl
+    - well_primary_vars_and_phase_props.pkl
 
 As an example, you can use this script to plot BHP or BHT vs time for different scenarios.
 """
@@ -61,7 +61,7 @@ for scenario in list_of_scenarios:
     simulation_time = h5_well_data["dynamic"]["time"] * 24 * 60 * 60
 
     primary_vars_and_phase_props_file_address = os.path.join(
-        output_folder, "stored_primary_vars_and_phase_props.pkl"
+        output_folder, "well_primary_vars_and_phase_props.pkl"
     )
 
     # Load primary vars and phase props
