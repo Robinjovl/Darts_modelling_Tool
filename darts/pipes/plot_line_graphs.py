@@ -9,7 +9,7 @@ from matplotlib.ticker import MultipleLocator
 from darts.models.darts_model import DartsModel
 
 
-def visualize_results_line_graphs(
+def plot_line_graphs(
     primary_vars_and_phase_props_file_address: str,
     h5_well_data: dict,
     coupled_model: DartsModel,

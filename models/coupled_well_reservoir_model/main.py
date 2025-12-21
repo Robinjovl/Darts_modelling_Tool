@@ -14,9 +14,9 @@ from model import Model
 from darts.engines import redirect_darts_output
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.pipes.save_results import save_segments_primary_vars_and_phase_props
-from darts.pipes.visualize_results_heat_maps_pcolormesh import visualize_results_heat_maps_pcolormesh
-from darts.pipes.visualize_results_line_graphs import visualize_results_line_graphs
-from darts.pipes.visualize_results_heat_maps_contourf import visualize_results_heat_maps_contourf
+from darts.pipes.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
+from darts.pipes.plot_line_graphs import plot_line_graphs
+from darts.pipes.plot_heat_map_contourf import plot_heat_map_contourf
 
 redirect_darts_output('run_log.log')
 coupled_model = Model()
@@ -82,5 +82,5 @@ else:
     save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model)
 
     primary_vars_and_phase_props_file_address = os.path.join(coupled_model.output.output_folder, "stored_primary_vars_and_phase_props.pkl")
-    visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, save_as="pdf", font_size=22, with_title=False)
-    visualize_results_heat_maps_contourf(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, save_as="pdf", font_size=22, y_axis_tick_interval=200, with_title=False)
+    plot_heat_map_pcolormesh(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, save_as="pdf", font_size=22, with_title=False)
+    plot_heat_map_contourf(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, save_as="pdf", font_size=22, y_axis_tick_interval=200, with_title=False)
