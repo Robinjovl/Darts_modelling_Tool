@@ -157,7 +157,10 @@ class Model(CICDModel):
         self.zMagnesite = max(self.min_z, magnesite_mole / (solid_moles + fluid_moles))
 
         self.obl_min = self.min_z / 10
-        self.phases = ['gas', 'liq']
+        gas = 'gas'
+        liq = 'liq'
+        self.phases = {gas: 0, liq: 1}
+        phase_name = [list(self.phases.keys())[list(self.phases.values()).index(id)] for id in range(len(self.phases))]
 
         self.minerals = ['calcite', 'dolomite', 'magnesite']
         self.n_solid = len(self.minerals)
@@ -191,7 +194,7 @@ class Model(CICDModel):
 
         # Create property containers:
         kinetic_mechanisms = ['acidic', 'neutral', 'carbonate']
-        property_container = PropertyContainer(phases_name=self.phases, components_name=self.elements, Mw=Mw,
+        property_container = PropertyContainer(phases=self.phases, components_name=self.elements, Mw=Mw,
                                             stoich_matrix=stoich_matrix, min_z=self.obl_min, temperature=self.temperature,
                                             fc_mask=self.fc_mask)
 
@@ -199,7 +202,7 @@ class Model(CICDModel):
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
                                          np.ones(self.nc - self.n_solid)]) * 5.2e-10 * 86400) for ph in self.phases}
         property_container.rel_perm_ev = {ph: CustomRelPerm(2) for ph in self.phases}
-        property_container.viscosity_ev = { self.phases[0]: GasViscosity(), self.phases[1]: LiquidViscosity() }
+        property_container.viscosity_ev = { gas: GasViscosity(), liq: LiquidViscosity() }
 
         property_container.flash_ev = Flash(
             min_z=property_container.min_z,
@@ -229,7 +232,7 @@ class Model(CICDModel):
         output_property_container = MyOutputPropertyContainer(property_container)
 
         # Create instance of (own) physics class:
-        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=self.phases, n_points=self.n_points,
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name, n_points=self.n_points,
                                           axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
                                           cache=False)
 

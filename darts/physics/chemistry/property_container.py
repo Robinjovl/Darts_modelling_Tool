@@ -13,7 +13,7 @@ class PropertyContainer(BasePropertyContainer):
 
     def __init__(
         self,
-        phases_name,
+        phases,
         components_name,
         Mw,
         stoich_matrix,
@@ -26,8 +26,8 @@ class PropertyContainer(BasePropertyContainer):
     ):
         """
         Constructor for PropertyContainer class.
-        :param phases_name: List of phases names
-        :type phases_name: List[str]
+        :param phases: dict mapping phase name -> index (order arbitrary)
+        :type phases: dict[str, int]
         :param components_name: List of components names
         :type components_name: List[str]
         :param Mw: Dictionary of molar weights of components [kg/kmol]
@@ -47,8 +47,14 @@ class PropertyContainer(BasePropertyContainer):
         :param fc_mask: Fluid component mask
         :type fc_mask: List[bool]
         """
+
+        # find key by value for disctionary
+        phase_name = [
+            list(phases.keys())[list(phases.values()).index(id)]
+            for id in range(len(phases))
+        ]
         super().__init__(
-            phases_name=phases_name,
+            phases_name=phase_name,
             components_name=components_name,
             Mw=Mw,
             nc_sol=nc_sol,
@@ -71,6 +77,10 @@ class PropertyContainer(BasePropertyContainer):
         self.Mw_array = np.array([self.Mw[c] for c in self.components_name])
         self.n_solid = (~self.fc_mask).sum()
 
+        # Map user-provided phase names to roles (gas/aqueous) independent of order
+        self.phase_idx = self._build_phase_index(phases)
+        self.ph = np.array([self.phase_idx['gas'], self.phase_idx['aq']], dtype=np.intp)
+
         # to retrieve fluid component fractions from state
         self.f_mask_state = np.concatenate([[False], self.fc_mask[:-1]])
         # to retrieve solid component fractions from state
@@ -89,6 +99,43 @@ class PropertyContainer(BasePropertyContainer):
         self.rock_density_ev = {}
         self.rock_compr_ev = {}
 
+    @staticmethod
+    def _build_phase_index(phases: dict[str, int]) -> dict:
+        """
+        Build a mapping from logical roles ('gas', 'aq') to indices using the
+        user-provided phases dict (phase name -> index), tolerant to aliases.
+        """
+        aliases = {
+            'gas': {'gas', 'v', 'vap', 'vapor', 'vapour', 'gasphase', 'g'},
+            'aq': {
+                'aq',
+                'aqueous',
+                'liq',
+                'liquid',
+                'water',
+                'wat',
+                'brine',
+                'liquidphase',
+            },
+        }
+
+        role_to_idx: dict[str, int] = {}
+        for name, idx in phases.items():
+            low = name.lower()
+            if low in aliases['gas']:
+                role_to_idx.setdefault('gas', idx)
+            if low in aliases['aq']:
+                role_to_idx.setdefault('aq', idx)
+
+        missing = {'gas', 'aq'} - set(role_to_idx)
+        if missing:
+            raise ValueError(
+                f"Could not determine phase roles for {missing}. "
+                f"Use recognizable phase names; got phases={phases}."
+            )
+
+        return role_to_idx
+
     def evaluate(self, state):
         """
         Class methods which evaluates the state operators for the element based physics
@@ -99,57 +146,64 @@ class PropertyContainer(BasePropertyContainer):
         :return: updated value for operators, stored in values
         """
         nu_v, x, y, rho_phases, self.kin_state, _, _, _ = self.flash_ev.evaluate(state)
+        idx_g = self.phase_idx['gas']
+        idx_a = self.phase_idx['aq']
         self.nu_solid = state[self.s_mask_state]
-        self.nu[0] = nu_v * (
-            1 - self.nu_solid.sum()
-        )  # convert to overall molar fraction
-        self.nu[1] = 1 - nu_v - self.nu_solid.sum()
+        # convert to overall molar fraction
+        self.nu[idx_g] = nu_v * (1 - self.nu_solid.sum())
+        self.nu[idx_a] = 1 - nu_v - self.nu_solid.sum()
 
         pressure = state[0]
         # molar densities in kmol/m3
-        self.dens_m[1], self.dens_m[0] = rho_phases['aq'], rho_phases['gas']
+        self.dens_m[idx_a], self.dens_m[idx_g] = rho_phases['aq'], rho_phases['gas']
         self.dens_m_solid = np.array(
             [v.evaluate(pressure) / self.Mw[k] for k, v in self.rock_density_ev.items()]
         )
-        self.ph = np.array([0, 1], dtype=np.intp)
 
         # Get saturations
         if nu_v > 0:
-            sum = (
-                self.nu[0] / self.dens_m[0]
-                + self.nu[1] / self.dens_m[1]
+            vol_sum = (
+                self.nu[idx_g] / self.dens_m[idx_g]
+                + self.nu[idx_a] / self.dens_m[idx_a]
                 + (self.nu_solid / self.dens_m_solid).sum()
             )
-            self.sat_overall[0] = self.nu[0] / self.dens_m[0] / sum
-            self.sat_overall[1] = self.nu[1] / self.dens_m[1] / sum
-            self.sat_overall[2] = (self.nu_solid / self.dens_m_solid).sum() / sum
+            self.sat_overall[idx_g] = self.nu[idx_g] / self.dens_m[idx_g] / vol_sum
+            self.sat_overall[idx_a] = self.nu[idx_a] / self.dens_m[idx_a] / vol_sum
+            self.sat_overall[self.nph] = (
+                self.nu_solid / self.dens_m_solid
+            ).sum() / vol_sum
         else:
-            sum = (
-                self.nu[1] / self.dens_m[1] + (self.nu_solid / self.dens_m_solid).sum()
+            vol_sum = (
+                self.nu[idx_a] / self.dens_m[idx_a]
+                + (self.nu_solid / self.dens_m_solid).sum()
             )
-            self.sat_overall[0] = 0
-            self.sat_overall[1] = self.nu[1] / self.dens_m[1] / sum
-            self.sat_overall[2] = (self.nu_solid / self.dens_m_solid).sum() / sum
-        self.sat_minerals = self.nu_solid / self.dens_m_solid / sum
+            self.sat_overall[idx_g] = 0
+            self.sat_overall[idx_a] = self.nu[idx_a] / self.dens_m[idx_a] / vol_sum
+            self.sat_overall[self.nph] = (
+                self.nu_solid / self.dens_m_solid
+            ).sum() / vol_sum
+        self.sat_minerals = self.nu_solid / self.dens_m_solid / vol_sum
 
-        self.x = np.array([y, x])
+        # composition per phase (aligned with phases_name order)
+        self.x.fill(0)
+        self.x[idx_g] = y
+        self.x[idx_a] = x
 
         self.pc = self.capillary_pressure_ev.evaluate(self.sat_overall)
 
-        for j in self.ph:
+        for j in range(self.nph):
             M = np.sum(self.Mw_array * self.x[j])
             self.dens[j] = self.dens_m[j] * M
             self.sat[j] = self.sat_overall[j] / np.sum(self.sat_overall[: self.nph])
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.diffusivity[j] = self.diffusion_ev[self.phases_name[j]].evaluate()
 
-        # gas
-        self.mu[0] = self.viscosity_ev[self.phases_name[0]].evaluate(
+        # phase viscosities
+        self.mu[idx_g] = self.viscosity_ev[self.phases_name[idx_g]].evaluate(
             pressure=pressure, temperature=self.temperature
         )
-        # liquid
-        self.mu[1] = self.viscosity_ev[self.phases_name[1]].evaluate(
-            density=self.dens[1], temperature=self.temperature
+        self.mu[idx_a] = self.viscosity_ev[self.phases_name[idx_a]].evaluate(
+            density=self.dens[idx_a], temperature=self.temperature
         )
 
         for i, k in enumerate(self.rock_compr_ev.keys()):

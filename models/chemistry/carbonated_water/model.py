@@ -187,7 +187,10 @@ class Model(CICDModel):
         self.obl_min = self.min_z / 10
 
         # Several parameters here related to components used, OBL limits, and injection composition:
-        self.phases = ['gas', 'liq']
+        gas = 'gas'
+        liq = 'liq'
+        self.phases = {gas: 0, liq: 1}
+        phase_name = [list(self.phases.keys())[list(self.phases.values()).index(id)] for id in range(len(self.phases))]
 
         if set(self.minerals) == {'calcite'}:
             # purely for initialization
@@ -276,14 +279,14 @@ class Model(CICDModel):
         self.nc = len(self.elements)
 
         # Create property containers:
-        property_container = PropertyContainer(phases_name=self.phases, components_name=self.elements, Mw=Mw,
+        property_container = PropertyContainer(phases=self.phases, components_name=self.elements, Mw=Mw,
                                             stoich_matrix=stoich_matrix, min_z=self.obl_min, temperature=self.temperature,
                                             fc_mask=self.fc_mask)
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
                                          np.ones(self.nc - self.n_solid)]) * 5.2e-10 * 86400) for ph in self.phases}
         property_container.rel_perm_ev = {ph: CustomRelPerm(2) for ph in self.phases}
-        property_container.viscosity_ev = { self.phases[0]: GasViscosity(), self.phases[1]: LiquidViscosity() }
+        property_container.viscosity_ev = { gas: GasViscosity(), liq: LiquidViscosity() }
 
         # flash, also here to be able to setup modified PHREEQC/reaktoro flashes
         if self.flash == 'phreeqc':
@@ -328,7 +331,7 @@ class Model(CICDModel):
 
         output_property_container = OutputPropertyContainer(property_container)
 
-        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points, phases=self.phases,
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points, phases=phase_name,
                                     axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
                                     cache=False)
         self.physics.add_property_region(property_container, output_property_container, 0)

@@ -83,7 +83,7 @@ class ReservoirOperators(OperatorsSuper):
 
         nc = self.property.nc
         ns = self.property.n_solid
-        nph = 2
+        nph = self.property.nph
         ne = nc
 
         """ CONSTRUCT OPERATORS HERE """
