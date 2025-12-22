@@ -58,8 +58,13 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     # intialization without injection
     if minerals == ['calcite']:
         init_days = 0.1
-    else:# minerals == ['calcite', 'dolomite']:
+        num_time_iterations = 7
+    elif set(minerals) == set(['calcite', 'dolomite']):
         init_days = 20.0
+        num_time_iterations = 7
+    else:
+        init_days = 150.0
+        num_time_iterations = 3
 
     rate = m.inj_rate
     m.inj_rate = 0.0
@@ -93,7 +98,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         # m.data_ts.dt_max *= 5
         m.data_ts.first_ts = m.data_ts.dt_max
 
-        for i in range(7):
+        for i in range(num_time_iterations):
             dt = 2.0
             m.run(days=dt)
             if i < 1:
@@ -167,25 +172,62 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     # shutil.copy('main.py', os.path.join(output_folder, 'main.py'))
     # shutil.copy('model.py', os.path.join(output_folder, 'model.py'))
 
+
+def get_output_folder(args: dict):
+    if not isinstance(args, dict):
+        return 'run'
+    if args.get('output_folder'):
+        return str(args['output_folder'])
+    parts = []
+    for key in ['domain', 'nx', 'flash', 'database']:
+        if key in args:
+            parts.append(str(args[key]))
+    return '_'.join(parts) if parts else 'run'
+
+
+def run_test(args: dict, platform='cpu'):
+    run_simulation(platform=platform, **args)
+    return 0, 0.0
+
 if __name__ == '__main__':
     # 1D
-    run_simulation(domain='1D', nx=200, perm_poro='power_8', max_ts=1.e-3)
+    minerals = ['calcite', 'dolomite']#, 'magnesite']
+    nx = 200
+    n_obl_mult = 1
+    co2_injection = 0.1
+    max_ts = 1.e-3
+    flash='phreeqc' # 'phreeqc' # 'reaktoro'
+    database = 'phreeqc' # 'phreeqc' # 'pitzer' # 'supcrtbl'
+    # of = f'output_1D_{nx}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}_{flash}_{database}'
+
+    # phreeqc
+    run_simulation(domain='1D', nx=nx, perm_poro='power_8', n_obl_mult=n_obl_mult, minerals=minerals,
+                co2_injection=co2_injection, max_ts=max_ts, output=False, flash=flash, database=database)
+
+    # reaktoro
+    # minerals = ['calcite'] # , 'dolomite', 'magnesite']
+    # flash='reaktoro'
+    # database='phreeqc'
+    # n_obl_mult = 1
+    # run_simulation(domain='2D', nx=10, perm_poro='power_8', n_obl_mult=n_obl_mult, minerals=minerals,
+    #             co2_injection=1.0, max_ts=max_ts, flash=flash, output=False, database=database)
+
     # 2D
     # run_simulation(domain='2D', nx=10, perm_poro='power_8', max_ts=1.5e-3)
-    # n_obl_mult = 3
-    # inj_rate = 1e-3
-    # nx = 50
-    # minerals = ['calcite']#, 'dolomite', 'magnesite']
-    # max_ts = 6.e-5 * 1e-4 / inj_rate
-    # max_ts = 1.e-6
-    # co2_injection = 1.0
+    n_obl_mult = 9
+    inj_rate = 1e-3
+    nx = 50
+    minerals = ['calcite']#, 'dolomite', 'magnesite']
+    max_ts = 6.e-5 * 1e-4 / inj_rate
+    max_ts = 1.e-6
+    co2_injection = 0.1
     # run_simulation(domain='2D', nx=nx, output=True, max_ts=max_ts,
     #                 n_obl_mult=n_obl_mult,
     #                 interpolator='multilinear',
     #                 output_folder=f'output_2D_{nx}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}',
-    #                 poro_filename='old_calculations/calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
+    #                 #mesh_filename='input/wedge.msh',
+    #                 poro_filename='input/spherical_50_5.txt', #'input/wedge_0.009.txt',#'old_calculations/calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
     #                 minerals=minerals,
-    #                 kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
     #                 h2o_injection=1.1,
     #                 co2_injection=co2_injection,
     #                 #inj_rate=inj_rate,
@@ -201,7 +243,8 @@ if __name__ == '__main__':
     #                mesh_filename='input/core_13k.msh', poro_filename='input/core_13k_0.02.txt')
     # run_simulation(domain='3D', max_ts=1.e-3, output=True,
     #                mesh_filename='input/core_60k.msh', poro_filename='input/core_60k_0.01.txt')
-    # run_simulation(domain='3D', max_ts=8.e-4, output=True,
+    # run_simulation(domain='3D', max_ts=8.e-4, output=True, perm_poro='power_8',
+    #                n_obl_mult=3, platform='cpu', minerals=['calcite'],
     #                mesh_filename='input/core_195k.msh', poro_filename='input/core_195k.txt')
 
 

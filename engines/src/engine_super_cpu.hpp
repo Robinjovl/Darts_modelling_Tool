@@ -50,8 +50,8 @@ public:
   const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
                                NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
                                NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
-  
-  
+
+
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -70,7 +70,7 @@ public:
   const static uint8_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
   const static uint8_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
   const static uint8_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
-  
+
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
   // Define extra class property stoichiometric coefficient of the reaction (now hard coded, but has to become input?, maybe required to be placed somewhere else?):

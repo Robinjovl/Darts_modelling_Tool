@@ -27,7 +27,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      #'CO2_foam_CCS',
                      'GeoRising',
                      'CoaxWell',
-                     'chemistry/carbonated_water',
+
                      'effect_of_potential_energy',
                      ]
 
@@ -111,6 +111,24 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         test_args_dfn.append([case])
     test_args_dfn = [test_args_dfn]
 
+    # chemistry tests (multiple cases within a single model folder)
+    test_dirs_chem = ['chemistry/carbonated_water']
+    test_args_chem = [[
+        {
+            'name': 'cal_phreeqc_phreeqc_1D',
+            'domain': '1D',
+            'nx': 200,
+            'minerals': ['calcite', 'dolomite'],
+            'kinetic_mechanisms': ['acidic', 'neutral', 'carbonate'],
+            'n_obl_mult': 1,
+            'co2_injection': 0.1,
+            'max_ts': 1.e-3,
+            'flash': 'phreeqc',
+            'database': 'phreeqc',
+            'output': False,
+        },
+    ]]
+
     # for adjoint test
     accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_PXflash_geothermal']
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
@@ -166,6 +184,11 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total_dfn, failed_models_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_total += n_total_dfn
 
+    # chemistry
+    print('\nChemistry tests:')
+    n_total_chem, failed_models_chem = run_tests(model_dir, test_dirs=test_dirs_chem, test_args=test_args_chem, overwrite=overwrite, platform=platform)
+    n_total += n_total_chem
+
     # poromechanic tests
     print('\nPoromechanics tests:')
     n_total_mech = 0
@@ -183,7 +206,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # test for adjoint ------------------end---------------------------------
 
     failed_models = failed_models_m + failed_models_main + failed_models_cpg + failed_models_dfn + \
-                    failed_models_mech + failed_models_adj
+                    failed_models_mech + failed_models_adj + failed_models_chem
     print('Failed models   :\n\t', '\n\t'.join(failed_models))
 
     n_failed =  len(failed_models)
@@ -196,6 +219,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     print('\tdfn', len(failed_models_dfn))
     print('\tmech', len(failed_models_mech))
     print('\tadj', len(failed_models_adj))
+    print('\tchem', len(failed_models_chem))
 
     print("Passed", n_passed, "of", n_total, "tests ")
 
