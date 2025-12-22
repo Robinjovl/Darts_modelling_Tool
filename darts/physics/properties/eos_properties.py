@@ -72,7 +72,7 @@ class EoSDensity:
         if self.combined_ions_stoichiometry is not None:
             xi = np.append(x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry))
         else:
-            xi = x
+            xi = np.array(x)
 
         MW = np.sum(xi * np.array(self.Mw)) * 1e-3  # kg/mol
         if not derivs:
@@ -150,7 +150,7 @@ class EoSEnthalpy:
         if self.combined_ions_stoichiometry is not None:
             xi = np.append(x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry))
         else:
-            xi = x
+            xi = np.array(x)
 
         spec = state_spec or StateSpecification.TEMPERATURE
         dtdp = 0.0 if dTdP is None else dTdP
