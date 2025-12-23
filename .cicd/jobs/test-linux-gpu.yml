@@ -29,6 +29,8 @@
     artifacts:
       paths:
         - './models/_logs/*.log'
+        - './models/**/_logs/*.log'
+        - './_logs/*.log'
         - './models/fracture_network/meshes*/*.log'
         - './models/displaced_fault_reactivation/meshes/*.log'
         - './models/pkl_lin.tar.gz'
