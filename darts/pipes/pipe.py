@@ -10,6 +10,7 @@ Notes:
 """
 
 import math
+from dataclasses import dataclass
 
 from scipy.optimize import fsolve
 
@@ -22,10 +23,23 @@ from darts.pipes.set_initial_conditions import (
 from darts.pipes.units import *
 
 
+@dataclass(frozen=True)
+class AdjustmentFuncParams:
+    # The following parameters are used in the adjustment function f(G,X) used for calculating the drift velocity
+    Xm1 = 1.0
+    Xm2 = 0.94
+    Gm1 = 300.0
+    Gm2 = 700.0
+    alpha = 0.001
+    lambdaa = 199.0  # lambdaa is used because lambda is a reserved keyword in Python
+
+
 class Pipe:
     g = 9.80665 * meter() / second() ** 2  # Gravitational acceleration
     Cku = 142
     Cw = 0.008
+
+    adjustment_func_params = AdjustmentFuncParams
 
     def __init__(
         self,
@@ -147,14 +161,14 @@ class Pipe:
         if isinstance(pipe_geometry.inclination_angle_radian, float):
             self.m = (
                 m0
-                * ((np.cos(pipe_geometry.inclination_angle_radian)) ** n1)
+                * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
                 * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
                 * np.ones(pipe_geometry.num_interfaces)
             )
         elif isinstance(pipe_geometry.inclination_angle_radian, np.ndarray):
             self.m = (
                 m0
-                * ((np.cos(pipe_geometry.inclination_angle_radian)) ** n1)
+                * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
                 * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
             )
 
@@ -1044,13 +1058,15 @@ class Pipe:
                     )
 
             # Calculate the adjustment function for the mist flow regime
+            Xm1 = self.adjustment_func_params.Xm1
+            Xm2 = self.adjustment_func_params.Xm2
+            Gm1 = self.adjustment_func_params.Gm1
+            Gm2 = self.adjustment_func_params.Gm2
+            alpha = self.adjustment_func_params.alpha
+            lambdaa = self.adjustment_func_params.lambdaa
+
             # I'm not sure if X should be multiplied by C0 or not.
-            Xm1 = 1
-            Xm2 = 0.94
-            Gm1 = 300
-            Gm2 = 700
-            alpha = 0.001
-            lambdaa = 199
+            # Calculate gas mass fraction [dimensionless]
             X0 = (
                 sG0_face_filtered
                 * rhoG0_face_filtered
@@ -1058,25 +1074,20 @@ class Pipe:
                     sG0_face_filtered * rhoG0_face_filtered
                     + (1 - sG0_face_filtered) * rhoL0_face_filtered
                 )
-            )  # gas mass fraction [dimensionless]
+            )
+
             # Calculate G0: the total mass flux (or total mass flow rate per unit cross-sectional area) [kg/m2/s]
             G0 = rhoM0_face_filtered * abs(vM0_filtered)
-            numerator = np.zeros(len(X0))
-            for i in range(len(X0)):
-                numerator[i] = np.linalg.det(
-                    np.array(
-                        [
-                            [X0[i], alpha * G0[i], 1],
-                            [Xm1, alpha * Gm1, 1],
-                            [Xm2, alpha * Gm2, 1],
-                        ]
-                    )
-                )
+
+            # Determinant of the matrix
+            numerator = alpha * (
+                X0 * (Gm1 - Gm2) - G0 * (Xm1 - Xm2) + (Xm1 * Gm2 - Xm2 * Gm1)
+            )
 
             denominator = np.sqrt((Xm2 - Xm1) ** 2 + (alpha * Gm2 - alpha * Gm1) ** 2)
             Dm = numerator / denominator
             f0 = np.maximum(
-                0, 1 - np.minimum(1, G0 / Gm1) * np.exp(-lambdaa * Dm * abs(Dm))
+                0.0, 1 - np.minimum(1, G0 / Gm1) * np.exp(-lambdaa * Dm * abs(Dm))
             )
 
             # Calculate drift velocity
