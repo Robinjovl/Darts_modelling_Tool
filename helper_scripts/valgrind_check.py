@@ -12,6 +12,7 @@ valgrind_models = [
     '2ph_do',
     '2ph_geothermal',
     '2ph_geothermal_mass_flux',
+    '2ph_do_thermal_mpfa',
     '3ph_comp_w',
     '3ph_do',
     '3ph_bo',
@@ -21,7 +22,6 @@ valgrind_models = [
     'GeoRising',
     'CoaxWell',
     'chemistry/carbonated_water',
-    '2ph_do_thermal_mpfa',
 ]
 
 # if the user passed extra models, append them (comma-separated):
