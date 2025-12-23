@@ -6,12 +6,12 @@
     needs: []
     variables:
         CONDA_ENV: "darts-win-${CI_JOB_ID}"
+        CONDA_BIN_PATH: 'D:\miniconda3\condabin'
     script:
         # Load MS Build Tools environment to the powershell
         - D:\BuildTools\build_vars.ps1
-        - $condaBinPath = 'D:\miniconda3\condabin'
-        - if (-not ($env:PATH.Split(';') -contains $condaBinPath)) { $env:PATH = "$condaBinPath;$env:PATH" }`
-        - $condaRoot = Split-Path $condaBinPath -Parent
+        - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
+        - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent
         - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
         - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
         # Initialize conda environment
@@ -27,9 +27,8 @@
         # Compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
     after_script:
-        - $condaBinPath = 'D:\miniconda3\condabin'
-        - if (-not ($env:PATH.Split(';') -contains $condaBinPath)) { $env:PATH = "$condaBinPath;$env:PATH" }`
-        - $condaRoot = Split-Path $condaBinPath -Parent
+        - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
+        - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent
         - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
         - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
         - conda deactivate
