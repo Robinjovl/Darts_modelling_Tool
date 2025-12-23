@@ -201,7 +201,8 @@ def plot_profiles(m, output_folder='./', plot_kinetics=False, plot_saturation=Tr
 
     ax[0].plot(x, Xm[:, 0], color='b', label=m.physics.vars[0])
     ax1 = ax[1].twinx()
-    colors = {'Solid_CaCO3': 'b', 'Ca': 'r', 'C': 'g', 'O': 'm', 'H': 'cyan', 'Mg': 'orange', 'Solid_CaMg(CO3)2': 'violet'}
+    colors = {'Solid_CaCO3': 'b', 'Ca': 'r', 'C': 'g', 'O': 'm', 'H': 'cyan', 'Mg': 'orange',
+                'Solid_CaMg(CO3)2': 'violet', 'Solid_MgCO3': 'brown'}
 
     components = m.physics.components
     for comp in ['Solid_CaCO3', 'O']: # Solid / O
@@ -225,6 +226,11 @@ def plot_profiles(m, output_folder='./', plot_kinetics=False, plot_saturation=Tr
         label = m.physics.vars[idx]
         ax1.plot(x, Xm[:, idx], color=colors['Mg'], label=label)
         y_axis_label11 += r', \textcolor{orange}{z$_{Mg}$}'
+    if 'Solid_MgCO3' in components:
+        idx = components.index('Solid_MgCO3') + 1
+        label = m.physics.vars[idx]
+        ax[1].plot(x, Xm[:, idx], color=colors['Solid_MgCO3'], label=label)
+        y_axis_label1 += r', \textcolor{brown}{z$_{MgCO3(s)}$}'
 
     ax[2].plot(x, property_array['porosity'][0], color='b', label='porosity')
 
