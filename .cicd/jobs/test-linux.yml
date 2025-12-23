@@ -43,7 +43,7 @@
     artifacts:
       paths:
         - './models/_logs/*.log'
-        - './models/chemistry/_logs/*.log'
+        - './models/chemistry/_logs/chemistry/*.log'
         - './models/fracture_network/meshes*/*.log'
         - './models/displaced_fault_reactivation/meshes/*.log'
         - './models/pkl_lin.tar.gz'
