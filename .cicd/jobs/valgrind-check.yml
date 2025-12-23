@@ -34,8 +34,8 @@ valgrind-check:
     artifacts:
       paths:
         - models/_valgrind_logs/*.log
-        - models/_valgrind_logs/*/*.log
+        - models/_valgrind_logs/chemistry/*.log
         - models/_valgrind_logs/*.txt
-        - models/_valgrind_logs/*/*.txt
+        - models/_valgrind_logs/chemistry/*.txt
       when: always
       expire_in: 1 week
