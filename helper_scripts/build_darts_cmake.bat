@@ -241,7 +241,7 @@ if errorlevel 1 (
 )
 
 if not defined conda_prefix (
-  echo Error: CONDA_PREFIX is empty. Activate the target Conda environment (e.g., "conda activate rkt") before using -p.
+  echo Error: CONDA_PREFIX is empty. Activate the target Conda environment before using -p.
   exit /b 1
 )
 
