@@ -158,6 +158,10 @@ class Model(CICDModel):
         # self.params.linear_type = sim_params.cpu_superlu
         self.params.newton_params[0] = 0.2
         self.runtime = 1
+        # default timestep control thresholds (overridable by callers)
+        self.ni_dt_increase_cutoff = 5
+        self.ni_dt_decrease_cutoff = 8
+        self.n_good_ts = 10
 
         self.timer.node["initialization"].stop()
 
