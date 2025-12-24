@@ -85,7 +85,7 @@ if %skip_req%==false (
              thirdparty\pybind11 ^
              thirdparty\MshIO ^
              thirdparty\hypre || goto :error
-  if /i "%phreeqc%"=="true" (
+  if %phreeqc%==true (
     git submodule update --init --recursive thirdparty\iphreeqc || goto :error
   )
   echo - Update submodules: DONE!
@@ -110,7 +110,7 @@ if %skip_req%==false (
   msbuild superlu.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\..\make_superlu.log || goto :error
   cd ..\..
 
-  if /i "%phreeqc%"=="true" (
+  if %phreeqc%==true (
     echo -- Install IPhreeqc: START
     cd thirdparty\build
     if not exist iphreeqc mkdir iphreeqc
@@ -146,7 +146,7 @@ if %MT%==true (
 if %GPU%==true (
   set cmake_options=%cmake_options% -D OPENDARTS_CONFIG=GPU
 )
-if /i "%phreeqc%"=="true" (
+if %phreeqc%==true (
   set cmake_options=%cmake_options% -D WITH_PHREEQC=ON
   echo Phreeqc support: ENABLED
 ) else (
@@ -188,7 +188,7 @@ if %wheel%==true (
 )
 python -m pip install . >> make_wheel.log
 
-if /i "%phreeqc%"=="true" (
+if %phreeqc%==true (
   call :ensure_reaktoro_conda || goto :error
 )
 
