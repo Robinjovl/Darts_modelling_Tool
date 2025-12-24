@@ -223,6 +223,11 @@ goto :eof
 REM ----------------------------------------------------------------
 
 :ensure_reaktoro_conda
+REM Use a local copy of CONDA_PREFIX and quoted comparisons to avoid parser
+REM errors when the prefix contains spaces or parentheses (observed as
+REM "<token> was unexpected at this time" failures in CI).
+set "conda_prefix=%CONDA_PREFIX%"
+
 python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('reaktoro') else 1)" >NUL 2>&1
 if %errorlevel%==0 (
   echo -- Reaktoro already available in current Python interpreter.
@@ -235,16 +240,16 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if "%CONDA_PREFIX%"=="" (
+if not defined conda_prefix (
   echo Error: CONDA_PREFIX is empty. Activate the target Conda environment (e.g., "conda activate rkt") before using -p.
   exit /b 1
 )
 
 set "REAKTORO_LOG=%cd%\make_reaktoro.log"
-echo -- Install Reaktoro via conda (prefix %CONDA_PREFIX%). Full log: %REAKTORO_LOG%
+echo -- Install Reaktoro via conda (prefix "!conda_prefix!"). Full log: %REAKTORO_LOG%
 >> "%REAKTORO_LOG%" (
-  echo + conda install -y -c conda-forge -p "%CONDA_PREFIX%" reaktoro
+  echo + conda install -y -c conda-forge -p "!conda_prefix!" reaktoro
 )
-call conda install -y -c conda-forge -p "%CONDA_PREFIX%" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
+call conda install -y -c conda-forge -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
 echo -- Install Reaktoro: DONE!
 exit /b 0
