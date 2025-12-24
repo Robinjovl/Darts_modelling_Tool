@@ -17,7 +17,7 @@
         - echo "build *.so on linux started with ODLS=$ODLS"
         - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS -p
     after_script:
-        - conda deactivate || true
+        - source /opt/conda/bin/activate
         - conda env remove -n ${CONDA_ENV} --yes || true
     needs:
     - job: docker-image-builder

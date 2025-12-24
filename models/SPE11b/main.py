@@ -59,7 +59,7 @@ def output(m, ts, property_data : int = None):
             property_array[f'vel_{ph}'] = np.sqrt(np.square(property_array[f'vel_{ph}_x']) \
                                                     + np.square(property_array[f'vel_{ph}_y']) \
                                                         + np.square(property_array[f'vel_{ph}_z']))
-        
+
         if 0: # flux output is only enabled for CPU platform
             # store and plot fluxes
             diff = np.asarray(m.physics.engine.diffusion_fluxes) # array containing diffusive fluxes per component and phase
@@ -130,7 +130,7 @@ def post_process(m, specs):
 
         event1 = True
         event2 = True
-        
+
         if m.physics.engine.t < 25 * Dt:
             m.inj_rate = [3024, 0]
         elif m.physics.engine.t >= 25 * Dt and m.physics.engine.t < 50 * Dt:
@@ -148,7 +148,7 @@ def post_process(m, specs):
         print(f'<<<<<<<<< Starting simulation at {m.physics.engine.t} with {m.inj_rate} >>>>>>>>>>>')
         start_ts = int(m.physics.engine.t//Dt)
         for ts in range(start_ts, Nt + 1):
-            
+
             print(f'------------------- Simulate from year {(ts*Dt)/365} until year {((ts+1)*Dt)/365} ----------------------')
             m.run(Dt, restart_dt = 1.0, save_reservoir_data = False, save_well_data = not specs['RHS'], verbose=True)
 
@@ -195,7 +195,7 @@ def run(m, specs):
     event2 = True
 
     for ts in range(Nt):
-        
+
         print(f'----------------------------------- Simulate from year {(ts*Dt)/365} until year {((ts+1)*Dt)/365} -----------------------------------')
         m.run(Dt, restart_dt = 1.0, save_reservoir_data = False, save_well_data = not specs['RHS'], verbose=True)
 
@@ -266,7 +266,7 @@ if 0:
         spec["inj_stream"] = [zero, 1-zero, 283.15]
 
 else:
-    # cpu/gpu based on platform 
+    # cpu/gpu based on platform
     platform = 'cpu'
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
        platform = 'gpu'
@@ -286,7 +286,7 @@ else:
 
 if __name__ == '__main__':
     for specs in model_specs:
-        
+
         """ set up output directory """
         from model_b import build_output_dir
         if specs['output_dir'] is None:
@@ -306,10 +306,10 @@ if __name__ == '__main__':
 
         if 1:
             redirect_darts_output(os.path.join(output_dir, 'model.log'))
-        else: 
+        else:
             from darts.tools.logging import redirect_all_output
             log_stream = redirect_all_output(os.path.join(output_dir, 'model.log'))
-            
+
         m = Model(specs)
         m.output_dir = output_dir
         m.print_darts()
@@ -377,7 +377,7 @@ if __name__ == '__main__':
 
             if specs['dispersion']:
                 m.init_dispersion()
-                
+
             if specs['platform'] == 'cpu':
                 m.physics.engine.enable_flux_output()
                 m.map_mesh_faces()
@@ -386,6 +386,3 @@ if __name__ == '__main__':
 
         m.print_timers()
         m.print_stat()
-
-
-

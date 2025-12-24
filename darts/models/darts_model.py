@@ -115,6 +115,7 @@ class DartsModel:
         itor_mode: str = "adaptive",
         itor_type: str = "multilinear",
         is_barycentric: bool = False,
+        n_solid: int = None,
     ):
         """
         Function to initialize the model, which includes:
@@ -139,6 +140,8 @@ class DartsModel:
         :type itor_type: str
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param n_solid: Number of solid minerals for element-based reactive flow
+        :type n_solid: int
         """
         # Initialize reservoir and Mesh object
         assert self.reservoir is not None, "Reservoir object has not been defined"
@@ -183,6 +186,10 @@ class DartsModel:
                 + ' > 30000',
                 stacklevel=2,
             )
+
+        # element-based reactive flow
+        if n_solid is not None:
+            self.physics.engine.n_solid = n_solid
 
     def reset(self):
         """
@@ -544,6 +551,7 @@ class DartsModel:
 
             self.output.well_time_labels = []
             self.output.well_data = []
+            self.output.well_cfl = []
 
         # get current engine time
         t = self.physics.engine.t
@@ -620,6 +628,7 @@ class DartsModel:
                             self.output.id_well_data
                         ]
                     )
+                    self.output.well_cfl.append(self.physics.engine.CFL_max)
 
             else:
                 dt /= data_ts.dt_mult
@@ -642,7 +651,12 @@ class DartsModel:
             self.output.timer.start()
             self.output.timer.node["saving_well_data"].start()
             self.output.save_specific_data(
-                path, [self.output.well_time_labels, self.output.well_data]
+                path,
+                [
+                    self.output.well_time_labels,
+                    self.output.well_data,
+                    self.output.well_cfl,
+                ],
             )
             self.output.timer.node["saving_well_data"].stop()
             self.output.timer.stop()

@@ -28,7 +28,7 @@ set(DISCRETIZER_BUILD_INFO_PUBLIC_HEADER_FILES
 # This is always a static library since we wish to use it internally only
 add_library(discretizer_build_info OBJECT "")
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(discretizer_build_info PUBLIC OPENDARTS_LINEAR_SOLVERS)
@@ -58,13 +58,13 @@ target_include_directories(discretizer_build_info
 #source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_BUILD_INFO_PUBLIC_HEADER_FILES})
 
 # Install the library file of discretizer_build_info
-install(TARGETS discretizer_build_info 
-  CONFIGURATIONS RELEASE    
+install(TARGETS discretizer_build_info
+  CONFIGURATIONS RELEASE
   DESTINATION lib
 )
 
 install(TARGETS discretizer_build_info
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 
@@ -89,7 +89,7 @@ set(DISCRETIZER_SRC_FILES
 set(DISCRETIZER_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/approximation.h
   ${CMAKE_CURRENT_SOURCE_DIR}/discretizer.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/mech_discretizer.h  
+  ${CMAKE_CURRENT_SOURCE_DIR}/mech_discretizer.h
   ${CMAKE_CURRENT_SOURCE_DIR}/utils.h
 )
 
@@ -97,7 +97,7 @@ set(DISCRETIZER_PUBLIC_HEADER_FILES
 # This is always a static library since we wish to use it internally only
 add_library(opendarts_discretizer STATIC "")
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(opendarts_discretizer PUBLIC OPENDARTS_LINEAR_SOLVERS)
@@ -130,13 +130,13 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_SRC_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_PUBLIC_HEADER_FILES})
 
 # Install the library file of opendarts_discretizer
-install(TARGETS opendarts_discretizer 
-  CONFIGURATIONS RELEASE    
+install(TARGETS opendarts_discretizer
+  CONFIGURATIONS RELEASE
   DESTINATION lib
 )
 
 install(TARGETS opendarts_discretizer
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 
@@ -183,13 +183,13 @@ target_include_directories(discretizer_linalg
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_LINALG_PUBLIC_HEADER_FILES})
 
 # Install the library file of discretizer_linalg
-install(TARGETS discretizer_linalg 
-  CONFIGURATIONS RELEASE    
+install(TARGETS discretizer_linalg
+  CONFIGURATIONS RELEASE
   DESTINATION lib
 )
 
 install(TARGETS discretizer_linalg
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 
