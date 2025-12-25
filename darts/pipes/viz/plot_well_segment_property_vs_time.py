@@ -19,8 +19,8 @@ from darts.tools.hdf5_tools import load_hdf5_to_dict
 """ Input """
 num_segments = 41
 
-list_of_scenarios = ["1_min", "2_min", "3_min", "4_min", "5_min", "10_min"]
-list_of_legend_labels = [
+scenarios_labels = ["1_min", "2_min", "3_min", "4_min", "5_min", "10_min"]
+legend_labels = [
     "Ramp-up time = 1 min",
     "Ramp-up time = 2 min",
     "Ramp-up time = 3 min (base-case scenario)",
@@ -53,7 +53,7 @@ output_name = "BHT_time_series_ramp_up_time_sens_ana"
 list_of_simulation_time = []
 list_of_property_time_series = []
 
-for scenario in list_of_scenarios:
+for scenario in scenarios_labels:
     output_folder = f"output_{scenario}"
 
     well_data_file_path = os.path.join(output_folder, "well_data.h5")
@@ -106,7 +106,7 @@ markers = [
 
 fig, ax = plt.subplots(figsize=(8, 5))
 
-for idx in range(len(list_of_scenarios)):
+for idx in range(len(scenarios_labels)):
     ax.plot(
         list_of_simulation_time[idx],
         list_of_property_time_series[idx],
@@ -114,7 +114,7 @@ for idx in range(len(list_of_scenarios)):
         marker=markers[idx % len(markers)],
         linewidth=2.0,
         markersize=4,
-        label=list_of_legend_labels[idx],
+        label=legend_labels[idx],
     )
 
 # X axis formatting
