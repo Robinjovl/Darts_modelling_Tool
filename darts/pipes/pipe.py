@@ -861,7 +861,7 @@ class Pipe:
         pg = self.geometry
 
         """ Start calculating the Reynolds number """
-        _, _, sG0, _, _, miuG0, miuL0 = self.iter_phases_props0
+        _, _, sG0, _, _, _, _ = self.iter_phases_props0
 
         _, _, sG0_face, _, _, miuG0_face, miuL0_face = self.iter_phases_props0_face
         [_, vM0, _, _] = self.velocities0
@@ -870,6 +870,15 @@ class Pipe:
         # Beggs and Brill's book: Eq. 1.38
         # My production engineering notebook: Pressure drop calc in wellbore for 2-phase flow with Beggs and Brill's method
         self.miuM0 = sG0_face * miuG0_face + (1 - sG0_face) * miuL0_face
+
+        # Viscosity averaging method in https://doi.org/10.1016/j.ijmultiphaseflow.2021.103590
+        # _, _, _, rhoG0_face, rhoL0_face, _, _ = self.iter_phases_props0_face
+        # xg = sG0_face * rhoG0_face / (sG0_face * rhoG0_face + (1 - sG0_face) * rhoL0_face)
+        # denominator_1 = xg / miuG0_face
+        # denominator_1 = np.nan_to_num(denominator_1, nan=0.0)
+        # denominator_2 = (1 - xg) / miuL0_face
+        # denominator_2 = np.nan_to_num(denominator_2, nan=0.0)
+        # self.miuM0 = 1 / (denominator_1 + denominator_2)
 
         Re0 = self.calc_Reynolds_number(vM0, self.rhoM0_face, self.miuM0, pg.pipe_ID)
         """ End calculating the Reynolds number """
