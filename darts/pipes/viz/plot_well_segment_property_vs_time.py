@@ -17,36 +17,37 @@ import pandas as pd
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 """ Input """
+min_time_step_idx = 0  # This can be used to avoid plotting very small time steps
 num_segments = 41
 
-scenarios_labels = ["1_min", "2_min", "3_min", "4_min", "5_min", "10_min"]
+scenarios_labels = ["110", "200", "500", "1000"]
 legend_labels = [
-    "Ramp-up time = 1 min",
-    "Ramp-up time = 2 min",
-    "Ramp-up time = 3 min (base-case scenario)",
-    "Ramp-up time = 4 min",
-    "Ramp-up time = 5 min",
-    "Ramp-up time = 10 min",
+    "OBL resolution = 110",
+    "OBL resolution = 200",
+    "OBL resolution = 500",
+    "OBL resolution = 1000",
 ]
 
-# property_key = "Pressure"
-# desired_well_segment_idx = num_segments - 1   # For bottomhole = num_segments - 1, for wellhead = 0
-# y_label = "BHP [bar]"
-# y_min = 10
-# y_max = 33
-# y_tick_increment = 2
-# output_name = "BHP_time_series_ramp_up_time_sens_ana"
-
-# Note that the temperature stored is in Kelvin
-property_key = "Temperature"
+property_key = "Pressure"
 desired_well_segment_idx = (
     num_segments - 1
 )  # For bottomhole = num_segments - 1, for wellhead = 0
-y_min = -30
-y_max = 80
-y_tick_increment = 10
-y_label = "BHT [\u00b0C]"
-output_name = "BHT_time_series_ramp_up_time_sens_ana"
+y_label = "BHP [bar]"
+y_min = 10
+y_max = 33
+y_tick_increment = 2
+output_name = "BHP_time_series_obl_resolution_sens_ana"
+
+# # Note that the temperature stored is in Kelvin
+# property_key = "Temperature"
+# desired_well_segment_idx = (
+#     num_segments - 1
+# )  # For bottomhole = num_segments - 1, for wellhead = 0
+# y_min = -35
+# y_max = 80
+# y_tick_increment = 10
+# y_label = "BHT [\u00b0C]"
+# output_name = "BHT_time_series_obl_resolution_sens_ana"
 
 
 """ Main code """
@@ -106,19 +107,21 @@ markers = [
 
 fig, ax = plt.subplots(figsize=(8, 5))
 
+min_time_idx = 10
 for idx in range(len(scenarios_labels)):
-    ax.plot(
-        list_of_simulation_time[idx],
-        list_of_property_time_series[idx],
-        linestyle=linestyles[idx % len(linestyles)],
+    ax.semilogx(
+        list_of_simulation_time[idx][min_time_idx:],
+        list_of_property_time_series[idx][min_time_idx:],
+        linestyle='',
+        # linestyle=linestyles[idx % len(linestyles)],
         marker=markers[idx % len(markers)],
         linewidth=2.0,
-        markersize=4,
+        markersize=5,
         label=legend_labels[idx],
     )
 
 # X axis formatting
-x_min = min(list_of_simulation_time[0])
+x_min = list_of_simulation_time[0][min_time_idx]
 x_max = max(list_of_simulation_time[-1])
 ax.set_xlim(x_min, x_max)
 
