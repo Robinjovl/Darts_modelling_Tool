@@ -17,7 +17,7 @@ import pandas as pd
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 """ Input """
-min_time_step_idx = 0  # This can be used to avoid plotting very small time steps
+min_time_step_idx = 10  # This can be used to avoid plotting very small time steps
 num_segments = 41
 
 scenarios_labels = ["110", "200", "500", "1000"]
@@ -107,11 +107,10 @@ markers = [
 
 fig, ax = plt.subplots(figsize=(8, 5))
 
-min_time_idx = 10
 for idx in range(len(scenarios_labels)):
     ax.semilogx(
-        list_of_simulation_time[idx][min_time_idx:],
-        list_of_property_time_series[idx][min_time_idx:],
+        list_of_simulation_time[idx][min_time_step_idx:],
+        list_of_property_time_series[idx][min_time_step_idx:],
         linestyle='',
         # linestyle=linestyles[idx % len(linestyles)],
         marker=markers[idx % len(markers)],
@@ -121,7 +120,7 @@ for idx in range(len(scenarios_labels)):
     )
 
 # X axis formatting
-x_min = list_of_simulation_time[0][min_time_idx]
+x_min = list_of_simulation_time[0][min_time_step_idx]
 x_max = max(list_of_simulation_time[-1])
 ax.set_xlim(x_min, x_max)
 
@@ -141,7 +140,7 @@ leg = ax.legend(frameon=False, loc="best", handlelength=3)
 if leg.get_title() is not None:
     leg.get_title().set_fontsize(12)
 
-# """ Add a zoomed inset, zoomed-in view or inset axis"""
+""" Add a zoomed inset, zoomed-in view or inset axis"""
 # from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 #
 # # Create inset axis (smaller plot inside the main one)
@@ -150,7 +149,7 @@ if leg.get_title() is not None:
 #                    bbox_transform=ax.transAxes)
 #
 # # Plot same curves inside inset
-# for idx in range(len(list_of_scenarios)):
+# for idx in range(len(scenarios_labels)):
 #     axins.plot(list_of_simulation_time[idx], list_of_property_time_series[idx], linestyle=linestyles[idx % len(linestyles)], marker=markers[idx % len(markers)], linewidth=2.0, markersize=4)
 #
 # # Set zoomed-in region
@@ -163,7 +162,7 @@ if leg.get_title() is not None:
 #
 # # Draw a box around zoom area on main plot
 # mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.5")
-# """ End the zoomed inset"""
+""" End the zoomed inset"""
 
 fig.tight_layout()
 fig.savefig(output_name + ".pdf")
