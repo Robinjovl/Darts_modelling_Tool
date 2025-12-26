@@ -34,8 +34,8 @@ desired_well_segment_idx = (
 )  # For bottomhole = num_segments - 1, for wellhead = 0
 y_label = "BHP [bar]"
 y_min = 10
-y_max = 33
-y_tick_increment = 2
+y_max = 45
+y_tick_increment = 5
 output_name = "BHP_time_series_obl_resolution_sens_ana"
 
 # # Note that the temperature stored is in Kelvin
@@ -137,7 +137,7 @@ ax.set_xlabel("Simulation time [second]", labelpad=6)
 ax.set_ylabel(y_label, labelpad=6)
 
 # Legend: compact, outside or inside depending on space
-leg = ax.legend(frameon=False, loc="upper right", handlelength=3)
+leg = ax.legend(frameon=False, loc="best", handlelength=3)
 if leg.get_title() is not None:
     leg.get_title().set_fontsize(12)
 
