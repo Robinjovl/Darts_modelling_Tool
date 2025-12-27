@@ -188,6 +188,10 @@ if %wheel%==true (
 )
 python -m pip install . >> make_wheel.log
 
+if %phreeqc%==true (
+  call :ensure_reaktoro_conda || goto :error
+)
+
 echo ************************************************************************
 echo   Building python package open-darts: DONE!
 echo ************************************************************************
@@ -214,6 +218,38 @@ echo    -a : Update private artifacts bos_solvers (instead of openDARTS solvers)
 echo    -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
 echo    -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug
 echo    -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4
-echo    -p : Enable Phreeqc. Default: false
+echo    -p : Enable Phreeqc + Reaktoro (requires Conda). Default: false
 goto :eof
 REM ----------------------------------------------------------------
+
+:ensure_reaktoro_conda
+REM Use a local copy of CONDA_PREFIX and quoted comparisons to avoid parser
+REM errors when the prefix contains spaces or parentheses (observed as
+REM "<token> was unexpected at this time" failures in CI).
+set "conda_prefix=%CONDA_PREFIX%"
+
+python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('reaktoro') else 1)" >NUL 2>&1
+if %errorlevel%==0 (
+  echo -- Reaktoro already available in current Python interpreter.
+  exit /b 0
+)
+
+where conda >NUL 2>&1
+if errorlevel 1 (
+  echo Error: 'conda' command not found. Install Conda and activate an environment before using -p.
+  exit /b 1
+)
+
+if not defined conda_prefix (
+  echo Error: CONDA_PREFIX is empty. Activate the target Conda environment before using -p.
+  exit /b 1
+)
+
+set "REAKTORO_LOG=%cd%\make_reaktoro.log"
+echo -- Install Reaktoro via conda (prefix "!conda_prefix!"). Full log: %REAKTORO_LOG%
+>> "%REAKTORO_LOG%" (
+  echo + conda install -y -c conda-forge -p "!conda_prefix!" reaktoro
+)
+call conda install -y -c conda-forge -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
+echo -- Install Reaktoro: DONE!
+exit /b 0

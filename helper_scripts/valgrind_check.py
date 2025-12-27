@@ -12,6 +12,7 @@ valgrind_models = [
     '2ph_do',
     '2ph_geothermal',
     '2ph_geothermal_mass_flux',
+    '2ph_do_thermal_mpfa',
     '3ph_comp_w',
     '3ph_do',
     '3ph_bo',
@@ -20,8 +21,7 @@ valgrind_models = [
     'CCS',
     'GeoRising',
     'CoaxWell',
-    'phreeqc_dissolution',
-    '2ph_do_thermal_mpfa',
+    'chemistry/carbonated_water',
 ]
 
 # if the user passed extra models, append them (comma-separated):
@@ -119,6 +119,9 @@ def run_valgrind_for_model(model, timeout=1800):
     prog_out = os.path.join(log_folder, f'{model}.log')
     prog_err = os.path.join(log_folder, f'{model}_err.log')
     summary_file = os.path.join(log_folder, f'{model}.summary.txt')
+
+    # ensure nested model paths have a directory to write into
+    os.makedirs(os.path.dirname(vg_log), exist_ok=True)
 
     # Build the inline Python snippet to invoke run_model_direct
     py_snippet = (

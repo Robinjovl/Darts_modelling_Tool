@@ -1,15 +1,15 @@
 include:
   - local: '.cicd/jobs/build-linux-base.yml'
 
-#build-linux-3.13:
-#    rules:
-#        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-#        - if: $TEST_ALL_PYTHONS == "1"
-#    extends: .build-linux
-#    variables:
-#        PY_VER: '3.13'        # for python image selection in .build-linux
-#        PY_SUF: 'cp313-cp313' # for python path selection in .build-linux
-#        ODLS: '-a'
+build-linux-3.13:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-linux
+    variables:
+        PY_VER: '3.13'        # for python image selection in .build-linux
+        PY_SUF: 'cp313-cp313' # for python path selection in .build-linux
+        ODLS: '-a'
 
 build-linux-3.12:
     rules:
@@ -44,15 +44,15 @@ build-linux-3.10:
         PY_SUF: 'cp310-cp310' # for python path selection in .build-linux
         ODLS: '-a'
 
-#build-linux-3.13-ODLS:
-#    rules:
-#        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-#        - if: $TEST_ALL_PYTHONS == "1"
-#    extends: .build-linux
-#    variables:
-#        PY_VER: '3.13'        # for python image selection in .build-linux
-#        PY_SUF: 'cp313-cp313' # for python path selection in .build-linux
-#        ODLS: ''              # build with open-darts linear solvers
+build-linux-3.13-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-linux
+    variables:
+        PY_VER: '3.13'        # for python image selection in .build-linux
+        PY_SUF: 'cp313-cp313' # for python path selection in .build-linux
+        ODLS: ''              # build with open-darts linear solvers
 
 build-linux-3.12-ODLS:
     rules:

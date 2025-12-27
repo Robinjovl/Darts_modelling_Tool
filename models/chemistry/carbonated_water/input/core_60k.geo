@@ -3,8 +3,7 @@ a1 = a / 2;
 h = 0.07519 / 2;
 k = Sqrt(2);
 Phi = -Pi / 3;
-lc = 0.005;
-lc_frac = 0.005;
+lc = 0.003;
 rot = Pi / 10;
 
 Point(1) = {0, 0, 0, lc};
@@ -51,7 +50,7 @@ Physical Surface("side", 991) = {101:103};
 Physical Surface("boundary_zm", 992) = {1};
 Physical Surface("boundary_zp", 993) = {2};
 Mesh.OptimizeMesh = "HighOrderElastic";
-//Smoother Surface{304} = 40; 
+//Smoother Surface{304} = 40;
 Mesh 3;
 Coherence Mesh;
 Mesh.MshFileVersion = 2.1;

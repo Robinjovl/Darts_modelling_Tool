@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <iostream>
 #include <functional>  // adjoint method -- function 'bind1st'
+#include <limits>
 #ifdef __GNUC__
 #include <cxxabi.h>
 #endif
@@ -18,6 +19,15 @@
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
 #endif // OPENDARTS_LINEAR_SOLVERS
+
+// Helper to avoid division by zero without hard-coded thresholds
+namespace {
+inline value_t safe_denominator(value_t denom)
+{
+    value_t abs_denom = std::fabs(denom);
+    return abs_denom > value_t(0) ? abs_denom : std::numeric_limits<value_t>::min();
+}
+}
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
@@ -1589,7 +1599,7 @@ engine_base::calc_newton_residual_L1()
 	}
 	for (int c = 0; c < n_vars; c++)
 	{
-		residual = std::max(residual, fabs(res[c] / norm[c]));
+		residual = std::max(residual, fabs(res[c]) / safe_denominator(norm[c]));
 	}
 
 	return residual;
@@ -1612,7 +1622,7 @@ engine_base::calc_newton_residual_L2()
 	}
 	for (int c = 0; c < n_vars; c++)
 	{
-		residual = std::max(residual, sqrt(res[c] / norm[c]));
+		residual = std::max(residual, sqrt(res[c] / safe_denominator(norm[c])));
 	}
 
 	return residual;
@@ -1629,8 +1639,7 @@ engine_base::calc_newton_residual_Linf()
 		for (int c = 0; c < n_vars; c++)
 		{
 			norm = PV[i] * op_vals_arr[i * n_ops + c];
-			if (norm > 1e-3)
-				residual = std::max(residual, fabs(RHS[i * n_vars + c] / norm));
+			residual = std::max(residual, fabs(RHS[i * n_vars + c]) / safe_denominator(norm));
 		}
 	}
 
@@ -1673,7 +1682,7 @@ engine_base::calc_well_residual_L1()
 
 	for (int v = 0; v < n_vars; v++)
 	{
-		residual = std::max(residual, fabs(res[v] / norm[v]));
+		residual = std::max(residual, fabs(res[v]) / safe_denominator(norm[v]));
 	}
 
 	return residual;
@@ -1718,7 +1727,7 @@ engine_base::calc_well_residual_L2()
 
 	for (int v = 0; v < n_vars; v++)
 	{
-		residual_epm_well = std::max(residual_epm_well, sqrt(res[v] / norm[v]));
+		residual_epm_well = std::max(residual_epm_well, sqrt(res[v] / safe_denominator(norm[v])));
 	}
 
 	return residual_epm_well;
@@ -1742,7 +1751,8 @@ engine_base::calc_well_residual_Linf()
 				value_t wi, wid;
 				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
 
-				res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + v] / (PV[w->well_body_idx + i_w] * av_op[v]));
+				value_t denom = PV[w->well_body_idx + i_w] * av_op[v];
+				res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + v]) / safe_denominator(denom);
 				residual = std::max(residual, res);
 			}
 
@@ -1782,7 +1792,7 @@ engine_base::calc_newton_residual()
 }
 
 /**
- * @brief Compute a single scalar residual for the coupled well–reservoir system having only DFM wells.
+ * @brief Compute a single scalar residual for the coupled wellï¿½reservoir system having only DFM wells.
  *
  * This function turns the full RHS (all reservoir and well blocks and variables) into one
  * nonnegative number that can be used as a convergence indicator.

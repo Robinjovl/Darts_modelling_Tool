@@ -6,8 +6,16 @@ import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
 
+
+def _ensure_parent_dir(path):
+    """Create parent directory for the provided file path if missing."""
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent, exist_ok=True)
+
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
-    model_dir = r'.'
+    model_dir = os.path.abspath(r'.')
+    _ensure_parent_dir(os.path.join(model_dir, '_logs', 'placeholder'))
 
     # set model list to run
 
@@ -25,7 +33,6 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         #'CO2_foam_CCS',
         'GeoRising',
         'CoaxWell',
-        'phreeqc_dissolution',
         'effect_of_potential_energy',
                      ]
 
@@ -112,6 +119,24 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         test_args_dfn.append([case])
     test_args_dfn = [test_args_dfn]
 
+    # chemistry tests (multiple cases within a single model folder)
+    test_dirs_chem = ['chemistry/carbonated_water']
+    test_args_chem = [[
+        {
+            'name': 'cal_phreeqc_phreeqc_1D',
+            'domain': '1D',
+            'nx': 200,
+            'minerals': ['calcite', 'dolomite'],
+            'kinetic_mechanisms': ['acidic', 'neutral', 'carbonate'],
+            'n_obl_mult': 1,
+            'co2_injection': 0.1,
+            'max_ts': 1.e-3,
+            'flash': 'phreeqc',
+            'database': 'phreeqc',
+            'output': False,
+        },
+    ]]
+
     # for adjoint test
     accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_PXflash_geothermal']
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
@@ -132,19 +157,29 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if iter_solvers:  # run this case only for the build with iterative solvers
         accepted_dirs += [ 'SPE11b']
     n_total_mainpy = 0
+    models_root = model_dir
     for mdir in accepted_dirs:
         print('running main.py for model', mdir)
         n_total_mainpy += 1
-        os.chdir(mdir)
-        import subprocess
-        mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
-        rcode = mrun.returncode
+        model_path = os.path.join(models_root, mdir)
+        if not os.path.isdir(model_path):
+            print(f'SKIP: directory "{model_path}" not found')
+            failed_models_main += [mdir + ' (main.py missing dir)']
+            continue
+        os.chdir(model_path)
+        stdout_path = os.path.join('..', '_logs', mdir + '_mainpy.log')
+        stderr_path = os.path.join('..', '_logs', mdir + '_mainpy_err.log')
+        _ensure_parent_dir(stdout_path)
+        _ensure_parent_dir(stderr_path)
+        with open(stdout_path, 'w') as stdout_file, open(stderr_path, 'w') as stderr_file:
+            mrun = subprocess.run(["python", "main.py", platform], stdout=stdout_file, stderr=stderr_file)
+            rcode = mrun.returncode
         if not rcode:
             print('OK')
         else:
             print('FAIL')
             failed_models_main += [mdir + ' (main.py)']
-        os.chdir('..')
+        os.chdir(models_root)
     n_total += n_total_mainpy
 
     # discretizer tests
@@ -156,6 +191,11 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     print('\nFracture network tests:')
     n_total_dfn, failed_models_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_total += n_total_dfn
+
+    # chemistry
+    print('\nChemistry tests:')
+    n_total_chem, failed_models_chem = run_tests(model_dir, test_dirs=test_dirs_chem, test_args=test_args_chem, overwrite=overwrite, platform=platform)
+    n_total += n_total_chem
 
     # poromechanic tests
     print('\nPoromechanics tests:')
@@ -174,7 +214,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # test for adjoint ------------------end---------------------------------
 
     failed_models = failed_models_m + failed_models_main + failed_models_cpg + failed_models_dfn + \
-                    failed_models_mech + failed_models_adj
+                    failed_models_mech + failed_models_adj + failed_models_chem
     print('Failed models   :\n\t', '\n\t'.join(failed_models))
 
     n_failed =  len(failed_models)
@@ -187,6 +227,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     print('\tdfn', len(failed_models_dfn))
     print('\tmech', len(failed_models_mech))
     print('\tadj', len(failed_models_adj))
+    print('\tchem', len(failed_models_chem))
 
     print("Passed", n_passed, "of", n_total, "tests ")
 
@@ -210,6 +251,7 @@ def check_performance(mod):
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed
     log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
+    _ensure_parent_dir(log_file)
     f = open(log_file, "w")
     f.close()
     log_stream = redirect_all_output(log_file)
@@ -245,6 +287,7 @@ def check_performance_adjoint(mod):
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed
     log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
+    _ensure_parent_dir(log_file)
     f = open(log_file, "w")
     f.close()
     log_stream = redirect_all_output(log_file)

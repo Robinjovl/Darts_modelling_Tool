@@ -574,6 +574,14 @@ class Output:
                 dtype=self.precision_map[self.precision],
             )
 
+            # add CFL_max dataset, maximum taken over all cells
+            dynamic_group.create_dataset(
+                "CFL_max",
+                shape=(0,),
+                maxshape=(None,),
+                dtype=self.precision_map[self.precision],
+            )
+
             # add solution
             if self.reservoir.mesh.n_blocks > 0 and self.physics.n_vars > 0:
                 nb = cell_ids.size
@@ -665,11 +673,13 @@ class Output:
             time_dataset = f["dynamic/time"]
             x_dataset = f["dynamic/X"]
             cell_id = f["dynamic/cell_id"][:]
+            cfl_dataset = f["dynamic/CFL_max"]
 
             if is_batch:
-                times, data_array = X_data
+                times, data_array, cfl_values = X_data
                 times = np.asarray(times)
                 data_array = np.asarray(data_array)
+                cfl_values = np.asarray(cfl_values)
                 n_new = len(times)
             else:
                 times = np.array([self.physics.engine.t])
@@ -680,6 +690,7 @@ class Output:
                 data_array = np.expand_dims(
                     reshaped, axis=0
                 )  # shape (1, n_cells, n_vars)
+                cfl_values = np.array([self.physics.engine.CFL_max])
                 n_new = 1
 
             # Resize datasets
@@ -688,10 +699,12 @@ class Output:
             x_dataset.resize(
                 (start_idx + n_new, x_dataset.shape[1], x_dataset.shape[2])
             )
+            cfl_dataset.resize((start_idx + n_new,))
 
             # Write data
             time_dataset[start_idx : start_idx + n_new] = times
             x_dataset[start_idx : start_idx + n_new, :, :] = data_array
+            cfl_dataset[start_idx : start_idx + n_new] = cfl_values
 
         if self.verbose:
             mode = "batch" if is_batch else "single"
