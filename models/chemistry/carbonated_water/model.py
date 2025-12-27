@@ -15,7 +15,7 @@ from darts.physics.chemistry.property_container import (
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
-from darts.engines import sim_params, well_control_iface, value_vector, timer_node
+from darts.engines import sim_params, well_control_iface, value_vector, timer_node, ms_well
 from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
@@ -545,31 +545,32 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_wells(self):
-        d_w = 1.5
-        r_w = d_w / 2
+        w_d = 1.5
         well_index = 5
 
-        # self.reservoir.add_well("I1", wellbore_diameter=d_w)
+        well_type = ms_well.MS_Type.EPM
+
+        # self.reservoir.add_well("I1", well_type, well_diameter=w_d)
         # for idx in range(self.domain_cells[1]):
-        #     self.reservoir.add_perforation(well_name='I1', cell_index=(1, idx + 1, 1), multi_segment=False,
-        #                                    verbose=True, well_radius=r_w, well_index=well_index,
+        #     self.reservoir.add_perforation(well_name='I1', res_cell_idx=(1, idx + 1, 1), multi_segment=False,
+        #                                    verbose=True, well_diameter=w_d, well_index=well_index,
         #                                    well_indexD=well_index)
 
-        self.reservoir.add_well("P1", wellbore_diameter=d_w)
+        self.reservoir.add_well("P1", well_type, well_diameter=w_d)
         if isinstance(self.reservoir, UnstructReservoir):
             for idx in self.prd_cells:
-                self.reservoir.add_perforation(well_name='P1', cell_index=idx, multi_segment=False,
-                                               verbose=True, well_radius=r_w, well_index=well_index,
+                self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, multi_segment=False,
+                                               verbose=True, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
         elif isinstance(self.reservoir, StructReservoir):
             for idx in range(self.domain_cells[1]):
-                self.reservoir.add_perforation(well_name='P1', cell_index=(self.domain_cells[0], idx + 1, 1), multi_segment=False,
-                                               verbose=True, well_radius=r_w, well_index=well_index,
+                self.reservoir.add_perforation(well_name='P1', res_cell_idx=(self.domain_cells[0], idx + 1, 1), multi_segment=False,
+                                               verbose=True, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
 
     def set_rhs_flux(self, t: float = None):
         nv = self.physics.n_vars
-        nb = self.reservoir.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_blocks
         rhs_flux = np.zeros(nb * nv)
 
         rho_m_h20 = 1000 / 18.015 # kmol/m3
