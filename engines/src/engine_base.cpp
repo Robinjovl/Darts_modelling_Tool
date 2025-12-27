@@ -1781,12 +1781,32 @@ engine_base::calc_newton_residual()
 	}
 }
 
+/**
+ * @brief Compute a single scalar residual for the coupled well–reservoir system having only DFM wells.
+ *
+ * This function turns the full RHS (all reservoir and well blocks and variables) into one
+ * nonnegative number that can be used as a convergence indicator.
+ *
+ * Behavior depends on the selected method:
+ *
+ * Method 1 (method == 1):
+ *   - L2 norm
+ *
+ * Method 2 (method == 2):
+ *   - Infinity norm
+ *   - Ignores reservoir cells/well segments with extremely large volume (volume >= 1e10), since
+ *     their residual is not meaningful and can cause misleading convergence behavior
+ *     (e.g., when a very large reservoir block is used to model a standalone well).
+ *
+ * @param method Selects the residual aggregation method (1 or 2).
+ * @return scalar residual.
+ */
 double
 engine_base::calc_coupled_well_reservoir_residual(int method)
 {
 	double residual = 0;
 
-	if (method == 1)   // Method 1
+	if (method == 1)   // Method 1 (L2 norm)
 	{
 		std::vector<value_t> res(n_vars, 0);
 		std::vector<value_t> norm(n_vars, 0);
@@ -1804,7 +1824,7 @@ engine_base::calc_coupled_well_reservoir_residual(int method)
 			residual = std::max(residual, sqrt(res[c] / norm[c]));
 		}
 	}
-	else if (method == 2)   // Method 2
+	else if (method == 2)   // Method 2 (Infinity norm)
 	{
 		value_t max_res = 0;
 
