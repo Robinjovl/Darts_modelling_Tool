@@ -1917,7 +1917,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 	{
 		for (index_t p = 0; p < n_segments; p++)
 		{
-			add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, false); // connection between them
+			add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, false);
 		}
 	}
 	// connections between segments of DFM well
@@ -1925,7 +1925,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 	{
 		for (index_t seg = 0; seg < (wells[iw]->num_segments - 1); seg++)
 		{
-			add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0, true); // connection between them
+			add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0, true);
 		}
 
 		if (wells[iw]->with_lateral_heat_transfer)
@@ -2142,7 +2142,7 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 		// connections between segments
 		for (index_t p = 0; p < n_segments; p++)
 		{
-			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, P_VAR); // connection between them
+			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, P_VAR);
 		}
 		well_head_idx += n_segments + 1;
 		wells[iw]->n_segments = n_segments;
