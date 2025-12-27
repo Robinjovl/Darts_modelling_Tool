@@ -160,7 +160,7 @@ class ReservoirBase:
         :type well_name: str
         :param res_cell_idx: Index of reservoir cell to be perforated
         :type res_cell_idx: int or tuple
-        :param well_seg_idx: Index of well segment to be perforated
+        :param well_seg_idx: Index of well segment to be perforated (indexing starts from 1 at well top segment)
         :type well_seg_idx: int
         :param well_diameter: Internal diameter of the wellbore
         :type well_diameter: float
