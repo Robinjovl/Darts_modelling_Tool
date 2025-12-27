@@ -155,7 +155,7 @@ class DartsModel:
         assert self.reservoir is not None, "Reservoir object has not been defined"
         self.reservoir.init_reservoir(verbose)
         self.set_wells()
-        self.has_DFM_well = self.physics.has_DFM_well = any(
+        self.has_dfm_well = self.physics.has_dfm_well = any(
             well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
         )
 
@@ -712,7 +712,7 @@ class DartsModel:
         residual_history = []
         for i in range(max_newt + 1):
             # Update well phase velocities and derivatives if DFM wells are used
-            if self.has_DFM_well:
+            if self.has_dfm_well:
                 self.update_dfm_well_vels_and_ders(dt, t, self.iter_counter)
 
             # assemble Jacobian and residual of reservoir and well blocks
@@ -721,7 +721,7 @@ class DartsModel:
             # apply RHS flux
             self.apply_rhs_flux(dt, t)
 
-            if self.has_DFM_well:
+            if self.has_dfm_well:
                 self.apply_dfm_well_lateral_heat_flux(dt, t)
 
             if self.platform == "gpu":
@@ -729,12 +729,12 @@ class DartsModel:
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
 
-            if not self.has_DFM_well:
+            if not self.has_dfm_well:
                 self.physics.engine.newton_residual_last_dt = (
                     self.physics.engine.calc_newton_residual()
                 )  # calc norm of residual
             # TODO Function line_search is not updated for the coupled model.
-            elif self.has_DFM_well:
+            elif self.has_dfm_well:
                 # Method is either 1 or 2
                 self.physics.engine.newton_residual_last_dt = (
                     self.physics.engine.calc_coupled_well_reservoir_residual(

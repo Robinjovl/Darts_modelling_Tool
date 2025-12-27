@@ -53,22 +53,15 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   engine_base::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
   this->expose_jacobian();
 
-  // If the model has at least a DFM well, set has_DFM_well to true.
-  has_DFM_well = false;
-  for (ms_well* w : wells)
-  {
-      if (w->ms_type == ms_well::MS_Type::DFM)
-      {
-          has_DFM_well = true;
-          break;
-      }
-  }
-
   // Initialize variables for phase velocities at all connections including DFM wells
+  one_way_phase_A_vels.resize(mesh_->n_conns / 2);
+  one_way_phase_B_vels.resize(mesh_->n_conns / 2);
   phase_A_vels.resize(mesh_->n_conns);
   phase_B_vels.resize(mesh_->n_conns);
 
   // Initialize variables for derivatives of phase velocities at all connections including DFM wells
+  one_way_phase_A_vels_ders.resize(mesh_->n_conns / 2 * vel_der_size);
+  one_way_phase_B_vels_ders.resize(mesh_->n_conns / 2 * vel_der_size);
   phase_A_vels_ders.resize(mesh_->n_conns * vel_der_size);
   phase_B_vels_ders.resize(mesh_->n_conns * vel_der_size);
 
@@ -103,6 +96,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     index_t n_res_blocks = mesh->n_res_blocks;
     index_t n_conns = mesh->n_conns;
     index_t n_res_conns = mesh->n_res_conns;
+    bool has_dfm_well = mesh->has_dfm_well;
     const std::vector<value_t>& tran = mesh->tran;
     const std::vector<value_t>& tranD = mesh->tranD;
     const std::vector<value_t>& hcap = mesh->heat_capacity;
@@ -148,33 +142,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     // fill fourier_fluxes with zeros
     std::fill(fourier_fluxes.begin(), fourier_fluxes.end(), 0.0);
 
-    if (has_DFM_well)
+    if (has_dfm_well)
     {
-        // --- Start evaluating phase velocities and derivatives for all connections including DFM wells
-        std::vector<value_t> one_way_phase_A_vels;
-        std::vector<value_t> one_way_phase_B_vels;
-
-        std::vector<value_t> one_way_phase_A_vels_ders;
-        std::vector<value_t> one_way_phase_B_vels_ders;
-
-        // Zero velocities at reservoir connections, which will remain unused. These velocities won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
-        one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), n_res_conns / 2, 0);
-        one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), n_res_conns / 2, 0);
-
-        // Derivatives of phase velocities at reservoir connections, which will remain unused
-        one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), n_res_conns / 2 * vel_der_size, 0);
-        one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), n_res_conns / 2 * vel_der_size, 0);
+        // --- Start updating phase velocities and derivatives of DFM wells
         for (ms_well* w : wells)
         {
-            index_t n_perfs = w->perforations.size();
-            // Zero velocity for perforation of each well, which will remain unused
-            one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), n_perfs, 0);
-            one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), n_perfs, 0);
-
-            // Derivatives of phase velocities at perforation, which will remain unused
-            one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), n_perfs * vel_der_size, 0);
-            one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), n_perfs * vel_der_size, 0);
-
             if (w->ms_type == ms_well::MS_Type::DFM)
             {
                 // DFM phase velocities and derivatives are evaluated in Python
@@ -186,45 +158,28 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 std::vector<value_t> well_phase_A_v(well_phase_v.begin(), well_phase_v.begin() + half_size_vel);
                 std::vector<value_t> well_phase_B_v(well_phase_v.begin() + half_size_vel, well_phase_v.end());
 
-                one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), well_phase_A_v.begin(), well_phase_A_v.end());
-                one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), well_phase_B_v.begin(), well_phase_B_v.end());
+                // Update one-way phase velocities
+                std::copy(well_phase_A_v.begin(), well_phase_A_v.end(), one_way_phase_A_vels.begin() + w->well_head_idx_conn);
+                std::copy(well_phase_B_v.begin(), well_phase_B_v.end(), one_way_phase_B_vels.begin() + w->well_head_idx_conn);
 
                 // Separate the derivatives of velocities of the two phases
                 size_t half_size_vel_der = well_phase_v_d.size() / 2;
                 std::vector<value_t> well_phase_A_v_d(well_phase_v_d.begin(), well_phase_v_d.begin() + half_size_vel_der);
                 std::vector<value_t> well_phase_B_v_d(well_phase_v_d.begin() + half_size_vel_der, well_phase_v_d.end());
 
-                one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), well_phase_A_v_d.begin(), well_phase_A_v_d.end());
-                one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), well_phase_B_v_d.begin(), well_phase_B_v_d.end());
-
-                if (w->with_lateral_heat_transfer)
-                {
-                    // Zero velocity for connections of lateral heat transfer, which will remain unused
-                    one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), w->num_segments - w->perforations.size(), 0);
-                    one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), w->num_segments - w->perforations.size(), 0);
-
-                    // Derivatives of phase velocities at connections of lateral heat transfer, which will remain unused
-                    one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), (w->num_segments - w->perforations.size()) * vel_der_size, 0);
-                    one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), (w->num_segments - w->perforations.size()) * vel_der_size, 0);
-                }
-            }
-            else if (w->ms_type == ms_well::MS_Type::EPM)
-            {
-                // EPM wells have n_segments connections. This zero velocity won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
-                one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), w->n_segments, 0);
-                one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), w->n_segments, 0);
-
-                // Derivatives of phase velocities at the connection of EPM wells, which will remain unused
-                one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), w->n_segments * vel_der_size, 0);
-                one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), w->n_segments * vel_der_size, 0);
+                // Update one-way phase velocities derivatives
+                std::copy(well_phase_A_v_d.begin(), well_phase_A_v_d.end(), one_way_phase_A_vels_ders.begin() + w->well_head_idx_conn * vel_der_size);
+                std::copy(well_phase_B_v_d.begin(), well_phase_B_v_d.end(), one_way_phase_B_vels_ders.begin() + w->well_head_idx_conn * vel_der_size);
             }
         }
+        // Reverse and sort one-way phase velocities
         phase_A_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_A_vels);
         phase_B_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_B_vels);
 
+        // Reverse and sort one-way phase velocities derivatives
         phase_A_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_A_vels_ders, N_VARS);
         phase_B_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_B_vels_ders, N_VARS);
-        // --- End evaluating phase velocities and derivatives for all connections including DFM wells
+        // --- End updating phase velocities and derivatives of DFM wells
     }
 
     CFL_max = 0;

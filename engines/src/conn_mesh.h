@@ -38,6 +38,9 @@ public:
   index_t n_bounds = 0;                                     // number of boundary blocks
   index_t n_fracs = 0;                                     // number of fracture blocks
 
+  // If the model has at least a DFM well or not
+  bool has_dfm_well;
+
   // mapping from one-way list to actual list (forward connections)
   std::vector <index_t> one_way_to_conn_index_forward;
   // mapping from one-way list to actual list (reversed connections)
