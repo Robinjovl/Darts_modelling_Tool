@@ -167,7 +167,7 @@ public:
 
   index_t well_head_idx;        // index of the well head block, where well controls apply
   index_t well_body_idx;        // index of the first well segment block, which connects to ghost well block
-  index_t well_head_idx_conn;   // index of the first well segment block connection, which connects to ghost well block
+  index_t well_head_conn_idx;   // index of the connection between the two well segments at the top of the well (for EPM wells, connection is between the ghost segment and the lower segment)
 
   well_control_iface control;
   well_control_iface constraint;

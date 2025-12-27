@@ -58,7 +58,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
     total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
   }
   time_data[name + " : energy (kJ/day)"].push_back(total_energy);
-  
+
   // Component molar rates
   index_t nc = n_vars - thermal;
   for (index_t c = 0; c < nc; c++)
@@ -115,12 +115,12 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
 int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data, index_t n_blocks)
 {
-  // calculate rate based on velocity unknown; use for decouple velocity engine. 
+  // calculate rate based on velocity unknown; use for decouple velocity engine.
 
   index_t upstream_idx;
 
-  // find the wellhead connection 
-  value_t velocity = X[n_block_size * n_blocks + well_head_idx_conn];
+  // find the wellhead connection
+  value_t velocity = X[n_block_size * n_blocks + well_head_conn_idx];
 
 
   // find upstream state
@@ -266,4 +266,3 @@ int ms_well::cross_flow(std::vector<value_t>& X)
 
 
 ;
-

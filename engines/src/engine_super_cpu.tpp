@@ -159,8 +159,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 std::vector<value_t> well_phase_B_v(well_phase_v.begin() + half_size_vel, well_phase_v.end());
 
                 // Update one-way phase velocities
-                std::copy(well_phase_A_v.begin(), well_phase_A_v.end(), one_way_phase_A_vels.begin() + w->well_head_idx_conn);
-                std::copy(well_phase_B_v.begin(), well_phase_B_v.end(), one_way_phase_B_vels.begin() + w->well_head_idx_conn);
+                std::copy(well_phase_A_v.begin(), well_phase_A_v.end(), one_way_phase_A_vels.begin() + w->well_head_conn_idx);
+                std::copy(well_phase_B_v.begin(), well_phase_B_v.end(), one_way_phase_B_vels.begin() + w->well_head_conn_idx);
 
                 // Separate the derivatives of velocities of the two phases
                 size_t half_size_vel_der = well_phase_v_d.size() / 2;
@@ -168,8 +168,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 std::vector<value_t> well_phase_B_v_d(well_phase_v_d.begin() + half_size_vel_der, well_phase_v_d.end());
 
                 // Update one-way phase velocities derivatives
-                std::copy(well_phase_A_v_d.begin(), well_phase_A_v_d.end(), one_way_phase_A_vels_ders.begin() + w->well_head_idx_conn * vel_der_size);
-                std::copy(well_phase_B_v_d.begin(), well_phase_B_v_d.end(), one_way_phase_B_vels_ders.begin() + w->well_head_idx_conn * vel_der_size);
+                std::copy(well_phase_A_v_d.begin(), well_phase_A_v_d.end(), one_way_phase_A_vels_ders.begin() + w->well_head_conn_idx * vel_der_size);
+                std::copy(well_phase_B_v_d.begin(), well_phase_B_v_d.end(), one_way_phase_B_vels_ders.begin() + w->well_head_conn_idx * vel_der_size);
             }
         }
         // Reverse and sort one-way phase velocities

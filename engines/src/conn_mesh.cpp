@@ -2046,7 +2046,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 	  num_conns += w->perforations.size();
 
 	  // Store starting connection index (wellhead connection) of the well
-	  w->well_head_idx_conn = num_conns;
+	  w->well_head_conn_idx = num_conns;
 
 	  if (w->ms_type == ms_well::MS_Type::DFM)
 	  {
