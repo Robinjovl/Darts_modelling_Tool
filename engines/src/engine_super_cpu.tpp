@@ -69,7 +69,6 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   phase_B_vels.resize(mesh_->n_conns);
 
   // Initialize variables for derivatives of phase velocities at all connections including DFM wells
-  vel_der_size = N_VARS * 2;   // multiplied by 2 because velocity at connection is differentiated with respect to primary vars of two adjacent blocks
   phase_A_vels_ders.resize(mesh_->n_conns * vel_der_size);
   phase_B_vels_ders.resize(mesh_->n_conns * vel_der_size);
 

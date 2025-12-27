@@ -84,7 +84,7 @@ public:
   std::vector<value_t> phase_B_vels;
 
   // Declare variables for derivatives of phase velocities at all connections including DFM wells
-  size_t vel_der_size;
+  const static uint8_t vel_der_size = N_VARS * 2;   // multiplied by 2 because velocity at connection is differentiated with respect to primary vars of two adjacent blocks
   std::vector<value_t> phase_A_vels_ders;
   std::vector<value_t> phase_B_vels_ders;
 
