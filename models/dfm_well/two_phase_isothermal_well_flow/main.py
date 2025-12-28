@@ -23,12 +23,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
-from model import Model
 from darts.engines import redirect_darts_output
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.pipes.save_results import save_segments_primary_vars_and_phase_props
 from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
-from darts.pipes.viz.plot_line_graphs import plot_line_graphs
+from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
+
+from model import Model
 
 redirect_darts_output('run_log.log')
 coupled_model = Model()
@@ -40,7 +41,8 @@ if 1:
     output_props = coupled_model.physics.vars + coupled_model.output.properties
     coupled_model.output_to_vtk(ith_step=0, output_properties=output_props)   # saves initial conditions
 
-    time_steps = [100 / 60 / 60 / 24,   # 100 seconds
+    time_steps = [
+        100 / 60 / 60 / 24,   # 100 seconds
                  ]
 
     for i, dt in enumerate(time_steps):
@@ -54,4 +56,4 @@ else:
 
     primary_vars_and_phase_props_file_address = os.path.join(coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl")
     plot_heat_map_pcolormesh(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
-    plot_line_graphs(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, 3)
+    plot_heat_map_contourf(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)

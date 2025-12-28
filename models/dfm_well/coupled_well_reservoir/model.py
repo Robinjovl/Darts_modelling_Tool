@@ -1,3 +1,5 @@
+import numpy as np
+
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, ms_well, value_vector
 
@@ -17,7 +19,6 @@ from darts.pipes.set_initial_conditions import LinearAmbientTemperature
 from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
-from darts.pipes.units import *
 
 from nearwellbore import RadialStruct
 
@@ -191,7 +192,7 @@ class Model(CICDModel):
         # or LCO2 because for both the same EoSs are used.
         inj_phase_name = "gas"
         injected_fluid_pressure = 60.
-        injected_fluid_temperature = (10 + 273.15) * Kelvin()
+        injected_fluid_temperature = 10 + 273.15
         inj_fluid_props = {"composition": inj_phase_comp, "phase_name": inj_phase_name, "pressure": injected_fluid_pressure, "temperature": injected_fluid_temperature}
 
         ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx, inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props)

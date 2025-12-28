@@ -1,7 +1,7 @@
-from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.darts_model import DartsModel
-from darts.engines import sim_params, ms_well, value_vector
 import numpy as np
+
+from darts.models.cicd_model import CICDModel
+from darts.engines import sim_params, ms_well, value_vector
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -19,14 +19,11 @@ from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
 from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
-from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
-import darts.pipes.library as library
-from darts.pipes.units import *
 
 from nearwellbore import RadialStruct
 
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -35,15 +32,16 @@ class Model(DartsModel):
         self.timer.node["initialization"].start()
 
         self.set_reservoir()
+        self.reservoir.grav_acceleration_for_spe = 9.80665
         self.zero = 1e-10
         self.set_physics()
 
         self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
                             it_newton=10, it_linear=10,
                             newton_type=sim_params.newton_local_chop,
-                            coupled_well_res_norm_method=2
+                            coupled_well_res_norm_method=2,
+                            runtime=10 / 24 / 60,   # This runtime will be used when CI test is conducted without the main file
                             )
-                            # newton_type=sim_params.newton_global_chop)
 
         self.timer.node["initialization"].stop()
 
