@@ -76,13 +76,13 @@ public:
   // Define extra class property stoichiometric coefficient of the reaction (now hard coded, but has to become input?, maybe required to be placed somewhere else?):
   std::vector<index_t> stoich_coef;
 
-  // Declare variables for phase velocities at all connections including DFM wells
+  // Phase velocities at all connections including DFM wells
   std::vector<value_t> one_way_phase_A_vels;
   std::vector<value_t> one_way_phase_B_vels;
   std::vector<value_t> phase_A_vels;
   std::vector<value_t> phase_B_vels;
 
-  // Declare variables for derivatives of phase velocities at all connections including DFM wells
+  // Derivatives of phase velocities at all connections including DFM wells
   const static uint8_t vel_der_size = N_VARS * 2;   // multiplied by 2 because velocity at connection is differentiated with respect to primary vars of two adjacent blocks
   std::vector<value_t> one_way_phase_A_vels_ders;
   std::vector<value_t> one_way_phase_B_vels_ders;
