@@ -41,7 +41,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
             '2ph_do_thermal_mpfa',
             # Coupled well-reservoir modeling using DFM wells is implemented only for CPU
-            'coupled_well_reservoir_model',
+            'dfm_well/coupled_dfm_well_reservoir',
             # 2ph_do_thermal doesn't converge well, so we skip it on GPU
             '2ph_do_thermal',
         ]
@@ -192,7 +192,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total_dfn, failed_models_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_total += n_total_dfn
 
-    # chemistry
+    # chemistry tests
     print('\nChemistry tests:')
     n_total_chem, failed_models_chem = run_tests(model_dir, test_dirs=test_dirs_chem, test_args=test_args_chem, overwrite=overwrite, platform=platform)
     n_total += n_total_chem
@@ -202,7 +202,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total_mech = 0
     failed_models_mech = []
     if platform == 'cpu':  # mech code is excluded from gpu build due to compilation issues (c++ std 20)
-        n_total_mech, failed_models_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
+        n_total_mech, failed_models_mech = run_tests(model_dir, test_dirs=test_dirs_mech, test_args=test_args_mech, overwrite=overwrite)
     n_total += n_total_mech
 
     # test for adjoint ------------------start---------------------------------
