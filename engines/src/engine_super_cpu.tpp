@@ -583,6 +583,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 }
                             }
 
+                            // Add derivatives of potential energy
                             if (THERMAL && c == (NE - 1))
                             {
                                 Jac[diag_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
