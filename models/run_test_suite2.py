@@ -47,11 +47,11 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         # Tests for drift-flux well model (DFM) (implemented only for CPU)
         accepted_dirs += [
             # Coupled well-reservoir modeling using DFM wells is
-            'dfm_well/coupled_dfm_well_reservoir',
+            os.path.join('dfm_well', 'coupled_dfm_well_reservoir'),
             # Single-phase thermal well flow in a DFM well
-            'dfm_well/single_phase_thermal_dfm_well_flow',
+            os.path.join('dfm_well', 'single_phase_thermal_dfm_well_flow'),
             # Two-phase isothermal well flow in a DFM well
-            'dfm_well/two_phase_isothermal_dfm_well_flow',
+            os.path.join('dfm_well', 'two_phase_isothermal_dfm_well_flow'),
         ]
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
@@ -128,7 +128,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_args_dfn = [test_args_dfn]
 
     # chemistry tests (multiple cases within a single model folder)
-    test_dirs_chem = ['chemistry/carbonated_water']
+    test_dirs_chem = [os.path.join('chemistry', 'carbonated_water')]
     test_args_chem = [[
         {
             'name': 'cal_phreeqc_phreeqc_1D',
