@@ -50,7 +50,7 @@ class Model(DartsModel):
         self.initial_values = {
                 self.physics.vars[0]: self.p_init,
                 **{self.physics.vars[i + 1]: self.ini_comp[i] for i in range(len(self.physics.vars) - 1)} }
-        
+
         self.inj_composition = self.inj_comp[:self.physics.nc-1]
         self.physics.components = self.components
 
@@ -148,7 +148,7 @@ class Model(DartsModel):
                 # transform plain index to (i,j,k)
                 i = idx % self.nx
                 j = (idx // self.nx) % self.ny
-                k = idx // (self.nx * self.ny)  
+                k = idx // (self.nx * self.ny)
                 res_block_local, wi, _ = self.reservoir.discretizer.calc_well_index(i + 1, j + 1, k + 1)
                 assert(idx == res_block_local)
                 wis.append(wi)
@@ -298,7 +298,7 @@ class Model(DartsModel):
                                      min_p=40, max_p=max_p, min_z=self.zero/10, max_z=1-self.zero/10, cache=False,
                                      axes_max=axes_max)
         self.physics.add_property_region(property_container)
-        
+
         return
 
     def set_initial_conditions(self):
@@ -380,7 +380,7 @@ class Model(DartsModel):
                     jac_diags = self.physics.engine.jac_diags
                     X = np.asarray(self.physics.engine.X)
                     base = ids * nv
-                    
+
                     if self.well_controls[well_name] == 'rate': # rate control
                         offs = np.arange(1, nv, dtype=np.int64)               # 1..nv-1
                         z_non_last = X[base[:, None] + offs[None, :]]         # shape (n_ids, nv-1)
@@ -388,7 +388,7 @@ class Model(DartsModel):
                         z = np.empty((ids.size, nv), dtype=X.dtype)
                         z[:, :nv-1] = z_non_last
                         z[:,  nv-1] = z_last
-                        
+
                         # filling for all well cells at once
                         for c in range(nv - 1):
                             rhs_flux[base + c] += self.inj_rate[well_counter] * z[:, c] / Mw[c] * dt
@@ -468,11 +468,11 @@ class ModelProperties(PropertyContainer):
             M = np.sum(self.Mw * self.x[j][:])
 
             self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # output in [kg/m3]
-            
-            ########################################################## 
+
+            ##########################################################
             self.dens_m[j] = self.dens[j] / M  # molar density [kg/m3]/[kg/kmol]=[kmol/m3]
             ##########################################################
-            
+
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :], self.dens[j])  # output in [cp]
         self.compute_saturation(self.ph)
 

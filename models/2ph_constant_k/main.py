@@ -530,7 +530,7 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
             else:
                 n.data_ts.dt_max = ts_mult * 1.5
 
-        print(f'dt_max = {n.data_ts.dt_max}') 
+        print(f'dt_max = {n.data_ts.dt_max}')
         n.run(30.5)
         if reservoir_type != '1D' and vtk_output:
             n.output.output_to_vtk(ith_step=i + 1, output_properties=out_props)
