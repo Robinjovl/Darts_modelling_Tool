@@ -65,8 +65,51 @@ copy CHANGELOG.md darts || exit /b 1
 echo Building C++ extensions...
 if exist "build\" (
   pushd build
-  make -j%JOBS% || exit /b 1
-  make install || exit /b 1
+
+  rem Detect build configuration (default to Release)
+  set "BUILD_CONFIG=Release"
+  if exist "CMakeCache.txt" (
+    for /f "tokens=2 delims==" %%I in ('findstr /b /c:"CMAKE_BUILD_TYPE:STRING=" CMakeCache.txt') do (
+      if not "%%~I"=="" (
+        set "BUILD_CONFIG=%%~I"
+      )
+    )
+  )
+
+  rem Try GNU Make if available, otherwise fall back to CMake-driven build (msbuild/Ninja)
+  set "BUILT_WITH_TOOL=0"
+  if exist "Makefile" (
+    where make >nul 2>&1
+    if %errorlevel%==0 (
+      echo -- Building via make with %JOBS% jobs
+      make -j%JOBS% || exit /b 1
+      make install || exit /b 1
+      set "BUILT_WITH_TOOL=1"
+    ) else (
+      echo -- 'make' not found; trying CMake-driven build instead.
+    )
+  )
+
+  if "%BUILT_WITH_TOOL%"=="0" (
+    where cmake >nul 2>&1
+    if errorlevel 1 (
+      echo Error: 'cmake' not found in PATH. Please install CMake or add it to PATH.
+      exit /b 1
+    )
+
+    set "CMAKE_BUILD_CMD=cmake --build . --config !BUILD_CONFIG! --target install"
+    if exist "build.ninja" (
+      set "CMAKE_BUILD_CMD=!CMAKE_BUILD_CMD! -- -j !JOBS!"
+    ) else (
+      if exist "*.sln" (
+        set "CMAKE_BUILD_CMD=!CMAKE_BUILD_CMD! -- /m:!JOBS!"
+      )
+    )
+
+    echo -- !CMAKE_BUILD_CMD!
+    !CMAKE_BUILD_CMD! || exit /b 1
+  )
+
   popd
 )
 
@@ -113,16 +156,17 @@ if errorlevel 1 (
   exit /b 0
 )
 
-if "%CONDA_PREFIX%"=="" (
+set "conda_prefix=%CONDA_PREFIX%"
+if not defined conda_prefix (
   echo Warning: CONDA_PREFIX is empty; activate the target Conda environment before running install_darts.bat to auto-install Reaktoro.
   exit /b 0
 )
 
 set "REAKTORO_LOG=%cd%\make_reaktoro.log"
 >> "%REAKTORO_LOG%" (
-  echo + conda install -y -c conda-forge -p "%CONDA_PREFIX%" reaktoro
+  echo + conda install -y -c conda-forge -p "!conda_prefix!" reaktoro
 )
-call conda install -y -c conda-forge -p "%CONDA_PREFIX%" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
+call conda install -y -c conda-forge -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
 echo -- Install Reaktoro: DONE!
 exit /b 0
 
