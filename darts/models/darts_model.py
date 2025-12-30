@@ -473,8 +473,6 @@ class DartsModel:
         :type days: float
         :param restart_dt: Restart value for timestep size [days, optional]
         :type restart_dt: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
         """
         self.physics = physics
         self.data_ts = data_ts
