@@ -65,6 +65,9 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   phase_A_vels_ders.resize(mesh_->n_conns * vel_der_size);
   phase_B_vels_ders.resize(mesh_->n_conns * vel_der_size);
 
+  // Initialize specific kinetic energy of phases at segments centroids at the previous time step (explicit)
+  phase_ske_seg0.resize(mesh_->n_blocks * NP);
+
   return 0;
 }
 
@@ -180,6 +183,18 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         phase_A_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_A_vels_ders, N_VARS);
         phase_B_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_B_vels_ders, N_VARS);
         // --- End updating phase velocities and derivatives of DFM wells
+
+        // Update block-wise phase specific kinetic energy at the previous time step (calculated explicitly using phase velocities at the previous time step)
+        if constexpr (THERMAL)
+        {
+            for (ms_well* w : wells)
+            {
+                if (w->ms_type == ms_well::MS_Type::DFM)
+                {
+                    std::copy(w->phase_ske_seg0.begin(), w->phase_ske_seg0.end(), phase_ske_seg0.begin() + w->well_head_idx * NP);
+                }
+            }
+        }
     }
 
     CFL_max = 0;
@@ -249,6 +264,18 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 RHS[i * N_VARS + c] += PV[i] * cell_spe[i] * sat_dens_sum;
             }
 
+            // Add kinetic energy accumulation
+            if (THERMAL && c == (NE - 1))
+            {
+                value_t sat_dens_kin_ene = 0.;
+                for (uint8_t p = 0; p < NP; p++)
+                {
+                    sat_dens_kin_ene += (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p]
+                        - op_vals_arr_n[i * N_OPS + SAT_OP + p] * op_vals_arr_n[i * N_OPS + GRAV_OP + p]) * phase_ske_seg0[i * NP + p];
+                }
+                RHS[i * N_VARS + c] += PV[i] * sat_dens_kin_ene;
+            }
+
             for (uint8_t v = 0; v < N_VARS; v++)
             {
                 Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
@@ -269,6 +296,18 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                             + op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v];
                     }
                     Jac[diag_idx + c * N_VARS + v] += PV[i] * cell_spe[i] * sat_dens_der_sum; // der of potential energy accumulation term
+                }
+
+                // Include derivatives for kinetic energy term
+                if (THERMAL && c == (NE - 1))
+                {
+                    value_t sat_dens_kin_ene_der = 0.;
+                    for (uint8_t p = 0; p < NP; p++)
+                    {
+                        sat_dens_kin_ene_der += (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]
+                            + op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_ske_seg0[i * NP + p];
+                    }
+                    Jac[diag_idx + c * N_VARS + v] += PV[i] * sat_dens_kin_ene_der; // der of potential energy accumulation term
                 }
             }
         }
@@ -453,6 +492,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
                         }
 
+                        // Add kinetic energy flux
+                        if (THERMAL && c == (NE - 1))
+                        {
+                            RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_ske_seg0[i * NP + p];
+                        }
+
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[diag_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
@@ -481,6 +526,22 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                     {
                                         Jac[diag_idx + c * N_VARS + v] += dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
                                         Jac[jac_idx + c * N_VARS + v] -= dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
+                                    }
+                                }
+                            }
+
+                            // Add derivatives of kinetic energy
+                            if (THERMAL && c == (NE - 1))
+                            {
+                                Jac[diag_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_ske_seg0[i * NP + p];
+                                Jac[jac_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_ske_seg0[i * NP + p];
+
+                                if (!DFM_conn)   // Add derivatives with respect to pressure
+                                {
+                                    if (v == 0)
+                                    {
+                                        Jac[diag_idx + c * N_VARS + v] += dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_ske_seg0[i * NP + p];
+                                        Jac[jac_idx + c * N_VARS + v] -= dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_ske_seg0[i * NP + p];
                                     }
                                 }
                             }
@@ -567,6 +628,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
                         }
 
+                        // Add kinetic energy flux
+                        if (THERMAL && c == (NE - 1))
+                        {
+                            RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_ske_seg0[j * NP + p];
+                        }
+
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[jac_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
@@ -595,6 +662,22 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                     {
                                         Jac[diag_idx + c * N_VARS + v] += dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
                                         Jac[jac_idx + c * N_VARS + v] -= dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
+                                    }
+                                }
+                            }
+
+                            // Add derivatives of kinetic energy
+                            if (THERMAL && c == (NE - 1))
+                            {
+                                Jac[diag_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_ske_seg0[j * NP + p];
+                                Jac[jac_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_ske_seg0[j * NP + p];
+
+                                if (!DFM_conn)   // Add derivatives with respect to pressure
+                                {
+                                    if (v == 0)
+                                    {
+                                        Jac[diag_idx + c * N_VARS + v] += dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_ske_seg0[j * NP + p];
+                                        Jac[jac_idx + c * N_VARS + v] -= dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_ske_seg0[j * NP + p];
                                     }
                                 }
                             }

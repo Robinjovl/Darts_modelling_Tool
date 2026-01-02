@@ -871,6 +871,13 @@ class DartsModel:
                 w.phase_vels = value_vector(well_phase_v)
                 w.phase_vels_ders = value_vector(well_phase_v_d)
 
+                # Evaluate explicit (at previous time step) specific kinetic energy at segments centroids
+                if iter_counter == 0 and self.physics.thermal:
+                    w_ske_seg = self.wells[w.name].phase_ske_seg0
+                    # TODO: This line has a memory issue
+                    w.phase_ske_seg0 = value_vector(w_ske_seg)
+                    return
+
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:
             if (

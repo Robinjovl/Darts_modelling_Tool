@@ -200,6 +200,15 @@ class Pipe:
                 "diff_method for pipe velocity differentiation must be either 'OBL' or 'numerical'!"
             )
 
+        if physics.thermal:
+            assert self.physics.property_containers[0].nph == 2, (
+                "Kinetic energy does not support more than 2 phases yet!"
+            )
+        # The following variable will be updated by the method update_explicit_specific_kinetic_energy_segments
+        self.phase_ske_seg0 = np.zeros(
+            pipe_geometry.num_segments * physics.property_containers[0].nph
+        )
+
         self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
 
         self.lateral_heat_rate_eval = None
@@ -629,15 +638,17 @@ class Pipe:
                 rhoL0_source = rhoL0[segment_idx_source]
 
                 if sG0_source == 0:
-                    vG0 = 0
+                    vG0_source = 0
                     liquid_mass_fraction0 = 1
                     liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                    vL0 = liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
+                    vL0_source = (
+                        liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
+                    )
                 elif sG0_source == 1:
-                    vL0 = 0
+                    vL0_source = 0
                     gas_mass_fraction0 = 1
                     gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                    vG0 = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
+                    vG0_source = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
                 elif 0 < sG0_source < 1:
                     gas_mass_fraction0 = (
                         sG0_source
@@ -645,11 +656,13 @@ class Pipe:
                         / (sG0_source * rhoG0_source + (1 - sG0_source) * rhoL0_source)
                     )
                     gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                    vG0 = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * sG0_source)
+                    vG0_source = (
+                        gas_mass_rate0 / rhoG0_source / (pipe_internal_A * sG0_source)
+                    )
 
                     liquid_mass_fraction0 = 1 - gas_mass_fraction0
                     liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                    vL0 = (
+                    vL0_source = (
                         liquid_mass_rate0
                         / rhoL0_source
                         / (pipe_internal_A * (1 - sG0_source))
@@ -658,8 +671,8 @@ class Pipe:
                     raise Exception("sG0_source is out of correct range (from 0 to 1)!")
 
                 delta_at_bc_interface0 = pipe_internal_A * (
-                    rhoG0_source * sG0_source * vG0**2
-                    + rhoL0_source * (1 - sG0_source) * vL0**2
+                    rhoG0_source * sG0_source * vG0_source**2
+                    + rhoL0_source * (1 - sG0_source) * vL0_source**2
                 )
 
                 if segment_idx_source == 0:
@@ -809,6 +822,10 @@ class Pipe:
         if self.diff_method == "OBL":
             self.vG_der *= 24 * 60 * 60
             self.vL_der *= 24 * 60 * 60
+
+        # Update specific kinetic energy at segments centroids at the previous time step (explicit)
+        if iter_counter == 0 and flag == 1 and self.physics.thermal:
+            self.update_ske_seg0(vG0, vL0, sG0, rhoG0, rhoL0)
 
         # is_first_first_iter is true only for the first iteration of the first time step.
         self.is_first_first_iter = False
@@ -1261,3 +1278,111 @@ class Pipe:
         idx = np.arange(n)
         der[idx, idx, :] = local
         return der.reshape(n, n * n_vars)
+
+    def update_ske_seg0(self, vG0, vL0, sG0, rhoG0, rhoL0):
+        """
+        Update specific kinetic energy (in kJ/kg) at segments centroids at the previous time step (explicit)
+
+        :param vG0: Gas velocity vector at the previous time step [m/s]
+        :param vL0: Liquid velocity vector at the previous time step [m/s]
+        :param sG0: Gas saturation vector at the previous time step [-]
+        :param rhoG0: Gas density vector at the previous time step [kg/m3]
+        :param rhoL0: Liquid density vector at the previous time step [kg/m3]
+        """
+        if np.array_equal(vG0, np.array([0])):
+            gas_ske_seg0 = np.zeros(self.geometry.num_segments)
+        else:
+            gas_ske_faces0 = vG0**2 / 2
+
+            """ Add energy (kinetic) boundary conditions for gas """
+            for source_sink_name, source_sink_object in self.source_sinks.items():
+                if (
+                    source_sink_name.startswith("RampUpRate")
+                    and source_sink_object.segment_idx == 0
+                ):
+                    # The props of the fluid of the segment on which RampUpRate is defined are used.
+                    specific_KE_gas_at_bc_interface0, _ = (
+                        source_sink_object.evaluate_ske0(
+                            sG0[source_sink_object.segment_idx],
+                            rhoG0[source_sink_object.segment_idx],
+                            rhoL0[source_sink_object.segment_idx],
+                        )
+                    )
+
+                    gas_ske_faces0 = np.insert(
+                        gas_ske_faces0,
+                        source_sink_object.segment_idx,
+                        specific_KE_gas_at_bc_interface0,
+                    )
+
+                # TODO: Kinetic energy at perforatino is not considered yet
+
+                # if source_sink_name.startswith("Perforation"):
+                #     # For injection scenarios
+                #     sG0_up = sG0[source_sink_object.segment_idx]
+                #     sL0_up = 1 - sG0[source_sink_object.segment_idx]
+                #     rhoG0_up = rhoG0[source_sink_object.segment_idx]
+                #     rhoL0_up = rhoL0[source_sink_object.segment_idx]
+                #     specific_KE_gas_at_perf0, _ = source_sink_object.evaluate_specific_kinetic_energy0(sG0_up,
+                #                                                                                        sL0_up,
+                #                                                                                        rhoG0_up,
+                #                                                                                        rhoL0_up)
+                #
+                #     gas_ske_faces0 = np.insert(gas_ske_faces0,
+                #                                source_sink_object.segment_idx,
+                #                                specific_KE_gas_at_perf0)
+
+                gas_ske_faces0 = np.append(gas_ske_faces0, 0.0)
+
+            gas_ske_seg0 = (gas_ske_faces0[0:-1] + gas_ske_faces0[1:]) / 2
+
+            # gas_ske_seg0 = (vG0[0:-1] ** 2 / 2 + vG0[1:] ** 2 / 2) / 2
+
+        if np.array_equal(vL0, np.array([0])):
+            liquid_ske_seg0 = np.zeros(self.geometry.num_segments)
+        else:
+            liquid_ske_faces0 = vL0**2 / 2
+
+            """ Add energy (kinetic) boundary conditions for liquid """
+            for source_sink_name, source_sink_object in self.source_sinks.items():
+                if source_sink_name.startswith("RampUpRate"):
+                    # The props of the fluid of the segment on which RampUpRate is defined are used.
+                    _, specific_KE_liquid_at_bc_interface0 = (
+                        source_sink_object.evaluate_ske0(
+                            sG0[source_sink_object.segment_idx],
+                            rhoG0[source_sink_object.segment_idx],
+                            rhoL0[source_sink_object.segment_idx],
+                        )
+                    )
+
+                    liquid_ske_faces0 = np.insert(
+                        liquid_ske_faces0,
+                        source_sink_object.segment_idx,
+                        specific_KE_liquid_at_bc_interface0,
+                    )
+
+                # TODO: Kinetic energy at perforation is not considered yet
+
+                # if source_sink_name.startswith("Perforation"):
+                #     sG0_up = sG0[source_sink_object.segment_idx]
+                #     sL0_up = 1 - sG0[source_sink_object.segment_idx]
+                #     rhoG0_up = rhoG0[source_sink_object.segment_idx]
+                #     rhoL0_up = rhoL0[source_sink_object.segment_idx]
+                #     _, specific_KE_liquid_at_perf0 = source_sink_object.evaluate_specific_kinetic_energy0(sG0_up,
+                #                                                                                           sL0_up,
+                #                                                                                           rhoG0_up,
+                #                                                                                           rhoL0_up)
+                #
+                #     liquid_ske_faces0 = np.insert(liquid_ske_faces0,
+                #                                   source_sink_object.segment_idx,
+                #                                   specific_KE_liquid_at_perf0)
+
+                liquid_ske_faces0 = np.append(liquid_ske_faces0, 0.0)
+
+            liquid_ske_seg0 = (liquid_ske_faces0[0:-1] + liquid_ske_faces0[1:]) / 2
+            # liquid_ske_seg0 = (vL0[0:-1] ** 2 / 2 + vL0[1:] ** 2 / 2) / 2
+
+        # Save phase specific kinetic energies block-wise
+        nph = self.physics.property_containers[0].nph
+        self.phase_ske_seg0[0::nph] = gas_ske_seg0 * 1e-3  # convert J/kg to kJ/kg
+        self.phase_ske_seg0[1::nph] = liquid_ske_seg0 * 1e-3  # convert J/kg to kJ/kg

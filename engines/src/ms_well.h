@@ -60,6 +60,7 @@ public:
     num_segments = 0;
     ms_type = MS_Type::EPM;
     with_lateral_heat_transfer = false;
+    phase_ske_seg0 = {};
   };
 
   void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
@@ -174,6 +175,8 @@ public:
 
   std::vector<value_t> phase_vels;        // phase velocities used for a DFM well
   std::vector<value_t> phase_vels_ders;   // phase velocities derivatives used for a DFM well
+
+  std::vector<value_t> phase_ske_seg0;   // phase specific kinetic energy at segments centroids (arithmatically averaged) at the previous time step used for a DFM well [kJ/kg]
 
   operator_set_evaluator_iface* rate_evaluator;
   operator_set_gradient_evaluator_iface *rate_etor_ad;  //adjoint method

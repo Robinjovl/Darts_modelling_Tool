@@ -49,6 +49,7 @@ class RampUpRate:
             "Pipe names for PipeGeometry and RampUpRate are not identical!"
         )
         self.pipe_name = pipe_name
+        self.pipe_geom = pipe_geom
         self.physics = physics
 
         assert isinstance(first_ts_size, float), "first_ts_size must be a float!"
@@ -199,3 +200,46 @@ class RampUpRate:
             ) * self.target_rate
         else:
             self.current_rate = self.target_rate
+
+    def evaluate_ske0(self, sG0, rhoG0, rhoL0):
+        """
+        Evaluate specific kinetic energy at the previous time step
+
+        :param sG0: The saturation of the gas at the previous time step in the segment for which the RampUpRate is defined [-]
+        :param rhoG0: The density of the gas at the previous time step in the segment for which the RampUpRate is defined [kg/m3]
+        :param rhoL0: The density of the liquid at the previous time step in the segment for which the RampUpRate is defined [kg/m3]
+        """
+        # comp_source in kmol/kmol
+        comp_source = self.inj_fluid_props["composition"]
+        Mw = self.physics.property_containers[0].Mw
+        # mass_rate in kg/s
+        mass_rate = sum(self.current_rate * np.array(comp_source) * np.array(Mw)) / (
+            24 * 60 * 60
+        )
+        pipe_internal_A = self.pipe_geom.pipe_internal_A
+
+        if sG0 == 0:
+            vG0 = 0
+            liquid_mass_fraction0 = 1
+            liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
+            vL0 = liquid_mass_rate0 / rhoL0 / (pipe_internal_A * 1)
+        elif sG0 == 1:
+            vL0 = 0
+            gas_mass_fraction0 = 1
+            gas_mass_rate0 = mass_rate * gas_mass_fraction0
+            vG0 = gas_mass_rate0 / rhoG0 / (pipe_internal_A * 1)
+        elif 0 < sG0 < 1:
+            gas_mass_fraction0 = sG0 * rhoG0 / (sG0 * rhoG0 + (1 - sG0) * rhoL0)
+            gas_mass_rate0 = mass_rate * gas_mass_fraction0
+            vG0 = gas_mass_rate0 / rhoG0 / (pipe_internal_A * sG0)
+
+            liquid_mass_fraction0 = 1 - gas_mass_fraction0
+            liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
+            vL0 = liquid_mass_rate0 / rhoL0 / (pipe_internal_A * (1 - sG0))
+        else:
+            raise Exception("sG0 is out of correct range (from 0 to 1)!")
+
+        skeG0 = vG0**2 / 2
+        skeL0 = vL0**2 / 2
+
+        return skeG0, skeL0
