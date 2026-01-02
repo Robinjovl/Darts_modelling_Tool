@@ -56,12 +56,12 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   // Initialize phase velocities at all connections including DFM wells
   one_way_phase_vels.resize(mesh_->n_conns / 2);
   phase_vels.resize(mesh_->n_conns);
-  phases_vels.resize(mesh_->n_conns * NP);
+  phases_vels.resize(mesh_->n_conns * NP);   // velocities are stored phase-wise
 
   // Initialize derivatives of phase velocities at all connections including DFM wells
   one_way_phase_vels_ders.resize(mesh_->n_conns / 2 * vel_der_size);
   phase_vels_ders.resize(mesh_->n_conns * vel_der_size);
-  phases_vels_ders.resize(mesh_->n_conns * vel_der_size * NP);
+  phases_vels_ders.resize(mesh_->n_conns * vel_der_size * NP);   // velocities derivatives are stored phase-wise
 
   return 0;
 }
@@ -119,10 +119,10 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     if (!mesh->velocity_appr.empty() && !dispersivity.empty())
     {
       if (dispersion_fluxes.empty())
-        dispersion_fluxes.resize(NP * NC * mesh->n_conns);
+        dispersion_fluxes.resize(NP * NC * n_conns);
 
       if (THERMAL && heat_dispersion_advection_fluxes.empty())
-        heat_dispersion_advection_fluxes.resize(NP * NC * mesh->n_conns);
+        heat_dispersion_advection_fluxes.resize(NP * NC * n_conns);
     }
 
     std::fill(darcy_velocities.begin(), darcy_velocities.end(), 0.0);
