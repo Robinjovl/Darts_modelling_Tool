@@ -1831,7 +1831,7 @@ engine_base::calc_coupled_well_reservoir_residual(int method)
 		}
 		for (int c = 0; c < n_vars; c++)
 		{
-			residual = std::max(residual, sqrt(res[c] / norm[c]));
+			residual = std::max(residual, sqrt(res[c] / safe_denominator(norm[c])));
 		}
 	}
 	else if (method == 2)   // Method 2 (Infinity norm)
