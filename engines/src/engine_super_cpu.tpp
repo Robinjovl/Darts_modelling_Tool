@@ -54,16 +54,14 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   this->expose_jacobian();
 
   // Initialize phase velocities at all connections including DFM wells
-  one_way_phase_A_vels.resize(mesh_->n_conns / 2);
-  one_way_phase_B_vels.resize(mesh_->n_conns / 2);
-  phase_A_vels.resize(mesh_->n_conns);
-  phase_B_vels.resize(mesh_->n_conns);
+  one_way_phase_vels.resize(mesh_->n_conns / 2);
+  phase_vels.resize(mesh_->n_conns);
+  phases_vels.resize(mesh_->n_conns * NP);
 
   // Initialize derivatives of phase velocities at all connections including DFM wells
-  one_way_phase_A_vels_ders.resize(mesh_->n_conns / 2 * vel_der_size);
-  one_way_phase_B_vels_ders.resize(mesh_->n_conns / 2 * vel_der_size);
-  phase_A_vels_ders.resize(mesh_->n_conns * vel_der_size);
-  phase_B_vels_ders.resize(mesh_->n_conns * vel_der_size);
+  one_way_phase_vels_ders.resize(mesh_->n_conns / 2 * vel_der_size);
+  phase_vels_ders.resize(mesh_->n_conns * vel_der_size);
+  phases_vels_ders.resize(mesh_->n_conns * vel_der_size * NP);
 
   return 0;
 }
@@ -145,40 +143,37 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     if (has_dfm_well)
     {
         // --- Start updating phase velocities and derivatives of DFM wells
-        for (ms_well* w : wells)
+        for (uint8_t p = 0; p < NP; p++)
         {
-            if (w->ms_type == ms_well::MS_Type::DFM)
+            for (ms_well* w : wells)
             {
-                // DFM phase velocities and derivatives are evaluated in Python
-                std::vector<value_t> well_phase_v = w->phase_vels;
-                std::vector<value_t> well_phase_v_d = w->phase_vels_ders;
+                if (w->ms_type == ms_well::MS_Type::DFM)
+                {
+                    size_t well_n_conns = w->num_segments - 1;
 
-                // Separate the velocities of the two phases
-                size_t half_size_vel = well_phase_v.size() / 2;
-                std::vector<value_t> well_phase_A_v(well_phase_v.begin(), well_phase_v.begin() + half_size_vel);
-                std::vector<value_t> well_phase_B_v(well_phase_v.begin() + half_size_vel, well_phase_v.end());
+                    std::vector<value_t> well_phase_vels(well_n_conns);
+                    std::vector<value_t> well_phase_vels_ders(well_n_conns * vel_der_size);
 
-                // Update one-way phase velocities
-                std::copy(well_phase_A_v.begin(), well_phase_A_v.end(), one_way_phase_A_vels.begin() + w->well_head_conn_idx);
-                std::copy(well_phase_B_v.begin(), well_phase_B_v.end(), one_way_phase_B_vels.begin() + w->well_head_conn_idx);
+                    // Get the velocities of the phase in the DFM well (DFM phase velocities and derivatives are evaluated in Python)
+                    std::copy_n(w->phases_vels.begin() + p * well_n_conns, well_n_conns, well_phase_vels.begin());
+                    std::copy_n(w->phases_vels_ders.begin() + p * well_n_conns * vel_der_size, well_n_conns * vel_der_size, well_phase_vels_ders.begin());
 
-                // Separate the derivatives of velocities of the two phases
-                size_t half_size_vel_der = well_phase_v_d.size() / 2;
-                std::vector<value_t> well_phase_A_v_d(well_phase_v_d.begin(), well_phase_v_d.begin() + half_size_vel_der);
-                std::vector<value_t> well_phase_B_v_d(well_phase_v_d.begin() + half_size_vel_der, well_phase_v_d.end());
+                    // Update one-way phase velocities
+                    std::copy(well_phase_vels.begin(), well_phase_vels.end(), one_way_phase_vels.begin() + w->well_head_conn_idx);
 
-                // Update one-way phase velocities derivatives
-                std::copy(well_phase_A_v_d.begin(), well_phase_A_v_d.end(), one_way_phase_A_vels_ders.begin() + w->well_head_conn_idx * vel_der_size);
-                std::copy(well_phase_B_v_d.begin(), well_phase_B_v_d.end(), one_way_phase_B_vels_ders.begin() + w->well_head_conn_idx * vel_der_size);
+                    // Update one-way phase velocities derivatives
+                    std::copy(well_phase_vels_ders.begin(), well_phase_vels_ders.end(), one_way_phase_vels_ders.begin() + w->well_head_conn_idx * vel_der_size);
+                }
             }
-        }
-        // Reverse and sort one-way phase velocities
-        phase_A_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_A_vels);
-        phase_B_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_B_vels);
+            // Reverse and sort one-way phase velocities
+            phase_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_vels);
+            // Reverse and sort one-way phase velocities derivatives
+            phase_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_vels_ders, N_VARS);
 
-        // Reverse and sort one-way phase velocities derivatives
-        phase_A_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_A_vels_ders, N_VARS);
-        phase_B_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_B_vels_ders, N_VARS);
+            // Update the array containing velocities of all phases
+            std::copy(phase_vels.begin(), phase_vels.end(), phases_vels.begin() + p * n_conns);
+            std::copy(phase_vels_ders.begin(), phase_vels_ders.end(), phases_vels_ders.begin() + p * n_conns * vel_der_size);
+        }
         // --- End updating phase velocities and derivatives of DFM wells
     }
 
@@ -365,12 +360,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
                 else if (DFM_conn)
                 {
-                    if (p == 0)
-                        phase_p_diff = phase_A_vels[conn_idx]; // value of phase_p_diff is not important, only its sign is used
-                    else if (p == 1)
-                        phase_p_diff = phase_B_vels[conn_idx]; // value of phase_p_diff is not important, only its sign is used
-                    else if (p == 2)
-                        phase_p_diff = phase_B_vels[conn_idx]; // value of phase_p_diff is not important, only its sign is used
+                    phase_p_diff = phases_vels[p * n_conns + conn_idx];   // value of phase_p_diff is not important, only its sign is used
                 }
 
                 phase_fluxes[p] = 0.0;
@@ -397,12 +387,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     else if (DFM_conn)
                     {
                         // calculate phase volumetric rate at DFM well connection
-                        // The DFM well only works for a maximum of three phases.
-                        value_t phase_velocity;
-                        if (p == 0)
-                            phase_velocity = phase_A_vels[conn_idx];
-                        else if (p == 1 || p == 2)
-                            phase_velocity = phase_B_vels[conn_idx];
+                        value_t phase_velocity = phases_vels[p * n_conns + conn_idx];
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
 
@@ -411,20 +396,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         {
                             value_t phase_velocity_der_i;
                             value_t phase_velocity_der_j;
-                            if (p == 0)
-                            {
-                                index_t a = (i < j) ? 0 : N_VARS;
-                                index_t b = (i < j) ? N_VARS : 0;
-                                phase_velocity_der_i = phase_A_vels_ders[conn_idx * vel_der_size + a + v];
-                                phase_velocity_der_j = phase_A_vels_ders[conn_idx * vel_der_size + b + v];
-                            }
-                            else if (p == 1 || p == 2)
-                            {
-                                index_t a = (i < j) ? 0 : N_VARS;
-                                index_t b = (i < j) ? N_VARS : 0;
-                                phase_velocity_der_i = phase_B_vels_ders[conn_idx * vel_der_size + a + v];
-                                phase_velocity_der_j = phase_B_vels_ders[conn_idx * vel_der_size + b + v];
-                            }
+
+                            index_t a = (i < j) ? 0 : N_VARS;
+                            index_t b = (i < j) ? N_VARS : 0;
+                            phase_velocity_der_i = phases_vels_ders[p * n_conns * vel_der_size + conn_idx * vel_der_size + a + v];
+                            phase_velocity_der_j = phases_vels_ders[p * n_conns * vel_der_size + conn_idx * vel_der_size + b + v];
 
                             phase_vol_rate_der_i[v] = wells[0]->well_transmissibility * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_i);
                             phase_vol_rate_der_j[v] = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_j;
@@ -511,12 +487,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     else if (DFM_conn)
                     {
                         // calculate phase volumetric rate at DFM well connection
-                        // The multi-segment well only works for a maximum of three phases.
-                        value_t phase_velocity;
-                        if (p == 0)
-                            phase_velocity = phase_A_vels[conn_idx];
-                        else if (p == 1 || p == 2)
-                            phase_velocity = phase_B_vels[conn_idx];
+                        value_t phase_velocity = phases_vels[p * n_conns + conn_idx];
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity;
 
@@ -525,20 +496,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         {
                             value_t phase_velocity_der_i;
                             value_t phase_velocity_der_j;
-                            if (p == 0)
-                            {
-                                index_t a = (i < j) ? 0 : N_VARS;
-                                index_t b = (i < j) ? N_VARS : 0;
-                                phase_velocity_der_i = phase_A_vels_ders[conn_idx * vel_der_size + a + v];
-                                phase_velocity_der_j = phase_A_vels_ders[conn_idx * vel_der_size + b + v];
-                            }
-                            else if (p == 1 || p == 2)
-                            {
-                                index_t a = (i < j) ? 0 : N_VARS;
-                                index_t b = (i < j) ? N_VARS : 0;
-                                phase_velocity_der_i = phase_B_vels_ders[conn_idx * vel_der_size + a + v];
-                                phase_velocity_der_j = phase_B_vels_ders[conn_idx * vel_der_size + b + v];
-                            }
+
+                            index_t a = (i < j) ? 0 : N_VARS;
+                            index_t b = (i < j) ? N_VARS : 0;
+                            phase_velocity_der_i = phases_vels_ders[p * n_conns * vel_der_size + conn_idx * vel_der_size + a + v];
+                            phase_velocity_der_j = phases_vels_ders[p * n_conns * vel_der_size + conn_idx * vel_der_size + b + v];
 
                             phase_vol_rate_der_i[v] = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity_der_i;
                             phase_vol_rate_der_j[v] = wells[0]->well_transmissibility * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity_der_j);

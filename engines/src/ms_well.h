@@ -172,8 +172,8 @@ public:
   well_control_iface control;
   well_control_iface constraint;
 
-  std::vector<value_t> phase_vels;        // phase velocities used for a DFM well
-  std::vector<value_t> phase_vels_ders;   // phase velocities derivatives used for a DFM well
+  std::vector<value_t> phases_vels;        // phases velocities used for a DFM well
+  std::vector<value_t> phases_vels_ders;   // phases velocities derivatives used for a DFM well
 
   operator_set_evaluator_iface* rate_evaluator;
   operator_set_gradient_evaluator_iface *rate_etor_ad;  //adjoint method

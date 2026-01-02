@@ -866,8 +866,8 @@ class DartsModel:
                 ].evaluate_phase_velocities_and_derivatives(
                     Xn_ms_well, X_ms_well, dt, t, iter_counter
                 )
-                w.phase_vels = value_vector(well_phase_v)
-                w.phase_vels_ders = value_vector(well_phase_v_d)
+                w.phases_vels = value_vector(well_phase_v)
+                w.phases_vels_ders = value_vector(well_phase_v_d)
 
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:
