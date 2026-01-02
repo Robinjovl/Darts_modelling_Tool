@@ -629,15 +629,17 @@ class Pipe:
                 rhoL0_source = rhoL0[segment_idx_source]
 
                 if sG0_source == 0:
-                    vG0 = 0
+                    vG0_source = 0
                     liquid_mass_fraction0 = 1
                     liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                    vL0 = liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
+                    vL0_source = (
+                        liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
+                    )
                 elif sG0_source == 1:
-                    vL0 = 0
+                    vL0_source = 0
                     gas_mass_fraction0 = 1
                     gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                    vG0 = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
+                    vG0_source = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
                 elif 0 < sG0_source < 1:
                     gas_mass_fraction0 = (
                         sG0_source
@@ -645,11 +647,13 @@ class Pipe:
                         / (sG0_source * rhoG0_source + (1 - sG0_source) * rhoL0_source)
                     )
                     gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                    vG0 = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * sG0_source)
+                    vG0_source = (
+                        gas_mass_rate0 / rhoG0_source / (pipe_internal_A * sG0_source)
+                    )
 
                     liquid_mass_fraction0 = 1 - gas_mass_fraction0
                     liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                    vL0 = (
+                    vL0_source = (
                         liquid_mass_rate0
                         / rhoL0_source
                         / (pipe_internal_A * (1 - sG0_source))
@@ -658,8 +662,8 @@ class Pipe:
                     raise Exception("sG0_source is out of correct range (from 0 to 1)!")
 
                 delta_at_bc_interface0 = pipe_internal_A * (
-                    rhoG0_source * sG0_source * vG0**2
-                    + rhoL0_source * (1 - sG0_source) * vL0**2
+                    rhoG0_source * sG0_source * vG0_source**2
+                    + rhoL0_source * (1 - sG0_source) * vL0_source**2
                 )
 
                 if segment_idx_source == 0:
