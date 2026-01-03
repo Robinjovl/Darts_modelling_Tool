@@ -142,39 +142,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     if (has_dfm_well)
     {
-        // --- Start updating phase velocities and derivatives of DFM wells
-        for (uint8_t p = 0; p < NP; p++)
-        {
-            for (ms_well* w : wells)
-            {
-                if (w->ms_type == ms_well::MS_Type::DFM)
-                {
-                    size_t well_n_conns = w->num_segments - 1;
-
-                    std::vector<value_t> well_phase_vels(well_n_conns);
-                    std::vector<value_t> well_phase_vels_ders(well_n_conns * vel_der_size);
-
-                    // Get the velocities of the phase in the DFM well (DFM phase velocities and derivatives are evaluated in Python)
-                    std::copy_n(w->phases_vels.begin() + p * well_n_conns, well_n_conns, well_phase_vels.begin());
-                    std::copy_n(w->phases_vels_ders.begin() + p * well_n_conns * vel_der_size, well_n_conns * vel_der_size, well_phase_vels_ders.begin());
-
-                    // Update one-way phase velocities
-                    std::copy(well_phase_vels.begin(), well_phase_vels.end(), one_way_phase_vels.begin() + w->well_head_conn_idx);
-
-                    // Update one-way phase velocities derivatives
-                    std::copy(well_phase_vels_ders.begin(), well_phase_vels_ders.end(), one_way_phase_vels_ders.begin() + w->well_head_conn_idx * vel_der_size);
-                }
-            }
-            // Reverse and sort one-way phase velocities
-            phase_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_vels);
-            // Reverse and sort one-way phase velocities derivatives
-            phase_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_vels_ders, N_VARS);
-
-            // Update the array containing velocities of all phases
-            std::copy(phase_vels.begin(), phase_vels.end(), phases_vels.begin() + p * n_conns);
-            std::copy(phase_vels_ders.begin(), phase_vels_ders.end(), phases_vels_ders.begin() + p * n_conns * vel_der_size);
-        }
-        // --- End updating phase velocities and derivatives of DFM wells
+        update_two_way_phase_vels_and_ders();
     }
 
     CFL_max = 0;
@@ -1263,6 +1231,49 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
 
     return 0;
 };
+
+/**
+ * @brief Update two-way phase velocities and their corresponding derivatives based on the new phase velocities and derivatives for DFM wells.
+ *
+ * This function is only applicable when at least one DFM well exists.
+ *
+ * @return void.
+ */
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_cpu<NC, NP, THERMAL>::update_two_way_phase_vels_and_ders()
+{
+    for (uint8_t p = 0; p < NP; p++)
+    {
+        for (ms_well* w : wells)
+        {
+            if (w->ms_type == ms_well::MS_Type::DFM)
+            {
+                size_t well_n_conns = w->num_segments - 1;
+
+                std::vector<value_t> well_phase_vels(well_n_conns);
+                std::vector<value_t> well_phase_vels_ders(well_n_conns * vel_der_size);
+
+                // Get the velocities of the phase in the DFM well (DFM phase velocities and derivatives are evaluated in Python)
+                std::copy_n(w->phases_vels.begin() + p * well_n_conns, well_n_conns, well_phase_vels.begin());
+                std::copy_n(w->phases_vels_ders.begin() + p * well_n_conns * vel_der_size, well_n_conns * vel_der_size, well_phase_vels_ders.begin());
+
+                // Update one-way phase velocities
+                std::copy(well_phase_vels.begin(), well_phase_vels.end(), one_way_phase_vels.begin() + w->well_head_conn_idx);
+
+                // Update one-way phase velocities derivatives
+                std::copy(well_phase_vels_ders.begin(), well_phase_vels_ders.end(), one_way_phase_vels_ders.begin() + w->well_head_conn_idx * vel_der_size);
+            }
+        }
+        // Reverse and sort one-way phase velocities
+        phase_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_vels);
+        // Reverse and sort one-way phase velocities derivatives
+        phase_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_vels_ders, N_VARS);
+
+        // Update the array containing velocities of all phases
+        std::copy(phase_vels.begin(), phase_vels.end(), phases_vels.begin() + p * mesh->n_conns);
+        std::copy(phase_vels_ders.begin(), phase_vels_ders.end(), phases_vels_ders.begin() + p * mesh->n_conns * vel_der_size);
+    }
+}
 
 
 //template<uint8_t NC, uint8_t NP, , bool THERMAL>

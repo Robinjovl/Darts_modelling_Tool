@@ -117,6 +117,8 @@ public:
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
+  void update_two_way_phase_vels_and_ders();
+
   void enable_flux_output();
 };
 

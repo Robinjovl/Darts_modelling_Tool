@@ -1792,7 +1792,7 @@ engine_base::calc_newton_residual()
 }
 
 /**
- * @brief Compute a single scalar residual for the coupled well�reservoir system having only DFM wells.
+ * @brief Compute a single scalar residual for the coupled well-reservoir system having only DFM wells.
  *
  * This function turns the full RHS (all reservoir and well blocks and variables) into one
  * nonnegative number that can be used as a convergence indicator.
