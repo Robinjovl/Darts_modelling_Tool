@@ -239,8 +239,6 @@ class Pipe:
 
         """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
-            """From here on, instead of G, use A, and instead of L, use B. A and B represent the first and second
-            phases specified by the user, respectively."""
             sG0 = np.zeros(num_segments)
             rhoG0 = np.zeros(num_segments)
             rhoL0 = np.zeros(num_segments)
@@ -1213,27 +1211,27 @@ class Pipe:
                 Xn_dfm_well, X_dfm_well, dt, simulation_time, iter_counter, flag=0
             )
 
-            vel_der_matrix_phase_A = vel_der_matrix[: num_phase_velocities // 2, :]
-            vel_der_matrix_phase_B = vel_der_matrix[num_phase_velocities // 2 :, :]
+            vel_der_matrix_G = vel_der_matrix[: num_phase_velocities // 2, :]
+            vel_der_matrix_L = vel_der_matrix[num_phase_velocities // 2 :, :]
         elif self.diff_method == "OBL":
-            vel_der_matrix_phase_A = self.vG_der
-            vel_der_matrix_phase_B = self.vL_der
+            vel_der_matrix_G = self.vG_der
+            vel_der_matrix_L = self.vL_der
 
-        vel_der_matrix_phase_A_clean = np.zeros((num_conn, 2 * n_vars))
-        vel_der_matrix_phase_B_clean = np.zeros((num_conn, 2 * n_vars))
+        vel_der_matrix_G_clean = np.zeros((num_conn, 2 * n_vars))
+        vel_der_matrix_L_clean = np.zeros((num_conn, 2 * n_vars))
         for a in range(num_conn):
-            vel_der_matrix_phase_A_clean[a] = vel_der_matrix_phase_A[
+            vel_der_matrix_G_clean[a] = vel_der_matrix_G[
                 a, a * n_vars : a * n_vars + 2 * n_vars
             ]
-            vel_der_matrix_phase_B_clean[a] = vel_der_matrix_phase_B[
+            vel_der_matrix_L_clean[a] = vel_der_matrix_L[
                 a, a * n_vars : a * n_vars + 2 * n_vars
             ]
 
         # Flatten and concatenate both arrays
         phase_velocities_derivatives = np.concatenate(
             (
-                vel_der_matrix_phase_A_clean.flatten(),
-                vel_der_matrix_phase_B_clean.flatten(),
+                vel_der_matrix_G_clean.flatten(),
+                vel_der_matrix_L_clean.flatten(),
             )
         )
 
