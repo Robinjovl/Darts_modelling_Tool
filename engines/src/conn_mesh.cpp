@@ -1877,26 +1877,28 @@ int conn_mesh::set_wells_tran(std::vector<value_t>& well_tran)
 
 int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 {
-  index_t well_head_idx = n_res_blocks;
-  n_perfs = 0;
-  n_res_conns = n_conns;
-
-  // All the connections in the connection list until now are reservoir connections, so one_way_is_dfm_conn is set to false for all reservoir connections in the following line
-  one_way_is_dfm_conn.insert(one_way_is_dfm_conn.end(), n_res_conns, false);
-
   // Wells are modeled as a 1D sequence of small grid blocks representing segments,
   // which are connected to the reservoir. For EPM wells, however, there is one more grid block
   // per well, which is at the top, connected to the first well segment,
   // served as a container for well control equations.
 
+  index_t well_head_idx = n_res_blocks;
+  n_perfs = 0;
+  n_res_conns = n_conns;
+
+  // All the connections in the connection list until now are reservoir connections, so
+  // one_way_is_dfm_conn is set to false for all reservoir connections in the following line.
+  // This list is updated when using the method conn_mesh::add_conn.
+  one_way_is_dfm_conn.insert(one_way_is_dfm_conn.end(), n_res_conns, false);
+
   //  Add well connections
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
-    wells[iw]->well_head_idx = well_head_idx; // well head
-    wells[iw]->well_body_idx = well_head_idx + 1; // well body
+    wells[iw]->well_head_idx = well_head_idx; // wellhead (topmost well segment)
+    wells[iw]->well_body_idx = well_head_idx + 1; // well body (segment right below the wellhead)
 
     index_t n_segments = 0;
-    // connections between well segments and reservoir
+    // Add connections between well segments and reservoir
     for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
     {
       index_t i_w, i_r;
@@ -1906,59 +1908,102 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
       n_perfs++;
       n_segments = max(n_segments, i_w + 1);
     }
-	// this if-block can affect the number of segments if the well is of the DFM type and there is or are unperforated segments below the lowermost perforated segment of the well.
+	// This if-block can affect the number of segments if the well is of the DFM type and there is or are unperforated segments below the lowermost perforated segment of the well.
 	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	{
 		n_segments = max(n_segments, wells[iw]->num_segments - 1);
 	}
 
-	// connections between segments of EPM well
+	// Add connection between well segments
+	bool is_dfm_well;
+	index_t n_seg_conns;
 	if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
 	{
-		for (index_t p = 0; p < n_segments; p++)
-		{
-			add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, false);
-		}
+		is_dfm_well = false;
+		n_seg_conns = n_segments;
 	}
-	// connections between segments of DFM well
 	else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	{
-		for (index_t seg = 0; seg < (wells[iw]->num_segments - 1); seg++)
-		{
-			add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0, true);
-		}
+		is_dfm_well = true;
+		n_seg_conns = wells[iw]->num_segments - 1;
+	}
+	for (index_t seg = 0; seg < n_seg_conns; ++seg)
+	{
+		add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0, is_dfm_well);
+	}
 
-		if (wells[iw]->with_lateral_heat_transfer)
+	// Add connection between DFM well segments and reservoir cells for lateral heat transfer (for heat conduction only)
+	if (wells[iw]->ms_type == ms_well::MS_Type::DFM && wells[iw]->with_lateral_heat_transfer)
+	{
+		for (index_t i = 0; i < wells[iw]->connections_for_lateral_heat_transfer.size(); i++)
 		{
-			// add connections between DFM well segments and reservoir cells for lateral heat transfer (heat conduction only)
-			for (index_t i = 0; i < wells[iw]->connections_for_lateral_heat_transfer.size(); i++)
+			index_t i_w, i_r;
+			value_t wid;
+			std::tie(i_w, i_r, wid) = wells[iw]->connections_for_lateral_heat_transfer[i];
+
+			bool i_w_in_perforations = false;
+			for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
 			{
-				index_t i_w, i_r;
-				value_t wid;
-				std::tie(i_w, i_r, wid) = wells[iw]->connections_for_lateral_heat_transfer[i];
-
-				bool i_w_in_perforations = false;
-				for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
+				index_t i_w_perf, i_r_perf;
+				value_t wi_perf, wid_perf;
+				std::tie(i_w_perf, i_r_perf, wi_perf, wid_perf) = wells[iw]->perforations[p];
+				if (i_w + wells[iw]->well_head_idx == i_w_perf + wells[iw]->well_head_idx + 1)
 				{
-					index_t i_w_perf, i_r_perf;
-					value_t wi_perf, wid_perf;
-					std::tie(i_w_perf, i_r_perf, wi_perf, wid_perf) = wells[iw]->perforations[p];
-					if (i_w + wells[iw]->well_head_idx == i_w_perf + wells[iw]->well_head_idx + 1)
-					{
-						i_w_in_perforations = true;
-						break;
-					}
+					i_w_in_perforations = true;
+					break;
 				}
-				if (i_w_in_perforations == false)
-				{
-					value_t wi = 0.0;
-					add_conn(i_w + wells[iw]->well_head_idx, i_r, wi, wid, false);
-				}
+			}
+			if (i_w_in_perforations == false)
+			{
+				value_t wi = 0.0;
+				add_conn(i_w + wells[iw]->well_head_idx, i_r, wi, wid, false);
 			}
 		}
 	}
     well_head_idx += n_segments + 1;
     wells[iw]->n_segments = n_segments;
+  }
+
+  //--- Start finding and storing index of wellhead connection of each well
+  index_t num_conns;
+  // Reservoir connections
+  num_conns = n_res_conns;
+  for (ms_well* w : wells)
+  {
+	  // Perforations of each well
+	  num_conns += w->perforations.size();
+
+	  // Store starting connection index (wellhead connection) of the well
+	  w->well_head_conn_idx = num_conns;
+
+	  if (w->ms_type == ms_well::MS_Type::DFM)
+	  {
+		  // Connections between DFM segments
+		  num_conns += w->num_segments - 1;
+
+		  if (w->with_lateral_heat_transfer)
+		  {
+			  // Connections of lateral heat transfer
+			  num_conns += w->num_segments - w->perforations.size();
+		  }
+	  }
+	  else if (w->ms_type == ms_well::MS_Type::EPM)
+	  {
+		  // Connections between EPM segments
+		  num_conns += w->n_segments;
+	  }
+  }
+  //--- End finding and storing index of wellhead connection of each well
+
+  // If the model has at least a DFM well, set has_dfm_well to true.
+  has_dfm_well = false;
+  for (ms_well* w : wells)
+  {
+	  if (w->ms_type == ms_well::MS_Type::DFM)
+	  {
+		  has_dfm_well = true;
+		  break;
+	  }
   }
 
   // connect_segments(wells[0], wells[1], wells[0]->n_segments, wells[1]->n_segments);
@@ -2022,50 +2067,6 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   }
 
   n_blocks = total_num_cells;
-
-  // If the model has at least a DFM well, set has_dfm_well to true.
-  has_dfm_well = false;
-  for (ms_well* w : wells)
-  {
-	  if (w->ms_type == ms_well::MS_Type::DFM)
-	  {
-		  has_dfm_well = true;
-		  break;
-	  }
-  }
-
-  //--- Start finding and storing index of wellhead connection of each well
-  index_t num_conns;
-
-  // Reservoir connections
-  num_conns = n_res_conns;
-
-  for (ms_well* w : wells)
-  {
-	  // Perforations of each well
-	  num_conns += w->perforations.size();
-
-	  // Store starting connection index (wellhead connection) of the well
-	  w->well_head_conn_idx = num_conns;
-
-	  if (w->ms_type == ms_well::MS_Type::DFM)
-	  {
-		  // Connections between DFM segments
-		  num_conns += w->num_segments - 1;
-
-		  if (w->with_lateral_heat_transfer)
-		  {
-			  // Connections of lateral heat transfer
-			  num_conns += w->num_segments - w->perforations.size();
-		  }
-	  }
-	  else if (w->ms_type == ms_well::MS_Type::EPM)
-	  {
-		  // Connections between EPM segments
-		  num_conns += w->n_segments;
-	  }
-  }
-  //--- End finding and storing index of wellhead connection of each well
 
   return 0;
 }
