@@ -63,7 +63,7 @@ class Pipe:
         :param pipe_geometry: Pipe geometry object
         :type pipe_geometry: PipeGeometry
         :param physics: Physics object for the pipe
-        :param reservoir Reservoir object
+        :param reservoir: Reservoir object
         :param initial_conditions: Object containing the initial conditions of the wellbore/pipe
         :type initial_conditions: SingleAmbientTemperature or LinearAmbientTemperature
         :param source_sinks: Dict containing sources or sinks for the momentum equation
@@ -207,16 +207,16 @@ class Pipe:
         if verbose:
             print(f'** Model of the pipe "{self.geometry.pipe_name}" is created!')
 
-    def evaluate_phase_velocities(
-        self, Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter, flag
+    def eval_phase_vels(
+        self, Xn_dfm_well, X_dfm_well, dt, simulation_time, iter_counter, flag
     ):
         """
-        Evaluates pipe phase velocities
+        Evaluate pipe phase velocities using the drift-flux model (DFM)
 
-        :param Xn_ms_well: Vector containing the state of pipe segments (ordered block by block) of the previous time step
-        :type Xn_ms_well: np.ndarray
-        :param X_ms_well: Vector containing the state of pipe segments (ordered block by block) of the current time step
-        :type X_ms_well: np.ndarray
+        :param Xn_dfm_well: Vector containing the state of pipe segments (ordered block by block) of the previous time step
+        :type Xn_dfm_well: np.ndarray
+        :param X_dfm_well: Vector containing the state of pipe segments (ordered block by block) of the current time step
+        :type X_dfm_well: np.ndarray
         :param dt: Time step size [day]
         :type dt: float
         :param simulation_time: Simulation time [day]
@@ -260,7 +260,7 @@ class Pipe:
                 xL_b_mass_0 = np.zeros((num_segments, nc))
 
             for i in range(num_segments):
-                state0 = Xn_ms_well[i * n_vars : (i + 1) * n_vars]
+                state0 = Xn_dfm_well[i * n_vars : (i + 1) * n_vars]
                 pc.evaluate(state0)
                 if self.physics.thermal:
                     pc.evaluate_thermal(state0)
@@ -362,7 +362,7 @@ class Pipe:
             xL_b_mass = np.zeros((num_segments, nc))
 
         for i in range(num_segments):
-            state = X_ms_well[i * n_vars : (i + 1) * n_vars]
+            state = X_dfm_well[i * n_vars : (i + 1) * n_vars]
             pc.evaluate(state)
             if self.physics.thermal:
                 pc.evaluate_thermal(state)
@@ -575,7 +575,7 @@ class Pipe:
 
         [_, vM0, vG0, vL0] = self.velocities0
 
-        p = X_ms_well[0::n_vars] * 1e5  # convert bar to Pa
+        p = X_dfm_well[0::n_vars] * 1e5  # convert bar to Pa
         p_m = p[0:-1:1]
         p_p = p[1::1]
         if self.diff_method == "OBL":
@@ -1127,16 +1127,16 @@ class Pipe:
             vD0 = np.zeros(num_interfaces)
         self.vD0 = -vD0  # I multiplied the drift velocity by -1 because I changed the positive direction of the well from top to bottom.
 
-    def evaluate_phase_velocities_and_derivatives(
-        self, Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter
+    def eval_phase_vels_and_ders(
+        self, Xn_dfm_well, X_dfm_well, dt, simulation_time, iter_counter
     ):
         """
-        Evaluates pipe phase velocities and their derivatives with respect to primary variables
+        Evaluate pipe phase velocities and their derivatives with respect to primary variables
 
-        :param Xn_ms_well: Vector containing the state of pipe segments (ordered block by block) of the previous time step
-        :type Xn_ms_well: np.ndarray
-        :param X_ms_well: Vector containing the state of pipe segments (ordered block by block) of the current time step
-        :type X_ms_well: np.ndarray
+        :param Xn_dfm_well: Vector containing the state of pipe segments (ordered block by block) of the previous time step
+        :type Xn_dfm_well: np.ndarray
+        :param X_dfm_well: Vector containing the state of pipe segments (ordered block by block) of the current time step
+        :type X_dfm_well: np.ndarray
         :param dt: Time step size [day]
         :type dt: float
         :param simulation_time: Simulation time [day]
@@ -1147,36 +1147,41 @@ class Pipe:
         num_segments = self.geometry.num_segments
         num_conn = self.geometry.num_interfaces
         num_phase_velocities = num_conn * 2
-        num_primary_vars = len(Xn_ms_well)
+        num_primary_vars = len(Xn_dfm_well)
         n_vars = self.physics.n_vars
 
         # Preallocate the matrix of derivatives of phase velocities
         vel_der_matrix = np.zeros((num_phase_velocities, num_primary_vars))
 
-        phase_velocities = self.evaluate_phase_velocities(
-            Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter, flag=1
+        phase_velocities = self.eval_phase_vels(
+            Xn_dfm_well, X_dfm_well, dt, simulation_time, iter_counter, flag=1
         )
 
         # Construct the matrix of derivatives of phase velocities
         if self.diff_method == "numerical":
             for i in range(num_segments):
                 # Derivatives of all the phase velocities with respect to the pressure of segment i
-                X_ms_well[i * n_vars] += self.eps_p
+                X_dfm_well[i * n_vars] += self.eps_p
                 vel_der_matrix[:, i * n_vars] = (
-                    self.evaluate_phase_velocities(
-                        Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter, flag=0
+                    self.eval_phase_vels(
+                        Xn_dfm_well,
+                        X_dfm_well,
+                        dt,
+                        simulation_time,
+                        iter_counter,
+                        flag=0,
                     )
                     - phase_velocities
                 ) / self.eps_p
-                X_ms_well[i * n_vars] -= self.eps_p
+                X_dfm_well[i * n_vars] -= self.eps_p
 
                 for j in range(self.physics.nc - 1):
                     # Derivatives of all the phase velocities with respect to the mole fraction of component j in segment i
-                    X_ms_well[i * n_vars + j + 1] += self.eps_z
+                    X_dfm_well[i * n_vars + j + 1] += self.eps_z
                     vel_der_matrix[:, i * n_vars + j + 1] = (
-                        self.evaluate_phase_velocities(
-                            Xn_ms_well,
-                            X_ms_well,
+                        self.eval_phase_vels(
+                            Xn_dfm_well,
+                            X_dfm_well,
                             dt,
                             simulation_time,
                             iter_counter,
@@ -1184,15 +1189,15 @@ class Pipe:
                         )
                         - phase_velocities
                     ) / self.eps_z
-                    X_ms_well[i * n_vars + j + 1] -= self.eps_z
+                    X_dfm_well[i * n_vars + j + 1] -= self.eps_z
 
                 if not self.isothermal:
                     # Derivatives of all the phase velocities with respect to the temperature of segment i
-                    X_ms_well[i * n_vars + n_vars - 1] += self.eps_temp
+                    X_dfm_well[i * n_vars + n_vars - 1] += self.eps_temp
                     vel_der_matrix[:, i * n_vars + n_vars - 1] = (
-                        self.evaluate_phase_velocities(
-                            Xn_ms_well,
-                            X_ms_well,
+                        self.eval_phase_vels(
+                            Xn_dfm_well,
+                            X_dfm_well,
                             dt,
                             simulation_time,
                             iter_counter,
@@ -1200,12 +1205,12 @@ class Pipe:
                         )
                         - phase_velocities
                     ) / self.eps_temp
-                    X_ms_well[i * n_vars + n_vars - 1] -= self.eps_temp
+                    X_dfm_well[i * n_vars + n_vars - 1] -= self.eps_temp
 
-            # Update properties at the current time step with the original primary variables (original X_ms_well)
+            # Update properties at the current time step with the original primary variables (original X_dfm_well)
             # unaffected by eps_p, eps_temp, and eps_z
-            phase_velocities = self.evaluate_phase_velocities(
-                Xn_ms_well, X_ms_well, dt, simulation_time, iter_counter, flag=0
+            phase_velocities = self.eval_phase_vels(
+                Xn_dfm_well, X_dfm_well, dt, simulation_time, iter_counter, flag=0
             )
 
             vel_der_matrix_phase_A = vel_der_matrix[: num_phase_velocities // 2, :]
@@ -1236,7 +1241,7 @@ class Pipe:
 
     def get_operator_der_matrix_for_well(self, op_idx):
         """
-        This function extracts the derivative matrix of the specified operator for a well. This operator derivative
+        Extract the derivative matrix of the specified operator for a well. This operator derivative
         matrix is used for differentiating phase velocities using the OBL approach.
 
         :param op_idx: Index of the desired operator

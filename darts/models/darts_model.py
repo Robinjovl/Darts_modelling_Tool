@@ -855,17 +855,13 @@ class DartsModel:
         for w in self.reservoir.wells:
             if w.ms_type == ms_well.MS_Type.DFM:
                 start = w.well_head_idx * self.physics.n_vars
-                stop = (
-                    w.well_head_idx + w.num_segments
-                ) * self.physics.n_vars  # exclusive
+                stop = (w.well_head_idx + w.num_segments) * self.physics.n_vars
 
-                Xn_ms_well = np.array(self.physics.engine.Xn[start:stop])
-                X_ms_well = np.array(self.physics.engine.X[start:stop])
+                Xn_dfm_well = np.array(self.physics.engine.Xn[start:stop])
+                X_dfm_well = np.array(self.physics.engine.X[start:stop])
                 well_phase_v, well_phase_v_d = self.wells[
                     w.name
-                ].evaluate_phase_velocities_and_derivatives(
-                    Xn_ms_well, X_ms_well, dt, t, iter_counter
-                )
+                ].eval_phase_vels_and_ders(Xn_dfm_well, X_dfm_well, dt, t, iter_counter)
                 w.phases_vels = value_vector(well_phase_v)
                 w.phases_vels_ders = value_vector(well_phase_v_d)
 
