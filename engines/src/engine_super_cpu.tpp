@@ -93,8 +93,6 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     index_t n_blocks = mesh->n_blocks;
     index_t n_res_blocks = mesh->n_res_blocks;
     index_t n_conns = mesh->n_conns;
-    index_t n_res_conns = mesh->n_res_conns;
-    bool has_dfm_well = mesh->has_dfm_well;
     const std::vector<value_t>& tran = mesh->tran;
     const std::vector<value_t>& tranD = mesh->tranD;
     const std::vector<value_t>& hcap = mesh->heat_capacity;
@@ -104,7 +102,6 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     const std::vector<index_t>& op_num = mesh->op_num;
     const std::vector<value_t>& cell_spe = mesh->cell_spe;
-    const std::vector<bool>& is_dfm_conn = mesh->is_dfm_conn;
 
     value_t* Jac = jacobian->get_values();
     index_t* diag_ind = jacobian->get_diag_ind();
@@ -140,7 +137,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     // fill fourier_fluxes with zeros
     std::fill(fourier_fluxes.begin(), fourier_fluxes.end(), 0.0);
 
-    if (has_dfm_well)
+    if (mesh->has_dfm_well)
     {
         update_two_way_phase_vels_and_ders();
     }
@@ -258,7 +255,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             if (i == j)
                 continue;
 
-            bool DFM_conn = is_dfm_conn[conn_idx];
+            bool DFM_conn = mesh->is_dfm_conn[conn_idx];
 
             // fluxes for current connection
             if (enabled_flux_output)
@@ -328,7 +325,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
                 else if (DFM_conn)
                 {
-                    phase_p_diff = phases_vels[p * n_conns + conn_idx];   // value of phase_p_diff is not important, only its sign is used
+                    phase_p_diff = phases_vels[p * n_conns + conn_idx];   // value of phase_p_diff is not important, only its sign is used for DFM connections
                 }
 
                 phase_fluxes[p] = 0.0;
@@ -1248,7 +1245,7 @@ void engine_super_cpu<NC, NP, THERMAL>::update_two_way_phase_vels_and_ders()
         {
             if (w->ms_type == ms_well::MS_Type::DFM)
             {
-                size_t well_n_conns = w->num_segments - 1;
+                const size_t well_n_conns = w->num_segments - 1;
 
                 std::vector<value_t> well_phase_vels(well_n_conns);
                 std::vector<value_t> well_phase_vels_ders(well_n_conns * vel_der_size);
