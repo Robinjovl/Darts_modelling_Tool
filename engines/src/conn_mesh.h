@@ -197,6 +197,8 @@ public:
   /// @brief discretize ms wells into reservoir
   int add_wells(std::vector<ms_well*> &wells);
   int add_wells_mpfa(std::vector<ms_well*> &wells, const uint8_t P_VAR);
+  void add_connection_for_lateral_heat_exchange_for_dfm(ms_well* &well);
+  void store_wellhead_conn_idx(index_t n_res_conns, std::vector<ms_well*> &wells);
   int connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose=0);
 
   void shift_boundary_ids_mpfa(const int n);
