@@ -1264,7 +1264,7 @@ void engine_super_cpu<NC, NP, THERMAL>::update_two_way_phase_vels_and_ders()
         // Reverse and sort one-way phase velocities
         phase_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_vels);
         // Reverse and sort one-way phase velocities derivatives
-        phase_vels_ders = mesh->reverse_and_sort_velocities_derivatives(one_way_phase_vels_ders, N_VARS);
+        phase_vels_ders = mesh->reverse_and_sort_phase_vels_ders(one_way_phase_vels_ders, N_VARS);
 
         // Update the array containing velocities of all phases
         std::copy(phase_vels.begin(), phase_vels.end(), phases_vels.begin() + p * mesh->n_conns);
