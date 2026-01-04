@@ -66,13 +66,13 @@ class Model(CICDModel):
         self.reservoir.add_well("INJ", well_type)
         for j in range(jw[0], j_mid + 1):
             self.reservoir.add_perforation("INJ", res_cell_idx=(iw[0], j, n + 1), well_diameter=well_diameter,
-                                           segment_direction='y_axis', well_index=0, multi_segment=True)
+                                           segment_direction='y_axis', well_index=0, ms_epm=True)
         perf_1 = len(self.reservoir.wells[-1].perforations)  # last segment is n_perf+1
 
         self.reservoir.add_well("PRD", well_type)
         for j in range(jw[1], j_mid, -1):
             self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], j, n + 1), well_diameter=well_diameter,
-                                           segment_direction='y_axis', well_index=0, multi_segment=True)
+                                           segment_direction='y_axis', well_index=0, ms_epm=True)
         perf_2 = len(self.reservoir.wells[-1].perforations)
 
         # connect the last two perforations of two wells

@@ -177,7 +177,7 @@ class UnstructReservoir(ReservoirBase):
         well_indexD: float = None,
         segment_direction: str = "z_axis",
         skin: float = 0.0,
-        multi_segment: bool = False,
+        ms_epm: bool = False,
         verbose: bool = False,
     ):
         """
@@ -218,7 +218,7 @@ class UnstructReservoir(ReservoirBase):
         assert well_indexD >= 0
 
         # set well segment index (well block) equal to index of perforation layer
-        if multi_segment:
+        if ms_epm:
             well_block = len(well.perforations)
         else:
             well_block = 0

@@ -60,13 +60,13 @@ class Model(CICDModel):
         self.reservoir.add_well("INJ", well_type)
         for k in range(1, self.reservoir.nz):
             self.reservoir.add_perforation("INJ", res_cell_idx=(iw[0], jw[0], k + 1),
-                                           well_diameter=0.32, multi_segment=True)
+                                           well_diameter=0.32, ms_epm=True)
 
         # add well
         self.reservoir.add_well("PRD", well_type)
         for k in range(1, self.reservoir.nz):
             self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], jw[1], k + 1),
-                                           well_diameter=0.32, multi_segment=True)
+                                           well_diameter=0.32, ms_epm=True)
 
     def set_physics(self):
         if self.iapws_physics:

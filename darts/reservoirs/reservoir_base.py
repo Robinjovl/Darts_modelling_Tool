@@ -150,7 +150,7 @@ class ReservoirBase:
         well_indexD: float = None,
         segment_direction: str = "z_axis",
         skin: float = 0.0,
-        multi_segment: bool = False,
+        ms_epm: bool = False,
         verbose: bool = False,
     ):
         """
@@ -160,7 +160,7 @@ class ReservoirBase:
         :type well_name: str
         :param res_cell_idx: Index of reservoir cell to be perforated
         :type res_cell_idx: int or tuple
-        :param well_seg_idx: Index of well segment to be perforated (indexing starts from 1 at well top segment)
+        :param well_seg_idx: Index of well segment to be perforated (indexing starts from 1 at wellhead segment)
         :type well_seg_idx: int
         :param well_diameter: Internal diameter of the wellbore
         :type well_diameter: float
@@ -172,9 +172,8 @@ class ReservoirBase:
         :type segment_direction: str
         :param skin: Skin factor
         :type skin: float
-        :param multi_segment: Whether the EPM well model uses a separate well segment per perforation, or a single
-        well segment for all perforations of the wellbore.
-        :type multi_segment: bool
+        :param ms_epm: Whether the EPM well model uses a separate well segment per perforation or not (a single well segment for all perforations).
+        :type ms_epm: bool
         :param verbose: Switch to set verbose level
         :type verbose: bool
         """

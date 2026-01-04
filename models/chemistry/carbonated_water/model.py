@@ -552,19 +552,19 @@ class Model(CICDModel):
 
         # self.reservoir.add_well("I1", well_type, well_diameter=w_d)
         # for idx in range(self.domain_cells[1]):
-        #     self.reservoir.add_perforation(well_name='I1', res_cell_idx=(1, idx + 1, 1), multi_segment=False,
+        #     self.reservoir.add_perforation(well_name='I1', res_cell_idx=(1, idx + 1, 1), ms_epm=False,
         #                                    verbose=True, well_diameter=w_d, well_index=well_index,
         #                                    well_indexD=well_index)
 
         self.reservoir.add_well("P1", well_type, well_diameter=w_d)
         if isinstance(self.reservoir, UnstructReservoir):
             for idx in self.prd_cells:
-                self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, multi_segment=False,
+                self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, ms_epm=False,
                                                verbose=True, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
         elif isinstance(self.reservoir, StructReservoir):
             for idx in range(self.domain_cells[1]):
-                self.reservoir.add_perforation(well_name='P1', res_cell_idx=(self.domain_cells[0], idx + 1, 1), multi_segment=False,
+                self.reservoir.add_perforation(well_name='P1', res_cell_idx=(self.domain_cells[0], idx + 1, 1), ms_epm=False,
                                                verbose=True, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
 

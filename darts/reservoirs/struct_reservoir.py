@@ -217,7 +217,7 @@ class StructReservoir(ReservoirBase):
         well_indexD: float = 0.0,
         segment_direction: str = "z_axis",
         skin: float = 0.0,
-        multi_segment: bool = None,
+        ms_epm: bool = None,
         with_peaceman_for_coupled_well_reservoir: bool = False,
         verbose: bool = False,
     ):
@@ -244,8 +244,8 @@ class StructReservoir(ReservoirBase):
             assert well_seg_idx is not None, (
                 "If the well is of the DFM type, well_seg_idx must be specified!"
             )
-            assert multi_segment is None, (
-                "If the well is of the DFM type, multi_segment must not be specified!"
+            assert ms_epm is None, (
+                "If the well is of the DFM type, ms_epm must not be specified!"
             )
             res_block_local, wi, wid = (
                 self.discretizer.calc_well_index_for_coupled_well_reservoir(
@@ -267,7 +267,7 @@ class StructReservoir(ReservoirBase):
 
         if well.ms_type == ms_well.MS_Type.EPM:
             # set well segment index (well block) equal to index of perforation layer
-            if multi_segment:
+            if ms_epm:
                 well_block = len(well.perforations)
             else:
                 well_block = 0
