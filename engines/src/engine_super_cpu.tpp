@@ -91,6 +91,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     const std::vector<value_t>& velocity_appr = mesh->velocity_appr;
     const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     const std::vector<index_t>& op_num = mesh->op_num;
+	const std::vector<value_t>& cell_spe = mesh->cell_spe;
 
     value_t* Jac = jacobian->get_values();
     index_t* diag_ind = jacobian->get_diag_ind();
@@ -181,6 +182,18 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             if (i < n_res_blocks)
                 RHS[i * N_VARS + c] += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
 
+            // Add potential energy accumulation
+            if (THERMAL && c == (NE - 1))
+            {
+                value_t sat_dens_sum = 0.;
+                for (uint8_t p = 0; p < NP; p++)
+                {
+                    sat_dens_sum += op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p]
+                                    - op_vals_arr_n[i * N_OPS + SAT_OP + p] * op_vals_arr_n[i * N_OPS + GRAV_OP + p];
+                }
+                RHS[i * N_VARS + c] += PV[i] * cell_spe[i] * sat_dens_sum;
+            }
+
             for (uint8_t v = 0; v < N_VARS; v++)
             {
                 Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
@@ -189,6 +202,18 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 if (i < n_res_blocks)
                 {
                     Jac[diag_idx + c * N_VARS + v] += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
+                }
+
+                // Include derivatives for potential energy term
+                if (THERMAL && c == (NE - 1))
+                {
+                    value_t sat_dens_der_sum = 0.;
+                    for (uint8_t p = 0; p < NP; p++)
+                    {
+                        sat_dens_der_sum += op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]
+                                            + op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v];
+                    }
+                    Jac[diag_idx + c * N_VARS + v] += PV[i] * cell_spe[i] * sat_dens_der_sum; // der of potential energy accumulation term
                 }
             }
         }
@@ -309,7 +334,14 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         else
                           if (enabled_flux_output) cur_heat_darcy_advection_fluxes[p] = -phase_volumetric_rate * c_flux_coef / dt;
 
-                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators
+                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef;
+
+                        // Add potential energy flux
+                        if (THERMAL && c == (NE - 1))
+                        {
+                            RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
+                        }
+
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[diag_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
@@ -321,6 +353,18 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             {
                                 Jac[jac_idx + c * N_VARS + v] -= c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
                                 Jac[diag_idx + c * N_VARS + v] += c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
+                            }
+
+                            if (THERMAL && c == (NE - 1))
+                            {
+                                Jac[diag_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * cell_spe[i];
+                                Jac[jac_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
+
+                                if (v == 0)
+                                {
+                                    Jac[diag_idx + c * N_VARS + v] += dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
+                                    Jac[jac_idx + c * N_VARS + v] -= dt * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
+                                }
                             }
                         }
                     }
@@ -356,7 +400,14 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         else
                           if (enabled_flux_output) cur_heat_darcy_advection_fluxes[p] = -phase_volumetric_rate * c_flux_coef / dt;
 
-                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators only
+                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef;
+
+						// Add potential energy flux
+                        if (THERMAL && c == (NE - 1))
+                        {
+                            RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
+                        }
+
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[jac_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
@@ -367,6 +418,18 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             {
                                 Jac[diag_idx + c * N_VARS + v] += c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
                                 Jac[jac_idx + c * N_VARS + v] -= c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
+                            }
+
+                            if (THERMAL && c == (NE - 1))
+                            {
+                                Jac[diag_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
+                                Jac[jac_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * cell_spe[j];
+
+                                if (v == 0)
+                                {
+                                    Jac[diag_idx + c * N_VARS + v] += dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
+                                    Jac[jac_idx + c * N_VARS + v] -= dt * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
+                                }
                             }
                         }
                     }
@@ -391,7 +454,13 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         else
                           phase_presence_mult = 0.0;
 
-                        value_t diff_mob_ups_m = dt * phase_presence_mult * mesh->tranD[conn_idx] * (mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+						value_t diff_mob_ups_m;
+                        if (c < NC)
+                            diff_mob_ups_m = dt * phase_presence_mult * mesh->tranD[conn_idx] * (mesh->poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+                                                                                                    mesh->poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+                        else
+                            // energy
+                            diff_mob_ups_m = dt * phase_presence_mult * mesh->tranD[conn_idx] * (mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
                                                                                                     mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
 
                         RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
@@ -404,13 +473,34 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         }
 
                         // Add diffusion terms to Jacobian:
-                        for (uint8_t v = 0; v < N_VARS; v++)
-                        {
+                        for (uint8_t v = 0; v < N_VARS; v++){
+                            // wrt gradient
                             Jac[diag_idx + c * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
                             Jac[jac_idx + c * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
-                            Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
-                            Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+                            if (c < NC) {
+                                // wrt saturation
+                                Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
+                                    mesh->poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+                                Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
+                                    mesh->poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+
+                                // wrt density
+                                Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
+                                    mesh->poro[i] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + UPSAT_OP + p] / 2;
+                                Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
+                                    mesh->poro[j] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[j * N_OPS + UPSAT_OP + p] / 2;
+							}
+                            else
+                            // energy equation
+                            {
+                                // wrt saturation
+                                Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
+                                        mesh->poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+                                Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] *
+                                        mesh->poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+							}
+
                         }
                         if (is_fickian_energy_transport_on)
                         {
@@ -428,9 +518,19 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 Jac[diag_idx + NC * N_VARS + v] += avg_enthalpy * diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
                                 Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
-                                Jac[diag_idx + NC * N_VARS + v] -= avg_enthalpy * grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
-                                Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+								// saturation
+                                Jac[diag_idx + NC * N_VARS + v] -= avg_enthalpy * grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[i] *
+                                    op_vals_arr[i * N_OPS + DENS_OP + p] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+                                Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[j] *
+                                    op_vals_arr[j * N_OPS + DENS_OP + p] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
 
+								// density
+                                Jac[diag_idx + NC * N_VARS + v] -= avg_enthalpy * grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[i] *
+                                    op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + UPSAT_OP + p]/ 2;
+                                Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[j] *
+                                    op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[j * N_OPS + UPSAT_OP + p]/ 2;
+
+								// enthalpy
                                 Jac[diag_idx + NC * N_VARS + v] -= op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * diff_mob_ups_m * grad_con / 2;
                                 Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * diff_mob_ups_m * grad_con / 2;
                               }
@@ -461,7 +561,9 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
             // rock heat transfers flows from cell i to j
             RHS[i * N_VARS + NC] -= t_diff * (gamma_t_i + gamma_t_j) / 2;
+
             if (enabled_flux_output) cur_fourier_fluxes[NP] = -t_diff * (gamma_t_i + gamma_t_j) / 2 / dt;
+
             for (uint8_t v = 0; v < N_VARS; v++)
             {
               Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
@@ -558,7 +660,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         index_t vel_idx_i = ND * NP * i;
                         index_t vel_idx_j = ND * NP * j;
                         for (uint8_t d = 0; d < ND; d++)
-                            avg_velocity[d] = (darcy_velocities[vel_idx_i + p * ND + d] + darcy_velocities[vel_idx_j + p * ND + d]) / 2.0;
+                            avg_velocity[d] = (op_vals_arr[i * N_OPS + DENS_OP + p] * darcy_velocities[vel_idx_i + p * ND + d] +
+                                                op_vals_arr[j * N_OPS + DENS_OP + p] * darcy_velocities[vel_idx_j + p * ND + d]) / 2.0;
 
                         for (uint8_t c = 0; c < NC; c++)
                         {
@@ -581,10 +684,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             if (enabled_flux_output) cur_dispersion_fluxes[p * NC + c] = -disp * grad_con;
 
                             // Add diffusion terms to Jacobian:
-                            for (uint8_t v = 0; v < N_VARS; v++)
-                            {
+                            for (uint8_t v = 0; v < N_VARS; v++){
                                 Jac[diag_idx + c * N_VARS + v] += disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
                                 Jac[jac_idx + c * N_VARS + v] -= disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+
+                                Jac[diag_idx + c * N_VARS + v] += -dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(i * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
+                                Jac[jac_idx + c * N_VARS + v] += -dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(j * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
                             }
 
                             // respective heat fluxes
@@ -597,9 +702,14 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
                                 for (uint8_t v = 0; v < N_VARS; v++)
                                 {
+                                  // fraction gradient derivatives
                                   Jac[diag_idx + NC * N_VARS + v] += avg_enthalpy * disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
                                   Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
+                                  Jac[diag_idx + NC * N_VARS + v] -= avg_enthalpy * dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(i * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
+                                  Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm * grad_con * op_ders_arr[(j * N_OPS + DENS_OP + p * NE) * N_VARS + v] / 2;
+
+                                  // enthalpy
                                   Jac[diag_idx + NC * N_VARS + v] -= op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2;
                                   Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2;
                                 }
@@ -819,7 +929,7 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
           {
             //value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
 
-            //RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
+            //RHS[i * N_VARS + c] -= phase_p_diff * c_flux;
 
             value_g_u = phase_p_diff * trans_mult * dt * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
             idx = count + c * N_element + temp_num[k_count];
@@ -833,7 +943,7 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
           {
             //value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
 
-            //RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
+            //RHS[i * N_VARS + c] -= phase_p_diff * c_flux;
 
             value_g_u = phase_p_diff * trans_mult * dt * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
             idx = count + c * N_element + temp_num[k_count];
@@ -865,8 +975,14 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
             else
               phase_presence_mult = 0.0;
 
-            value_g_u = grad_con * dt * phase_presence_mult *
-              (mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] + mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+
+            if (c < NC) // mass
+              value_g_u = grad_con * dt * phase_presence_mult * (mesh->poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+                                                                 mesh->poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+            else // energy
+              value_g_u = grad_con * dt * phase_presence_mult * (mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+                                                                 mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+
             idx = count + c * N_element + temp_num[k_count];
             value_dg_dT[idx] -= value_g_u;
           }

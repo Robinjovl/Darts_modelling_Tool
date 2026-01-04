@@ -16,17 +16,25 @@ Solution: run "helper_scripts\\build_darts_cmake" with -r argument.
 
 ### Runtime issues
 
-1. `cannot import darts.engines`
+1. `Cannot import darts.engines`
 
 If one opens the root open-DARTS folder from the gitlab repository in PyCharm, Python will try to import darts from that local folder (which has no engines library if it DARTS not compiled) instead of importing it from the installation path. As a workaround, the `models` folder can be opened as a project in PyCharm.
 
 2. Cannot import darts.engines:
 
-```
-ImportError: DLL load failed while importing engines: The specified module could not be found.
-```
+`ImportError: DLL load failed while importing engines: The specified module could not be found.`
 
 Solution: check engines.pyd (engines.so) has been compiled with the same Python version as you use. Check all DLL files are in the PATH (Windows) or in LD_LIBRARY_PATH (Linux).
+
+3. `libstdc++.so.6: version 'GLIBCXX_3.4.32' not found`
+
+Solution: upgrade conda's libstdc++:
+
+ `conda install -c conda-forge libstdcxx`
+
+ or run with LD_PRELOAD:
+
+`` LD_PRELOAD=`python -c "import os; import darts; print(os.path.dirname(darts.__file__))"`/libstdc++.so.6 darts main.py ``
 
 ### Installation issues
 

@@ -1,19 +1,10 @@
 .test-linux-gpu:
     stage: test
-    before_script:
-        - module load cuda/23.5
-        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
-        - conda create -n darts_gitlab_gpu_test python=${PY_VER} --yes
-        - conda activate darts_gitlab_gpu_test
-        # upgrade pip package first
-        - python -m pip install --upgrade pip
-        - pip uninstall open-darts-flash  --yes
-        - pip install ./dist/*.whl
     script:
         # run simulation fot test models set
         - cd models
         # passing additional argument LOG to trigger verbose check performance
-        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  darts run_test_suite2.py LOG
+        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
         # test discretizer
@@ -38,6 +29,7 @@
     artifacts:
       paths:
         - './models/_logs/*.log'
+        - './models/chemistry/_logs/chemistry/*.log'
         - './models/fracture_network/meshes*/*.log'
         - './models/displaced_fault_reactivation/meshes/*.log'
         - './models/pkl_lin.tar.gz'
@@ -47,9 +39,20 @@
 test-linux-oahu-3.10-gpu:
     tags:
         - linux_gpu
-    extends: .test-linux-gpu
     variables:
         PY_VER: '3.10'
+        CONDA_ENV: "darts_gpu"
+        CONDAPATH: /oahu/data/gitlabrunner/anaconda3
+    before_script:
+        - module load cuda/23.5
+        - source ${CONDAPATH}/bin/activate
+        - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
+        - conda activate ${CONDA_ENV}
+        # upgrade pip package first
+        - python -m pip install --upgrade pip
+        - pip uninstall open-darts-flash  --yes
+        - pip install ./dist/*.whl
+    extends: .test-linux-gpu
     needs:
         - build-linux-oahu-3.10-gpu
 

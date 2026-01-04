@@ -38,11 +38,24 @@
     artifacts:
       paths:
         - '.\models\_logs\*.log'
-        - './models/fracture_network/meshes*/*.log'
-        - './models/displaced_fault_reactivation/meshes/*.log'
+        - '.\models\chemistry\_logs\chemistry\*.log'
+        - '.\models\fracture_network\meshes*\*.log'
+        - '.\models\displaced_fault_reactivation\meshes\*.log'
         - '.\models\pkl_win.zip'
       when: always
       expire_in: 1 week
+
+test-windows-3.13:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-windows
+    variables:
+        PY_VER: '3.13'
+        PYTHONPATH: 'D:\Python313'
+        ODLS: '-a'
+    needs:
+        - build-windows-3.13
 
 test-windows-3.12:
     rules:
@@ -82,6 +95,18 @@ test-windows-3.10:
         ODLS: '-a'
     needs:
         - build-windows-3.10
+
+test-windows-3.13-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-windows
+    variables:
+        PY_VER: '3.13'
+        PYTHONPATH: 'D:\Python313'
+        ODLS: ''
+    needs:
+        - build-windows-3.13-ODLS
 
 test-windows-3.12-ODLS:
     rules:

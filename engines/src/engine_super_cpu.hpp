@@ -44,29 +44,33 @@ public:
   const static uint8_t Z_VAR = 1;
   const static uint8_t T_VAR = NC;
 
-  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient,
+  // number of operators: NE accumulation operators, NE*NP flux operators, NP density, NP up_constant, NE*NP gradient,
   //                      NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP phase mobility,
   //                      NP saturation, NP enthalpy, 2 temperature and pressure
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
                                NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
                                NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
+
+
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
   // diffusion
-  const static uint8_t UPSAT_OP = NE + NE * NP;
-  const static uint8_t GRAD_OP = NE + NE * NP + NP;
+  const static uint8_t DENS_OP = NE + NE * NP;
+  const static uint8_t UPSAT_OP = NE + NE * NP + NP;
+  const static uint8_t GRAD_OP = NE + NE * NP + NP + NP;
   // kinetic reaction
-  const static uint8_t KIN_OP = NE + NE * NP + NP + NE * NP;
+  const static uint8_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
   // extra operators
-  const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE;
-  const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + NP;
-  const static uint8_t MULT_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP;
-  const static uint8_t LAMBDA_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1;
-  const static uint8_t SAT_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
-  const static uint8_t ENTH_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
-  const static uint8_t TEMP_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
-  const static uint8_t PRES_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
+  const static uint8_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
+  const static uint8_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
+  const static uint8_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;
+  const static uint8_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1;
+  const static uint8_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
+  const static uint8_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
+  const static uint8_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
+  const static uint8_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
+
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
   // Define extra class property stoichiometric coefficient of the reaction (now hard coded, but has to become input?, maybe required to be placed somewhere else?):

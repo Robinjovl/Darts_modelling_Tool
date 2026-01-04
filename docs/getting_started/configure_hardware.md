@@ -8,7 +8,7 @@ Then add to your python script:
 
 ```python
 from darts.engines import set_num_threads
-set_num_threads(NT) 
+set_num_threads(NT)
 ```
 
 Half of the cores available are used unless specified via `set_num_threads` or via setting the environment variable `export OMP_NUM_THREADS=NT`.
@@ -33,6 +33,11 @@ If you would like to change the GPU device, add these lines to your model script
 ```python
 from darts.engines import set_gpu_device
 set_gpu_device(N)
+...
+m.init(platform='gpu')
 ```
 
 with `N` being your GPU device number. For example if you have 2 GPUs, you can call `set_gpu_device(0)` or `set_gpu_device(1)`.
+The function set_gpu_device` should be called before `Model.init()`.
+
+Only NVIDIA GPUs are currently supported. It is possible to use one GPU for one simulation.

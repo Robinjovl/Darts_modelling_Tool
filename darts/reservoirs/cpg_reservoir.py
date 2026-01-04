@@ -158,6 +158,7 @@ class CPG_Reservoir(ReservoirBase):
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
         self.mesh.depth = darts.engines.value_vector(self.discr_mesh.depths)
         self.mesh.volume = darts.engines.value_vector(self.discr_mesh.volumes)
+
         self.bc = np.array(self.mesh.bc, copy=False)
 
         # rock thermal properties
@@ -1141,13 +1142,28 @@ def read_arrays(gridfile: str, propfile: str):
 
     arrays['SPECGRID'] = read_int_array(gridfile, "SPECGRID", 3)
 
-    arrays['PERMX'] = read_float_array(propfile, 'PERMX')
-    arrays['PERMY'] = read_float_array(propfile, 'PERMY')
-    if arrays['PERMY'].size == 0:
+    for arr_name in [
+        'PORO',
+        'PERMX',
+        'PERMY',
+        'PERMZ',
+        'HCAP',
+        'RCOND',
+    ]:  # float arrays
+        arr = read_float_array(propfile, arr_name)
+        if arr.size > 0:  # if a keyword was found
+            arrays[arr_name] = arr
+
+    for arr_name in ['ROCKNUM']:  # integer arrays
+        arr = read_int_array(propfile, 'ROCKNUM')
+        if arr.size > 0:  # if a keyword was found
+            arrays[arr_name] = arr
+
+    if 'PERMY' not in arrays and 'PERMX' in arrays:
         arrays['PERMY'] = arrays['PERMX']
         print('No PERMY found in input files. PERMY=PERMX will be used')
     for perm_str in ['PERMEABILITYXY', 'PERMEABILITY']:
-        if arrays['PERMX'].size == 0 and arrays['PERMY'].size == 0:
+        if 'PERMX' not in arrays and 'PERMX' not in arrays:
             a = read_float_array(propfile, perm_str)
             if a.size > 0:
                 arrays['PERMX'] = a
@@ -1157,11 +1173,9 @@ def read_arrays(gridfile: str, propfile: str):
                     perm_str,
                     'will be used',
                 )
-    arrays['PERMZ'] = read_float_array(propfile, 'PERMZ')
-    if arrays['PERMZ'].size == 0:
+    if 'PERMZ' not in arrays and 'PERMX' in arrays:
         arrays['PERMZ'] = arrays['PERMX'] * 0.1
         print('No PERMZ found in input files. PERMZ=PERMX/10 will be used')
-    arrays['PORO'] = read_float_array(propfile, 'PORO')
 
     arrays['COORD'] = read_float_array(gridfile, 'COORD')
     arrays['ZCORN'] = read_float_array(gridfile, 'ZCORN')
@@ -1233,6 +1247,10 @@ def make_burden_layers(
     """
     if number_of_burden_layers == 0:
         return
+
+    array_names_to_extend = ['PORO', 'PERMX', 'PERMY', 'PERMZ', 'RCOND', 'HCAP']
+    array_names_grid = ['SPECGRID', 'COORD', 'ZCORN', 'ACTNUM']
+
     thickness = initial_thickness
 
     nx = property_dictionary['SPECGRID'][0]
@@ -1249,14 +1267,15 @@ def make_burden_layers(
             ]
         )
         # for each burden layer, poro, perm have nx * ny number of values
-        for property_name in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
-            property_dictionary[property_name] = np.concatenate(
-                [
-                    np.ones(nx * ny) * burden_layer_prop_value,
-                    property_dictionary[property_name],
-                    np.ones(nx * ny) * burden_layer_prop_value,
-                ]
-            )
+        for property_name in array_names_to_extend:
+            if property_name in property_dictionary.keys():
+                property_dictionary[property_name] = np.concatenate(
+                    [
+                        np.ones(nx * ny) * burden_layer_prop_value,
+                        property_dictionary[property_name],
+                        np.ones(nx * ny) * burden_layer_prop_value,
+                    ]
+                )
         # for each burden layer, actnum has nx * ny number of values
         # which are the same the values from the top reservoir layer
         property_dictionary['ACTNUM'] = np.concatenate(
@@ -1266,6 +1285,20 @@ def make_burden_layers(
                 property_dictionary['ACTNUM'][-nx * ny :],
             ]
         )
+        # for arrays like ROCKNUM
+        for property_name in property_dictionary.keys():
+            if property_name not in array_names_to_extend + array_names_grid:
+                property_dictionary[property_name] = np.concatenate(
+                    [
+                        np.zeros(
+                            nx * ny, dtype=property_dictionary[property_name].dtype
+                        ),
+                        property_dictionary[property_name],
+                        np.zeros(
+                            nx * ny, dtype=property_dictionary[property_name].dtype
+                        ),
+                    ]
+                )
 
         thickness *= 2  # increase thickness for each new layer
 

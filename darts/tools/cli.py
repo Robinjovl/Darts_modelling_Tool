@@ -39,6 +39,17 @@ def get_lib_var():
         return None
 
 
+def get_lib_search_var():
+    if sys.platform == 'linux':
+        return 'LD_LIBRARY_PATH'
+    elif sys.platform == 'darwin':
+        return 'DYLD_LIBRARY_PATH'
+    elif sys.platform.startswith('win'):
+        return 'PATH'
+    else:
+        return None
+
+
 def get_darts_path():
     return Path(darts.__file__).parent
 
@@ -51,10 +62,11 @@ def main():
 
     # Handle multiprocessing spawn / resource_tracker callbacks
     if args_list[1] in ('-c', '-m'):
-        lib_var = get_lib_var()
-        if lib_var:
-            os.environ[lib_var] = (
-                str(get_darts_path()) + os.pathsep + os.environ.get(lib_var, "")
+        # Extend dynamic loader search path for inline Python execution
+        lib_search_var = get_lib_search_var()
+        if lib_search_var:
+            os.environ[lib_search_var] = (
+                os.environ.get(lib_search_var, "") + os.pathsep + str(get_darts_path())
             )
         python_args = [sys.executable] + args_list[1:]
         res = subprocess.run(python_args)
