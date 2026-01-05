@@ -153,7 +153,6 @@ class StructReservoir(ReservoirBase):
             self.global_data['depth'],
             volume,
             self.global_data['op_num'],
-            self.global_data['dz'],
         ]
         (
             self.cell_m,
@@ -164,7 +163,7 @@ class StructReservoir(ReservoirBase):
         ) = self.discretizer.apply_actnum_filter(
             self.actnum, cell_m, cell_p, tran, tran_thermal, arrs
         )
-        poro, rcond, hcap, depth, volume, op_num, dz = arrs_local
+        poro, rcond, hcap, depth, volume, op_num = arrs_local
         self.global_data['global_to_local'] = self.discretizer.global_to_local
 
         # Assign layer properties
@@ -187,8 +186,6 @@ class StructReservoir(ReservoirBase):
         self.volume = np.array(mesh.volume, copy=False)
         self.volume[:] = volume
         np.array(mesh.op_num, copy=False)[:] = op_num
-
-        np.array(mesh.cell_thickness, copy=False)[:] = dz
 
         self.set_boundary_volume(self.boundary_volumes)
         # copy the values of mesh.volume instead of using the pointer

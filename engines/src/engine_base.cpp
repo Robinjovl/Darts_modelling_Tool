@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <iostream>
 #include <functional>  // adjoint method -- function 'bind1st'
+#include <limits>
 #ifdef __GNUC__
 #include <cxxabi.h>
 #endif
@@ -18,6 +19,15 @@
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
 #endif // OPENDARTS_LINEAR_SOLVERS
+
+// Helper to avoid division by zero without hard-coded thresholds
+namespace {
+inline value_t safe_denominator(value_t denom)
+{
+    value_t abs_denom = std::fabs(denom);
+    return abs_denom > value_t(0) ? abs_denom : std::numeric_limits<value_t>::min();
+}
+}
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
@@ -1394,7 +1404,7 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 		}
 	}
 	sprintf(buffer2, "%s %s )\n%s", line, buffer, line);
-	//std::cout << buffer2 << std::flush;
+	std::cout << buffer2 << std::flush;
 
 	return 0;
 }
@@ -1589,7 +1599,7 @@ engine_base::calc_newton_residual_L1()
 	}
 	for (int c = 0; c < n_vars; c++)
 	{
-		residual = std::max(residual, fabs(res[c] / norm[c]));
+		residual = std::max(residual, fabs(res[c]) / safe_denominator(norm[c]));
 	}
 
 	return residual;
@@ -1612,7 +1622,7 @@ engine_base::calc_newton_residual_L2()
 	}
 	for (int c = 0; c < n_vars; c++)
 	{
-		residual = std::max(residual, sqrt(res[c] / norm[c]));
+		residual = std::max(residual, sqrt(res[c] / safe_denominator(norm[c])));
 	}
 
 	return residual;
@@ -1629,8 +1639,7 @@ engine_base::calc_newton_residual_Linf()
 		for (int c = 0; c < n_vars; c++)
 		{
 			norm = PV[i] * op_vals_arr[i * n_ops + c];
-			if (norm > 1e-3)
-				residual = std::max(residual, fabs(RHS[i * n_vars + c] / norm));
+			residual = std::max(residual, fabs(RHS[i * n_vars + c]) / safe_denominator(norm));
 		}
 	}
 
@@ -1673,7 +1682,7 @@ engine_base::calc_well_residual_L1()
 
 	for (int v = 0; v < n_vars; v++)
 	{
-		residual = std::max(residual, fabs(res[v] / norm[v]));
+		residual = std::max(residual, fabs(res[v]) / safe_denominator(norm[v]));
 	}
 
 	return residual;
@@ -1715,7 +1724,7 @@ engine_base::calc_well_residual_L2()
 
 	for (int v = 0; v < n_vars; v++)
 	{
-		residual = std::max(residual, sqrt(res[v] / norm[v]));
+		residual = std::max(residual, sqrt(res[v] / safe_denominator(norm[v])));
 	}
 
 	return residual;
@@ -1739,7 +1748,8 @@ engine_base::calc_well_residual_Linf()
 				value_t wi, wid;
 				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
 
-				res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + v] / (PV[w->well_body_idx + i_w] * av_op[v]));
+				value_t denom = PV[w->well_body_idx + i_w] * av_op[v];
+				res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + v]) / safe_denominator(denom);
 				residual = std::max(residual, res);
 			}
 
@@ -1973,9 +1983,9 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		}
 		/* ---- end check fluid compositions ---- */
 	}
-	//if (n_solid_corrected || n_fluid_corrected)
-	//	std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
-	//	  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
+	if (n_solid_corrected || n_fluid_corrected)
+		std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2031,8 +2041,8 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 		}
 	}
 
-	//if (n_corrected)
-	//	std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_corrected)
+		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2322,8 +2332,8 @@ void engine_base::apply_local_chop_correction(std::vector<value_t> &X, std::vect
 			}
 		}
 	}
-	//if (n_corrected)
-	//	std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_corrected)
+		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2364,8 +2374,8 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 			}
 		}
 	}
-	//if (n_corrected)
-	//	std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_corrected)
+		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2411,7 +2421,7 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 	}
 	else if (params->log_transform == 1)
 	{
-		//std::cout << "!!!Using local chop for log-transform of variables is not tested properly, proceed with caution!!!" << std::endl;
+		std::cout << "!!!Using local chop for log-transform of variables is not tested properly, proceed with caution!!!" << std::endl;
 		for (int i = 0; i < mesh->n_blocks; i++)
 		{
 			ratio = 1.0;
@@ -2445,8 +2455,8 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 			}
 		}
 	}
-	//if (n_corrected)
-	//	std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_corrected)
+		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX)

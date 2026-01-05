@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools >= 66", "wheel"]
+requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -20,15 +20,17 @@ keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal en
 requires-python = ">=3.10"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
 dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk',
-    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash', 'phreeqpy']
+    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash==0.10.3', 'phreeqpy']
 
-license = {text = "LICENSE.md"}
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "LICENSE.md"]
 
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: C++"
 ]
-dynamic = ["scripts"]
+[project.scripts]
+darts = "darts.tools.cli:main"
 
 [project.urls]
 homepage = "https://darts.citg.tudelft.nl/"
@@ -38,12 +40,23 @@ documentation = "https://open-darts.readthedocs.io/en/docs"
 [project.optional-dependencies]
 # These are groups of optional dependencies: not all users need ot install the dependencies. They are specific for a given fucntionality.
 # to install darts with this dependencies: `pip install .[docs]`
-
-# Dependencies to be able to build the documentation
 docs = ["myst-parser", "sphinx_rtd_theme", "sphinx", "sphinx-tabs", "sphinx_inline_tabs", "sphinxcontrib-matlabdomain", "sphinxcontrib-bibtex", "linkify-it-py", "sphinx-copybutton"]
-
-# Development dependencies for linting and formatting
 dev = ["ruff", "pre-commit"]
+
+# add compiled binaries (shared libraries) and some other files
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["darts*"]
+exclude = ["discretizer", "engines", "models", "solvers", "docs", "thirdparty"]
+
+[tool.setuptools.package-data]
+darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.so.6']
+"darts.physics.properties" = ["databases/*"]
+
+# include darts command line interface (cli.py)
 
 # --- Ruff configuration ---
 [tool.ruff]

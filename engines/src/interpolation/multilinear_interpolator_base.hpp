@@ -8,13 +8,13 @@
 
 /**
  * @brief  Interpolator base for static/adaptive piecewise mulitlinear interpolator
- * 
+ *
  * Interpolation is performed simulataneously for several functions (operators) in multidimensional parameter space
  * In order to do that, the space is uniformly parametrized within range of interest
- * That range along each axis is devided by specific number of equal intervals, forming uniform mesh 
+ * That range along each axis is devided by specific number of equal intervals, forming uniform mesh
  * Each vertex of the mesh represents a supporting point, where operator values are evaluated exactly
  * Using data at supporting points, interpolation is performed
- * 
+ *
  * @tparam index_t type used for indexing of supporting points and hypercubes
  * @tparam value_t value type used for supporting point storage, hypercube storage and interpolation
  * @tparam N_DIMS The number of dimensions in paramter space
@@ -24,7 +24,7 @@ template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 class multilinear_interpolator_base : public interpolator_base
 {
 public:
-  const static uint16_t N_VERTS = (1 << N_DIMS); ///< number of vertexes in interpolation hypercube - N_DIMS-th power of 2
+  const static uint32_t N_VERTS = (1 << N_DIMS); ///< number of vertexes in interpolation hypercube - N_DIMS-th power of 2
 
   typedef typename std::array<value_t, N_OPS> point_data_t;    ///< values of all operators at a given (supporting) point
   typedef typename std::vector<double> point_coordinates_t;    ///< coordinates of a given point in N_DIMS-dimensional space
@@ -35,7 +35,7 @@ public:
 
   /**
      * @brief Construct the interpolator with specified parametrization space
-     * 
+     *
      * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
      * @param[in] axes_points               Number of supporting points (minimum 2) along axes
      * @param[in] axes_min                  Minimum value for each axis
@@ -94,7 +94,7 @@ public:
 protected:
   /**
     * @brief Get point coordinates in space for given point index
-    * 
+    *
     * @param[in] point_index index of the point
     * @param[out] coordinates coordinates along all axes
     */
@@ -103,7 +103,7 @@ protected:
   // calculate point indexes for given hypercube
   /**
    * @brief Get indexes of all vertices for given hypercube
-   * 
+   *
    * @param[in] index index of the hyporcube
    * @param[out] hypercube_points indexes of all vertices of hypercube
    */
@@ -111,9 +111,9 @@ protected:
 
   /**
      * @brief Get values of operators at all vertices of the hypercube
-     * Implementation depends on underlying storage. 
+     * Implementation depends on underlying storage.
      *
-     * @param[in] hypercube_index index of hypercube 
+     * @param[in] hypercube_index index of hypercube
      * @return operator values at all vertices of the hypercube
      */
   virtual const hypercube_data_t &get_hypercube_data(const index_t hypercube_index) = 0;
