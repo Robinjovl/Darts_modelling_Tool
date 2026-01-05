@@ -84,6 +84,7 @@ public:
   // Derivatives of phase velocities at all connections including DFM wells
   const static uint8_t vel_der_size = N_VARS * 2;   // multiplied by 2 because velocity at connection is differentiated with respect to primary vars of two adjacent blocks
   std::vector<value_t> one_way_phase_vels_ders;
+  std::vector<value_t> two_way_phase_vels_ders;
   std::vector<value_t> phase_vels_ders;
   std::vector<value_t> phases_vels_ders;
 
@@ -118,6 +119,8 @@ public:
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
   void update_two_way_phase_vels_and_ders();
+
+  std::vector<value_t> reverse_and_sort_phase_vels_ders(const std::vector<value_t>& one_way_phase_vels_ders);
 
   void enable_flux_output();
 };

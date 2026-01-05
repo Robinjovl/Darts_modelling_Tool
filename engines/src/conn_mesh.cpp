@@ -857,22 +857,6 @@ conn_mesh::reverse_and_sort_one_way_bool(const std::vector<bool>& one_way_bool)
 	return two_way_bool;
 }
 
-std::vector<value_t>
-conn_mesh::reverse_and_sort_phase_vels_ders(const std::vector<value_t>& one_way_phase_vels_ders, index_t N_VARS)
-{
-	std::vector<value_t> two_way_phase_vels_ders(n_conns * N_VARS * 2);   // multiplied by 2 because velocity at connection is differentiated with respect to primary vars of two adjacent blocks
-	for (index_t j = 0; j < n_conns / 2; ++j)
-	{
-		for (uint8_t v = 0; v < N_VARS * 2; v++)
-		{
-			two_way_phase_vels_ders[one_way_to_conn_index_forward[j] * N_VARS * 2 + v] = -one_way_phase_vels_ders[j * N_VARS * 2 + v]; // m->p
-			two_way_phase_vels_ders[one_way_to_conn_index_reverse[j] * N_VARS * 2 + v] = one_way_phase_vels_ders[j * N_VARS * 2 + v]; // p->m
-		}
-	}
-
-	return two_way_phase_vels_ders;
-}
-
 int
 conn_mesh::reverse_and_sort_dvel()
 {

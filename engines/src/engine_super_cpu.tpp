@@ -60,6 +60,7 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
 
   // Initialize derivatives of phase velocities at all connections including DFM wells
   one_way_phase_vels_ders.resize(mesh_->n_conns / 2 * vel_der_size);
+  two_way_phase_vels_ders.resize(mesh_->n_conns * vel_der_size);
   phase_vels_ders.resize(mesh_->n_conns * vel_der_size);
   phases_vels_ders.resize(mesh_->n_conns * vel_der_size * NP);   // velocities derivatives are stored phase-wise
 
@@ -1264,12 +1265,32 @@ void engine_super_cpu<NC, NP, THERMAL>::update_two_way_phase_vels_and_ders()
         // Reverse and sort one-way phase velocities
         phase_vels = mesh->reverse_and_sort_one_way_double(one_way_phase_vels);
         // Reverse and sort one-way phase velocities derivatives
-        phase_vels_ders = mesh->reverse_and_sort_phase_vels_ders(one_way_phase_vels_ders, N_VARS);
+        phase_vels_ders = reverse_and_sort_phase_vels_ders(one_way_phase_vels_ders);
 
         // Update the array containing velocities of all phases
         std::copy(phase_vels.begin(), phase_vels.end(), phases_vels.begin() + p * mesh->n_conns);
         std::copy(phase_vels_ders.begin(), phase_vels_ders.end(), phases_vels_ders.begin() + p * mesh->n_conns * vel_der_size);
     }
+}
+
+/**
+* @brief Reverse and sort the derivatives of phase velocities at all connections
+*
+* This method is not implemented in conn_mesh because it requires N_VARS for implementation.
+*/
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+std::vector<value_t> engine_super_cpu<NC, NP, THERMAL>::reverse_and_sort_phase_vels_ders(const std::vector<value_t>& one_way_phase_vels_ders)
+{
+    for (index_t j = 0; j < mesh->n_conns / 2; ++j)
+    {
+        for (uint8_t v = 0; v < N_VARS * 2; v++)
+        {
+            two_way_phase_vels_ders[mesh->one_way_to_conn_index_forward[j] * N_VARS * 2 + v] = -one_way_phase_vels_ders[j * N_VARS * 2 + v]; // m->p
+            two_way_phase_vels_ders[mesh->one_way_to_conn_index_reverse[j] * N_VARS * 2 + v] = one_way_phase_vels_ders[j * N_VARS * 2 + v]; // p->m
+        }
+    }
+
+    return two_way_phase_vels_ders;
 }
 
 
