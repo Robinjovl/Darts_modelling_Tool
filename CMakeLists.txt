@@ -21,6 +21,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or ID
 # Turn off valgrind support by default
 option(ENABLE_VALGRIND "Enable Valgrind instrumentation (Debug build with symbols)" OFF)
 
+# Enable compilation time reporting (GCC only)
+option(ENABLE_TIME_REPORT "Enable -ftime-report for compilation time analysis (GCC only)" ON)
+
 # Set build type
 if(NOT CMAKE_BUILD_TYPE)
     if(ENABLE_VALGRIND)
@@ -164,6 +167,11 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND opendarts_cxx_compiler_flags "-D_GLIBCXX_USE_CXX11_ABI=0")
   endif()
 
+  if(ENABLE_TIME_REPORT)
+    message(STATUS "  Enabling -ftime-report for compilation time analysis")
+    list(APPEND opendarts_cxx_compiler_flags "-ftime-report")
+  endif()
+
   # Compiler specific helper variables (currently not needed)
 
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -186,6 +194,11 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 
   if(SET_CXX11_ABI_0)
     list(APPEND opendarts_cxx_compiler_flags "-D_GLIBCXX_USE_CXX11_ABI=0")
+  endif()
+
+  if(ENABLE_TIME_REPORT)
+    message(STATUS "  Enabling -ftime-trace for compilation time analysis")
+    list(APPEND opendarts_cxx_compiler_flags "-ftime-trace")
   endif()
 
   # Compiler specific helper variables (currently not needed)
