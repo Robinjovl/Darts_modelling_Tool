@@ -43,6 +43,7 @@ target_sources(discretizer_build_info
 target_link_libraries(discretizer_build_info
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)
@@ -112,6 +113,7 @@ target_sources(opendarts_discretizer
 target_link_libraries(opendarts_discretizer
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
     discretizer_build_info
     discretizer_mesh
     discretizer_linalg
@@ -169,6 +171,7 @@ target_sources(discretizer_linalg
 target_link_libraries(discretizer_linalg
   INTERFACE
     opendarts_compiler_flags
+    opendarts_time_report_flags
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

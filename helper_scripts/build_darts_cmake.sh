@@ -28,6 +28,7 @@ Help_Info()
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
   echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
   echo "   -v        : Enable build with valgrind support (OFF by default)"
+  echo "   -T        : Enable compilation time reporting (-ftime-report for GCC, -ftime-trace for Clang)"
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
 }
 
@@ -78,9 +79,10 @@ NT=8              # Number of threads by default 8
 gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 valgrind=false    # Whether support valgrind profiling or not
+time_report=false # Whether to enable compilation time reporting
 CUDA_ARCH="${CUDA_ARCH:-}"
 
-while getopts ":chtwmrab:d:j:g:Gpv" option; do
+while getopts ":chtwmrab:d:j:g:GpvT" option; do
     case "$option" in
         h) # Display help
            Help_Info
@@ -114,6 +116,8 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
            phreeqc=true;;
         v) # Valgrind build => Debug + symbols
            valgrind=true;;
+        T) # Enable compilation time reporting
+           time_report=true;;
     esac
 done
 
@@ -258,6 +262,9 @@ cmake_options="-D CMAKE_BUILD_TYPE=${config}"
 
 if [[ "$valgrind" = true ]]; then
     cmake_options+=" -D ENABLE_VALGRIND=ON"
+fi
+if [[ "$time_report" = true ]]; then
+    cmake_options+=" -D ENABLE_TIME_REPORT=ON"
 fi
 if [[ "$testing" == true ]]; then
     cmake_options+=" -D ENABLE_TESTING=ON"

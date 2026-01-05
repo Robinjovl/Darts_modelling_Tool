@@ -45,6 +45,7 @@ target_sources(engines_global
 target_link_libraries(engines_global
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
     linear_solvers # gets auxiliary and config via linear_solver. Kept like this for compatibility with old linear solvers
 )
 
@@ -129,6 +130,7 @@ target_sources(engines_build_info
 target_link_libraries(engines_build_info
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)
@@ -197,6 +199,7 @@ target_link_libraries(engines_conn_mesh
     engines_wells
     engines_interpolator
     opendarts_compiler_flags
+    opendarts_time_report_flags
     linear_solvers
 )
 
@@ -265,6 +268,7 @@ target_sources(engines_wells
 target_link_libraries(engines_wells
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
     linear_solvers
     engines_interpolator
 )
@@ -360,6 +364,7 @@ target_sources(engines_engines
 target_link_libraries(engines_engines
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
     linear_solvers
     engines_interpolator
 	HYPRE::HYPRE

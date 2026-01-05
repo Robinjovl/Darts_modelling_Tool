@@ -11,9 +11,9 @@ set(OD_ENGINES_INTERPOLATOR_SRC_FILES
 set(OD_ENGINES_INTERPOLATOR_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/interpolator_base.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linear_adaptive_cpu_interpolator.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/linear_adaptive_cpu_interpolator.tpp 
-  ${CMAKE_CURRENT_SOURCE_DIR}/linear_cpu_interpolator_base.hpp 
-  ${CMAKE_CURRENT_SOURCE_DIR}/linear_cpu_interpolator_base.tpp 
+  ${CMAKE_CURRENT_SOURCE_DIR}/linear_adaptive_cpu_interpolator.tpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/linear_cpu_interpolator_base.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/linear_cpu_interpolator_base.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linear_static_cpu_interpolator.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linear_static_cpu_interpolator.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_adaptive_cpu_interpolator.hpp
@@ -21,9 +21,9 @@ set(OD_ENGINES_INTERPOLATOR_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_interpolator_base.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_interpolator_base.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_interpolator_common.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_static_cpu_interpolator.hpp 
-  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_static_cpu_interpolator.tpp 
-  ${CMAKE_CURRENT_SOURCE_DIR}/evaluator_iface.h    
+  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_static_cpu_interpolator.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_static_cpu_interpolator.tpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/evaluator_iface.h
 )
 
 
@@ -35,18 +35,18 @@ add_library(engines_interpolator OBJECT "")
 
 if (CUDA)
   set(CUDA_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/evaluator_iface.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/evaluator_iface.cpp
   )
   set_source_files_properties(
     ${CUDA_SOURCES}
     PROPERTIES LANGUAGE CUDA)
-  
+
   target_sources(engines_interpolator PRIVATE
     ${CUDA_SOURCES}
   )
 endif()
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(engines_interpolator PUBLIC OPENDARTS_LINEAR_SOLVERS)
@@ -61,6 +61,7 @@ target_sources(engines_interpolator
 target_link_libraries(engines_interpolator
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
     linear_solvers
     engines_global
 )
@@ -78,13 +79,13 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_INTERPOLATOR
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_INTERPOLATOR_PUBLIC_HEADER_FILES})
 
 # Install the library file of engines_interpolator
-install(TARGETS engines_interpolator 
-  CONFIGURATIONS RELEASE    
+install(TARGETS engines_interpolator
+  CONFIGURATIONS RELEASE
   DESTINATION lib
 )
 
 install(TARGETS engines_interpolator
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 

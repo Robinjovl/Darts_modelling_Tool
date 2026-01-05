@@ -21,8 +21,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or ID
 # Turn off valgrind support by default
 option(ENABLE_VALGRIND "Enable Valgrind instrumentation (Debug build with symbols)" OFF)
 
-# Enable compilation time reporting (GCC only)
-option(ENABLE_TIME_REPORT "Enable -ftime-report for compilation time analysis (GCC only)" ON)
+# Enable compilation time reporting for main project only (not third-party)
+option(ENABLE_TIME_REPORT "Enable -ftime-report (GCC) / -ftime-trace (Clang) for compilation time analysis" OFF)
 
 # Set build type
 if(NOT CMAKE_BUILD_TYPE)
@@ -168,8 +168,19 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   endif()
 
   if(ENABLE_TIME_REPORT)
-    message(STATUS "  Enabling -ftime-report for compilation time analysis")
-    list(APPEND opendarts_cxx_compiler_flags "-ftime-report")
+    # GCC 13.x has an internal compiler error (ICE) in timevar.cc when -ftime-report
+    # is used with heavy template metaprogramming. Skip compile timing for GCC 13.x.
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0" AND
+       CMAKE_CXX_COMPILER_VERSION VERSION_LESS "14.0")
+      message(WARNING "  GCC ${CMAKE_CXX_COMPILER_VERSION} has a known ICE with -ftime-report. "
+                      "Skipping compile time reporting. Link time reporting still enabled.")
+    else()
+      message(STATUS "  Time report enabled: will add -ftime-report to main project targets only")
+      set(opendarts_time_report_compile_flag "-ftime-report")
+    endif()
+    # Link time reporting works fine
+    message(STATUS "  Link time report enabled: will add -Wl,--stats to main project targets only")
+    set(opendarts_time_report_link_flag "-Wl,--stats")
   endif()
 
   # Compiler specific helper variables (currently not needed)
@@ -197,8 +208,10 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   endif()
 
   if(ENABLE_TIME_REPORT)
-    message(STATUS "  Enabling -ftime-trace for compilation time analysis")
-    list(APPEND opendarts_cxx_compiler_flags "-ftime-trace")
+    message(STATUS "  Time report enabled: will add -ftime-trace to main project targets only")
+    set(opendarts_time_report_compile_flag "-ftime-trace")
+    # Note: Clang with GNU ld can also use -Wl,--stats; with lld use -Wl,--time-trace
+    set(opendarts_time_report_link_flag "-Wl,--stats")
   endif()
 
   # Compiler specific helper variables (currently not needed)
@@ -305,6 +318,25 @@ target_link_options(opendarts_compiler_flags
   INTERFACE
     ${opendarts_cxx_linker_flags}
 )
+
+# Build library for time reporting flags (only for main project, not third-party)
+add_library(opendarts_time_report_flags INTERFACE)
+if(ENABLE_TIME_REPORT)
+  # Add compile time reporting flag (-ftime-report for GCC, -ftime-trace for Clang)
+  if(DEFINED opendarts_time_report_compile_flag)
+    target_compile_options(opendarts_time_report_flags
+      INTERFACE
+        ${opendarts_time_report_compile_flag}
+    )
+  endif()
+  # Add link time reporting flag (-Wl,--stats for GNU ld)
+  if(DEFINED opendarts_time_report_link_flag)
+    target_link_options(opendarts_time_report_flags
+      INTERFACE
+        ${opendarts_time_report_link_flag}
+    )
+  endif()
+endif()
 # ------------------------------------------------------------------------------
 
 

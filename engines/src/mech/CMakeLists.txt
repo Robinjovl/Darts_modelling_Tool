@@ -42,6 +42,7 @@ target_sources(engines_mechanics
 target_link_libraries(engines_mechanics
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
     linear_solvers
     engines_global
     engines_interpolator

@@ -28,17 +28,17 @@ pybind11_add_module(discretizer
   ${DISCRETIZER_PYBIND11_PUBLIC_HEADER_FILES}
 )
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
-  target_compile_definitions(discretizer 
-  PUBLIC 
+  target_compile_definitions(discretizer
+  PUBLIC
     OPENDARTS_LINEAR_SOLVERS
     PYBIND11_ENABLED
   )
 else()
-  target_compile_definitions(discretizer 
-  PUBLIC 
+  target_compile_definitions(discretizer
+  PUBLIC
     PYBIND11_ENABLED
   )
 endif()
@@ -48,6 +48,7 @@ endif()
 target_link_libraries(discretizer
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
     opendarts_discretizer
     discretizer_build_info
     discretizer_mesh
@@ -67,7 +68,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_PYBIND11_SR
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_PYBIND11_PUBLIC_HEADER_FILES})
 
 # Install the library file of engines_mechanics
-install(TARGETS discretizer 
+install(TARGETS discretizer
   CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
   DESTINATION ./
 )

@@ -5,12 +5,12 @@
 set(OD_ENGINES_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_base.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_nl_cpu.cpp # non-linear  
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_nl_cpu.cpp # non-linear
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp # geothermal
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_elastic_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_elasticity_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_pm_cpu.cpp  # poromechanics  
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_pm_cpu.cpp  # poromechanics
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_mp_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_evaluator_iface.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_globals.cpp
@@ -43,7 +43,7 @@ pybind11_add_module(engines
 
 if (CUDA)
   set(CUDA_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_gpu.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_gpu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_gpu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_gpu_tools.cpp
   )
@@ -57,7 +57,7 @@ if (CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp
 
     PROPERTIES LANGUAGE CUDA)
-  
+
   target_sources(engines PRIVATE
     ${CUDA_SOURCES}
   )
@@ -66,16 +66,16 @@ if (CUDA)
   # set_target_properties(engines PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
-  target_compile_definitions(engines 
-    PUBLIC 
+  target_compile_definitions(engines
+    PUBLIC
       OPENDARTS_LINEAR_SOLVERS
       PYBIND11_ENABLED
     )
 else()
-  target_compile_definitions(engines 
+  target_compile_definitions(engines
     PUBLIC
       PYBIND11_ENABLED
     )
@@ -84,6 +84,7 @@ endif()
 target_link_libraries(engines
   PUBLIC
     opendarts_compiler_flags
+    opendarts_time_report_flags
     engines_global
     engines_wells
     engines_build_info
@@ -106,7 +107,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_PYBIND11_SRC
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES})
 
 # Install the library file of engines
-install(TARGETS engines 
+install(TARGETS engines
   CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
   DESTINATION ./
 )
