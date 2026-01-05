@@ -178,12 +178,18 @@ public:
 
   /// @brief reverse connections and sort them by both row and col
   int reverse_and_sort();
-  /// @brief reverse connections and sort them by both row and col for a one-way double array at all connections
-  std::vector<double> reverse_and_sort_one_way_double(const std::vector<double>& one_way_double);
-  /// @brief reverse connections and sort them by both row and col for a one-way bool array at all connections
-  std::vector<bool> reverse_and_sort_one_way_bool(const std::vector<bool>& one_way_bool);
+
+  /// @brief reverse and sort values at all connections by both row and col for a one-way array, for DFM well only
+  /// @param one_way_values: one-way array of values at all connections
+  /// @param two_way_values: two-way array of values at all connections
+  /// @tparam T: type of values
+  /// @tparam IS_DERS: if true, the values are derivatives of phase velocities
+  template <typename T, bool IS_DERS = false>
+  void reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::vector<T>& two_way_values);
+
   /// @brief reverse connections and renumerate velocity mappers and sort them by both row and col
   int reverse_and_sort_dvel();
+
   /// @brief reverse mpsa connections and sort them by both row and col
   int reverse_and_sort_mpfa();
   int reverse_and_sort_mpsa();

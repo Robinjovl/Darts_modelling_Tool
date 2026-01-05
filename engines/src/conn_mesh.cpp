@@ -828,33 +828,41 @@ conn_mesh::reverse_and_sort()
 
   two_way_double.resize(n_conns);
   two_way_bool.resize(n_conns);
-  is_dfm_conn = reverse_and_sort_one_way_bool(one_way_is_dfm_conn);
+  reverse_and_sort_one_way(one_way_is_dfm_conn, is_dfm_conn);
 
   return 0;
 }
 
-std::vector<double>
-conn_mesh::reverse_and_sort_one_way_double(const std::vector<double>& one_way_double)
+template <typename T, bool IS_DERS>
+void
+conn_mesh::reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::vector<T>& two_way_values)
 {
-	for (index_t j = 0; j < n_conns / 2; ++j)
+	if constexpr (IS_DERS) // if: derivatives of phase velocities
 	{
-		two_way_double[one_way_to_conn_index_forward[j]] = -one_way_double[j];  // m->p
-		two_way_double[one_way_to_conn_index_reverse[j]] = one_way_double[j];  // p->m
+		// derivatives of velocity w.r.t. primary variables of two adjacent blocks
+		const uint8_t vel_der_size = 2 * n_vars;
+		assert(one_way_values.size() == n_conns * vel_der_size);
+		assert(two_way_values.size() == n_conns * vel_der_size);
+
+		for (index_t j = 0; j < n_conns / 2; ++j)
+		{
+			for (uint8_t v = 0; v < vel_der_size; v++)
+			{
+				two_way_values[one_way_to_conn_index_forward[j] * vel_der_size + v] = -one_way_values[j * vel_der_size + v]; // m->p
+				two_way_values[one_way_to_conn_index_reverse[j] * vel_der_size + v] = one_way_values[j * vel_der_size + v]; // p->m
+			}
+		}
 	}
-
-	return two_way_double;
-}
-
-std::vector<bool>
-conn_mesh::reverse_and_sort_one_way_bool(const std::vector<bool>& one_way_bool)
-{
-	for (index_t j = 0; j < n_conns / 2; ++j)
+	else // else: reverse and sort values
 	{
-		two_way_bool[one_way_to_conn_index_forward[j]] = -one_way_bool[j];  // m->p
-		two_way_bool[one_way_to_conn_index_reverse[j]] = one_way_bool[j];  // p->m
+		assert(one_way_values.size() == n_conns);
+		assert(two_way_values.size() == n_conns);
+		for (index_t j = 0; j < n_conns / 2; ++j)
+		{
+			two_way_values[one_way_to_conn_index_forward[j]] = -one_way_values[j];  // m->p
+			two_way_values[one_way_to_conn_index_reverse[j]] = one_way_values[j];  // p->m
+		}
 	}
-
-	return two_way_bool;
 }
 
 int

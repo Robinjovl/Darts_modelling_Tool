@@ -120,8 +120,6 @@ public:
 
   void update_two_way_phase_vels_and_ders();
 
-  std::vector<value_t> reverse_and_sort_phase_vels_ders(const std::vector<value_t>& one_way_phase_vels_ders);
-
   void enable_flux_output();
 };
 
