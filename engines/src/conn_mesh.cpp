@@ -833,38 +833,6 @@ conn_mesh::reverse_and_sort()
   return 0;
 }
 
-template <typename T, bool IS_DERS>
-void
-conn_mesh::reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::vector<T>& two_way_values)
-{
-	if constexpr (IS_DERS) // if: derivatives of phase velocities
-	{
-		// derivatives of velocity w.r.t. primary variables of two adjacent blocks
-		const uint8_t vel_der_size = 2 * n_vars;
-		assert(one_way_values.size() == n_conns * vel_der_size);
-		assert(two_way_values.size() == n_conns * vel_der_size);
-
-		for (index_t j = 0; j < n_conns / 2; ++j)
-		{
-			for (uint8_t v = 0; v < vel_der_size; v++)
-			{
-				two_way_values[one_way_to_conn_index_forward[j] * vel_der_size + v] = -one_way_values[j * vel_der_size + v]; // m->p
-				two_way_values[one_way_to_conn_index_reverse[j] * vel_der_size + v] = one_way_values[j * vel_der_size + v]; // p->m
-			}
-		}
-	}
-	else // else: reverse and sort values
-	{
-		assert(one_way_values.size() == n_conns);
-		assert(two_way_values.size() == n_conns);
-		for (index_t j = 0; j < n_conns / 2; ++j)
-		{
-			two_way_values[one_way_to_conn_index_forward[j]] = -one_way_values[j];  // m->p
-			two_way_values[one_way_to_conn_index_reverse[j]] = one_way_values[j];  // p->m
-		}
-	}
-}
-
 int
 conn_mesh::reverse_and_sort_dvel()
 {
