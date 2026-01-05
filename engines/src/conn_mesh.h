@@ -186,40 +186,7 @@ public:
   /// @tparam T: type of values
   /// @tparam IS_DERS: if true, the values are derivatives of phase velocities
   template <typename T, bool IS_DERS = false>
-  inline void reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::vector<T>& two_way_values)
-  {
-    if constexpr (IS_DERS) // derivatives of phase velocities
-    {
-      const uint8_t vel_der_size = static_cast<uint8_t>(2 * n_vars);
-      const size_t expected_size = static_cast<size_t>(n_conns) * vel_der_size;
-      if (two_way_values.size() != expected_size)
-        two_way_values.resize(expected_size);
-
-      for (index_t j = 0; j < n_conns / 2; ++j)
-      {
-        const size_t src = static_cast<size_t>(j) * vel_der_size;
-        const size_t fwd = static_cast<size_t>(one_way_to_conn_index_forward[j]) * vel_der_size;
-        const size_t rev = static_cast<size_t>(one_way_to_conn_index_reverse[j]) * vel_der_size;
-
-        for (uint8_t v = 0; v < vel_der_size; ++v)
-        {
-          two_way_values[fwd + v] = -one_way_values[src + v]; // m->p
-          two_way_values[rev + v] = one_way_values[src + v];  // p->m
-        }
-      }
-    }
-    else // scalar/vector values
-    {
-      if (two_way_values.size() != static_cast<size_t>(n_conns))
-        two_way_values.resize(n_conns);
-
-      for (index_t j = 0; j < n_conns / 2; ++j)
-      {
-        two_way_values[one_way_to_conn_index_forward[j]] = -one_way_values[j]; // m->p
-        two_way_values[one_way_to_conn_index_reverse[j]] = one_way_values[j];  // p->m
-      }
-    }
-  };
+  void reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::vector<T>& two_way_values);
 
   /// @brief reverse connections and renumerate velocity mappers and sort them by both row and col
   int reverse_and_sort_dvel();

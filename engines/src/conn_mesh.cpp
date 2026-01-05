@@ -833,6 +833,48 @@ conn_mesh::reverse_and_sort()
   return 0;
 }
 
+template <typename T, bool IS_DERS>
+void
+conn_mesh::reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::vector<T>& two_way_values)
+{
+  if constexpr (IS_DERS) // derivatives of phase velocities
+  {
+    const uint8_t vel_der_size = static_cast<uint8_t>(2 * n_vars);
+    const size_t expected_size = static_cast<size_t>(n_conns) * vel_der_size;
+    if (two_way_values.size() != expected_size)
+      two_way_values.resize(expected_size);
+
+    for (index_t j = 0; j < n_conns / 2; ++j)
+    {
+      const size_t src = static_cast<size_t>(j) * vel_der_size;
+      const size_t fwd = static_cast<size_t>(one_way_to_conn_index_forward[j]) * vel_der_size;
+      const size_t rev = static_cast<size_t>(one_way_to_conn_index_reverse[j]) * vel_der_size;
+
+      for (uint8_t v = 0; v < vel_der_size; ++v)
+      {
+        two_way_values[fwd + v] = -one_way_values[src + v]; // m->p
+        two_way_values[rev + v] = one_way_values[src + v];  // p->m
+      }
+    }
+  }
+  else // scalar/vector values
+  {
+    if (two_way_values.size() != static_cast<size_t>(n_conns))
+      two_way_values.resize(n_conns);
+
+    for (index_t j = 0; j < n_conns / 2; ++j)
+    {
+      two_way_values[one_way_to_conn_index_forward[j]] = -one_way_values[j]; // m->p
+      two_way_values[one_way_to_conn_index_reverse[j]] = one_way_values[j];  // p->m
+    }
+  }
+}
+
+// Explicit template instantiations to avoid code bloat in headers
+template void conn_mesh::reverse_and_sort_one_way<bool, false>(const std::vector<bool>&, std::vector<bool>&);
+template void conn_mesh::reverse_and_sort_one_way<value_t, false>(const std::vector<value_t>&, std::vector<value_t>&);
+template void conn_mesh::reverse_and_sort_one_way<value_t, true>(const std::vector<value_t>&, std::vector<value_t>&);
+
 int
 conn_mesh::reverse_and_sort_dvel()
 {
