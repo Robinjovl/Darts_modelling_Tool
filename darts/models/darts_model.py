@@ -857,8 +857,8 @@ class DartsModel:
                 start = w.well_head_idx * self.physics.n_vars
                 stop = (w.well_head_idx + w.num_segments) * self.physics.n_vars
 
-                Xn_dfm_well = np.array(self.physics.engine.Xn[start:stop])
-                X_dfm_well = np.array(self.physics.engine.X[start:stop])
+                Xn_dfm_well = np.asarray(self.physics.engine.Xn)[start:stop]
+                X_dfm_well = np.asarray(self.physics.engine.X)[start:stop]
                 well_phase_v, well_phase_v_d = self.wells[
                     w.name
                 ].eval_phase_vels_and_ders(Xn_dfm_well, X_dfm_well, dt, t, iter_counter)
