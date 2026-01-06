@@ -64,6 +64,7 @@ class PropertyContainer(PropertyBase):
         self.viscosity_ev = {}
         self.enthalpy_ev = {}
         self.conductivity_ev = {}
+        self.IFT_ev = {}
 
         self.rel_perm_ev = []
         self.rel_well_perm_ev = []

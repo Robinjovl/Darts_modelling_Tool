@@ -62,7 +62,7 @@ def run_darts(mode):
             # compute well time data
             time_data_dict = n.output.store_well_time_data()
 
-            # save well time data
+            # plot well time data
             time_data_df = pd.DataFrame.from_dict(time_data_dict)
             time_data_df.plot(x='time', y=['well_P1_BHP'])
             time_data_df.plot(x='time', y=['well_P1_molar_rate_w_by_sum_perfs', 'well_P1_molar_rate_w_at_wh'])
@@ -94,4 +94,3 @@ if __name__ == '__main__':
 
     for mode in mode_list:
         run_darts(mode)
-

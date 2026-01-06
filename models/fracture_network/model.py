@@ -3,6 +3,7 @@ from darts.physics.geothermal.geothermal import Geothermal
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
+from darts.engines import ms_well
 import os
 import numpy as np
 import meshio
@@ -296,15 +297,16 @@ class Model(CICDModel):
         """
         self.calc_well_loc()
 
+        well_type = ms_well.MS_Type.EPM
         for i in range(len(self.well_perf_loc[0])):
-            self.reservoir.add_well(f'I{i + 1}')
-            self.reservoir.add_perforation(self.reservoir.wells[-1].name, cell_index=self.well_perf_loc[0][i],
-                                 well_index=well_index, well_indexD=0, verbose=True)
+            self.reservoir.add_well(f'I{i + 1}', well_type)
+            self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=self.well_perf_loc[0][i],
+                                           well_index=well_index, well_indexD=0, verbose=True)
 
         for i in range(len(self.well_perf_loc[1])):
-            self.reservoir.add_well(f'P{i + 1}')
-            self.reservoir.add_perforation(self.reservoir.wells[-1].name, cell_index=self.well_perf_loc[1][i],
-                                 well_index=well_index, well_indexD=0, verbose=True)
+            self.reservoir.add_well(f'P{i + 1}', well_type)
+            self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=self.well_perf_loc[1][i],
+                                           well_index=well_index, well_indexD=0, verbose=True)
 
     def get_perm_unstr_from_struct_grid(self, perm_file, input_data):
         # Set non-uniform permeability

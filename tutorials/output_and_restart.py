@@ -149,18 +149,12 @@ for mdir in accepted_dirs:
     # time_vector, property_array = n.output.output_properties(timestep = 5.5) # raises a TypeError
     # time_vector, property_array = n.output.output_properties(filepath = output_folder + 'bublegum') # raises FileNotFoundError
 
-    """ ----------------------------- WELL DATA ----------------------------- """
+    """ ----------------------------- WELL TIME DATA ----------------------------- """
 
-    # compute well time data
-    time_data_dict = n.output.store_well_time_data()
-    time_data_df = pd.DataFrame.from_dict(time_data_dict) # data frame for plotting
+    # compute and save well time data
+    time_data_dict = n.output.store_well_time_data(save_output_files=True)
 
-    # save well time data
-    time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
-    writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
-    time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
-    writer.close()
-
+    # plot well time data
     n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])
 
     """ ------------------------ POST PROCESSING ------------------------ """
