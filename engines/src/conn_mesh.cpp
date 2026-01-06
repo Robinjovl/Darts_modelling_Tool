@@ -826,8 +826,6 @@ conn_mesh::reverse_and_sort()
   get_res_tran(test_t, test_tD);
   set_res_tran(test_t, test_tD);
 
-  two_way_double.resize(n_conns);
-  two_way_bool.resize(n_conns);
   reverse_and_sort_one_way(one_way_is_dfm_conn, is_dfm_conn);
 
   return 0;
@@ -837,7 +835,7 @@ template <typename T, bool IS_DERS>
 void
 conn_mesh::reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::vector<T>& two_way_values)
 {
-  if constexpr (IS_DERS) // derivatives of phase velocities
+  if constexpr (IS_DERS) // if used to reverse and sort derivatives of phase velocities
   {
     const uint8_t vel_der_size = static_cast<uint8_t>(2 * n_vars);
     const size_t expected_size = static_cast<size_t>(n_conns) * vel_der_size;

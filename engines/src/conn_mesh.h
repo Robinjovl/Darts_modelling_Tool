@@ -219,10 +219,6 @@ public:
   std::vector<value_t> tranD;
   /// [n_conns] array that shows if it is a DFM connection or not
   std::vector<bool> is_dfm_conn;
-  /// [n_conns] array of two way doubles
-  std::vector<double> two_way_double;
-  /// [n_conns] array of two way bools
-  std::vector<bool> two_way_bool;
   /// [n_conns] array of heat conduction transissibility values for given connection (transmis value)
   std::vector<value_t> tran_heat_cond;
   /// [n_conns] array of transmissibilities that describe the forces due to thermal dilation
