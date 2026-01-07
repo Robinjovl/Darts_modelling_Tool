@@ -1,0 +1,22 @@
+
+dimensions: "2D"
+mesh: "unstructured"
+mesh_generation: "yes"
+over_under_burden: "yes"
+discretizer: ["unstr_discretizer"]
+cells: ["wedge"]
+
+phases: ["1"]
+components: ["1"]
+physics: ["thermal"]
+engine: ["geothermal"]
+fracture: ["flow"]
+
+fluids: ["water"]
+rock: ["homogeneous"]
+
+initialization: ["gradient"]
+boundary_conditions: ["large volume"]
+wells: ["yes"]
+
+input_data: ["yes"]

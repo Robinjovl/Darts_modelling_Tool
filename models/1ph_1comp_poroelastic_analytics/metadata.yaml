@@ -1,0 +1,22 @@
+
+dimensions: "2D"
+mesh: "unstructured"
+mesh_generation: "yes"
+discretizer: ["pm_discretizer", "mech_discretizer"]
+cells: ["hex", "wedge"]
+
+phases: "1"
+components: "1"
+physics: ["poroelastic", "thermoporoelastic", "quasi-static"]
+fluid: [""]
+rock: ["homogeneous", "heterogeneous"]
+flash: ["no"]
+
+initialization: ["uniform"]
+boundary_conditions: ["Dirichle", "Neumann", "Mixed"]
+wells: ["no"]
+
+analytical_solution: ["Terzaghi", "Terzaghi 2 layers", "Mandel", "Bai"]
+convergence_test: ["yes"]
+
+input_data: ["yes"]

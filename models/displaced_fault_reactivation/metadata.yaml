@@ -1,0 +1,22 @@
+
+dimensions: "3D"
+mesh: "unstructured"
+mesh_generation: "yes"
+discretizer: ["pm_discretizer"]
+cells: ["tetra"]
+
+phases: "1"
+components: "1"
+physics: ["poroelastic", "quasi-static", "dynamic", "mixed"]
+fracture: ["contact"]
+friction_law: ["static", "RSF"]
+fluid: [""]
+rock: ["homogeneous", "heterogeneous"]
+flash: ["no"]
+
+initialization: ["uniform"]
+boundary_conditions: ["Dirichle", "Neumann", "Mixed"]
+wells: ["no", "yes"]
+
+
+input_data: ["yes"]

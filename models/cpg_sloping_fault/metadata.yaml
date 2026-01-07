@@ -1,0 +1,20 @@
+
+dimensions: "3D"
+mesh: "CPG"
+over_under_burden: "yes"
+discretizer: ["c++_discretizer"]
+cells: ["hex"]
+
+phases: ["1", "2"]
+components: ["1", "2"]
+physics: ["thermal", "isothermal"]
+engine: ["geothermal", "compositional"]
+
+fluids: ["water", "oil", "CO2"]
+rock: ["homogeneous", "heterogeneous"]
+
+initialization: ["uniform", "gradient"]
+boundary_conditions: ["large volume"]
+wells: ["yes"]
+
+input_data: ["yes"]

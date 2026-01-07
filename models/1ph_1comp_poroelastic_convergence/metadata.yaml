@@ -1,0 +1,21 @@
+
+dimensions: "2D"
+mesh: "unstructured"
+discretizer: ["pm_discretizer", "mech_discretizer"]
+mesh_generation: "no"
+cells: ["hex", "wedge"]
+
+phases: "1"
+components: "1"
+physics: ["poroelastic",  "thermoporoelastic", "quasi-static"]
+fluid: [""]
+rock: ["homogeneous"]
+flash: ["no"]
+
+initialization: ["uniform"]
+boundary_conditions: ["no"]
+wells: ["no"]
+
+convergence_test: ["yes"]
+
+input_data: ["yes"]
