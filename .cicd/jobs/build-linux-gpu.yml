@@ -30,7 +30,7 @@ build-linux-oahu-3.10-gpu:
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
         GSELINSOLVERSPATH: /oahu/data/gitlabrunner/darts-gitlab-runner-data/darts-linear-solvers-gpu-hypre
     before_script:
-        - module load cuda/23.5
+        - module load nvhpc-hpcx-cuda12/25.1
         - source ${CONDAPATH}/bin/activate
         - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
         - conda activate ${CONDA_ENV}
