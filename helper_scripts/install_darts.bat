@@ -162,6 +162,24 @@ if not defined conda_prefix (
   exit /b 0
 )
 
+REM Check Python version compatibility (Reaktoro on conda-forge requires Python >=3.10, <3.13)
+for /f %%v in ('python -c "import sys; print(sys.version_info.minor)"') do set "py_minor=%%v"
+if !py_minor! LSS 10 goto :reaktoro_version_error
+if !py_minor! GEQ 13 goto :reaktoro_version_error
+goto :reaktoro_install
+
+:reaktoro_version_error
+for /f %%v in ('python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"') do set "py_version=%%v"
+echo Warning: Reaktoro on conda-forge requires Python ^>=3.10 and ^<3.13, but the current environment has Python !py_version!.
+echo.
+echo To install Reaktoro, create a compatible conda environment (e.g., Python 3.12):
+echo   conda create -n darts-rkt python=3.12 -y
+echo   conda activate darts-rkt
+echo.
+echo Then re-run this script with --with-deps flag.
+exit /b 0
+
+:reaktoro_install
 set "REAKTORO_LOG=%cd%\make_reaktoro.log"
 >> "%REAKTORO_LOG%" (
   echo + conda install -y -c conda-forge -p "!conda_prefix!" reaktoro
