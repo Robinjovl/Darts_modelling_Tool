@@ -1,69 +1,29 @@
 #ifdef PYBIND11_ENABLED
 #include <pybind11/pybind11.h>
 #include "py_globals.h"
-#include <pybind11/stl.h>
-#include <tuple>
-
-#include "py_interpolator_exposer.hpp"
 
 namespace py = pybind11;
 
-// Define a structure to hold A and B values
-template<int AVal, int BVal>
-struct ABPair
-{
-  static constexpr int A = AVal;
-  static constexpr int B = BVal;
-};
-
-// Recursive variadic template to handle each pair
-template<typename T, typename... Rest>
-void expose_recursive_exposer(py::module& m) {
-	// N_DIMS = 1, 2, ..., N_DIMS_MAX
-	const int N_DIMS_MAX = MAX_NC;
-  using ExposerType = recursive_exposer_ndims_nops<interpolator_exposer, py::module, N_DIMS_MAX, T::A, T::B>;
-  ExposerType exposer;
-  exposer.expose(m);
-
-  if constexpr (sizeof...(Rest) > 0) {
-    expose_recursive_exposer<Rest...>(m);
-  }
-}
+// Forward declarations of split functions
+void pybind_operator_set_interpolator_super_part1(py::module &m);
+void pybind_operator_set_interpolator_super_part2(py::module &m);
+void pybind_operator_set_interpolator_super_part3(py::module &m);
+void pybind_operator_set_interpolator_super_part4(py::module &m);
 
 void pybind_operator_set_interpolator_super(py::module &m)
 {
-  // N_OPS = A * NC + B
-  expose_recursive_exposer<
-    /*  engine_super_*
-        N_OPS = (2 * NP + 2) * NC + 7 * NP + 3
-    */
+  // Call all split parts
+  // Part 1: Thermal single-phase and two-phase (A=4,B=10), (A=6,B=17)
+  pybind_operator_set_interpolator_super_part1(m);
 
-    // NP = 1: A =  4, B =  10 (th)
-    ABPair<4, 10>,     // thermal problem
+  // Part 2: Thermal three-phase and four-phase (A=8,B=24), (A=10,B=31)
+  pybind_operator_set_interpolator_super_part2(m);
 
-    // NP = 2: A =  6, B = 17(th)
-    ABPair<6, 17>,    // thermal problem, two phase
+  // Part 3: Geothermal and poroelasticity PM (A=4,B=4), (A=2,B=0)
+  pybind_operator_set_interpolator_super_part3(m);
 
-    // NP = 3: A =  8, B = 19 (th) ???
-    ABPair<8, 24>,    // Three phase thermal
-
-    // NP = 4: A = 10, B = 21 (th)
-    ABPair<10, 31>,   // isothermal problem, four phases
-
-    // ???
-    ABPair<4, 4>,     // geothermal problem, three phases
-
-    ABPair<2, 0>,     // poroelasticity, pm engine
-
-    /*  engine_super_elastic_*
-        N_OPS = (2 * NP + 2) * NC + 7 * NP + 4
-    */
-    // NP = 1: A =  4, B =  8
-    ABPair<4, 11>,     // poroelasticity, single-phase
-
-    // NP = 1: A =  6, B =  12
-    ABPair<6, 18>     // poroelasticity, two-phase
-  >(m);
+  // Part 4: engine_super_elastic (A=4,B=11), (A=6,B=18)
+  pybind_operator_set_interpolator_super_part4(m);
 }
 
 #endif //PYBIND11_ENABLED

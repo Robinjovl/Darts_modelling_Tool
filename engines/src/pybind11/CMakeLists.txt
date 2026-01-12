@@ -5,20 +5,29 @@
 set(OD_ENGINES_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_base.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_nl_cpu.cpp # non-linear  
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_nl_cpu.cpp # non-linear
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp # geothermal
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_elastic_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_elasticity_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_pm_cpu.cpp  # poromechanics  
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_pm_cpu.cpp  # poromechanics
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_mp_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_evaluator_iface.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_globals.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_ms_well.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp  # geothermal
+  # Split interpolator_super into 4 parts for parallel compilation
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part1.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part2.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part3.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part4.cpp
+  # Split interpolator_rates into 3 parts for parallel compilation
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part1.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part2.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part3.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_well_controls.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_main.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_contact.cpp
@@ -43,7 +52,7 @@ pybind11_add_module(engines
 
 if (CUDA)
   set(CUDA_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_gpu.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_gpu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_gpu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_gpu_tools.cpp
   )
@@ -53,11 +62,18 @@ if (CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part1.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part4.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part1.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part3.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp
 
     PROPERTIES LANGUAGE CUDA)
-  
+
   target_sources(engines PRIVATE
     ${CUDA_SOURCES}
   )
@@ -66,16 +82,16 @@ if (CUDA)
   # set_target_properties(engines PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
-  target_compile_definitions(engines 
-    PUBLIC 
+  target_compile_definitions(engines
+    PUBLIC
       OPENDARTS_LINEAR_SOLVERS
       PYBIND11_ENABLED
     )
 else()
-  target_compile_definitions(engines 
+  target_compile_definitions(engines
     PUBLIC
       PYBIND11_ENABLED
     )
@@ -106,7 +122,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_PYBIND11_SRC
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES})
 
 # Install the library file of engines
-install(TARGETS engines 
+install(TARGETS engines
   CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
   DESTINATION ./
 )
