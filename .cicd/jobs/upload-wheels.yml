@@ -5,6 +5,7 @@ upload_wheels:
         - if: $UPLOAD_WHEELS == "1"
     tags:
         - linux
+        - linux_wsl
     before_script:
         - apt-get update -qq && apt-get install -y -qq smbclient
     script:
@@ -40,6 +41,7 @@ upload_wheels_odls:
         - if: $UPLOAD_WHEELS == "1"
     tags:
         - linux
+        - linux_wsl
     before_script:
         - apt-get update -qq && apt-get install -y -qq smbclient
     script:

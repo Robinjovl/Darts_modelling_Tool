@@ -3,6 +3,7 @@
     # Will be executed on runner with windows tag - that assumed to run on windows host
     tags:
         - windows-shell
+        - windows_gpu
     variables:
         CONDA_ENV: "darts-win-${CI_JOB_ID}"
         CONDA_BIN_PATH: 'D:\miniconda3\condabin'
