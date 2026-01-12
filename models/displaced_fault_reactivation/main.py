@@ -493,7 +493,7 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
             from matplotlib.animation import FuncAnimation
             from matplotlib import rcParams
             # substitute with your own path to FFMPEG installation
-            # https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z
+            # download link https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z
             rcParams['animation.ffmpeg_path'] = r'c:\work\packages\ffmpeg-6.0\bin\ffmpeg.exe'
             rcParams['animation.ffmpeg_path'] = r'C:\software\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe'
             times, files = read_pvd(os.path.join(data_folder, 'solution_fault.pvd'))
@@ -644,22 +644,22 @@ def run_all():
               'timesteps': 5 * np.ones(4),
               'depletion': {'mode': 'well', 'value': -250.0},
               'friction_law': 'slip_weakening',
-              'mesh_file': 'meshes/new_setup_coarse_longer.geo'}
-    cases += [config]
+              'mesh_file': 'meshes/new_setup_coarse.geo'}
+    #cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],
               'depletion': {'mode': 'uniform', 'value': -250.0},
               'friction_law': 'static',
               'mesh_file': 'meshes/new_setup_coarse.geo'}
-    #cases += [config]
+    cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],
               'depletion': {'mode': 'uniform', 'value': -172.4}, # -172.685 is more precise, requires finer mesh
               'friction_law': 'slip_weakening',
               'mesh_file': 'meshes/new_setup_coarse.geo'}
-    #cases += [config]
+    cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': 25 * [1.0],
@@ -681,5 +681,5 @@ def run_all():
     # plot_profiles(data_folder=output_directory, labels=labels, analytics=None, animate=True)
 
 if __name__ == '__main__':
-    #run_tests()
-    run_all()
+    run_tests()
+    #run_all()
