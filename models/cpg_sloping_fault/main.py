@@ -117,14 +117,10 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
                 time_data.drop(columns=k, inplace=True)
 
     if not(m.idata.supress_all_output):
-        # COMPUTE TIME DATA
-        td = m.output.store_well_time_data()
+        # compute and save well time data
+        td = m.output.store_well_time_data(save_output_files=True)
         time_data = pd.DataFrame.from_dict(td)
         # add_columns_time_data(time_data)
-        time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
-        writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data.xlsx'))
-        time_data.to_excel(writer, sheet_name='time_data')
-        writer.close()
 
         # COMPUTE TIME DATA AT FIXED REPORTING STEPS
         time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)

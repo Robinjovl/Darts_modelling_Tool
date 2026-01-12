@@ -2,6 +2,7 @@ import numpy as np
 import os
 
 from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, check_arrays, make_burden_layers, make_full_cube
+from darts.engines import ms_well
 from darts.reservoirs.cpg_reservoir import read_int_array, read_float_array
 
 from darts.tools.gen_cpg_grid import gen_cpg_grid
@@ -110,10 +111,11 @@ class Model_CPG(CICDModel):
             self.reservoir.global_data.update({'rocknum': arrays['ROCKNUM']})
     def set_wells(self):
         # add wells and perforations, 1-based IJK indices
+        well_type = ms_well.MS_Type.EPM
         if hasattr(self.idata, 'schfile'):
             # apply to the reservoir from idata filled before by idata.read_and_add_perforations()
             for wname, wdata in self.idata.well_data.wells.items():
-                self.reservoir.add_well(wname)
+                self.reservoir.add_well(wname, well_type)
                 for perf_tuple in wdata.perforations:
                     perf = perf_tuple[1]
                     # adjust to account for added overburden layers
@@ -121,18 +123,18 @@ class Model_CPG(CICDModel):
                     # take well index if it was defined in sch file, otherwise take the default one from idata
                     wi = perf.well_index if perf.well_index is not None else self.idata.geom.well_index
                     self.reservoir.add_perforation(wname,
-                                                   cell_index=perf_ijk_new,
+                                                   res_cell_idx=perf_ijk_new,
                                                    well_index=wi, well_indexD=self.idata.geom.well_indexD,
-                                                   multi_segment=perf.multi_segment, verbose=True)
+                                                   ms_epm=perf.ms_epm, verbose=True)
         else:
             # add wells and perforations, 1-based indices
             for wname, wdata in self.idata.well_data.wells.items():
-                self.reservoir.add_well(wname)
+                self.reservoir.add_well(wname, well_type)
                 for k in range(1 + self.idata.geom.burden_layers,  self.reservoir.nz+1-self.idata.geom.burden_layers):
                     self.reservoir.add_perforation(wname,
-                                                   cell_index=(wdata.location.I, wdata.location.J, k),
+                                                   res_cell_idx=(wdata.location.I, wdata.location.J, k),
                                                    well_index=self.idata.geom.well_index, well_indexD=self.idata.geom.well_indexD,
-                                                   multi_segment=False, verbose=True)
+                                                   ms_epm=False, verbose=True)
 
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname

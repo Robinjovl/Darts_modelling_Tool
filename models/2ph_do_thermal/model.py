@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import value_vector
+from darts.engines import value_vector, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -33,10 +33,11 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        well_type = ms_well.MS_Type.EPM
+        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
+        self.reservoir.add_well("P1", well_type)
+        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         """Physical properties"""
@@ -68,7 +69,7 @@ class Model(CICDModel):
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
-                                     min_t=273.15 + 20, max_t=273.15 + 200)
+                                     min_t=273.15, max_t=273.15 + 200)
         self.physics.add_property_region(property_container)
 
         return

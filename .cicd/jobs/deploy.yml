@@ -44,7 +44,7 @@ deploy-testpypi:
         - build-linux-3.10-ODLS
         - build-linux-3.11-ODLS
         - build-linux-3.12-ODLS
-        #- build-linux-3.13-ODLS
+        - build-linux-3.13-ODLS
         - build-windows-3.10-ODLS
         - build-windows-3.11-ODLS
         - build-windows-3.12-ODLS

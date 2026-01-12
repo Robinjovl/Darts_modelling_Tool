@@ -25,7 +25,7 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_bos_cpr.h"
 #include "linsolv_bos_fs_cpr.h"
 #include "csr_matrix.h"
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef WITH_GPU
 #include "linsolv_bos_cpr_gpu.h"
@@ -143,6 +143,7 @@ public:
 	virtual double calc_well_residual_L1();
 	virtual double calc_well_residual_L2();
 	virtual double calc_well_residual_Linf();
+	virtual double calc_coupled_well_reservoir_residual(int method);
 
 	virtual void average_operator(std::vector<value_t> &av_op);
 
@@ -221,9 +222,9 @@ public:
 	  }
 
 	  // compute inverses
-	  for (index_t i = 0; i < n_blocks; i++) 
+	  for (index_t i = 0; i < n_blocks; i++)
 	  {
-		for (uint8_t c = 0; c < N_VARS; c++) 
+		for (uint8_t c = 0; c < N_VARS; c++)
 		{
 		  value_t& val = max_row_values_inv[i * N_VARS + c];
 		  if (val != 0.0)
@@ -246,12 +247,12 @@ public:
 		  inv_vals[c] = max_row_values_inv[i * N_VARS + c];
 
 		// scale jacobian
-		for (index_t j = csr_start; j < csr_end; j++) 
+		for (index_t j = csr_start; j < csr_end; j++)
 		{
 		  const index_t base = j * N_VARS_SQ;
-		  for (uint8_t c = 0; c < N_VARS; c++) 
+		  for (uint8_t c = 0; c < N_VARS; c++)
 		  {
-			for (uint8_t v = 0; v < N_VARS; v++) 
+			for (uint8_t v = 0; v < N_VARS; v++)
 			  Jac[base + c * N_VARS + v] *= inv_vals[c];
 		  }
 		}
@@ -261,7 +262,7 @@ public:
 		  RHS[i * N_VARS + c] *= inv_vals[c];
 	  }
 	};
-	
+
 	/// @} // end of Methods
 
 	// properties
@@ -300,7 +301,7 @@ public:
 
 	// @brief python wrapper for jacobian values
 	py::array_t<value_t> jac_vals;
-	
+
 	// @brief python wrappers for storing BCSR jacobian structure
 	py::array_t<index_t> jac_rows, jac_cols, jac_diags;
 
@@ -361,7 +362,7 @@ public:
 	std::vector<value_t> X0, RHS, dX;
 
 	value_t dt, prev_usual_dt, stop_time;
-	
+
 	index_t output_counter;
 	bool print_linear_system;
 
@@ -409,7 +410,7 @@ public:
 	// adjoint method--------------------------------------------------------------------------------------
 
 	// initialize dg_dT_general, which is similar to the jacobian initialization
-	int init_adjoint_structure(csr_matrix_base* init_adjoint);  
+	int init_adjoint_structure(csr_matrix_base* init_adjoint);
 
 	// assemble dg_dx_n, dg_dT, dj_dx. This is similar to "init_jacobian_structure" in the forward simulation
 	virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) = 0;
@@ -456,7 +457,7 @@ public:
 
 	linsolv_iface* linear_solver_ad;
 
-	// the total number of the cell interfaces, 
+	// the total number of the cell interfaces,
     // including 1. res to res (trans), 2. res to well_body (WI), 3. well_body to well_head
 	// n_interfaces = mesh->n_conns / 2;
 	index_t n_interfaces;
@@ -483,7 +484,7 @@ public:
 	typedef std::vector<std::vector<std::vector<value_t>>> vec_3d;
 
 	int prepare_dj_dx(vec_3d q, vec_3d q_inj,
-		std::vector<std::vector<value_t>> bhp, std::vector<std::vector<value_t>> well_tempr, 
+		std::vector<std::vector<value_t>> bhp, std::vector<std::vector<value_t>> well_tempr,
 		std::vector<std::vector<value_t>> temperature, std::vector<std::vector<value_t>> customized_op,
 		index_t idx_sim_ts, index_t idx_obs_ts);
 
@@ -653,7 +654,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	}
 #endif
 
-	std::string linear_solver_type_str;	
+	std::string linear_solver_type_str;
 	// create linear solver
 	if (!linear_solver)
 	{
@@ -689,7 +690,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			linear_solver_type_str = "CPU_GMRES_CPR_AMG1R5";
 			break;
 		}
-#endif 
+#endif
 #endif //_WIN32
 		case sim_params::CPU_GMRES_ILU0:
 		{
@@ -849,7 +850,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		    std::cerr << "Linear solver type " << params->linear_type << " is not supported for " << engine_name << std::endl << std::flush;
 		    exit(1);
 		}
-		
+
 		}
 	}
 
@@ -859,6 +860,9 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	z_var = get_z_var();
+
+	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
+	mesh->n_vars = n_vars;
 
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
@@ -913,10 +917,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");
 	std::cout << buffer << std::flush;
 
-	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		// initialize the state of well blocks of the type EPM
+		if (w->ms_type == ms_well::MS_Type::EPM)
+			w->initialize_control(X_init);
+		// initialize the state of well blocks of the type DFM
+		else if (w->ms_type == ms_well::MS_Type::DFM)
+			std::copy(w->init_state.begin(), w->init_state.end(), X_init.begin() + w->well_head_idx * n_vars);
 	}
 
 	Xn = X = X_init;
@@ -983,9 +991,9 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		// prepare dg_dx_n_temp
 		init_adjoint_structure(dg_dx_n_temp);
 
-		// here we remove wells.size() transmissibility between well head and well body (i.e. segment_transmissibility)
-		// because there is no need to optimize segment_transmissibility, which is usually a large value of 100000
-		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);  
+		// here we remove wells.size() transmissibility between well head and well body (i.e. well_transmissibility)
+		// because there is no need to optimize well_transmissibility, which is usually a large value of 100000
+		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
 		col_dT_du = Temp_1;
 
 

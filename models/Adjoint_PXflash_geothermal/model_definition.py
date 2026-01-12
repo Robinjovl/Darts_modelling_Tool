@@ -1,5 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
+from darts.engines import ms_well
 import numpy as np
 
 from darts.models.opt.opt_module_settings import OptModuleSettings
@@ -55,20 +56,23 @@ class Model(CICDModel, OptModuleSettings):
 
         WI = 200
 
+        well_type = ms_well.MS_Type.EPM
+
         n_perf = self.reservoir.nz
         for i, inj in enumerate(self.inj_list):
-            self.reservoir.add_well('I' + str(i + 1))
+
+            self.reservoir.add_well('I' + str(i + 1), well_type)
 
             for k in range(n_perf):
-                self.reservoir.add_perforation('I' + str(i + 1), cell_index=(inj[0], inj[1], k + 1),
-                                               well_radius=0.1, well_index=WI)
+                self.reservoir.add_perforation('I' + str(i + 1), res_cell_idx=(inj[0], inj[1], k + 1),
+                                               well_diameter=0.2, well_index=WI)
 
         for p, prod in enumerate(self.prod_list):
-            self.reservoir.add_well('P' + str(p + 1))
+            self.reservoir.add_well('P' + str(p + 1), well_type)
 
             for k in range(n_perf):
-                self.reservoir.add_perforation('P' + str(p + 1), cell_index=(prod[0], prod[1], k + 1),
-                                               well_radius=0.1, well_index=WI)
+                self.reservoir.add_perforation('P' + str(p + 1), res_cell_idx=(prod[0], prod[1], k + 1),
+                                               well_diameter=0.2, well_index=WI)
 
     def set_physics(self):
         """Physical properties"""

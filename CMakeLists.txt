@@ -31,9 +31,13 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(ENABLE_VALGRIND)
-    message(STATUS ">>> Valgrind build: adding -g -O2")
-    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2")
-    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2")
+    message(STATUS ">>> Valgrind build: adding -g -O2 with Valgrind-compatible SIMD flags")
+    # Use -g -O2 for optimization with debug symbols
+    # Limit SIMD to SSE4.2 (supported by Valgrind 3.24) to avoid SIGILL on AVX-512
+    # -mno-avx512f disables AVX-512 foundation instructions
+    # -march=x86-64-v2 targets SSE4.2 level (compatible with Valgrind)
+    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
+    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
 endif()
 
 # Load cmake modules -----------------------------------------------------------
@@ -331,13 +335,22 @@ if(WITH_PHREEQC)
     set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/bin/IPhreeqc.dll")
     set(IPHREEQC_RENAME "IPhreeqc.dll")
   else()
-    set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/lib64/libIPhreeqc.so")
     set(IPHREEQC_RENAME "libIPhreeqc.so")
+    # Debian-based distros install to lib/, RHEL to lib64/. Search both.
+    find_library(
+      IPHREEQC_LINK
+      NAMES IPhreeqc iphreeqc
+      PATHS "${IPHREEQC_ROOT}"
+      PATH_SUFFIXES lib64 lib lib/x86_64-linux-gnu
+      NO_DEFAULT_PATH
+    )
   endif()
 
   # make sure the link exists
-  if(NOT EXISTS "${IPHREEQC_LINK}")
-    message(FATAL_ERROR "IPhreeqc shared library link not found: ${IPHREEQC_LINK}")
+  if(NOT IPHREEQC_LINK OR IPHREEQC_LINK STREQUAL "IPHREEQC_LINK-NOTFOUND")
+    message(FATAL_ERROR
+      "IPhreeqc shared library not found under ${IPHREEQC_ROOT} "
+      "(checked lib64, lib, lib/x86_64-linux-gnu)")
   endif()
 
   # resolve symlinks (on Windows this just canonicalizes the path)
