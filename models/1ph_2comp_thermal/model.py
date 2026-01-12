@@ -128,4 +128,3 @@ class ModelProperties(PropertyContainer):
         self.pc[j] = 0
 
         return
-

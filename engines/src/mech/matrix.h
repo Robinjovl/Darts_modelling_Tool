@@ -117,7 +117,7 @@ namespace linalg
 			for (index_t i = 0; i < M; i++)
 				values[i * N + i] = v[i];
 		}
-		inline bool is_nan() const 
+		inline bool is_nan() const
 		{
 			for (const auto& val : values)
 				if (val != val)
@@ -236,7 +236,7 @@ namespace linalg
 		T ep = std::numeric_limits<T>::epsilon() * 1e4;
 		return v > 1.0 ? v * ep : ep;
 	}
-	template <class T> 
+	template <class T>
 	inline T sign(T a, T b)
 	{
 		return (b >= T(0) ? abs(a) : -abs(a));
@@ -335,7 +335,7 @@ namespace linalg
 		}
 
 		// perform SVD
-		Eigen::JacobiSVD<Eigen::MatrixXd, Eigen::ComputeThinU | Eigen::ComputeThinV> 
+		Eigen::JacobiSVD<Eigen::MatrixXd, Eigen::ComputeThinU | Eigen::ComputeThinV>
 			svd(eigen_matrix);
 
 		const Eigen::MatrixXd U = svd.matrixU();
@@ -367,7 +367,7 @@ namespace linalg
 		}
 		return true;
 	}*/
-	
+
 	template <typename T>
 	bool Matrix<T>::svd(Matrix<T>& vc, std::valarray<T>& w)
 	{

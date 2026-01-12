@@ -26,9 +26,39 @@ Help_Info()
   echo "   -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug"
   echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
-  echo "   -p        : Enable building & installing IPhreeqc (third-party)  (OFF by default)"
+  echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
   echo "   -v        : Enable build with valgrind support (OFF by default)"
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
+}
+
+ensure_reaktoro_conda()
+{
+  echo -e "\n-- Install Reaktoro (conda): START\n"
+
+  if python3 - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec("reaktoro") else 1)
+PY
+  then
+    echo "- Reaktoro already available in current Python environment"
+    return
+  fi
+
+  if ! command -v conda >/dev/null 2>&1; then
+    echo "Error: 'conda' command not found. Install Conda (see https://reaktoro.org/installation/installation-using-conda.html) and activate an environment before using -p."
+    exit 1
+  fi
+
+  if [[ -z "${CONDA_PREFIX:-}" ]]; then
+    echo "Error: CONDA_PREFIX is empty. Activate the target conda environment (e.g., 'conda activate rkt') before running with -p."
+    exit 1
+  fi
+
+  local reaktoro_log="$PWD/make_reaktoro.log"
+  echo "+ conda install -y -c conda-forge -p ${CONDA_PREFIX} reaktoro" | tee -a "$reaktoro_log"
+  conda install -y -c conda-forge -p "${CONDA_PREFIX}" reaktoro 2>&1 | tee -a "$reaktoro_log"
+  echo -e "\n--- Installing Reaktoro: DONE!\n"
 }
 ################################################################################
 # Main program                                                                 #
@@ -294,6 +324,10 @@ fi
 
 # installing python package with -e flag for interactive install (changes will be applied live)
 python3 -m pip install . 2>&1 | tee -a make_wheel.log
+
+if [[ "$phreeqc" == true ]]; then
+    ensure_reaktoro_conda
+fi
 
 echo -e "\n************************************************************************"
 echo "| Building python package open-darts: DONE! "

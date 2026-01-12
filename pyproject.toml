@@ -54,6 +54,7 @@ exclude = ["discretizer", "engines", "models", "solvers", "docs", "thirdparty"]
 
 [tool.setuptools.package-data]
 darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.so.6']
+"darts.physics.properties" = ["databases/*"]
 
 # include darts command line interface (cli.py)
 
