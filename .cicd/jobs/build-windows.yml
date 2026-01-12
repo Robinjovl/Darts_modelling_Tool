@@ -3,7 +3,6 @@
     # Will be executed on runner with windows shell tag - that assumed to run on windows host with shell executor
     tags:
         - windows-shell
-        - windows_gpu
     needs: []
     variables:
         CONDA_ENV: "darts-win-${CI_JOB_ID}"
