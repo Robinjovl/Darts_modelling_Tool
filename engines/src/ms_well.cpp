@@ -16,7 +16,7 @@ using namespace opendarts::linear_solvers;
 int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 {
   if (constraint.get_well_control_type() > well_control_iface::WellControlType::NONE)
-    if (constraint.check_constraint_violation(dt, well_head_idx, segment_transmissibility, n_block_size, P_VAR, X))
+    if (constraint.check_constraint_violation(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X))
     {
       // constraint violation occured, switch control and constrain
       std::swap(control, constraint);
@@ -30,7 +30,7 @@ int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 int ms_well::add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS)
 {
 
-  control.add_to_jacobian(dt, well_head_idx, segment_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
+  control.add_to_jacobian(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
 
   return 0;
 }
@@ -54,11 +54,11 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
   value_t total_energy = 0.;
   for (int i = 0; i < n_phases; i++)
   {
-    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * p_diff * segment_transmissibility);
-    total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * segment_transmissibility;
+    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * p_diff * well_transmissibility);
+    total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
   }
   time_data[name + " : energy (kJ/day)"].push_back(total_energy);
-  
+
   // Component molar rates
   index_t nc = n_vars - thermal;
   for (index_t c = 0; c < nc; c++)
@@ -71,7 +71,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
           c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
       }
 
-    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * segment_transmissibility);
+    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
   }
 
   int i_p = 0;
@@ -115,12 +115,12 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
 int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data, index_t n_blocks)
 {
-  // calculate rate based on velocity unknown; use for decouple velocity engine. 
+  // calculate rate based on velocity unknown; use for decouple velocity engine.
 
   index_t upstream_idx;
 
-  // find the wellhead connection 
-  value_t velocity = X[n_block_size * n_blocks + well_head_idx_conn];
+  // find the wellhead connection
+  value_t velocity = X[n_block_size * n_blocks + well_head_conn_idx];
 
 
   // find upstream state
@@ -139,7 +139,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
   for (int i = 0; i < n_phases; i++)
   {
     time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * velocity);
-    total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * segment_transmissibility;
+    total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
   }
   time_data[name + " : energy (kJ/day)"].push_back(total_energy);
 
@@ -155,7 +155,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
           c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
       }
 
-    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * segment_transmissibility);
+    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
   }
 
   index_t i_p = 0;
@@ -209,23 +209,22 @@ int ms_well::initialize_control(std::vector<value_t>& X)
   std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
 
   // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
-  for (auto &p : perforations)
+  for (auto& p : perforations)
   {
-    index_t i_w, i_r;
-    value_t wi, wid;
-    std::tie(i_w, i_r, wi, wid) = p;
-    i_w += well_body_idx;
+      index_t i_w, i_r;
+      value_t wi, wid;
+      std::tie(i_w, i_r, wi, wid) = p;
+      i_w += well_body_idx;
 
-    // move the state from X
-    std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
-    // copy neighbour state
-    std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-    // initialize
-    control.initialize_well_block(state, state_neighbour);
-    // move initialized state back to X
-    std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
+      // move the state from X
+      std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
+      // copy neighbour state
+      std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+      // initialize
+      control.initialize_well_block(state, state_neighbour);
+      // move initialized state back to X
+      std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
   }
-
   // Initialize state in well head - state neighbour is well body, state is well head
   // move the state from X
   std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
@@ -267,4 +266,3 @@ int ms_well::cross_flow(std::vector<value_t>& X)
 
 
 ;
-

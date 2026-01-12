@@ -45,7 +45,7 @@ m.set_reservoir(nr=nr, dr=1., nz=nz, dz=5, poro=poro.flatten(order='F'), perm=pe
 m.ms_well_flag = True
 m.init()
 # set the output
-m.set_output()
+m.set_output(verbose = True)
 
 """ DEFINE OUTPUT """
 props = ['satV', 'rhoV']

@@ -127,3 +127,54 @@
    fun:_ZNK12_GLOBAL__N_111LSRInstance6ExpandERKNS_6LSRUseERKNS_8LSRFixupERKNS_7FormulaEN4llvm21ilist_iterator_w_bitsINSA_12ilist_detail12node_optionsINSA_11InstructionELb1ELb0EvLb1ENSA_10BasicBlockEEELb0ELb0EEERNSA_15SmallVectorImplINSA_14WeakTrackingVHEEE.constprop.0
    fun:_ZN12_GLOBAL__N_111LSRInstanceC1EPN4llvm4LoopERNS1_7IVUsersERNS1_15ScalarEvolutionERNS1_13DominatorTreeERNS1_8LoopInfoERKNS1_19TargetTransformInfoERNS1_15AssumptionCacheERNS1_17TargetLibraryInfoEPNS1_16MemorySSAUpdaterE
 }
+{
+   h5py_pwrite64_chunk_flush_with_arch
+   Memcheck:Param
+   pwrite64(buf)
+   fun:__syscall_cancel_arch
+   fun:__internal_syscall_cancel
+   fun:__syscall_cancel
+   fun:pwrite
+   fun:H5FD__sec2_write
+   fun:H5FD_write
+   fun:H5F__accum_write
+   fun:H5PB_write
+   fun:H5F_shared_block_write
+   fun:H5D__chunk_flush_entry.constprop.0
+   fun:H5D__chunk_flush
+   fun:H5D__flush_real
+}
+{
+   h5py_pwrite_param_generic
+   Memcheck:Param
+   pwrite64(buf)
+   fun:__internal_syscall_cancel
+   fun:__syscall_cancel
+   fun:pwrite
+   fun:H5FD__sec2_write
+   fun:H5FD_write
+   fun:H5F__accum_write
+   fun:H5PB_write
+   fun:H5F_shared_block_write
+   fun:H5D__chunk_flush_entry.constprop.0
+   fun:H5D__chunk_flush
+   fun:H5D__flush_real
+   fun:H5D_close
+}
+{
+   h5py_pwrite_param_carbonated_water
+   Memcheck:Param
+   pwrite64(buf)
+   fun:pwrite
+   fun:H5FD__sec2_write
+   fun:H5FD_write
+   fun:H5F__accum_write
+   fun:H5PB_write
+   fun:H5F_shared_block_write
+   fun:H5D__chunk_flush_entry.constprop.0
+   fun:H5D__chunk_flush
+   fun:H5D__flush_real
+   fun:H5D_close
+   fun:H5VL__native_dataset_close
+   fun:H5VL_dataset_close
+}
