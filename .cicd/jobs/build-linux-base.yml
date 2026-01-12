@@ -4,7 +4,6 @@
     # Will be executed on runner with linux tag - that assumed to run on linux host
     tags:
         - linux
-        - linux_wsl
     variables:
         CONDA_ENV: "darts"
     before_script:

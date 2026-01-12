@@ -2,6 +2,7 @@ valgrind-check:
     stage: test
     tags:
     - linux
+    - valgrind
     image: python:3.10
     timeout: 2h
     variables:
