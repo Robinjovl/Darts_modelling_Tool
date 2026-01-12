@@ -31,9 +31,13 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(ENABLE_VALGRIND)
-    message(STATUS ">>> Valgrind build: adding -g -O2")
-    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2")
-    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2")
+    message(STATUS ">>> Valgrind build: adding -g -O2 with Valgrind-compatible SIMD flags")
+    # Use -g -O2 for optimization with debug symbols
+    # Limit SIMD to SSE4.2 (supported by Valgrind 3.24) to avoid SIGILL on AVX-512
+    # -mno-avx512f disables AVX-512 foundation instructions
+    # -march=x86-64-v2 targets SSE4.2 level (compatible with Valgrind)
+    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
+    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
 endif()
 
 # Load cmake modules -----------------------------------------------------------
