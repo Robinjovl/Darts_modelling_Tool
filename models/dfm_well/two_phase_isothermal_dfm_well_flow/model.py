@@ -11,10 +11,6 @@ from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
-from dartsflash.libflash import Flash, PXFlash, NegativeFlash, InitialGuess
-from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, EoS
-from dartsflash.components import CompData
-
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import SingleAmbientTemperature
 from darts.pipes.ramp_up_rate import RampUpRate
@@ -22,6 +18,7 @@ from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
 from nearwellbore import RadialStruct
+
 
 class Model(CICDModel):
     def __init__(self):
@@ -78,9 +75,16 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
+        from dartsflash.libflash import CubicEoS, FlashParams, EoS, InitialGuess
+        from dartsflash.components import CompData
+        from dartsflash.mixtures import DARTSFlash, VLAq
         components_names = ['CO2', 'H2O']
         phases_names = ['gas', 'aqueous']
+        comp_data = CompData(components_names, setprops=True)
 
+        """ Define state specification and initialize physics object """
+        # ph = True
+        # state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
         state_spec = Compositional.StateSpecification.P
         self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
                                      n_points=10000, min_p=1, max_p=500, min_z=self.zero / 10, max_z=1 - self.zero / 10,
@@ -89,21 +93,20 @@ class Model(CICDModel):
         """ PropertyContainer object and correlations """
         system_temperature = 25 + 273.15
 
-        comp_data = CompData(components_names, setprops=True)
-
         property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, min_z=self.zero / 10,
                                                temperature=system_temperature, rock_comp=0)
 
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(comp_data, AQEoS.Ziabakhsh2012)
+        """ Define flash """
+        flash_ev = VLAq(comp_data, hybrid=True)
 
-        flash_params = FlashParams(comp_data)
+        flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE])
+        flash_ev.set_aq_eos("Aq", )
+        pr = flash_ev.eos["VL"]
+        aq = flash_ev.eos["Aq"]
 
-        # EoS-related parameters
-        flash_params.add_eos("PR", pr)
-        flash_params.add_eos("AQ", aq)
-
-        property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.NegativeFlash,
+                            eos_order=["VL", "Aq"], nf_initial_guess=[InitialGuess.Henry_VA])
+        property_container.flash_ev = flash_ev
 
         property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw)),
                                               ('aqueous', Garcia2001(components_names)),

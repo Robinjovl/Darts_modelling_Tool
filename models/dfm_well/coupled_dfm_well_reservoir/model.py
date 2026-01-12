@@ -10,10 +10,6 @@ from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.viscosity import Fenghour1998
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
-from dartsflash.libflash import Flash, PXFlash, StateSpecification
-from dartsflash.libflash import CubicEoS, FlashParams, EoS
-from dartsflash.components import CompData
-
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
 from darts.pipes.ramp_up_rate import RampUpRate
@@ -21,6 +17,7 @@ from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
 from nearwellbore import RadialStruct
+
 
 class Model(CICDModel):
     def __init__(self):
@@ -76,26 +73,16 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
+        from dartsflash.libflash import CubicEoS, FlashParams, EoS
+        from dartsflash.components import CompData
+        from dartsflash.mixtures import DARTSFlash, VL
         components_names = ['CO2']
         phases_names = ['gas', 'LCO2']
         comp_data = CompData(components_names, setprops=True)
 
-        flash_params = FlashParams(comp_data)
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-
-        flash_params.add_eos("PR", pr)
-        flash_params.eos_order = ["PR"]
-        flash_params.eos_params["PR"].root_order = [EoS.MAX, EoS.MIN]
-
-        params = flash_params.eos_params["PR"]
-        params.trial_comps = [i for i in range(comp_data.nc)]
-        params.stability_tol = 1e-8
-        params.stability_switch_tol = 1e-10
-        params.stability_max_iter = 50
-        params.use_gmix = False
-        flash_params.comp_tol = 1e-2
-
-        state_spec = Compositional.StateSpecification.PH
+        """ Define state specification and initialize physics object """
+        ph = True
+        state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
         self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
                                      n_points=10000, min_p=1, max_p=500, min_z=self.zero / 10, max_z=1 - self.zero / 10,
                                      min_t=150, max_t=500)
@@ -104,19 +91,19 @@ class Model(CICDModel):
         property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, min_z=self.zero / 10,
                                                temperature=None, rock_comp=0)
 
-        if state_spec <= Compositional.StateSpecification.PT:
-            property_container.flash_ev = Flash(flash_params)
-        else:
-            property_container.flash_ev = PXFlash(flash_params, StateSpecification.ENTHALPY)
+        """ Define flash """
+        flash_ev = VL(comp_data)
+        flash_ev.set_vl_eos("PR", root_order=[EoS.MAX, EoS.MIN])
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash)
+        property_container.flash_ev = flash_ev
 
-        prv = CubicEoS(comp_data, CubicEoS.PR)
-        prl = CubicEoS(comp_data, CubicEoS.PR)
-
-        property_container.density_ev = dict([('gas', EoSDensity(eos=prv, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('LCO2', EoSDensity(eos=prl, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
+        """ Define phase properties """
+        pr = flash_ev.eos["VL"]
+        property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
+                                              ('LCO2', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
                                               ])
-        property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(eos=prv, root_flag=EoS.RootFlag.MAX)),
-                                               ('LCO2', EoSEnthalpy(eos=prl, root_flag=EoS.RootFlag.MIN)),
+        property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MAX)),
+                                               ('LCO2', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MIN)),
                                                ])
         property_container.viscosity_ev = dict([('gas', Fenghour1998()),
                                                 ('LCO2', Fenghour1998()),
