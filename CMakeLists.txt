@@ -2,6 +2,24 @@ cmake_minimum_required (VERSION 3.26)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+# --------------------------------------------------------------------------
+# ccache support for faster rebuilds
+# --------------------------------------------------------------------------
+option(USE_CCACHE "Use ccache for faster rebuilds if available" ON)
+if(USE_CCACHE)
+    find_program(CCACHE_PROGRAM ccache)
+    if(CCACHE_PROGRAM)
+        message(STATUS "ccache found: ${CCACHE_PROGRAM}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+        set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+        # For CUDA support (will be used if CUDA is enabled later)
+        set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    else()
+        message(STATUS "ccache not found, building without cache acceleration")
+    endif()
+endif()
+# --------------------------------------------------------------------------
+
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

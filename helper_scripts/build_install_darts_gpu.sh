@@ -10,6 +10,7 @@ CLEAN_FLAG=""
 PHREEQC_FLAG=""
 DEBUG_FLAG=""
 JOBS_ARG="-j20"
+CCACHE_FLAG=""  # ccache is enabled by default in build_darts_cmake.sh
 
 # Scan all args, including -j for parallel jobs
 while (( "$#" )); do
@@ -18,6 +19,7 @@ while (( "$#" )); do
     -p) PHREEQC_FLAG="-p"; shift ;;      # enable IPhreeqc/Reaktoro support
     -d) DEBUG_FLAG="-d Debug"; shift ;;  # enable Debug configuration
     -r) REQUIREMENTS_FLAG="-r"; shift ;; # clean previous cmake configuration for third parties
+    -C) CCACHE_FLAG="-C"; shift ;;       # disable ccache
     -j)
       if [[ -n "${2:-}" && "$2" =~ ^[0-9]+$ ]]; then
         JOBS_ARG="-j$2"
@@ -52,4 +54,5 @@ done
   $CLEAN_FLAG \
   $PHREEQC_FLAG \
   $DEBUG_FLAG \
-  $REQUIREMENTS_FLAG
+  $REQUIREMENTS_FLAG \
+  $CCACHE_FLAG

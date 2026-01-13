@@ -24,7 +24,7 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
     dnf -y upgrade
     dnf -y install epel-release dnf-plugins-core
     dnf -y install --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
-        jq patchelf wget git ca-certificates which tar xz bzip2 make cmake \
+        jq patchelf wget git ca-certificates which tar xz bzip2 make cmake ccache \
         python3 python3-pip libjpeg-turbo-devel gcc-toolset-13-gcc-c++ mesa-libGLU \
         libXrender libX11 libXext libXi libXfixes libXcursor libXrandr libXinerama \
         libXmu libXt libXft fontconfig freetype

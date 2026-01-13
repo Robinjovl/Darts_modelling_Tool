@@ -69,7 +69,11 @@ build-linux-tahiti-image-3.10-gpu:
         APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
         CONDA_ENV: "tahiti-gpu"
         PY_VER: "3.10"
+        # Persistent ccache directory shared across CI builds
+        CCACHE_DIR_HOST: "/data/gitlab-runner/ccache/open-darts-gpu"
     before_script:
+        - echo "🔧 Setting up ccache directory..."
+        - mkdir -p "${CCACHE_DIR_HOST}"
         - echo "🔧 Creating Conda env '${CONDA_ENV}' inside the Apptainer image…"
         - |
           apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
@@ -80,14 +84,24 @@ build-linux-tahiti-image-3.10-gpu:
     script:
         - echo "🚀 Building DARTS GPU libs inside '${CONDA_ENV}'…"
         - |
-            apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+            apptainer exec --nv \
+                --bind "${CCACHE_DIR_HOST}:/ccache:rw" \
+                "$APPTAINER_IMAGE" bash -lc "
                 # exit on any error, print commands as you go
                 set -euxo pipefail && \
+                # configure ccache
+                export CCACHE_DIR=/ccache && \
+                export CCACHE_MAXSIZE=10G && \
+                export CCACHE_COMPILERCHECK=content && \
+                echo '📦 ccache stats before build:' && \
+                ccache -s 2>/dev/null | head -10 || true && \
                 # enable Conda in this shell
                 source /opt/conda/etc/profile.d/conda.sh && \
                 # activate your env
                 conda activate ${CONDA_ENV} && \
                 # _this_ is your real build
-                ./helper_scripts/build_install_darts_gpu.sh -c -p -j 16
+                ./helper_scripts/build_install_darts_gpu.sh -c -p -j 16 && \
+                echo '📦 ccache stats after build:' && \
+                ccache -s 2>/dev/null | head -15 || true
             "
     extends: .build-linux-gpu

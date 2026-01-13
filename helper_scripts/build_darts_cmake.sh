@@ -11,7 +11,7 @@ set -o pipefail
 ################################################################################
 Help_Info()
 {
-  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v]"
+  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v] [-C]"
   echo "   Script to install opendarts on unix (linux and macOS)."
   echo "USAGE: "
   echo "   -h : displays this help menu."
@@ -28,7 +28,9 @@ Help_Info()
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
   echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
   echo "   -v        : Enable build with valgrind support (OFF by default)"
+  echo "   -C        : Disable ccache (ccache is enabled by default if available)"
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
+  echo "   CCACHE_DIR env var: Specify ccache cache directory (default: ~/.ccache)"
 }
 
 ensure_reaktoro_conda()
@@ -78,9 +80,10 @@ NT=8              # Number of threads by default 8
 gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 valgrind=false    # Whether support valgrind profiling or not
+use_ccache=true   # Use ccache by default if available
 CUDA_ARCH="${CUDA_ARCH:-}"
 
-while getopts ":chtwmrab:d:j:g:Gpv" option; do
+while getopts ":chtwmrab:d:j:g:GpvC" option; do
     case "$option" in
         h) # Display help
            Help_Info
@@ -114,6 +117,8 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
            phreeqc=true;;
         v) # Valgrind build => Debug + symbols
            valgrind=true;;
+        C) # Disable ccache
+           use_ccache=false;;
     esac
 done
 
@@ -253,8 +258,30 @@ if [[ "$valgrind" = true ]]; then
     config="Debug"
 fi
 
+# Setup ccache if enabled
+if [[ "$use_ccache" == true ]]; then
+    if command -v ccache &> /dev/null; then
+        echo -e "ccache: ENABLED ($(ccache --version | head -n1))"
+        # Display ccache stats before build
+        echo -e "ccache stats before build:"
+        ccache -s 2>/dev/null | head -10 || true
+    else
+        echo -e "ccache: NOT FOUND (building without cache acceleration)"
+        use_ccache=false
+    fi
+else
+    echo -e "ccache: DISABLED by user"
+fi
+
 # Setup build with cmake
 cmake_options="-D CMAKE_BUILD_TYPE=${config}"
+
+# Add ccache option
+if [[ "$use_ccache" == true ]]; then
+    cmake_options+=" -D USE_CCACHE=ON"
+else
+    cmake_options+=" -D USE_CCACHE=OFF"
+fi
 
 if [[ "$valgrind" = true ]]; then
     cmake_options+=" -D ENABLE_VALGRIND=ON"
@@ -306,6 +333,13 @@ cd ../
 echo -e "\n========================================================================"
 echo "| Building openDARTS: DONE! "
 echo -e "========================================================================\n"
+
+# Display ccache stats after build
+if [[ "$use_ccache" == true ]] && command -v ccache &> /dev/null; then
+    echo -e "ccache stats after build:"
+    ccache -s 2>/dev/null | head -15 || true
+    echo ""
+fi
 
 echo "************************************************************************"
 echo "| Building python package open-darts: START "
