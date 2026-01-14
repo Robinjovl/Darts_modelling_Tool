@@ -141,33 +141,56 @@ class Poroelasticity(Compositional):
         if self.discretizer_name == "pm_discretizer":
             for region, prop_container in self.property_containers.items():
                 self.reservoir_operators[region] = SinglePhaseGeomechanicsOperators(
-                    prop_container, self.thermal
+                    prop_container,
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
                 )
                 self.property_operators[region] = PropertyOperators(
-                    prop_container, self.thermal
+                    prop_container,
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
                 )
             self.well_operators = SinglePhaseGeomechanicsOperators(
-                self.property_containers[self.regions[0]], self.thermal
+                self.property_containers[self.regions[0]],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
         else:
             for region, prop_container in self.property_containers.items():
                 self.reservoir_operators[region] = GeomechanicsReservoirOperators(
-                    prop_container, self.thermal
+                    prop_container,
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
                 )
                 self.property_operators[region] = PropertyOperators(
-                    prop_container, self.thermal
+                    prop_container,
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
                 )
             self.well_operators = GeomechanicsReservoirOperators(
-                self.property_containers[self.regions[0]], False
+                self.property_containers[self.regions[0]],
+                thermal=False,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
 
         self.well_ctrl_operators = WellControlOperators(
-            self.property_containers[self.regions[0]], self.thermal
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
         self.well_init_operators = WellInitOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
 
         return

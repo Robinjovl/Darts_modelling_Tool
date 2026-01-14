@@ -275,7 +275,7 @@ class WellInitOperators(OperatorsBase):
         extrapolation_flag: bool = True,
         dz: float = None,
     ):
-        super().__init__(property_container, thermal)
+        super().__init__(property_container, thermal, extrapolation_flag, dz)
 
         self.n_ops = 1
         self.is_pt = is_pt
@@ -320,7 +320,7 @@ class PropertyOperators(OperatorsBase):
         :param thermal: Bool for thermal
         :param props: Optional dictionary of properties, default is taken from PropertyContainer
         """
-        super().__init__(property_container, thermal)
+        super().__init__(property_container, thermal, extrapolation_flag, dz)
 
         self.props = property_container.output_props if props is None else props
         self.props_name = [key for key in self.props.keys()]

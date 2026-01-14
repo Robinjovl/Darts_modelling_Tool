@@ -396,8 +396,16 @@ class WellOperators(OperatorsSuper):
 
 
 class GeomechanicsReservoirOperators(ReservoirOperators):
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
+    def __init__(
+        self,
+        property_container: PropertyContainer,
+        thermal: bool,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+    ):
+        super().__init__(
+            property_container, thermal, extrapolation_flag, dz
+        )  # Initialize base-class
 
         self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
         self.n_ops = self.ROCK_DENS_OP + 1
