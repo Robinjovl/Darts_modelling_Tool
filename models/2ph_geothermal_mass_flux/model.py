@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import value_vector
+from darts.engines import value_vector, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -44,8 +44,9 @@ class Model(CICDModel):
 
     def set_wells(self):
         if self.wells_mode == 'wells':
-            self.reservoir.add_well("P1")
-            self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx//2, 1, 1), multi_segment=False)
+            well_type = ms_well.MS_Type.EPM
+            self.reservoir.add_well("P1", well_type)
+            self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx // 2, 1, 1), ms_epm=False)
 
     def set_physics(self):
         """Physical properties"""
@@ -110,11 +111,12 @@ class Model(CICDModel):
         if outflow < 0 then it is actually inflow
         '''
         nv = self.physics.n_vars
-        nb = self.reservoir.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_blocks
+        n_res_blocks = self.reservoir.mesh.n_res_blocks
         rhs_flux = np.zeros(nb * nv)
 
         # extract pointer to values corresponding to var_idx
-        rhs_flux_var = rhs_flux[self.inflow_var_idx::nv]
+        rhs_flux_var = rhs_flux[self.inflow_var_idx:n_res_blocks*nv:nv]
         # set values for the cells defined in inflow_cells
         rhs_flux_var[self.inflow_cells] = self.outflow
 
@@ -175,4 +177,3 @@ class ModelProperties(PropertyContainer):
         self.compute_saturation(ph)
 
         return self.sat, self.dens_m
-

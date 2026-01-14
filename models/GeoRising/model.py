@@ -3,7 +3,7 @@ from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
-from darts.engines import value_vector, sim_params
+from darts.engines import value_vector, sim_params, ms_well
 
 from darts.input.input_data import InputData
 
@@ -56,16 +56,17 @@ class Model(CICDModel):
         jw = [14, 46]
 
         # add well
-        self.reservoir.add_well("INJ")
+        well_type = ms_well.MS_Type.EPM
+        self.reservoir.add_well("INJ", well_type)
         for k in range(1, self.reservoir.nz):
-            self.reservoir.add_perforation("INJ", cell_index=(iw[0], jw[0], k + 1),
-                                           well_radius=0.16, multi_segment=True)
+            self.reservoir.add_perforation("INJ", res_cell_idx=(iw[0], jw[0], k + 1),
+                                           well_diameter=0.32, ms_epm=True)
 
         # add well
-        self.reservoir.add_well("PRD")
+        self.reservoir.add_well("PRD", well_type)
         for k in range(1, self.reservoir.nz):
-            self.reservoir.add_perforation("PRD", cell_index=(iw[1], jw[1], k + 1),
-                                           well_radius=0.16, multi_segment=True)
+            self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], jw[1], k + 1),
+                                           well_diameter=0.32, ms_epm=True)
 
     def set_physics(self):
         if self.iapws_physics:

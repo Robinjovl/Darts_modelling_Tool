@@ -17,15 +17,11 @@ m.print_stat()
 m.output.output_to_vtk(ith_step = 1, engine = False)
 
 ########################################### SAJJAD, PLS UPDATE THE RATE CALCULATORS
-# # compute well time data
-# time_data_dict = m.output.store_well_time_data()
-# save well time data
-# time_data_df = pd.DataFrame.from_dict(time_data_dict)
-# time_data_df.to_pickle(os.path.join(m.output_folder, "well_time_data.pkl"))  # as a pickle file
-# writer = pd.ExcelWriter(os.path.join(m.output_folder, "well_time_data.xlsx"))  # as an excel file
-# time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
-# writer.close()
+# # compute and save well time data
+# time_data_dict = m.output.store_well_time_data(save_output_files=True)
 #
+# plot well time data
+# time_data_df = pd.DataFrame.from_dict(time_data_dict)
 # time_data_df.plot(x='time', y=['well_PRD_BHT', 'well_INJ_BHT'])\
 #     .get_figure().savefig(m.output_folder + '/well_temperature.png', dpi=100, bbox_inches='tight')
 # time_data_df.plot(x='time', y=['well_PRD_BHP', 'well_INJ_BHP'])\

@@ -84,21 +84,21 @@ class Compositional(PhysicsBase):
         self.thermal = state_spec > PhysicsBase.StateSpecification.P
 
         # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature/enthalpy
-        variables = ['pressure'] + components[:-1]
+        variables = ["pressure"] + components[:-1]
         if self.thermal:
             variables += (
-                ['temperature']
+                ["temperature"]
                 if state_spec == PhysicsBase.StateSpecification.PT
-                else ['enthalpy']
+                else ["enthalpy"]
             )
 
         n_vars = len(variables)
-        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
+        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP * /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
         # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*LAMBDA*/ + NP /*SAT*/ + NP /*enthalpy*/
         # + 2 /*temperature and pressure*/
         # = NE * (2 * nph + 2) + 6 * nph + 3
 
-        n_ops = n_vars * (2 * nph + 2) + 6 * nph + 3
+        n_ops = n_vars * (2 * nph + 2) + 7 * nph + 3
 
         # axes_min
         if axes_min is None:
@@ -136,6 +136,9 @@ class Compositional(PhysicsBase):
         self.dz = (
             (axes_max[1] - axes_min[1]) / (n_axes_points[1] - 1) if nc > 1 else None
         )
+
+        self.has_dfm_well = False
+
         # Call PhysicsBase constructor
         super().__init__(
             state_spec=state_spec,
@@ -151,7 +154,7 @@ class Compositional(PhysicsBase):
             cache=cache,
         )
 
-    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
+    def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):
         """
         Function to set :class:`engine_super` object.
 
@@ -160,7 +163,7 @@ class Compositional(PhysicsBase):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        if discr_type == 'mpfa':
+        if discr_type == "mpfa":
             if self.thermal:
                 return eval(f"engine_super_mp_{platform}{self.nc:d}_{self.nph:d}_t")()
             else:
@@ -191,13 +194,21 @@ class Compositional(PhysicsBase):
                 dz=self.dz,
             )
 
-        if self.thermal:
-            self.well_operators = ReservoirOperators(
-                self.property_containers[self.regions[0]],
-                self.thermal,
-                extrapolation_flag=self.extrapolation_flag,
-                dz=self.dz,
-            )
+        if not self.has_dfm_well:
+            if self.thermal:
+                self.well_operators = ReservoirOperators(
+                    self.property_containers[self.regions[0]],
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
+                )
+            else:
+                self.well_operators = WellOperators(
+                    self.property_containers[self.regions[0]],
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
+                )
         else:
             self.well_operators = WellOperators(
                 self.property_containers[self.regions[0]],
@@ -242,8 +253,8 @@ class Compositional(PhysicsBase):
             ]
         ), "Initial state for must be specified for all primary variables"
         assert not self.thermal or (
-            'temperature' in input_distribution.keys()
-            or 'enthalpy' in input_distribution.keys()
+            "temperature" in input_distribution.keys()
+            or "enthalpy" in input_distribution.keys()
         ), "Temperature or enthalpy must be specified for thermal models"
         input_depth = (
             input_depth
@@ -270,17 +281,17 @@ class Compositional(PhysicsBase):
                 # If temperature has been provided, interpolate pressure and temperature to compute enthalpies
                 p_itor = interp1d(
                     input_depth,
-                    input_distribution['pressure'],
-                    kind='linear',
-                    fill_value='extrapolate',
+                    input_distribution["pressure"],
+                    kind="linear",
+                    fill_value="extrapolate",
                 )
                 pressure = p_itor(depths)
 
                 t_itor = interp1d(
                     input_depth,
-                    input_distribution['temperature'],
-                    kind='linear',
-                    fill_value='extrapolate',
+                    input_distribution["temperature"],
+                    kind="linear",
+                    fill_value="extrapolate",
                 )
                 temperature = t_itor(depths)
 
@@ -288,8 +299,8 @@ class Compositional(PhysicsBase):
                     interp1d(
                         input_depth,
                         input_distribution[comp],
-                        kind='linear',
-                        fill_value='extrapolate',
+                        kind="linear",
+                        fill_value="extrapolate",
                     )
                     for comp in self.components[:-1]
                 ]
@@ -312,8 +323,8 @@ class Compositional(PhysicsBase):
                 itor = interp1d(
                     input_depth,
                     input_distribution[variable],
-                    kind='linear',
-                    fill_value='extrapolate',
+                    kind="linear",
+                    fill_value="extrapolate",
                 )
                 values = itor(depths)
 
@@ -345,14 +356,14 @@ class Compositional(PhysicsBase):
 
         # set initial pressure
         np.asarray(mesh.initial_state)[0 :: self.n_vars] = input_distribution[
-            'pressure'
+            "pressure"
         ]
 
         # if thermal, set initial temperature or enthalpy
         if self.thermal:
             if self.state_spec == PhysicsBase.StateSpecification.PT:
                 np.asarray(mesh.initial_state)[(self.n_vars - 1) :: self.n_vars] = (
-                    input_distribution['temperature']
+                    input_distribution["temperature"]
                 )
             elif self.state_spec == PhysicsBase.StateSpecification.PH:
                 if 'enthalpy' in input_distribution.keys():

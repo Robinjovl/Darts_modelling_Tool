@@ -15,7 +15,7 @@ JOBS_ARG="-j20"
 while (( "$#" )); do
   case "$1" in
     -c) CLEAN_FLAG="-c"; shift ;;        # trigger clean
-    -p) PHREEQC_FLAG="-p"; shift ;;      # enable IPhreeqc support
+    -p) PHREEQC_FLAG="-p"; shift ;;      # enable IPhreeqc/Reaktoro support
     -d) DEBUG_FLAG="-d Debug"; shift ;;  # enable Debug configuration
     -r) REQUIREMENTS_FLAG="-r"; shift ;; # clean previous cmake configuration for third parties
     -j)
