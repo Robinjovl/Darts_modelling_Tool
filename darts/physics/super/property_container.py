@@ -220,11 +220,13 @@ class PropertyContainer(PropertyBase):
         if evaluate_PT:
             # In case of PH-formulation, PT flashes are required for calculating initial distribution
             error_output = self.flash_ev.evaluate_PT(pressure, temperature, zc_norm)
+            flash_results = self.flash_ev.get_flash_results(evaluate_PT=True)
         else:
             error_output = self.flash_ev.evaluate(pressure, temperature, zc_norm)
+            flash_results = self.flash_ev.get_flash_results()
 
-        flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
+
         try:
             self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
         except ValueError as e:
