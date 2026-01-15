@@ -79,10 +79,6 @@ class Model(DartsModel):
         nc = len(components)
         comp_data = CompData(components, setprops=True)
 
-        """ PropertyContainer object and correlations """
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
-                                               temperature=temperature, min_z=zero / 10)
-
         """ Define flash """
         flash_ev = VLAq(comp_data, hybrid=True)
 
@@ -138,16 +134,35 @@ class Model(DartsModel):
 
             # zH2O = 1
             from darts.physics.super.initialize import Initialize
-            # depth corresponding to boundary_idx = 10
-            b_depth = self.reservoir.global_data['depth'].min() + (self.reservoir.global_data['depth'].max() - self.reservoir.global_data['depth'].min()) / 4.
-            boundary_state = {'H2O': 1 - self.zero, 'pressure': 100., 'temperature': 350.}
             init = Initialize(physics=self.physics)
-            X = init.solve(depth_bottom=self.reservoir.global_data['depth'].max(),
-                           depth_top=self.reservoir.global_data['depth'].min(),
-                           depth_known=b_depth, boundary_state=boundary_state,
-                           primary_specs={'H2O': 1 - self.zero}, secondary_specs={})
+
+            # Solve boundary state
+            boundary_state = {'H2O': 1 - self.zero, 'pressure': 100., 'temperature': 350.}
+            X0 = init.solve_state(Xi=[boundary_state['pressure'], 1 - self.zero, boundary_state['temperature']],
+                                  specs=boundary_state,
+                                  )
+
+            # Initialize depth table
+            nb = 100
+            min_depth = self.reservoir.global_data['depth'].min()
+            max_depth = self.reservoir.global_data['depth'].max()
+            b_depth = min_depth + (max_depth - min_depth) / 4.
+            X, bc_idx = init.init_depth_table(depth_bottom=max_depth,
+                                              depth_top=min_depth,
+                                              depth_known=b_depth,
+                                              X0=X0,
+                                              nb=nb,
+                                              dTdh=0.03
+                                              )
+
+            # Solve vertical equilibrium
+            specs = {'H2O': 1. - self.zero}
+            X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=False)  # solve above
+            X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=True)  # solve below
+
+            # assign initial condition with evaluated initialized properties
             self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, input_depth=init.depths,
-                                                                 input_distribution={var: X[i::self.physics.n_vars] for i, var in
+                                                                 input_distribution={var: X[:, i] for i, var in
                                                                                      enumerate(self.physics.vars)})
         else:
             input_distribution = {self.physics.vars[0]: 100.,

@@ -410,57 +410,64 @@ class Model(DartsModel):
             nb = 100
             depths = np.linspace(min_depth, max_depth, nb)
 
+            # zH2O = 1
             from darts.physics.super.initialize import Initialize
             init = Initialize(self.physics, aq_idx=0, h2o_idx=0)
+            nc = len(self.components)
+
+            # Solve boundary state
+            min_depth = self.reservoir.global_data['depth'].min()
+            max_depth = self.reservoir.global_data['depth'].max()
 
             # Known conditions at well I1
             known_depth = self.reservoir.well_centers["I1"][2]
-            known_idx = np.argmin(np.abs(depths-known_depth))
-            depths[known_idx] = known_depth
             pres_I1 = 300.
-            temp_I1 = self.temp(max_depth-known_depth)  # depths in grid have z=0 at the bottom
+            temp_I1 = self.temp(max_depth - known_depth)  # depths in grid have z=0 at the bottom
 
-            nc = len(self.components)
-            primary_specs = {comp: np.ones(nb) * np.nan for comp in self.components}
-            secondary_specs = {}
-            known_specs = {}
-
+            specs = {'pressure': pres_I1, 'temperature': temp_I1 if init.thermal else None}
             if nc == 2:
                 # H2O-CO2, initially pure brine
                 # need 1 specification: H2O = 1-zero
-                # primary_specs["H2O"][:] = 1.-self.zero
-                primary_specs["CO2"][:] = self.zero
+                # specs["H2O"] = 1.-self.zero
+                specs["CO2"] = self.zero
 
             else:
                 # H2O-CO2-C1, initially pure brine
                 # need 2 specifications: H2O = 1-(nc-1)*zero, CO2 = zero
-                primary_specs["H2S"][:] = self.zero
-                primary_specs["CO2"][:] = self.zero
+                specs["H2S"] = self.zero
+                specs["CO2"] = self.zero
 
             if self.salinity:
                 # + ions, need extra specification for ion molality
                 # H2O cannot be specified because of salinity, last component instead
-                mol = np.ones(nb) * self.salinity
-                secondary_specs.update({'m' + str(nc): mol})
-                known_specs.update({'m' + str(nc): mol[known_idx]})
-                primary_specs["H2O"][:] = None
-                primary_specs[self.components[-1]][:] = self.zero
+                mol = self.salinity
+                specs.update({'m' + str(nc): mol})
+                specs.update({'m' + str(nc): mol})
+                specs["H2O"] = None
+                specs[self.components[-1]] = self.zero
 
-            # Solve boundary state
             X0 = ([pres_I1, 0.98] +  # pressure, H2O
                   ([self.zero] if nc > 2 else []) +  # CO2
-                  ([1. - 0.98 - mol[known_idx] * 0.98 / 55.509] if self.salinity else []) +  # last component if ions
+                  ([1. - 0.98 - mol * 0.98 / 55.509] if self.salinity else []) +  # last component if ions
                   ([temp_I1] if init.thermal else []))  # temperature
-            X0 = init.solve_state(X0, primary_specs={'pressure': pres_I1,
-                                                     'temperature': temp_I1 if init.thermal else None} |
-                                                    {comp: primary_specs[comp][known_idx] for comp in self.components},
-                                  secondary_specs=known_specs)
-            boundary_state = {v: X0[i] for i, v in enumerate(self.physics.vars)}
+            X0 = init.solve_state(Xi=X0,
+                                  specs=specs,
+                                  )
+
+            # Initialize depth table
+            nb = 100
+            X, bc_idx = init.init_depth_table(depth_bottom=max_depth,
+                                              depth_top=min_depth,
+                                              depth_known=known_depth,
+                                              X0=X0,
+                                              nb=nb,
+                                              dTdh=0.025
+                                              )
 
             # Solve vertical equilibrium
-            X = init.solve(depth_bottom=max_depth, depth_top=min_depth, depth_known=known_depth, nb=nb,
-                            primary_specs=primary_specs, secondary_specs=secondary_specs,
-                            boundary_state=boundary_state, dTdh=0.025).reshape((nb, self.physics.n_vars))
+            specs['pressure'] = None  # set to None because pressure will be calculated from hydrostatic column
+            X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=False)  # solve above
+            X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=True)  # solve below
 
             self.physics.set_initial_conditions_from_depth_table(mesh = self.reservoir.mesh,
                                                                  input_depth = init.depths,
