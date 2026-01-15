@@ -48,7 +48,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.rsv_top = idata.other.rsv_top
             self.rsv_bottom = idata.other.rsv_bottom
             self.rsv_xy = idata.other.rsv_xy
+            self.rsv_x1 = idata.other.rsv_x1
+            self.rsv_x2 = idata.other.rsv_x2
+            self.rsv_y1 = idata.other.rsv_y1
+            self.rsv_y2 = idata.other.rsv_y2
             self.Xc = idata.other.Xc
+            self.Yc = idata.other.Yc
             self.Zc = idata.other.Zc
 
             # refine by Z also around rsv
@@ -59,19 +64,20 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
             # check case name ane generated arrays are consistent
             assert nx == self.Xc.size-1, "nx = {0}, Xc.size = {1}".format(nx, self.Xc.size)
+            assert ny == self.Yc.size-1, "ny = {0}, Yc.size = {1}".format(nx, self.Yc.size)
             assert nz == self.Zc.size-1, "nz = {0}, Zc.size = {1}".format(nz, self.Zc.size)
 
             # check layers boundaries defined without layers deterioration
             assert np.unique(self.Xc).size == self.Xc.size, "Xc has duplicates {0}".format(self.Xc)
+            assert np.unique(self.Yc).size == self.Yc.size, "Yc has duplicates {0}".format(self.Yc)
             assert np.unique(self.Zc).size == self.Zc.size, "Zc has duplicates {0}".format(self.Zc)
 
-            print('nx = ', self.Xc.size-1, 'nz = ', self.Zc.size-1)
+            print('nx = ', self.Xc.size-1, 'ny = ', self.Yc.size-1, 'nz = ', self.Zc.size-1)
             print('self.rsv_top', self.rsv_top)
             print('self.rsv_bottom', self.rsv_bottom)
             print('self.rsv_xy', self.rsv_xy)
             print('Zc', self.Zc)
 
-            self.Yc = self.Xc
             from gen_msh import generate_box_3d
             generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=idata.mesh.tags,  # XYZ are ignored since Xc, Yc, Zc are passed
                                        is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)
@@ -345,8 +351,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         from functools import reduce
         rsv = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
-                                      -self.rsv_xy <= centers_struct_y,  centers_struct_y <= self.rsv_xy,
-                                      -self.rsv_xy <= centers_struct_x,  centers_struct_x <= self.rsv_xy])
+                                      self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
+                                      self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
+        
         porosity_struct[rsv] = idata.rock.porosity
         permeability_struct[rsv] = idata.rock.permx # [mD]
         E_struct[rsv] = idata.rock.E #[bars]

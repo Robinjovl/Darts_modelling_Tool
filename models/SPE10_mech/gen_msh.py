@@ -12,7 +12,8 @@ import sys
 def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : int, tags : dict, filename : str = None,
                     is_transfinite : bool = True, is_recombine : bool  = True, refinement_mult : bool = 1.0,
                     fault_refinement_mult = 1.0, fault_angle : float = None, z_minus_hybrid = False, two_rocks = False,
-                    msh_ver=2.1, popup=False, Xc=None, Yc=None, Zc=None, rsv_top=None, rsv_bottom=None, rsv_xy=None):
+                    msh_ver=2.1, popup=False, Xc=None, Yc=None, Zc=None, rsv_top=None, rsv_bottom=None, 
+                    rsv_x1=None, rsv_x2=None, rsv_y1=None, rsv_y2=None):
     '''
     generates a rectangular-box structured-like mesh with hexahedron (right prism) cells in the unstructured mesh format (gmsh 2).
     :param X: a box size along X-axis
@@ -287,8 +288,8 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
                     if two_rocks:
                         from functools import reduce
                         rsv = reduce(np.logical_and, [ rsv_top >= z[k], z[k] > rsv_bottom,
-                                                      -rsv_xy <= y[j],  y[j] <= rsv_xy,
-                                                      -rsv_xy <= x[i],  x[i] <= rsv_xy])
+                                                      rsv_y1 <= y[j],  y[j] <= rsv_y2,
+                                                      rsv_x1 <= x[i],  x[i] <= rsv_x2])
                         if rsv:#rsv_top >= z[k] > rsv_bottom:
                             reservoir_1.append(id)
                         else:
@@ -454,7 +455,8 @@ if __name__ == '__main__':
                                  rsv_bottom + 100,
                                  np.arange(rsv_bottom + 200, 5000 + 1, 100)])
         filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault, 
-                                   Xc=x_list, Yc=x_list, Zc=z_list, rsv_top=-rsv_top, rsv_bottom=-rsv_bottom, rsv_xy=rsv_xy,
+                                   Xc=x_list, Yc=x_list, Zc=z_list, rsv_top=-rsv_top, rsv_bottom=-rsv_bottom, 
+                                   rsv_x1=-rsv_xy, rsv_x2=rsv_xy, rsv_y1=-rsv_xy, rsv_y2=rsv_xy,
                                    msh_ver=4.2, # geos fails with a negative volume issue for gmsh 2.1 format https://github.com/GEOS-DEV/GEOS/issues/2154
                                    two_rocks=True, is_transfinite=True, is_recombine=True, popup=True)
         

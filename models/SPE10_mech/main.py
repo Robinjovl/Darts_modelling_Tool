@@ -252,10 +252,11 @@ if __name__ == '__main__':
     #decouple_geomech = False
 
     #mesh='16_16_15'
-    mesh='34_34_57'
+    #mesh='34_34_57'
+    mesh='34_35_57'
     
-    generate_mesh=True
-    #generate_mesh=False
+    #generate_mesh=True
+    generate_mesh=False
 
     physics_type='single_phase'
     #physics_type='single_phase_thermal'

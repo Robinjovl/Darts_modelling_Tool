@@ -58,7 +58,7 @@ def geomech_init_geometry(mesh_data):
 
     return prisms
 
-def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timestep=1):
+def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timestep=1, generate_mesh=True):
     folder = 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case  # where vtk files are located
 
     # init geomech proxy
@@ -67,7 +67,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     # just to set input data
     from model import Model
     m = Model(model_folder=case, physics_type=physics_type, uniform_props=False, 
-              wells_type=wells_type, decouple_geomech=True, generate_mesh=True,
+              wells_type=wells_type, decouple_geomech=True, generate_mesh=generate_mesh,
               dummy='yes')
     m.set_input_data()
     # elastic constants
@@ -618,8 +618,9 @@ if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
-    case = '34_34_57'  # z 0 - 5 km 
+    ###############case = '34_34_57'  # z 0 - 5 km 
     #case = '34_34_65'  # z 0 - 10 km
+    case='34_35_57'
     
     #case = '34_34_15'
     #case = '16_16_65'
@@ -638,9 +639,9 @@ if __name__ == '__main__':
     #wells_types_list += ['doublet']
     
     # for THM solver run
-    n_years = 1
+    #n_years = 1
     #n_years = 2
-    #n_years = 5
+    n_years = 5
     #n_years = 10
     #n_years = 30
     #n_years = 50
@@ -656,8 +657,11 @@ if __name__ == '__main__':
     timestep = 1
     #timestep = 4
     
-    #run_thm = True
-    run_thm = False
+    run_thm = True
+    #run_thm = False
+    
+    #generate_mesh=False
+    generate_mesh=True
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
@@ -669,7 +673,7 @@ if __name__ == '__main__':
             if run_thm:
                 run(model_folder=case, physics_type=physics_type, 
                     uniform_props=uniform_props, wells_type=wells_type, 
-                    decouple_geomech=True, generate_mesh=True,
+                    decouple_geomech=True, generate_mesh=generate_mesh,
                     report_step=report_step, sim_time=sim_time)
             t2 = datetime.now()
             thm_time = t2 - t1
