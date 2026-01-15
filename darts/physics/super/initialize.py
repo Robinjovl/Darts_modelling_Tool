@@ -246,8 +246,19 @@ class Initialize:
             dX = np.linalg.solve(Jac, res)
 
             # Calculate damping factor to remain within all positive mole fractions
-            betas_min = np.array([Xi[i] / dX[i] for i in range(1, self.nc)])
-            betas_max = np.array([-(1.0 - Xi[i]) / dX[i] for i in range(1, self.nc)])
+            betas_min, betas_max = np.empty(self.nc - 1), np.empty(self.nc - 1)
+            for i in range(1, self.nc):
+                if np.abs(dX[i]) > 1e-15:
+                    betas_min[i - 1] = Xi[i] / dX[i]
+                    betas_max[i - 1] = -(1.0 - Xi[i]) / dX[i]
+                else:
+                    betas_min[i - 1] = (
+                        np.sign(dX[i]) * np.inf if np.sign(dX[i]) else np.inf
+                    )
+                    betas_max[i - 1] = (
+                        -np.sign(dX[i]) * np.inf if np.sign(dX[i]) else -np.inf
+                    )
+
             beta = min(
                 1,
                 min(
@@ -371,12 +382,19 @@ class Initialize:
                 dX = np.linalg.solve(Jac, res)
 
                 # Calculate damping factor to remain within all positive mole fractions
-                betas_min = np.array(
-                    [X[cell_idx, i] / dX[i] for i in range(1, self.nc)]
-                )
-                betas_max = np.array(
-                    [-(1.0 - X[cell_idx, i]) / dX[i] for i in range(1, self.nc)]
-                )
+                betas_min, betas_max = np.empty(self.nc - 1), np.empty(self.nc - 1)
+                for i in range(1, self.nc):
+                    if np.abs(dX[i]) > 1e-15:
+                        betas_min[i - 1] = X[cell_idx, i] / dX[i]
+                        betas_max[i - 1] = -(1.0 - X[cell_idx, i]) / dX[i]
+                    else:
+                        betas_min[i - 1] = (
+                            np.sign(dX[i]) * np.inf if np.sign(dX[i]) else np.inf
+                        )
+                        betas_max[i - 1] = (
+                            -np.sign(dX[i]) * np.inf if np.sign(dX[i]) else -np.inf
+                        )
+
                 beta = min(
                     1,
                     min(
@@ -535,20 +553,19 @@ class Initialize:
                 dX = np.linalg.solve(Jac, res)
 
                 # Calculate damping factor to remain within all positive mole fractions
-                betas_min = np.array(
-                    [
-                        X[cell_idx, i] / dX[i] if np.fabs(dX[i]) > 0.0 else np.nan
-                        for i in range(1, self.nc)
-                    ]
-                )
-                betas_max = np.array(
-                    [
-                        -(1.0 - X[cell_idx, i]) / dX[i]
-                        if np.fabs(dX[i]) > 0.0
-                        else np.nan
-                        for i in range(1, self.nc)
-                    ]
-                )
+                betas_min, betas_max = np.empty(self.nc - 1), np.empty(self.nc - 1)
+                for i in range(1, self.nc):
+                    if np.abs(dX[i]) > 1e-15:
+                        betas_min[i - 1] = X[cell_idx, i] / dX[i]
+                        betas_max[i - 1] = -(1.0 - X[cell_idx, i]) / dX[i]
+                    else:
+                        betas_min[i - 1] = (
+                            np.sign(dX[i]) * np.inf if np.sign(dX[i]) else np.inf
+                        )
+                        betas_max[i - 1] = (
+                            -np.sign(dX[i]) * np.inf if np.sign(dX[i]) else -np.inf
+                        )
+
                 beta = min(
                     1.0,
                     min(
