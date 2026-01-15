@@ -233,6 +233,47 @@ class Compositional(PhysicsBase):
 
         return
 
+    def apply_composition_correction(self, Xi: np.ndarray, min_sim_z, max_sim_z):
+        """
+        Methode to apply composition correction to initial value that is outside of min/max sim_z
+
+        :param Xi: Composition
+        :return: Corrected composition
+        """
+        sum_z = 0.0
+        z_corrected = False
+        for i in range(self.nc - 1):
+            new_z = Xi[i]
+            if new_z < min_sim_z:
+                new_z = min_sim_z
+                z_corrected = True
+            elif new_z > max_sim_z:
+                new_z = max_sim_z
+                z_corrected = True
+            sum_z += new_z
+        # check the last composition
+        new_z = 1.0 - sum_z
+        if new_z < min_sim_z:
+            if sum_z > max_sim_z:
+                new_z = sum_z * min_sim_z
+            else:
+                new_z = min_sim_z
+            z_corrected = True
+        sum_z += new_z
+
+        # correction
+        if z_corrected:
+            # normalize compositions and set appropriate update
+            for i in range(self.nc - 1):
+                new_z = Xi[i]
+
+                new_z = max(min_sim_z, new_z)
+                new_z = min(max_sim_z, new_z)
+
+                Xi[i] = new_z / sum_z
+
+        return Xi
+
     def set_initial_conditions_from_depth_table(
         self, mesh: conn_mesh, input_distribution: dict, input_depth: list | np.ndarray
     ):
@@ -274,6 +315,19 @@ class Compositional(PhysicsBase):
 
         # adjust the size of initial_state array in c++
         mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)
+
+        # Check for compositions that are outside of min/max sim_z bounds
+        min_sim_z = self.axes_min[1] + self.sim_eps
+        max_sim_z = self.axes_max[1] - self.sim_eps
+        for ith_depth, _ in enumerate(input_depth):
+            Xi = np.array(
+                [input_distribution[comp][ith_depth] for comp in self.components[:-1]]
+            )
+            Xi = np.append(Xi, 1.0 - np.sum(Xi))
+            if Xi[-1] < min_sim_z or Xi[-1] > max_sim_z:
+                Xi = self.apply_composition_correction(Xi, min_sim_z, max_sim_z)
+                for ith_comp, comp in enumerate(self.components[:-1]):
+                    input_distribution[comp][ith_depth] = Xi[ith_comp]
 
         # Loop over variables to fill initial_state vector in c++
         for ith_var, variable in enumerate(self.vars):
