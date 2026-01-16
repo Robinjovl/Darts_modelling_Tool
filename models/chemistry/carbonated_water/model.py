@@ -300,7 +300,7 @@ class Model(CICDModel):
             # PHREEQC backend expects .dat filenames
             db_filename = f"{self.database}.dat"
             property_container.flash_ev = PhreeqcFlash(
-                min_z=property_container.min_z,
+                min_z=property_container.eps_z,
                 minerals=property_container.minerals,
                 components=property_container.components_name[property_container.fc_mask],
                 temperature=property_container.temperature,
@@ -310,7 +310,7 @@ class Model(CICDModel):
             # Reaktoro expects 'supcrtbl' without .dat; PHREEQC DBs with .dat
             db_filename = 'supcrtbl' if self.database == 'supcrtbl' else f"{self.database}.dat"
             property_container.flash_ev = ReaktoroFlash(
-                min_z=property_container.min_z,
+                min_z=property_container.eps_z,
                 minerals=property_container.minerals,
                 components=property_container.components_name[property_container.fc_mask],
                 temperature=property_container.temperature,
@@ -338,9 +338,10 @@ class Model(CICDModel):
 
         output_property_container = OutputPropertyContainer(property_container)
 
-        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points, phases=phase_name,
-                                    axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
-                                    cache=False)
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name,
+                                                n_points=self.n_points, axes_min=self.axes_min, axes_max=self.axes_max,
+                                                epsilon_z=property_container.eps_z, extrapolation_flag=False,
+                                                cache=False)
         self.physics.add_property_region(property_container, output_property_container, 0)
 
         # Compute injection stream

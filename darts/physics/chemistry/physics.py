@@ -28,11 +28,9 @@ class ElementBasedReactiveFlow(Compositional):
         n_points: int | list[int],
         axes_min: list[float],
         axes_max: list[float],
-        properties,
-        platform: str = 'cpu',
-        itor_type: str = 'multilinear',
-        itor_mode: str = 'adaptive',
-        itor_precision: str = 'd',
+        epsilon_z: float = 1e-13,
+        sim_eps: float = None,
+        extrapolation_flag: bool = False,
         cache: bool = True,
     ):
         """
@@ -49,16 +47,6 @@ class ElementBasedReactiveFlow(Compositional):
         :type axes_min: list
         :param axes_max: Maximum axes values
         :type axes_max: list
-        :param properties: Property container object
-        :type properties: user-defined or built-in PropertyContainer class
-        :param platform: Platform to run the simulation
-        :type platform: str (cpu or gpu)
-        :param itor_type: Interpolator type
-        :type itor_type: str (multilinear or linear)
-        :param itor_mode: Interpolator mode
-        :type itor_mode: str (adaptive or static)
-        :param itor_precision: Interpolator precision
-        :type itor_precision: str
         :param cache: Cache flag
         :type cache: bool
         """
@@ -77,6 +65,9 @@ class ElementBasedReactiveFlow(Compositional):
             axes_min=axes_min,
             axes_max=axes_max,
             n_axes_points=n_points,
+            epsilon_z=epsilon_z,
+            sim_eps=sim_eps,
+            extrapolation_flag=extrapolation_flag,
             timer=timer,
             cache=cache,
         )
@@ -90,22 +81,36 @@ class ElementBasedReactiveFlow(Compositional):
         """
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
-                self.property_containers[region]
+                self.property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
             self.initial_operators[region] = ConversionOperators(
-                self.property_containers[region]
+                self.property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
             self.property_operators[region] = BasePropertyOperators(
-                self.output_property_containers[region], self.thermal
+                self.output_property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
 
         self.well_ctrl_operators = WellControlOperators(
-            self.property_containers[self.regions[0]], self.thermal
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
         self.well_init_operators = WellInitOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
 
     def add_property_region(

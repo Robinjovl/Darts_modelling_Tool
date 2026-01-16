@@ -13,7 +13,13 @@ class ReservoirOperators(OperatorsSuper):
     values are the same as in OperatorsSuper
     """
 
-    def __init__(self, properties):
+    def __init__(
+        self,
+        properties,
+        thermal: bool,
+        extrapolation_flag: bool = False,
+        dz: float = None,
+    ):
         """
         Constructor for ReservoirOperators class.
         :param properties: Property container object
@@ -24,7 +30,9 @@ class ReservoirOperators(OperatorsSuper):
         properties.nc_fl = -1
         properties.np_fl = -1
         properties.ns = -1
-        super().__init__(properties, thermal=properties.thermal)
+        super().__init__(
+            properties, thermal=thermal, extrapolation_flag=extrapolation_flag, dz=dz
+        )
 
         # Store your input parameters in self here, and initialize other parameters here in self
         self.property = properties
@@ -60,6 +68,10 @@ class ReservoirOperators(OperatorsSuper):
         :type values: value_vector
         :rtype: int
         """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
+
         # state and values numpy vectors:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
@@ -181,13 +193,21 @@ class ConversionOperators(ReservoirOperators):
     values are mineral molar fractions within rock + fluid mixture
     """
 
-    def __init__(self, properties):
+    def __init__(
+        self,
+        properties,
+        thermal: bool,
+        extrapolation_flag: bool = False,
+        dz: float = None,
+    ):
         """
         Constructor for ConversionOperators class.
         :param properties: Property container object
         :type properties: user-defined or built-in PropertyContainer class
         """
-        super().__init__(properties)  # Initialize base-class
+        super().__init__(
+            properties, thermal, extrapolation_flag, dz
+        )  # Initialize base-class
         self.fluid_mole = self.property.flash_ev.total_moles / 1000  # mol to kmol
         self.counter = 0
         self.props_name = ['z_' + prop for prop in properties.minerals]
@@ -203,6 +223,10 @@ class ConversionOperators(ReservoirOperators):
         :return: updated value for operators, stored in values
         :rtype: int
         """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
+
         state_np = state.to_numpy()
         values_np = values.to_numpy()
         pressure = state_np[0]

@@ -59,7 +59,7 @@ class PropertyContainer(BasePropertyContainer):
             Mw=Mw,
             nc_sol=nc_sol,
             np_sol=np_sol,
-            min_z=min_z,
+            eps_z=min_z,
             rate_ann_mat=rate_ann_mat,
             temperature=temperature,
         )
