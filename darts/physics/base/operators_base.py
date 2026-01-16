@@ -51,7 +51,6 @@ class OperatorsBase(operator_set_evaluator_iface):
         State layout: [ p, z₁, …, z_d, (T) ]
         """
         # Unpack state
-        # print("state", state)
         vec = state.to_numpy()
         if self.thermal:
             p, T = vec[0], vec[-1]
@@ -123,77 +122,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         # Write back into values array
         out = np.array(values, copy=False)
         out[: self.n_ops] = ext
-        # print("success")
         return out
-
-    # def extrapolate(self, state, values):
-    #     """
-    #     Generic exact hyperplane extrapolation for any number of components d.
-    #     When ∑z_i ≠ 1, generate exactly d+1 reference points (axis shifts + uniform shift),
-    #     solve the (d+1)x(d+1) system [Z|1]·X = V via np.linalg.solve, and evaluate at z.
-    #     Negative components and additional subsets are ignored—only sum error is corrected.
-    #     State layout: [p, z1…z_d, (T)]
-    #     """
-    #     import numpy as _np
-    #
-    #     # Unpack state
-    #     vec = state.to_numpy()
-    #     if self.thermal:
-    #         p, T = vec[0], vec[-1]
-    #         z = vec[1:-1].copy()
-    #     else:
-    #         p = vec[0]
-    #         z = vec[1:].copy()
-    #     d = z.size
-    #
-    #     # # Check if on simplex
-    #     # sum_z = z.sum()
-    #     # if abs(sum_z - 1.0) < 1e-14:
-    #     #     return values
-    #     # dz = sum_z - 1.0
-    #     # print("dz1",dz)
-    #     # Build d+1 candidate points: subtract dz along each axis plus uniform
-    #     candidates = []
-    #     for i in range(d):
-    #         zp = z.copy()
-    #         zp[i] -= self.dz
-    #         candidates.append(zp)
-    #     candidates.append(z - self.dz)
-    #     print("dz", self.dz)
-    #     # Collect first d+1 valid simplex points and their values
-    #     zps, vals = [], []
-    #     for zp in candidates:
-    #         if (zp >= 0).all() and zp.sum() <= 1.0:
-    #             # Create reference state
-    #             vec_ref = _np.concatenate(([p], zp, ([T] if self.thermal else [])))
-    #             ref_state = value_vector(vec_ref)
-    #             ref_vals  = value_vector(_np.zeros(self.n_ops))
-    #             self.evaluate(ref_state, ref_vals)
-    #             zps.append(zp)
-    #             vals.append(ref_vals.to_numpy())
-    #             if len(zps) == d+1:
-    #                 break
-    #     # Bail out if not enough refs
-    #     if len(zps) < d+1:
-    #         return values
-    #
-    #     # Solve exact hyperplane: [Z | 1] X = V
-    #     Zmat = _np.stack(zps)                     # shape (d+1, d)
-    #     Vmat = _np.stack(vals)                    # shape (d+1, n_ops)
-    #     B    = _np.hstack((Zmat, _np.ones((d+1,1))))  # shape (d+1, d+1)
-    #     X    = _np.linalg.solve(B, Vmat)          # shape (d+1, n_ops)
-    #
-    #     # Extract slopes and intercepts
-    #     a = X[:-1, :]   # shape (d, n_ops)
-    #     c = X[-1, :]    # shape (n_ops,)
-    #
-    #     # Extrapolate to original z
-    #     ext = a.T.dot(z) + c
-    #
-    #     # Write back operator values
-    #     out = _np.array(values, copy=False)
-    #     out[:self.n_ops] = ext
-    #     return out
 
 
 class WellControlOperators(OperatorsBase):
