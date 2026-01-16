@@ -26,12 +26,12 @@
 #include "linsolv_bos_amg.h"
 #include "linsolv_amg1r5.h" // Not available in opendarts_linear_solvers
 #include "linsolv_superlu.h"
-#endif // OPENDARTS_LINEAR_SOLVERS                                                                                                                                        
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t NC>
 const std::string engine_nc_nl_cpu<NC>::AVG_MPFA = "AVG_MPFA";
@@ -356,15 +356,17 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 
 	if (params->log_transform == 0)
 	{
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		// max_zc = 1 - min_zc * params->obl_min_fac;
-		max_zc = 1. - (nc-1) * acc_flux_op_set_list[0]->get_axis_min(z_var) - min_zc;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		max_sim_z = max_axis_z - params->sim_eps;
 	}
 	else if (params->log_transform == 1)
 	{
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+		max_sim_z = max_axis_z - params->sim_eps;
 	}
 
 	return 0;

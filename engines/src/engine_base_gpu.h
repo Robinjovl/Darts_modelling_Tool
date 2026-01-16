@@ -111,8 +111,8 @@ public:
   value_t *darcy_velocities_d;         // [n_res_blocks * NP * ND] array of phase Darcy velocities for every reservoir cell
   value_t *mesh_velocity_appr_d;       // coefficients of approximation of Darcy phase velocities over fluxes
   index_t *mesh_velocity_offset_d;     // offsets in the approximation of Darcy phase velocities over fluxes
-  index_t *mesh_op_num_d;              // regions indices for every cell 
-  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory 
+  index_t *mesh_op_num_d;              // regions indices for every cell
+  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory
 };
 
 template <uint8_t N_VARS>
@@ -157,8 +157,8 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   {
     params->linear_type = sim_params::GPU_GMRES_CPR_AMGX_ILU;
   }
-  
-  std::string linear_solver_type_str;	
+
+  std::string linear_solver_type_str;
   if (!linear_solver)
   {
     switch (params->linear_type)
@@ -396,9 +396,9 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     }
     }
   }
-  
+
   std::cout << "Linear solver type is " << params->linear_type << std::endl;
-	
+
   // *** allocate host data ***
 
   n_vars = get_n_vars();
@@ -527,14 +527,17 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
   if (params->log_transform == 0)
   {
-    min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-    max_zc = 1 - min_zc * params->obl_min_fac;
-    //max_zc = acc_flux_op_set_list[0]->get_maxzc();
+    min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		max_sim_z = max_axis_z - params->sim_eps;
   }
   else if (params->log_transform == 1)
   {
-    min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-    max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));                       //log based composition
+    min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+		max_sim_z = max_axis_z - params->sim_eps;
   }
 
   // *** initialize device data ***
