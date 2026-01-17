@@ -1604,6 +1604,8 @@ class Output:
             )
 
         batch_size = num_ts * num_conn
+        n_well_ctrl_ops = self.physics.well_ctrl_operators.n_ops
+        n_reservoir_ops = self.physics.reservoir_operators[0].n_ops
         states_2d = states.reshape(batch_size, self.physics.n_vars)
 
         states_vec = value_vector(states_2d.ravel())
@@ -1614,14 +1616,9 @@ class Output:
             "phase_volumetric_rates",
             "advective_heat_rates",
         ]:
-            values = value_vector(
-                np.zeros(num_ts * num_conn * self.physics.well_ctrl_operators.n_ops)
-            )
+            values = value_vector(np.zeros(num_ts * num_conn * n_well_ctrl_ops))
             dvalues = value_vector(
-                np.zeros(
-                    (num_ts * num_conn * self.physics.well_ctrl_operators.n_ops)
-                    * self.physics.n_vars
-                )
+                np.zeros((num_ts * num_conn * n_well_ctrl_ops) * self.physics.n_vars)
             )
 
             block_idx = np.arange(num_ts * num_conn).astype(np.int32)
@@ -1631,19 +1628,12 @@ class Output:
 
             # self.physics.well_ctrl_itor.evaluate(states_vec, values)
 
-            values_reshaped = np.asarray(values).reshape(
-                batch_size, self.physics.well_ctrl_operators.n_ops
-            )
+            values_reshaped = np.asarray(values).reshape(batch_size, n_well_ctrl_ops)
 
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            values = value_vector(
-                np.zeros(num_ts * num_conn * self.physics.reservoir_operators[0].n_ops)
-            )
+            values = value_vector(np.zeros(num_ts * num_conn * n_reservoir_ops))
             dvalues = value_vector(
-                np.zeros(
-                    (num_ts * num_conn * self.physics.reservoir_operators[0].n_ops)
-                    * self.physics.n_vars
-                )
+                np.zeros((num_ts * num_conn * n_reservoir_ops) * self.physics.n_vars)
             )
 
             block_idx = np.arange(num_ts * num_conn).astype(np.int32)
@@ -1651,9 +1641,7 @@ class Output:
                 states_vec, index_vector(block_idx), values, dvalues
             )
 
-            values_reshaped = np.asarray(values).reshape(
-                batch_size, self.physics.reservoir_operators[0].n_ops
-            )
+            values_reshaped = np.asarray(values).reshape(batch_size, n_reservoir_ops)
 
         else:
             raise Exception(
@@ -1711,7 +1699,7 @@ class Output:
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
                 values_reshaped_dead = np.asarray(values).reshape(
-                    batch_size, self.physics.well_ctrl_operators.n_ops
+                    batch_size, n_well_ctrl_ops
                 )
                 ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
