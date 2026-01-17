@@ -1,5 +1,6 @@
 import os
 import shutil
+import warnings
 
 import h5py
 import matplotlib.pyplot as plt
@@ -1691,8 +1692,27 @@ class Output:
 
             # Calc heat operators for the dead state (1 atm and 15 deg C)
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                states_2d[:, p_idx] = 1.01325  # Dead pressure (1 atm)
-                states_2d[:, t_idx] = 273.15 + 15  # Dead temperature (15 deg C)
+                p_dead = 1.01325  # Dead pressure (1 atm)
+                T_dead = 273.15 + 15  # Dead temperature (15 deg C)
+                if not (
+                    self.physics.axes_min[p_idx]
+                    <= p_dead
+                    <= self.physics.axes_max[p_idx]
+                ):
+                    warnings.warn(
+                        f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
+                        stacklevel=1,
+                    )
+                if not (
+                    self.physics.axes_min[-1] <= T_dead <= self.physics.axes_max[-1]
+                ):
+                    warnings.warn(
+                        f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
+                        stacklevel=1,
+                    )
+
+                states_2d[:, p_idx] = p_dead
+                states_2d[:, t_idx] = T_dead
                 states_vec_dead = value_vector(states_2d.ravel())
                 self.physics.well_ctrl_itor.evaluate_with_derivatives(
                     states_vec_dead, index_vector(block_idx), values, dvalues
