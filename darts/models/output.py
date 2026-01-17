@@ -1673,17 +1673,27 @@ class Output:
             op_start = self.physics.reservoir_operators[0].FLUX_OP
             flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
             flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
-            molar_ops = flux_ops[:, :, : pc.nc_fl].reshape(
-                batch_size, pc.nph * pc.nc_fl
-            )
+
+            op_start = self.physics.reservoir_operators[0].LAMBDA_OP
+            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            lambda_op = lambda_op[:, :, np.newaxis]
+
+            molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
+            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_fl)
+
             ops = molar_ops
         elif rate_type == "component_mass_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
             flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
             flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
-            molar_ops = flux_ops[:, :, : pc.nc_fl].reshape(
-                batch_size, pc.nph * pc.nc_fl
-            )
+
+            op_start = self.physics.reservoir_operators[0].LAMBDA_OP
+            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            lambda_op = lambda_op[:, :, np.newaxis]
+
+            molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
+            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_fl)
+
             mw = np.array(self.physics.property_containers[0].Mw[: pc.nc_fl])
             mw_tiled = np.tile(mw, pc.nph)
             ops = molar_ops * mw_tiled
