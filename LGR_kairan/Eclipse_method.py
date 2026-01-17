@@ -49,7 +49,7 @@ class Model(DartsModel):
         lgr_coords_in_parent_grid = {
         "i_range": [2, 2],
         "j_range": [2, 2],
-        "k_range": [1, 1],
+        "k_range": [1, 3],
         "refine": [3, 3, 1],
         "tag" : "inj"
         }
@@ -63,7 +63,7 @@ class Model(DartsModel):
         lgr_coords_in_parent_grid = {
         "i_range": [4, 4],
         "j_range": [2, 2],
-        "k_range": [1, 1],
+        "k_range": [1, 3],
         "refine": [3, 3, 1],
         "tag" : "prd"
         }
@@ -72,52 +72,66 @@ class Model(DartsModel):
             'lgr_coords_in_parent_grid': lgr_coords_in_parent_grid,
         }
         return lgrs
+    
+    def build_well_completion(self):
+        return {
+            "I1": {"lgr": "lgr0", "k_from": 1, "k_to": 3},  # coarse k (1-based)
+            "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 3},
+        }    
 
     def convert_ijk_to_gindex_0based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
         """
-        Convert (i,j,k) in 1-based to global index in 0-based for nz=1 case
+        Convert (i,j,k) in 1-based to global index in 0-based
         """
         g_index_0based = (k_1based - 1) * nx * ny + (j_1based - 1) * nx + (i_1based - 1)
         return g_index_0based
+    
+    def ijk1_to_lin(self, i0: int, j0: int, k0: int, nx: int, ny: int) -> int:
+        """Convert 0-based (i,j,k) to linear index"""
+        return k0 * nx * ny + j0 * nx + i0
 
-    def create_actnum_with_lgr(self, nx0, ny0, refined_ij_list):
-        actnum0 = np.ones(nx0 * ny0, dtype=np.int32)
-        for i_c,j_c in refined_ij_list:
-            g = self.convert_ijk_to_gindex_0based(i_c, j_c, 1, nx0, ny0)
+    def create_actnum_with_lgr(self, nx0, ny0, nz0, refined_ij_list):
+        actnum0 = np.ones(nx0 * ny0 * nz0, dtype=np.int32)
+        for (i_c,j_c,k_c) in refined_ij_list:
+            g = self.convert_ijk_to_gindex_0based(i_c, j_c, k_c, nx0, ny0)
             actnum0[g] = 0  # deactivate the coarse cell that will be refined
         return actnum0
 
     def auto_image_grid_dx_dy(self, dx_parent, dy_parent, rx, ry):
-        dx_f = dx_parent / rx
-        dy_f = dy_parent / ry
-        dx_image = np.array([dx_parent, dx_f,dx_f,dx_f, dx_parent], dtype=float)
-        dy_image = np.array([dy_parent, dy_f,dy_f,dy_f, dy_parent], dtype=float)
+       
+        dx_image = np.r_[dx_parent, np.full(rx, dx_parent/rx), dx_parent]
+        dy_image = np.r_[dy_parent, np.full(ry, dy_parent/ry), dy_parent]
+
         return dx_image, dy_image
 
     def set_reservoir(self):
         self.lgrs = self.build_lgr_definition()
 
-        refined_cells_ij = []
-        for name, cfg in self.lgrs.items():
-            assert cfg['parent_grid_name'] == 'global'
-            i1, i2 = cfg['lgr_coords_in_parent_grid']['i_range']
-            j1, j2 = cfg['lgr_coords_in_parent_grid']['j_range']
-            k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
-            refined_cells_ij.append( (i1, j1) )  # only nz=1 case
 
-        self.refined_cells_ij = refined_cells_ij
 
         #Build Level0 with actnum
-        nx0, ny0, nz0 = 5, 3, 1  # global grid size
+        nx0, ny0, nz0 = 5, 3, 3  # global grid size
         dx0, dy0, dz0 = 100, 100, 5
         permx0, permy0, permz0 = 50, 50, 50
         poro0 = 0.1
-        depth0 = 2000
+       
 
-        actnum0 = self.create_actnum_with_lgr(nx0, ny0, refined_cells_ij)
+        refined_cells_ijk = []
+        for name, cfg in self.lgrs.items():
+            i1, i2 = cfg['lgr_coords_in_parent_grid']['i_range']
+            j1, j2 = cfg['lgr_coords_in_parent_grid']['j_range']
+            k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
+            assert i1 == i2 and j1 == j2, "This script only assume column LGR"  
+            for k in range(k1, k2 + 1):
+                refined_cells_ijk.append( (i1, j1, k) )  
+
+        self.refined_cells_ijk = refined_cells_ijk
+
+        actnum0 = self.create_actnum_with_lgr(nx0, ny0, nz0, refined_cells_ijk)
+
 
         self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0,
-                                         permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth=depth0,actnum=actnum0)
+                                         permx=permx0, permy=permy0, permz=permz0, poro=poro0,depth= None, start_z=2000,actnum=actnum0)
 
 
         # Build Level1 grids and imaginary grids
@@ -125,19 +139,22 @@ class Model(DartsModel):
         self.level1_imag = {}
         for name, cfg in self.lgrs.items():
             rx, ry, rz = cfg['lgr_coords_in_parent_grid']['refine']
+            k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
+            nk = k2 - k1 + 1
 
-            nx1,ny1,nz1 = rx, ry, rz
+            nx1,ny1,nz1 = rx, ry, nk
             dx1 = dx0 / rx
             dy1 = dy0 / ry
-            dz1 = dz0 / rz
+            dz1 = dz0
 
             self.level1[name] = StructReservoir(self.timer, nx=nx1, ny=ny1, nz=nz1, dx=dx1, dy=dy1, dz=dz1,
-                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth=depth0)
+                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000)
 
             dx_imag, dy_imag = self.auto_image_grid_dx_dy(dx0, dy0, rx, ry)
-            self.level1_imag[name] = StructReservoir(self.timer, nx=5, ny=5, nz=1, dx=dx_imag, dy=dy_imag, dz=dz0,
-                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth=depth0)
 
+            # 2D imaginary grid per layer
+            self.level1_imag[name] = StructReservoir(self.timer, nx=rx+2, ny=ry+2, nz=1, dx=dx_imag, dy=dy_imag, dz=dz0,
+                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000)
 
 
         cm_all, cp_all, T_all, T_all_therm, meta = self.assemble_lgr_connections_eclipse()
@@ -155,7 +172,7 @@ class Model(DartsModel):
         kz0_arr = disc0.convert_to_flat_array(self.level0.global_data['permz'], 'permz')[l2g0]
         poro0_arr  = disc0.convert_to_flat_array(self.level0.global_data['poro'],  'poro')[l2g0]
         depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
-        vol_g0 = np.ones(self.level0.nx*self.level0.ny*self.level0.nz, dtype=float) * (100*100*5)
+        vol_g0 = np.ones(self.level0.nx*self.level0.ny*self.level0.nz, dtype=float) * (dx0*dy0*dz0)
         volume0_arr = vol_g0[l2g0]
 
         dx_list = [dx0_arr]; dy_list = [dy0_arr]; dz_list = [dz0_arr]
@@ -163,6 +180,7 @@ class Model(DartsModel):
         poro_list = [poro0_arr]; depth_list = [depth0_arr]; volume_list = [volume0_arr]
 
         for name in meta['lgr_orders']:
+            rx, ry, rz = self.lgrs[name]['lgr_coords_in_parent_grid']['refine']
             self.level1[name].discretize()
             disc1 = self.level1[name].discretizer
 
@@ -175,7 +193,7 @@ class Model(DartsModel):
 
             poro_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["poro"], "poro"))
             depth_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["depth"], "depth"))
-            volume_list.append(np.ones(self.level1[name].n, dtype=float) * (dx0/3) * (dy0/3) * dz0)
+            volume_list.append(np.ones(self.level1[name].n, dtype=float) * (dx0/rx) * (dy0/ry) * dz0)
 
         dx = np.concatenate(dx_list)
         dy = np.concatenate(dy_list)
@@ -250,45 +268,43 @@ class Model(DartsModel):
         fc_cp = []
         fc_T = []
         fc_Tt = []
-        nxim, nyim = 5, 5  # imaginary grid size is 5x5
-        fine_im = []
-        for j in range(1,4):
-            for i in range(1,4):
-                fine_im.append(j*nxim + i)
-        fine_im_set = set(fine_im)
-        coarse_im = []
-        for i in range(1,4):
-            coarse_im.append(i) # top edge
-            coarse_im.append(4*nxim + i) # bottom edge
-        for j in range(1,4):
-            coarse_im.append(j*nxim) # left edge
-            coarse_im.append(j*nxim + 4) # right edge
-        coarse_im_set = set(coarse_im)
-
-        # mapping: imaginary fine index (5*5) -> local fine index (3*3)
-        imag_fine_to_local = {}
-        k = 0
-        for j in range(1,4):
-            for i in range(1,4):
-                imag_idx = j*nxim + i # index of 5*5 grid
-                imag_fine_to_local[imag_idx] = k # index of 3*3 grid
-                k += 1
-        # the imaginary index of those cells adjacent to fine cells
-        left_im = [j * nxim for j in range(1,4)]
-        right_im = [4 + j*nxim for j in range(1,4)]
-        up_im = [i for i in range(1,4)]
-        down_im = [4*nxim + i for i in range(1,4)]
 
         for name in lgr_orders:
             cfg = self.lgrs[name]
-            i = cfg['lgr_coords_in_parent_grid']['i_range'][0]
-            j = cfg['lgr_coords_in_parent_grid']['j_range'][0]
+            ic = cfg['lgr_coords_in_parent_grid']['i_range'][0]
+            jc = cfg['lgr_coords_in_parent_grid']['j_range'][0]
+            k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
             rx,ry,rz = cfg['lgr_coords_in_parent_grid']['refine']
-
+            
             self.level1_imag[name].discretize()
             disc_im = self.level1_imag[name].discretizer
             cmi, cpi, Ti, Ti_therm = disc_im.calc_structured_discr()
 
+            nxim = rx +2
+            nyim = ry +2
+
+            # identify fine and coarse cells in imaginary grid for per layer connections
+            fine_im = []
+            for j in range(1,ry+1):
+                for i in range(1,rx+1):
+                    fine_im.append(j*nxim + i)
+            fine_im_set = set(fine_im)
+
+            left_im = [jj * nxim for jj in range(1,ry+1)]
+            right_im = [rx +1 + jj*nxim for jj in range(1,ry+1)]
+            up_im = [ii for ii in range(1,rx+1)]
+            down_im = [ (ry +1)*nxim + ii for ii in range(1,rx+1)]
+            coarse_im_set = set(left_im + right_im + up_im + down_im)
+
+            # mapping: imaginary fine index (5*5) -> local fine index (3*3)
+            imag_fine_to_local = {}
+            k = 0
+            for j in range(1,ry+1):
+                for i in range(1,rx+1):
+                    imag_idx = j*nxim + i # index of 5*5 grid
+                    imag_fine_to_local[imag_idx] = k # index of 3*3 grid
+                    k += 1
+            # filter connections that are fine-coarse
             is_fine_coarse = np.array([(cm in fine_im_set and cp in coarse_im_set)
                                      or (cp in fine_im_set and cm in coarse_im_set)
                                      for cm, cp in zip(cmi, cpi)], dtype= bool)
@@ -298,47 +314,55 @@ class Model(DartsModel):
             Ti_fc = Ti[is_fine_coarse]
             Ti_therm_fc = Ti_therm[is_fine_coarse]
 
-            # Map the fine index of imaginary to the global index of level 1
-            # map the coarse index to the real index of level 0
+            # For each k layer in the column, 
+            # map halo to the corresponding coarse neighbor at that k
             nx0 = self.level0.nx
-            # compute neigbor indices in level0 after eliminating inactive cells
-            nbr_g = {
-                "left" : self.convert_ijk_to_gindex_0based(i-1, j, 1, nx0, self.level0.ny),
-                "right" : self.convert_ijk_to_gindex_0based(i+1, j, 1, nx0, self.level0.ny),
-                "up" : self.convert_ijk_to_gindex_0based(i, j-1, 1, nx0, self.level0.ny),
-                "down" : self.convert_ijk_to_gindex_0based(i, j+1, 1, nx0, self.level0.ny),
-            }
-            nbr_l = {k: int(g2l0[v]) for k, v in nbr_g.items()} # local indices in level0 after actnum squeeze
-
-            # map imag coarse ring to lvel0 local index
-            image_coarse_to_level0 = {}
-            for idx in left_im:
-                image_coarse_to_level0[idx] = nbr_l['left']
-            for idx in right_im:
-                image_coarse_to_level0[idx] = nbr_l['right']
-            for idx in up_im:
-                image_coarse_to_level0[idx] = nbr_l['up']
-            for idx in down_im:
-                image_coarse_to_level0[idx] = nbr_l['down']
-
+            ny0 = self.level0.ny
             fine_global_offset = lgr_offsets[name]
+            # compute 4 neighboring coarse cell global indices (including inactive cells) 
+            # at each k layer at level0
+            for kk_local, k_layer in enumerate(range(k1, k2 +1)):
+                nbr_g = {
+                    "left" :self.convert_ijk_to_gindex_0based(ic-1, jc, k_layer, nx0, ny0),
+                    "right" :self.convert_ijk_to_gindex_0based(ic+1, jc, k_layer, nx0, ny0),
+                    "up" :self.convert_ijk_to_gindex_0based(ic, jc-1, k_layer, nx0, ny0),
+                    "down" :self.convert_ijk_to_gindex_0based(ic, jc+1, k_layer, nx0, ny0),
+                }
 
-            for cm, cp, t, tt in zip(cmi_fc,cpi_fc, Ti_fc, Ti_therm_fc):
-                # imag_fine_to_local is a dict: imag index -> local fine index (3*3) of level1
-                # image_coarse_to_level0 is a dict: imag index -> local coarse index of level0 (after actnum squeeze)
-                if cm in imag_fine_to_local and cp in image_coarse_to_level0:
-                    fine_local = imag_fine_to_local[cm]
-                    coarse_local = image_coarse_to_level0[cp]
-                elif cp in imag_fine_to_local and cm in image_coarse_to_level0:
-                    fine_local = imag_fine_to_local[cp]
-                    coarse_local = image_coarse_to_level0[cm]
-                else:
-                    continue
-                fine_global = fine_local + fine_global_offset # global index of fine cell
-                fc_cm.append(coarse_local)
-                fc_cp.append(fine_global)
-                fc_T.append(t)
-                fc_Tt.append(tt)
+
+                nbr_l = {k: int(g2l0[v]) for k, v in nbr_g.items()} # local indices in level0 after actnum squeeze
+
+                # map imag coarse ring to lvel0 local index
+                image_ring_to_level0 = {}
+                for idx in left_im:
+                    image_ring_to_level0[idx] = nbr_l['left']
+                for idx in right_im:
+                    image_ring_to_level0[idx] = nbr_l['right']
+                for idx in up_im:
+                    image_ring_to_level0[idx] = nbr_l['up']
+                for idx in down_im:
+                    image_ring_to_level0[idx] = nbr_l['down']
+
+                # build FC connnections for this k layer
+                plane_size = rx * ry
+                for cm, cp, t, tt in zip(cmi_fc,cpi_fc, Ti_fc, Ti_therm_fc):
+                    # imag_fine_to_local is a dict: imag index -> local fine index (3*3) of level1
+                    # image_ring_to_level0 is a dict: imag index -> local coarse index of level0 (after actnum squeeze)
+                    if cm in imag_fine_to_local and cp in image_ring_to_level0:
+                        fine_2d = imag_fine_to_local[cm]
+                        coarse_local = image_ring_to_level0[cp]
+                    elif cp in imag_fine_to_local and cm in image_ring_to_level0:
+                        fine_2d = imag_fine_to_local[cp]
+                        coarse_local = image_ring_to_level0[cm]
+                    else:
+                        continue
+
+                    fine_3d = fine_2d + plane_size * kk_local
+                    fine_global = fine_3d + fine_global_offset # global index of fine cell
+                    fc_cm.append(coarse_local)
+                    fc_cp.append(fine_global)
+                    fc_T.append(t)
+                    fc_Tt.append(tt)
 
         # assemble all connections
 
@@ -364,6 +388,8 @@ class Model(DartsModel):
         T_all = np.concatenate(T_parts)
         T_all_therm = np.concatenate(Tt_parts)
 
+        center_2d = (ry//2) * rx + (rx//2)
+
         print(f'cm is {cm_all}')
         print(f'cp is {cp_all}')
 
@@ -371,25 +397,30 @@ class Model(DartsModel):
             "lgr_orders": lgr_orders,
             "lgr_offsets": lgr_offsets,
             "n0_act": n0_act,
-            "well_local_center": 4,
+            "well_local_center": center_2d,
         }
         return cm_all, cp_all, T_all, T_all_therm, meta
+
 
 
     def set_wells(self):
         self.reservoir.add_well("I1")
         self.reservoir.add_well("P1")
 
-        center_local = self.lgr_meta['well_local_center']
+        center_2d = self.lgr_meta['well_local_center']
 
-        inj_lgr = "lgr0"
-        prd_lgr = "lgr1"
-        inj_global = self.lgr_meta["lgr_offsets"][inj_lgr] + center_local
-        prd_global = self.lgr_meta["lgr_offsets"][prd_lgr] + center_local
-
-        self.reservoir.add_perforation("I1", cell_index=inj_global)
-
-        self.reservoir.add_perforation("P1", cell_index=prd_global)
+        comp = self.build_well_completion()
+        for wname, cfg in comp.items():
+            lgr_name = cfg["lgr"]
+            per_from = cfg["k_from"]
+            per_to = cfg["k_to"]
+            
+            for k in range(per_from -1, per_to):  
+                rx,ry,_ = self.lgrs[lgr_name]['lgr_coords_in_parent_grid']['refine']
+                inj_local = center_2d + k * (rx * ry)
+                inj_global = inj_local + self.lgr_meta['lgr_offsets'][comp[wname]["lgr"]]
+                self.reservoir.add_perforation(wname, cell_index=inj_global)
+  
 
     def set_physics(self):
         """Physical properties"""
@@ -474,7 +505,7 @@ class LGRReservoir(ReservoirBase):
             self.op_num = np.asarray(op_num, dtype= int)
 
         self.n = self.poro.size
-        self.ndims = 2 # currently nz =1
+        self.ndims = 3 
         self.actnum = np.ones(self.n, dtype= bool)
         self.global_data = {}
 
