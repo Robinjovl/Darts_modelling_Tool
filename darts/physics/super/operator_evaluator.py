@@ -110,7 +110,7 @@ class ReservoirOperators(OperatorsSuper):
             * zc[self.nc_fl : self.nc_fl + self.ns]
         )
 
-        """ Beta operator represents flux term: """
+        """ Beta operator """
         for j in self.property.ph:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             values_np[
@@ -156,7 +156,7 @@ class ReservoirOperators(OperatorsSuper):
         # E5_> permeability multiplier due to permporo relationship
         values_np[self.MULT_OP] = self.property.permporo_mult_ev.evaluate(self.phi_f)
 
-        """ Lambda operator for velocity calculations """
+        """ Lambda operator (phase mobility) """
         # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
         values_np[self.LAMBDA_OP + self.property.ph] = (
             self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
@@ -190,7 +190,7 @@ class ReservoirOperators(OperatorsSuper):
         # Evaluate thermal properties at current state
         self.property.evaluate_thermal(state)
 
-        """ Alpha operator represents accumulation term: """
+        """ Alpha operator represents accumulation term """
         # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += (
             self.compr
@@ -214,7 +214,7 @@ class ReservoirOperators(OperatorsSuper):
         # Enthalpy to internal energy conversion
         values[self.ACC_OP + self.nc] -= self.compr * 100 * pressure
 
-        """ Beta operator represents flux term: """
+        """ Beta operator """
         # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
         values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = (
             self.property.enthalpy[self.property.ph]
@@ -314,7 +314,7 @@ class WellOperators(OperatorsSuper):
             * zc[self.nc_fl : self.nc_fl + self.ns]
         )
 
-        """ Beta operator represents flux term: """
+        """ Beta operator """
         for j in self.property.ph:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             values_np[
@@ -339,7 +339,7 @@ class WellOperators(OperatorsSuper):
         # E5_> permeability multiplier due to permporo relationship
         values_np[self.MULT_OP] = 1.0
 
-        """ Lambda operator for velocity calculations """
+        """ Lambda operator """
         # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
         values_np[self.LAMBDA_OP + self.property.ph] = (
             self.property.kr[self.property.ph] / self.property.mu[self.property.ph]

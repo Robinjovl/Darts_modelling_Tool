@@ -1216,8 +1216,8 @@ class Output:
         time_data_dict = {"time": time}
 
         (
-            perfs_conn_ids,
-            well_head_conn_ids,
+            perfs_conn_idxs,
+            well_head_conn_idxs,
             geometric_WI,
             well_head_conn_trans,
         ) = self.get_wellhead_perf_connection_info()
@@ -1245,9 +1245,9 @@ class Output:
             ].physics_type == "geothermal_engine":
                 continue
             # Compute perforation rates
-            rates_perfs = self.calc_rates_at_connections(
+            rates_perfs = self.calc_rates_at_conns(
                 h5_well_data,
-                perfs_conn_ids,
+                perfs_conn_idxs,
                 geometric_WI,
                 self.physics.thermal,
                 rate_type,
@@ -1257,9 +1257,9 @@ class Output:
             # Store well rates by summing perforation rates
             self.store_well_rates_sums(time_data_dict, rates_perfs, rate_type)
             # Compute wellhead rates
-            rates_wellhead = self.calc_rates_at_connections(
+            rates_wellhead = self.calc_rates_at_conns(
                 h5_well_data,
-                well_head_conn_ids,
+                well_head_conn_idxs,
                 well_head_conn_trans,
                 self.physics.thermal,
                 rate_type,
@@ -1283,7 +1283,7 @@ class Output:
 
     def configure_physics(self):
         """
-        This function makes the physics of the geothermal engine compatible with how the physics of the super engine
+        Make the physics of the geothermal engine compatible with how the physics of the super engine
         is defined. This function is used in the method store_well_time_data of the current class.
         """
         pc = self.physics.property_containers[0]
@@ -1298,57 +1298,58 @@ class Output:
 
     def get_wellhead_perf_connection_info(self):
         """
-        This function gives information of the connections, including perforations and wellhead, for evaluation of
+        Give information of the connections, including perforations and wellhead, for evaluation of
         perforation and wellhead rates in the method store_well_time_data of the current class.
         """
         block_m = np.array(self.reservoir.mesh.block_m, copy=False)
         block_p = np.array(self.reservoir.mesh.block_p, copy=False)
         # Create a dictionary containing connection indices of perforations for each well (values are lists)
-        well_perf_conn_ids = {}
+        well_perf_conn_idxs = {}
         # Create a dictionary containing connection index of wellhead for each well (values are integers)
-        well_head_conn_id = {}
-        for idx, well in enumerate(self.reservoir.wells):
-            res_cell_ids = [perf[1] for perf in well.perforations]
+        well_head_conn_idx = {}
+        for iw, well in enumerate(self.reservoir.wells):
+            res_cell_idxs = [perf[1] for perf in well.perforations]
 
-            # Find ids of those connections which 1. block_p is in res_cell_ids, 2. block_m is in the desired well
-            if idx + 1 < len(self.reservoir.wells):  # If there is a next well
-                next_well = self.reservoir.wells[idx + 1]
+            # Find indices of perforations in the connection list (those connections
+            # which 1. block_p is in res_cell_idxs, 2. block_m is in the desired well)
+            if iw + 1 < len(self.reservoir.wells):  # If there is a next well
+                next_well = self.reservoir.wells[iw + 1]
                 mask = np.logical_and(
-                    np.isin(block_p, res_cell_ids),
+                    np.isin(block_p, res_cell_idxs),
                     np.logical_and(
                         block_m >= well.well_head_idx, block_m < next_well.well_head_idx
                     ),
                 )
             else:  # If there is no next well
                 mask = np.logical_and(
-                    np.isin(block_p, res_cell_ids), block_m >= well.well_head_idx
+                    np.isin(block_p, res_cell_idxs), block_m >= well.well_head_idx
                 )
 
-            conn_ids = np.nonzero(mask)
-            well_perf_conn_ids[well.name] = conn_ids[0]
+            conn_idxs = np.nonzero(mask)
+            well_perf_conn_idxs[well.name] = conn_idxs[0]
             assert (
-                well_perf_conn_ids[well.name].size == len(well.perforations)
+                well_perf_conn_idxs[well.name].size == len(well.perforations)
                 and (
-                    block_m[well_perf_conn_ids[well.name]]
+                    block_m[well_perf_conn_idxs[well.name]]
                     > self.reservoir.mesh.n_res_blocks
                 ).all()
             )
 
-            # Find id of well_head -> well_body connection in the connection list
-            wh_conn_id = np.where(
+            # Find idx of well_head-well_body connection in the connection list
+            wh_conn_idx = np.where(
                 np.logical_and(
                     block_m == well.well_head_idx, block_p == well.well_body_idx
                 )
             )[0]
-            assert len(wh_conn_id) == 1
-            well_head_conn_id[well.name] = wh_conn_id[0]
+            assert len(wh_conn_idx) == 1
+            well_head_conn_idx[well.name] = wh_conn_idx[0]
 
         # Get perforation connection indices for all wells
-        perfs_conn_ids = [
-            item for sublist in well_perf_conn_ids.values() for item in sublist
+        perfs_conn_idxs = [
+            item for sublist in well_perf_conn_idxs.values() for item in sublist
         ]
         # Get wellhead connection indices for all wells
-        well_head_conn_ids = list(well_head_conn_id.values())
+        well_head_conn_idxs = list(well_head_conn_idx.values())
 
         # Get well indices (WI) for each perforation
         geometric_WI = np.array(
@@ -1359,13 +1360,13 @@ class Output:
             [well.segment_transmissibility for well in self.reservoir.wells]
         )
 
-        return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
+        return perfs_conn_idxs, well_head_conn_idxs, geometric_WI, well_head_conn_trans
 
     def store_perf_rates(
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
     ):
         """
-        This function stores perforation rates from the 3D numpy array rates_perfs for the rate type rate_type in the
+        Store perforation rates from the 3D numpy array rates_perfs for the rate type rate_type in the
         dict time_data_dict. This function is used in the method store_well_time_data of the current class.
 
         :param time_data_dict: Dictionary in which well time series will be stored
@@ -1405,7 +1406,7 @@ class Output:
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
     ):
         """
-        This function stores summation of perforation rates for each well from the 3D numpy array rates_perfs for the
+        Store summation of perforation rates for each well from the 3D numpy array rates_perfs for the
         rate type rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of
         the current class.
 
@@ -1459,7 +1460,7 @@ class Output:
         self, time_data_dict: dict, wh_rates: np.ndarray, rate_type: str
     ):
         """
-        This function stores wellhead rate for each well from the 3D numpy array rates_perfs for the rate type
+        Store wellhead rate for each well from the 3D numpy array rates_perfs for the rate type
         rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of the
         current class.
 
@@ -1493,7 +1494,7 @@ class Output:
 
     def store_bhp_bht(self, h5_well_data: dict, time_data_dict: dict):
         """
-        This function stores bottom-hole pressure (BHP) and temperature (BHT) of wells over time in time_data_dict.
+        Store bottom-hole pressure (BHP) and temperature (BHT) of wells over time in time_data_dict.
         This function is used in the method store_well_time_data of the current class.
 
         :param h5_well_data: Dictionary extracted from the HDF5 file that stores well primary variables, etc.
@@ -1529,22 +1530,22 @@ class Output:
             time_data_dict[f"well_{well.name}_BHP"] = BHP
             time_data_dict[f"well_{well.name}_BHT"] = BHT
 
-    def calc_rates_at_connections(
+    def calc_rates_at_conns(
         self,
         h5_well_data: dict,
-        conn_ids: list,
+        conn_idxs: list,
         trans: np.ndarray,
         thermal: bool,
         rate_type: str,
     ):
         """
-        This function calculates different types of rates at perforations or wellhead connections of wells.
+        Calculate different types of rates at perforations or wellhead connections of wells.
         This function is used in the method store_well_time_data of the current class.
 
         :param h5_well_data: Well data stored in the HDF5 file
         :type h5_well_data: dict
-        :param conn_ids: IDs of connections
-        :type conn_ids: list
+        :param conn_idxs: Indices of the desired connections in the connection list
+        :type conn_idxs: list
         :param trans: Transmissibility (For perforations, it is geometric part of well index)
         :type trans: np.ndarray
         :param thermal: If the model is thermal or not
@@ -1557,10 +1558,10 @@ class Output:
         block_p = h5_well_data["static"]["block_p"]
         cell_id = h5_well_data["dynamic"]["cell_id"]
         # Line below gets indices of the cells which are connected to the cells in cell_p
-        cell_m = self.find_values_in_an_array(block_m[conn_ids], cell_id)
+        cell_m = self.find_values_in_an_array(block_m[conn_idxs], cell_id)
         # Line below gets indices of the cells which are connected to the cells in cell_m
-        cell_p = self.find_values_in_an_array(block_p[conn_ids], cell_id)
-        num_conn = len(conn_ids)
+        cell_p = self.find_values_in_an_array(block_p[conn_idxs], cell_id)
+        num_conn = len(conn_idxs)
         assert cell_m.size == num_conn and cell_p.size == num_conn
 
         num_ts = h5_well_data["dynamic"]["time"].size
@@ -1705,17 +1706,12 @@ class Output:
                 ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
                 # TODO This does not work properly if the super engine is of the PH type
-                enthalpy_w, dens_m_w, kr_w, miu_w = (
-                    -44582.229072,
-                    55.457385,
-                    1,
-                    1.132781,
-                )  # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
+                # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
+                enthalpy_w, dens_m_w, kr_w, miu_w = -44582.2291, 55.4574, 1, 1.1328
                 ops_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
                 ops_dead = np.zeros(ops.shape)
-                ops_dead[ops != 0.0] = (
-                    ops_dead_phase  # If value is zero, no need to subtract ops_dead_phase from it
-                )
+                # If value is zero, no need to subtract ops_dead_phase from it
+                ops_dead[ops != 0.0] = ops_dead_phase
 
             ops = ops - ops_dead
 
@@ -1736,46 +1732,6 @@ class Output:
         rates = -ops_reshaped * trans_exp * dp_exp
 
         return rates
-
-    # %% Auxiliary functions
-    def find_conn_ids_for_perfs(
-        self, perfs: list, block_m: np.ndarray, block_p: np.ndarray, n_res_blocks: int
-    ):
-        """
-        This function finds the connection IDs of perforations
-
-        :param perfs: List of perforations (well_block_index, reservoir_block_index, well_index, well_indexD)
-        :type perfs: List
-        :param block_m: block_m of the connection list
-        :type block_m: np.ndarray
-        :param block_p: block_p of the connection list
-        :type block_p: np.ndarray
-        :param n_res_blocks: Number of reservoir blocks
-        :type n_res_blocks: int
-        """
-        res_cell_ids = [perf[1] for perf in perfs]
-        perfs_conn_ids = np.nonzero(
-            np.logical_and(np.isin(block_p, res_cell_ids), block_m >= n_res_blocks)
-        )[0]
-        assert (
-            len(perfs_conn_ids) == len(perfs)
-            and (block_m[perfs_conn_ids] > n_res_blocks).all()
-        )
-        return perfs_conn_ids
-
-    def find_values_in_an_array(self, to_find: np.ndarray | list, in_array: np.ndarray):
-        """
-        :param to_find: The values the indices of which we want to find in in_array
-        :type to_find: np.ndarray or list
-        :param in_array: The array in which we want to find the values in to_find
-        :type in_array: np.ndarray
-        """
-        indices = []
-        for element in to_find:
-            id = np.where(in_array == element)[0]
-            if id.size > 0:
-                indices.append(id[0])
-        return np.array(indices, dtype=np.intp)
 
     def plot_well_time_data(self, types_of_well_rates: list = None):
         """
@@ -1883,7 +1839,7 @@ class Output:
 
     def create_perf_dirs(self, main_dir: str):
         """
-        This function creates a new directory (folder) for each perforation of each well. The rates for each perforation
+        Create a new directory (folder) for each perforation of each well. The rates for each perforation
         will be stored in their corresponding directory later. This function is used in the method plot_well_time_data
         of the current class.
 
@@ -1899,7 +1855,7 @@ class Output:
 
     def create_perf_keys(self, rtype: str, well_name: str, perf_idx: int):
         """
-        This function creates keys for perforation rates. This function is used in the method plot_well_time_data
+        Create keys for perforation rates. This function is used in the method plot_well_time_data
         of the current class.
 
         :param rtype: Type of the well rate
@@ -1934,7 +1890,7 @@ class Output:
 
     def create_total_keys(self, rtype: str, well_name: str):
         """
-        This function creates keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
+        Create keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
         method plot_well_time_data of the current class.
 
         :param rtype: Type of well rate
@@ -1997,3 +1953,18 @@ class Output:
             )
             keys.append((f"{base}{rtype}", label))
         return keys
+
+    # %% Auxiliary functions
+    def find_values_in_an_array(self, to_find: np.ndarray | list, in_array: np.ndarray):
+        """
+        :param to_find: The values the indices of which we want to find in in_array
+        :type to_find: np.ndarray or list
+        :param in_array: The array in which we want to find the values in to_find
+        :type in_array: np.ndarray
+        """
+        indices = []
+        for element in to_find:
+            id = np.where(in_array == element)[0]
+            if id.size > 0:
+                indices.append(id[0])
+        return np.array(indices, dtype=np.intp)
