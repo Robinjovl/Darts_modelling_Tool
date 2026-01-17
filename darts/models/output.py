@@ -1566,6 +1566,7 @@ class Output:
         num_ts = h5_well_data["dynamic"]["time"].size
 
         pc = self.physics.property_containers[0]
+        ne = self.physics.reservoir_operators[0].ne
 
         p_idx = h5_well_data["dynamic"]["variable_names"].index("pressure")
         if thermal:
@@ -1669,10 +1670,19 @@ class Output:
             ops = values_reshaped[:, op_start : op_start + pc.nph]
         elif rate_type == "component_molar_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
-            ops = values_reshaped[:, op_start : op_start + pc.nc_fl * pc.nph]
+            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
+            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+            molar_ops = flux_ops[:, :, : pc.nc_fl].reshape(
+                batch_size, pc.nph * pc.nc_fl
+            )
+            ops = molar_ops
         elif rate_type == "component_mass_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
-            molar_ops = values_reshaped[:, op_start : op_start + pc.nc_fl * pc.nph]
+            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
+            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+            molar_ops = flux_ops[:, :, : pc.nc_fl].reshape(
+                batch_size, pc.nph * pc.nc_fl
+            )
             mw = np.array(self.physics.property_containers[0].Mw[: pc.nc_fl])
             mw_tiled = np.tile(mw, pc.nph)
             ops = molar_ops * mw_tiled
