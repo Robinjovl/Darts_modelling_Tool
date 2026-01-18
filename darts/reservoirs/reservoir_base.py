@@ -89,17 +89,17 @@ class ReservoirBase:
     def add_well(
         self,
         well_name: str,
-        ms_well_type: ms_well.MS_Type,
+        ms_well_type: ms_well.MS_Type = ms_well.MS_Type.EPM,
         well_diameter: float = 0.15,
         well_geometry: PipeGeometry = None,
     ) -> None:
         """
-        Function to add :class:`ms_well` object to list of wells and generate list of perforations
+        Function to create an ms_well object and add it to the list of wells
 
         :param well_name: Well name
         :type well_name: str
         :param ms_well_type: Type of the multi-segment well model:
-        ms_well.MS_Type.EPM: For the Equivalent Porous Medium model
+        ms_well.MS_Type.EPM: For the Equivalent Porous Medium model (default well type)
         ms_well.MS_Type.DFM: For the Drift-Flux model
         :type ms_well_type: ms_well.MS_Type
         :param well_diameter: Well inside diameter. If ms_well_type is EPM, this input argument is needed. If
