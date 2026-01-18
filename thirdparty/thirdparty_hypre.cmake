@@ -23,7 +23,7 @@ file(REAL_PATH "${HYPRE_DIR}" HYPRE_DIR BASE_DIRECTORY "${CMAKE_BINARY_DIR}")
 message(STATUS "         Absolute path: ${HYPRE_DIR}")
 
 # Find Hypre
-find_package(HYPRE 2.29.0 REQUIRED CONFIG)
+find_package(HYPRE REQUIRED CONFIG)
 if (TARGET HYPRE::HYPRE)
   message(STATUS "      Found Hypre: TRUE")
 else()

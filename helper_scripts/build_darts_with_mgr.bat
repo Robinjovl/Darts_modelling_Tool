@@ -78,13 +78,19 @@ if %skip_req%==false (
   pushd thirdparty
 
   echo - Install HYPRE with MGR support: START
+
+  REM Create HYPRE build directory if it doesn't exist (it's in .gitignore)
+  if not exist hypre\src\cmbuild mkdir hypre\src\cmbuild
+
   cd hypre\src\cmbuild
   cmake -D HYPRE_ENABLE_TIMING=OFF ^
         -D HYPRE_ENABLE_TESTS=OFF ^
         -D HYPRE_BUILD_EXAMPLES=OFF ^
         -D HYPRE_WITH_MPI=OFF ^
+        -D HYPRE_ENABLE_MPI=OFF ^
         -D HYPRE_WITH_MGR=ON ^
-        -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
+        -D CMAKE_INSTALL_PREFIX=..\..\..\install ^
+        -D HYPRE_SEQUENTIAL=ON .. > ..\..\..\..\make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:%NT% >> ..\..\..\..\make_hypre.log || goto :error
   cd ..\..\..\
   echo - Install HYPRE with MGR support: DONE!
