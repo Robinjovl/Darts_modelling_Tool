@@ -187,7 +187,8 @@ public:
     GPU_AMGX,
     GPU_GMRES_CPR_NF,
     GPU_BICGSTAB_CPR_AMGX,
-    GPU_CUSOLVER
+    GPU_CUSOLVER,
+    CPU_GMRES_MGR
   };
 
   enum nonlinear_norm_t

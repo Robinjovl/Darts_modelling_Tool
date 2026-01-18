@@ -28,6 +28,10 @@ add_subdirectory(config)
 add_subdirectory(auxiliary)
 # ------------------------------------------------------------------------------
 
+# Include solver_mgr library (MGR linear solver) -------------------------------
+# Must be before linear_solvers since linear_solvers links to mgr-linear-solver
+add_subdirectory(solver_mgr)
+# ------------------------------------------------------------------------------
 
 # Include linear_solvers library -----------------------------------------------
 add_subdirectory(linear_solvers)

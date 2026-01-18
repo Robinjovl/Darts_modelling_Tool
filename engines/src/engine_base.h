@@ -40,6 +40,7 @@ using namespace opendarts::linear_solvers;
 #include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
 // #include "openDARTS/linear_solvers/linsolv_amg1r5.h"
 #include "openDARTS/linear_solvers/linsolv_superlu.hpp"
+#include "openDARTS/linear_solvers/linsolv_mgr.hpp"
 #else
 #include "linsolv_bos_amg.h"
 #include "linsolv_amg1r5.h"
@@ -703,6 +704,12 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		{
 			linear_solver = new linsolv_superlu<N_VARS>;
 			linear_solver_type_str = "CPU_SUPERLU";
+			break;
+		}
+		case sim_params::CPU_GMRES_MGR:
+		{
+			linear_solver = new linsolv_mgr<N_VARS>;
+			linear_solver_type_str = "CPU_GMRES_MGR";
 			break;
 		}
 
