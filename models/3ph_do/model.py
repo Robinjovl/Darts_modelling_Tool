@@ -100,7 +100,7 @@ class ModelProperties(PropertyContainer):
 
     def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
         # evaluate_PT argument is required in PropertyContainer but is not needed in this model
-        
+
         ph = np.array([0, 1, 2], dtype=np.intp)
 
         for i in range(self.nc):
