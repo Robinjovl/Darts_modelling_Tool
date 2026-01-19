@@ -1979,7 +1979,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 	for (index_t i = 0; i < nb; i++)
 	{
 		/* ---- check solid compositions ---- */
-		sum_z = 0;
+		sum_z = 0.;
 		z_corrected = false;
 		for (char c = 0; c < n_solid; c++)
 		{
@@ -1987,39 +1987,39 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 
 			if (new_z < min_sim_z)
 			{
-			  new_z = min_sim_z;
-			  z_corrected = true;
+			  	new_z = min_sim_z;
+			  	z_corrected = true;
 			}
 			else if (new_z > max_sim_z)
 			{
-			  new_z = max_sim_z;
-			  z_corrected = true;
+			  	new_z = max_sim_z;
+			  	z_corrected = true;
 			}
 			sum_z += new_z;
 		}
-		// check the last composition
-		new_z = 1 - sum_z;
+		// check the "last composition" (minerals, 1 - sum(minerals))
+		new_z = 1. - sum_z;
 		if (new_z < min_sim_z)
 		{
-		  new_z = min_sim_z;
-		  z_corrected = true;
+		  	new_z = min_sim_z;
+		  	z_corrected = true;
 		}
 		sum_z += new_z;
 		// correction
 		if (z_corrected)
 		{
-		  // normalize compositions and set appropriate update
-		  for (char c = 0; c < n_solid; c++)
-		  {
-			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+		  	// normalize compositions and set appropriate update
+		  	for (char c = 0; c < n_solid; c++)
+		  	{
+				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
-			new_z = std::max(min_sim_z, new_z);
-			new_z = std::min(max_sim_z, new_z);
+				new_z = std::max(min_sim_z, new_z);
+				new_z = std::min(max_sim_z, new_z);
 
-			new_z = new_z / sum_z;
-			dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
-		  }
-		  n_solid_corrected++;
+				new_z = new_z / sum_z;
+				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
+		  	}
+		  	n_solid_corrected++;
 		}
 		/* ---- end check solid compositions ---- */
 
@@ -2076,14 +2076,16 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 {
 	double sum_z, new_z, last_z, neg_z;
 	index_t nb = mesh->n_blocks;
-	index_t n_corrected = 0, c_min;
+	index_t n_solid_corrected = 0, n_fluid_corrected = 0, c_min;
+	bool z_corrected;
 
 	for (index_t i = 0; i < nb; i++)
 	{
-		last_z = 1;
+		/* ---- check solid compositions ---- */
+		last_z = 1.;
 		neg_z = min_sim_z;
 		c_min = -1;
-		for (char c = 0; c < nc - 1; c++)
+		for (index_t c = 0; c < n_solid; c++)
 		{
 			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 			last_z -= new_z; // keep track of last component
@@ -2097,18 +2099,74 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 
 		if (last_z < neg_z) // check if last component is the smallest < min_z
 		{
-			double last_dz = 0;
-			for (char c = 0; c < nc - 1; c++)
+			double last_dz = 0.;
+			for (index_t c = 0; c < n_solid; c++)
+			{
 				last_dz += dX[i * n_vars + z_var + c]; // find update for the last component
+			}
 			last_z -= last_dz; // find old_z = new_z - dX for last component
 
-			if (last_dz != 0)
+			if (last_dz != 0.)
 			{
-			  // compute fraction of update to be at min_sim_z
-			  double frac = (min_sim_z - last_z) / (last_dz);
-			  for (char c = 0; c < nc - 1; c++)
-				dX[i * n_vars + z_var + c] *= frac;
-			  n_corrected++;
+			  	// compute fraction of update to be at min_sim_z
+			  	double frac = (min_sim_z - last_z) / (last_dz);
+			  	for (char c = 0; c < nc - 1; c++)
+			  	{
+					dX[i * n_vars + z_var + c] *= frac;
+				}
+			  	n_solid_corrected++;
+			}
+		}
+		else if (c_min >= 0)
+		{
+			// compute fraction of update to be at min_sim_z
+			double frac = -(min_sim_z - X[i * n_vars + z_var + c_min]) / (dX[i * n_vars + z_var + c_min]);
+			if (dX[i * n_vars + z_var + c_min] != 0.)
+			{
+			  	// correct update to be at min_sim_z for the smallest component
+			  	for (char c = 0; c < nc - 1; c++)
+				{
+					dX[i * n_vars + z_var + c] *= frac;
+				}
+			  	n_solid_corrected++;
+			}
+		}
+		/* ---- end check solid compositions ---- */
+
+		/* ---- check fluid compositions ---- */
+		last_z = 1.;
+		neg_z = min_sim_z;
+		c_min = -1;
+		for (index_t c = n_solid; c < nc - 1; c++)
+		{
+			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+			last_z -= new_z; // keep track of last component
+			// find smallest component < min_z
+			if (new_z < neg_z)
+			{
+				neg_z = new_z;
+				c_min = c;
+			}
+		}
+
+		if (last_z < neg_z) // check if last component is the smallest < min_z
+		{
+			double last_dz = 0.;
+			for (index_t c = n_solid; c < nc - 1; c++)
+			{
+				last_dz += dX[i * n_vars + z_var + c]; // find update for the last component
+			}
+			last_z -= last_dz; // find old_z = new_z - dX for last component
+
+			if (last_dz != 0.)
+			{
+			  	// compute fraction of update to be at min_sim_z
+			  	double frac = (min_sim_z - last_z) / (last_dz);
+			  	for (index_t c = n_solid; c < nc - 1; c++)
+			  	{
+					dX[i * n_vars + z_var + c] *= frac;
+				}
+			  	n_fluid_corrected++;
 			}
 		}
 		else if (c_min >= 0)
@@ -2117,16 +2175,20 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 			double frac = -(min_sim_z - X[i * n_vars + z_var + c_min]) / (dX[i * n_vars + z_var + c_min]);
 			if (dX[i * n_vars + z_var + c_min]  != 0)
 			{
-			  // correct update to be at min_sim_z for the smallest component
-			  for (char c = 0; c < nc - 1; c++)
-				dX[i * n_vars + z_var + c] *= frac;
-			  n_corrected++;
+			  	// correct update to be at min_sim_z for the smallest component
+			  	for (char c = 0; c < nc - 1; c++)
+				{
+					dX[i * n_vars + z_var + c] *= frac;
+				}
+			  	n_fluid_corrected++;
 			}
 		}
+		/* ---- end check fluid compositions ---- */
 	}
 
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_solid_corrected || n_fluid_corrected)
+		std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
 }
 
 void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
