@@ -1969,6 +1969,88 @@ int engine_base::apply_newton_update(value_t dt)
 	return 0;
 }
 
+void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
+{
+	// Apply normalization of composition X
+	double sum_z, last_z;
+	bool z_corrected;
+	index_t n_solid_corrected = 0, n_fluid_corrected = 0;
+
+	/* ---- check solid compositions ---- */
+	sum_z = 0.;
+	z_corrected = false;
+	for (index_t c = 0; c < n_solid; c++)
+	{
+		if (Xi[c] < min_sim_z)
+		{
+		  	Xi[c] = min_sim_z;
+			z_corrected = true;
+		}
+		else if (Xi[c] > max_sim_z)
+		{
+			Xi[c] = max_sim_z;
+		  	z_corrected = true;
+		}
+		sum_z += Xi[c];
+	}
+	// check the "last composition" (minerals, 1 - sum(minerals))
+	last_z = 1. - sum_z;
+	if (last_z < min_sim_z)
+	{
+		last_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
+	  	z_corrected = true;
+	}
+	sum_z += last_z;
+	// correction
+	if (z_corrected)
+	{
+		// normalize compositions and set appropriate update
+	  	for (index_t c = 0; c < n_solid; c++)
+	  	{
+			Xi[c] = Xi[c] / sum_z;
+		}
+	  	n_solid_corrected++;
+	}
+	/* ---- end check solid compositions ---- */
+
+	/* ---- check fluid compositions ---- */
+	sum_z = 0.;
+	z_corrected = false;
+	for (index_t c = n_solid; c < nc - 1; c++)
+	{
+		if (Xi[c] < min_sim_z)
+		{
+			Xi[c] = min_sim_z;
+			z_corrected = true;
+		}
+		else if (Xi[c] > max_sim_z)
+		{
+			Xi[c] = max_sim_z;
+			z_corrected = true;
+		}
+		sum_z += Xi[c];
+	}
+	// check the last composition
+	last_z = 1. - sum_z;
+	if (last_z < min_sim_z)
+	{
+		last_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
+		z_corrected = true;
+	}
+	sum_z += last_z;
+	// correction
+	if (z_corrected)
+	{
+		// normalize compositions and set appropriate update
+		for (index_t c = n_solid; c < nc - 1; c++)
+		{
+			Xi[c] = Xi[c] / sum_z;
+		}
+		n_fluid_corrected++;
+	}
+	/* ---- end check fluid compositions ---- */
+}
+
 void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
 	double sum_z, new_z;
@@ -1981,7 +2063,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		/* ---- check solid compositions ---- */
 		sum_z = 0.;
 		z_corrected = false;
-		for (char c = 0; c < n_solid; c++)
+		for (index_t c = 0; c < n_solid; c++)
 		{
 			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
@@ -2001,7 +2083,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		new_z = 1. - sum_z;
 		if (new_z < min_sim_z)
 		{
-		  	new_z = min_sim_z;
+			new_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
 		  	z_corrected = true;
 		}
 		sum_z += new_z;
@@ -2009,7 +2091,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		if (z_corrected)
 		{
 		  	// normalize compositions and set appropriate update
-		  	for (char c = 0; c < n_solid; c++)
+		  	for (index_t c = 0; c < n_solid; c++)
 		  	{
 				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
