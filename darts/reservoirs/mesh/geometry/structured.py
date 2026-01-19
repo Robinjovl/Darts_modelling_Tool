@@ -117,7 +117,7 @@ class Structured(Geometry):
             for j in range(ny):
                 for i in range(nx):
                     xyz = np.array([x[i] + dx / 2, y[j] + dy / 2, z[k] + dz / 2])
-                    (surface, act) = _find_surface(
+                    surface, act = _find_surface(
                         xyz, self.axs[0], self.axs[1], points, curves, surfaces
                     )
                     cell_to_layer[i, j, k] = surface

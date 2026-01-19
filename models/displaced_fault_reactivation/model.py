@@ -121,9 +121,10 @@ class Model(THMCModel):
             #                                well_index=well_index)
 
             pt_right = np.array([x, (-self.reservoir.a + self.reservoir.b) / 2, 0.0])
+            print('well perforation location prod:', pt_right)
             self.id_prod = np.linalg.norm(centroids - pt_right, axis=1).argmin()
 
-            self.reservoir.add_well("PROD001", depth=self.reservoir.depth[self.id_prod])
+            self.reservoir.add_well("PROD001", depth=self.reservoir.unstr_discr.depth_all_cells[self.id_prod])
             self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id_prod),
                                            well_index=well_index)
     def set_input_data(self):
@@ -152,7 +153,7 @@ class Model(THMCModel):
             # else:
             #     # Add controls for production well:
             #     # Specify bhp for particular production well:
-            self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+            self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                            is_inj=False, target=self.reservoir.p_init[self.id_prod] + self.depletion_value)
         return 0
     def setup_contact_friction(self, contact_algorithm: contact_solver):

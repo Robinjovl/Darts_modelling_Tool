@@ -1,5 +1,3 @@
-from sympy.physics.paulialgebra import epsilon
-
 from darts.input.input_data import InputData
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel

@@ -126,7 +126,7 @@ class BlackOilProperties(PropertyContainer):
 
         self.clean_arrays()
         # two-phase flash - assume water phase is always present and water component last
-        (xgo, V, pbub) = self.flash_ev.evaluate(pressure, zc)
+        xgo, V, pbub = self.flash_ev.evaluate(pressure, zc)
         for i in range(self.nph):
             self.x[i, i] = 1
 

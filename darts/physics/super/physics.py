@@ -324,6 +324,7 @@ class Compositional(PhysicsBase):
                 [input_distribution[comp][ith_depth] for comp in self.components[:-1]]
             )
             Xi = np.append(Xi, 1.0 - np.sum(Xi))
+            # self.engine.apply_composition_correction(value_vector(Xi))
             if Xi[-1] < min_sim_z or Xi[-1] > max_sim_z:
                 Xi = self.apply_composition_correction(Xi, min_sim_z, max_sim_z)
                 for ith_comp, comp in enumerate(self.components[:-1]):
