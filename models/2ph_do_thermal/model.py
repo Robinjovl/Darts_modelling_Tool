@@ -22,7 +22,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_newton=1e-3, tol_linear=1e-6)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=2, runtime=1000, tol_newton=1e-3, tol_linear=1e-6)
 
         self.timer.node["initialization"].stop()
 
@@ -88,7 +88,7 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
-                                               is_inj=True, target=5., phase_name='wat', inj_composition=self.inj[:-1],
+                                               is_inj=True, target=5000., phase_name='wat', inj_composition=self.inj[:-1],
                                                inj_temp=self.inj[-1])
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
