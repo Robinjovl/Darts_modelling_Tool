@@ -81,7 +81,7 @@ class Model(CICDModel):
         # example - how to change the properties
         # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
 
-        idata.obl.n_points = 500
+        idata.obl.n_points = 5001
         idata.obl.zero = 1e-12
         idata.obl.epsilon_z = 1e-13
         # idata.obl.epsilon_z = 0.
@@ -93,15 +93,5 @@ class Model(CICDModel):
         # idata.obl.min_z = 1e-13
         idata.obl.max_z = 1.
         # idata.obl.max_z = 1.-1e-13
-
-        if 0:
-            # working
-            idata.obl.epsilon_z = 0
-            idata.obl.min_z = 1e-13
-            idata.obl.max_z = 1.-1e-13
-        else:
-            idata.obl.epsilon_z = 1e-13
-            idata.obl.min_z = 0.
-            idata.obl.max_z = 1.
 
         return idata
