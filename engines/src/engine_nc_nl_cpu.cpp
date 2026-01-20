@@ -252,6 +252,21 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	z_var = get_z_var();
+	if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		max_sim_z = max_axis_z - params->sim_eps;
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+		max_sim_z = max_axis_z - params->sim_eps;
+	}
+
 
 	fluxes.resize(mesh->n_conns);
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
@@ -263,6 +278,8 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	FIPS.resize(nc);
 
 	X_init = mesh->initial_state;
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
@@ -353,21 +370,6 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (params->log_transform == 0)
-	{
-		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
-		min_sim_z = min_axis_z + params->sim_eps;
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
-		max_sim_z = max_axis_z - params->sim_eps;
-	}
-	else if (params->log_transform == 1)
-	{
-		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
-		min_sim_z = min_axis_z + params->sim_eps;
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
-		max_sim_z = max_axis_z - params->sim_eps;
-	}
 
 	return 0;
 }

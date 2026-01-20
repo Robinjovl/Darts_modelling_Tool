@@ -866,6 +866,20 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;
+	if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		max_sim_z = max_axis_z - params->sim_eps;
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+		max_sim_z = max_axis_z - params->sim_eps;
+	}
 
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
@@ -876,6 +890,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	new_z_fl.resize(nc - n_solid);
 
 	X_init = mesh->initial_state;  // initialize only reservoir blocks with mesh->initial_state array
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
@@ -966,27 +982,6 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (params->log_transform == 0)
-	{
-		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
-		min_sim_z = min_axis_z + params->sim_eps;
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
-		max_sim_z = max_axis_z - params->sim_eps;
-	}
-	else if (params->log_transform == 1)
-	{
-		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
-		min_sim_z = min_axis_z + params->sim_eps;
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
-		max_sim_z = max_axis_z - params->sim_eps;
-	}
-
-
-
-
-
-
 
 	// for adjoint method------------------------------------------
 
