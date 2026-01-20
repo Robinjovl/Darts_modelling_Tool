@@ -1,8 +1,7 @@
 valgrind-check:
     stage: test
     tags:
-    - linux
-    - valgrind
+    - linux_wsl
     image: python:3.10
     timeout: 2h
     variables:
