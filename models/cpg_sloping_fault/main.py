@@ -52,6 +52,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.init_reservoir(arrays=arrays)
 
+    #m.reservoir.mesh.init_grav_coef(0) # disable the gravity
+
     # time stepping and convergence parameters
     m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
 
@@ -80,13 +82,13 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     if export_vtk:
         print('Post processing properties and vtk output...')
 
-        output_properties_main = m.physics.vars  # only main variables
+        output_properties_main = m.physics.vars + ['temperature'] # only main variables
         output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
         m.reservoir.create_vtk_wells(output_directory=out_dir)
         n_timesteps = len(m.idata.sim.time_steps)
         for ith_step in range(n_timesteps + 1):
             # compute additional properties only for the first and for the last timestep:
-            output_properties = output_properties_full if ith_step in [0, n_timesteps] else output_properties_main
+            output_properties = output_properties_full if False else output_properties_main
             #print('timestep', ith_step, 'output_properties:', output_properties)
             timesteps, property_array = m.output.output_properties(output_properties=output_properties, timestep=ith_step, engine=False)
             if ith_step == 0:
@@ -290,8 +292,8 @@ if __name__ == '__main__':
     # physics_list += ['deadoil']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_5x3x4']
+    cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['40x40x10']
@@ -299,9 +301,10 @@ if __name__ == '__main__':
     #cases_list += ['40x40x10_regions']
 
     well_controls = []
-    well_controls += ['wrate']
+    #well_controls += ['wrate']
     #well_controls += ['wbhp']
     #well_controls += ['wperiodic']
+    well_controls += ['none']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

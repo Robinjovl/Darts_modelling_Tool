@@ -40,6 +40,15 @@ class ModelGeothermal(Model_CPG):
                                   'temperature': self.idata.initial.initial_temperature}
             return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
                                                                   input_distribution=input_distribution)
+        elif self.idata.initial.type == 'depth_table':
+            # Specify reference depth, values and gradients to construct depth table in super().set_initial_conditions()
+            input_depth = self.idata.initial.depth
+            input_distribution = {'pressure': self.idata.initial.pressure_vs_depth,
+                                  'temperature': self.idata.initial.temperature_vs_depth}
+            g2l = np.asarray(self.reservoir.discr_mesh.global_to_local)[:self.reservoir.mesh.n_res_blocks]
+            return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
+                                                                        input_distribution=input_distribution,
+                                                                        input_depth=input_depth)
 
 
 
@@ -155,11 +164,14 @@ class ModelGeothermal(Model_CPG):
                 wdata.add_prd_rate_control(time=(i+1)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5)
                 wdata.add_prd_rate_control(time=(i+2)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5)
                 wdata.add_prd_rate_control(time=(i+3)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5)
+        elif 'none' in case:
+            for w in wells:
+                wdata.add_prd_rate_control(name=w, rate=0, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=70)  # m3/day | bars
         else:
             assert False, 'Unknown wctrl_type' +  case
 
         self.idata.obl.n_points = 100
-        self.idata.obl.min_p = 50.
+        self.idata.obl.min_p = -5.#50.
         self.idata.obl.max_p = 400.
         self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
         self.idata.obl.max_e = 25000.  # kJ/kmol, will be overwritten in PHFlash physics

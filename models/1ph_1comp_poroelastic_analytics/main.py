@@ -79,6 +79,8 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     runtime += t
     ts = 0
 
+    m.reservoir.decouple_geomech()
+
     while t < runtime:
         if init_step:   new_time = t
         else:           new_time = t + dt
@@ -254,6 +256,10 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
     m = Model(case=case, discretizer=discretizer, mesh=mesh)
     m.init()
 
+    ftran=np.array(m.reservoir.mesh.fourier_tran, copy=False)
+    print(ftran.max())
+    #exit()
+
     if convergence_analysis:  # uniform dt, except the last timestep
         # T = self.idata.sim.time_steps.sum()
         if case == 'bai':
@@ -289,30 +295,30 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
     elif discretizer == 'mech_discretizer':
         xc = np.array([np.array(c.values) for c in m.reservoir.discr_mesh.centroids[:m.reservoir.n_matrix]])
         if case == 'bai':
-            y_loc = np.array([0.0, 1.4, 4.2, 5.6, 7.0])
+            y_loc = np.array([0.0, 1.4, 4.2, 5.6, 7.0])*1e-2
             ny = y_loc.size
             y_num, id_num = np.unique(np.round(xc[:,1], decimals=6), return_index=True)
 
             # pressure
-            pres = {'name': 'p', 'darts': {0.0: np.zeros(nt + 1), 4.2: np.zeros(nt + 1), 5.6: np.zeros(nt + 1) },
-                    'analytics': {}, 'x' : [0.0, 4.2, 5.6], 'time': np.zeros(nt + 1) }
+            pres = {'name': 'p', 'darts': {0.0: np.zeros(nt + 1), 0.042: np.zeros(nt + 1), 0.056: np.zeros(nt + 1) },
+                    'analytics': {}, 'x' : [0.0, 0.042, 0.056], 'time': np.zeros(nt + 1) }
             pres['analytics'][0.0] = np.loadtxt('bai_analytics/thermoConsolidationPressure_0m.csv', delimiter=',')
-            pres['analytics'][4.2] = np.loadtxt('bai_analytics/thermoConsolidationPressure_4p2m.csv', delimiter=',')
-            pres['analytics'][5.6] = np.loadtxt('bai_analytics/thermoConsolidationPressure_5p6m.csv', delimiter=',')
+            pres['analytics'][0.042] = np.loadtxt('bai_analytics/thermoConsolidationPressure_4p2m.csv', delimiter=',')
+            pres['analytics'][0.056] = np.loadtxt('bai_analytics/thermoConsolidationPressure_5p6m.csv', delimiter=',')
 
             # temperature
-            temp = {'name': 't', 'darts': {0.0: np.zeros(nt + 1), 4.2: np.zeros(nt + 1), 5.6: np.zeros(nt + 1) },
-                    'analytics': {}, 'x': [0.0, 4.2, 5.6], 'time': np.zeros(nt + 1)}
+            temp = {'name': 't', 'darts': {0.0: np.zeros(nt + 1), 0.042: np.zeros(nt + 1), 0.056: np.zeros(nt + 1) },
+                    'analytics': {}, 'x': [0.0, 0.042, 0.056], 'time': np.zeros(nt + 1)}
             temp['analytics'][0.0] = np.loadtxt('bai_analytics/thermoConsolidationTemp_0m.csv', delimiter=',')
-            temp['analytics'][4.2] = np.loadtxt('bai_analytics/thermoConsolidationTemp_4p2m.csv', delimiter=',')
-            temp['analytics'][5.6] = np.loadtxt('bai_analytics/thermoConsolidationTemp_5p6m.csv', delimiter=',')
+            temp['analytics'][0.042] = np.loadtxt('bai_analytics/thermoConsolidationTemp_4p2m.csv', delimiter=',')
+            temp['analytics'][0.056] = np.loadtxt('bai_analytics/thermoConsolidationTemp_5p6m.csv', delimiter=',')
 
             # vertical displacements
-            disp = {'name': 'uy', 'darts': {1.4: np.zeros(nt + 1), 4.2: np.zeros(nt + 1), 7.0: np.zeros(nt + 1) },
-                  'analytics': {}, 'x': [1.4, 4.2, 7.0], 'time': np.zeros(nt + 1)}
-            disp['analytics'][1.4] = np.loadtxt('bai_analytics/thermoConsolidationDisp_1p4m.csv', delimiter=',')
-            disp['analytics'][4.2] = np.loadtxt('bai_analytics/thermoConsolidationDisp_4p2m.csv', delimiter=',')
-            disp['analytics'][7.0] = np.loadtxt('bai_analytics/thermoConsolidationDisp_7m.csv', delimiter=',')
+            disp = {'name': 'uy', 'darts': {0.014: np.zeros(nt + 1), 0.042: np.zeros(nt + 1), 0.07: np.zeros(nt + 1) },
+                  'analytics': {}, 'x': [0.014, 0.042, 0.07], 'time': np.zeros(nt + 1)}
+            disp['analytics'][0.014] = np.loadtxt('bai_analytics/thermoConsolidationDisp_1p4m.csv', delimiter=',')
+            disp['analytics'][0.042] = np.loadtxt('bai_analytics/thermoConsolidationDisp_4p2m.csv', delimiter=',')
+            disp['analytics'][0.07] = np.loadtxt('bai_analytics/thermoConsolidationDisp_7m.csv', delimiter=',')
         else:
             nx = np.unique(np.round(xc[:,0], decimals=6)).size
             ny = int(m.reservoir.n_matrix / nx)
@@ -486,12 +492,12 @@ def plot_bai_comparison(m, data, save_data=False):
 
     for i, y_cur in enumerate(data['x']):
         darts_label = 'DARTS: y = ' + str(y_cur) + ' m'
-        ax.semilogx(data['time'][1:] * 86400, darts_mult * data['darts'][y_cur][1:], linestyle='--', color=colors[i], label=darts_label)
+        ax.plot(data['time'][1:], darts_mult * data['darts'][y_cur][1:], linestyle='--', color=colors[i], label=darts_label)
         analytics_label = 'Analytics: y = ' + str(y_cur) + ' m'
-        ax.semilogx(data['analytics'][y_cur][:, 0], an_mult * data['analytics'][y_cur][:, 1], linestyle='-', color=colors[i], label=analytics_label)
+        #ax.semilogx(data['analytics'][y_cur][:, 0], an_mult * data['analytics'][y_cur][:, 1], linestyle='-', color=colors[i], label=analytics_label)
 
     ax.set_ylabel(y_label, fontsize=20)
-    ax.set_xlabel(r'Time, sec', fontsize=20)
+    ax.set_xlabel(r'Time, days', fontsize=20)
     ax.grid(True)
     ax.legend(loc='lower left', prop={'size': 14 }, framealpha=0.5)
 
@@ -629,7 +635,7 @@ if __name__ == '__main__':
     #run_and_plot(case='mandel', discretizer='pm_discretizer', mesh='rect')
     #run_and_plot(case='terzaghi_two_layers', discretizer='pm_discretizer', mesh='rect')
     #run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
-    #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
     # Wedge (triangular) grid
     #run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
@@ -639,7 +645,7 @@ if __name__ == '__main__':
     #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='wedge')
 
     # Unstructured hexahedral grid
-    run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
+    #run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
     # run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
     # run(case='mandel', discretizer='mech_discretizer', mesh='hex')
     # run(case='mandel', discretizer='pm_discretizer', mesh='hex')

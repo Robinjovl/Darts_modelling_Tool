@@ -687,3 +687,13 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             - np.sum((g * t2 / self.omega)[:,:n_roots], axis=1) / self.theta)[xi < 0]
 
         return -u
+
+    def decouple_geomech(self):
+        '''
+        turns off mechanics->porosity (so pressure and flow) influence
+        :return:
+        '''
+        vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=False)
+        vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=False)
+        vol_strain_tran[:] = 0.0
+        vol_strain_rhs[:] = 0.0

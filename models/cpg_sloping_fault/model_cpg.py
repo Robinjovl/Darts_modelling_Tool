@@ -84,9 +84,20 @@ class Model_CPG(CICDModel):
         print("Pore volume = " + str(sum(volume[:self.reservoir.mesh.n_blocks] * poro)))
 
         # imitate open-boundaries with a large volume
-        bv = self.idata.geom.bound_volume   # volume, will be assigned to each boundary cell [m3]
-        self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
-        self.reservoir.apply_volume_depth()
+        bv_xy = self.idata.geom.bound_volume_xy   # volume, will be assigned to each boundary cell [m3]
+        if bv_xy is not None:
+            self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
+            self.reservoir.apply_volume_depth()
+
+        bv_z_top  = self.idata.geom.bound_volume_z_top   # volume, will be assigned to each boundary cell [m3]
+        if bv_z_top  is not None:
+            self.reservoir.set_boundary_volume(xy_plus=bv_z_top)
+            self.reservoir.apply_volume_depth()
+
+        bv_z_bottom  = self.idata.geom.bound_volume_z_bottom   # volume, will be assigned to each boundary cell [m3]
+        if bv_z_bottom  is not None:
+            self.reservoir.set_boundary_volume(xy_minus=bv_z_bottom)
+            self.reservoir.apply_volume_depth()
 
         l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)

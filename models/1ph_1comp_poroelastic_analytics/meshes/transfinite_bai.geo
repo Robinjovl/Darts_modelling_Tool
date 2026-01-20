@@ -1,9 +1,9 @@
-a = 1;
-b = 7;
-lc = 25;
-h = 1;
-Nx_pt = 2 + 1;
-Ny_pt = 210 + 1;
+a = 0.03;
+b = 0.07;
+lc = 0.01;
+h = 0.03;
+Nx_pt = 3 + 1;
+Ny_pt = 21 + 1;
 Nz = 1;
 
 Point(1) = {0, 0, 0, lc};
@@ -28,7 +28,7 @@ Plane Surface(1) = {1};
 Transfinite Surface{1} = {1, 2, 3, 4};
 Recombine Surface{1};
 
-out[] = Extrude {0, 0, h} { 
+out[] = Extrude {0, 0, h} {
 		Surface{1};
 		Layers{Nz};
 		Recombine;

@@ -59,7 +59,7 @@ class Model(THMCModel):
 
         self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
 
-        self.idata.initial.initial_temperature = 0  # [K]
+        self.idata.initial.initial_temperature = 100  # [K]
         self.idata.initial.initial_pressure = 0  # [bar]
         self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
         self.idata.initial.initial_composition = None  # not used in this test
@@ -180,7 +180,7 @@ class Model(THMCModel):
             self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         elif case == 'bai':
-            self.idata.rock.porosity = 0.2
+            self.idata.rock.porosity = 1e-7 #0.2
             self.idata.rock.perm = 4.e+6 / 0.9869  # [mD]
             self.idata.rock.E = 0.06  # Young modulus [bars]
             self.idata.rock.nu = 0.4  # Poisson ratio
@@ -190,13 +190,18 @@ class Model(THMCModel):
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
             self.idata.rock.th_expn = 9.0 * 1.E-7  # [1/K]
             self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu) # # Couchy book formula 4.19a, 4.21a
-            self.idata.rock.conductivity = 0.836 * 86400.0 # [kJ/m/day/K]
-            self.idata.rock.heat_capacity = 167.2 # [kJ/m3/K]
+
+            #self.idata.rock.conductivity = 0.836 * 86400.0 # [kJ/m/day/K]
+            #self.idata.rock.heat_capacity = 167.2 # [kJ/m3/K]
+
+            self.idata.rock.conductivity = 200. # [kJ/m/day/K]
+            self.idata.rock.heat_capacity = 2200. # [kJ/m3/K]
+
             self.idata.rock.th_expn_poro = 0.0   # mechanical term in porosity update
             self.idata.fluid.compressibility = 0.0
             self.idata.fluid.viscosity = 1.0  # [cP]
 
-            self.idata.other.F = -1.e-5
+            self.idata.other.F = 0.#-1.e-5
 
             self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh, suffix='_bai')
 
@@ -207,7 +212,7 @@ class Model(THMCModel):
             self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': self.bc_type.AQUIFER(self.idata.initial.initial_pressure),
                                                        'mech': self.bc_type.LOAD(self.idata.other.F, [0.0, 0.0, 0.0]),
-                                                       'temp': self.bc_type.AQUIFER(self.idata.initial.initial_temperature + 50)}
+                                                       'temp': self.bc_type.AQUIFER(self.idata.initial.initial_temperature - 40)}
             self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
@@ -225,8 +230,9 @@ class Model(THMCModel):
 
         if case == 'bai':
             nt = 60
-            max_dt = 0.1
+            max_dt = 0.1 #500.0#0.1
             self.idata.sim.time_steps = np.logspace(-7, np.log10(max_dt), nt)
+
         else:
             nt = 60  # number of timesteps
             max_dt = 30  # timestep length, days
@@ -246,7 +252,7 @@ class Model(THMCModel):
         self.idata.obl.min_p = -5.
         self.idata.obl.max_p = 500.
         self.idata.obl.min_t = -10.
-        self.idata.obl.max_t = 100.
+        self.idata.obl.max_t = 150.
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
 
