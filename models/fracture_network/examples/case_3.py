@@ -23,8 +23,16 @@ def input_data_case_3():
     idata.stress['SHmax_azimuth'] = 20  #° from X, counter-clockwize
 
     # well locations
-    idata.geom['inj_well_coords'] = [[400, 400, 0],[400, -400, 0],[-400, 400, 0],[-400, -400, 0]]  # X, Y, Z (only one perforation)
-    idata.geom['prod_well_coords'] = [[100, 0, 0], [0, 100, 0], [-100, 0, 0], [0, -100, 0]]
+    idata.geom['well_coords'] = dict()
+    idata.geom['well_coords']['I1'] = [400, 400, 0, 0]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['I2'] = [400, -400, 0, 0]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['I3'] = [-400, 400, 0, 0]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['I4'] = [-400, -400, 0, 0]  # X, Y, Z1, Z2
+
+    idata.geom['well_coords']['P1'] = [100, 0, 0, 0]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['P2'] = [0, 100, 0, 0]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['P3'] = [-100, 0, 0, 0]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['P4'] = [0, -100, 0, 0]  # X, Y, Z1, Z2
 
     idata.geom['frac_aper'] = 1e-2  # (initial) fracture aperture [m]
 
