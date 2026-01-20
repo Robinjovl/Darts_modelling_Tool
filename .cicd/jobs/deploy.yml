@@ -29,7 +29,6 @@ deploy-testpypi:
     image: python:3.10
     # Will be executed on runner with windows tag - that assumed to run on windows host
     tags:
-        - linux
         - linux_wsl
     before_script:
         # upgrade pip package first
@@ -56,7 +55,6 @@ deploy-zenodo:
     rules:
         - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
     tags:
-        - linux
         - linux_wsl
     image: python:3.10
     script:
@@ -79,7 +77,6 @@ pages:
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
         - if: $DOCS_PAGES == "1"
     tags:
-        - linux
         - linux_wsl
     image: python:3.10
     script:

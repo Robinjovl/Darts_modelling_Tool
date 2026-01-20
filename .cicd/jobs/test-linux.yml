@@ -3,7 +3,7 @@
     image: "python:$PY_VER"
     # Will be executed on runner with linux tag - that assumed to run on linux host
     tags:
-        - linux
+        - linux_wsl
     before_script:
         - apt-get update -qq && apt-get install -y -qq smbclient
         - apt-get update -qq && apt-get install -y -qq libglu1-mesa-dev # for gmsh
