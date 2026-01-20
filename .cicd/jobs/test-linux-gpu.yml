@@ -14,6 +14,7 @@
         #
         - echo "test finished"
     after_script:
+        - conda env remove -n ${CONDA_ENV} -y || true
         - cd models
         - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..
@@ -26,6 +27,8 @@
     variables:
         ODLS: '-a'
         TEST_GPU: '1'
+        PY_VER: '3.10'
+        CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
     artifacts:
       paths:
         - './models/_logs/*.log'
@@ -40,8 +43,6 @@ test-linux-oahu-3.10-gpu:
     tags:
         - linux_gpu
     variables:
-        PY_VER: '3.10'
-        CONDA_ENV: "darts_gpu"
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
     before_script:
         - module load cuda/23.5
@@ -64,8 +65,8 @@ test-linux-oahu-3.10-gpu:
         - spack env activate open_darts_gcc134
         - CONDA_BASE="/data/gitlab-runner/miniconda3"
         - . "${CONDA_BASE}/etc/profile.d/conda.sh"
-        - conda create -n darts_gpu python=${PY_VER} -q -y
-        - conda activate darts_gpu
+        - conda create -n ${CONDA_ENV} python=${PY_VER} -q -y
+        - conda activate ${CONDA_ENV}
         # upgrade pip package first
         - python -m pip install --upgrade pip
         - pip uninstall open-darts-flash --yes
@@ -110,8 +111,6 @@ test-linux-tahiti-image-3.10-gpu:
             echo 'test finished'
             "
     variables:
-        PY_VER: '3.10'
         APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
-        CONDA_ENV: "tahiti-gpu"
     needs:
         - build-linux-tahiti-image-3.10-gpu

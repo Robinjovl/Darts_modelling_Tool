@@ -6,9 +6,7 @@
         - linux_wsl
     before_script:
         - apt-get update -qq && apt-get install -y -qq smbclient
-        - apt-get update -qq && apt-get install -y -qq libglu1-mesa-dev # for gmsh
-        - apt-get update -qq && apt-get install -y -qq libxcursor1      # for gmsh
-        - apt-get update -qq && apt-get install -y -qq libxinerama1     # for gmsh
+        - apt-get update -qq && apt-get install -y -qq libglu1-mesa-dev libxcursor1 libxinerama1 # for gmsh
         - export PYTHONUNBUFFERED=1
         # upgrade pip package first
         - python -m pip install --upgrade pip

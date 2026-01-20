@@ -5,7 +5,7 @@
     tags:
         - linux_wsl
     variables:
-        CONDA_ENV: "darts"
+        CONDA_ENV: "darts-${CI_JOB_ID}"
     before_script:
         - echo 'before build-linux'
         - source /opt/conda/bin/activate
