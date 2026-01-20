@@ -4,27 +4,42 @@
     tags:
         - windows-shell
     needs: []
+    variables:
+        CONDA_ENV: "darts-win-${CI_JOB_ID}"
+        CONDA_BIN_PATH: 'D:\miniconda3\condabin'
     script:
         # Load MS Build Tools environment to the powershell
         - D:\BuildTools\build_vars.ps1
-        # Add python folder to PATH
-        - $env:PATH +=";" + $env:PYTHONPATH + ";" + $env:PYTHONPATH + "\Scripts"
-        - $env:PY_SUFFIX=python.exe -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
-        # make sure wheel package could be installed
-        - pip install wheel
-        # copy VS redist libraries
+        - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
+        - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent
+        - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
+        - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
+        # Initialize conda environment
+        - conda create --name $env:CONDA_ENV python=$env:PY_VER --yes -q
+        - conda activate $env:CONDA_ENV
+        # Make sure wheel package could be installed
+        - python -m pip install --upgrade pip setuptools wheel
+        # Copy VS redist libraries
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
         - echo "ODLS:" $env:ODLS
-        # compile and make the wheel
+        # Compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
+    after_script:
+        - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
+        - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent
+        - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
+        - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
+        - conda deactivate
+        - conda env remove --name $env:CONDA_ENV --yes
     artifacts:
       paths:
         - '*.log'
         - '.\dist\*.whl'
       expire_in: 1 week
       when: always
+
 
 build-windows-3.13:
     rules:
@@ -33,7 +48,6 @@ build-windows-3.13:
     extends: .build-windows
     variables:
         PY_VER: '3.13'
-        PYTHONPATH: 'D:\Python313'
         ODLS: '-a'
 
 build-windows-3.12:
@@ -43,7 +57,6 @@ build-windows-3.12:
     extends: .build-windows
     variables:
         PY_VER: '3.12'
-        PYTHONPATH: 'D:\Python312'
         ODLS: '-a'
 
 build-windows-3.11:
@@ -53,7 +66,6 @@ build-windows-3.11:
     extends: .build-windows
     variables:
         PY_VER: '3.11'
-        PYTHONPATH: 'D:\Python311'
         ODLS: '-a'
 
 build-windows-3.10:
@@ -66,7 +78,6 @@ build-windows-3.10:
     extends: .build-windows
     variables:
         PY_VER: '3.10'
-        PYTHONPATH: 'D:\Python310'
         ODLS: '-a'
 
 build-windows-3.13-ODLS:
@@ -76,7 +87,6 @@ build-windows-3.13-ODLS:
     extends: .build-windows
     variables:
         PY_VER: '3.13'
-        PYTHONPATH: 'D:\Python313'
         ODLS: ''         # build with open-darts linear solvers
 
 build-windows-3.12-ODLS:
@@ -86,7 +96,6 @@ build-windows-3.12-ODLS:
     extends: .build-windows
     variables:
         PY_VER: '3.12'
-        PYTHONPATH: 'D:\Python312'
         ODLS: ''         # build with open-darts linear solvers
 
 build-windows-3.11-ODLS:
@@ -96,7 +105,6 @@ build-windows-3.11-ODLS:
     extends: .build-windows
     variables:
         PY_VER: '3.11'
-        PYTHONPATH: 'D:\Python311'
         ODLS: ''         # build with open-darts linear solvers
 
 build-windows-3.10-ODLS:
@@ -109,5 +117,4 @@ build-windows-3.10-ODLS:
     extends: .build-windows
     variables:
         PY_VER: '3.10'
-        PYTHONPATH: 'D:\Python310'
         ODLS: ''         # build with open-darts linear solvers

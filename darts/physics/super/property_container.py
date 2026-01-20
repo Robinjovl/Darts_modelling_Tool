@@ -64,6 +64,7 @@ class PropertyContainer(PropertyBase):
         self.viscosity_ev = {}
         self.enthalpy_ev = {}
         self.conductivity_ev = {}
+        self.IFT_ev = {}
 
         self.rel_perm_ev = []
         self.rel_well_perm_ev = []
@@ -219,11 +220,13 @@ class PropertyContainer(PropertyBase):
         if evaluate_PT:
             # In case of PH-formulation, PT flashes are required for calculating initial distribution
             error_output = self.flash_ev.evaluate_PT(pressure, temperature, zc_norm)
+            flash_results = self.flash_ev.get_flash_results(evaluate_PT=True)
         else:
             error_output = self.flash_ev.evaluate(pressure, temperature, zc_norm)
+            flash_results = self.flash_ev.get_flash_results()
 
-        flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
+
         try:
             self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
         except ValueError as e:
@@ -251,12 +254,11 @@ class PropertyContainer(PropertyBase):
 
     def evaluate(self, state: value_vector):
         """
-        Class methods which evaluates the state operators for the element based physics
+        Evaluate the phase properties. Phase properties used only in the energy conservation equation
+        are evaluated using a different method.
 
         :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
         :type state: value_vector
-
-        :return: updated value for operators, stored in values
         """
         # Composition vector and pressure from state:
         pressure, temperature, zc = self.get_state(state)
@@ -311,10 +313,10 @@ class PropertyContainer(PropertyBase):
 
     def evaluate_thermal(self, state):
         """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
+        Evaluate the phase properties used only in the energy conservation equation
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+        :type state: value_vector
         """
         # Composition vector and pressure from state:
         pressure, temperature, zc = self.get_state(state)

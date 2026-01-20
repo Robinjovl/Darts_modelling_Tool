@@ -27,16 +27,11 @@ loaded_timesteps, loaded_property_array = m.output.load_property_array(file_dire
 
 m.output.output_to_vtk(output_properties=output_props) # output all saved time steps to vtk
 
-# compute well time data
-time_data_dict = m.output.store_well_time_data()
+# compute and save well time data
+time_data_dict = m.output.store_well_time_data(save_output_files=True)
 
-# save well time data
-time_data_df = pd.DataFrame.from_dict(time_data_dict)
-time_data_df.to_pickle(os.path.join(m.output_folder, "well_time_data.pkl")) # as a pickle file
-writer = pd.ExcelWriter(os.path.join(m.output_folder, "well_time_data.xlsx")) # as an excel file
-time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
-writer.close()
-
+# plot well time data
+# time_data_df = pd.DataFrame.from_dict(time_data_dict)
 # time_data_df.plot(x='time', y=['well_INJ_volumetric_rate_water_at_wh', 'well_PRD_volumetric_rate_water_at_wh'])\
 #     .get_figure().savefig(m.output_folder + '/rates.png', dpi=100, bbox_inches='tight')
 #
@@ -86,5 +81,3 @@ if restart:
     # check final result
     assert np.isclose(X[-1,:,0], X_restarted[-1,:,0], rtol=1e-2, atol=0).all(), f'pressure mismatch at restart position at end of run.'
     assert np.isclose(X[-1,:,1], X_restarted[-1,:,1], rtol=1, atol=0).all(), f'enthalpy mismatch at restart position at end of run.'
-
-

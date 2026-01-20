@@ -503,35 +503,37 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
 
     n = Model(obl_points=obl_points, components=get_components(n_comps), reservoir_type=reservoir_type, nx=nx,
               itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
-    n.init(itor_mode=itor_mode, itor_type=itor_type, output_folder=output_folder, is_barycentric=is_barycentric)
+    n.init(itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
+    n.set_output(output_folder=output_folder)
+    out_props = n.physics.vars + ['satV']
 
     n_months = 2 * 12
     if reservoir_type != '1D':
         if vtk_output:
-            n.output_to_vtk(ith_step=0)
+            n.output.output_to_vtk(ith_step=0, output_properties=out_props)
         if reservoir_type != '2D':
             n.set_wells_spe10()
             n_months = 10 * 12
 
     for i in range(n_months):
         if reservoir_type.split('_')[0] == 'spe10':
-            ts_mult == 4.0 if  reservoir_type == 'spe10_20_40_40' else 1.0
+            ts_mult = 4.0 if reservoir_type == 'spe10_20_40_40' else 1.0
             t = n.physics.engine.t
             if t < 70:
-                n.params.max_ts = ts_mult * 0.25
+                n.data_ts.dt_max = ts_mult * 0.25
             elif t < 100:
-                n.params.max_ts = ts_mult * 0.35
+                n.data_ts.dt_max = ts_mult * 0.35
             elif t < 400:
-                n.params.max_ts = ts_mult * 0.5
+                n.data_ts.dt_max = ts_mult * 0.5
             elif t < 2000:
-                n.params.max_ts = ts_mult * 1.0
+                n.data_ts.dt_max = ts_mult * 1.0
             else:
-                n.params.max_ts = ts_mult * 1.5
+                n.data_ts.dt_max = ts_mult * 1.5
 
-
-        n.run(30.5, log_3d_body_path=log_3d_body_path)
+        print(f'dt_max = {n.data_ts.dt_max}')
+        n.run(30.5)
         if reservoir_type != '1D' and vtk_output:
-            n.output_to_vtk(ith_step=i + 1)
+            n.output.output_to_vtk(ith_step=i + 1, output_properties=out_props)
 
     n.timer.stop()
     n.print_timers()

@@ -58,7 +58,9 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
         m.run(size_report_step)
 
         if ith_step % output_vtk_period == 0:
-            m.output.output_to_vtk(ith_step=ith_step+1, output_directory=output_directory)
+            timesteps, property_array = m.output.output_properties(output_properties=output_properties_with_temperature,
+                                                                   timestep=ith_step+1, engine=True)
+            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step+1, output_directory=output_directory)
 
         sim_time += size_report_step
         m.print_range(sim_time, part='cells')
@@ -67,23 +69,8 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
     m.print_timers()
     m.print_stat()
 
-    if 0:
-        # old C++ timedata
-        time_data_df = pd.DataFrame.from_dict(m.physics.engine.time_data)
-
-    else:
-        # compute well time data
-        time_data_dict = m.output.store_well_time_data()
-        time_data_df = pd.DataFrame.from_dict(time_data_dict)
-
-    time_data_df['Time[years]'] = time_data_df['time'] / 365.
-
-    # save well time data
-    time_data_df.to_pickle(os.path.join(m.output_folder, "well_time_data.pkl"))  # as a pickle file
-
-    writer = pd.ExcelWriter(os.path.join(m.output_folder, "well_time_data.xlsx"))  # as an excel file
-    time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
-    writer.close()
+    # compute and save well time data
+    time_data_dict = m.output.store_well_time_data(save_output_files=True)
 
     return m
 

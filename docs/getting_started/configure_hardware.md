@@ -8,7 +8,7 @@ Then add to your python script:
 
 ```python
 from darts.engines import set_num_threads
-set_num_threads(NT) 
+set_num_threads(NT)
 ```
 
 Half of the cores available are used unless specified via `set_num_threads` or via setting the environment variable `export OMP_NUM_THREADS=NT`.
