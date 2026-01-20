@@ -14,7 +14,6 @@
         #
         - echo "test finished"
     after_script:
-        - conda env remove -n ${CONDA_ENV} -y || true
         - cd models
         - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..
@@ -53,6 +52,9 @@ test-linux-oahu-3.10-gpu:
         - python -m pip install --upgrade pip
         - pip uninstall open-darts-flash  --yes
         - pip install ./dist/*.whl
+    after_script:
+        - source ${CONDAPATH}/bin/activate
+        - conda env remove -n ${CONDA_ENV} -y || true
     extends: .test-linux-gpu
     needs:
         - build-linux-oahu-3.10-gpu
@@ -71,6 +73,10 @@ test-linux-oahu-3.10-gpu:
         - python -m pip install --upgrade pip
         - pip uninstall open-darts-flash --yes
         - pip install ./dist/*.whl
+    after_script:
+        - spack env activate open_darts_gcc134
+        - . "${CONDAPATH}/etc/profile.d/conda.sh"
+        - conda env remove -n ${CONDA_ENV} -y || true
     variables:
         PY_VER: '3.10'
     needs:

@@ -14,8 +14,6 @@
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
         - ./helper_scripts/build_install_darts_gpu.sh -c -p -j 20
-    after_script:
-        - conda env remove -n ${CONDA_ENV} -y || true
     artifacts:
       paths:
         - './dist/*.whl'
@@ -35,20 +33,28 @@ build-linux-oahu-3.10-gpu:
         - source ${CONDAPATH}/bin/activate
         - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
         - conda activate ${CONDA_ENV}
+    after_script:
+        - source ${CONDAPATH}/bin/activate
+        - conda env remove -n ${CONDA_ENV} -y || true
     extends: .build-linux-gpu
 
 
 build-linux-tahiti-3.10-gpu:
     tags:
         - linux_tahiti_gpu
+    variables:
+        CONDAPATH: /data/gitlab-runner/miniconda3
     before_script:
         - spack env activate open_darts_gcc134
-        - CONDA_BASE="/data/gitlab-runner/miniconda3"
-        - . "${CONDA_BASE}/etc/profile.d/conda.sh"
+        - . "${CONDAPATH}/etc/profile.d/conda.sh"
         - conda env remove -n ${CONDA_ENV} -y || true
         - conda create -n ${CONDA_ENV} python=${PY_VER} -q -y
         - conda activate ${CONDA_ENV}
         - export GSELINSOLVERSPATH=/data/$(id -un)/darts-linear-solvers/build
+    after_script:
+        - spack env activate open_darts_gcc134
+        - . "${CONDAPATH}/etc/profile.d/conda.sh"
+        - conda env remove -n ${CONDA_ENV} -y || true
     rules:
         - if: $MCP_TRIGGER_TAHITI_GPU == "1"
         - when: never
