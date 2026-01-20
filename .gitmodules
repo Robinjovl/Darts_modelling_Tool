@@ -10,7 +10,7 @@
 [submodule "thirdparty/hypre"]
 	path = thirdparty/hypre
 	url = https://github.com/hypre-space/hypre.git
-    branch = master
+    tag = v2.29.0
 
 [submodule "thirdparty/iphreeqc"]
 	path = thirdparty/iphreeqc
