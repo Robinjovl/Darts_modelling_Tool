@@ -63,10 +63,11 @@ test-linux-oahu-3.10-gpu:
     tags:
         - linux_tahiti_gpu
     extends: .test-linux-gpu
+    variables:
+        CONDAPATH: /data/gitlab-runner/miniconda3
     before_script:
         - spack env activate open_darts_gcc134
-        - CONDA_BASE="/data/gitlab-runner/miniconda3"
-        - . "${CONDA_BASE}/etc/profile.d/conda.sh"
+        - . "${CONDAPATH}/etc/profile.d/conda.sh"
         - conda create -n ${CONDA_ENV} python=${PY_VER} -q -y
         - conda activate ${CONDA_ENV}
         # upgrade pip package first
@@ -93,6 +94,7 @@ test-linux-tahiti-image-3.10-gpu:
             set -euxo pipefail && \
             # enable Conda in this shell
             source /opt/conda/etc/profile.d/conda.sh && \
+            && conda create -n ${CONDA_ENV} python=${PY_VER} -q -y \
             # activate your env
             conda activate ${CONDA_ENV} && \
             # make sure pip is fresh and reinstall your wheel
@@ -117,6 +119,7 @@ test-linux-tahiti-image-3.10-gpu:
             echo 'test finished'
             "
     variables:
+        CONDA_ENV: "darts_gpu_${CI_PIPELINE_ID}"
         APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
     needs:
         - build-linux-tahiti-image-3.10-gpu
