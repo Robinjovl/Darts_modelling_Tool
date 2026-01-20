@@ -1,3 +1,10 @@
+# Breaking changes
+- Rename the following input arguments of the method `add_well`:
+  - `wellbore_diameter` to `well_diameter`
+- Rename the following input arguments of the method `add_perforation`:
+  - `cell_index` to `res_cell_idx`
+  - `well_radius` to `well_diameter`
+  - `multi_segment` to `ms_epm`
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
 - EoSDensity and EoSEnthalpy API changes:
