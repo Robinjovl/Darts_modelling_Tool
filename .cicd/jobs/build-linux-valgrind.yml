@@ -23,5 +23,5 @@ build-linux-3.10-valgrind:
       paths:
         - './dist/*.whl'
         - '*.log'
-      expire_in: 1 week
+      expire_in: 1 day
       when: always

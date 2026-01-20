@@ -42,7 +42,8 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
     #frac_index = np.arange(n_fracs).reshape((1, n_fracs))
     frac_aper = m.reservoir.frac_aper if not np.isscalar(m.reservoir.frac_aper) else np.zeros((1, n_fracs)) + m.reservoir.frac_aper
     custom_arrays = {'frac_aperture': frac_aper} #'frac_index': frac_index
-    property_array.update(custom_arrays)
+    if n_fracs > 0:
+        property_array.update(custom_arrays)
 
     m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=0, output_directory=output_directory)
 
