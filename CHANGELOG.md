@@ -1,10 +1,11 @@
-# Breaking changes
-- Rename the following input arguments of the method `add_well`:
-  - `wellbore_diameter` to `well_diameter`
-- Rename the following input arguments of the method `add_perforation`:
-  - `cell_index` to `res_cell_idx`
-  - `well_radius` to `well_diameter`
-  - `multi_segment` to `ms_epm`
+# 1.3.3 [Future]
+- Breaking changes:
+  - Rename an input argument of the method `add_well`:\
+      {- Before: self.reservoir.add_well(..., wellbore_diameter) -}\
+      {+ Now:    self.reservoir.add_well(..., well_diameter) +}\
+  - Rename input arguments of the method `add_perforation`:\
+  - 	{- Before: self.reservoir.add_perforation(..., cell_index, well_radius, multi_segment) -}\
+      {+ Now:    self.reservoir.add_perforation(..., res_cell_idx, well_diameter, ms_epm) +}
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
 - EoSDensity and EoSEnthalpy API changes:
@@ -88,8 +89,8 @@
 	- No-flow boundary conditions in reconstruction of velocities on structured grid. [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?commit_id=cbdd7d97937c1c44b4ed5c947f46357dc72fa2cf)
 	- Enable the visualization of large volume from mesh.vts for StructReservoir [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/198)
 - Mesh processing for DFN model with the Python discretizer [optimized](https://gitlab.com/open-darts/open-darts/-/merge_requests/194).
-- Breaking changes:\
-	- For open-DARTS wheels installed from pip or gitlab pipelines running command was changed. This is neccessary to ensure the libstdc++ provided with open-DARTS is loaded first. This doesn't impact Windows runs. However, DARTS command line interface (CLI) can also be used on Windows. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182).\
+- Breaking changes:
+	- For open-DARTS wheels installed from pip or gitlab pipelines running command was changed. This is necessary to ensure the libstdc++ provided with open-DARTS is loaded first. This doesn't impact Windows runs. However, DARTS command line interface (CLI) can also be used on Windows. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182).\
 	{- Before, python main.py -}\
 	{+ Now, darts main.py +}
 	- Physics (P, PT, PH):\
