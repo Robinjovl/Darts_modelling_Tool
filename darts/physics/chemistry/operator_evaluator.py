@@ -40,8 +40,8 @@ class ReservoirOperators(OperatorsSuper):
 
     def get_overall_composition(self, state):
         """
-        Class method which returns corrected full (inlcuding last) molar composition of the system.
-        It ensures last fluid compositions are within (min_z, 1-min_z) range.
+        Class method which returns corrected full (including last) molar composition of the system.
+        It ensures last fluid compositions are within (obl_min_z, obl_max_z) range.
         :param state: state variables [p, z_{1}, ..., z_{n_m}, z_{n_m+1}, ..., z_{n_c-1}]
         :type state: np.ndarray
         :return: overall molar composition [z_{1}, ..., z_{n_m}, z_{n_m+1}, ..., z_{n_c}]
@@ -52,8 +52,8 @@ class ReservoirOperators(OperatorsSuper):
         else:
             z = state[1:]
         z_last = min(
-            max(1 - np.sum(z[self.property.fc_mask[:-1]]), self.min_z),
-            1 - self.min_z,
+            max(1 - np.sum(z[self.property.fc_mask[:-1]]), self.property.eps_z),
+            1.0 - len(z) * self.property.eps_z,
         )
         z = np.concatenate([z, [z_last]])
         return z

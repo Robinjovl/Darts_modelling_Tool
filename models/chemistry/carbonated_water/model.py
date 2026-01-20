@@ -287,7 +287,7 @@ class Model(CICDModel):
 
         # Create property containers:
         property_container = PropertyContainer(phases=self.phases, components_name=self.elements, Mw=Mw,
-                                            stoich_matrix=stoich_matrix, min_z=self.obl_min, temperature=self.temperature,
+                                            stoich_matrix=stoich_matrix, eps_z=self.obl_min, temperature=self.temperature,
                                             fc_mask=self.fc_mask)
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \

@@ -19,7 +19,7 @@ class PropertyContainer(BasePropertyContainer):
         stoich_matrix,
         nc_sol=0,
         np_sol=0,
-        min_z=1e-11,
+        eps_z=1e-11,
         rate_ann_mat=None,
         temperature=None,
         fc_mask=None,
@@ -38,8 +38,8 @@ class PropertyContainer(BasePropertyContainer):
         :type nc_sol: int
         :param np_sol: Number of components in pure phase
         :type np_sol: int
-        :param min_z: Minimum composition value
-        :type min_z: float
+        :param eps_z: Minimum composition value
+        :type eps_z: float
         :param rate_ann_mat: Rate annihilation matrix, optional
         :type rate_ann_mat: np.ndarray
         :param temperature: Temperature, for isothermal simulation
@@ -59,7 +59,7 @@ class PropertyContainer(BasePropertyContainer):
             Mw=Mw,
             nc_sol=nc_sol,
             np_sol=np_sol,
-            eps_z=min_z,
+            eps_z=eps_z,
             rate_ann_mat=rate_ann_mat,
             temperature=temperature,
         )
