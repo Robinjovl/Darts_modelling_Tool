@@ -94,7 +94,7 @@ test-linux-tahiti-image-3.10-gpu:
             set -euxo pipefail && \
             # enable Conda in this shell
             source /opt/conda/etc/profile.d/conda.sh && \
-            && conda create -n ${CONDA_ENV} python=${PY_VER} -q -y \
+            conda create -n ${CONDA_ENV} python=${PY_VER} -q -y && \
             # activate your env
             conda activate ${CONDA_ENV} && \
             # make sure pip is fresh and reinstall your wheel
