@@ -186,6 +186,7 @@ if [[ "$skip_req" == false ]]; then
     cmake -D HYPRE_BUILD_TESTS=ON \
           -D HYPRE_BUILD_EXAMPLES=ON \
           -D HYPRE_WITH_MPI=OFF \
+          -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
           -D CMAKE_INSTALL_PREFIX=../../../install \
           .. &> ../../../../make_hypre.log
     make install -j $NT &>> ../../../../make_hypre.log

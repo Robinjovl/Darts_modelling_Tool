@@ -4,6 +4,7 @@
 //--------------------------------------------------------------------------
 
 #include <climits>
+#include <cstddef>
 
 namespace opendarts
 {
@@ -14,7 +15,7 @@ namespace opendarts
     const unsigned long long int INDEX_T_MAX = INT_MAX;
     typedef double mat_float; // define data type of matrix values
 
-    opendarts::config::index_t static_cast_check(size_t size_t_value);
+    opendarts::config::index_t static_cast_check(std::size_t size_t_value);
   } // namespace config
 } // namespace opendarts
 //--------------------------------------------------------------------------

@@ -14,6 +14,11 @@ set(LIB_SOURCES
 # Create library
 add_library(mgr-linear-solver ${LIB_SOURCES})
 
+# Build as PIC so it can link into shared objects (Python extensions, etc.)
+if(NOT WIN32)
+    set_target_properties(mgr-linear-solver PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
 # Include directories
 target_include_directories(mgr-linear-solver PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -44,6 +49,11 @@ set(INTEGRATION_SOURCES
 
 # Create integration library (static library for MGR solver + open-darts interface)
 add_library(linsolv_mgr ${INTEGRATION_SOURCES})
+
+# Ensure PIC for integration library as well
+if(NOT WIN32)
+    set_target_properties(linsolv_mgr PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # Include directories
 # Use absolute paths to avoid relative path resolution issues
