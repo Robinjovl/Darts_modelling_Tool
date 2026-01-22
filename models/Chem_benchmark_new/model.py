@@ -478,33 +478,28 @@ class CustomPhysics(Compositional):
                          cache=cache, extrapolation_flag=extrapolation_flag)
 
     def set_operators(self):  # default definition of operators
-        self.reservoir_operators[0] = ReservoirOperators(self.property_containers[0], self.thermal)
-        self.property_operators[0] = PropertyOperators(self.property_containers[0], self.thermal)
+        # Call base implementation
+        super().set_operators()
 
-        self.wellbore_operators = ReservoirOperators(self.property_containers[0], self.thermal)
-
-        self.reservoir_operators[1] = ReservoirWithSourceOperators(self.property_containers[0], comp_inj_id=0,
-                                                                   delta_volume=self.delta_volume,
-                                                                   num_well_blocks=self.num_well_blocks)
-        self.property_operators[1] = PropertyOperators(self.property_containers[0], self.thermal)
-
-        self.reservoir_operators[2] = ReservoirWithSourceOperators(self.property_containers[0], comp_inj_id=1,
-                                                                   delta_volume=self.delta_volume,
-                                                                   num_well_blocks=self.num_well_blocks)
-        self.property_operators[2] = PropertyOperators(self.property_containers[0], self.thermal)
-
-        self.rate_operators = WellControlOperators(self.property_containers[0], self.thermal)
+        # Overload reservoir operators for the two regions with source
+        for i, comp_inj_id in enumerate([0, 1]):
+            self.reservoir_operators[i+1] = ReservoirWithSourceOperators(property_container=self.property_containers[0],
+                                                                         comp_inj_id=comp_inj_id,
+                                                                         thermal=self.thermal,
+                                                                         extrapolation_flag=self.extrapolation_flag,
+                                                                         dz=self.dz,
+                                                                         delta_volume=self.delta_volume,
+                                                                         num_well_blocks=self.num_well_blocks)
 
         return
 
 
 class ReservoirWithSourceOperators(ReservoirOperators):
-    def __init__(self, property_container, comp_inj_id, thermal=0,
+    def __init__(self, property_container, comp_inj_id, thermal: bool = False,
+                 extrapolation_flag: bool = False, dz: float = None,
                  delta_volume=1000, num_well_blocks=12):
-        super().__init__(property_container, thermal=thermal)  # Initialize base-class
+        super().__init__(property_container, thermal=thermal, extrapolation_flag=extrapolation_flag, dz=dz)  # Initialize base-class
         # Store your input parameters in self here, and initialize other parameters here in self
-        self.property = property_container
-        self.thermal = thermal
         self.comp_inj_id = comp_inj_id
         self.delta_volume = delta_volume
         self.num_well_blocks = num_well_blocks
