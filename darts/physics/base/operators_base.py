@@ -116,7 +116,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         c = X[-1, :]  # shape (n_ops,)
 
         # Extrapolate values
-        z_nonzero = z[z > self.eps_z + 1e-15]
+        z_nonzero = z[z > 2 * self.eps_z]
         ext = a.T.dot(z_nonzero) + c
 
         # Write back into values array
