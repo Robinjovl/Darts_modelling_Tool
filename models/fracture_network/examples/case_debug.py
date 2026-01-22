@@ -1,44 +1,42 @@
 import os
 from .input_default import input_data_default
 
-def input_data_case_1():
+def input_data_case_debug():
     idata = input_data_default()
 
-    idata.geom['case_name'] = 'case_1'
+    idata.geom['case_name'] = 'case_debug'
 
     # geometry
-    idata.geom['frac_file'] = os.path.join('examples', 'frac_1.txt')
+    idata.geom['frac_file'] = os.path.join('examples', 'frac_debug.txt')
 
     # do not use cleaned mesh
     idata.geom['mesh_prefix'] = 'raw_lc'
 
     # cell sizes
-    idata.geom['char_len'] = 50  # near fractures (characteristic length for cleaning and mesh generation) [m]
-    idata.geom['char_len_boundary'] = 150  # grid size near grid boundaries [m]
-    idata.geom['char_len_well'] = 50  # grid size near wells [m]
+    idata.geom['char_len'] = 100  # near fractures (characteristic length for cleaning and mesh generation) [m]
+    idata.geom['char_len_boundary'] = 100  # grid size near grid boundaries [m]
+    idata.geom['char_len_well'] = 100  # grid size near wells [m]
 
     # uniform initial pressure and temperature
     idata.initial.type ='uniform'
     idata.initial.initial_pressure = 350.  # bar
     idata.initial.initial_temperature = 348.15  # K
 
-    # well locations
+    # well locations (only one perforation per well)
     idata.geom['well_coords'] = dict()
-    # one perforation at the top layer
-    idata.geom['well_coords']['I1'] = [100., 200., 2000., 2000.]  # X, Y, Z1, Z2
-    idata.geom['well_coords']['P1'] = [800., 800., 2000., 2000.]  # X, Y, Z1, Z2
-    # multiple perforations - through all depth of the reservoir
-    #idata.geom['well_coords']['I1'] = [100., 200., 2000., 2020.]  # X, Y, Z1, Z2
-    #idata.geom['well_coords']['P1'] = [800., 800., 2000., 2020.]  # X, Y, Z1, Z2
+    # inj well
+    idata.geom['well_coords']['I1'] = [100, 0, 25, 25]  # X, Y, Z1, Z2
+    # prod well
+    idata.geom['well_coords']['P1'] = [100, 300, 25, 25]  # X, Y, Z1, Z2
 
     # well in the matrix cells or in the fractures
     idata.geom['well_loc_type'] = 'wells_in_nearest_cell'
 
     # extrusion - number of layers by Z axis
-    idata.geom['rsv_layers'] = 3
+    idata.geom['rsv_layers'] = 1
 
-    idata.geom['z_top'] = 2000.  # [m]
-    idata.geom['height_res'] = 20.  # [m]
+    idata.geom['z_top'] = 2000  # [m]
+    idata.geom['height_res'] = 20  # [m]
 
     idata.geom['frac_aper'] = 1e-3  # (initial) fracture aperture [m]
 

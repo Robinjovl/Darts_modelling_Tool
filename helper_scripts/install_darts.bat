@@ -6,6 +6,8 @@ set "EDITABLE=0"
 set "WITH_DEPS=0"
 set "JOBS=8"
 
+python -m pip install build
+
 :parse_args
 if "%~1"=="" goto :args_done
 set "ARG=%~1"
