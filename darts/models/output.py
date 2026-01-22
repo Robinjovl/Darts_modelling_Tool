@@ -241,11 +241,8 @@ class Output:
 
                 self.physics.property_operators[region] = PropertyOperators(
                     property_container=pc,
-                    # thermal=self.physics.thermal,
                     thermal=False,
                     props=temp_dict,
-                    extrapolation_flag=self.physics.extrapolation_flag,
-                    dz=self.physics.dz,
                 )
                 self.physics.property_itor[region], n_ops = (
                     self.physics.create_interpolator(
