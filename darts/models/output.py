@@ -182,7 +182,11 @@ class Output:
                         )
 
                 self.physics.property_operators[region] = PropertyOperators(
-                    pc, self.physics.thermal, temp_dict
+                    property_container=pc,
+                    thermal=self.physics.thermal,
+                    props=temp_dict,
+                    extrapolation_flag=self.physics.extrapolation_flag,
+                    dz=self.physics.dz,
                 )
                 self.physics.property_itor[region], n_ops = (
                     self.physics.create_interpolator(
@@ -236,7 +240,12 @@ class Output:
                         )
 
                 self.physics.property_operators[region] = PropertyOperators(
-                    pc, thermal=False, props=temp_dict
+                    property_container=pc,
+                    # thermal=self.physics.thermal,
+                    thermal=False,
+                    props=temp_dict,
+                    extrapolation_flag=self.physics.extrapolation_flag,
+                    dz=self.physics.dz,
                 )
                 self.physics.property_itor[region], n_ops = (
                     self.physics.create_interpolator(
@@ -290,9 +299,11 @@ class Output:
             self.physics.property_containers[region].output_props = output_dictionary
 
             self.physics.property_operators[region] = PropertyOperators(
-                self.physics.property_containers[region],
-                self.physics.thermal,
-                output_dictionary,
+                property_container=self.physics.property_containers[region],
+                thermal=self.physics.thermal,
+                props=output_dictionary,
+                extrapolation_flag=self.physics.extrapolation_flag,
+                dz=self.physics.dz,
             )
             self.physics.property_itor[region], n_ops = (
                 self.physics.create_interpolator(
