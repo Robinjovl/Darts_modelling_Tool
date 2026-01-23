@@ -5,12 +5,12 @@
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
         - if: $TEST_CUSTOM_BRANCH == "1"
-        - if: $TEST_GPU_LINUX == "1"
     variables:
         GIT_SUBMODULE_STRATEGY: recursive
         PY_VER: '3.10'       # for python image selection in .build-linux
         ODLS: '-a'
         TEST_GPU: '1'
+        CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
         - ./helper_scripts/build_install_darts_gpu.sh -c -p -j 20
@@ -26,7 +26,6 @@ build-linux-oahu-3.10-gpu:
     tags:
         - linux_gpu
     variables:
-        CONDA_ENV: "darts_gpu"
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
         GSELINSOLVERSPATH: /oahu/data/gitlabrunner/darts-gitlab-runner-data/darts-linear-solvers-gpu-hypre
     before_script:
@@ -34,6 +33,9 @@ build-linux-oahu-3.10-gpu:
         - source ${CONDAPATH}/bin/activate
         - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
         - conda activate ${CONDA_ENV}
+    after_script:
+        - source ${CONDAPATH}/bin/activate
+        - conda env remove -n ${CONDA_ENV} -y || true
     extends: .build-linux-gpu
 
 
@@ -41,21 +43,22 @@ build-linux-tahiti-3.10-gpu:
     tags:
         - linux_tahiti_gpu
     variables:
-        CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
+        CONDAPATH: /data/gitlab-runner/miniconda3
     before_script:
         - spack env activate open_darts_gcc134
-        - CONDA_BASE="/data/gitlab-runner/miniconda3"
-        - . "${CONDA_BASE}/etc/profile.d/conda.sh"
+        - . "${CONDAPATH}/etc/profile.d/conda.sh"
         - conda env remove -n ${CONDA_ENV} -y || true
         - conda create -n ${CONDA_ENV} python=${PY_VER} -q -y
         - conda activate ${CONDA_ENV}
         - export GSELINSOLVERSPATH=/data/$(id -un)/darts-linear-solvers/build
+    after_script:
+        - spack env activate open_darts_gcc134
+        - . "${CONDAPATH}/etc/profile.d/conda.sh"
+        - conda env remove -n ${CONDA_ENV} -y || true
     rules:
         - if: $MCP_TRIGGER_TAHITI_GPU == "1"
         - when: never
     extends: .build-linux-gpu
-    after_script:
-        - conda env remove -n ${CONDA_ENV} -y || true
 
 build-linux-tahiti-image-3.10-gpu:
     tags:
@@ -67,7 +70,6 @@ build-linux-tahiti-image-3.10-gpu:
         - job: apptainer-image-builder
     variables:
         APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
-        CONDA_ENV: "tahiti-gpu"
         PY_VER: "3.10"
     before_script:
         - echo "🔧 Creating Conda env '${CONDA_ENV}' inside the Apptainer image…"
@@ -89,5 +91,15 @@ build-linux-tahiti-image-3.10-gpu:
                 conda activate ${CONDA_ENV} && \
                 # _this_ is your real build
                 ./helper_scripts/build_install_darts_gpu.sh -c -p -j 16
+            "
+    after_script:
+        - |
+            apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+                # exit on any error, print commands as you go
+                set -euxo pipefail && \
+                # enable Conda in this shell
+                source /opt/conda/etc/profile.d/conda.sh && \
+                # remove conda env
+                conda env remove -n ${CONDA_ENV} -y || true 
             "
     extends: .build-linux-gpu
