@@ -1724,11 +1724,17 @@ class Output:
                 states_2d[:, p_idx] = p_dead
                 states_2d[:, t_idx] = T_dead
                 states_vec_dead = value_vector(states_2d.ravel())
+
+                values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
+                dvalues_dead = value_vector(
+                    np.zeros((batch_size * n_well_ctrl_ops) * self.physics.n_vars)
+                )
+
                 self.physics.well_ctrl_itor.evaluate_with_derivatives(
-                    states_vec_dead, block_idx, values, dvalues
+                    states_vec_dead, block_idx, values_dead, dvalues_dead
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-                values_reshaped_dead = np.asarray(values).reshape(
+                values_reshaped_dead = np.asarray(values_dead).reshape(
                     batch_size, n_well_ctrl_ops
                 )
                 ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
