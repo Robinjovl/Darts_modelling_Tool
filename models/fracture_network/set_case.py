@@ -10,6 +10,8 @@ from examples.case_4 import input_data_case_4_no_conduction
 from examples.case_4 import input_data_case_4_small_capacity
 from examples.case_5 import input_data_case_5
 from examples.whitby import input_data_case_whitby
+from examples.case_debug import input_data_case_debug
+from examples.case_simple_3d import input_data_case_3D_strike0_dip90, input_data_case_3D_strike0_dip45, input_data_case_3D_strike0_dip0, input_data_case_3D_no_fractures
 
 def set_input_data(case: str):
     if case == 'case_1':
@@ -40,6 +42,16 @@ def set_input_data(case: str):
         input_data = input_data_case_5()
     elif case == 'whitby':
         input_data = input_data_case_whitby()
+    elif case == 'case_debug':
+        input_data = input_data_case_debug()
+    elif case == 'case_3D_nofrac':
+        input_data = input_data_case_3D_no_fractures()
+    elif case == 'case_3D_strike0_dip90':
+        input_data = input_data_case_3D_strike0_dip90()
+    elif case == 'case_3D_strike0_dip45':
+        input_data = input_data_case_3D_strike0_dip45()
+    elif case == 'case_3D_strike0_dip0':
+        input_data = input_data_case_3D_strike0_dip0()
     else:
         assert False, f'Wrong case {case}'
     return input_data
