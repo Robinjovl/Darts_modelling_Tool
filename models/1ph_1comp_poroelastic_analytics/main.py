@@ -295,7 +295,7 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
     elif discretizer == 'mech_discretizer':
         xc = np.array([np.array(c.values) for c in m.reservoir.discr_mesh.centroids[:m.reservoir.n_matrix]])
         if case == 'bai':
-            y_loc = np.array([0.0, 1.4, 4.2, 5.6, 7.0])*1e-2
+            y_loc = np.array([0.0, 1.4, 4.2, 5.6, 6.0])*1e-2
             ny = y_loc.size
             y_num, id_num = np.unique(np.round(xc[:,1], decimals=6), return_index=True)
 
@@ -314,11 +314,11 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
             temp['analytics'][0.056] = np.loadtxt('bai_analytics/thermoConsolidationTemp_5p6m.csv', delimiter=',')
 
             # vertical displacements
-            disp = {'name': 'uy', 'darts': {0.014: np.zeros(nt + 1), 0.042: np.zeros(nt + 1), 0.07: np.zeros(nt + 1) },
-                  'analytics': {}, 'x': [0.014, 0.042, 0.07], 'time': np.zeros(nt + 1)}
+            disp = {'name': 'uy', 'darts': {0.014: np.zeros(nt + 1), 0.042: np.zeros(nt + 1), 0.06: np.zeros(nt + 1) },
+                  'analytics': {}, 'x': [0.014, 0.042, 0.06], 'time': np.zeros(nt + 1)}
             disp['analytics'][0.014] = np.loadtxt('bai_analytics/thermoConsolidationDisp_1p4m.csv', delimiter=',')
             disp['analytics'][0.042] = np.loadtxt('bai_analytics/thermoConsolidationDisp_4p2m.csv', delimiter=',')
-            disp['analytics'][0.07] = np.loadtxt('bai_analytics/thermoConsolidationDisp_7m.csv', delimiter=',')
+            disp['analytics'][0.06] = np.loadtxt('bai_analytics/thermoConsolidationDisp_7m.csv', delimiter=',')
         else:
             nx = np.unique(np.round(xc[:,0], decimals=6)).size
             ny = int(m.reservoir.n_matrix / nx)

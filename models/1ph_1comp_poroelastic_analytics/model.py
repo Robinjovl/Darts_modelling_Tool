@@ -59,7 +59,7 @@ class Model(THMCModel):
 
         self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
 
-        self.idata.initial.initial_temperature = 100  # [K]
+        self.idata.initial.initial_temperature = 0  # [K]
         self.idata.initial.initial_pressure = 0  # [bar]
         self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
         self.idata.initial.initial_composition = None  # not used in this test
@@ -188,7 +188,8 @@ class Model(THMCModel):
             self.idata.rock.compressibility = get_rock_compressibility(
                 kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-            self.idata.rock.th_expn = 9.0 * 1.E-7  # [1/K]
+            #self.idata.rock.th_expn = 9.0 * 1.E-7  # [1/K]
+            self.idata.rock.th_expn = 1e-5  # [1/K]
             self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu) # # Couchy book formula 4.19a, 4.21a
 
             #self.idata.rock.conductivity = 0.836 * 86400.0 # [kJ/m/day/K]
@@ -251,8 +252,8 @@ class Model(THMCModel):
         self.idata.obl.zero = 1e-9
         self.idata.obl.min_p = -5.
         self.idata.obl.max_p = 500.
-        self.idata.obl.min_t = -10.
-        self.idata.obl.max_t = 150.
+        self.idata.obl.min_t = -100.
+        self.idata.obl.max_t = 100.
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
 
