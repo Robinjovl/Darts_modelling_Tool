@@ -92,4 +92,14 @@ build-linux-tahiti-image-3.10-gpu:
                 # _this_ is your real build
                 ./helper_scripts/build_install_darts_gpu.sh -c -p -j 16
             "
+    after_script:
+        - |
+            apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+                # exit on any error, print commands as you go
+                set -euxo pipefail && \
+                # enable Conda in this shell
+                source /opt/conda/etc/profile.d/conda.sh && \
+                # remove conda env
+                conda env remove -n ${CONDA_ENV} -y || true 
+            "
     extends: .build-linux-gpu
