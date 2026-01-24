@@ -1324,28 +1324,28 @@ class Output:
             res_cell_idxs = [perf[1] for perf in well.perforations]
 
             # Find indices of perforations in the connection list (those connections
-            # which 1. block_p is in res_cell_idxs, 2. block_m is in the desired well)
+            # which 1. block_m is in the desired well and 2. block_p is in res_cell_idxs)
             if iw + 1 < len(self.reservoir.wells):  # If there is a next well
                 next_well = self.reservoir.wells[iw + 1]
                 mask = np.logical_and(
-                    np.isin(block_p, res_cell_idxs),
                     np.logical_and(
                         block_m >= well.well_head_idx, block_m < next_well.well_head_idx
                     ),
+                    np.isin(block_p, res_cell_idxs),
                 )
             else:  # If there is no next well
                 mask = np.logical_and(
-                    np.isin(block_p, res_cell_idxs), block_m >= well.well_head_idx
+                    block_m >= well.well_head_idx,
+                    np.isin(block_p, res_cell_idxs),
                 )
 
             conn_idxs = np.nonzero(mask)
             well_perf_conn_idxs[well.name] = conn_idxs[0]
-            assert (
-                well_perf_conn_idxs[well.name].size == len(well.perforations)
-                and (
-                    block_m[well_perf_conn_idxs[well.name]]
-                    > self.reservoir.mesh.n_res_blocks
-                ).all()
+            assert well_perf_conn_idxs[well.name].size == len(
+                well.perforations
+            ) and np.all(
+                block_m[well_perf_conn_idxs[well.name]]
+                > self.reservoir.mesh.n_res_blocks
             )
 
             # Find idx of well_head-well_body connection in the connection list
@@ -1529,12 +1529,11 @@ class Output:
             )
             p_idx = variable_names.index("pressure")
             for i in range(nt):
-                p = X[i, :, p_idx]
-                BHP[i] = p[wellhead_cell_idx]
+                BHP[i] = X[i, wellhead_cell_idx, p_idx]
                 if self.physics.thermal:
                     if "temperature" in variable_names:
                         t_idx = variable_names.index("temperature")
-                        BHT[i] = X[i, :, t_idx][wellhead_cell_idx]
+                        BHT[i] = X[i, wellhead_cell_idx, t_idx]
                     else:
                         h_idx = variable_names.index("enthalpy")
                         BHT[i] = pc.temperature_ev.evaluate(
@@ -1566,18 +1565,18 @@ class Output:
         :param rate_type: Type of well rate to calculate
         :type rate_type: str
         """
-        # Evaluate position of block_m, block_p in stored data, for every connection
+        # Evaluate position of block_m, block_p in stored data for every connection
         block_m = h5_well_data["static"]["block_m"]
         block_p = h5_well_data["static"]["block_p"]
         cell_id = h5_well_data["dynamic"]["cell_id"]
-        # Line below gets indices of the cells which are connected to the cells in cell_p
+        # Line below finds indices of the m cells of the connections in cell_id
         cell_m = self.find_values_in_an_array(block_m[conn_idxs], cell_id)
-        # Line below gets indices of the cells which are connected to the cells in cell_m
+        # Line below finds indices of the p cells of the connections in cell_id
         cell_p = self.find_values_in_an_array(block_p[conn_idxs], cell_id)
-        num_conn = len(conn_idxs)
-        assert cell_m.size == num_conn and cell_p.size == num_conn
+        n_conns = len(conn_idxs)
+        assert cell_m.size == n_conns and cell_p.size == n_conns
 
-        num_ts = h5_well_data["dynamic"]["time"].size
+        n_ts = h5_well_data["dynamic"]["time"].size
 
         pc = self.physics.property_containers[0]
         ne = self.physics.reservoir_operators[0].ne
@@ -1600,12 +1599,12 @@ class Output:
 
         p = h5_well_data["dynamic"]["X"][:, :, p_idx]
         dp = p[:, cell_p] - p[:, cell_m]
-        id_upwind = np.where(dp < 0, cell_m, cell_p)
+        idx_upwind = np.where(dp < 0, cell_m, cell_p)
 
         # This adds a new axis, turning a 1D array into a 2D column vector
-        time_idx = np.arange(num_ts)[:, None]
+        time_idx = np.arange(n_ts)[:, None]
 
-        states = h5_well_data["dynamic"]["X"][time_idx, id_upwind]
+        states = h5_well_data["dynamic"]["X"][time_idx, idx_upwind]
 
         if self.precision == "s":
             states = np.clip(
@@ -1614,7 +1613,7 @@ class Output:
                 self.physics.axes_max[None, None, :],
             )
 
-        batch_size = num_ts * num_conn
+        batch_size = n_ts * n_conns
         n_well_ctrl_ops = self.physics.well_ctrl_operators.n_ops
         n_reservoir_ops = self.physics.reservoir_operators[0].n_ops
         n_vars = self.physics.n_vars
@@ -1755,15 +1754,15 @@ class Output:
             "phase_mass_rates",
             "phase_volumetric_rates",
         ]:
-            ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
+            ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            ops_reshaped = ops.reshape(num_ts, num_conn, -1)
+            ops_reshaped = ops.reshape(n_ts, n_conns, -1)
         elif rate_type == "advective_heat_rates":
-            ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
+            ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
 
-        trans_exp = trans[None, :, None]
-        dp_exp = dp[:, :, None]
-        rates = -ops_reshaped * trans_exp * dp_exp
+        tran = trans[None, :, None]
+        dpr = dp[:, :, None]
+        rates = -ops_reshaped * tran * dpr
 
         return rates
 
@@ -1989,16 +1988,16 @@ class Output:
         return keys
 
     # %% Auxiliary functions
-    def find_values_in_an_array(self, to_find: np.ndarray | list, in_array: np.ndarray):
+    def find_values_in_an_array(self, to_find: np.ndarray | list, arr: np.ndarray):
         """
-        :param to_find: The values the indices of which we want to find in in_array
+        :param to_find: The values the indices of which we want to find in arr
         :type to_find: np.ndarray or list
-        :param in_array: The array in which we want to find the values in to_find
-        :type in_array: np.ndarray
+        :param arr: The array in which we want to find the values in to_find
+        :type arr: np.ndarray
         """
         indices = []
         for element in to_find:
-            id = np.where(in_array == element)[0]
-            if id.size > 0:
-                indices.append(id[0])
+            idx = np.where(arr == element)[0]
+            if idx.size > 0:
+                indices.append(idx[0])
         return np.array(indices, dtype=np.intp)
