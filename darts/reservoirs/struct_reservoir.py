@@ -232,6 +232,9 @@ class StructReservoir(ReservoirBase):
             assert well_seg_idx is None, (
                 "If the well is of the EPM type, well_seg_idx must not be specified!"
             )
+            assert with_peaceman_for_coupled_well_reservoir is False, (
+                "Coupled well-reservoir can be used only if the well type if DFM!"
+            )
             res_block_local, wi, wid = self.discretizer.calc_well_index(
                 i,
                 j,
