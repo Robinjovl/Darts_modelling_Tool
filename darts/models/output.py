@@ -957,8 +957,8 @@ class Output:
         """
         Function to export results at timestamp t into `.vtk` format for viewing in Paraview.
 
-        :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
-        :type filepath: str, optional
+        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
+        :type sol_filepath: str, optional
         :param ith_step: i'th reporting step indicates which timestep to create a .vtk from. Defaults to None, in which case all saved data points are evaluated.
         :type ith_step: int
         :param output_directory: directory of where to save .vtk file. Defaults to none in which case the 'self.output_folder/vtk' is used.
