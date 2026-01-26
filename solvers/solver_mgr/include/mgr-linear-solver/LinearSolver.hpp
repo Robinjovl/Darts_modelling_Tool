@@ -124,6 +124,12 @@ public:
   void setStrategy( std::unique_ptr<MGRStrategy> strategy );
 
   /**
+   * @brief Set block size for MGR reduction (dofs per cell)
+   * @param block_size Number of unknowns per cell
+   */
+  void setMGRBlockSize( int_t block_size );
+
+  /**
    * @brief Set solver parameters
    * @param params Solver parameters
    */
@@ -361,6 +367,7 @@ private:
 
   bool m_matrixLoaded;                  ///< Matrix loaded flag
   bool m_matrixAssembled;               ///< Matrix assembled flag
+  int_t m_mgrBlockSize = 0;             ///< Block size override for MGR (0 = use matrix)
 
   /**
    * @brief Create HYPRE matrix from Block CSR

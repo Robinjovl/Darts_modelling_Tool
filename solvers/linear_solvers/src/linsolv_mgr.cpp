@@ -67,6 +67,9 @@ namespace opendarts
       opendarts::config::index_t block_size = N_BLOCK_SIZE;
       global_num_rows = n_blocks * block_size;
 
+      // Keep block size for MGR reduction (dofs per cell)
+      mgr_solver.setMGRBlockSize(block_size);
+
 
       initialized = true;
       return 0;
@@ -130,6 +133,13 @@ namespace opendarts
                ++block_idx)
           {
             opendarts::config::index_t block_col = col_ind[block_idx];
+            if (block_col < 0 || block_col >= n_blocks)
+            {
+              std::cerr << "[MGR] Error: Invalid block column index "
+                        << block_col << " at block_idx=" << block_idx
+                        << " (n_blocks=" << n_blocks << ")" << std::endl;
+              return -1;
+            }
             opendarts::config::index_t block_start = block_idx * block_size * block_size;
 
             // For each DOF within this block column
@@ -148,6 +158,18 @@ namespace opendarts
 
       // Set the last row pointer
       row_ptr_expanded[num_rows] = value_idx;
+
+      if (row_ptr_expanded[num_rows] != value_idx
+          || static_cast<opendarts::config::index_t>(col_ind_expanded.size()) != value_idx
+          || static_cast<opendarts::config::index_t>(values_expanded.size()) != value_idx)
+      {
+        std::cerr << "[MGR] Error: Expanded CSR size mismatch "
+                  << "(row_ptr last=" << row_ptr_expanded[num_rows]
+                  << ", values=" << values_expanded.size()
+                  << ", cols=" << col_ind_expanded.size()
+                  << ")" << std::endl;
+        return -1;
+      }
 
 
       // Pass expanded CSR to MGR solver as block_size=1 (regular CSR)

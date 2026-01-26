@@ -8,6 +8,7 @@
 #include <iostream>
 #include <chrono>
 #include <cmath>
+#include <limits>
 
 // HYPRE headers
 #include <_hypre_parcsr_ls.h>
@@ -44,6 +45,11 @@ LinearSolver::~LinearSolver()
 void LinearSolver::setStrategy( std::unique_ptr<MGRStrategy> strategy )
 {
   m_strategy = std::move( strategy );
+}
+
+void LinearSolver::setMGRBlockSize( int_t block_size )
+{
+  m_mgrBlockSize = block_size;
 }
 
 void LinearSolver::setInitialGuess( const std::vector<real_type> & initialGuess )
@@ -216,8 +222,37 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
   HYPRE_MGRSetPrintLevel( mgr_precond, m_params.logLevel );
 
   // Set point markers and reduction strategy
-  int_t num_blocks = m_strategy->numBlocks();
+  const auto & point_markers = m_strategy->getPointMarkers();
+  int_t num_points = static_cast<int_t>( point_markers.size() );
   int_t num_levels = m_strategy->numLevels();
+  int_t block_size = ( m_mgrBlockSize > 0 ) ? m_mgrBlockSize : m_matrix.block_size;
+
+  if( num_points <= 0 )
+  {
+    std::cerr << "Error: MGR point markers are empty" << std::endl;
+    return nullptr;
+  }
+
+  if( m_matrix.global_num_rows > 0 && num_points != m_matrix.global_num_rows )
+  {
+    std::cerr << "Error: MGR point markers size (" << num_points
+              << ") does not match matrix size (" << m_matrix.global_num_rows
+              << ")" << std::endl;
+    return nullptr;
+  }
+
+  if( block_size <= 0 )
+  {
+    std::cerr << "Error: Invalid MGR block size (" << block_size << ")" << std::endl;
+    return nullptr;
+  }
+
+  if( num_points % block_size != 0 )
+  {
+    std::cerr << "Error: MGR block size (" << block_size
+              << ") does not divide global DOFs (" << num_points << ")" << std::endl;
+    return nullptr;
+  }
 
   std::vector<int_t> num_labels( num_levels );
   std::vector<int_t*> label_ptrs( num_levels );
@@ -232,11 +267,11 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
   }
 
   HYPRE_MGRSetCpointsByPointMarkerArray( mgr_precond,
-                                         num_blocks,
+                                         block_size,
                                          num_levels,
                                          num_labels.data(),
                                          label_ptrs.data(),
-                                         const_cast<int_t*>( m_strategy->getPointMarkers().data() ) );
+                                         const_cast<int_t*>( point_markers.data() ) );
 
   // Set level-wise parameters
   std::vector<int_t> f_relax_types( num_levels );
@@ -317,6 +352,14 @@ SolverResults LinearSolver::solveGMRES_MGR()
   // Setup MGR preconditioner
   auto setup_start = std::chrono::high_resolution_clock::now();
   HYPRE_Solver mgr_precond = setupMGRPreconditioner();
+  if( !mgr_precond )
+  {
+    std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
+    results.converged = false;
+    results.finalResidual = std::numeric_limits<real_type>::infinity();
+    results.iterations = 0;
+    return results;
+  }
   HYPRE_MGRSetTol( mgr_precond, 0.0 );
   HYPRE_MGRSetMaxIter( mgr_precond, 1 );
   HYPRE_MGRSetPrintLevel( mgr_precond, m_params.logLevel );
