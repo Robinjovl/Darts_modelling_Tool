@@ -706,12 +706,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			linear_solver_type_str = "CPU_SUPERLU";
 			break;
 		}
+#ifdef OPENDARTS_LINEAR_SOLVERS
 		case sim_params::CPU_GMRES_MGR:
 		{
 			linear_solver = new linsolv_mgr<N_VARS>;
 			linear_solver_type_str = "CPU_GMRES_MGR";
 			break;
 		}
+#endif
 
 #ifdef WITH_GPU
 		case sim_params::GPU_GMRES_CPR_AMG:
