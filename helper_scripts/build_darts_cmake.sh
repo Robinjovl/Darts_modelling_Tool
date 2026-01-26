@@ -123,6 +123,11 @@ if [ "$iter_solvers" == true ] && [ "$testing" == true ]; then
     testing=false
 fi
 
+# If valgrind requested, force Debug early (affects thirdparty builds)
+if [[ "$valgrind" = true ]]; then
+    config="Debug"
+fi
+
 if [ "$iter_solvers" == false ]; then
   if [ "$GPU" == true ]; then
     echo GPU build requires GPU bos solvers. Specify the path with -b.
@@ -186,6 +191,7 @@ if [[ "$skip_req" == false ]]; then
     cmake -D HYPRE_BUILD_TESTS=ON \
           -D HYPRE_BUILD_EXAMPLES=ON \
           -D HYPRE_WITH_MPI=OFF \
+          -D CMAKE_BUILD_TYPE=${config} \
           -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
           -D CMAKE_INSTALL_PREFIX=../../../install \
           .. &> ../../../../make_hypre.log
@@ -248,11 +254,6 @@ echo -e "=======================================================================
 mkdir -p build
 cd build
 rm -f CMakeCache.txt  # ensures Cmake doesn't work on outdated configuration
-
-# If valgrind requested, force Debug
-if [[ "$valgrind" = true ]]; then
-    config="Debug"
-fi
 
 # Setup build with cmake
 cmake_options="-D CMAKE_BUILD_TYPE=${config}"

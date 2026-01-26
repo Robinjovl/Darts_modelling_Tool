@@ -101,8 +101,9 @@ if %skip_req%==false (
   cmake -D HYPRE_BUILD_TESTS=ON ^
         -D HYPRE_BUILD_EXAMPLES=ON ^
         -D HYPRE_WITH_MPI=OFF ^
+        -D CMAKE_BUILD_TYPE=%config% ^
         -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error
   cd ..\..\..\
 
   echo -- Install SuperLU
