@@ -710,6 +710,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		case sim_params::CPU_GMRES_MGR:
 		{
 			linear_solver = new linsolv_mgr<N_VARS>;
+			static_cast<linsolv_mgr<N_VARS> *>(linear_solver)->set_log_level(params->linear_print_level);
 			linear_solver_type_str = "CPU_GMRES_MGR";
 			break;
 		}

@@ -185,7 +185,8 @@ void pybind_globals(py::module &m)
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
     .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
     .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance)
-    .def_readwrite("line_search", &sim_params::line_search);
+    .def_readwrite("line_search", &sim_params::line_search)
+    .def_readwrite("linear_print_level", &sim_params::linear_print_level);
 
 
   py::class_<linear_solver_params>(m, "linear_solver_params", "Class linear solver parameters") \

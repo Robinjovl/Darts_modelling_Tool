@@ -53,6 +53,14 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_log_level(int log_level)
+    {
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.logLevel = log_level;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     int linsolv_mgr<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A,
                                         opendarts::config::index_t max_iters,
                                         opendarts::config::mat_float tolerance)

@@ -43,6 +43,9 @@ namespace opendarts
       // Solve linear system
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
 
+      // Set verbosity for HYPRE-backed MGR solver
+      void set_log_level(int log_level);
+
       // Get number of iterations from last solve
       int get_n_iters() override;
 

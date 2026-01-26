@@ -55,7 +55,7 @@ extern int device_num;
 #ifdef _MSC_VER
 #include <__msvc_int128.hpp>
 
-struct __uint128_t : std::_Unsigned128 
+struct __uint128_t : std::_Unsigned128
 {
   // Inherit constructors
   using std::_Unsigned128::_Unsigned128;
@@ -223,6 +223,7 @@ public:
     linear_type = CPU_GMRES_CPR_AMG;
 #endif
     nonlinear_norm_type = L2;
+    linear_print_level = 0;
 
     //Added for debugging purposes:
     tot_newt_count = 0;
@@ -262,6 +263,7 @@ public:
   newton_solver_t newton_type;          // Newton solver type (more precisely, nonlinear update type - chopping strategies)
   linear_solver_t linear_type;          // Linear solver type
   nonlinear_norm_t nonlinear_norm_type; // Nonlinear norm type, used to check for convergence
+  int linear_print_level;               // Linear solver verbosity (HYPRE print level)
 
   std::vector<value_t> newton_params;
   std::vector<value_t> linear_params;
