@@ -385,3 +385,59 @@ class Compositional(PhysicsBase):
                 if np.isscalar(input_distribution[self.vars[c + 1]])
                 else input_distribution[self.vars[c + 1]][:]
             )
+
+    def evaluate_flash(self, state_spec: dict = None, compositions: dict = None, obl_interval_multiplier: float = 1.,
+                       plot_flash_results: bool = False, region: int = 0):
+        """
+        Method to evaluate and plot flash for specified states and compositions.
+
+        :param state_spec: Dictionary containing values for state specification variables, default is None which evaluates full OBL space
+        :type state_spec: dict
+        :param compositions: Dictionary containing composition ranges, default is None which evaluates full OBL space
+        :type compositions: dict
+        :param obl_interval_multiplier: Multiplier to OBL axis intervals if ranges are obtained from OBL axes, default 1
+        :type obl_interval_multiplier: float
+        :param plot_flash_results: Whether to plot flash results in phase diagram
+        :type plot_flash_results: bool
+        :param region: Property region
+        :type region: int
+        """
+        from dartsflash.dartsflash import DARTSFlash
+        flash_ev = self.property_containers[region].flash_ev
+        assert isinstance(flash_ev, DARTSFlash), "Flash evaluator should be DARTSFlash object to utilize this feature"
+
+        # Set ranges of state specification
+        state_vars = [self.vars[0], self.vars[-1]] if self.thermal else [self.vars[0]]
+        state_spec = state_spec if state_spec is not None else {}
+        for i, spec in enumerate(state_vars):
+            # create entry if it doesn't exist
+            state_spec[spec] = state_spec[spec] if spec in state_spec.keys() else None
+            # define array if it hasn't been defined
+            spec_idx = 0 if i == 0 else -1
+            state_spec[spec] = state_spec[spec] if state_spec[spec] is not None else (
+                np.linspace(self.axes_min[spec_idx], self.axes_max[spec_idx],
+                            int(self.n_axes_points[spec_idx] / obl_interval_multiplier)))
+
+        # Show warning if other variable has been specified
+        if not np.all([spec in state_vars for spec in state_spec.keys()]):
+            import warnings
+            warnings.warn("Not all specified variables in state_spec are primary variables")
+            print("Variables", state_vars, "State specifications", state_spec.keys())
+
+        # Set ranges of compositions
+        compositions = compositions if compositions is not None else {}
+        compositions[self.components[-1]] = 1.
+        for i, comp in enumerate(self.components[:-1]):
+            # create entry if it doesn't exist
+            compositions[comp] = compositions[comp] if comp in compositions.keys() else None
+            # define array if it hasn't been defined
+            compositions[comp] = compositions[comp] if compositions[comp] is not None else (
+                np.linspace(self.axes_min[i + 1], self.axes_max[i + 1],
+                            int(self.n_axes_points[i + 1] / obl_interval_multiplier)))
+
+        # Evaluate
+        flash_results = flash_ev.evaluate_flash(state_spec=state_spec, compositions=compositions, mole_fractions=True)
+
+        # Plot
+        if plot_flash_results:
+            pass
