@@ -22,8 +22,9 @@ def input_data_case_whitby():
     idata.geom['rsv_layers'] = 1
 
     # well locations
-    idata.geom['inj_well_coords'] = [[400, 800, 25]]  # X, Y, Z (only one perforation)
-    idata.geom['prod_well_coords'] = [[400, 200, 25]]
+    idata.geom['well_coords'] = dict()
+    idata.geom['well_coords']['I1'] = [400, 800, 25, 25]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['P1'] = [400, 200, 25, 25]  # X, Y, Z1, Z2
 
     # well in the matrix cells or in the fractures
     idata.geom['well_loc_type'] = 'wells_in_frac'
