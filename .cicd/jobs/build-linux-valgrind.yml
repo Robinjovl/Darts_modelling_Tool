@@ -15,7 +15,7 @@ build-linux-3.10-valgrind:
     variables:
         PY_VER: '3.10'
         PY_SUF: 'cp310-cp310'
-        ODLS: '-a'
+        ODLS: ''
     script:
         - echo ">>> Starting debug build (valgrind instrumentation) <<<"
         - ./helper_scripts/build_darts_cmake.sh -c -w -m -j 8 -v $ODLS -p
