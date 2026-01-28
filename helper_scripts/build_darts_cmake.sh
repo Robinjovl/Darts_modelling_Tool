@@ -11,23 +11,24 @@ set -o pipefail
 ################################################################################
 Help_Info()
 {
-  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v]"
+  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v] [--rebuild-hypre]"
   echo "   Script to install opendarts on unix (linux and macOS)."
   echo "USAGE: "
-  echo "   -h : displays this help menu."
-  echo "   -c : cleans up build to prepare a new fresh build. Default: don't clean"
-  echo "   -t : Enable testing: ctest of solvers. Default: don't test"
-  echo "   -w : Enable generation of python wheel. Default: false"
-  echo "   -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true"
-  echo "   -G : Enable GPU build. Warning: Requires GPU bos solvers. Default: false"
-  echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
-  echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
-  echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
-  echo "   -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug"
-  echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
-  echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
-  echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
-  echo "   -v        : Enable build with valgrind support (OFF by default)"
+  echo "   -h               : displays this help menu."
+  echo "   -c               : cleans up build to prepare a new fresh build. Default: don't clean"
+  echo "   -t               : Enable testing: ctest of solvers. Default: don't test"
+  echo "   -w               : Enable generation of python wheel. Default: false"
+  echo "   -m               : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true"
+  echo "   -G               : Enable GPU build. Warning: Requires GPU bos solvers. Default: false"
+  echo "   -r               : Skip building thirdparty libraries (if you have them already compiled). Default: false"
+  echo "   -a               : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
+  echo "   -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
+  echo "   -d MODE          : Configuration for C++ code [Release, Debug]. Example: -d Debug"
+  echo "   -j N             : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
+  echo "   -g g++VER        : Specify a compiler (g++) version. Example: -g g++-13"
+  echo "   -p               : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
+  echo "   -v               : Enable build with valgrind support (OFF by default)"
+  echo "   --rebuild-hypre  : Force rebuild of HYPRE library. Default: false"
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
 }
 
@@ -95,6 +96,20 @@ gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 valgrind=false    # Whether support valgrind profiling or not
 CUDA_ARCH="${CUDA_ARCH:-}"
+rebuild_hypre=false # Force rebuild of HYPRE library
+
+# Handle long options before getopts
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --rebuild-hypre)
+            rebuild_hypre=true
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
 while getopts ":chtwmrab:d:j:g:Gpv" option; do
     case "$option" in
@@ -177,6 +192,14 @@ fi
 if [[ "$skip_req" == false ]]; then
     # update submodules
     echo -e "\n- Update submodules: START \n"
+
+    # Clean HYPRE build if --rebuild-hypre is specified
+    if [[ "$rebuild_hypre" == true ]]; then
+        echo "Cleaning HYPRE build for rebuild..."
+        rm -rf thirdparty/hypre/src/cmbuild
+        rm -rf thirdparty/install
+    fi
+
     # clean-up previous versions.
     rm -rf thirdparty/pybind11 \
             thirdparty/MshIO \
@@ -188,6 +211,8 @@ if [[ "$skip_req" == false ]]; then
             thirdparty/pybind11 \
             thirdparty/MshIO \
             thirdparty/hypre
+    # Force HYPRE v2.29.0 to avoid memory bugs in later versions
+    (cd thirdparty/hypre && git checkout v2.29.0)
     if [[ $phreeqc == "true" ]]; then
         git submodule update --init --recursive thirdparty/iphreeqc
     fi
@@ -202,6 +227,8 @@ if [[ "$skip_req" == false ]]; then
     echo -e "\n-- Install Hypre: START\n"
     cd hypre/src/cmbuild
     # Setup hypre build with no MPI support (we only use single processor)
+    # MGR support is enabled by default in HYPRE (no special flag needed)
+    # The MGR (Multiplicative Grid Reduction) solver is always built in HYPRE
     # Request build of tests and examples just to be sure everything is fine in the build
     # For debugging: -DHYPRE_ENABLE_PRINT
     cmake -D HYPRE_BUILD_TESTS=ON \

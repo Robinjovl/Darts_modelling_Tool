@@ -96,6 +96,12 @@ if %skip_req%==false (
              thirdparty\pybind11 ^
              thirdparty\MshIO ^
              thirdparty\hypre || goto :error
+
+  rem Force HYPRE v2.29.0 to avoid memory bugs in later versions
+  pushd thirdparty\hypre
+  git checkout v2.29.0
+  popd
+
   if %phreeqc%==true (
     git submodule update --init --recursive thirdparty\iphreeqc || goto :error
   )
