@@ -22,12 +22,11 @@ class Model(CICDModel):
 
         self.set_reservoir()
         self.set_physics()
-        self.set_solver()
-
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-3, tol_linear=1e-4,
+                            it_newton=20, it_linear=50, newton_type=sim_params.newton_local_chop)
         self.params.linear_type = sim_params.cpu_gmres_mgr
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic (default), 2 = verbose
+        self.set_solver()
 
         self.timer.node["initialization"].stop()
 

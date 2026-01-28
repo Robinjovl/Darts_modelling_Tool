@@ -34,7 +34,8 @@ CompositionalFlowStrategy::CompositionalFlowStrategy( int_t numComponents,
   , m_numCells( numCells )
   , m_coarseSolver( nullptr )
 {
-  m_numBlocks = 2;  // 2 blocks: pressure and components
+  // One block per variable (pressure + component fractions)
+  m_numBlocks = m_numComponents;
 }
 
 void CompositionalFlowStrategy::setup()
