@@ -19,7 +19,8 @@
 namespace mgr {
 
 LinearSolver::LinearSolver()
-  : m_ijMatrix( nullptr )
+  : m_hasInitialGuess( false )
+  , m_ijMatrix( nullptr )
   , m_ijRHS( nullptr )
   , m_ijSol( nullptr )
   , m_parMatrix( nullptr )
@@ -27,7 +28,6 @@ LinearSolver::LinearSolver()
   , m_parSol( nullptr )
   , m_matrixLoaded( false )
   , m_matrixAssembled( false )
-  , m_hasInitialGuess( false )
 {
   // Set default parameters
   m_params.maxIter = 100;
@@ -77,8 +77,6 @@ bool LinearSolver::createHYPREMatrix()
   int_t num_cols = m_matrix.global_num_cols;
   int_t num_cells = m_matrix.num_rows;
   int_t block_size = m_matrix.block_size;
-  int_t nnz = m_matrix.num_nonzero_blocks;
-
   // Create IJ matrix
   HYPRE_IJMatrixCreate( MPI_COMM_WORLD, 0, num_rows - 1, 0, num_cols - 1, &m_ijMatrix );
   HYPRE_IJMatrixSetObjectType( m_ijMatrix, HYPRE_PARCSR );
@@ -166,7 +164,7 @@ bool LinearSolver::createHYPREVectors()
   {
     m_solution.assign( num_rows, 0.0 );
   }
-  int rc_sol_set_vals = HYPRE_IJVectorSetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
+  HYPRE_IJVectorSetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
 
   // Assemble vectors
   HYPRE_IJVectorAssemble( m_ijRHS );
@@ -339,8 +337,6 @@ SolverResults LinearSolver::solveGMRES_MGR()
 
   SolverResults results;
 
-  auto start_time = std::chrono::high_resolution_clock::now();
-
   // Create GMRES solver
   HYPRE_Solver gmres_solver;
   HYPRE_ParCSRGMRESCreate( MPI_COMM_WORLD, &gmres_solver );
@@ -452,8 +448,6 @@ SolverResults LinearSolver::solveGMRES_AMG()
 {
 
   SolverResults results;
-
-  auto start_time = std::chrono::high_resolution_clock::now();
 
   // Create GMRES solver
   HYPRE_Solver gmres_solver;
@@ -622,6 +616,7 @@ int LinearSolver::init(void* jacobian, index_t max_iters, mat_float tolerance)
 
 int LinearSolver::setup(void* jacobian)
 {
+  (void)jacobian;
   return setup(m_initMaxIters, m_initTolerance);
 }
 

@@ -37,11 +37,11 @@ public:
    * @brief Constructor
    */
   OpendartsJacobian()
-    : n_rows( 0 )
+    : type( 0 )
+    , n_rows( 0 )
     , n_cols( 0 )
     , is_square( 0 )
     , n_row_size( 1 )
-    , type( 0 )
   {}
 
   /**
