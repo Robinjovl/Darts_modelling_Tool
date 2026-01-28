@@ -38,7 +38,6 @@ using namespace opendarts::linear_solvers;
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "linsolv_bos_amg.hpp"
-// #include "openDARTS/linear_solvers/linsolv_amg1r5.h"
 #include "linsolv_superlu.hpp"
 #include "linsolv_mgr.hpp"
 #else
