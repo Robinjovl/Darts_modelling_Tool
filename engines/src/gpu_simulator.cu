@@ -57,12 +57,12 @@ gpu_simulator::init (conn_mesh *_mesh, std::string table_base_name)
   cpu_solver->set_prec (cpu_preconditioner);
 #endif
 
-  
+
   X.resize (2 * mesh->n_blocks);
   Xn.resize (2 * mesh->n_blocks);
   RHS.resize (2 * mesh->n_blocks);
   dX.resize (2 * mesh->n_blocks);
-  
+
   X = mesh->initial_state;
   X.resize(2 * mesh->n_blocks);
   for (index_t i = 0; i < mesh->n_blocks; i++)
@@ -322,7 +322,7 @@ int gpu_simulator::run (sim_params *params)
   log << "\tMax ts: \t" << params->max_ts << std::endl;
   log << "\tMult ts: \t" << params->mult_ts << std::endl;
   log << "\tTotal ts: \t" << params->total_time << std::endl;
-  
+
   log << "\tMax i newton: \t" << params->max_i_newton << std::endl;
   log << "\tMax i linear: \t" << params->max_i_linear << std::endl;
   log << "\tTol newton: \t" << params->tolerance_newton << std::endl;
@@ -338,7 +338,7 @@ int gpu_simulator::run (sim_params *params)
   gpu_assemble_timer = 0;
   const int simple_ops_cuda_blocks = (mesh->n_blocks + SIMPLE_OPS_BLOCK_SIZE - 1) / SIMPLE_OPS_BLOCK_SIZE;
   index_t nnz =  mesh->n_conns + mesh->n_blocks;
-  
+
   Xn = X;
   dt = params->first_ts;
 
@@ -398,12 +398,12 @@ int gpu_simulator::run (sim_params *params)
       if (residual_newton < params->tolerance_newton)
         break;
 
-      
+
       linear_setup_timer -= clock ();
 
 #ifdef USE_CPU_SOLVER
       r_code = cpu_solver->setup (&Jacobian);
-      
+
       if (r_code)
       {
         printf ("ERROR: Linear solver setup returned %d\n", r_code);

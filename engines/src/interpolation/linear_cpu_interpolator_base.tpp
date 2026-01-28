@@ -12,10 +12,10 @@ typedef linalg::Matrix<double> Matrix;
 template <typename index_t, int N_DIMS, int N_OPS>
 linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                    const std::vector<int> &axes_points,
-                                                                                   const std::vector<double> &axes_min, 
-                                                                                   const std::vector<double> &axes_max, 
+                                                                                   const std::vector<double> &axes_min,
+                                                                                   const std::vector<double> &axes_max,
                                                                                    bool _use_barycentric_interpolation)
-    : interpolator_base(supporting_point_evaluator, axes_points, axes_min, axes_max), 
+    : interpolator_base(supporting_point_evaluator, axes_points, axes_min, axes_max),
       use_barycentric_interpolation(_use_barycentric_interpolation)
 {
 
@@ -218,7 +218,7 @@ int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate(const std:
     if (use_barycentric_interpolation)
     {
       py::gil_scoped_acquire guard;
-      
+
       // size of n-simplex
       constexpr int n_size = N_DIMS + 1;
 
@@ -305,7 +305,7 @@ int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate_with_deriv
           constexpr int n_size = N_DIMS + 1;
           std::array<double, N_DIMS + 1> weights;
 
-          // Python code necessitating GIL 
+          // Python code necessitating GIL
           py::gil_scoped_acquire acquire;
 
           // find Delaunay simplex

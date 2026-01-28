@@ -18,7 +18,7 @@ void pybind_operator_set_interpolator_rates(py::module &m)
   const int A0 = 0;
   const int B0 = 1;
   recursive_exposer_ndims_nops<interpolator_exposer, py::module, N_DIMS_MAX, A0, B0> e0;
-  
+
   // N_OPS = A * N_DIMS + B
 
   // single phase

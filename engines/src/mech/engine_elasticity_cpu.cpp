@@ -30,7 +30,7 @@
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS  
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t ND>
 int engine_elasticity_cpu<ND>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,

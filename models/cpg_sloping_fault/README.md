@@ -11,7 +11,7 @@ Next, we create one more inheritance level for Physics related code (model_geoth
 
 ![model_inheritance](doc_images/model_inheritance.PNG "model_inheritance")
 
-# Running the simulation 
+# Running the simulation
 To run this model, use `darts main.py`.
 In `main.py`, we create a model instance and make necessary calls to initialize it.
 
@@ -23,7 +23,7 @@ By default, all combinations will be executed for testing purposes.
 
 The `m.run_simulation()` call computes a time step loop.
 
-Finally, optional results processing is done. 
+Finally, optional results processing is done.
 Vtk files output:
 ```
 for ith_step in range(len(m.idata.sim.time_steps)+1):
@@ -93,14 +93,14 @@ The properties `geom.burden_layers, geom.burden_init_thickness, idata.rock.burde
 
 ![over_under_burden](doc_images/over_under_burden.PNG "over_under_burden")
 
-Note: this feature doesn’t work well if the top or the bottom layers are fully or partly inactive (due to ACTNUM=0, PORO=0, thickness=0). 
+Note: this feature doesn’t work well if the top or the bottom layers are fully or partly inactive (due to ACTNUM=0, PORO=0, thickness=0).
 
 # Fault transmissibility multipliers
 CPG_Reservoir class has an option to pass a filename with fault location and multipliers in format:
 ```
 I1   J1   K1   I2   J2   K2   M
 ```
-where 
+where
 `I1,  J1,  K1`  - indices of the first cell, integers
 `I2,  J2,  K2`  - indices of the second cell, integers
 `M` - multiplier, float value
@@ -148,14 +148,14 @@ Here, the initial pressure is defined by a gradient. The initial saturation is d
 geom.bound_volume = 1e18    # lateral boundary volume, m^3
 ```
 
-In case ACTNUM array is defined, the large volume will be set at the closest to the boundary active cell: 
+In case ACTNUM array is defined, the large volume will be set at the closest to the boundary active cell:
 ![boundary_volume](doc_images/boundary_volume.PNG "boundary volume")
 
 ## Wells
 In this model, wells are defined in InputData class.
 
 # Wells and perforations
-We use this function to put well and perforations with a particular `I,J` values for each geometric case. 
+We use this function to put well and perforations with a particular `I,J` values for each geometric case.
 ```
 well_data.add_well(name='PRD', loc_type='ijk', loc_ijk=(I, J, -1))
 ```
@@ -183,25 +183,25 @@ idata.sim.time_steps = np.zeros(n_time_steps) + dt
 ```
 Timestep and convergence control parameters are defined in `case_base.py`.
 
-Set number of CPU cores or enable GPU: https://open-darts.gitlab.io/open-DARTS/for_developers/configure_hardware.html 
+Set number of CPU cores or enable GPU: https://open-darts.gitlab.io/open-DARTS/for_developers/configure_hardware.html
 
 
 ## Output
 All output files are created in a subfolder with a case name in a suffix, for example: `results_deadoil_generate_5x3x4_wbhp`.
 Note, the output folder is deleted at each run. Please rename it if you would like to save results from the previous run.
 
-# 3D data 
+# 3D data
 This models outputs 4 types of vtk files, which can be loaded into Paraview:
 - solution.pvd and solution_ts[i].vtu - dynamic properties
 - mesh.vtk - static properties
 - wells.vtk - well location
-- centers.vtk - cell center points 
+- centers.vtk - cell center points
 
 The temperature plum and permeability distribution visualization in Paraview:
 ![40x40x10_results_geothermal_wrate](doc_images/40x40x10_results_geothermal_wrate.PNG "40x40x10_results_geothermal_wrate")
 It can be loaded using the file `paraview\40x40x10.pvsm` after the case 40x40x10 with geothermal physics and well rate control is computed.
 
-There is also .grdecl file output, which can be loaded into ResInsight. 
+There is also .grdecl file output, which can be loaded into ResInsight.
 
 Input and output files are illustrated below:
 ![input_output_files](doc_images/input_output_files.PNG "input_output_files")

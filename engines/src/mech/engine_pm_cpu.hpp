@@ -112,7 +112,7 @@ public:
   std::vector<index_t> geomechanics_mode;
   std::array<value_t, 2 * N_VARS_SQ> explicit_scheme_dummy_well_jacobian;
   std::vector<value_t> jacobian_explicit_scheme;
-  
+
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
   std::vector<linsolv_iface*> linear_solvers;
@@ -122,7 +122,7 @@ public:
 public:
   bool FIND_EQUILIBRIUM, TIME_DEPENDENT_DISCRETIZATION, EXPLICIT_SCHEME, SCALE_ROWS, SCALE_DIMLESS;
   pm::ContactSolver contact_solver;
-  
+
   value_t t_dim, x_dim, p_dim, m_dim;
 protected:
   void scale_rows();

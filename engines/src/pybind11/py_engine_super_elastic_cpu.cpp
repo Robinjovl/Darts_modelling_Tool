@@ -33,7 +33,7 @@ struct engine_super_elastic_exposer
 			.def("calc_newton_dev", &engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev) \
 			.def("apply_newton_update", &engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update) \
 			.def("post_newtonloop", &engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop) \
-			.def("set_discretizer", (void (engine_super_elastic_cpu<NC, NP, THERMAL>::*) 
+			.def("set_discretizer", (void (engine_super_elastic_cpu<NC, NP, THERMAL>::*)
 			(typename engine_super_elastic_cpu<NC, NP, THERMAL>::DiscretizerType*)) &engine_super_elastic_cpu<NC, NP, THERMAL>::set_discretizer) \
 			.def("eval_stresses_and_velocities", &engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities) \
 			.def_readwrite("find_equilibrium", &engine_super_elastic_cpu<NC, NP, THERMAL>::FIND_EQUILIBRIUM) \
@@ -42,12 +42,12 @@ struct engine_super_elastic_exposer
 			.def_readwrite("dev_p", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_p) \
 			.def_readwrite("dev_e", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_e) \
 			.def_readwrite("dev_g", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_g) \
-			//.def_readwrite("dev_z", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_z) 
+			//.def_readwrite("dev_z", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_z)
 			.def_readwrite("dev_u_prev", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_u_prev) \
 			.def_readwrite("dev_p_prev", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_p_prev) \
 			.def_readwrite("dev_e_prev", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_e_prev) \
 			.def_readwrite("dev_g_prev", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_g_prev) \
-			//.def_readwrite("dev_z_prev", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_z_prev) 
+			//.def_readwrite("dev_z_prev", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_z_prev)
 			.def_readwrite("well_residual_prev_dt", &engine_super_elastic_cpu<NC, NP, THERMAL>::well_residual_prev_dt) \
 			.def_readwrite("darcy_fluxes", &engine_super_elastic_cpu<NC, NP, THERMAL>::darcy_fluxes) \
 			.def_readwrite("structural_movement_fluxes", &engine_super_elastic_cpu<NC, NP, THERMAL>::structural_movement_fluxes) \
@@ -92,7 +92,7 @@ void pybind_engine_super_elastic_cpu(py::module &m)
   // single-phase isothermal
   recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 1, false> re;
   re.expose(m);
-  
+
   // two-phase isothermal
   recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 2, false> re1;
   re1.expose(m);

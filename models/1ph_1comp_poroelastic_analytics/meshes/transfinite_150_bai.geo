@@ -28,7 +28,7 @@ Plane Surface(1) = {1};
 Transfinite Surface{1} = {1, 2, 3, 4};
 Recombine Surface{1};
 
-out[] = Extrude {0, 0, h} { 
+out[] = Extrude {0, 0, h} {
 		Surface{1};
 		Layers{Nz};
 		Recombine;

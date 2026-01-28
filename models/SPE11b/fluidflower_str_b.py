@@ -80,7 +80,7 @@ class FluidFlowerStruct(StructReservoir):
 
     def set_wells(self, verbose: bool = False):
         from darts.engines import value_vector
-        
+
         if self.specs['RHS']:
             for name, center in self.well_centers.items():
                 cell_index = self.find_cell_index(center)
@@ -107,8 +107,8 @@ class FluidFlowerStruct(StructReservoir):
 
                 self.add_well("I%d" % well_nr)
                 self.add_perforation("I%d" % well_nr, cell_index=(i, j, k), well_indexD=0, verbose=True)
-                
-                # well_idx = self.wells[well_nr].well_body_idx 
+
+                # well_idx = self.wells[well_nr].well_body_idx
                 # self.mesh.op_num[well_idx] = self.mesh.op_num[self.well_cells[well_nr]]
-                
+
         return

@@ -7,7 +7,7 @@ namespace py = pybind11;
 #include "mech/engine_elasticity_cpu.hpp"
 #include "conn_mesh.h"
 
-template <uint8_t ND> 
+template <uint8_t ND>
 struct engine_elasticity_exposer
 {
   static void expose(py::module &m)

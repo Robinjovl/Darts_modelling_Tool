@@ -94,5 +94,5 @@ Physical Curve(FRAC_BOUND_FREE) = {121, 17, 13, 14, 15, 16, 25, 22, 64, 63}; //,
 
 Mesh 3;
 Coherence Mesh;
-Mesh.MshFileVersion = 2.1;          
+Mesh.MshFileVersion = 2.1;
 Save "new_setup.msh";

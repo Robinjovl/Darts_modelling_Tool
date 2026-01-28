@@ -34,7 +34,7 @@ int engine_nce_g_cpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &wel
 		(static_cast<csr_matrix<N_VARS>*>(dg_dx_n_temp))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
 	}
 
-	
+
     engine_base::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 	this->expose_jacobian();
 
@@ -481,7 +481,7 @@ engine_nce_g_cpu<NC, NP>::calc_well_residual_Linf()
 }
 
 template <uint8_t NC, uint8_t NP>
-int 
+int
 engine_nce_g_cpu<NC, NP>::solve_linear_equation()
 {
   int r_code;
@@ -552,7 +552,7 @@ engine_nce_g_cpu<NC, NP>::solve_linear_equation()
 }
 
 template <uint8_t NC, uint8_t NP>
-void 
+void
 engine_nce_g_cpu<NC, NP>::make_dimensionless()
 {
   const index_t n_blocks = mesh->n_blocks;
@@ -654,7 +654,7 @@ engine_nce_g_cpu<NC, NP>::make_dimensionless()
 }
 
 template <uint8_t NC, uint8_t NP>
-void 
+void
 engine_nce_g_cpu<NC, NP>::dimensionalize_unknowns()
 {
   const index_t n_blocks = mesh->n_blocks;
@@ -769,7 +769,7 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 		}
 
 		// [1] energy eqn
-		// fluid energy 
+		// fluid energy
 		for (uint8_t v = 0; v < N_VARS; v++)
 		{
 			Jac_n[diag_idx + NC * N_VARS + v] = -(PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v]);
@@ -917,7 +917,7 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 
 //	value_t CFL_max_local = 0;
 //#ifdef _OPENMP
-//#pragma omp critical 
+//#pragma omp critical
 //	{
 //		if (CFL_max < CFL_max_local)
 //			CFL_max = CFL_max_local;

@@ -13,9 +13,8 @@ namespace std
   };
 };
 
-void write_vector_to_file(std::string file_name, std::vector<value_t> &v) 
+void write_vector_to_file(std::string file_name, std::vector<value_t> &v)
 {
   std::ofstream outFile(file_name);
   for (const auto &e : v) outFile << std::scientific << std::setprecision(5) << e << "\n";
 }
-

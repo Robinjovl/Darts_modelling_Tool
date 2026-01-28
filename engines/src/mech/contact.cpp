@@ -43,9 +43,9 @@ contact::contact()
 contact::~contact()
 {
 	if (local_solver != nullptr) delete local_solver;
-	if (timer != nullptr) 
+	if (timer != nullptr)
 	{
-		timer->stop();  
+		timer->stop();
 		delete timer;
 	}
 }
@@ -123,7 +123,7 @@ int contact::init_fault()
 		// full
 		pre_F[st_size] = Matrix(ND, st_size * ND);
 		pre_Fpres[st_size] = Matrix(ND, st_size);
-		// normal 
+		// normal
 		pre_Fn[st_size] = Matrix(1, st_size * ND);
 		pre_Fn_pres[st_size] = Matrix(1, st_size);
 	}
@@ -141,7 +141,7 @@ int contact::init_fault()
 		const auto& n_ref = face1.n;
 		const auto& conn_ids = mesh->fault_conn_id[cell_id - n_matrix];
 		//sign = ((discr->cell_centers[mesh->block_p[conn_ids[0]]] - discr->cell_centers[mesh->block_m[conn_ids[0]]]).transpose() * n_ref).values[0] >= 0.0 ? 1.0 : -1.0;//discr->get_fault_sign(n_ref);
-		
+
 		n = discr->get_fault_sign(n_ref, cell_ids[0]) * n_ref;
 		// null space
 		fill_n(&Asvd.values[0], Asvd.values.size(), 0.0);
@@ -210,7 +210,7 @@ int contact::init_local_iterations()
 	const uint8_t MAX_FAULT_CELL_NEBRS_NUM = 4;
 	(static_cast<csr_matrix<ND>*>(local_jacobian))->init(cell_ids.size(), cell_ids.size(), ND, (MAX_FAULT_CELL_NEBRS_NUM + 1) * cell_ids.size());
 	// create linear solver
-	if (!local_solver) 
+	if (!local_solver)
 		local_solver = new linsolv_superlu<ND>;
 	// init matrix pattern
 	if (cell_ids.size())
@@ -278,7 +278,7 @@ void contact::merge_tractions_biot(const index_t i, const vector<value_t>& fluxe
 					Fcoef.values[d * Fcoef.N + id * ND + v] += sign *
 						(tran[conn_st_id * NT_SQ + (U_VAR_T + d) * NT + (U_VAR_T + v)]);
 				}
-				Fpres_coef.values[d * Fpres_coef.N + id] += sign * 
+				Fpres_coef.values[d * Fpres_coef.N + id] += sign *
 					(tran[conn_st_id * NT_SQ + (U_VAR_T + d) * NT + P_VAR_T]);
 			}
 		}
@@ -295,8 +295,8 @@ void contact::merge_tractions_biot(const index_t i, const vector<value_t>& fluxe
 			flux_n.values[d] += sign * (fluxes_ref_n[N_VARS * conn_id + U_VAR + d] + fluxes_n[N_VARS * conn_id + U_VAR + d]);
 		}
 
-		//printf("%d, #%d, %d: %f\t%f\t%f\n", cell_id, k, conn_id, fluxes[N_VARS * conn_id + U_VAR + 0], 
-		//														 fluxes[N_VARS * conn_id + U_VAR + 1], 
+		//printf("%d, #%d, %d: %f\t%f\t%f\n", cell_id, k, conn_id, fluxes[N_VARS * conn_id + U_VAR + 0],
+		//														 fluxes[N_VARS * conn_id + U_VAR + 1],
 		//														 fluxes[N_VARS * conn_id + U_VAR + 2]);
 	}
 
@@ -375,14 +375,14 @@ void contact::merge_tractions_terzaghi(const index_t i, const vector<value_t>& f
 		for (d = 0; d < ND; d++)
 		{
 			Frhs.values[d] += sign * (rhs[NT * conn_id + U_VAR_T + d] + rhs_biot[NT * conn_id + U_VAR_T + d]);
-			flux.values[d] += sign * (fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + 
+			flux.values[d] += sign * (fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] +
 				fluxes[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d] - (X[N_VARS * cell_id + P_VAR]) * n(d, 0));
-			flux_n.values[d] += sign * (fluxes_ref_n[N_VARS * conn_id + U_VAR + d] + fluxes_biot_ref_n[N_VARS * conn_id + U_VAR + d] + 
+			flux_n.values[d] += sign * (fluxes_ref_n[N_VARS * conn_id + U_VAR + d] + fluxes_biot_ref_n[N_VARS * conn_id + U_VAR + d] +
 				fluxes_n[N_VARS * conn_id + U_VAR + d] + fluxes_biot_n[N_VARS * conn_id + U_VAR + d] - (Xn[N_VARS * cell_id + P_VAR]) * n(d, 0));
 		}
 
-		//printf("%d, #%d, %d: %f\t%f\t%f\n", cell_id, k, conn_id, fluxes[N_VARS * conn_id + U_VAR + 0], 
-		//														 fluxes[N_VARS * conn_id + U_VAR + 1], 
+		//printf("%d, #%d, %d: %f\t%f\t%f\n", cell_id, k, conn_id, fluxes[N_VARS * conn_id + U_VAR + 0],
+		//														 fluxes[N_VARS * conn_id + U_VAR + 1],
 		//														 fluxes[N_VARS * conn_id + U_VAR + 2]);
 	}
 
@@ -431,7 +431,7 @@ int contact::add_to_jacobian_return_mapping(value_t dt, csr_matrix_base* jacobia
 	/*FILE* pFile;
 	std::string fname = "sol_poromechanics/friction_output_" + std::to_string(file_id++) + ".txt";
 	pFile = fopen(fname.c_str(), "w");*/
-	
+
 	for (index_t i = 0; i < cell_ids.size(); i++)
 	{
 		jacobian_explicit_scheme[i].values = 0.0;
@@ -510,7 +510,7 @@ int contact::add_to_jacobian_return_mapping(value_t dt, csr_matrix_base* jacobia
 				dmu.values[0] = res[1];		dmu.values[1] = res[2];		dmu.values[2] = res[3];
 			}
 
-			// trial traction 
+			// trial traction
 			//max_allowed_gap_change = std::max(max_allowed_gap_change, fabs(sqrt(flux.values[1] * flux.values[1] + flux.values[2] * flux.values[2]) -
 			//	sqrt(flux_n.values[1] * flux_n.values[1] + flux_n.values[2] * flux_n.values[2])) / (fabs(F(1, ND * id + 1)) + fabs(F(2, ND * id + 2))));
 			sign_trial = -discr->get_fault_sign(n, cell_ids[0]);
@@ -526,12 +526,12 @@ int contact::add_to_jacobian_return_mapping(value_t dt, csr_matrix_base* jacobia
 			if (eta[i] != 0.0)
 			  phi[i] -= dt * eta[i] * slip_vel_norm;
 
-			// normal 
+			// normal
 			auto& Fn = pre_Fn[st.size()];
 			auto& Fn_pres = pre_Fn_pres[st.size()];
 			Fn.values = F(0, { (uint8_t)F.N }, { 1 });
 			Fn_pres.values = Fpres(0, { (uint8_t)Fpres.N }, { 1 });
-			 
+
 			// update state
 			if (flux(0, 0) < -100 * EQUALITY_TOLERANCE && false)
 				state = FREE;
@@ -559,7 +559,7 @@ int contact::add_to_jacobian_return_mapping(value_t dt, csr_matrix_base* jacobia
 				//// trial traction as direction (V. Yastrebov, 2013; Simo et al., 1992)
 				alpha = 1 - phi[i] / Ft_trial_norm;
 
-				//// dphi 
+				//// dphi
 				// dFn
 				F -= mu[i] / Ft_trial_norm * outer_product(F_trial, Fn);
 				Fpres -= mu[i] / Ft_trial_norm * outer_product(F_trial, Fn_pres);
@@ -622,7 +622,7 @@ int contact::add_to_jacobian_return_mapping(value_t dt, csr_matrix_base* jacobia
 				//fprintf(pFile, "%d\t%d\t%.10e\t%.10e\t%.10e\t%.10e\t%.10e\t%.10e\t%.10e\n", i, 0, 0.0, 0.0, 0.0, 0.0, 0.0, g.values[1], dg.values[1]);
 			}
 			//printf("%d\tft=%.10e\tft_trial=%.10e\tgt=%.10e\tdgt=%.10e\n", i, flux.values[1], F_trial.values[1], g.values[1], dg.values[1]);
-			
+
 			//// set normal condition (first row)
 			if (normal_condition == PENALIZED)
 			{
@@ -761,7 +761,7 @@ int contact::add_to_jacobian_linear(value_t dt, csr_matrix_base* jacobian, vecto
 			mu[i] = res[0];
 			dmu.values[0] = res[1];		dmu.values[1] = res[2];		dmu.values[2] = res[3];
 
-			// trial traction 
+			// trial traction
 			//max_allowed_gap_change = std::max(max_allowed_gap_change, fabs(sqrt(flux.values[1] * flux.values[1] + flux.values[2] * flux.values[2]) -
 			//	sqrt(flux_n.values[1] * flux_n.values[1] + flux_n.values[2] * flux_n.values[2])) / (fabs(F(1, ND * id + 1)) + fabs(F(2, ND * id + 2))));
 			sign_trial = -discr->get_fault_sign(n, cell_ids[0]);
@@ -773,7 +773,7 @@ int contact::add_to_jacobian_linear(value_t dt, csr_matrix_base* jacobian, vecto
 			Ft_trial_norm = sqrt(F_trial(1, 0) * F_trial(1, 0) + F_trial(2, 0) * F_trial(2, 0));
 			phi[i] = Ft_trial_norm - mu[i] * flux(0, 0);
 
-			// normal 
+			// normal
 			auto& Fn = pre_Fn[st.size()];
 			auto& Fn_pres = pre_Fn_pres[st.size()];
 			Fn.values = F(0, { (uint8_t)F.N }, { 1 });
@@ -797,7 +797,7 @@ int contact::add_to_jacobian_linear(value_t dt, csr_matrix_base* jacobian, vecto
 				//// trial traction as direction (V. Yastrebov, 2013; Simo et al., 1992)
 				// alpha = 1 - phi[i] / Ft_trial_norm;
 
-				//// dphi 
+				//// dphi
 				// dFn
 				// F -= mu_cur / Ft_trial_norm * outer_product(F_trial, Fn);
 				// Fpres -= mu_cur / Ft_trial_norm * outer_product(F_trial, Fn_pres);
@@ -887,7 +887,7 @@ int contact::add_to_jacobian_local_iters(value_t dt, csr_matrix_base* jacobian, 
 {
 	// update jacobian
 	add_to_jacobian_return_mapping(dt, jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
-	
+
 	index_t is_not_true_stuck = 0;
 	for (const auto& state : states)
 		if (state != TRUE_STUCK) { is_not_true_stuck++; break; }
@@ -1195,7 +1195,7 @@ int contact::apply_direction_chop(const std::vector<value_t>& X, const std::vect
 			dg_iter.values = (S_cur * dg_iter).values;
 			dg_iter.values[1] *= 0.01;//1.0 / max_wrong_slip / eps_t[i];
 			dg_iter.values[2] *= 0.01;//1.0 / max_wrong_slip / eps_t[i];
-			dg_iter_chop = Sinv_cur * dg_iter;		
+			dg_iter_chop = Sinv_cur * dg_iter;
 			for (uint8_t d = 0; d < ND; d++)
 				dX[N_VARS * cell_id + U_VAR + d] = -dg_iter_chop.values[d];
 		}*/
@@ -1214,9 +1214,9 @@ vector<value_t> contact::getFrictionCoef(const index_t i, const value_t dt, Matr
 	Matrix dmu(ND, 1), dnumer(ND, 1), dinvdenom(ND, 1);
 	const index_t cell_id = cell_ids[i];
 	const value_t slip_vel_norm = sqrt(slip_vel(1, 0) * slip_vel(1, 0) + slip_vel(2, 0) * slip_vel(2, 0));
-	
+
 	dmu.values = 0.0;
-	if (friction_model == FRICTIONLESS)	
+	if (friction_model == FRICTIONLESS)
 		mu_cur = 0.0;
 	else if (friction_model == STATIC)
 		mu_cur = mu0[i];
