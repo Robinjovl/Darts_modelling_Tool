@@ -107,7 +107,6 @@ public:
   int apply_newton_update(value_t dt);
   value_t dev_u, dev_p, dev_g, dev_u_prev, dev_p_prev, dev_g_prev, well_residual_prev_dt;
   int output_counter;
-  value_t newton_update_coefficient;
 
   std::vector<pm::contact> contacts;
   std::vector<index_t> geomechanics_mode;

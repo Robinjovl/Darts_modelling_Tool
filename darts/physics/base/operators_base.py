@@ -1,4 +1,5 @@
 import numpy as np
+
 from darts.engines import operator_set_evaluator_iface, value_vector
 from darts.physics.base.property_base import PropertyBase
 
@@ -18,12 +19,96 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.nph = property_container.nph
 
 
+class WellControlOperators(OperatorsBase):
+    """
+    Set of operators for well controls. It contains the pressure, composition and temperature of the wellhead,
+    plus a set of rate-control operators for different types of rates: molar-, mass-, volumetric- or advective
+    heat rate controls
+    """
+
+    def __init__(self, property_container: PropertyBase, thermal: bool):
+        super().__init__(property_container, thermal)
+
+        self.n_ops = 2 + self.nph * 4
+
+    def evaluate(self, state, values):
+        state_np = state.to_numpy()
+        values_np = values.to_numpy()
+        values_np[:] = 0
+
+        self.property.evaluate(state_np)
+
+        # Store rate controls
+        mobility = (
+            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        )
+
+        # Molar rate
+        idx = 0
+        values_np[idx + self.property.ph] = (
+            self.property.dens_m[self.property.ph] * mobility
+        )
+
+        # Mass rate
+        idx += self.nph
+        values_np[idx + self.property.ph] = (
+            self.property.dens[self.property.ph] * mobility
+        )
+
+        # Volumetric rate
+        idx += self.nph
+        values_np[idx + self.property.ph] = mobility
+
+        # Advective heat rate
+        idx += self.nph
+        if self.thermal:
+            self.property.evaluate_thermal(state_np)
+            values_np[idx + self.property.ph] = (
+                self.property.enthalpy[self.property.ph]
+                * self.property.dens_m[self.property.ph]
+                * mobility
+            )
+
+        # Store P, T and composition of current state
+        idx += self.nph
+        values_np[idx + 0] = state[0]
+        values_np[idx + 1] = self.property.temperature
+
+        return 0
+
+
+class WellInitOperators(OperatorsBase):
+    def __init__(
+        self, property_container: PropertyBase, thermal: bool, is_pt: bool = True
+    ):
+        super().__init__(property_container, thermal)
+
+        self.n_ops = 1
+        self.is_pt = is_pt
+
+    def evaluate(self, state_pt, values):
+        values_np = values.to_numpy()
+        values_np[:] = 0
+
+        if not self.thermal:
+            values_np[0] = self.property.temperature
+        elif self.is_pt:
+            values_np[0] = state_pt[-1]
+        else:
+            values_np[0] = self.property.compute_total_enthalpy(state_pt=state_pt)
+
+        return 0
+
+
 class PropertyOperators(OperatorsBase):
     """
     This class contains a set of operators for evaluation of output properties.
     A set of interpolators is created in the :class:`Physics` object to rapidly obtain properties after simulation.
     """
-    def __init__(self, property_container: PropertyBase, thermal: bool, props: dict = None):
+
+    def __init__(
+        self, property_container: PropertyBase, thermal: bool, props: dict = None
+    ):
         """
         This is the constructor for PropertyOperator.
         The properties to be obtained from the PropertyOperators are passed to PropertyContainer as a dictionary.
@@ -49,12 +134,14 @@ class PropertyOperators(OperatorsBase):
         :param values: Vector for storage of operator values
         :type values: darts.engines.value_vector
         """
-        _ = self.property.evaluate(state)
+        state_np = state.to_numpy()
+        values_np = values.to_numpy()
+        _ = self.property.evaluate(state_np)
         if self.thermal:
-            _ = self.property.evaluate_thermal(state)
+            _ = self.property.evaluate_thermal(state_np)
 
         for i, prop in enumerate(self.props_name):
             output = self.props[prop]()
-            values[i] = output if not np.isnan(output) else 0.
+            values_np[i] = output if not np.isnan(output) else 0.0
 
         return 0

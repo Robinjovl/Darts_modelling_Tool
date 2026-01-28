@@ -151,7 +151,7 @@ multilinear_static_interpolate_thread_per_state_kernel(const unsigned int n_stat
     return;
 
   index_t state_idx = states_idxs_d[i];
-  static const uint16_t N_VERTS = 1 << N_DIMS;
+  static const uint32_t N_VERTS = 1 << N_DIMS;
 
   index_t hypercube_idx = 0;
   value_t axis_low[N_DIMS];
@@ -188,7 +188,7 @@ multilinear_static_interpolate_thread_per_operator_kernel(const unsigned int n_s
     return;
 
   index_t state_idx = states_idxs_d[state_idx_idx];
-  static const uint16_t N_VERTS = 1 << N_DIMS;
+  static const uint32_t N_VERTS = 1 << N_DIMS;
 
   index_t hypercube_idx = 0;
   value_t axis_low[N_DIMS];

@@ -6,15 +6,22 @@ import subprocess
 from darts.models.cicd_model import get_platform, is_iter_solvers
 from darts.engines import print_build_info as engines_pbi
 
+
 def run_testing(platform, redirect_output=True):
     iter_solvers = is_iter_solvers()
 
     # define a model list to run
     accepted_dirs = [ # 2 phase (Compositional engine)
-                     '2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
-                     '2ph_geothermal', '2ph_geothermal_mass_flux',
+                     '2ph_comp',
+                     '2ph_comp_solid',
+                     '2ph_do',
+                     '2ph_do_thermal',
+                     '2ph_geothermal',
+                     '2ph_geothermal_mass_flux',
                      # 3 phase (Compositional engine)
-                     '3ph_comp_w', '3ph_do', '3ph_bo',
+                     '3ph_comp_w',
+                     '3ph_do',
+                     '3ph_bo',
                      # ?
                      'Uniform_Brugge',
                      # chemistry (Compositional engine)
@@ -25,6 +32,7 @@ def run_testing(platform, redirect_output=True):
                      # with flash (Compositional engine)
                      'CCS',
                      'SPE11b',
+                     'effect_of_potential_energy',
                      # 'CO2_foam_CCS',
                      # models with multiple cases
                      'cpg_sloping_fault', # # Geothermal engine / Deadoil (Compositional engine)
@@ -36,6 +44,16 @@ def run_testing(platform, redirect_output=True):
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
         accepted_dirs += ['Adjoint_mpfa']
+
+        # Tests for drift-flux well model (DFM) (implemented only for CPU)
+        accepted_dirs += [
+            # Coupled well-reservoir modeling using DFM wells is
+            os.path.join('dfm_well', 'coupled_dfm_well_reservoir'),
+            # Single-phase thermal well flow in a DFM well
+            os.path.join('dfm_well', 'single_phase_thermal_dfm_well_flow'),
+            # Two-phase isothermal well flow in a DFM well
+            os.path.join('dfm_well', 'two_phase_isothermal_dfm_well_flow'),
+        ]
 
         # mechanical models (with multiple cases)
         accepted_dirs += ['1ph_1comp_poroelastic_analytics']
@@ -93,7 +111,7 @@ if __name__ == '__main__':
     engines_pbi()
 
     # multithreaded run can be enabled by setting OMP_NUM_THREADS environment variable
-    if os.getenv('OMP_NUM_THREADS') == None:  
+    if os.getenv('OMP_NUM_THREADS') == None:
         os.environ['OMP_NUM_THREADS'] = '1'
     print('OMP_NUM_THREADS=', os.environ['OMP_NUM_THREADS'])
 

@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
-from darts.engines import sim_params, value_vector
+from darts.engines import sim_params, value_vector, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -26,19 +26,12 @@ class Model(DartsModel):
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, tol_newton=1e-5, tol_linear=1e-6,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
-        self.params.stationary_point_tolerance = 1e-5
+        self.data_ts.newton_tol_stationary = 1e-5
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {self.physics.vars[0]: 95,
-                               self.physics.vars[1]: self.ini_stream[0],
-                               self.physics.vars[2]: self.ini_stream[1],
-                               self.physics.vars[3]: self.ini_stream[2]
-                               }
-
     def set_reservoir(self):
-        trans_exp = 3
-        perm = 100  # / (1 - solid_init) ** trans_exp
+        perm = 100
         """Reservoir"""
         nx = 1000
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1,
@@ -46,10 +39,11 @@ class Model(DartsModel):
         return
 
     def set_wells(self):
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        well_type = ms_well.MS_Type.EPM
+        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
+        self.reservoir.add_well("P1", well_type)
+        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         self.zero = 1e-12
@@ -72,9 +66,9 @@ class Model(DartsModel):
         zc_fl_init = zc_fl_init + [1 - sum(zc_fl_init)]
         self.ini_stream = [x * (1 - solid_init) for x in zc_fl_init]
 
-        zc_fl_inj_stream_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
-        zc_fl_inj_stream_gas = zc_fl_inj_stream_gas + [1 - sum(zc_fl_inj_stream_gas)]
-        self.inj_stream = [x * (1 - solid_inject) for x in zc_fl_inj_stream_gas]
+        zc_fl_inj_composition_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
+        zc_fl_inj_composition_gas = zc_fl_inj_composition_gas + [1 - sum(zc_fl_inj_composition_gas)]
+        self.inj_composition = [x * (1 - solid_inject) for x in zc_fl_inj_composition_gas]
 
         """Physical properties"""
         # Create property containers:
@@ -96,19 +90,33 @@ class Model(DartsModel):
         property_container.kinetic_rate_ev[0] = KineticBasic(equi_prod, 1e-0, ne)
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer, n_points=101, min_p=1, max_p=1000,
-                                     min_z=self.zero / 10, max_z=1 - self.zero / 10)
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+                                     n_points=101, min_p=1, max_p=1000, min_z=self.zero / 10, max_z=1 - self.zero / 10)
         self.physics.add_property_region(property_container)
 
         return
 
+    def set_initial_conditions(self):
+        input_distribution = {self.physics.vars[0]: 95,
+                              self.physics.vars[1]: self.ini_stream[0],
+                              self.physics.vars[2]: self.ini_stream[1],
+                              self.physics.vars[3]: self.ini_stream[2]
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_inj(0.2, self.inj_stream, 0)
-                #w.control = self.physics.new_bhp_inj(150, self.inj_stream)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=0.2, phase_name='gas',
+                                               inj_composition=self.inj_composition)
             else:
-                w.control = self.physics.new_bhp_prod(50)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)
 
     def print_and_plot(self, filename):
         import matplotlib.pyplot as plt
@@ -220,7 +228,7 @@ class Model(DartsModel):
 
         axs[2][2].plot(1 - Ss, 'b')
         axs[2][2].set_xlabel('x [m]', font_dict_axes)
-        axs[2][2].set_ylabel('$\phi$ [-]', font_dict_axes)
+        axs[2][2].set_ylabel(r'$\phi$ [-]', font_dict_axes)
         axs[2][2].set_title('Porosity', fontdict=font_dict_title)
 
         left = 0.05  # the left side of the subplots of the figure

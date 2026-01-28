@@ -13,7 +13,7 @@
 #include <fstream>
 #include <limits>
 #include <iomanip>
-#include <Eigen/Dense>
+
 #define EQUALITY_TOLERANCE 1.E-10
 
 namespace linalg
@@ -322,51 +322,6 @@ namespace linalg
 	}
 	return true;
   }
-  /*template <typename T>
-  bool Matrix<T>::svd(Matrix<T>& vc, std::valarray<T>& w)
-  {
-	  Eigen::MatrixXd eigen_matrix = Eigen::MatrixXd(this->M, this->N);
-
-	  // copy matrix to Eigen class
-	  for (int i = 0; i < this->M; i++){
-		  for (int j = 0; j < this->N; j++){
-			  eigen_matrix(i, j) = this->operator()(i, j);
-		  }
-	  }
-
-	  // perform SVD
-	  Eigen::JacobiSVD<Eigen::MatrixXd, Eigen::ComputeThinU | Eigen::ComputeThinV>
-		  svd(eigen_matrix);
-
-	  const Eigen::MatrixXd U = svd.matrixU();
-	  const Eigen::MatrixXd V = svd.matrixV();
-	  const Eigen::VectorXd S = svd.singularValues();
-
-	  // prepare output arrays
-	  size_t m = M;
-	  size_t n = N;
-	  if (vc.M != n || vc.N != n)
-		  vc = Matrix<T>(n, n);
-	  if (w.size() != n)
-		  w.resize(n);
-
-	  // copy from Eigen SVD to output arrays
-	  std::fill_n(&vc.values[0], vc.values.size(), 0.0);
-	  std::fill_n(&w[0], w.size(), 0.0);
-	  std::fill_n(&this->values[0], this->values.size(), 0.0);
-	  int n_max = this->N > this->M ? this->N : this->M;
-	  for (int i = 0; i < n_max; i++){
-		  if (i < S.rows())
-			  w[i] = S(i);
-		  for (int j = 0; j < n_max; j++){
-			  if (i < vc.M && j < vc.N)
-				  vc(i, j) = i < V.rows() && j < V.cols() ? V(i, j) : 0.;
-			  if (i < this->M && j < this->N)
-				  this->operator()(i, j) = i < U.rows() && j < U.cols() ? U(i, j) : 0.;
-		  }
-	  }
-	  return true;
-  }*/
 
   template <typename T>
   bool Matrix<T>::svd(Matrix<T>& vc, std::valarray<T>& w)

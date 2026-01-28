@@ -10,18 +10,20 @@ from darts.tools.logging import redirect_all_output, abort_redirection
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 from darts.models.cicd_model import compare_solution_with_reference, get_platform, is_iter_solvers
+from model_CO2 import ModelCCS
 
 
-def run_case(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
+def run_case(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=False):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
-    :param out_dir: directory name for outpult files
+    :param out_dir: directory name for output files
     :param export_vtk:
     :return:
     '''
     print('Test started', 'physics_type:', physics_type, 'case:', case, 'platform=', platform)
 
+    out_dir = out_dir
     os.makedirs(out_dir, exist_ok=True)
     log_filename = os.path.join(out_dir, 'run.log')
     if redirect_log:
@@ -31,6 +33,8 @@ def run_case(physics_type : str, case: str, out_dir: str, export_vtk=True, redir
         m = ModelGeothermal(iapws_physics=True)
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
+    elif physics_type == 'CCS':
+        m = ModelCCS(['CO2', 'H2O'])
     else:
         print('Error: wrong physics specified:', physics_type)
         exit(1)
@@ -38,75 +42,118 @@ def run_case(physics_type : str, case: str, out_dir: str, export_vtk=True, redir
 
     m.set_input_data(case=case)
 
-    m.init_reservoir()
+    m.set_physics()
 
-    m.init(output_folder=out_dir, platform=platform)
+    arrays = m.init_input_arrays()
+
+    # custom arrays can be read here
+    # from darts.reservoirs.cpg_reservoir import read_int_array, read_float_array
+    # arrays['new_array_name'] = read_float_array(filename, 'new_array_name')
+    # arrays['new_array_name'] = read_int_array(filename, 'new_array_name')
+
+    m.init_reservoir(arrays=arrays)
+
+    # time stepping and convergence parameters
+    m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
+
+    m.timer.node["initialization"].stop()
+
+    m.init(platform=platform)
     #m.reservoir.mesh.init_grav_coef(0)
-    m.save_data_to_h5(kind = 'solution')
-    m.set_well_controls()
+    m.set_output(output_folder=out_dir,
+                 all_phase_props = False if m.idata.supress_all_output else True, # find this flag in case_base.py
+                 verbose = True)
+    # m.output.save_data_to_h5(kind='reservoir')
+    m.set_well_controls_idata()
 
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
 
+    # ---- run simulation
     ret = m.run_simulation()
+
     if ret != 0:
         exit(1)
 
-    m.reservoir.centers_to_vtk(out_dir)
-
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
-    
     m.print_timers()
-    #m.print_stat()
 
+    # post-processing: read h5 file and write vtk with properties
     if export_vtk:
-        # read h5 file and write vtk
+        print('Post processing properties and vtk output...')
+
+        output_properties_main = m.physics.vars  # only main variables
+        output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
         m.reservoir.create_vtk_wells(output_directory=out_dir)
-        for ith_step in range(len(m.idata.sim.time_steps)):
-            m.output_to_vtk(ith_step=ith_step)
+        n_timesteps = len(m.idata.sim.time_steps)
+        for ith_step in range(n_timesteps + 1):
+            # compute additional properties only for the first and for the last timestep:
+            output_properties = output_properties_full if ith_step in [0, n_timesteps] else output_properties_main
+            #print('timestep', ith_step, 'output_properties:', output_properties)
+            timesteps, property_array = m.output.output_properties(output_properties=output_properties, timestep=ith_step, engine=False)
+            if ith_step == 0:
+                centers_x, centers_y, centers_z = m.reservoir.get_centers()
+                property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})
+
+            if 0:
+                # save properties in its own *.h5 file
+                os.makedirs(
+                    os.path.join(m.output_folder, 'property_arrays'),
+                    exist_ok = True
+                    )
+                m.output.save_property_array(timesteps, property_array, f'property_arrays/property_array_ts{ith_step}.h5')
+            else:
+                # append properties to reservoir.h5
+                m.output.save_property_array(timesteps, property_array)
+
+            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
+
+        m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
+
     def add_columns_time_data(time_data):
-        time_data['Time (years)'] = time_data['time'] / 365.25
+        time_data['Time (years)'] = time_data['time'] / 365.25 # extra column with time in years
         for k in time_data.keys():
-            if 'temperature' in k:
+            # extra column with temperature in celsius
+            if 'BHT' in k:
                 time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
                 time_data.drop(columns=k, inplace=True)
-            if physics_type == 'dead_oil' and 'm3/day' in k:
-                time_data[k.replace('m3/day', 'kmol/day')] = time_data[k]
-                time_data.drop(columns=k, inplace=True)
 
-    time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-    add_columns_time_data(time_data)
-    time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
+    if not(m.idata.supress_all_output):
+        # compute and save well time data
+        td = m.output.store_well_time_data(save_output_files=True)
+        time_data = pd.DataFrame.from_dict(td)
+        # add_columns_time_data(time_data)
 
-    time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
-    add_columns_time_data(time_data_report)
-    time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
+        # COMPUTE TIME DATA AT FIXED REPORTING STEPS
+        time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
+        add_columns_time_data(time_data_report)
+        time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
 
-    writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data.xlsx'))
-    time_data.to_excel(writer, sheet_name='time_data')
-    writer.close()
+        # filter time_data_report and write to xlsx
+        # list the column names that should be removed
+        press_gridcells = time_data_report.filter(like='reservoir').columns.tolist()
+        chem_cols = time_data_report.filter(like='Kmol').columns.tolist()
+        # remove columns from data
+        time_data_report.drop(columns=press_gridcells + chem_cols, inplace=True)
+        # add time in years
+        time_data_report['Time (years)'] = time_data_report['time'] / 365.25
+        writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data_report.xlsx'))
+        time_data_report.to_excel(writer, sheet_name='time_data_report')
+        writer.close()
 
-    # filter time_data_report and write to xlsx
-    # list the column names that should be removed
-    press_gridcells = time_data_report.filter(like='reservoir').columns.tolist()
-    chem_cols = time_data_report.filter(like='Kmol').columns.tolist()
-    # remove columns from data
-    time_data_report.drop(columns=press_gridcells + chem_cols, inplace=True)
-    # add time in years
-    time_data_report['Time (years)'] = time_data_report['time'] / 365.25
-    writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data_report.xlsx'))
-    time_data_report.to_excel(writer, sheet_name='time_data_report')
-    writer.close()
+        m.output.store_well_time_data(save_output_files=True)
+        m.output.plot_well_time_data()
 
     # for CI/CD
     failed, sim_time = False, -1.
     if '5x3x4' in case:
-        failed, sim_time = compare_solution_with_reference(m=m, pkl_custom_suffix = '_' + case + '_' + physics_type)
+        failed, sim_time = compare_solution_with_reference(m=m, pkl_custom_suffix='_' + case + '_' + physics_type)
 
     if redirect_log:
         abort_redirection(log_stream)
-    print('Failed' if failed else 'Ok')
+    print('Failed' if failed else 'Passed')
 
     return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
+
 
 def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, label_list, physics_type, out_dir):
     plt.rc('font', size=12)
@@ -144,6 +191,8 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
                 #TODO need to get proper volumetric rates to compute the watercut
                 wcut = f'{well_name}' + ' watercut'
                 results[wcut] = results[well_name + ' : water rate (m3/day)'] / (results[well_name + ' : water rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
+                # results[wcut] = results['well_' + well_name + '_volumetric_rate_water_at_wh']/(results['well_' + well_name + '_volumetric_rate_water_at_wh'] + results['well_' + well_name + '_volumetric_rate_oil_at_wh'] )
+
                 ax3 = results.plot(x='time', y=wcut, label=wcut)
                 ax3.set_ylim(0, 1)
                 ax3.set(xlabel="Days", ylabel="Water cut [-]")
@@ -185,19 +234,25 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
-    physics_list += ['deadoil']
+
+    # physics_list += ['CCS']
+    # physics_list += ['deadoil']
 
     cases_list = []
     cases_list += ['generate_5x3x4']
+    #cases_list += ['generate_51x51x1_faultmult']
     if iter_solvers:
         cases_list += ['generate_51x51x1']
         cases_list += ['case_40x40x10']
     #cases_list += ['generate_100x100x100']
+    #cases_list += ['40x40x10']
+    #cases_list += ['40x40x10_hcap']
+    #cases_list += ['40x40x10_regions']
     #cases_list += ['brugge']
 
     well_controls = []
     well_controls += ['wrate']
-    well_controls += ['wbhp']
+    # well_controls += ['wbhp']
     #well_controls += ['wperiodic']
 
     n_failed = 0
@@ -210,9 +265,11 @@ if __name__ == '__main__':
                 out_dir = 'results_' + physics_type + '_' + case
                 print('Running', os.path.basename(__file__), case, physics_type)
                 failed, sim_time, time_data, time_data_report, wells, well_is_inj = run_case(physics_type=physics_type,
-                                                                                        case=case, out_dir=out_dir,
-                                                                                        redirect_log=False,
-                                                                                        platform=platform)
+                                                                                             case=case, out_dir=out_dir,
+                                                                                             redirect_log=False,
+                                                                                             platform=platform,
+                                                                                             export_vtk = True,
+                                                                                             )
                 n_failed += failed
                 if failed:
                     print('FAIL')

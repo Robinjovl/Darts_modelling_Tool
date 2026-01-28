@@ -6,6 +6,7 @@ import meshio
 from darts.engines import redirect_darts_output
 from darts.models.cicd_model import compare_solution_with_reference, get_platform, is_iter_solvers, set_one_thread
 
+
 def run(discr_type='mpfa', mesh_file='meshes/wedge.msh', test=True, platform='cpu'):
     redirect_darts_output('run.log')
 
@@ -16,6 +17,7 @@ def run(discr_type='mpfa', mesh_file='meshes/wedge.msh', test=True, platform='cp
     # darts/models/darts_model.py (NOTE: This is not the same as the__init__(self, **) method which each class (should)
     # have).
     m.init(platform=platform)
+    m.set_output()
 
     # Specify some other time-related properties (NOTE: all time parameters are in [days])
     #eps = 1e-6

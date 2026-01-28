@@ -2,6 +2,7 @@ from model import Model
 from darts.engines import value_vector, redirect_darts_output
 from darts.models.cicd_model import compare_solution_with_reference, get_platform
 
+
 def run(platform='cpu'):
 
     GRAV = '_grav'
@@ -10,7 +11,8 @@ def run(platform='cpu'):
         redirect_darts_output('run' + str(res) + '.log')
         m = Model(grid_1D=grid_1D, res=res, custom_physics=0)
         m.init(platform=platform)
-        #m.params.max_ts = 1e-0
+        m.set_output()
+        m.params.max_ts = 1e-0
 
         m.run(50)
         # m.save_restart_data()

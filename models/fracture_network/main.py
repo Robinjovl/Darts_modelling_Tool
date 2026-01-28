@@ -6,13 +6,15 @@ from set_case import set_input_data
 import os, sys
 from darts.models.cicd_model import compare_solution_with_reference, get_platform, is_iter_solvers, is_test_all_models
 
+
 def run_case(case, overwrite='0', platform='cpu'):
     freeze_support()
 
     input_data = set_input_data(case)
 
     t1 = datetime.now()
-    generate_mesh(input_data)
+    if input_data.geom['mesh_type'] == '2.5D':  # 2.5D mesh generation and cleaning (gmsh based)
+        generate_mesh(input_data)
     t2 = datetime.now()
     mesh_gen_timer = (t2 - t1).total_seconds()
 
@@ -47,13 +49,12 @@ if __name__ == "__main__":
     #cases_list += ['case_1_burden_O2_U2']
 
     ##cases_list = ['case_2']
-    #cases_list = ['case_3']
-
     if is_test_all_models():
+        # cases_list += ['case_3']
         cases_list = ['case_4']
         cases_list = ['case_5']
 
-    #cases_list = ['whitby']
+    #cases_list += ['whitby']
 
     n_failed = 0
     for case in cases_list:
@@ -63,5 +64,10 @@ if __name__ == "__main__":
             print('FAIL')
         else:
             print('OK')
+
+        # test(case='case_debug')  # 2.5 wedge mesh with one fracture
+        # test(case='case_3D_strike0_dip90')  # 3D hexahedral mesh with one fracture
+        # test(case='case_3D_strike0_dip0') # 3D tetrahedral mesh with one fracture, fails in vtk output: IndexError: index 12952 is out of bounds for axis 0 with size 506
+        # test(case='case_3D_nofrac')  # 3D tetrahedral mesh without fractures
 
     exit(n_failed)

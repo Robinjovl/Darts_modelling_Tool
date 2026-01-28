@@ -60,7 +60,7 @@ engine_base_gpu::~engine_base_gpu()
 
 int engine_base_gpu::post_newtonloop(value_t deltat, value_t time)
 {
-	int converged = engine_base::post_newtonloop(dt, time);
+	int converged = engine_base::post_newtonloop(deltat, time);
 	if (!converged)
 	{
 		copy_data_to_device(X, X_d);
@@ -125,21 +125,6 @@ int engine_base_gpu::solve_linear_equation()
 	}
 	timer->node["linear solver setup"].stop_gpu();
 
-    if (print_linear_system) //changed this to write jacobian to file!
-    {
-      const std::string matrix_filename = "jac_nc_dar_" + std::to_string(output_counter) + ".csr";
-      copy_data_to_host(Jacobian->values, Jacobian->values_d, Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->rows_ptr[mesh->n_blocks]);
-#ifdef OPENDARTS_LINEAR_SOLVERS
-      Jacobian->export_matrix_to_file(matrix_filename, opendarts::linear_solvers::sparse_matrix_export_format::csr);
-#else
-      Jacobian->write_matrix_to_file_mm(matrix_filename.c_str());
-#endif
-      //Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
-      write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
-      write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
-      output_counter++;
-    }
-
 	if (r_code)
 	{
 		sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
@@ -158,6 +143,22 @@ int engine_base_gpu::solve_linear_equation()
 	timer->node["host<->device_overhead"].start_gpu();
 	copy_data_to_host(dX, dX_d);
 	timer->node["host<->device_overhead"].stop_gpu();
+
+  if (print_linear_system) //changed this to write jacobian to file!
+  {
+    const std::string matrix_filename = "jac_nc_dar_" + std::to_string(output_counter) + ".csr";
+    copy_data_to_host(Jacobian->values, Jacobian->values_d, Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->rows_ptr[mesh->n_blocks]);
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    Jacobian->export_matrix_to_file(matrix_filename, opendarts::linear_solvers::sparse_matrix_export_format::csr);
+#else
+    Jacobian->write_matrix_to_file_mm(matrix_filename.c_str());
+#endif
+    //Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
+    copy_data_to_host(RHS, RHS_d);
+    write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
+    write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
+    output_counter++;
+  }
 
 	if (r_code)
 	{
@@ -188,63 +189,6 @@ int engine_base_gpu::apply_newton_update(value_t dt)
 	timer->node["host<->device_overhead"].stop_gpu();
 
   return 0;
-}
-
-void engine_base_gpu::apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
-{
-  double sum_z, new_z;
-  index_t nb = mesh->n_blocks;
-  bool z_corrected;
-  index_t n_corrected = 0;
-
-  for (index_t i = 0; i < nb; i++)
-  {
-    sum_z = 0;
-    z_corrected = false;
-
-    // check all but one composition in grid block
-    for (char c = 0; c < nc - 1; c++)
-    {
-      new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-      if (new_z < min_zc)
-      {
-        new_z = min_zc;
-        z_corrected = true;
-      }
-      else if (new_z > 1 - min_zc)
-      {
-        new_z = 1 - min_zc;
-        z_corrected = true;
-      }
-      sum_z += new_z;
-    }
-    // check the last composition
-    new_z = 1 - sum_z;
-    if (new_z < min_zc)
-    {
-      new_z = min_zc;
-      z_corrected = true;
-    }
-    sum_z += new_z;
-
-    if (z_corrected)
-    {
-      // normalize compositions and set appropriate update
-      for (char c = 0; c < nc - 1; c++)
-      {
-        new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-
-        new_z = std::max(min_zc, new_z);
-        new_z = std::min(1 - min_zc, new_z);
-
-        new_z = new_z / sum_z;
-        dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
-      }
-      n_corrected++;
-    }
-  }
-  if (n_corrected)
-    std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base_gpu::apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX)

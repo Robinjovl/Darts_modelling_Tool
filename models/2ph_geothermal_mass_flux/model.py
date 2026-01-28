@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
-from darts.engines import value_vector
+from darts.engines import value_vector, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -33,10 +33,6 @@ class Model(DartsModel):
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {self.physics.vars[0]: 200.,
-                               self.physics.vars[1]: 350.
-                               }
-
     def set_reservoir(self):
         """Reservoir construction"""
         # reservoir geometry： for realistic case, one just needs to load the data and input it
@@ -48,8 +44,9 @@ class Model(DartsModel):
 
     def set_wells(self):
         if self.wells_mode == 'wells':
-            self.reservoir.add_well("P1")
-            self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx//2, 1, 1), multi_segment=False)
+            well_type = ms_well.MS_Type.EPM
+            self.reservoir.add_well("P1", well_type)
+            self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx // 2, 1, 1), ms_epm=False)
 
     def set_physics(self):
         """Physical properties"""
@@ -75,22 +72,32 @@ class Model(DartsModel):
 
         # create physics
         thermal = True
-        self.physics = Compositional(components, phases, self.timer,
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
-                                     min_t=273.15 + 20, max_t=273.15 + 200, thermal=thermal)
+                                     min_t=273.15 + 20, max_t=273.15 + 200)
         self.physics.add_property_region(property_container)
 
         return
 
+    def set_initial_conditions(self):
+        input_distribution = {self.physics.vars[0]: 200.,
+                              self.physics.vars[1]: 350.,
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
-                #w.control = self.physics.new_rate_inj(200, self.inj, 1)
-                #w.control = self.physics.new_bhp_inj(210, self.inj)
-                w.control = self.physics.new_rate_inj(self.well_rate, self.inj, 0)
-                #w.control = self.physics.new_bhp_inj(450, self.inj)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=self.well_rate, phase_name='wat',
+                                               inj_composition=self.inj[:-1], inj_temp=self.inj[-1])
             else:
-                w.control = self.physics.new_rate_prod(self.well_rate, iph=0)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=False, target=-self.well_rate, phase_name='wat')
+
 
     def set_rhs_flux(self, t: float = None):
         '''
@@ -103,11 +110,12 @@ class Model(DartsModel):
         if outflow < 0 then it is actually inflow
         '''
         nv = self.physics.n_vars
-        nb = self.reservoir.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_blocks
+        n_res_blocks = self.reservoir.mesh.n_res_blocks
         rhs_flux = np.zeros(nb * nv)
 
         # extract pointer to values corresponding to var_idx
-        rhs_flux_var = rhs_flux[self.inflow_var_idx::nv]
+        rhs_flux_var = rhs_flux[self.inflow_var_idx:n_res_blocks*nv:nv]
         # set values for the cells defined in inflow_cells
         rhs_flux_var[self.inflow_cells] = self.outflow
 
@@ -132,6 +140,7 @@ class ModelProperties(PropertyContainer):
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
+        self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         self.ph = np.array([0], dtype=np.intp)
 
@@ -167,4 +176,3 @@ class ModelProperties(PropertyContainer):
         self.compute_saturation(ph)
 
         return self.sat, self.dens_m
-

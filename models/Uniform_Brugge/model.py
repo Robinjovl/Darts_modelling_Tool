@@ -1,5 +1,5 @@
 from darts.models.darts_model import DartsModel
-from darts.engines import sim_params
+from darts.engines import sim_params, ms_well
 import numpy as np
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -26,11 +26,6 @@ class Model(DartsModel):
                             tol_newton=1e-3, tol_linear=1e-3, it_newton=10, it_linear=50)
 
         self.timer.node["initialization"].stop()
-
-        self.initial_values = {self.physics.vars[0]: 170.,
-                               self.physics.vars[1]: self.ini_stream[0],
-                               self.physics.vars[2]: self.ini_stream[1]
-                               }
 
     def set_reservoir(self):
         """Reservoir"""
@@ -90,9 +85,10 @@ class Model(DartsModel):
             else:
                 name = "P" + str(i + 1 - n_injector)
 
-            self.reservoir.add_well(name)
+            well_type = ms_well.MS_Type.EPM
+            self.reservoir.add_well(name, well_type)
             idx = self.reservoir.find_cell_index(wc)
-            self.reservoir.add_perforation(name, cell_index=idx, well_index=well_index_list[i], well_indexD=0)
+            self.reservoir.add_perforation(name, res_cell_idx=idx, well_index=well_index_list[i], well_indexD=0)
 
     def set_physics(self):
         """Physical properties"""
@@ -101,7 +97,7 @@ class Model(DartsModel):
         phases = ['gas', 'oil', 'wat']
         components = ['g', 'o', 'w']
 
-        self.inj_stream = [1 - 2e-8, 1e-8]
+        self.inj_composition = [1 - 2e-8, 1e-8]
         # initial composition should be backtracked from saturations
         self.ini_stream = [0.001225901537, 0.7711341309]
 
@@ -125,18 +121,31 @@ class Model(DartsModel):
         property_container.rock_compress_ev = RockCompactionEvaluator(pvt)
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=500, min_p=1, max_p=200, min_z=zero / 10, max_z=1 - zero / 10)
         self.physics.add_property_region(property_container)
 
         return
 
+    def set_initial_conditions(self):
+        input_distribution = {self.physics.vars[0]: 170.,
+                              self.physics.vars[1]: self.ini_stream[0],
+                              self.physics.vars[2]: self.ini_stream[1],
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
-                w.control = self.physics.new_bhp_inj(180, self.inj_stream)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=180., inj_composition=self.inj_composition)
             else:
-                w.control = self.physics.new_bhp_prod(150)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=150.)
 
     def run_custom(self, export_to_vtk=False):
         if export_to_vtk:
@@ -150,14 +159,16 @@ class Model(DartsModel):
         if self.T - even_end > 0:
             time_step_arr = np.append(time_step_arr, self.T - even_end)
 
+        from darts.engines import well_control_iface
         for ith_step, ts in enumerate(time_step_arr):
             # print("Running time: %d days" % ts)
             for i, w in enumerate(self.reservoir.wells):
                 if 'I' in w.name:
-                    w.control = self.physics.new_bhp_water_inj(175, 308.15)
-                    # w.control = self.physics.new_rate_water_inj(self.inj_prod_rate, 298.15)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=175., inj_composition=self.inj_composition)
                 else:
-                    w.control = self.physics.new_bhp_prod(125)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=125.)
                     # w.control = self.physics.new_rate_water_prod(self.inj_prod_rate)
 
             self.engine.run(ts)

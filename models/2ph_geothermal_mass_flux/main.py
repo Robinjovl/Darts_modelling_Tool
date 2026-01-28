@@ -1,11 +1,13 @@
 import numpy as np
 import pandas as pd
+import os
 
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
 from darts.models.cicd_model import compare_solution_with_reference, get_platform
+
 
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
@@ -47,23 +49,27 @@ def plot_sol(n):
     plt.show()
 
 
-def run(mode : str, platform='cpu'):
+def run(mode: str, platform='cpu'):
     redirect_darts_output('run_' + mode + '.log')
     m = Model(mode=mode)
     m.init(platform=platform)
+    m.set_output()
 
     if mode != 'plot':
         m.run(1)
         m.print_timers()
         m.print_stat()
 
-        time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # n.save_restart_data()
-        m.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
+        if mode == 'wells':
+            # compute well time data
+            time_data_dict = m.output.store_well_time_data()
+
+            # plot well time data
+            time_data_df = pd.DataFrame.from_dict(time_data_dict)
+            time_data_df.plot(x='time', y=['well_P1_BHP'])
+            time_data_df.plot(x='time', y=['well_P1_molar_rate_w_by_sum_perfs', 'well_P1_molar_rate_w_at_wh'])
+            #plt.show()
+            plt.close()
 
         Xn = np.array(m.physics.engine.X, copy=False)
         np.save(mode + '.npy', Xn)

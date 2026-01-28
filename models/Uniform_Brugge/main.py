@@ -1,3 +1,8 @@
+"""
+Three-phase black oil model
+Unstructured grid
+"""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,41 +12,54 @@ from darts.engines import value_vector, redirect_darts_output
 from darts.tools.plot_darts import plot_phase_rate_darts
 from darts.models.cicd_model import compare_solution_with_reference, get_platform
 
+
 def run(platform='cpu'):
 
     redirect_darts_output('rum.log')
     m = Model()
     # m.params.linear_type = m.params.linear_solver_t.cpu_superlu
     m.init(platform=platform)
-    m.output_to_vtk(ith_step=0, output_directory='vtk')
+    m.set_output(verbose=True)
+
+    # output primary (state) and secondary variables to .vtk files from engine.X at the current engine.time
+    prop_list = m.physics.vars + m.output.properties
+    m.output.output_to_vtk(ith_step=0,
+                           output_directory=m.output_folder + '/vtk_files_from_engine',
+                           output_properties=prop_list,
+                           engine=True)
 
     if True:
         m.run(2000)
         m.print_timers()
         m.print_stat()
-        time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # m.save_restart_data()
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
+        m.output.print_simulation_parameters()
+
+        m.output.output_to_vtk(ith_step=1,
+                               output_directory=m.output_folder + '/vtk_files_from_engine',
+                               output_properties=prop_list,
+                               engine=True)
     else:
         # m.load_restart_data()
-        m.load_restart_data('output/solutiom.h5')
+        m.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
 
-    time_data1 = pd.DataFrame.from_dict(m.physics.engine.time_data)
+    # compute and save well time data
+    time_data_dict = m.output.store_well_time_data(save_output_files=True)
 
-    writer = pd.ExcelWriter('time_data.xlsx')
-    time_data.to_excel(writer, sheet_name='Sheet1')
-    writer.close()
+    # plot well time data
+    # time_data_df = pd.DataFrame.from_dict(time_data_dict)
+    # time_data_df.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])\
+    #     .get_figure().savefig(n.output_folder + '/bhp_plot.png', dpi=100, bbox_inches='tight')
+    # time_data_df.plot(x='time', y=['well_P1_volumetric_rate_oil_at_wh', 'well_P5_volumetric_rate_oil_at_wh'])\
+    #     .get_figure().savefig(n.output_folder + '/phase_rate_plot.png', dpi=100, bbox_inches='tight')
 
-    plot_phase_rate_darts('P1', time_data1, 'oil')
-    plot_phase_rate_darts('P5', time_data1, 'oil')
+    # output primary (state) and secondary variables to .vtk files from the solution.h5 file for all available data points
+    m.output.output_to_vtk(ith_step = None,
+                           output_directory = m.output_folder + '/vtk_files_all_timesteps_from_h5',
+                           output_properties = prop_list,
+                           engine = False)
 
-    plt.savefig('out.png')
-
-    m.output_to_vtk(ith_step=1, output_directory='vtk')
+    m.print_timers()
 
     # for CI/CD
     failed, sim_time = compare_solution_with_reference(m=m)

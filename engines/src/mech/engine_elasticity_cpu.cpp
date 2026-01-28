@@ -41,6 +41,7 @@ int engine_elasticity_cpu<ND>::init(conn_mesh *mesh_, std::vector<ms_well *> &we
 	newton_update_coefficient = 1.0;
 	USE_CALCULATED_FLUX = false;
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	this->expose_jacobian();
 	return 0;
 }
 template <uint8_t ND>

@@ -6,34 +6,39 @@ import matplotlib.pyplot as plt
 import numpy as np
 from darts.models.cicd_model import compare_solution_with_reference, get_platform
 
+
 def run(platform='cpu'):
     m = Model(resolution=10)
     m.init()
-    m.output_to_vtk(ith_step=0, output_directory='vtk')
+    m.set_output()
+    m.output.output_to_vtk(ith_step=0, output_directory='vtk', engine=True)
 
     m.run(365)
     m.print_timers()
     m.print_stat()
-    m.output_to_vtk(ith_step=1, output_directory='vtk')
+    m.output.output_to_vtk(ith_step=1, output_directory='vtk', engine=True)
 
-    td = pd.DataFrame.from_dict(m.physics.engine.time_data)
-    td.to_pickle("darts_time_data.pkl")
-    writer = pd.ExcelWriter('time_data.xlsx')
-    td.to_excel(writer, sheet_name='Sheet1')
-    writer.close()
+    ########################################### SAJJAD, PLS UPDATE THE RATE CALCULATORS
+    # # compute and save well time data
+    # time_data_dict = m.output.store_well_time_data(save_output_files=True)
+    #
+    # plot well time data
+    # time_data_df = pd.DataFrame.from_dict(time_data_dict)
+    # time_data_df.plot(x='time', y=['well_PRD_BHT', 'well_INJ_BHT'])\
+    #     .get_figure().savefig(m.output_folder + '/well_temperature.png', dpi=100, bbox_inches='tight')
+    # time_data_df.plot(x='time', y=['well_PRD_BHP', 'well_INJ_BHP'])\
+    #     .get_figure().savefig(m.output_folder + '/well_BHP.png', dpi=100, bbox_inches='tight')
+    # time_data_df.plot(x='time', y=['well_PRD_volumetric_rate_water_at_wh', 'well_PRD_volumetric_rate_water_by_sum_perfs'])\
+    #     .get_figure().savefig(m.output_folder + '/well_production_rates.png', dpi=100, bbox_inches='tight')
+    # time_data_df.plot(x='time', y=['well_INJ_volumetric_rate_water_at_wh', 'well_INJ_volumetric_rate_steam_at_wh'])\
+    #     .get_figure().savefig(m.output_folder + '/well_injection_rates.png', dpi=100, bbox_inches='tight')
+    ############################################
 
-    string = 'PRD : temperature'
-    ax1 = td.plot(x='time', y=[col for col in td.columns if string in col])
-    #ax1.plot([0, 3650],[348, 348])
-    ax1.tick_params(labelsize=14)
-    ax1.set_xlabel('Days', fontsize=14)
-    ax1.legend(['temp', 'limit'], fontsize=14)
-    plt.grid()
-    plt.savefig('prod_temperature.png')
 
     # for CI/CD
     failed, sim_time = compare_solution_with_reference(m=m)
     return failed
+
 
 if __name__ == '__main__':
     exit(run(platform=get_platform()))

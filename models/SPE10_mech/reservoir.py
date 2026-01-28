@@ -128,35 +128,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.discr.heat_conductions.append(disc_matrix33(idata.rock.conductivity))
                 self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn[cell_id]))
 
-    def add_well(self, name, depth):
-        """
-        Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
-        :param name:
-        :param depth:
-        :return:
-        """
-        well = ms_well()
-        well.name = name
-        well.segment_volume = 0.0785 * 40  # 2.5 * pi * 0.15**2 / 4
-        well.well_head_depth = depth
-        well.well_body_depth = depth
-        well.segment_transmissibility = 1e5
-        well.segment_depth_increment = 1
-        self.wells.append(well)
-        return 0
-
-    def add_perforation(self, well, res_block, well_index):
-        """
-        Class method which ads perforation to each (existing!) well
-        :param well: data object which contains data of the particular well
-        :param res_block: reservoir block in which the well has a perforation
-        :param well_index: well index (productivity index)
-        :return:
-        """
-        well_block = 0
-        well.perforations = well.perforations + [(well_block, res_block, well_index, 0.0)]
-        return 0
-
     def write_to_vtk(self, output_directory, ith_step, engine):
         """
         Class method which writes output of unstructured grid to VTK format

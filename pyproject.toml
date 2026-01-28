@@ -1,31 +1,36 @@
 [build-system]
-requires = ["setuptools >= 66", "wheel"]
+requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 # this is the name of the package: name that will appear if one `pip list` or `pip install open-darts`
 name = "open-darts"
 # This version has to be incremented manually for every new release.
-version = "1.2.2"
+version = "1.3.2"
 authors = [
-    {name = "Denis Voskov", email = "D.V.Voskov@tudelft.nl"},
+    {name = "Denis Voskov", email = "D.V.Voskov@tudelft.nl"}
 ]
 maintainers = [
     {name = "Ilshat Saifullin", email = "i.s.saifullin@tudelft.nl"}
 ]
-description = "Delft Advanced Research Terra Simulator"
+
+description = "Open Delft Advanced Research Terra Simulator"
 readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
-dependencies = ['numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk', 'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'h5py', 'open-darts-flash']
+dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk',
+    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash==0.11.1', 'phreeqpy']
 
-license = {text = "LICENSE.md"}
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "LICENSE.md"]
 
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: C++"
 ]
+[project.scripts]
+darts = "darts.tools.cli:main"
 
 [project.urls]
 homepage = "https://darts.citg.tudelft.nl/"
@@ -34,7 +39,51 @@ documentation = "https://open-darts.readthedocs.io/en/docs"
 
 [project.optional-dependencies]
 # These are groups of optional dependencies: not all users need ot install the dependencies. They are specific for a given fucntionality.
-# to install darts with this dependencies: `pip install .[docs]`
-
-# Dependencies to be able to build the documentation
+# An example of installing open-DARTS with optional dependencies: `pip install .[docs]` or `pip install WHEELS[docs]`
+# tools for building the documentation:
 docs = ["myst-parser", "sphinx_rtd_theme", "sphinx", "sphinx-tabs", "sphinx_inline_tabs", "sphinxcontrib-matlabdomain", "sphinxcontrib-bibtex", "linkify-it-py", "sphinx-copybutton"]
+# code linting tools:
+dev = ["ruff", "pre-commit"]
+# linear solver packages using python interface:
+solvers = ["pypardiso"]
+
+# add compiled binaries (shared libraries) and some other files
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["darts*"]
+exclude = ["discretizer", "engines", "models", "solvers", "docs", "thirdparty"]
+
+[tool.setuptools.package-data]
+darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.so.6']
+"darts.physics.properties" = ["databases/*"]
+
+# include darts command line interface (cli.py)
+
+# --- Ruff configuration ---
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+  "E", "F",        # pycodestyle/pyflakes
+  "I",             # import sorting (isort)
+  "UP",            # pyupgrade (safe upgrades)
+  "B",             # bugbear (useful correctness checks)
+]
+ignore = [
+  "E203", "E501",           # kept ignored as with Black-style projects
+  "F403", "F405",           # "from x import *" and re-exports (you ignored before)
+  "E722", "E731",           # bare except / lambda assignment, you ignored before
+  "C901",                   # complexity; we'll cap via mccabe below like flake8
+]
+unfixable = ["F841"]
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10

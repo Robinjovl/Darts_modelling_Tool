@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
@@ -51,6 +52,7 @@ def run(platform='cpu'):
     m = Model()
     # m.params.linear_type = m.params.linear_solver_t.cpu_superlu
     m.init(platform=platform)
+    m.set_output()
 
     if True:
         m.run(300)
@@ -58,13 +60,9 @@ def run(platform='cpu'):
         # m.run_python(300, restart_dt=1e-3)
         m.print_timers()
         m.print_stat()
-        time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # m.save_restart_data()
-        m.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
+
+        # compute and save well time data
+        time_data_dict = n.output.store_well_time_data(save_output_files=True)
     else:
         # m.load_restart_data()
         m.load_restart_data('output/solution.h5')

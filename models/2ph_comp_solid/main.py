@@ -49,20 +49,17 @@ def run(platform='cpu'):
     m = Model()
     # m.params.linear_type = m.params.linear_solver_t.cpu_superlu
     m.init(platform=platform)
+    m.set_output()
 
     if True:
-        m.run(1000)
+        m.run(1000, save_well_data=True, save_reservoir_data=False)
         # m.reservoir.wells[0].control = m.physics.new_bhp_inj(100, 3*[m.zero])
         # m.run_python(300, restart_dt=1e-3)
         m.print_timers()
         m.print_stat()
-        time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # m.save_restart_data()
-        m.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
+
+        # compute and save well time data
+        time_data_dict = m.output.store_well_time_data(save_output_files=True)
     else:
         # m.load_restart_data()
         m.load_restart_data('output/solution.h5')

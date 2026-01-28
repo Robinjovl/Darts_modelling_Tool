@@ -1,4 +1,7 @@
-# What is DARTS?
+# What is open-DARTS?
+
+**Open:**
+	open-DARTS is open-source.
 
 **Delft:**
     we belong to Civil Engineering and Geoscience (CEG) Department at Civil Engineering Faculty of TU Delft. The development team directly linked to the new GeoEnergy program which connects Geology, Geophysics and Petroleum Engineering sections of the department.
@@ -112,7 +115,7 @@ The energy flux includes the thermal convection and conduction terms,
     \end{aligned}
 \end{equation}
 
-where {math}`h_j` is phase enthalpy {math}`[\mathrm{kJ/kg}]` and {math}`\kappa` is effective thermal conductivity {math}`[\mathrm{kJ/m/day/K}]`.
+where {math}`h_j` is phase enthalpy {math}`[\mathrm{kJ/kmol}]` and {math}`\kappa` is effective thermal conductivity {math}`[\mathrm{kJ/m/day/K}]`.
 
 Finally, the source term in mass conservation equations can be present in the following form
 

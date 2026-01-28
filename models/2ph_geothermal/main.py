@@ -1,11 +1,13 @@
 import numpy as np
 import pandas as pd
+import os
 
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
 from darts.models.cicd_model import compare_solution_with_reference, get_platform, compare_well_rates
+
 
 def plot_sol(m):
     Xn = np.array(m.physics.engine.X, copy=False)
@@ -45,14 +47,17 @@ def plot_sol(m):
 
     plt.show()
 
+
 def run(platform='cpu'):
 
-    redirect_darts_output('rum.log')
+    redirect_darts_output('run.log')
     time_data_filename = "darts_time_data.pkl"
 
     m = Model()
     # m.params.linear_type = m.params.linear_solver_t.cpu_superlu
     m.init(platform=platform)
+    m.set_output()
+    time_data_filename = m.output_folder + "/darts_time_data.pkl"
 
     if True:
         m.run(1000)
@@ -60,18 +65,26 @@ def run(platform='cpu'):
         # m.run_python(300, restart_dt=1e-3)
         m.print_timers()
         m.print_stat()
-        time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-        time_data.to_pickle(time_data_filename)
-        # m.save_restart_data()
-        m.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
+
+        # compute and save well time data
+        time_data_dict = n.output.store_well_time_data(save_output_files=True)
+
+        # plot well time data
+        # time_data_df = pd.DataFrame.from_dict(time_data_dict)
+        # time_data_df['well_I1_molar_rate_wat_at_wh'] = time_data_df['well_I1_molar_rate_wat_at_wh'].round(2)
+        # time_data_df.plot(x='time', y=['well_I1_molar_rate_wat_at_wh'], style='-o')\
+        #     .get_figure().savefig(n.output_folder + '/inj_molar_rates_water.png', dpi=100, bbox_inches='tight')
+        #
+        # time_data_df.plot(x='time', y=['well_P1_BHP'], style='-o')\
+        #     .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
+        #
+        # time_data_df.plot(x='time', y=['well_P1_volumetric_rate_wat_at_wh', 'well_P1_volumetric_rate_wat_by_sum_perfs'], ylim=(-1, 0))\
+        #     .get_figure().savefig(n.output_folder + '/prd_volumetric_rates.png', dpi=100, bbox_inches='tight')
+
     else:
         # m.load_restart_data()
         m.load_restart_data('output/solutiom.h5')
         time_data = pd.read_pickle(time_data_filename)
-
 
     if True:
         Xn = np.array(m.physics.engine.X, copy=False)

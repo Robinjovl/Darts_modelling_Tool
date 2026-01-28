@@ -1,22 +1,28 @@
 import numpy as np
 import os
 
-from darts.input.input_data import InputData
-from darts.models.darts_model import sim_params
+from darts.input.input_data import InputData, linear_solver_types
+from darts.models.darts_model import DataTS
+from darts.engines import sim_params
 
 class InputDataGeom():  # to group geometry input data
     def __init__(self):
         pass
 
-def get_case_files(case: str):
-    prefix = os.path.join('meshes', case[:case.rfind('_')])
-    grid_file = os.path.join(prefix, 'grid.grdecl')
-    prop_file = os.path.join(prefix, 'reservoir.in')
-    sch_file = os.path.join(prefix, 'sch.inc')
-    assert os.path.exists(grid_file), 'cannot open' + grid_file
-    assert os.path.exists(prop_file), 'cannot open' + prop_file
-    assert os.path.exists(sch_file), 'cannot open' + sch_file
-    return grid_file, prop_file, sch_file
+def get_case_files(case: str, grid_file: str, prop_file: str, sch_file: str):
+    # get full paths for the files, assuming they are in meshes/case (with dropped part after first '_') folder
+    # checks file existence and unzips if needed
+    prefix = os.path.join('meshes', case[:case.find('_')])
+    grid_file_ = os.path.join(prefix, grid_file)
+    prop_file_ = os.path.join(prefix, prop_file)
+    sch_file_ = os.path.join(prefix, sch_file)
+    from darts.tools.keyword_file_tools import compressed_file
+    for fname in [grid_file_, prop_file_]:
+        compressed_file(fname, verbose=True)
+    assert os.path.exists(grid_file_), 'cannot open ' + grid_file_
+    assert os.path.exists(prop_file_), 'cannot open ' + prop_file_
+    assert os.path.exists(sch_file_), 'cannot open ' + sch_file_
+    return grid_file_, prop_file_, sch_file_
 
 def input_data_base(idata: InputData, case: str):
     dt = 365.25  # one report timestep length, [days]
@@ -24,14 +30,19 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.time_steps = np.zeros(n_time_steps) + dt
 
     # time stepping and convergence parameters
-    idata.sim.first_ts = 0.01
-    idata.sim.mult_ts = 2
-    idata.sim.max_ts = 92
-    idata.sim.runtime = 300
-    idata.sim.tol_newton = 1e-2
-    idata.sim.tol_linear = 1e-4
+    idata.sim.DataTS = DataTS(n_vars=0)
+    idata.sim.DataTS.dt_first = 0.01
+    idata.sim.DataTS.dt_mult = 2
+    idata.sim.DataTS.dt_max = 92
+    idata.sim.DataTS.newton_tol = 1e-2
+    idata.sim.DataTS.linear_tol = 1e-4
     # use direct linear solver:
-    #idata.sim.linear_type = sim_params.linear_solver_t.cpu_superlu
+    #idata.sim.DataTS.linear_type = sim_params.linear_solver_t.cpu_superlu
+    # optional: use PETSc linear solver
+    #idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_CPR
+    #idata.sim.DataTS.linear_print_level = 0
+    # optional: use PARDISO linear solver
+    #idata.sim.DataTS.linear_type = linear_solver_types.CPU_PARDISO
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()
@@ -48,20 +59,30 @@ def input_data_base(idata: InputData, case: str):
     #     perm - to avoid convergence issues
     geom.min_poro = 1e-5
 
+    # allow small flow to avoid pressure jumps
+    # since there might pressure change appear due to the temperature change
+    geom.min_perm = 1e-5
+
     # boundary conditions
     geom.bound_volume = 1e10 # lateral boundary volume, m^3
+
+    geom.faultfile = None  # a text file with fault locations and multipliers
+
+    idata.geom.well_index = None  # well index for flow, if None - will be computed by default
+    idata.geom.well_indexD = 0.   # well index for thermal conductivity (for closed-loops/U-shaped wells); turned off
 
     if idata.generate_grid:
         idata.rock.poro = 0.2
         idata.rock.permx = 100  # mD
         idata.rock.permy = 100  # mD
         idata.rock.permz = 10   # mD
-    else:  # read from files
-        # setup filenames
-        gridfile, propfile, schfile = get_case_files(case)
-        idata.gridfile = gridfile
-        idata.propfile = propfile if os.path.exists(propfile) else gridfile
-        idata.schfile = schfile
+    else:  # read grid and properties from files
+        # setup default filenames
+        idata.gridfile = 'grid.grdecl'
+        idata.propfile = 'reservoir.in'
+        idata.schfile = 'sch.inc'
+        idata.gridfile, idata.propfile, idata.schfile = get_case_files(case, idata.gridfile, idata.propfile, idata.schfile)
+        idata.propfile = idata.propfile if os.path.exists(idata.propfile) else idata.gridfile
         # read from a file to idata.well_data.wells[well_name].perforations
         idata.well_data.read_and_add_perforations(idata.schfile)
     idata.grid_out_dir = None  # output path for the generated grid and prop files
@@ -85,3 +106,5 @@ def input_data_base(idata: InputData, case: str):
     # the cells with lower poro will be treated as shale when setting the rock thermal properties
     idata.rock.poro_shale_threshold = 1e-3
     ############################################################################
+
+    idata.supress_all_output = False
