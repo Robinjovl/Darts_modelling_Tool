@@ -184,6 +184,10 @@ class DartsModel:
         self.set_boundary_conditions()
         self.set_well_controls()
 
+        # for separate mineral fraction in reactive flow formulations
+        if n_solid is not None:
+            self.physics.engine.n_solid = n_solid
+
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
         if restart is False:
@@ -200,10 +204,6 @@ class DartsModel:
                 + ' > 30000',
                 stacklevel=2,
             )
-
-        # element-based reactive flow
-        if n_solid is not None:
-            self.physics.engine.n_solid = n_solid
 
     def reset(self):
         """
