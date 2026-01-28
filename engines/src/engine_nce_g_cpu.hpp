@@ -14,17 +14,17 @@
 
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/linsolv_iface.hpp"
+#include "csr_matrix.hpp"
+#include "linsolv_iface.hpp"
 #else
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
-#endif // OPENDARTS_LINEAR_SOLVERS                                                                                                                                        
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 
 template <uint8_t NC, uint8_t NP>

@@ -4,9 +4,9 @@
 #include <string.h>
 #include <string>
 
-#include "openDARTS/config/version.hpp"
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/data_types.hpp"
+#include "version.hpp"
+#include "csr_matrix.hpp"
+#include "linear_solvers_data_types.hpp"
 
 #include "test_common.hpp"
 
@@ -25,14 +25,14 @@ int main()
 
   // Generate the matrix
   opendarts::linear_solvers::csr_matrix<1> A;
-  opendarts::linear_solvers::testing::generate_tridiagonal_matrix(A, n); // populate the matrix, in this case a 
-                                                                         // tridiagonal matrix with the values 
+  opendarts::linear_solvers::testing::generate_tridiagonal_matrix(A, n); // populate the matrix, in this case a
+                                                                         // tridiagonal matrix with the values
                                                                          // -2, 1, 2 in the -2, 0, and 2 diagonals
-  
+
   // Get row_thread_starts and check if it is equal to [0, n]
   row_thread_starts = A.get_row_thread_starts();
   if (row_thread_starts[0] != 0) error_output += 1;
   if (row_thread_starts[1] != n) error_output += 1;
-  
+
   return error_output;
 }

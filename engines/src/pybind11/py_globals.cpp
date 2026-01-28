@@ -7,7 +7,7 @@
 #include <fstream>
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/config/version.hpp"
+#include "version.hpp"
 #else
 #include "linsolv_build_info.h"
 #endif // OPENDARTS_LINEAR_SOLVERS

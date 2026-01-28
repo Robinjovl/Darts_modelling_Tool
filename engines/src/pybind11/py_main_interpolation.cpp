@@ -11,10 +11,10 @@ typedef int index_t;
 typedef double value_t;
 typedef int interp_index_t;
 typedef double interp_value_t;
- 
+
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/auxiliary/timer_node.hpp"
+#include "timer_node.hpp"
 #else
 #include "timer_node.h"
 #endif // OPENDARTS_LINEAR_SOLVERS
@@ -80,7 +80,7 @@ PYBIND11_MODULE(engines_interpolator, m)
       .def("resize",
           (void (std::vector<value_t>::*) (size_t count)) &std::vector<value_t>::resize,
           "changes the number of elements stored");
-  
+
   py::bind_vector<std::vector<operator_set_gradient_evaluator_iface *>>(m, "op_vector");
   py::bind_map<std::map<std::string, timer_node>>(m, "timer_map");
 

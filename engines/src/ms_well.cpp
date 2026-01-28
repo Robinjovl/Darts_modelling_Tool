@@ -3,7 +3,7 @@
 #include "ms_well.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
+#include "csr_matrix.hpp"
 #else
 #include "csr_matrix.h"
 #endif // OPENDARTS_LINEAR_SOLVERS

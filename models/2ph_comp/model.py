@@ -1,6 +1,7 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, well_control_iface, ms_well
+from darts import solvers
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -21,6 +22,7 @@ class Model(CICDModel):
 
         self.set_reservoir()
         self.set_physics()
+        self.set_solver()
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
@@ -78,6 +80,44 @@ class Model(CICDModel):
         self.physics.add_property_region(property_container)
 
         return
+
+    def set_solver(self):
+        # Create MGR solver with correct block size (pressure + n_components - 1)
+        # n_vars = 1 (pressure) + len(components) - 1 (component fractions)
+        block_size = self.physics.n_vars  # pressure + (n_components - 1) fractions = n_components
+        self.solver = solvers.create_mgr_solver_for_block_size(block_size)
+
+        # Configure solver parameters
+        self.solver.set_max_iterations(self.params.max_i_linear)
+        self.solver.set_tolerance(self.params.tolerance_linear)
+        self.solver.set_log_level(self.params.linear_print_level)
+        self.solver.set_dump_ij_matrix(False)  # Disabled to work around bad_alloc issue
+        self.solver.set_ij_dump_file("hypre_ij_matrix")
+        self.solver.set_kdim(50)  # Krylov subspace dimension
+        self.solver.set_use_mgr(True)  # Use MGR preconditioner
+        return
+
+    def init(self):
+        """Override init to set solver before engine initialization"""
+        # The engine is created during physics.init_physics() in the base init()
+        # init_base() checks for linear_solver_external, so if we set it before init_base runs,
+        # it will use our solver. However, engine.init() -> init_base() is called from within
+        # super().init(), so we can't easily intercept.
+        #
+        # Solution: The C++ code now checks for linear_solver_external in init_base,
+        # so we need to set it before init_base runs. Since we can't do that directly,
+        # we'll set it as early as possible - right after physics.init_physics() creates the engine.
+        # But that happens inside super().init().
+        #
+        # For now, we'll set it after super().init() completes. The init_base will have
+        # already created a solver, but set_linear_solver will replace it. This works
+        # because set_linear_solver handles cleanup of the old solver.
+        super().init()
+
+        # Set the solver on the engine - this replaces any solver created in init_base
+        if hasattr(self, 'solver') and self.solver is not None:
+            if hasattr(self.physics, 'engine') and self.physics.engine is not None:
+                self.physics.engine.set_linear_solver(self.solver)
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 50,

@@ -12,11 +12,11 @@
 #include "conn_mesh.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
+#include "linsolv_bos_gmres.hpp"
+#include "linsolv_bos_bilu0.hpp"
+#include "linsolv_bos_cpr.hpp"
+#include "linsolv_bos_amg.hpp"
+#include "linsolv_superlu.hpp"
 #else
 #include "linsolv_bos_gmres.h"
 #include "linsolv_bos_bilu0.h"

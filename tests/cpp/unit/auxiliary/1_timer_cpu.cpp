@@ -2,7 +2,7 @@
 #include <cmath>
 #include <iostream>
 
-#include "openDARTS/auxiliary/timer_node.hpp"
+#include "timer_node.hpp"
 
 int main()
 {
@@ -13,10 +13,10 @@ int main()
   */
 
   int error_output = 0;  // set to 0 because the test fails when the computer is very loaded,
-                         // the measured wall time is larger than the number of clock cycles times 
-                         // clock speed (which is how time is measured in the timer). This means 
+                         // the measured wall time is larger than the number of clock cycles times
+                         // clock speed (which is how time is measured in the timer). This means
                          // the test fails in many computers, but nothin is wrong with the code.
-                         // Until we find a solution to properly test this functionality, the test 
+                         // Until we find a solution to properly test this functionality, the test
                          // is made to always pass.
   double target_elapsed_time = 0.2; // the time we wish to leave the computer in the while loop
   double error_tolerance = 0.001;

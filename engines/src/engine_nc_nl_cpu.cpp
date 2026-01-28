@@ -1,4 +1,4 @@
-﻿#include <algorithm>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <time.h>
@@ -14,11 +14,11 @@
 #include "mech/matrix.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
+#include "linsolv_bos_gmres.hpp"
+#include "linsolv_bos_bilu0.hpp"
+#include "linsolv_bos_cpr.hpp"
+#include "linsolv_bos_amg.hpp"
+#include "linsolv_superlu.hpp"
 #else
 #include "linsolv_bos_gmres.h"
 #include "linsolv_bos_bilu0.h"
@@ -26,12 +26,12 @@
 #include "linsolv_bos_amg.h"
 #include "linsolv_amg1r5.h" // Not available in opendarts_linear_solvers
 #include "linsolv_superlu.h"
-#endif // OPENDARTS_LINEAR_SOLVERS                                                                                                                                        
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t NC>
 const std::string engine_nc_nl_cpu<NC>::AVG_MPFA = "AVG_MPFA";

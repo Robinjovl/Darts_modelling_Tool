@@ -13,8 +13,8 @@
 
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/linsolv_iface.hpp"
+#include "csr_matrix.hpp"
+#include "linsolv_iface.hpp"
 #else
 #include "csr_matrix.h"
 #include "linsolv_iface.h"

@@ -4,9 +4,9 @@
 #include <string.h>
 #include <string>
 
-#include "openDARTS/config/version.hpp"
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/data_types.hpp"
+#include "version.hpp"
+#include "csr_matrix.hpp"
+#include "linear_solvers_data_types.hpp"
 
 #include "test_common.hpp"
 
@@ -25,7 +25,7 @@ int main()
   */
 
   int error_output = 0;
-  
+
   // Show information on the build
   std::cout << "Build date (var) : " << std::string(opendarts::config::LINSOLV_BUILD_DATE) << std::endl;
   std::cout << "Build date (func): " << opendarts::config::get_build_date() << std::endl;
@@ -160,9 +160,9 @@ template <uint8_t N_BLOCK_SIZE> int test_to_nb_1(std::string &output_filename, s
 
   // Generate the matrix with non 1 block size
   opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A = new opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE>;
-  opendarts::linear_solvers::testing::generate_tridiagonal_matrix(*A, n); // populate the matrix, in this 
-                                                                          // case a tridiagonal matrix with 
-                                                                          // the values -2, 1, 2 in the 
+  opendarts::linear_solvers::testing::generate_tridiagonal_matrix(*A, n); // populate the matrix, in this
+                                                                          // case a tridiagonal matrix with
+                                                                          // the values -2, 1, 2 in the
                                                                           // -2, 0, and 2 diagonals
 
   // Convert the matrix to block size 1 and store it in a pointer
@@ -170,7 +170,7 @@ template <uint8_t N_BLOCK_SIZE> int test_to_nb_1(std::string &output_filename, s
   //       is needed, i.e., A.n_block_size > 1, otherwise the pointer will point
   //       to A.
   opendarts::linear_solvers::csr_matrix<1> A_as_nb_1;
-  
+
   A_as_nb_1.to_nb_1(A);
 
   // Save the matrix in human readable format

@@ -4,9 +4,9 @@
 #include <string.h>
 #include <string>
 
-#include "openDARTS/config/version.hpp"
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/data_types.hpp"
+#include "version.hpp"
+#include "csr_matrix.hpp"
+#include "linear_solvers_data_types.hpp"
 
 #include "test_common.hpp"
 
@@ -25,23 +25,23 @@ int main()
     result.
   */
   int error_output = 0;
-  
+
   // Test the csr_matrix::transpose function A -> A^t
   error_output += test_transpose();
-  
-  // Test the csr_matrix::transpose function A -> A^t for non-symmetric 
+
+  // Test the csr_matrix::transpose function A -> A^t for non-symmetric
   // nonzero pattern matrix
   error_output += test_transpose_non_symmetric_end_rows_zero();  // 4x4 matrix, last two rows empty
   error_output += test_transpose_non_symmetric_start_rows_zero();  // 4x4 matrix, first two rows empty
-  
+
   // Test the csr_matrix::build_transpose function A^t <- A
   error_output += test_build_transpose();
-  
+
   // Test the csr_matrix::build_transpose_struct function A^t <- A (only structure, no values)
   error_output += test_build_transpose_struct();
-  
+
   return error_output;
-  
+
 }
 
 
@@ -112,8 +112,8 @@ int test_transpose_non_symmetric_end_rows_zero()
 
   // Generate the matrix with block size 1
   opendarts::linear_solvers::csr_matrix<1> A;
-  
-  // Matrix A looks like 
+
+  // Matrix A looks like
   // 1 0 2 3
   // 0 4 0 0
   // 0 0 0 0
@@ -121,26 +121,26 @@ int test_transpose_non_symmetric_end_rows_zero()
   opendarts::config::index_t n_rows = 4;
   opendarts::config::index_t n_cols = 4;
   opendarts::config::index_t n_non_zeros = 4;
-  
-  A.init(n_rows, n_cols, n_non_zeros);  // init the matrix structure 
-  
-  // Fill in the matrix 
+
+  A.init(n_rows, n_cols, n_non_zeros);  // init the matrix structure
+
+  // Fill in the matrix
   A.rows_ptr[0] = 0;
   A.rows_ptr[1] = 3;
   A.rows_ptr[2] = 4;
   A.rows_ptr[3] = 4;  // last two rows are empty
   A.rows_ptr[4] = 4;
-  
+
   A.cols_ind[0] = 0;
   A.cols_ind[1] = 2;
   A.cols_ind[2] = 3;
   A.cols_ind[3] = 1;
-  
+
   A.values[0] = 1;
   A.values[1] = 2;
   A.values[2] = 3;
   A.values[3] = 4;
-  
+
   // Compute transpose
   opendarts::linear_solvers::csr_matrix<1> A_t;
   A.transpose(A_t);
@@ -184,8 +184,8 @@ int test_transpose_non_symmetric_start_rows_zero()
 
   // Generate the matrix with block size 1
   opendarts::linear_solvers::csr_matrix<1> A;
-  
-  // Matrix A looks like 
+
+  // Matrix A looks like
   // 0 0 0 0
   // 0 0 0 0
   // 1 0 2 3
@@ -193,26 +193,26 @@ int test_transpose_non_symmetric_start_rows_zero()
   opendarts::config::index_t n_rows = 4;
   opendarts::config::index_t n_cols = 4;
   opendarts::config::index_t n_non_zeros = 4;
-  
-  A.init(n_rows, n_cols, n_non_zeros);  // init the matrix structure 
-  
-  // Fill in the matrix 
+
+  A.init(n_rows, n_cols, n_non_zeros);  // init the matrix structure
+
+  // Fill in the matrix
   A.rows_ptr[0] = 0;
   A.rows_ptr[1] = 0;
   A.rows_ptr[2] = 0;  // first two rows are empty
-  A.rows_ptr[3] = 3;  
+  A.rows_ptr[3] = 3;
   A.rows_ptr[4] = 4;
-  
+
   A.cols_ind[0] = 0;
   A.cols_ind[1] = 2;
   A.cols_ind[2] = 3;
   A.cols_ind[3] = 1;
-  
+
   A.values[0] = 1;
   A.values[1] = 2;
   A.values[2] = 3;
   A.values[3] = 4;
-  
+
   // Compute transpose
   opendarts::linear_solvers::csr_matrix<1> A_t;
   A.transpose(A_t);

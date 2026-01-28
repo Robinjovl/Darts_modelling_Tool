@@ -6,7 +6,7 @@
 #include "conn_mesh.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_iface.hpp"
+#include "linsolv_iface.hpp"
 #else
 #include "linsolv_iface.h"
 #endif // OPENDARTS_LINEAR_SOLVERS
@@ -24,9 +24,9 @@ namespace pm
 	enum CriticalStress { TERZAGHI, BIOT };
 	enum NormalCondition { PENALIZED, ZERO_GAP_CHANGE };
 
-	struct RSF_props 
-	{ 
-		value_t a, b, vel0, Dc; 
+	struct RSF_props
+	{
+		value_t a, b, vel0, Dc;
 		std::vector<value_t> theta, theta_n;
 		std::vector<value_t> mu_rate, mu_state;
 		value_t min_vel;
@@ -156,9 +156,9 @@ namespace pm
 																													const std::vector<value_t>& Xn_ref, const std::vector<value_t>& fluxes_ref_n, const std::vector<value_t>& fluxes_biot_ref_n);
 		int solve_explicit_scheme(std::vector<value_t>& RHS, std::vector<value_t>& dX);
 
-		
+
 		void set_state(const ContactState& state);
-		
+
 		int apply_direction_chop(const std::vector<value_t>& X, const std::vector<value_t>& Xn, std::vector<value_t>& dX);
 	};
 };

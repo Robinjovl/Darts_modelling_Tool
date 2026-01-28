@@ -12,12 +12,12 @@
 #include "pybind11/py_globals.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/data_types.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_fs_cpr.hpp"
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
+#include "linear_solvers_data_types.hpp"
+#include "linsolv_bos_gmres.hpp"
+#include "linsolv_bos_bilu0.hpp"
+#include "linsolv_bos_cpr.hpp"
+#include "linsolv_bos_fs_cpr.hpp"
+#include "csr_matrix.hpp"
 using namespace opendarts::linear_solvers;
 #else
 #include "linsolv_bos_gmres.h"
@@ -37,10 +37,10 @@ using namespace opendarts::linear_solvers;
 #endif
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
+#include "linsolv_bos_amg.hpp"
 // #include "openDARTS/linear_solvers/linsolv_amg1r5.h"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
-#include "openDARTS/linear_solvers/linsolv_mgr.hpp"
+#include "linsolv_superlu.hpp"
+#include "linsolv_mgr.hpp"
 #else
 #include "linsolv_bos_amg.h"
 #include "linsolv_amg1r5.h"
@@ -90,11 +90,12 @@ public:
 		is_fickian_energy_transport_on = true;
 		newton_update_coefficient = 1.0;
 		n_solid = 0;
+		linear_solver_owned = true;  // By default, we own the solver
 	};
 
 	~engine_base()
 	{
-		if (linear_solver != nullptr)
+		if (linear_solver != nullptr && linear_solver_owned)
 			delete linear_solver;
 		if (Jacobian != nullptr)
 			delete Jacobian;
@@ -130,6 +131,31 @@ public:
 
 	template <uint8_t N_VARS>
 	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_);
+
+	// Set external linear solver (from Python)
+	void set_linear_solver(std::shared_ptr<linsolv_iface> solver)
+	{
+		// If we previously owned a solver, delete it
+		if (linear_solver != nullptr && linear_solver_owned)
+		{
+			delete linear_solver;
+		}
+
+		// Store the external solver
+		linear_solver_external = solver;
+		linear_solver = solver.get();
+		linear_solver_owned = false;  // We don't own it, Python does
+
+		// If engine is already initialized, wire timers and initialize solver
+		if (linear_solver != nullptr && Jacobian != nullptr && params != nullptr)
+		{
+			if (timer != nullptr)
+			{
+				linear_solver->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
+			}
+			linear_solver->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+		}
+	}
 
 	virtual int init_jacobian_structure(csr_matrix_base *jacobian);
 
@@ -323,6 +349,8 @@ public:
 	/// @} // end of Parameters
 
 	linsolv_iface *linear_solver;
+	std::shared_ptr<linsolv_iface> linear_solver_external;  // For externally provided solvers (Python)
+	bool linear_solver_owned;  // True if we own the solver (need to delete), false if external
 
 	//operator_set_gradient_evaluator_iface* acc_flux_op_set;
 	std::vector<operator_set_gradient_evaluator_iface *> acc_flux_op_set_list;
@@ -657,7 +685,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	std::string linear_solver_type_str;
 	// create linear solver
-	if (!linear_solver)
+	// Check if external solver was provided (from Python) - if so, use it instead of creating new one
+	if (!linear_solver && !linear_solver_external)
 	{
 		switch (params->linear_type)
 		{
@@ -709,9 +738,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 #ifdef OPENDARTS_LINEAR_SOLVERS
 		case sim_params::CPU_GMRES_MGR:
 		{
-			linear_solver = new linsolv_mgr<N_VARS>;
-			static_cast<linsolv_mgr<N_VARS> *>(linear_solver)->set_log_level(params->linear_print_level);
-			linear_solver_type_str = "CPU_GMRES_MGR";
+			// MGR solver is provided externally (Python) via set_linear_solver.
+			linear_solver_type_str = "CPU_GMRES_MGR (external pending)";
 			break;
 		}
 #endif
@@ -916,9 +944,17 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	}
 #endif
 
-	linear_solver->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
-	// initialize linear solver
-	linear_solver->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+	if (linear_solver)
+	{
+		linear_solver->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
+		// initialize linear solver
+		linear_solver->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+	}
+	else
+	{
+		std::cerr << "WARNING: Linear solver not set yet; call engine.set_linear_solver(...) before run."
+		          << std::endl;
+	}
 
 	//Xn.resize (n_vars * mesh->n_blocks);
 	RHS.resize(n_vars * mesh->n_blocks);
