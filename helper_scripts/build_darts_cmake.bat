@@ -15,6 +15,7 @@ set config=Release
 set NT=8
 set skip_req=false
 set phreeqc=false
+set rebuild_hypre=false
 
 :parse_args
 if "%~1"=="" goto :process_input
@@ -32,6 +33,7 @@ if "%option%"=="-j" set NT=%1 & shift & goto parse_args
 if "%option%"=="-a" set bos_solvers_artifact=true & set iter_solvers=true & goto parse_args
 if "%option%"=="-b" set bos_solvers_dir=%1 & set iter_solvers=true & shift & goto parse_args
 if "%option%"=="-p" set phreeqc=true & goto parse_args
+if "%option%"=="--rebuild-hypre" set rebuild_hypre=true & goto parse_args
 goto parse_args
 
 :process_input
@@ -65,6 +67,8 @@ echo    testing = %testing%
 echo    generate python wheel = %wheel%
 echo    Multi thread = %MT%
 echo    Phreeqc support = %phreeqc%
+echo    MGR support = enabled (default)
+echo    rebuild_hypre = %rebuild_hypre%
 echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
@@ -79,6 +83,13 @@ if %clean_mode%==true (
 
 if %skip_req%==false (
   echo - Update submodules: START
+
+  if %rebuild_hypre%==true (
+      echo Cleaning HYPRE build for rebuild...
+      rmdir /s /q thirdparty\hypre\src\cmbuild 2> NUL
+      rmdir /s /q thirdparty\install 2> NUL
+  )
+
   rmdir /s /q thirdparty\eigen thirdparty\pybind11 thirdparty\MshIO thirdparty\hypre
   git submodule sync --recursive
   git submodule update --init --recursive -- ^
@@ -95,14 +106,16 @@ if %skip_req%==false (
   echo - Install requirements: START
   mkdir build
 
-  rem -- Install Hypre
+  rem -- Install Hypre with MGR support (enabled by default)
   cd hypre\src\cmbuild
   rem For debugging: -DHYPRE_ENABLE_PRINT
-  cmake -D HYPRE_BUILD_TESTS=ON ^
-        -D HYPRE_BUILD_EXAMPLES=ON ^
+  rem Building with MGR support by default (MGR is always built in HYPRE)
+  cmake -D HYPRE_TIMING=OFF ^
+        -D HYPRE_BUILD_TESTS=OFF ^
+        -D HYPRE_BUILD_EXAMPLES=OFF ^
         -D HYPRE_WITH_MPI=OFF ^
-        -D CMAKE_BUILD_TYPE=%config% ^
-        -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
+        -D CMAKE_INSTALL_PREFIX=..\..\..\install ^
+        -D HYPRE_SEQUENTIAL=ON .. > ..\..\..\..\make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error
   cd ..\..\..\
 
@@ -206,20 +219,21 @@ goto :eof
 
 REM Help info --------------------------------------------------------
 :help_info
-echo helper_scripts\build_darts_cmake.bat [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS]
-echo    Script to install opendarts on Windows.
+echo helper_scripts\build_darts_cmake.bat [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-p] [--rebuild-hypre]
+echo    Script to install opendarts on Windows with MGR support.
 echo USAGE:
-echo    -h : displays this help menu.
-echo    -c : cleans up build to prepare a new fresh build. Default: don't clean
-echo    -t : Enable testing: ctest of solvers. Default: don't test
-echo    -w : Enable generation of python wheel. Default: false
-echo    -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true
-echo    -r : Skip building thirdparty libraries (if you have them already compiled). Default: false
-echo    -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
-echo    -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
-echo    -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug
-echo    -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4
-echo    -p : Enable Phreeqc + Reaktoro (requires Conda). Default: false
+echo    -h               : displays this help menu.
+echo    -c               : cleans up build to prepare a new fresh build. Default: don't clean
+echo    -t               : Enable testing: ctest of solvers. Default: don't test
+echo    -w               : Enable generation of python wheel. Default: false
+echo    -m               : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true
+echo    -r               : Skip building thirdparty libraries (if you have them already compiled). Default: false
+echo    -a               : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
+echo    -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
+echo    -d MODE          : Configuration for C++ code [Release, Debug]. Example: -d Debug
+echo    -j N             : Set number of threads (N) for compilation. Default: 8. Example: -j 4
+echo    -p               : Enable Phreeqc + Reaktoro (requires Conda). Default: false
+echo    --rebuild-hypre  : Force rebuild of HYPRE library. Default: false
 goto :eof
 REM ----------------------------------------------------------------
 
