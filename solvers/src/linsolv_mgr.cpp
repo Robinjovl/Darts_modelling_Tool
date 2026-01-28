@@ -37,8 +37,6 @@ namespace opendarts
       , kdim_cached(30)
       , use_mgr_cached(true)
       , log_level_cached(1)
-      , dump_ij_matrix_cached(false)
-      , ij_dump_file_cached("hypre_ij_matrix")
     {
       std::cout << "[MGR] linsolv_mgr created with N_BLOCK_SIZE = " << (int)N_BLOCK_SIZE << std::endl;
     }
@@ -103,22 +101,6 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    void linsolv_mgr<N_BLOCK_SIZE>::set_dump_ij_matrix(bool enabled)
-    {
-      dump_ij_matrix_cached = enabled;
-      mgr::SolverParameters params = mgr_solver.getParameters();
-      mgr_solver.setParameters(params);
-    }
-
-    template <uint8_t N_BLOCK_SIZE>
-    void linsolv_mgr<N_BLOCK_SIZE>::set_ij_dump_file(const std::string& filename)
-    {
-      ij_dump_file_cached = filename;
-      mgr::SolverParameters params = mgr_solver.getParameters();
-      mgr_solver.setParameters(params);
-    }
-
-    template <uint8_t N_BLOCK_SIZE>
     opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_max_iterations() const
     {
       return max_iters_cached;
@@ -148,17 +130,6 @@ namespace opendarts
       return log_level_cached;
     }
 
-    template <uint8_t N_BLOCK_SIZE>
-    bool linsolv_mgr<N_BLOCK_SIZE>::get_dump_ij_matrix() const
-    {
-      return dump_ij_matrix_cached;
-    }
-
-    template <uint8_t N_BLOCK_SIZE>
-    std::string linsolv_mgr<N_BLOCK_SIZE>::get_ij_dump_file() const
-    {
-      return ij_dump_file_cached;
-    }
 
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_mgr<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A,

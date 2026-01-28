@@ -91,8 +91,6 @@ class Model(CICDModel):
         self.solver.set_max_iterations(self.params.max_i_linear)
         self.solver.set_tolerance(self.params.tolerance_linear)
         self.solver.set_log_level(self.params.linear_print_level)
-        self.solver.set_dump_ij_matrix(False)  # Disabled to work around bad_alloc issue
-        self.solver.set_ij_dump_file("hypre_ij_matrix")
         self.solver.set_kdim(50)  # Krylov subspace dimension
         self.solver.set_use_mgr(True)  # Use MGR preconditioner
         return

@@ -50,8 +50,6 @@ namespace opendarts
       void set_kdim(int kdim);
       void set_use_mgr(bool use_mgr);
       void set_log_level(int log_level);
-      void set_dump_ij_matrix(bool enabled);
-      void set_ij_dump_file(const std::string& filename);
 
       // Get current configuration
       opendarts::config::index_t get_max_iterations() const;
@@ -59,8 +57,6 @@ namespace opendarts
       int get_kdim() const;
       bool get_use_mgr() const;
       int get_log_level() const;
-      bool get_dump_ij_matrix() const;
-      std::string get_ij_dump_file() const;
 
       // Get number of iterations from last solve
       int get_n_iters() override;
@@ -81,8 +77,6 @@ namespace opendarts
       int kdim_cached;
       bool use_mgr_cached;
       int log_level_cached;
-      bool dump_ij_matrix_cached;
-      std::string ij_dump_file_cached;
     };
 
   } // namespace linear_solvers

@@ -40,11 +40,6 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Enable/disable MGR preconditioner", py::arg("use_mgr"))
         .def("set_log_level", &linsolv_mgr<N>::set_log_level,
              "Set logging verbosity level (0=none, 1=basic, 2=detailed)", py::arg("log_level"))
-        .def("set_dump_ij_matrix", &linsolv_mgr<N>::set_dump_ij_matrix,
-             "Enable/disable HYPRE IJ matrix dump", py::arg("enabled"))
-        .def("set_ij_dump_file", &linsolv_mgr<N>::set_ij_dump_file,
-             "Set filename/prefix for IJ matrix dump", py::arg("filename"))
-
         // Getter methods
         .def("get_max_iterations", &linsolv_mgr<N>::get_max_iterations,
              "Get maximum number of iterations")
@@ -56,11 +51,6 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Get whether MGR preconditioner is enabled")
         .def("get_log_level", &linsolv_mgr<N>::get_log_level,
              "Get logging verbosity level")
-        .def("get_dump_ij_matrix", &linsolv_mgr<N>::get_dump_ij_matrix,
-             "Get whether IJ matrix dump is enabled")
-        .def("get_ij_dump_file", &linsolv_mgr<N>::get_ij_dump_file,
-             "Get IJ matrix dump filename/prefix")
-
         // Interface methods (inherited from linsolv_iface)
         .def("get_n_iters", &linsolv_mgr<N>::get_n_iters,
              "Get number of iterations from last solve")
