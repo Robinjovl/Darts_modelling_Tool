@@ -114,7 +114,7 @@ if %skip_req%==false (
   cmake -D HYPRE_TIMING=OFF ^
         -D HYPRE_BUILD_TESTS=OFF ^
         -D HYPRE_BUILD_EXAMPLES=OFF ^
-        -D HYPRE_WITH_MPI=OFF ^
+        -D HYPRE_ENABLE_MPI=OFF ^
         -D CMAKE_INSTALL_PREFIX=..\..\..\install ^
         -D HYPRE_SEQUENTIAL=ON .. > ..\..\..\..\make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error

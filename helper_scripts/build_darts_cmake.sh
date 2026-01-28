@@ -224,15 +224,16 @@ if [[ "$skip_req" == false ]]; then
 
     mkdir -p build
     echo -e "\n-- Install Hypre: START\n"
+    mkdir -p hypre/src/cmbuild
     cd hypre/src/cmbuild
     # Setup hypre build with no MPI support (we only use single processor)
     # MGR support is enabled by default in HYPRE (no special flag needed)
     # The MGR (Multiplicative Grid Reduction) solver is always built in HYPRE
     # Request build of tests and examples just to be sure everything is fine in the build
     # For debugging: -DHYPRE_ENABLE_PRINT
-    cmake -D HYPRE_BUILD_TESTS=ON \
-          -D HYPRE_BUILD_EXAMPLES=ON \
-          -D HYPRE_WITH_MPI=OFF \
+    cmake -D HYPRE_BUILD_TESTS=OFF \
+          -D HYPRE_BUILD_EXAMPLES=OFF \
+          -D HYPRE_ENABLE_MPI=OFF \
           -D CMAKE_BUILD_TYPE=${config} \
           -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
           -D CMAKE_INSTALL_PREFIX=../../../install \
