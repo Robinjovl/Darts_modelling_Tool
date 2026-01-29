@@ -544,6 +544,74 @@ class Output:
 
         return 0
 
+    def _get_output_cell_centers(self, cell_ids):
+        cell_ids = np.asarray(cell_ids, dtype=np.int64).ravel()
+
+        centroids = None
+        if hasattr(self.reservoir, "discretizer"):
+            if hasattr(self.reservoir.discretizer, "centroids_all_cells"):
+                centroids = self.reservoir.discretizer.centroids_all_cells
+            elif hasattr(self.reservoir.discretizer, "centroid_all_cells"):
+                centroids = self.reservoir.discretizer.centroid_all_cells
+
+        if centroids is None and hasattr(self.reservoir, "centroids_all_cells"):
+            centroids = self.reservoir.centroids_all_cells
+        if centroids is None and hasattr(self.reservoir, "centroids"):
+            centroids = self.reservoir.centroids
+        if centroids is None and hasattr(self.reservoir, "discr_mesh"):
+            if hasattr(self.reservoir.discr_mesh, "centroids"):
+                centroids = self.reservoir.discr_mesh.centroids
+        if centroids is None and hasattr(self.reservoir, "mesh"):
+            if hasattr(self.reservoir.mesh, "centroids"):
+                centroids = self.reservoir.mesh.centroids
+
+        if centroids is None:
+            raise ValueError(
+                "Cell centroids are not available for this reservoir type."
+            )
+
+        centroids = np.asarray(centroids)
+        if (
+            centroids.ndim == 1
+            and centroids.size > 0
+            and hasattr(centroids[0], "values")
+        ):
+            centroids = np.vstack(
+                [np.asarray(c.values, dtype=np.float64) for c in centroids]
+            )
+
+        if centroids.ndim != 2 or centroids.shape[1] != 3:
+            raise ValueError(
+                f"Expected centroids with shape (n_cells, 3), got {centroids.shape}."
+            )
+
+        local_to_global = None
+        if hasattr(self.reservoir, "discretizer") and hasattr(
+            self.reservoir.discretizer, "local_to_global"
+        ):
+            local_to_global = np.asarray(self.reservoir.discretizer.local_to_global)
+
+        if local_to_global is not None and local_to_global.size > 0:
+            if centroids.shape[0] >= local_to_global.max() + 1:
+                global_ids = local_to_global[cell_ids]
+                if np.any(global_ids < 0):
+                    raise ValueError(
+                        "Inactive cells encountered while mapping centroids."
+                    )
+                centers = centroids[global_ids]
+            else:
+                centers = centroids[cell_ids]
+        else:
+            centers = centroids[cell_ids]
+
+        if centers.shape != (cell_ids.size, 3):
+            raise ValueError(
+                f"Centroid output shape mismatch: {centers.shape} for "
+                f"{cell_ids.size} cells."
+            )
+
+        return centers
+
     def configure_h5_output(
         self, filename: str, cell_ids, description, add_static_data: bool = False
     ):
@@ -558,8 +626,16 @@ class Output:
 
         with h5py.File(filename, "w") as f:
             # add static data group
+            static_group = f.create_group("static")
+            cell_centers = self._get_output_cell_centers(cell_ids).astype(
+                self.precision_map[self.precision], copy=False
+            )
+            static_group.create_dataset(
+                "cell_centers",
+                data=cell_centers,
+                dtype=self.precision_map[self.precision],
+            )
             if add_static_data:
-                static_group = f.create_group("static")
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
                 static_group.create_dataset("block_m", data=block_m)
@@ -649,7 +725,7 @@ class Output:
             self.configure_h5_output(
                 filename=well_output_path,
                 cell_ids=self.id_well_data,
-                add_static_data=True,
+                add_static_data=False,
                 description="Well data",
             )
 
