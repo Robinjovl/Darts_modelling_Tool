@@ -544,9 +544,17 @@ class Output:
 
         return 0
 
-    def _get_output_cell_centers(self, cell_ids):
-        cell_ids = np.asarray(cell_ids, dtype=np.int64).ravel()
+    def _get_output_cell_centers(self):
+        """
+        Resolve cell center coordinates for the entire reservoir.
 
+        This method supports multiple reservoir/discretizer variants with different
+        centroid storage fields and returns all available centroids as-is.
+
+        :returns: numpy array of shape (n_cells, 3) with [x, y, z] coordinates
+        :raises ValueError: when centroids are missing or have unexpected shape
+        """
+        # Resolve the centroids array from known reservoir/discretizer fields.
         centroids = None
         if hasattr(self.reservoir, "discretizer"):
             if hasattr(self.reservoir.discretizer, "centroids_all_cells"):
@@ -570,6 +578,7 @@ class Output:
                 "Cell centroids are not available for this reservoir type."
             )
 
+        # Convert possible wrapped containers to a numpy array.
         centroids = np.asarray(centroids)
         if (
             centroids.ndim == 1
@@ -580,37 +589,13 @@ class Output:
                 [np.asarray(c.values, dtype=np.float64) for c in centroids]
             )
 
+        # Expect a 2D array with x/y/z columns.
         if centroids.ndim != 2 or centroids.shape[1] != 3:
             raise ValueError(
                 f"Expected centroids with shape (n_cells, 3), got {centroids.shape}."
             )
 
-        local_to_global = None
-        if hasattr(self.reservoir, "discretizer") and hasattr(
-            self.reservoir.discretizer, "local_to_global"
-        ):
-            local_to_global = np.asarray(self.reservoir.discretizer.local_to_global)
-
-        if local_to_global is not None and local_to_global.size > 0:
-            if centroids.shape[0] >= local_to_global.max() + 1:
-                global_ids = local_to_global[cell_ids]
-                if np.any(global_ids < 0):
-                    raise ValueError(
-                        "Inactive cells encountered while mapping centroids."
-                    )
-                centers = centroids[global_ids]
-            else:
-                centers = centroids[cell_ids]
-        else:
-            centers = centroids[cell_ids]
-
-        if centers.shape != (cell_ids.size, 3):
-            raise ValueError(
-                f"Centroid output shape mismatch: {centers.shape} for "
-                f"{cell_ids.size} cells."
-            )
-
-        return centers
+        return centroids
 
     def configure_h5_output(
         self, filename: str, cell_ids, description, add_static_data: bool = False
@@ -626,15 +611,19 @@ class Output:
 
         with h5py.File(filename, "w") as f:
             # add static data group
-            static_group = f.create_group("static")
-            cell_centers = self._get_output_cell_centers(cell_ids).astype(
-                self.precision_map[self.precision], copy=False
+            need_static = add_static_data or (
+                cell_ids.size == self.reservoir.mesh.n_res_blocks
             )
-            static_group.create_dataset(
-                "cell_centers",
-                data=cell_centers,
-                dtype=self.precision_map[self.precision],
-            )
+            static_group = f.require_group("static") if need_static else None
+            if cell_ids.size == self.reservoir.mesh.n_res_blocks:
+                cell_centers = self._get_output_cell_centers().astype(
+                    self.precision_map[self.precision], copy=False
+                )
+                static_group.create_dataset(
+                    "cell_centers",
+                    data=cell_centers,
+                    dtype=self.precision_map[self.precision],
+                )
             if add_static_data:
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
@@ -725,7 +714,7 @@ class Output:
             self.configure_h5_output(
                 filename=well_output_path,
                 cell_ids=self.id_well_data,
-                add_static_data=False,
+                add_static_data=True,
                 description="Well data",
             )
 
