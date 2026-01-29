@@ -50,13 +50,13 @@ void CompositionalFlowStrategy::setup()
 
   // Label DOFs for each cell
   // Label 0 = pressure (kept in coarse grid)
-  // Label 1 = components (eliminated via Schur complement)
+  // Labels 1..NC-1 = component fractions (eliminated via Schur complement)
   for( int_t cell = 0; cell < m_numCells; ++cell )
   {
     for( int_t i = 0; i < m_numComponents; ++i )
     {
       int_t global_idx = cell * m_numComponents + i;
-      m_pointMarkers[global_idx] = ( i == 0 ) ? 0 : 1;  // 0=pressure (C), 1=component (F)
+      m_pointMarkers[global_idx] = i;  // 0=pressure (C), 1..NC-1=component fractions (F)
     }
   }
 
@@ -73,7 +73,7 @@ void CompositionalFlowStrategy::setup()
   // F-points are eliminated directly without relaxation iteration
   std::cout << "  F-relaxation: none (HYPRE type -1)" << std::endl;
   m_levelParams[0].fRelaxType = FRelaxationType::none;
-  m_levelParams[0].fRelaxIters = 1;
+  m_levelParams[0].fRelaxIters = 0;
 
   // Interpolation: Injection (direct interpolation)
   // C-point values are directly injected to F-points during interpolation
@@ -92,9 +92,9 @@ void CompositionalFlowStrategy::setup()
   m_levelParams[0].coarseGridMethod = CoarseGridMethod::galerkin;
 
   // Global smoother: HYPRE ILU (incomplete LU factorization, ILU0)
-  std::cout << "  Global smoother: hypreILU (HYPRE type 16), 2 iterations" << std::endl;
+  std::cout << "  Global smoother: hypreILU (HYPRE type 16), 1 iteration" << std::endl;
   m_levelParams[0].globalSmootherType = GlobalSmootherType::hypreILU;
-  m_levelParams[0].globalSmootherIters = 2;
+  m_levelParams[0].globalSmootherIters = 1;
 
   // Setup coarse solver (BoomerAMG for pressure system)
   setupPressureAMG();
@@ -133,15 +133,8 @@ void CompositionalFlowStrategy::setupPressureAMG()
   // Set interpolation type to multipass
   HYPRE_BoomerAMGSetAggInterpType( m_coarseSolver, 6 );  // multipass
 
-  // For non-symmetric systems
-  HYPRE_BoomerAMGSetCoarsenType( m_coarseSolver, 6 );     // PMIS coarsening
-  HYPRE_BoomerAMGSetRelaxType( m_coarseSolver, 6 );       // Hybrid GS/GMRES
-
   // Enable C-F relaxation ordering
   HYPRE_BoomerAMGSetRelaxOrder( m_coarseSolver, 1 );
-
-  // Set number of functions (1 = pressure only)
-  HYPRE_BoomerAMGSetNumFunctions( m_coarseSolver, 1 );
 
   std::cout << "  Coarse solver: BoomerAMG configured for pressure system (Schur complement)" << std::endl;
 }

@@ -37,6 +37,8 @@ namespace opendarts
       , kdim_cached(30)
       , use_mgr_cached(true)
       , log_level_cached(1)
+      , use_physics_scaling_cached(true)
+      , use_flex_gmres_cached(true)
     {
       std::cout << "[MGR] linsolv_mgr created with N_BLOCK_SIZE = " << (int)N_BLOCK_SIZE << std::endl;
     }
@@ -101,6 +103,25 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_use_physics_scaling(bool use_scaling)
+    {
+      use_physics_scaling_cached = use_scaling;
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.usePhysicsScaling = use_scaling;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_use_flex_gmres(bool use_flex_gmres)
+    {
+      use_flex_gmres_cached = use_flex_gmres;
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.krylovType = use_flex_gmres ? mgr::KrylovType::flexgmres
+                                         : mgr::KrylovType::gmres;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_max_iterations() const
     {
       return max_iters_cached;
@@ -130,6 +151,17 @@ namespace opendarts
       return log_level_cached;
     }
 
+    template <uint8_t N_BLOCK_SIZE>
+    bool linsolv_mgr<N_BLOCK_SIZE>::get_use_physics_scaling() const
+    {
+      return use_physics_scaling_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    bool linsolv_mgr<N_BLOCK_SIZE>::get_use_flex_gmres() const
+    {
+      return use_flex_gmres_cached;
+    }
 
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_mgr<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A,
@@ -155,6 +187,9 @@ namespace opendarts
       params.kdim = kdim_cached;
       params.useMGR = use_mgr_cached;
       params.logLevel = log_level_cached;
+      params.usePhysicsScaling = use_physics_scaling_cached;
+      params.krylovType = use_flex_gmres_cached ? mgr::KrylovType::flexgmres
+                                               : mgr::KrylovType::gmres;
       mgr_solver.setParameters(params);
 
       initialized = true;
@@ -261,8 +296,24 @@ namespace opendarts
         first_solve = false;
       }
 
+      if (log_level_cached >= 2)
+      {
+        std::cout << "[MGR] Solving with tolerance=" << tolerance_cached
+                  << ", max_iter=" << max_iters_cached << std::endl;
+      }
+
       // Solve
       mgr::int_t iters = mgr_solver.solve(B, X);
+
+      if (log_level_cached >= 2)
+      {
+        const bool converged = (iters >= 0);
+        const mgr::int_t iters_reported = converged ? iters : -iters;
+        const auto final_res = mgr_solver.get_residual();
+        std::cout << "[MGR] Solve complete: iterations=" << iters_reported
+                  << ", final_res=" << final_res
+                  << ", converged=" << (converged ? "YES" : "NO") << std::endl;
+      }
 
       if (iters < 0)
       {

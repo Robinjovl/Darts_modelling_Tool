@@ -50,6 +50,8 @@ namespace opendarts
       void set_kdim(int kdim);
       void set_use_mgr(bool use_mgr);
       void set_log_level(int log_level);
+      void set_use_physics_scaling(bool use_scaling);
+      void set_use_flex_gmres(bool use_flex_gmres);
 
       // Get current configuration
       opendarts::config::index_t get_max_iterations() const;
@@ -57,6 +59,8 @@ namespace opendarts
       int get_kdim() const;
       bool get_use_mgr() const;
       int get_log_level() const;
+      bool get_use_physics_scaling() const;
+      bool get_use_flex_gmres() const;
 
       // Get number of iterations from last solve
       int get_n_iters() override;
@@ -77,6 +81,8 @@ namespace opendarts
       int kdim_cached;
       bool use_mgr_cached;
       int log_level_cached;
+      bool use_physics_scaling_cached;
+      bool use_flex_gmres_cached;
     };
 
   } // namespace linear_solvers

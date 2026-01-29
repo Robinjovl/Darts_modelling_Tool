@@ -23,6 +23,12 @@ typedef struct hypre_IJVector_struct *HYPRE_IJVector;
 
 namespace mgr {
 
+enum class KrylovType
+{
+  gmres,
+  flexgmres
+};
+
 // Open-darts compatible type aliases
 using index_t = int_t;
 using mat_float = real_type;
@@ -65,10 +71,14 @@ struct SolverParameters
   int_t maxIter = 100;        ///< Maximum GMRES iterations
   real_type tolerance = 1e-6; ///< Convergence tolerance
   int_t kdim = 30;            ///< Krylov subspace dimension
+  KrylovType krylovType = KrylovType::flexgmres; ///< Krylov solver type (GMRES or FlexGMRES)
 
   // Preconditioner choice
   bool useMGR = true;         ///< Use MGR preconditioner (if false, use AMG)
   int_t logLevel = 1;         ///< Logging level (0=none, 1=basic, 2=detailed)
+
+  // Physics-based scaling (Ahat = D * A * D, bhat = D * b, x = D * xhat)
+  bool usePhysicsScaling = true; ///< Enable physics-based scaling (GEOS default)
 
 };
 
@@ -344,6 +354,7 @@ private:
   std::vector<real_type> m_reference;   ///< Reference solution (if available)
   std::vector<real_type> m_solution;    ///< Computed solution
   std::vector<real_type> m_initialGuess; ///< Initial guess (if set)
+  std::vector<real_type> m_scaling;     ///< Physics-based scaling vector
   bool m_hasInitialGuess;               ///< Flag for initial guess
 
   SolverParameters m_params;            ///< Solver parameters
@@ -381,6 +392,11 @@ private:
   bool createHYPREVectors();
 
   /**
+   * @brief Compute physics-based scaling vector (per component)
+   */
+  void computePhysicsScaling();
+
+  /**
    * @brief Setup MGR preconditioner
    */
   HYPRE_Solver setupMGRPreconditioner();
@@ -396,9 +412,19 @@ private:
   SolverResults solveGMRES_MGR();
 
   /**
+   * @brief Solve with FlexGMRES + MGR
+   */
+  SolverResults solveFlexGMRES_MGR();
+
+  /**
    * @brief Solve with GMRES + AMG
    */
   SolverResults solveGMRES_AMG();
+
+  /**
+   * @brief Solve with FlexGMRES + AMG
+   */
+  SolverResults solveFlexGMRES_AMG();
 
   /**
    * @brief Cleanup HYPRE objects

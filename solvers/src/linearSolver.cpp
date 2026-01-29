@@ -9,12 +9,23 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <algorithm>
 
 // HYPRE headers
 #include <_hypre_parcsr_ls.h>
 #include <HYPRE_parcsr_ls.h>
 #include <_hypre_IJ_mv.h>
 #include <HYPRE_IJ_mv.h>
+
+namespace {
+HYPRE_Int MGRDummySetup(HYPRE_Solver,
+                        HYPRE_ParCSRMatrix,
+                        HYPRE_ParVector,
+                        HYPRE_ParVector)
+{
+  return 0;
+}
+} // namespace
 
 namespace mgr {
 
@@ -35,6 +46,7 @@ LinearSolver::LinearSolver()
   m_params.kdim = 30;
   m_params.useMGR = true;
   m_params.logLevel = 1;
+  m_params.usePhysicsScaling = true;
 }
 
 LinearSolver::~LinearSolver()
@@ -74,6 +86,8 @@ void LinearSolver::clearInitialGuess()
 bool LinearSolver::createHYPREMatrix()
 {
   int_t num_rows = m_matrix.global_num_rows;
+  const bool apply_scaling = m_params.usePhysicsScaling &&
+                             ( m_scaling.size() == static_cast<size_t>( num_rows ) );
   int_t num_cols = m_matrix.global_num_cols;
   int_t num_cells = m_matrix.num_rows;
   int_t block_size = m_matrix.block_size;
@@ -90,6 +104,7 @@ bool LinearSolver::createHYPREMatrix()
     for( int_t i = 0; i < block_size; ++i )
     {
       bigint_t global_row = cell * block_size + i;
+      real_type row_scale = apply_scaling ? m_scaling[global_row] : 1.0;
 
       std::vector<bigint_t> cols;
       std::vector<real_type> vals;
@@ -105,6 +120,10 @@ bool LinearSolver::createHYPREMatrix()
         {
           bigint_t global_col = col_cell * block_size + j;
           real_type val = m_matrix.values[block_start + i * block_size + j];
+          if( apply_scaling )
+          {
+            val *= row_scale * m_scaling[global_col];
+          }
 
           // Add ALL values from CSR file (no filtering)
           cols.push_back( global_col );
@@ -134,6 +153,8 @@ bool LinearSolver::createHYPREMatrix()
 bool LinearSolver::createHYPREVectors()
 {
   int_t num_rows = m_matrix.global_num_rows;
+  const bool apply_scaling = m_params.usePhysicsScaling &&
+                             ( m_scaling.size() == static_cast<size_t>( num_rows ) );
 
   // Create RHS vector
   HYPRE_IJVectorCreate( MPI_COMM_WORLD, 0, num_rows - 1, &m_ijRHS );
@@ -152,13 +173,44 @@ bool LinearSolver::createHYPREVectors()
     rows[i] = i;
   }
 
-  HYPRE_IJVectorSetValues( m_ijRHS, num_rows, rows.data(), m_rhs.data() );
+  std::vector<real_type> rhs_scaled;
+  std::vector<real_type> rhs_fallback;
+  const real_type * rhs_values = nullptr;
+  if( m_rhs.size() == static_cast<size_t>( num_rows ) )
+  {
+    rhs_values = m_rhs.data();
+  }
+  else
+  {
+    rhs_fallback.assign( num_rows, 0.0 );
+    rhs_values = rhs_fallback.data();
+  }
+  if( apply_scaling )
+  {
+    rhs_scaled.resize( num_rows );
+    for( int_t i = 0; i < num_rows; ++i )
+    {
+      rhs_scaled[i] = rhs_values[i] * m_scaling[i];
+    }
+    rhs_values = rhs_scaled.data();
+  }
+  HYPRE_IJVectorSetValues( m_ijRHS, num_rows, rows.data(), rhs_values );
 
   // Initialize solution (use initial guess if available, otherwise zero)
   // Use persistent m_solution member to ensure data lifetime through Assemble
   if( m_hasInitialGuess )
   {
     m_solution = m_initialGuess;
+    if( apply_scaling )
+    {
+      for( int_t i = 0; i < num_rows; ++i )
+      {
+        if( m_scaling[i] != 0.0 )
+        {
+          m_solution[i] /= m_scaling[i];
+        }
+      }
+    }
   }
   else
   {
@@ -174,6 +226,108 @@ bool LinearSolver::createHYPREVectors()
   HYPRE_IJVectorGetObject( m_ijSol, (void**)&m_parSol );
 
   return true;
+}
+
+void LinearSolver::computePhysicsScaling()
+{
+  m_scaling.clear();
+
+  if( !m_params.usePhysicsScaling )
+  {
+    return;
+  }
+
+  const int_t block_size = m_matrix.block_size;
+  const int_t num_rows = m_matrix.global_num_rows;
+
+  if( block_size <= 0 || num_rows <= 0 )
+  {
+    return;
+  }
+
+  const std::vector<int_t>* point_markers = nullptr;
+  if( m_strategy )
+  {
+    if( m_strategy->getPointMarkers().empty() )
+    {
+      m_strategy->setup();
+    }
+    if( m_strategy->getPointMarkers().size() == static_cast<size_t>( num_rows ) )
+    {
+      point_markers = &m_strategy->getPointMarkers();
+    }
+  }
+
+  int_t num_labels = block_size;
+  if( point_markers && !point_markers->empty() )
+  {
+    int_t max_label = *std::max_element( point_markers->begin(), point_markers->end() );
+    if( max_label >= 0 )
+    {
+      num_labels = std::max( num_labels, max_label + 1 );
+    }
+  }
+
+  std::vector<real_type> weights( num_labels, 0.0 );
+
+  // Compute local squared Frobenius norms of diagonal blocks per component
+  for( int_t cell = 0; cell < m_matrix.num_rows; ++cell )
+  {
+    for( int_t block_idx = m_matrix.row_ptr[cell];
+         block_idx < m_matrix.row_ptr[cell + 1];
+         ++block_idx )
+    {
+      int_t col_cell = m_matrix.col_ind[block_idx];
+      int_t block_start = block_idx * block_size * block_size;
+      for( int_t i = 0; i < block_size; ++i )
+      {
+        const int_t global_row = cell * block_size + i;
+        const int_t row_label = point_markers ? (*point_markers)[global_row] : i;
+        for( int_t j = 0; j < block_size; ++j )
+        {
+          const int_t global_col = col_cell * block_size + j;
+          const int_t col_label = point_markers ? (*point_markers)[global_col] : j;
+          if( row_label == col_label && row_label >= 0 && row_label < num_labels )
+          {
+            real_type val = m_matrix.values[block_start + i * block_size + j];
+            weights[row_label] += val * val;
+          }
+        }
+      }
+    }
+  }
+
+  // Compute scaling weights: w = sqrt(1 / sqrt(sum(val^2)))
+  for( int_t c = 0; c < num_labels; ++c )
+  {
+    if( weights[c] > 0.0 )
+    {
+      weights[c] = std::sqrt( 1.0 / std::sqrt( weights[c] ) );
+    }
+    else
+    {
+      weights[c] = 1.0;
+    }
+  }
+
+  // Populate scaling vector
+  m_scaling.resize( num_rows );
+  for( int_t cell = 0; cell < m_matrix.num_rows; ++cell )
+  {
+    for( int_t i = 0; i < block_size; ++i )
+    {
+      int_t global_row = cell * block_size + i;
+      int_t label = point_markers ? (*point_markers)[global_row] : i;
+      if( label >= 0 && label < num_labels )
+      {
+        m_scaling[global_row] = weights[label];
+      }
+      else
+      {
+        m_scaling[global_row] = 1.0;
+      }
+    }
+  }
 }
 
 SolverResults LinearSolver::solve()
@@ -217,7 +371,10 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
   // Set as preconditioner
   HYPRE_MGRSetTol( mgr_precond, 0.0 );
   HYPRE_MGRSetMaxIter( mgr_precond, 1 );
-  HYPRE_MGRSetPrintLevel( mgr_precond, m_params.logLevel );
+  // Match GEOS behavior: suppress MGR log bit 0x2 and shift log level by 1.
+  int_t mgr_log_level = std::max<int_t>( m_params.logLevel - 1, 0 );
+  mgr_log_level &= ~static_cast<int_t>( 0x2 );
+  HYPRE_MGRSetPrintLevel( mgr_precond, static_cast<HYPRE_Int>( mgr_log_level ) );
 
   // Set point markers and reduction strategy
   const auto & point_markers = m_strategy->getPointMarkers();
@@ -291,6 +448,16 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
     coarse_methods[i] = static_cast<int_t>( params.coarseGridMethod );
     smooth_types[i] = static_cast<int_t>( params.globalSmootherType );
     smooth_iters[i] = params.globalSmootherIters;
+
+    // Match GEOS behavior: if no relaxation/smoothing, force 0 iterations
+    if( params.fRelaxType == FRelaxationType::none )
+    {
+      f_relax_iters[i] = 0;
+    }
+    if( params.globalSmootherType == GlobalSmootherType::none )
+    {
+      smooth_iters[i] = 0;
+    }
   }
 
   HYPRE_MGRSetLevelFRelaxType( mgr_precond, f_relax_types.data() );
@@ -300,6 +467,12 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
   HYPRE_MGRSetCoarseGridMethod( mgr_precond, coarse_methods.data() );
   HYPRE_MGRSetLevelSmoothType( mgr_precond, smooth_types.data() );
   HYPRE_MGRSetLevelSmoothIters( mgr_precond, smooth_iters.data() );
+
+  // Match GEOS defaults for coarse grid truncation and non-Galerkin settings
+  HYPRE_MGRSetTruncateCoarseGridThreshold( mgr_precond, 1.0e-20 );
+#if defined(HYPRE_RELEASE_NUMBER) && (HYPRE_RELEASE_NUMBER >= 23300)
+  HYPRE_MGRSetNonGalerkinMaxElmts( mgr_precond, 1 );
+#endif
 
   // Set non-C-points to F-points
   HYPRE_MGRSetNonCpointsToFpoints( mgr_precond, 1 );
@@ -345,6 +518,7 @@ SolverResults LinearSolver::solveGMRES_MGR()
   HYPRE_ParCSRGMRESSetTol( gmres_solver, m_params.tolerance );
   HYPRE_ParCSRGMRESSetKDim( gmres_solver, m_params.kdim );
   HYPRE_ParCSRGMRESSetPrintLevel( gmres_solver, m_params.logLevel );
+  HYPRE_ParCSRGMRESSetLogging( gmres_solver, 1 );
 
   // Setup MGR preconditioner
   auto setup_start = std::chrono::high_resolution_clock::now();
@@ -357,14 +531,20 @@ SolverResults LinearSolver::solveGMRES_MGR()
     results.iterations = 0;
     return results;
   }
-  HYPRE_MGRSetTol( mgr_precond, 0.0 );
-  HYPRE_MGRSetMaxIter( mgr_precond, 1 );
-  HYPRE_MGRSetPrintLevel( mgr_precond, m_params.logLevel );
+
+  if( HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol ) != 0 )
+  {
+    std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
+    results.converged = false;
+    results.finalResidual = std::numeric_limits<real_type>::infinity();
+    results.iterations = 0;
+    return results;
+  }
 
   // Set MGR as preconditioner for GMRES
   HYPRE_ParCSRGMRESSetPrecond( gmres_solver,
                                 HYPRE_MGRSolve,
-                                HYPRE_MGRSetup,
+                                MGRDummySetup,
                                 mgr_precond );
 
   auto setup_end = std::chrono::high_resolution_clock::now();
@@ -421,6 +601,17 @@ SolverResults LinearSolver::solveGMRES_MGR()
 
   HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
 
+  // Unscale solution if physics-based scaling was applied
+  const bool apply_scaling = m_params.usePhysicsScaling &&
+                             ( m_scaling.size() == m_solution.size() );
+  if( apply_scaling )
+  {
+    for( size_t i = 0; i < m_solution.size(); ++i )
+    {
+      m_solution[i] *= m_scaling[i];
+    }
+  }
+
   // Calculate relative error if reference is available
   if( !m_reference.empty() )
   {
@@ -440,6 +631,136 @@ SolverResults LinearSolver::solveGMRES_MGR()
   // Cleanup
   HYPRE_MGRDestroy( mgr_precond );
   HYPRE_ParCSRGMRESDestroy( gmres_solver );
+
+  return results;
+}
+
+SolverResults LinearSolver::solveFlexGMRES_MGR()
+{
+
+  SolverResults results;
+
+  // Create FlexGMRES solver
+  HYPRE_Solver gmres_solver;
+  HYPRE_ParCSRFlexGMRESCreate( MPI_COMM_WORLD, &gmres_solver );
+
+  HYPRE_ParCSRFlexGMRESSetMaxIter( gmres_solver, m_params.maxIter );
+  HYPRE_ParCSRFlexGMRESSetTol( gmres_solver, m_params.tolerance );
+  HYPRE_ParCSRFlexGMRESSetKDim( gmres_solver, m_params.kdim );
+  HYPRE_ParCSRFlexGMRESSetPrintLevel( gmres_solver, m_params.logLevel );
+  HYPRE_ParCSRFlexGMRESSetLogging( gmres_solver, 1 );
+
+  // Setup MGR preconditioner
+  auto setup_start = std::chrono::high_resolution_clock::now();
+  HYPRE_Solver mgr_precond = setupMGRPreconditioner();
+  if( !mgr_precond )
+  {
+    std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
+    results.converged = false;
+    results.finalResidual = std::numeric_limits<real_type>::infinity();
+    results.iterations = 0;
+    return results;
+  }
+
+  if( HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol ) != 0 )
+  {
+    std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
+    results.converged = false;
+    results.finalResidual = std::numeric_limits<real_type>::infinity();
+    results.iterations = 0;
+    return results;
+  }
+
+  // Set MGR as preconditioner for FlexGMRES
+  HYPRE_ParCSRFlexGMRESSetPrecond( gmres_solver,
+                                  HYPRE_MGRSolve,
+                                  MGRDummySetup,
+                                  mgr_precond );
+
+  auto setup_end = std::chrono::high_resolution_clock::now();
+  results.setupTime = std::chrono::duration<double>( setup_end - setup_start ).count();
+  m_setupTime = results.setupTime;  // Save to member for getSetupTime()
+
+  // Setup and solve
+  auto solve_start = std::chrono::high_resolution_clock::now();
+
+  HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+
+  auto solve_end = std::chrono::high_resolution_clock::now();
+  results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
+  m_solveTime = results.solveTime;  // Save to member for getSolveTime()
+
+  // Get statistics
+  int_t num_iterations;
+  real_type final_res_norm;
+  HYPRE_ParCSRFlexGMRESGetNumIterations( gmres_solver, &num_iterations );
+  HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+
+  results.iterations = num_iterations;
+  results.finalResidual = final_res_norm;
+
+  // Convergence check: consider converged if residual is very small, even if slightly above tolerance
+  // This handles cases where the solver reaches machine precision
+  const real_type machine_epsilon = std::numeric_limits<real_type>::epsilon() * 100.0; // ~1e-14
+  if( final_res_norm < m_params.tolerance )
+  {
+    results.converged = true;
+  }
+  else if( final_res_norm < machine_epsilon )
+  {
+    // Residual is at machine precision level, consider it converged
+    results.converged = true;
+    std::cout << "[MGR] Warning: Residual (" << final_res_norm << ") is above tolerance ("
+              << m_params.tolerance << ") but at machine precision. Considering converged.\n";
+  }
+  else
+  {
+    results.converged = false;
+  }
+
+  // Extract solution
+  int_t num_rows = m_matrix.global_num_rows;
+  m_solution.resize( num_rows );
+
+  std::vector<bigint_t> rows( num_rows );
+  for( int_t i = 0; i < num_rows; ++i )
+  {
+    rows[i] = i;
+  }
+
+  HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
+
+  // Unscale solution if physics-based scaling was applied
+  const bool apply_scaling = m_params.usePhysicsScaling &&
+                             ( m_scaling.size() == m_solution.size() );
+  if( apply_scaling )
+  {
+    for( size_t i = 0; i < m_solution.size(); ++i )
+    {
+      m_solution[i] *= m_scaling[i];
+    }
+  }
+
+  // Calculate relative error if reference is available
+  if( !m_reference.empty() )
+  {
+    real_type max_error = 0.0;
+    real_type max_ref = 0.0;
+
+    for( size_t i = 0; i < m_solution.size(); ++i )
+    {
+      real_type error = std::abs( m_solution[i] - m_reference[i] );
+      max_error = std::max( max_error, error );
+      max_ref = std::max( max_ref, std::abs( m_reference[i] ) );
+    }
+
+    results.relError = ( max_ref > 0.0 ) ? ( max_error / max_ref * 100.0 ) : 0.0;
+  }
+
+  // Cleanup
+  HYPRE_MGRDestroy( mgr_precond );
+  HYPRE_ParCSRFlexGMRESDestroy( gmres_solver );
 
   return results;
 }
@@ -521,6 +842,17 @@ SolverResults LinearSolver::solveGMRES_AMG()
 
   HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
 
+  // Unscale solution if physics-based scaling was applied
+  const bool apply_scaling = m_params.usePhysicsScaling &&
+                             ( m_scaling.size() == m_solution.size() );
+  if( apply_scaling )
+  {
+    for( size_t i = 0; i < m_solution.size(); ++i )
+    {
+      m_solution[i] *= m_scaling[i];
+    }
+  }
+
   // Calculate relative error if reference is available
   if( !m_reference.empty() )
   {
@@ -540,6 +872,117 @@ SolverResults LinearSolver::solveGMRES_AMG()
   // Cleanup
   HYPRE_BoomerAMGDestroy( amg_precond );
   HYPRE_ParCSRGMRESDestroy( gmres_solver );
+
+  return results;
+}
+
+SolverResults LinearSolver::solveFlexGMRES_AMG()
+{
+
+  SolverResults results;
+
+  // Create FlexGMRES solver
+  HYPRE_Solver gmres_solver;
+  HYPRE_ParCSRFlexGMRESCreate( MPI_COMM_WORLD, &gmres_solver );
+
+  HYPRE_ParCSRFlexGMRESSetMaxIter( gmres_solver, m_params.maxIter );
+  HYPRE_ParCSRFlexGMRESSetTol( gmres_solver, m_params.tolerance );
+  HYPRE_ParCSRFlexGMRESSetKDim( gmres_solver, m_params.kdim );
+  HYPRE_ParCSRFlexGMRESSetPrintLevel( gmres_solver, m_params.logLevel );
+
+  // Setup AMG preconditioner
+  auto setup_start = std::chrono::high_resolution_clock::now();
+  HYPRE_Solver amg_precond = setupAMGPreconditioner();
+
+  HYPRE_ParCSRFlexGMRESSetPrecond( gmres_solver,
+                                  HYPRE_BoomerAMGSolve,
+                                  HYPRE_BoomerAMGSetup,
+                                  amg_precond );
+
+  auto setup_end = std::chrono::high_resolution_clock::now();
+  results.setupTime = std::chrono::duration<double>( setup_end - setup_start ).count();
+  m_setupTime = results.setupTime;  // Save to member for getSetupTime()
+
+  // Setup and solve
+  auto solve_start = std::chrono::high_resolution_clock::now();
+
+  HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+
+  auto solve_end = std::chrono::high_resolution_clock::now();
+  results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
+  m_solveTime = results.solveTime;  // Save to member for getSolveTime()
+
+  // Get statistics
+  int_t num_iterations;
+  real_type final_res_norm;
+  HYPRE_ParCSRFlexGMRESGetNumIterations( gmres_solver, &num_iterations );
+  HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+
+  results.iterations = num_iterations;
+  results.finalResidual = final_res_norm;
+
+  // Convergence check: consider converged if residual is very small, even if slightly above tolerance
+  // This handles cases where the solver reaches machine precision
+  const real_type machine_epsilon = std::numeric_limits<real_type>::epsilon() * 100.0; // ~1e-14
+  if( final_res_norm < m_params.tolerance )
+  {
+    results.converged = true;
+  }
+  else if( final_res_norm < machine_epsilon )
+  {
+    // Residual is at machine precision level, consider it converged
+    results.converged = true;
+    std::cout << "[MGR] Warning: Residual (" << final_res_norm << ") is above tolerance ("
+              << m_params.tolerance << ") but at machine precision. Considering converged.\n";
+  }
+  else
+  {
+    results.converged = false;
+  }
+
+  // Extract solution
+  int_t num_rows = m_matrix.global_num_rows;
+  m_solution.resize( num_rows );
+
+  std::vector<bigint_t> rows( num_rows );
+  for( int_t i = 0; i < num_rows; ++i )
+  {
+    rows[i] = i;
+  }
+
+  HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
+
+  // Unscale solution if physics-based scaling was applied
+  const bool apply_scaling = m_params.usePhysicsScaling &&
+                             ( m_scaling.size() == m_solution.size() );
+  if( apply_scaling )
+  {
+    for( size_t i = 0; i < m_solution.size(); ++i )
+    {
+      m_solution[i] *= m_scaling[i];
+    }
+  }
+
+  // Calculate relative error if reference is available
+  if( !m_reference.empty() )
+  {
+    real_type max_error = 0.0;
+    real_type max_ref = 0.0;
+
+    for( size_t i = 0; i < m_solution.size(); ++i )
+    {
+      real_type error = std::abs( m_solution[i] - m_reference[i] );
+      max_error = std::max( max_error, error );
+      max_ref = std::max( max_ref, std::abs( m_reference[i] ) );
+    }
+
+    results.relError = ( max_ref > 0.0 ) ? ( max_error / max_ref * 100.0 ) : 0.0;
+  }
+
+  // Cleanup
+  HYPRE_BoomerAMGDestroy( amg_precond );
+  HYPRE_ParCSRFlexGMRESDestroy( gmres_solver );
 
   return results;
 }
@@ -738,6 +1181,12 @@ int_t LinearSolver::setup( int_t max_iters, double tolerance )
   m_params.maxIter = max_iters;
   m_params.tolerance = tolerance;
 
+  // Compute physics-based scaling if enabled
+  if( m_params.usePhysicsScaling )
+  {
+    computePhysicsScaling();
+  }
+
   // Create HYPRE matrix from BlockCSR
   if( !createHYPREMatrix() )
   {
@@ -773,6 +1222,8 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
   }
 
   int_t num_rows = m_matrix.global_num_rows;
+  const bool apply_scaling = m_params.usePhysicsScaling &&
+                             ( m_scaling.size() == static_cast<size_t>( num_rows ) );
 
   // Update RHS vector in HYPRE
   std::vector<bigint_t> rows( num_rows );
@@ -781,7 +1232,18 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
     rows[i] = i;
   }
 
-  HYPRE_IJVectorSetValues( m_ijRHS, num_rows, rows.data(), B );
+  std::vector<real_type> rhs_scaled;
+  const real_type * rhs_values = B;
+  if( apply_scaling )
+  {
+    rhs_scaled.resize( num_rows );
+    for( int_t i = 0; i < num_rows; ++i )
+    {
+      rhs_scaled[i] = B[i] * m_scaling[i];
+    }
+    rhs_values = rhs_scaled.data();
+  }
+  HYPRE_IJVectorSetValues( m_ijRHS, num_rows, rows.data(), rhs_values );
   HYPRE_IJVectorAssemble( m_ijRHS );
 
   // Initialize solution vector to zero
@@ -789,27 +1251,26 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
   HYPRE_IJVectorSetValues( m_ijSol, num_rows, rows.data(), zeros.data() );
   HYPRE_IJVectorAssemble( m_ijSol );
 
-  // Output solver parameters
-  std::cout << "[MGR] Solving with tolerance=" << m_params.tolerance
-            << ", max_iter=" << m_params.maxIter << std::endl;
-
   // Choose solver based on parameters
+  const bool use_flex = ( m_params.krylovType == KrylovType::flexgmres );
   if( m_params.useMGR && m_strategy )
   {
-    m_lastResults = solveGMRES_MGR();
+    m_lastResults = use_flex ? solveFlexGMRES_MGR() : solveGMRES_MGR();
   }
   else
   {
-    m_lastResults = solveGMRES_AMG();
+    m_lastResults = use_flex ? solveFlexGMRES_AMG() : solveGMRES_AMG();
   }
 
   // Extract solution to X array
   HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), X );
-
-  // Output convergence status
-  std::cout << "[MGR] Solve complete: iterations=" << m_lastResults.iterations
-            << ", final_res=" << m_lastResults.finalResidual
-            << ", converged=" << (m_lastResults.converged ? "YES" : "NO") << std::endl;
+  if( apply_scaling )
+  {
+    for( int_t i = 0; i < num_rows; ++i )
+    {
+      X[i] *= m_scaling[i];
+    }
+  }
 
   // Return number of iterations (or negative error code)
   if( m_lastResults.converged )
