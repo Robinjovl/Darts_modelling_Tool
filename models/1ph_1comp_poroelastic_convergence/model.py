@@ -15,8 +15,8 @@ class Model(THMCModel):
         self.heat_cond_mult = heat_cond_mult
         super().__init__()
 
-    def init(self):
-        super().init()
+    def init(self, *args, **kwargs):
+        super().init(*args, **kwargs)
         if self.mode == 'thermoporoelastic':
             vol_strain_trans = np.array(self.reservoir.mesh.vol_strain_tran, copy=False)
             vol_strain_rhs = np.array(self.reservoir.mesh.vol_strain_rhs, copy=False)

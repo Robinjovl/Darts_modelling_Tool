@@ -94,7 +94,7 @@ class Model(CICDModel):
         self.solver.set_use_mgr(True)  # Use MGR preconditioner
         return
 
-    def init(self):
+    def init(self, *args, **kwargs):
         """Override init to set solver before engine initialization"""
         # The engine is created during physics.init_physics() in the base init()
         # init_base() checks for linear_solver_external, so if we set it before init_base runs,
@@ -109,7 +109,7 @@ class Model(CICDModel):
         # For now, we'll set it after super().init() completes. The init_base will have
         # already created a solver, but set_linear_solver will replace it. This works
         # because set_linear_solver handles cleanup of the old solver.
-        super().init()
+        super().init(*args, **kwargs)
 
         # Set the solver on the engine - this replaces any solver created in init_base
         if hasattr(self, 'solver') and self.solver is not None:
