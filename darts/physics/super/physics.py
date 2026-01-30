@@ -139,6 +139,18 @@ class Compositional(PhysicsBase):
         self.dz = (
             (axes_max[1] - axes_min[1]) / (n_axes_points[1] - 1) if nc > 1 else None
         )
+        if self.extrapolation_flag:
+            # ASSERT EQUAL DZ FOR EACH COMPOSITION AXIS
+            for i in range(nc - 1):
+                assert (
+                    np.abs(
+                        (axes_max[i + 1] - axes_min[i + 1]) / (n_axes_points[i + 1] - 1)
+                        - self.dz
+                    )
+                    < 1e-15
+                ), (
+                    "To use extrapolation logic, dz should be equal along all compositional axes"
+                )
 
         self.has_dfm_well = False
         assert sim_eps_multiplier > 1, (
