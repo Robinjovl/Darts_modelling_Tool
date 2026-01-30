@@ -1675,7 +1675,7 @@ class Output:
             states = np.clip(
                 states,
                 np.array(self.physics.axes_min),
-                np.array(self.physics.axes_max)
+                np.array(self.physics.axes_max), 
             )
 
         batch_size = n_ts * n_conns
