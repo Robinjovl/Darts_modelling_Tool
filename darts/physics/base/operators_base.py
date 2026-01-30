@@ -43,14 +43,22 @@ class OperatorsBase(operator_set_evaluator_iface):
         )
 
     def apply_extrapolation(self, state, values):
+        """
+        Method that determines whether or not extrapolation should be applied to current state (z[-1] < 0).
+        If so, it will call extrapolate() and return True, such that evaluate() skips further evaluation of operators
+
+        :param state: Vector with state [P, z, (T/H)]
+        :param values: Vector with operator values
+        :return: Whether or not extrapolation has been applied to this state
+        """
         # Find composition, if last composition is negative, apply extrapolation
         zc = np.append(state[1 : self.nc], 1 - np.sum(state[1 : self.nc]))
 
         if len(zc) > 2 and zc[-1] < 0.99 * self.eps_z and self.extrapolation_flag:
             self.extrapolate(state, values)
-            return 1
+            return True
         else:
-            return 0
+            return False
 
     def extrapolate(self, state, values):
         """
