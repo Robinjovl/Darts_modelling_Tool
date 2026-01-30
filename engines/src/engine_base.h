@@ -147,8 +147,11 @@ public:
 
 	virtual void average_operator(std::vector<value_t> &av_op);
 
+	// Apply composition correction on initial state: normalize to within [min_sim_z, max_sim_z]
 	virtual void apply_composition_correction(std::vector<value_t>& Xi);
+	// Apply composition correction on Newton update: normalize to within [min_sim_z, max_sim_z]
 	virtual void apply_composition_correction(std::vector<value_t>& X, std::vector<value_t> &dX);
+	// Alternative composition correction on Newton update: find intersection of Newton update with compositional domain (not used currently)
 	virtual void apply_composition_correction_(std::vector<value_t>& X, std::vector<value_t>& dX);
 
 	virtual void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
