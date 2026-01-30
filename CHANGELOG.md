@@ -1,3 +1,6 @@
+# 1.4 [30-01-2026]
+-Cell centroids are now included under static variables in the output file 'reservoir_solution.h5' ([!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282))
+
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
 - EoSDensity and EoSEnthalpy API changes:
