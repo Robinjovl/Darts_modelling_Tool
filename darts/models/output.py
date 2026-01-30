@@ -1674,8 +1674,8 @@ class Output:
         if self.precision == "s":
             states = np.clip(
                 states,
-                self.physics.axes_min[None, None, :],
-                self.physics.axes_max[None, None, :],
+                np.array(self.physics.axes_min),
+                np.array(self.physics.axes_max)
             )
 
         batch_size = n_ts * n_conns
