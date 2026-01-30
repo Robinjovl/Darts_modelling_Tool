@@ -409,17 +409,16 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   if (params->log_transform == 0)
   {
     min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
-		min_sim_z = min_axis_z + params->sim_eps;
 		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
-		max_sim_z = max_axis_z - params->sim_eps;
   }
   else if (params->log_transform == 1)
   {
     min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
-		min_sim_z = min_axis_z + params->sim_eps;
 		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
-		max_sim_z = max_axis_z - params->sim_eps;
+
   }
+  min_sim_z = min_axis_z + params->sim_eps;
+  max_sim_z = max_axis_z - params->sim_eps;
 
   X.resize(n_vars * mesh->n_blocks);
   Xn.resize(n_vars * mesh->n_blocks);

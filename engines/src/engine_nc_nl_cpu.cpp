@@ -255,18 +255,15 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	if (params->log_transform == 0)
 	{
 		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
-		min_sim_z = min_axis_z + params->sim_eps;
 		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
-		max_sim_z = max_axis_z - params->sim_eps;
 	}
 	else if (params->log_transform == 1)
 	{
 		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
-		min_sim_z = min_axis_z + params->sim_eps;
 		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
-		max_sim_z = max_axis_z - params->sim_eps;
 	}
-
+	min_sim_z = min_axis_z + params->sim_eps;
+	max_sim_z = max_axis_z - params->sim_eps;
 
 	fluxes.resize(mesh->n_conns);
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);

@@ -290,17 +290,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		if (params->log_transform == 0)
 		{
 			min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
-			min_sim_z = min_axis_z + params->sim_eps;
 			max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
-			max_sim_z = max_axis_z - params->sim_eps;
 		}
 		else if (params->log_transform == 1)
 		{
 			min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
-			min_sim_z = min_axis_z + params->sim_eps;
 			max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
-			max_sim_z = max_axis_z - params->sim_eps;
 		}
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_sim_z = max_axis_z - params->sim_eps;
 	}
 
 	X_init.resize(n_vars * mesh->n_blocks);
