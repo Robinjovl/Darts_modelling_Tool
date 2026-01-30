@@ -886,7 +886,7 @@ class Output:
         engine=False,
     ) -> tuple[np.ndarray, dict]:
         """
-        Evaluates and returns properties from saved data (HDF5 file) or a simulation engine.
+        Evaluates and returns reservoir properties from saved data (HDF5 file) or a simulation engine.
 
         :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
         :type filepath: str, optional
@@ -1675,7 +1675,7 @@ class Output:
             states = np.clip(
                 states,
                 np.array(self.physics.axes_min),
-                np.array(self.physics.axes_max), 
+                np.array(self.physics.axes_max),
             )
 
         batch_size = n_ts * n_conns
