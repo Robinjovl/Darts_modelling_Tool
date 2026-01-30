@@ -1,4 +1,6 @@
 # 1.3.3 [Future]
+- Add potential energy to the energy conservation equation
+- Add the Drift-Flux Model (DFM) as a new well model
 - Breaking changes:
   - Rename an input argument of the method `add_well`:\
   {- Before: self.reservoir.add_well(..., wellbore_diameter) -}\
@@ -6,6 +8,7 @@
   - Rename input arguments of the method `add_perforation`:\
   {- Before: self.reservoir.add_perforation(..., cell_index, well_radius, multi_segment) -}\
   {+ Now:    self.reservoir.add_perforation(..., res_cell_idx, well_diameter, ms_epm) +}
+
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
 - EoSDensity and EoSEnthalpy API changes:
