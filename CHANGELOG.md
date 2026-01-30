@@ -1,5 +1,8 @@
 # 1.4 [30-01-2026]
--Cell centroids are now included under static variables in the output file 'reservoir_solution.h5' ([!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282))
+-Cell centroids are now included under static variables in the output file 'reservoir_solution.h5'[!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282);
+-Faster well outpput with vectorized interpolators. In the past two for loops were used over time steps + over connection ids (wellheads and perforations). Now, they are removed;
+-Use operator interpolators instead of evaluating some operators explicitly for well rates calculations;
+-Time saving by saving well output states after after DartsModel.run(); [!228](https://gitlab.com/open-darts/open-darts/-/merge_requests/228)
 
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
