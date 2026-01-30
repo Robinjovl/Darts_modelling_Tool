@@ -14,6 +14,15 @@ class OperatorsBase(operator_set_evaluator_iface):
         extrapolation_flag: bool = True,
         dz: float = None,
     ):
+        """
+        Constructor of OperatorsBase base class
+
+        :param property_container: Property container of type PropertyBase
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
+        """
         super().__init__()
 
         self.property = property_container
@@ -65,21 +74,30 @@ class OperatorsBase(operator_set_evaluator_iface):
         last_z = 1.0 - np.sum(z)
 
         # Build candidate points by subtracting dz along each axis and uniformly
+        # Axes where z[i] = zero degenerate for extrapolation (e.g., a 3D extrapolation reduces to 2D)
+        # There exist two cases of supporting points: one where points are on the same side, one where they are on opposite side
+        # (see hydrate paper, https://doi.org/10.1016/j.ecmx.2026.101616)
+        # TODO: check if this setup is general for any number of components. It certainly works for NC = 3 and NC = 4
         supporting_points = []
+        # z[-1] = -dz (points on same side of hypercube)
         if last_z >= -1.1 * self.dz:
             for i in range(self.nc - 1):
                 if nonzero_comps[i]:
                     zp = z.copy()
+                    # subtract dz from z[i] to obtain the ith supporting point
                     zp[i] -= self.dz
                     supporting_points.append(zp)
+        # z[-1] < -dz (opposite points in hypercube)
         else:
             for i in range(self.nc - 1):
-                if nonzero_comps[i]:
+                if nonzero_comps[i]:  # only for nonzero compositions,
                     for j in range(i + 1, self.nc - 1):
                         zp = z.copy()
+                        # subtract dz from z[i] and z[j] to obtain the ith supporting point
                         zp[i] -= self.dz
                         zp[j] -= self.dz
                         supporting_points.append(zp)
+        # Finally, append the point directly opposite to the extrapolated point
         supporting_points.append(
             np.array(
                 [
@@ -139,6 +157,15 @@ class WellControlOperators(OperatorsBase):
         extrapolation_flag: bool = True,
         dz: float = None,
     ):
+        """
+        Constructor of WellControlOperators class
+
+        :param property_container: Property container of type PropertyBase
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
+        """
         super().__init__(
             property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
         )
@@ -196,6 +223,10 @@ class WellControlOperators(OperatorsBase):
 
 
 class WellInitOperators(OperatorsBase):
+    """
+    WellInitOperators initialize the well BHP/BHT for generic state specification
+    """
+
     def __init__(
         self,
         property_container: PropertyBase,
@@ -204,6 +235,16 @@ class WellInitOperators(OperatorsBase):
         extrapolation_flag: bool = True,
         dz: float = None,
     ):
+        """
+        Constructor of WellInitOperators class
+
+        :param property_container: Property container of type PropertyBase
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param is_pt: Switch to indicate if state specification is P/PT or PH
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
+        """
         super().__init__(property_container, thermal, extrapolation_flag, dz)
 
         self.n_ops = 1
@@ -248,6 +289,9 @@ class PropertyOperators(OperatorsBase):
         :param property_container: PropertyBase object to evaluate properties at given state
         :param thermal: Bool for thermal
         :param props: Optional dictionary of properties, default is taken from PropertyContainer
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
         """
         super().__init__(property_container, thermal, extrapolation_flag, dz)
 

@@ -14,6 +14,15 @@ class OperatorsSuper(OperatorsBase):
         extrapolation_flag: bool = True,
         dz: float = None,
     ):
+        """
+        Constructor of OperatorsSuper base class
+
+        :param property_container: Property container of type PropertyContainer
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
+        """
         super().__init__(
             property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
         )  # Initialize base-class
@@ -403,6 +412,15 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
         extrapolation_flag: bool = True,
         dz: float = None,
     ):
+        """
+        Constructor of GeomechanicsReservoirOperators class
+
+        :param property_container: Property container of type PropertyContainer
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
+        """
         super().__init__(
             property_container, thermal, extrapolation_flag, dz
         )  # Initialize base-class

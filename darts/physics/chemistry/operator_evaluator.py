@@ -15,27 +15,33 @@ class ReservoirOperators(OperatorsSuper):
 
     def __init__(
         self,
-        properties,
+        property_container,
         thermal: bool,
         extrapolation_flag: bool = False,
         dz: float = None,
     ):
         """
-        Constructor for ReservoirOperators class.
-        :param properties: Property container object
-        :type properties: user-defined or built-in PropertyContainer class
+        Constructor of ReservoirOperators class
+
+        :param property_container: Property container of type PropertyBase
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
         """
         # set some properties to -1 to use OperatorsSuper constructor
         # TODO: refactor in future
-        properties.nc_fl = -1
-        properties.np_fl = -1
-        properties.ns = -1
+        property_container.nc_fl = -1
+        property_container.np_fl = -1
+        property_container.ns = -1
         super().__init__(
-            properties, thermal=thermal, extrapolation_flag=extrapolation_flag, dz=dz
+            property_container=property_container,
+            thermal=thermal,
+            extrapolation_flag=extrapolation_flag,
+            dz=dz,
         )
 
         # Store your input parameters in self here, and initialize other parameters here in self
-        self.property = properties
         self.counter = 0
 
     def get_overall_composition(self, state):
@@ -195,22 +201,26 @@ class ConversionOperators(ReservoirOperators):
 
     def __init__(
         self,
-        properties,
+        property_container,
         thermal: bool,
         extrapolation_flag: bool = False,
         dz: float = None,
     ):
         """
-        Constructor for ConversionOperators class.
-        :param properties: Property container object
-        :type properties: user-defined or built-in PropertyContainer class
+        Constructor of ConversionOperators class
+
+        :param property_container: Property container of type PropertyBase
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
         """
         super().__init__(
-            properties, thermal, extrapolation_flag, dz
+            property_container, thermal, extrapolation_flag, dz
         )  # Initialize base-class
         self.fluid_mole = self.property.flash_ev.total_moles / 1000  # mol to kmol
         self.counter = 0
-        self.props_name = ['z_' + prop for prop in properties.minerals]
+        self.props_name = ['z_' + prop for prop in property_container.minerals]
 
     def evaluate(self, state, values):
         """
