@@ -35,7 +35,7 @@ For more information about how to get started visit the [documentation](https://
 
 ## License
 
-Please refer to [LICENSE.md](LICENSE.md) for more information about the licensing of openDARTS.
+Please refer to [LICENSE.md](LICENSE.md) for information about the licensing of openDARTS.
 
 ## Information
 
@@ -43,7 +43,7 @@ The [wiki](https://gitlab.com/open-darts/open-darts/-/wikis/home) contains infor
 
 ## How to cite
 
-If you use PorePy in your research, we ask you to cite the following publication
+If you use open-DARTS in your research, we ask you to cite the following publication
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8046982.svg)](https://doi.org/10.5281/zenodo.8046982)
 

@@ -3,8 +3,18 @@
     # Will be executed on runner with windows tag - that assumed to run on windows host
     tags:
         - windows-shell
+    variables:
+        CONDA_ENV: "darts-win-${CI_JOB_ID}"
+        CONDA_BIN_PATH: 'D:\miniconda3\condabin'
     before_script:
-        - $env:PATH +=";" + $env:PYTHONPATH + ";" + $env:PYTHONPATH + "\Scripts"
+        # create and activate a conda env
+        - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
+        - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent
+        - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
+        - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
+        # Initialize conda environment
+        - conda create --name $env:CONDA_ENV python=$env:PY_VER --yes -q
+        - conda activate $env:CONDA_ENV
         # enable unbuffered output so that everything goes to log file in a correct order
         - $env:PYTHONUNBUFFERED = 1
         - $env:PYTHONLEGACYWINDOWSSTDIO = 1
@@ -32,6 +42,14 @@
         - python main.py
         - cd ..\..\..
     after_script:
+        # delete the conda env
+        - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
+        - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent
+        - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
+        - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
+        - conda deactivate
+        - conda env remove --name $env:CONDA_ENV --yes
+        # archive the artifacts (.pkl files) if the option is enabled
         - cd models
         - .\archive_pkl.bat $env:ODLS $env:TEST_GPU
         - cd ..

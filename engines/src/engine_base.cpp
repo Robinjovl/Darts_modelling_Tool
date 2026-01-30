@@ -1046,8 +1046,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                         if (opt_phase == phase)
                         {
                             // adding minus sign on "q_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-                            ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->segment_transmissibility * (-q_Q[ww][p]);
-                            vals_term += rates[p_idx] * w->segment_transmissibility * (-q_Q[ww][p]);
+                            ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->well_transmissibility * (-q_Q[ww][p]);
+                            vals_term += rates[p_idx] * w->well_transmissibility * (-q_Q[ww][p]);
                         }
                         p++;
                     }
@@ -1160,8 +1160,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 						if (opt_phase == phase)
 						{
                             // adding minus sign on "q_inj_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-							ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->segment_transmissibility * (-q_inj_Q[ww][p]);
-							vals_term += rates[p_idx] * w->segment_transmissibility * (-q_inj_Q[ww][p]);
+							ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->well_transmissibility * (-q_inj_Q[ww][p]);
+							vals_term += rates[p_idx] * w->well_transmissibility * (-q_inj_Q[ww][p]);
 						}
                         p++;
 					}
@@ -1691,7 +1691,7 @@ engine_base::calc_well_residual_L1()
 double
 engine_base::calc_well_residual_L2()
 {
-	double residual = 0;
+	double residual_epm_well = 0;
 	std::vector<value_t> res(n_vars, 0);
 	std::vector<value_t> norm(n_vars, 0);
 
@@ -1700,34 +1700,37 @@ engine_base::calc_well_residual_L2()
 
 	for (ms_well *w : wells)
 	{
-		// first sum up RHS for well segments which have perforations
-		int nperf = w->perforations.size();
-		for (int ip = 0; ip < nperf; ip++)
+		if (w->ms_type == ms_well::MS_Type::EPM)
 		{
+			// first sum up RHS for well segments which have perforations
+			int nperf = w->perforations.size();
+			for (int ip = 0; ip < nperf; ip++)
+			{
+				for (int v = 0; v < n_vars; v++)
+				{
+					index_t i_w, i_r;
+					value_t wi, wid;
+					std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
+
+					res[v] += RHS[(w->well_body_idx + i_w) * n_vars + v] * RHS[(w->well_body_idx + i_w) * n_vars + v];
+					norm[v] += PV[w->well_body_idx + i_w] * av_op[v] * PV[w->well_body_idx + i_w] * av_op[v];
+				}
+			}
+			// and then add RHS for well control equations
 			for (int v = 0; v < n_vars; v++)
 			{
-				index_t i_w, i_r;
-				value_t wi, wid;
-				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
-
-				res[v] += RHS[(w->well_body_idx + i_w) * n_vars + v] * RHS[(w->well_body_idx + i_w) * n_vars + v];
-				norm[v] += PV[w->well_body_idx + i_w] * av_op[v] * PV[w->well_body_idx + i_w] * av_op[v];
+				// well constraints should not be normalized, so pre-multiply by norm
+				res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
 			}
-		}
-		// and then add RHS for well control equations
-		for (int v = 0; v < n_vars; v++)
-		{
-			// well constraints should not be normalized, so pre-multiply by norm
-			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
 		}
 	}
 
 	for (int v = 0; v < n_vars; v++)
 	{
-		residual = std::max(residual, sqrt(res[v] / safe_denominator(norm[v])));
+		residual_epm_well = std::max(residual_epm_well, sqrt(res[v] / safe_denominator(norm[v])));
 	}
 
-	return residual;
+	return residual_epm_well;
 }
 
 double
@@ -1786,6 +1789,87 @@ engine_base::calc_newton_residual()
 		return calc_newton_residual_L2();
 	}
 	}
+}
+
+/**
+ * @brief Compute a single scalar residual for the coupled well-reservoir system having only DFM wells.
+ *
+ * This function turns the full RHS (all reservoir and well blocks and variables) into one
+ * nonnegative number that can be used as a convergence indicator.
+ *
+ * Behavior depends on the selected method:
+ *
+ * Method 1 (method == 1):
+ *   - L2 norm
+ *
+ * Method 2 (method == 2):
+ *   - Infinity norm
+ *   - Ignores reservoir cells/well segments with extremely large volume (volume >= 1e10), since
+ *     their residual is not meaningful and can cause misleading convergence behavior
+ *     (e.g., when a very large reservoir block is used to model a standalone well).
+ *
+ * @param method Selects the residual aggregation method (1 or 2).
+ * @return scalar residual.
+ */
+double
+engine_base::calc_coupled_well_reservoir_residual(int method)
+{
+	double residual = 0;
+
+	if (method == 1)   // Method 1 (L2 norm)
+	{
+		std::vector<value_t> res(n_vars, 0);
+		std::vector<value_t> norm(n_vars, 0);
+
+		for (int i = 0; i < mesh->n_blocks; i++)
+		{
+			for (int c = 0; c < n_vars; c++)
+			{
+				res[c] += RHS[i * n_vars + c] * RHS[i * n_vars + c];
+				norm[c] += (PV[i] * op_vals_arr[i * n_ops + c]) * (PV[i] * op_vals_arr[i * n_ops + c]);
+			}
+		}
+		for (int c = 0; c < n_vars; c++)
+		{
+			residual = std::max(residual, sqrt(res[c] / safe_denominator(norm[c])));
+		}
+	}
+	else if (method == 2)   // Method 2 (Infinity norm)
+	{
+		value_t max_res = 0;
+
+		for (int i = 0; i < mesh->n_res_blocks; i++)
+		{
+			if (mesh->volume[i] < 1e10)   // The residual of an extremely large block is not important. I did this because when I used a very large reservoir block for having a standalone well
+				// model, the residual of the reservoir block changed and it created convergence problems.
+			{
+				for (int c = 0; c < n_vars; c++)
+				{
+					max_res = std::max(max_res, std::abs(RHS[i * n_vars + c]));
+				}
+			}
+		}
+		for (ms_well* w : wells)
+		{
+			if (w->ms_type == ms_well::MS_Type::DFM)
+			{
+				for (int i = w->well_head_idx; i < (w->well_head_idx + w->num_segments); i++)
+				{
+					if (mesh->volume[i] < 1e10)
+					{
+						for (int c = 0; c < n_vars; c++)
+						{
+							max_res = std::max(max_res, std::abs(RHS[i * n_vars + c]));
+						}
+					}
+				}
+			}
+		}
+
+		residual = max_res;
+	}
+
+	return residual;
 }
 
 double
@@ -2729,7 +2813,10 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 
 		for (ms_well *w : wells)
 		{
-			w->calc_rates(X, op_vals_arr, time_data);
+			if (w->ms_type == ms_well::MS_Type::EPM)
+			{
+				w->calc_rates(X, op_vals_arr, time_data);
+			}
 		}
 
 		// calculate FIPS

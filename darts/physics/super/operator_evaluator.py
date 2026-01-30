@@ -65,10 +65,10 @@ class OperatorsSuper(OperatorsBase):
         print("DELTA (reaction)", values[self.KIN_OP : self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP : self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP : self.MULT_OP])
+        print("PERM_MULT", values[self.MULT_OP])
         print("LAMBDA", values[self.LAMBDA_OP : self.SAT_OP])
         print("SAT", values[self.SAT_OP : self.ENTH_OP])
         print("ENTHALPY", values[self.ENTH_OP : self.ENTH_OP + self.nph])
-        print("PERM_MULT", values[self.MULT_OP])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
 
@@ -119,12 +119,12 @@ class ReservoirOperators(OperatorsSuper):
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
             ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
-        """ molar density operator """
+        """ Molar density operator """
         values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
             self.property.ph
         ]
 
-        """ Gamma operator for diffusion (same for thermal and isothermal) """
+        """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
         # fluid diffusive flux sat: c_r phi_f s_j rho_mj [kmol/m3] (kmol/m3)
         values_np[self.UPSAT_OP + self.property.ph] = (
             self.compr * self.phi_f * self.property.sat[self.property.ph]
@@ -165,7 +165,7 @@ class ReservoirOperators(OperatorsSuper):
             self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
         )
 
-        """ Saturation operator """
+        """ Saturation operator for phase volumetric calculations in the wellbore """
         # phase saturation: s_j [-]
         values_np[self.SAT_OP + self.property.ph] = self.property.sat[self.property.ph]
 
@@ -245,37 +245,6 @@ class ReservoirOperators(OperatorsSuper):
         return 0
 
 
-class GeomechanicsReservoirOperators(ReservoirOperators):
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
-
-        self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
-        self.n_ops = self.ROCK_DENS_OP + 1
-
-    def evaluate(self, state, values):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
-        :return: updated value for operators, stored in values
-        """
-        # Reservoir operators
-        super().evaluate(state, values)
-
-        # Rock density operator
-        self.n_ops = self.ROCK_DENS_OP + 1
-        # TODO: function of matrix pressure = I1 / 3 = (s_xx + s_yy + s_zz) / 3
-        values.to_numpy()[self.ROCK_DENS_OP] = self.property.rock_density_ev.evaluate()
-
-        return 0
-
-    def print_operators(self, state, values):
-        """Method for printing operators, grouped"""
-        super().print_operators(state, values)
-        print("ROCK DENSITY", values[self.ROCK_DENS_OP])
-        return
-
-
 class WellOperators(OperatorsSuper):
     def evaluate(self, state, values):
         """
@@ -287,13 +256,10 @@ class WellOperators(OperatorsSuper):
         # Composition vector and pressure from state:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
-        pressure = state_np[0]
 
         values_np[:] = 0
 
         self.property.evaluate(state_np)
-
-        self.compr = self.property.rock_compr_ev.evaluate(pressure)
 
         density_tot = np.sum(
             self.property.sat[: self.np_fl] * self.property.dens_m[: self.np_fl]
@@ -306,14 +272,13 @@ class WellOperators(OperatorsSuper):
         """ Alpha operator represents accumulation term """
         # fluid mass accumulation: c_r phi^T z_c* [-] rho_m^T [kmol/m3]
         values_np[self.ACC_OP : self.ACC_OP + self.nc_fl] = (
-            self.compr * density_tot * zc[: self.nc_fl]
+            density_tot * zc[: self.nc_fl]
         )
 
         """ and alpha for mineral components """
         # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
         values_np[self.ACC_OP + self.nc_fl : self.ACC_OP + self.nc_fl + self.ns] = (
-            self.compr
-            * self.property.dens_m[self.np_fl : self.np_fl + self.ns]
+            self.property.dens_m[self.np_fl : self.np_fl + self.ns]
             * zc[self.nc_fl : self.nc_fl + self.ns]
         )
 
@@ -363,7 +328,86 @@ class WellOperators(OperatorsSuper):
         return 0
 
     def evaluate_thermal(self, state, values):
+        """
+        Method to evaluate operators for energy conservation equation
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
+        :param values: values of the operators (used for storing the operator values)
+        :return: updated value for operators, stored in values
+        """
+        pressure = state[0]
+        # temperature = state[-1]
+
+        # Evaluate thermal properties at current state
+        self.property.evaluate_thermal(state)
+
+        """ Alpha operator represents accumulation term: """
+        # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        values[self.ACC_OP + self.nc] += self.phi_f * np.sum(
+            self.property.sat[self.property.ph]
+            * self.property.dens_m[self.property.ph]
+            * self.property.enthalpy[self.property.ph]
+        )  # fluid enthalpy (kJ/m3)
+        # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        # well does not support solid
+
+        # Enthalpy to internal energy conversion
+        values[self.ACC_OP + self.nc] -= 100 * pressure
+
+        """ Beta operator represents flux term: """
+        # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
+        values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = (
+            self.property.enthalpy[self.property.ph]
+            * self.property.dens_m[self.property.ph]
+        )
+
+        """ Chi operator for temperature in conduction """
+        # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
+        values[self.GRAD_OP + self.property.ph * self.ne + self.nc] = (
+            self.property.temperature * self.property.cond[self.property.ph]
+        )
+
+        """ Delta operator for reaction """
+
+        # Phase enthalpy
+        for j in range(self.nph):
+            values[self.ENTH_OP + j] = self.property.enthalpy[j]
+
+        """ Additional energy operators """
+        # Temperature operator
         values[self.TEMP_OP] = self.property.temperature
+
+        return 0
+
+
+class GeomechanicsReservoirOperators(ReservoirOperators):
+    def __init__(self, property_container: PropertyContainer, thermal: bool):
+        super().__init__(property_container, thermal)  # Initialize base-class
+
+        self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
+        self.n_ops = self.ROCK_DENS_OP + 1
+
+    def evaluate(self, state, values):
+        """
+        Class methods which evaluates the state operators for the element based physics
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
+        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
+        :return: updated value for operators, stored in values
+        """
+        # Reservoir operators
+        super().evaluate(state, values)
+
+        # Rock density operator
+        self.n_ops = self.ROCK_DENS_OP + 1
+        # TODO: function of matrix pressure = I1 / 3 = (s_xx + s_yy + s_zz) / 3
+        values.to_numpy()[self.ROCK_DENS_OP] = self.property.rock_density_ev.evaluate()
+
+        return 0
+
+    def print_operators(self, state, values):
+        """Method for printing operators, grouped"""
+        super().print_operators(state, values)
+        print("ROCK DENSITY", values[self.ROCK_DENS_OP])
         return
 
 

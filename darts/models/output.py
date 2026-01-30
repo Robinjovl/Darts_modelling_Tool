@@ -137,7 +137,7 @@ class Output:
 
     def set_phase_properties(self):
         """
-        This function constructs a predefined set of property operators for the compositiol/geothermal physics class.
+        This function constructs a predefined set of property operators for the compositional/geothermal physics class.
         """
 
         if type(self.physics) is Compositional or type(self.physics) is BlackOil:
@@ -1274,7 +1274,8 @@ class Output:
         self, types_of_well_rates: list = None, save_output_files: bool = False
     ):
         """
-        Compute and store well time data including rates and bottom-hole conditions (BHT and BHP).
+        Compute and store well time data including rates and bottom-hole conditions (BHT and BHP)
+
         Rates are calculated for each perforation and also total rate of each well. Total rates are calculated using
         two different methods:
         1- summing up the rates of perforations
@@ -1290,8 +1291,6 @@ class Output:
         :type types_of_well_rates: list
         :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default false
         :type save_output_files: bool
-
-        Well data is saved as a *.pkl file and .xlsx file in the dartsmodel.output_folder.
         """
         # Start timer for store_well_time_data
         self.timer.start()
@@ -1444,7 +1443,7 @@ class Output:
         )
         # Get transmissibility for each wellhead connection
         well_head_conn_trans = np.array(
-            [well.segment_transmissibility for well in self.reservoir.wells]
+            [well.well_transmissibility for well in self.reservoir.wells]
         )
 
         return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans

@@ -14,29 +14,49 @@ def _ensure_parent_dir(path):
         os.makedirs(parent, exist_ok=True)
 
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
+    base_dir = os.getcwd()  # base directory is models/
+    logs_dir = os.path.join(base_dir, "_logs")  # directory in which log files will be saved
+    os.makedirs(logs_dir, exist_ok=True)
+
     model_dir = os.path.abspath(r'.')
     _ensure_parent_dir(os.path.join(model_dir, '_logs', 'placeholder'))
 
     # set model list to run
 
-    accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do',
-                     '2ph_geothermal', '2ph_geothermal_mass_flux',
-                     '3ph_comp_w', '3ph_do', '3ph_bo',
-                     'Uniform_Brugge',
-                     'Chem_benchmark_new',
-                     #'CO2_foam_CCS',
-                     'GeoRising',
-                     'CoaxWell',
+    accepted_dirs = [
+        '2ph_comp',
+        '2ph_comp_solid',
+        '2ph_do',
+        '2ph_geothermal',
+        '2ph_geothermal_mass_flux',
+        '3ph_comp_w',
+        '3ph_do',
+        '3ph_bo',
+        'Uniform_Brugge',
+        'Chem_benchmark_new',
+        #'CO2_foam_CCS',
+        'GeoRising',
+        'CoaxWell',
+        'effect_of_potential_energy',
+    ]
 
-                     'effect_of_potential_energy',
-                     ]
+    if platform == 'cpu':
+        accepted_dirs += [
+            # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
+            '2ph_do_thermal_mpfa',
+            # 2ph_do_thermal doesn't converge well, so we skip it on GPU
+            '2ph_do_thermal',
+        ]
 
-
-    if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
-        accepted_dirs += ['2ph_do_thermal_mpfa']
-
-    if platform == 'cpu':  # this model doesn't converge well, so we skip it on GPU
-        accepted_dirs += ['2ph_do_thermal']
+        # Tests for drift-flux well model (DFM) (implemented only for CPU)
+        accepted_dirs += [
+            # Coupled well-reservoir modeling using DFM wells is
+            os.path.join('dfm_well', 'coupled_dfm_well_reservoir'),
+            # Single-phase thermal well flow in a DFM well
+            os.path.join('dfm_well', 'single_phase_thermal_dfm_well_flow'),
+            # Two-phase isothermal well flow in a DFM well
+            os.path.join('dfm_well', 'two_phase_isothermal_dfm_well_flow'),
+        ]
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
@@ -112,7 +132,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_args_dfn = [test_args_dfn]
 
     # chemistry tests (multiple cases within a single model folder)
-    test_dirs_chem = ['chemistry/carbonated_water']
+    test_dirs_chem = [os.path.join('chemistry', 'carbonated_water')]
     test_args_chem = [[
         {
             'name': 'cal_phreeqc_phreeqc_1D',
@@ -159,8 +179,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             failed_models_main += [mdir + ' (main.py missing dir)']
             continue
         os.chdir(model_path)
-        stdout_path = os.path.join('..', '_logs', mdir + '_mainpy.log')
-        stderr_path = os.path.join('..', '_logs', mdir + '_mainpy_err.log')
+        safe_mdir = mdir.replace(os.sep, '__')
+        stdout_path = os.path.join(logs_dir, safe_mdir + '_mainpy.log')
+        stderr_path = os.path.join(logs_dir, safe_mdir + '_mainpy_err.log')
         _ensure_parent_dir(stdout_path)
         _ensure_parent_dir(stderr_path)
         with open(stdout_path, 'w') as stdout_file, open(stderr_path, 'w') as stderr_file:
@@ -184,7 +205,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total_dfn, failed_models_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_total += n_total_dfn
 
-    # chemistry
+    # chemistry tests
     print('\nChemistry tests:')
     n_total_chem, failed_models_chem = run_tests(model_dir, test_dirs=test_dirs_chem, test_args=test_args_chem, overwrite=overwrite, platform=platform)
     n_total += n_total_chem
@@ -194,7 +215,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total_mech = 0
     failed_models_mech = []
     if platform == 'cpu':  # mech code is excluded from gpu build due to compilation issues (c++ std 20)
-        n_total_mech, failed_models_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
+        n_total_mech, failed_models_mech = run_tests(model_dir, test_dirs=test_dirs_mech, test_args=test_args_mech, overwrite=overwrite)
     n_total += n_total_mech
 
     # test for adjoint ------------------start---------------------------------
@@ -242,7 +263,10 @@ def check_performance(mod):
     x = os.path.basename(os.getcwd())
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed
-    log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
+    models_dir = os.path.dirname(os.path.abspath(__file__))  # /models
+    rel_dir = os.path.relpath(os.getcwd(), models_dir)  # e.g., dfm_well/coupled_dfm_well_reservoir
+    safe_name = rel_dir.replace(os.sep, '__')
+    log_file = os.path.join(models_dir, '_logs', safe_name + '.log')
     _ensure_parent_dir(log_file)
     f = open(log_file, "w")
     f.close()
@@ -278,7 +302,10 @@ def check_performance_adjoint(mod):
     x = os.path.basename(os.getcwd())
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed
-    log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
+    models_dir = os.path.dirname(os.path.abspath(__file__))  # /models
+    rel_dir = os.path.relpath(os.getcwd(), models_dir)
+    safe_name = rel_dir.replace(os.sep, '__')
+    log_file = os.path.join(models_dir, '_logs', safe_name + '.log')
     _ensure_parent_dir(log_file)
     f = open(log_file, "w")
     f.close()
