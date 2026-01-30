@@ -32,11 +32,12 @@ class Poroelasticity(Compositional):
         min_z: float,
         max_z: float,
         epsilon_z: float,
+        sim_eps_multiplier: float = 10,
+        extrapolation_flag: bool = True,
         min_t: float = None,
         max_t: float = None,
         state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
         cache: bool = False,
-        extrapolation_flag: bool = True,
         discretizer: str = 'mech_discretizer',
         axes_min=None,
         axes_max=None,
@@ -61,8 +62,13 @@ class Poroelasticity(Compositional):
         :type min_z, max_z: float
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
-        :param epsilon_z: Epsilon value for composition
+        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
         :type epsilon_z: float
+        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
+                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
+        :type sim_eps_multiplier: float
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :type extrapolation_flag: bool
         :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
         :type state_spec: bool
         :param cache: Switch to cache operator values
@@ -87,11 +93,12 @@ class Poroelasticity(Compositional):
             min_z=min_z,
             max_z=max_z,
             epsilon_z=epsilon_z,
+            sim_eps_multiplier=sim_eps_multiplier,
+            extrapolation_flag=extrapolation_flag,
             min_t=min_t,
             max_t=max_t,
             state_spec=state_spec,
             cache=cache,
-            extrapolation_flag=extrapolation_flag,
             axes_min=axes_min,
             axes_max=axes_max,
             n_axes_points=n_axes_points,

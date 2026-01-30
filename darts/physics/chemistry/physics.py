@@ -28,9 +28,9 @@ class ElementBasedReactiveFlow(Compositional):
         n_points: int | list[int],
         axes_min: list[float],
         axes_max: list[float],
-        epsilon_z: float = 1e-13,
-        sim_eps: float = None,
-        extrapolation_flag: bool = False,
+        epsilon_z: float,
+        sim_eps_multiplier: float = 10,
+        extrapolation_flag: bool = True,
         cache: bool = True,
     ):
         """
@@ -47,6 +47,13 @@ class ElementBasedReactiveFlow(Compositional):
         :type axes_min: list
         :param axes_max: Maximum axes values
         :type axes_max: list
+        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
+        :type epsilon_z: float
+        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
+                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
+        :type sim_eps_multiplier: float
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :type extrapolation_flag: bool
         :param cache: Cache flag
         :type cache: bool
         """
@@ -66,7 +73,7 @@ class ElementBasedReactiveFlow(Compositional):
             axes_max=axes_max,
             n_axes_points=n_points,
             epsilon_z=epsilon_z,
-            sim_eps=sim_eps,
+            sim_eps_multiplier=sim_eps_multiplier,
             extrapolation_flag=extrapolation_flag,
             timer=timer,
             cache=cache,

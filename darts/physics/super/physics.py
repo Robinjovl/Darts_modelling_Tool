@@ -34,8 +34,9 @@ class Compositional(PhysicsBase):
         max_p: float,
         min_z: float,
         max_z: float,
-        epsilon_z: float = 1e-13,
-        sim_eps: float = None,
+        epsilon_z: float,
+        sim_eps_multiplier: float = 10,
+        extrapolation_flag: bool = True,
         min_t: float = None,
         max_t: float = None,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
@@ -43,7 +44,6 @@ class Compositional(PhysicsBase):
         axes_min=None,
         axes_max=None,
         n_axes_points=None,
-        extrapolation_flag: bool = True,
     ):
         """
         This is the constructor of the Compositional Physics class.
@@ -63,8 +63,13 @@ class Compositional(PhysicsBase):
         :type min_p, max_p: float
         :param min_z, max_z: Minimum, maximum composition
         :type min_z, max_z: float
-        :param epsilon_z: Epsilon value for composition
+        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
         :type epsilon_z: float
+        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
+                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
+        :type sim_eps_multiplier: float
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :type extrapolation_flag: bool
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
         :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
@@ -124,8 +129,6 @@ class Compositional(PhysicsBase):
             else:
                 axes_max = [max_p] + axz_max
 
-        sim_eps = sim_eps if sim_eps is not None else epsilon_z * 10
-
         # n_axes_points
         if n_axes_points is None:
             n_axes_points = index_vector([n_points] * n_vars)
@@ -138,6 +141,10 @@ class Compositional(PhysicsBase):
         )
 
         self.has_dfm_well = False
+        assert sim_eps_multiplier > 1, (
+            "Multiplier for epsilon must be greater than 1 to have consistent "
+            "OBL axes/solution vector in engine"
+        )
 
         # Call PhysicsBase constructor
         super().__init__(
@@ -148,7 +155,7 @@ class Compositional(PhysicsBase):
             n_ops=n_ops,
             axes_min=axes_min,
             axes_max=axes_max,
-            sim_eps=sim_eps,
+            sim_eps=epsilon_z * sim_eps_multiplier,
             n_axes_points=n_axes_points,
             timer=timer,
             cache=cache,

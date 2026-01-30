@@ -91,6 +91,9 @@ class PhysicsBase:
         :param n_axes_points: Number of OBL points along axes
         :type n_axes_points: index_vector
         :param timer: Timer object
+        :param sim_eps: Epsilon composition for simulation that solution should remain away from OBL bounds
+                        (in engine, min_sim_z = min_axis_z + sim_eps, max_sim_z = max_axis_z - sim_eps)
+        :type sim_eps: float
         :type cache: :class:`darts.engines.timer_node`
         :param cache: Switch to cache operator values
         :type cache: bool
