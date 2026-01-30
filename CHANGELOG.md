@@ -3,6 +3,10 @@
 -Faster well outpput with vectorized interpolators. In the past two for loops were used over time steps + over connection ids (wellheads and perforations). Now, they are removed;
 -Use operator interpolators instead of evaluating some operators explicitly for well rates calculations;
 -Time saving by saving well output states after after DartsModel.run(); [!228](https://gitlab.com/open-darts/open-darts/-/merge_requests/228)
+-Chemistry. Built-in interfaces to thirdparty geochemical flashes (PHREEQC and Reaktoro), databases (`phreeqc.dat`, `pitzer.dat`, `supcrtbl.dat`) and reaction kinetics model (`KineticRate`) for carbonate minerals (`PalandriKharaka.json`). New Element-based physics for reactive flow and transport in `ElementBasedReactiveFlow` supporting built-in thirdparty solvers and databases. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+-`CFL_max` is added to the H5 well output [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+-More robust OBL cache saving using atomic writes [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+-Support -e --with-deps -j arguments in installation scripts [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
 
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
