@@ -3,9 +3,9 @@
 - Faster well outpput with vectorized interpolators. In the past two for loops were used over time steps + over connection ids (wellheads and perforations). Now, they are removed;
 - Use operator interpolators instead of evaluating some operators explicitly for well rates calculations;
 - Time saving by saving well output states after DartsModel.run(); ([!228](https://gitlab.com/open-darts/open-darts/-/merge_requests/228))
+- Change operators by splitting FLUX_OP operator into two operators and introducing SAT_OP ([!234](https://gitlab.com/open-darts/open-darts/-/merge_requests/234))
 - Add potential energy to the energy conservation equation ([!246](https://gitlab.com/open-darts/open-darts/-/merge_requests/246), [!263](https://gitlab.com/open-darts/open-darts/-/merge_requests/263))
 - Add the Drift-Flux Model (DFM) as a new well model ([!230](https://gitlab.com/open-darts/open-darts/-/merge_requests/230))
-- Change operators by splitting FLUX_OP operator into two operators and introducing SAT_OP ([!234](https://gitlab.com/open-darts/open-darts/-/merge_requests/234))
 - Breaking changes:
   - Rename an input argument of the method `add_well`:\
   {- Before: self.reservoir.add_well(..., wellbore_diameter) -}\
