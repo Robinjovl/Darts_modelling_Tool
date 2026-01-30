@@ -545,6 +545,59 @@ class Output:
 
         return 0
 
+    def _get_output_cell_centers(self):
+        """
+        Resolve cell center coordinates for the entire reservoir.
+
+        This method supports multiple reservoir/discretizer variants with different
+        centroid storage fields and returns all available centroids as-is.
+
+        :returns: numpy array of shape (n_cells, 3) with [x, y, z] coordinates
+        :raises ValueError: when centroids are missing or have unexpected shape
+        """
+        # Resolve the centroids array from known reservoir/discretizer fields.
+        centroids = None
+        if hasattr(self.reservoir, "discretizer"):
+            if hasattr(self.reservoir.discretizer, "centroids_all_cells"):
+                centroids = self.reservoir.discretizer.centroids_all_cells
+            elif hasattr(self.reservoir.discretizer, "centroid_all_cells"):
+                centroids = self.reservoir.discretizer.centroid_all_cells
+
+        if centroids is None and hasattr(self.reservoir, "centroids_all_cells"):
+            centroids = self.reservoir.centroids_all_cells
+        if centroids is None and hasattr(self.reservoir, "centroids"):
+            centroids = self.reservoir.centroids
+        if centroids is None and hasattr(self.reservoir, "discr_mesh"):
+            if hasattr(self.reservoir.discr_mesh, "centroids"):
+                centroids = self.reservoir.discr_mesh.centroids
+        if centroids is None and hasattr(self.reservoir, "mesh"):
+            if hasattr(self.reservoir.mesh, "centroids"):
+                centroids = self.reservoir.mesh.centroids
+
+        if centroids is None:
+            raise ValueError(
+                "Cell centroids are not available for this reservoir type."
+            )
+
+        # Convert possible wrapped containers to a numpy array.
+        centroids = np.asarray(centroids)
+        if (
+            centroids.ndim == 1
+            and centroids.size > 0
+            and hasattr(centroids[0], "values")
+        ):
+            centroids = np.vstack(
+                [np.asarray(c.values, dtype=np.float64) for c in centroids]
+            )
+
+        # Expect a 2D array with x/y/z columns.
+        if centroids.ndim != 2 or centroids.shape[1] != 3:
+            raise ValueError(
+                f"Expected centroids with shape (n_cells, 3), got {centroids.shape}."
+            )
+
+        return centroids
+
     def configure_h5_output(
         self, filename: str, cell_ids, description, add_static_data: bool = False
     ):
@@ -559,8 +612,20 @@ class Output:
 
         with h5py.File(filename, "w") as f:
             # add static data group
+            need_static = add_static_data or (
+                cell_ids.size == self.reservoir.mesh.n_res_blocks
+            )
+            static_group = f.require_group("static") if need_static else None
+            if cell_ids.size == self.reservoir.mesh.n_res_blocks:
+                cell_centers = self._get_output_cell_centers().astype(
+                    self.precision_map[self.precision], copy=False
+                )
+                static_group.create_dataset(
+                    "cell_centers",
+                    data=cell_centers,
+                    dtype=self.precision_map[self.precision],
+                )
             if add_static_data:
-                static_group = f.create_group("static")
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
                 static_group.create_dataset("block_m", data=block_m)

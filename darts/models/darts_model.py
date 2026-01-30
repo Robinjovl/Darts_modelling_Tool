@@ -184,6 +184,10 @@ class DartsModel:
         self.set_boundary_conditions()
         self.set_well_controls()
 
+        # for separate mineral fraction in reactive flow formulations
+        if n_solid is not None:
+            self.physics.engine.n_solid = n_solid
+
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
         if restart is False:
@@ -200,10 +204,6 @@ class DartsModel:
                 + ' > 30000',
                 stacklevel=2,
             )
-
-        # element-based reactive flow
-        if n_solid is not None:
-            self.physics.engine.n_solid = n_solid
 
     def reset(self):
         """
@@ -629,8 +629,9 @@ class DartsModel:
                         dt_mult_new = mult
 
                 if verbose:
+                    max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
                     print(
-                        f"T={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tMULT={dt_mult_new:3.3g}\tdX={np.round(max_dx, 3)}"
+                        f"T={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tMULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
