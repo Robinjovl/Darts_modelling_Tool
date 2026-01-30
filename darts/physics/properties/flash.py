@@ -76,6 +76,13 @@ def RR2(k, zc, eps):
 
 
 class SolidFlash(Flash):
+    """
+    SolidFlash class is a wrapper around a flash of fluid components/phases and normalized solid that reacts kinetically
+    This is used in a formulation where the solid is a regular component with mole fractions, just does not flow
+    It is a composition of a Flash object.
+    During evaluate(), it normalizes fluid composition, evaluates Flash and renormalizes
+    """
+
     def __init__(
         self,
         flash: Flash,
@@ -85,6 +92,16 @@ class SolidFlash(Flash):
         nc_sol: int = 0,
         np_sol: int = 0,
     ):
+        """
+        Constructor of SolidFlash
+
+        :param flash: Flash object for fluid components/phases
+        :param nc_fl: Number of fluid components
+        :param np_fl: Number of fluid phases
+        :param ni: Number of ions
+        :param nc_sol: Number of solid components
+        :param np_sol: Number of solid phases
+        """
         super().__init__(np_fl, nc_fl, ni)
         self.flash = flash
 
