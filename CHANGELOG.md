@@ -1,12 +1,22 @@
-# 1.4 [30-01-2026]
-- Cell centroids are now included under static variables in the output file `reservoir_solution.h5`. [!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282)
+# 1.3.3 [Future]
+- Cell centroids are now included under static variables in the output file `reservoir_solution.h5`. ([!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282))
 - Faster well output with vectorized interpolators. In the past two for loops were used over time steps + over connection ids (wellheads and perforations). Now, they are removed.
 - Use operator interpolators instead of evaluating some operators explicitly for well rates calculations.
-- Time saving by saving well output states after DartsModel.run(). [!228](https://gitlab.com/open-darts/open-darts/-/merge_requests/228)
-- Chemistry: Built-in interfaces to thirdparty geochemical flashes (PHREEQC and Reaktoro), databases (`phreeqc.dat`, `pitzer.dat`, `supcrtbl.dat`) and reaction kinetics model (`KineticRate`) for carbonate minerals (`PalandriKharaka.json`). New Element-based physics for reactive flow and transport in `ElementBasedReactiveFlow` supporting built-in thirdparty solvers and databases. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+- Time saving by saving well output states after DartsModel.run(). ([!228](https://gitlab.com/open-darts/open-darts/-/merge_requests/228))
+- Change operators by splitting `FLUX_OP` operator into two operators and introducing `SAT_OP`. ([!234](https://gitlab.com/open-darts/open-darts/-/merge_requests/234))
+- Add potential energy to the energy conservation equation ([!246](https://gitlab.com/open-darts/open-darts/-/merge_requests/246). [!263](https://gitlab.com/open-darts/open-darts/-/merge_requests/263))
+- Add the Drift-Flux Model (DFM) as a new well model. ([!230](https://gitlab.com/open-darts/open-darts/-/merge_requests/230))
+- Chemistry: Built-in interfaces to third-party geochemical flashes (PHREEQC and Reaktoro), databases (`phreeqc.dat`, `pitzer.dat`, `supcrtbl.dat`) and reaction kinetics model (`KineticRate`) for carbonate minerals (`PalandriKharaka.json`). New Element-based physics for reactive flow and transport in `ElementBasedReactiveFlow` supporting built-in thirdparty solvers and databases. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
 - `CFL_max` is added to the H5 well output. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
 - More robust OBL cache saving using atomic writes. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
 - Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+- Breaking changes:
+  - Rename an input argument of the method `add_well`:\
+  {- Before: self.reservoir.add_well(..., wellbore_diameter) -}\
+  {+ Now:    self.reservoir.add_well(..., well_diameter) +}
+  - Rename input arguments of the method `add_perforation`:\
+  {- Before: self.reservoir.add_perforation(..., cell_index, well_radius, multi_segment) -}\
+  {+ Now:    self.reservoir.add_perforation(..., res_cell_idx, well_diameter, ms_epm) +}
 
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
