@@ -161,6 +161,10 @@ class DartsModel:
         self.has_dfm_well = self.physics.has_dfm_well = any(
             well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
         )
+        if self.has_dfm_well:
+            self.timer.node["simulation"].node["dfm_well_velocity_calculation"] = (
+                timer_node()
+            )
 
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
@@ -853,6 +857,7 @@ class DartsModel:
         :param iter_counter: Newton-Raphson iteration counter for the current time step
         :type iter_counter: int
         """
+        self.timer.node["simulation"].node["dfm_well_velocity_calculation"].start()
         for w in self.reservoir.wells:
             if w.ms_type == ms_well.MS_Type.DFM:
                 start = w.well_head_idx * self.physics.n_vars
@@ -865,6 +870,7 @@ class DartsModel:
                 ].eval_phase_vels_and_ders(Xn_dfm_well, X_dfm_well, dt, t, iter_counter)
                 w.phases_vels = value_vector(well_phase_v)
                 w.phases_vels_ders = value_vector(well_phase_v_d)
+        self.timer.node["simulation"].node["dfm_well_velocity_calculation"].stop()
 
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:
