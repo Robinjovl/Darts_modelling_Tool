@@ -81,12 +81,11 @@ class ReservoirOperators(OperatorsSuper):
         :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
-        # Composition vector and pressure from state:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
         values_np[:] = 0
 
-        # Evaluate isothermal properties at current state
+        # Evaluate properties at current state
         self.property.evaluate(state_np)
         self.compr = self.property.rock_compr_ev.evaluate(state_np[0])
 
@@ -234,7 +233,7 @@ class ReservoirOperators(OperatorsSuper):
         # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
         values[self.KIN_OP + self.nc] = self.property.energy_source
 
-        # Phase enthalpy
+        """ Phase enthalpy operator """
         for j in range(self.nph):
             values[self.ENTH_OP + j] = self.property.enthalpy[j]
 
@@ -253,12 +252,11 @@ class WellOperators(OperatorsSuper):
         :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
-        # Composition vector and pressure from state:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
-
         values_np[:] = 0
 
+        # Evaluate properties at current state
         self.property.evaluate(state_np)
 
         density_tot = np.sum(
@@ -289,7 +287,9 @@ class WellOperators(OperatorsSuper):
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
             ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
-        """ Gamma operator for diffusion (same for thermal and isothermal) """
+        """ Molar density operator """
+
+        """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
 
         """ Chi operator for diffusion """
 
@@ -302,6 +302,8 @@ class WellOperators(OperatorsSuper):
         values_np[self.GRAV_OP + self.property.ph] = self.property.dens[
             self.property.ph
         ]
+
+        # E4-> capillarity
 
         """ Permeability multiplier k/kmax """
         # E5_> permeability multiplier due to permporo relationship
@@ -336,7 +338,6 @@ class WellOperators(OperatorsSuper):
         :return: updated value for operators, stored in values
         """
         pressure = state[0]
-        # temperature = state[-1]
 
         # Evaluate thermal properties at current state
         self.property.evaluate_thermal(state)
@@ -349,7 +350,11 @@ class WellOperators(OperatorsSuper):
             * self.property.enthalpy[self.property.ph]
         )  # fluid enthalpy (kJ/m3)
         # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
-        # well does not support solid
+        values[self.ACC_OP + self.nc] += self.phi_s * np.sum(
+            self.property.sat[self.np_fl : self.np_fl + self.ns]
+            * self.property.dens_m[self.np_fl : self.np_fl + self.ns]
+            * self.property.enthalpy[self.np_fl : self.np_fl + self.ns]
+        )
 
         # Enthalpy to internal energy conversion
         values[self.ACC_OP + self.nc] -= 100 * pressure
@@ -369,7 +374,7 @@ class WellOperators(OperatorsSuper):
 
         """ Delta operator for reaction """
 
-        # Phase enthalpy
+        """ Phase enthalpy operator """
         for j in range(self.nph):
             values[self.ENTH_OP + j] = self.property.enthalpy[j]
 
