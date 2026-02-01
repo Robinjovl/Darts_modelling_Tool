@@ -165,19 +165,9 @@ class Compositional(PhysicsBase):
                 self.property_containers[region], self.thermal
             )
 
-        if not self.has_dfm_well:
-            if self.thermal:
-                self.well_operators = ReservoirOperators(
-                    self.property_containers[self.regions[0]], self.thermal
-                )
-            else:
-                self.well_operators = WellOperators(
-                    self.property_containers[self.regions[0]], self.thermal
-                )
-        elif self.has_dfm_well:
-            self.well_operators = WellOperators(
-                self.property_containers[self.regions[0]], self.thermal
-            )
+        self.well_operators = WellOperators(
+            self.property_containers[self.regions[0]], self.thermal
+        )
 
         self.well_ctrl_operators = WellControlOperators(
             self.property_containers[self.regions[0]], self.thermal
