@@ -49,6 +49,7 @@ if 1:
         coupled_model.run(dt)
         coupled_model.output_to_vtk(ith_step=i+1, output_properties=output_props)
 
+    coupled_model.print_timers()
 else:
     well_data_file_path = os.path.join(coupled_model.output.output_folder, "well_data.h5")
     h5_well_data = load_hdf5_to_dict(well_data_file_path)
