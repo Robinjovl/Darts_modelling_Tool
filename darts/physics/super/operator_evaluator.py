@@ -105,6 +105,7 @@ class ReservoirOperators(OperatorsSuper):
         )
 
         """ and alpha for mineral components """
+        # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
         values_np[self.ACC_OP + self.nc_fl : self.ACC_OP + self.nc_fl + self.ns] = (
             self.compr
             * self.property.dens_m[self.np_fl : self.np_fl + self.ns]
@@ -145,7 +146,7 @@ class ReservoirOperators(OperatorsSuper):
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
         values_np[self.KIN_OP : self.KIN_OP + self.nc] = self.property.mass_source
 
-        """ Gravity and Capillarity operators """
+        """ Gravity and capillarity operators """
         # E3-> gravity
         values_np[self.GRAV_OP + self.property.ph] = self.property.dens[
             self.property.ph
@@ -275,7 +276,7 @@ class WellOperators(OperatorsSuper):
         )
 
         """ and alpha for mineral components """
-        # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
+        # solid mass accumulation: phi^T z_s* [-] rho_ms [kmol/m3]
         values_np[self.ACC_OP + self.nc_fl : self.ACC_OP + self.nc_fl + self.ns] = (
             self.property.dens_m[self.np_fl : self.np_fl + self.ns]
             * zc[self.nc_fl : self.nc_fl + self.ns]
@@ -298,7 +299,7 @@ class WellOperators(OperatorsSuper):
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
         values_np[self.KIN_OP : self.KIN_OP + self.nc] = self.property.mass_source
 
-        """ Gravity and Porosity operators """
+        """ Gravity and capillarity operators """
         # E3-> gravity
         values_np[self.GRAV_OP + self.property.ph] = self.property.dens[
             self.property.ph
@@ -310,7 +311,7 @@ class WellOperators(OperatorsSuper):
         # E5_> permeability multiplier due to permporo relationship
         values_np[self.MULT_OP] = 1.0
 
-        """ Lambda operator """
+        """ Lambda operator (phase mobility) """
         # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
         values_np[self.LAMBDA_OP + self.property.ph] = (
             self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
@@ -320,7 +321,8 @@ class WellOperators(OperatorsSuper):
         # phase saturation: s_j [-]
         values_np[self.SAT_OP + self.property.ph] = self.property.sat[self.property.ph]
 
-        # Pressure operator
+        """ Pressure operator """
+        # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
         values_np[self.PRES_OP] = state_np[0]
 
         if self.thermal:
@@ -343,7 +345,7 @@ class WellOperators(OperatorsSuper):
         # Evaluate thermal properties at current state
         self.property.evaluate_thermal(state)
 
-        """ Alpha operator represents accumulation term: """
+        """ Alpha operator represents accumulation term """
         # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += self.phi_f * np.sum(
             self.property.sat[self.property.ph]
@@ -360,7 +362,7 @@ class WellOperators(OperatorsSuper):
         # Enthalpy to internal energy conversion
         values[self.ACC_OP + self.nc] -= 100 * pressure
 
-        """ Beta operator represents flux term: """
+        """ Beta operator """
         # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
         values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = (
             self.property.enthalpy[self.property.ph]
