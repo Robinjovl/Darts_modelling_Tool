@@ -208,9 +208,8 @@ public:
     }
   }
 
-
-
-  bool isProducer()                 const {
+  bool isProducer() const
+  {
     // what if the user doesn't choose a name equal to Producer.
     return (well_type == PRODUCER);
   }
@@ -218,4 +217,4 @@ public:
   WellType well_type;          // type to be producer or injector
 };
 
-#endif
+#endif /* MS_WELL_H */
