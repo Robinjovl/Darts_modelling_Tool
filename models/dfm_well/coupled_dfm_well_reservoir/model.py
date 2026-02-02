@@ -3,6 +3,8 @@ import numpy as np
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, ms_well, value_vector
 
+from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
+
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
@@ -15,8 +17,6 @@ from darts.pipes.set_initial_conditions import LinearAmbientTemperature
 from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
-
-from nearwellbore import RadialStruct
 
 
 class Model(CICDModel):
@@ -50,10 +50,10 @@ class Model(CICDModel):
         permz = permr
 
         self.well_1_ID = 0.1016
-        self.reservoir = RadialStruct(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, poro=poro.flatten(order='F'),
-                                      permr=permr.flatten(order='F'), permz=permz.flatten(order='F'),
-                                      R0=self.well_1_ID / 2, R1=1000, logspace=True, rcond=259.2, hcap=5250,
-                                      top_depth=2000)  # depth is the depth of the top exterface of the reservoir
+        self.reservoir = StructRadialReservoir(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, poro=poro.flatten(order='F'),
+                                               permr=permr.flatten(order='F'), permz=permz.flatten(order='F'),
+                                               R0=self.well_1_ID / 2, R1=1000, logspace=True, rcond=259.2, hcap=5250,
+                                               depth=2025)  # depth is the depth of the centroid of the top reservoir cell
         self.reservoir.boundary_volumes['yz_plus'] = 1e20
 
         return
