@@ -39,7 +39,7 @@ class Model(DartsModel):
         self.set_physics()
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
-                            it_newton=10, it_linear=40, newton_type=sim_params.newton_local_chop)
+                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
 
@@ -53,9 +53,9 @@ class Model(DartsModel):
         # Define lgr0
         parent_grid_name = 'global'
         lgr_coords_in_parent_grid = {
-        "i_range": [5, 5],
-        "j_range": [5, 5],
-        "k_range": [1, 40],
+        "i_range": [2, 2],
+        "j_range": [2, 2],
+        "k_range": [1, 3],
         "refine": [3, 3, 1],
         "tag" : "inj"
         }
@@ -67,9 +67,9 @@ class Model(DartsModel):
         # Define lgr1
         parent_grid_name = 'global'
         lgr_coords_in_parent_grid = {
-        "i_range": [20, 20],
-        "j_range": [20, 20],
-        "k_range": [1, 40],
+        "i_range": [4, 4],
+        "j_range": [2, 2],
+        "k_range": [1, 3],
         "refine": [3, 3, 1],
         "tag" : "prd"
         }
@@ -81,8 +81,8 @@ class Model(DartsModel):
     
     def build_well_completion(self):
         return {
-            "I1": {"lgr": "lgr0", "k_from": 1, "k_to": 40},  # coarse k (1-based)
-            "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 40},
+            "I1": {"lgr": "lgr0", "k_from": 1, "k_to": 3},  # coarse k (1-based)
+            "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 3},
         }    
 
     def convert_ijk_to_gindex_0based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
@@ -116,7 +116,7 @@ class Model(DartsModel):
 
 
         #Build Level0 with actnum
-        nx0, ny0, nz0 = 25, 25, 40  # global grid size
+        nx0, ny0, nz0 = 5, 3, 3  # global grid size
         dx0, dy0, dz0 = 100, 100, 5
         permx0, permy0, permz0 = 50, 50, 50
         poro0 = 0.1
@@ -430,110 +430,57 @@ class Model(DartsModel):
   
 
     def set_physics(self):
-        """Physical properties"""
-        # Create property containers:
-        components = ['CO2', 'H2O']
-        self.components = components
-        comp_data = CompData(components, setprops=True)
-        phases = ['CO2_rich', 'aqueous']
-        # Mw = [44.01, 18.015]
+            """Physical properties"""
+            # Create property containers:
+            components = ['CO2', 'H2O']
+            phases = ['CO2_rich', 'aqueous']
+            Mw = [44.01, 18.015]
 
-        ceos = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003,
-                                AQEoS.solute: AQEoS.Ziabakhsh2012,
-                                })
-        flash_params = FlashParams(comp_data)
-        # EoS-related parameters
-        flash_params.add_eos("CEOS", ceos)
-        flash_params.add_eos("aqueous", aq)
-        flash_params.eos_order = ["aqueous", "CEOS"]
+            temperature = 300
+            property_container = PropertyContainer(phases_name=phases, components_name=components,
+                                                Mw=Mw, min_z=self.zero / 10, temperature=temperature)
 
-        # Flash-related parameters
-        flash_params.split_tol = 1e-12
+            """ properties correlations """
+            property_container.flash_ev = ConstantK(len(components), [4, 1e-1], self.zero)
+            property_container.density_ev = dict([('CO2_rich', DensityBasic(compr=1e-3, dens0=200)),
+                                                ('aqueous', DensityBasic(compr=1e-5, dens0=600))])
+            property_container.viscosity_ev = dict([('CO2_rich', ConstFunc(0.05)),
+                                                    ('aqueous', ConstFunc(0.5))])
+            property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas")),
+                                                ('aqueous', PhaseRelPerm("oil"))])
 
-        property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                               Mw=comp_data.Mw, min_z=self.zero / 10,)
+            """ Activate physics """
+            thermal = False
+            state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+            self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+                                        n_points=200, min_p=1, max_p=300, min_z=self.zero/10, max_z=1-self.zero/10)
+            # property_container.output_props = {
+            #     "sat0": lambda: property_container.sat[0],
+            #     "dens0": lambda: property_container.dens[0],
+            #     "nu0": lambda: property_container.nu[0],
+            #     "x00": lambda: property_container.x[0,0]
+            #     }
 
-        """ properties correlations """
-        # property_container.flash_ev = ConstantK(len(components), [4, 1e-1], self.zero)
-        property_container.flash_ev = NegativeFlash(flash_params, ["aqueous", "CEOS"], [InitialGuess.Henry_AV])
-        property_container.density_ev = dict([('CO2_rich', EoSDensity(ceos,comp_data.Mw)),
-                                              ('aqueous', Garcia2001(components))])
-        property_container.viscosity_ev = dict([('CO2_rich', Fenghour1998()),
-                                                ('aqueous', Islam2012(components))])
-        property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas")),
-                                               ('aqueous', PhaseRelPerm("wat"))])
-        property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(ceos)),
-                                                ('aqueous', EoSEnthalpy(aq))])
-        property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)),
-                                                   ('aqueous', ConstFunc(180.)), ])
-        """ Activate physics """
-        thermal = True
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-                                     min_t=273.15, max_t=373.15+200)
+            self.physics.add_property_region(property_container)
 
-
-        property_container.output_props = {
-            "satG": lambda: property_container.sat[0],
-            "temp": lambda: property_container.temperature,
-            "rhoG": lambda: property_container.dens[0],
-            "rhoAq": lambda: property_container.dens[1],
-            }
-
-        self.physics.add_property_region(property_container)
-
-        return
+            return
 
     def set_initial_conditions(self):
-        from darts.physics.super.initialize import Initialize
-
-        depths = np.asarray(self.reservoir.mesh.depth)
-        min_depth = np.min(depths)
-        max_depth = np.max(depths)
-        nb = int(self.level0.nz)
-        depths = np.linspace(min_depth,max_depth,nb)
-
-        init = Initialize(self.physics)
-   
-        primary_specs = {}
-        for comp in self.physics.components[:-1]:
-            primary_specs[comp] = np.ones(nb) * self.zero
-        
-        boundary_state = {"pressure" :195}
-        for comp in self.physics.components[:-1]:
-            boundary_state[comp] = float(primary_specs[comp][0])
-        boundary_state["temperature"] = 80 +273.15
-
-        dTdh = 40/1000 #k/m
-
-        X = init.solve(depth_bottom=max_depth, depth_top= min_depth,depth_known=min_depth, nb=nb,
-                       boundary_state=boundary_state,primary_specs=primary_specs,secondary_specs=None, dTdh=dTdh).reshape((nb, self.physics.n_vars))
-        # input_distribution = {self.physics.vars[0]: 131, # pressure
-        #                       self.physics.vars[1]: self.zero, # z_CO2
-        #                       self.physics.vars[2]: 353.15 # temperature
-        #                       }
-        self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
-                                                             input_depth= init.depths,
-                                                            input_distribution={v:X[:,i] for i, v in enumerate(self.physics.vars)})
-        return
-    
-        # self.reservoir.mesh.volume[0:3] = 1e20
+        input_distribution = {self.physics.vars[0]: 50,
+                                self.physics.vars[1]: self.zero,
+                                }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                                input_distribution=input_distribution)
 
     def set_well_controls(self):
-        inj_composition = [1.0 - 0.5]
+        inj_composition = [1.0 - self.zero]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                               is_inj=True, target=5600000., inj_composition=inj_composition, inj_temp=296.15)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=360., inj_composition=inj_composition, inj_temp=296.15)
+                                                is_inj=True, target=140., inj_composition=inj_composition)
             else:
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                               is_inj=False, target=1400000.)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=102.)
+                                                is_inj=False, target=50.)
 
 class LGRReservoir(ReservoirBase):
     """
