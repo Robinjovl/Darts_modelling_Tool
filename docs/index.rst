@@ -11,7 +11,7 @@ Welcome to open-DARTS documentation!
    :caption: ABOUT DARTS
 
    about_darts/about_darts.md
-   
+
 .. toctree::
    :maxdepth: 2
    :caption: GETTING STARTED
@@ -23,17 +23,18 @@ Welcome to open-DARTS documentation!
    getting_started/troubleshooting.md
    getting_started/F.A.Q..md
    getting_started/configure_hardware.md
-   
+
 .. toctree::
    :maxdepth: 2
    :caption: FOR DEVELOPERS
-   
+
    for_developers/darts_gitlab_setup.md
+   for_developers/nonuniform_axes.rst
 
 .. toctree::
    :maxdepth: 2
    :caption: TECHNICAL REFERENCE
-   
+
    technical_reference/glossary.md
    technical_reference/reservoir.md
    technical_reference/wells.md
@@ -43,6 +44,3 @@ Welcome to open-DARTS documentation!
    :caption: API
 
    api.rst
-
-
-   

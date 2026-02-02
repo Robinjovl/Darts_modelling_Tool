@@ -69,6 +69,8 @@ struct interpolator_exposer
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
           .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>()) /*.def("benchmark", &interpolator_class::benchmark, "Init by nc and rate operators") \*/
+          // Optional constructor overload that accepts explicit axis nodes for non-uniform grids.
+          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &, std::vector<std::vector<value_t>> &>(), py::keep_alive<1, 2>())
           .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
             "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
           .def("init_timer_node", &interpolator_class::init_timer_node,
@@ -80,7 +82,7 @@ struct interpolator_exposer
           .def_readwrite("point_data", &interpolator_class::point_data)
           .def("get_hypercube_indexes", &interpolator_class::get_hypercube_indexes);
       }
-      else if constexpr ( (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>> || 
+      else if constexpr ( (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>> ||
                            std::is_same_v<interpolator_class, linear_static_cpu_interpolator<i_t, N_DIMS, N_OPS>>) )
       {
         py::class_<interpolator_class,
@@ -127,14 +129,15 @@ struct interpolator_exposer
     if constexpr (N_DIMS <= 12)
     {
       // we expose uint32 and uint64 adaptive interpolators by default
-      expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
+      // expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
       expose_class<uint64_t, double, multilinear_adaptive_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
+      expose_class<__uint128_t, double, multilinear_adaptive_cpu_interpolator<__uint128_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
     }
     // expose_class<uint64_t, float, multilinear_adaptive_cpu_interpolator<uint64_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
 
     // linear adaptive with 64/128 bit index and 64 bit data
     expose_class<uint64_t, double, linear_adaptive_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
-    // expose_class<__uint128_t, double, linear_adaptive_cpu_interpolator<__uint128_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
+    //expose_class<__uint128_t, double, linear_adaptive_cpu_interpolator<__uint128_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
     //expose_class<uint64_t, double, linear_static_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_static_cpu_interpolator");
     // we expose static versions only when needed
     //#ifdef WITH_GPU
