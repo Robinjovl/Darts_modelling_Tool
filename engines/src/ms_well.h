@@ -38,19 +38,31 @@ public:
     INJECTOR = 1
   };
 
+  enum class MS_Type
+  {
+      EPM,
+      DFM
+  };
+
   ms_well()
   {
-    segment_volume = 0.07; // 1 m high, 0.3 m diameter
-    segment_transmissibility = 100000;
+    segment_volume = 0;
+    well_transmissibility = 100000;   // used for multi-segment wells of the type EPM
     well_head_depth = 0;
     well_body_depth = 0;
     segment_depth_increment = 0;
     segment_diameter = 0;
     segment_roughness = 0;
     well_type = PRODUCER;
+
+    segment_volumes = {};
+    segment_depths = {};
+    num_segments = 0;
+    ms_type = MS_Type::EPM;
+    with_lateral_heat_transfer = false;
   };
 
-  void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_, 
+  void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
                             operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_ = 0)
   {
     n_block_size = n_vars_;
@@ -69,10 +81,10 @@ public:
     state_neighbour.resize(n_vars);
     rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
 
-	  rate_etor_ad = well_controls_etor;  //adjoint method
+	rate_etor_ad = well_controls_etor;  //adjoint method
   };
 
-  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_, 
+  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
                                  operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_ = 0)
   {
     n_block_size = N_VARS_;
@@ -95,25 +107,25 @@ public:
   };
 
   // the function changes (overwrites) jacobian equations for well_head_idx block
-  // since well_head_idx has exactly 1 connection, it is assumed that 
+  // since well_head_idx has exactly 1 connection, it is assumed that
   // jac_well_head argument points to 2*n_vars*n_vars array of type value_t
   // first n_vars*n_vars correspond to diagonal block (well_head_idx>well_body_idx always)
   // second n_vars*n_vars correspond to offdiagonal
   // X and RHS vector are passed in full (yet)
   void set_bhp_control(bool is_inj, value_t target, std::vector<value_t>& inj_comp, value_t inj_temp)
-  { 
+  {
     this->control.set_bhp_control(is_inj, target, inj_comp, inj_temp);
   }
   void set_bhp_constraint(bool is_inj, value_t target, std::vector<value_t>& inj_comp, value_t inj_temp)
-  { 
-    this->constraint.set_bhp_control(is_inj, target, inj_comp, inj_temp); 
+  {
+    this->constraint.set_bhp_control(is_inj, target, inj_comp, inj_temp);
   }
-  void set_rate_control(bool is_inj, well_control_iface::WellControlType control_type, index_t phase_idx, 
+  void set_rate_control(bool is_inj, well_control_iface::WellControlType control_type, index_t phase_idx,
                         value_t target, std::vector<value_t>& inj_comp, value_t inj_temp)
   {
     this->control.set_rate_control(is_inj, control_type, phase_idx, target, inj_comp, inj_temp);
   }
-  void set_rate_constraint(bool is_inj, well_control_iface::WellControlType control_type, index_t phase_idx, 
+  void set_rate_constraint(bool is_inj, well_control_iface::WellControlType control_type, index_t phase_idx,
                            value_t target, std::vector<value_t>& inj_comp, value_t inj_temp)
   {
     this->constraint.set_rate_control(is_inj, control_type, phase_idx, target, inj_comp, inj_temp);
@@ -134,21 +146,34 @@ public:
   // These properties are only used in discretization, before simulation starts
   std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
   value_t segment_volume;
-  value_t segment_transmissibility;
+  value_t well_transmissibility;
   value_t well_head_depth;
   value_t well_body_depth;
   value_t segment_depth_increment;
   value_t segment_diameter;
   value_t segment_roughness;
 
+  std::vector<value_t> segment_volumes;
+  std::vector<value_t> segment_depths;
+  index_t num_segments;
+  std::vector<value_t> init_state;
+
   // Properties for simulation
+
+  MS_Type ms_type;
+
+  bool with_lateral_heat_transfer;   // only used for a DFM well. If true, lateral heat transfer between the DFM well segments and reservoir blocks is considered.
+  std::vector<std::tuple<index_t, index_t, value_t>> connections_for_lateral_heat_transfer; // tuple of (dfm_segment_index, reservoir_block_index, geometric_part_of_the_heat_transfer_equation)
 
   index_t well_head_idx;        // index of the well head block, where well controls apply
   index_t well_body_idx;        // index of the first well segment block, which connects to ghost well block
-  index_t well_head_idx_conn;   // index of the first well segment block connection, which connects to ghost well block
+  index_t well_head_conn_idx;   // index of the connection between the two well segments at the top of the well (for EPM wells, connection is between the ghost segment and the lower segment)
 
   well_control_iface control;
   well_control_iface constraint;
+
+  std::vector<value_t> phases_vels;        // phases velocities used for a DFM well
+  std::vector<value_t> phases_vels_ders;   // phases velocities derivatives used for a DFM well
 
   operator_set_evaluator_iface* rate_evaluator;
   operator_set_gradient_evaluator_iface *rate_etor_ad;  //adjoint method
@@ -186,7 +211,7 @@ public:
 
 
   bool isProducer()                 const {
-    // what if the user doesn't choose a name equal to Producer. 
+    // what if the user doesn't choose a name equal to Producer.
     return (well_type == PRODUCER);
   }
 

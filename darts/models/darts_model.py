@@ -16,13 +16,16 @@ except ImportError:
 
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
+    ms_well,
     ms_well_vector,
     op_vector,
     sim_params,
     timer_node,
+    value_vector,
 )
 from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
+from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
 
@@ -49,6 +52,9 @@ class DataTS:
         #
         self.line_search = False
         self.min_line_search_update = 1e-4
+
+        # For coupled well-reservoir model
+        self.coupled_well_res_norm_method = 1
 
     def print(self):
         print("Simulation parameters:")
@@ -85,26 +91,31 @@ class DartsModel:
         engines_pbi()
         discretizer_pbi()
         package_pbi()
-        self.timer = timer_node()  # Create time_node object for time record
-        self.timer.start()  # Start time record
-        self.timer.node["simulation"] = (
-            timer_node()
-        )  # Create timer.node called "simulation" to record simulation time
+
+        # Create time_node object for time record
+        self.timer = timer_node()
+
+        # Start time record
+        self.timer.start()
+
+        # Create timer.node called "simulation" to record simulation time
+        self.timer.node["simulation"] = timer_node()
+
         self.timer.node["newton update"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
         self.timer.node["output"] = timer_node()
-        self.timer.node["initialization"] = (
-            timer_node()
-        )  # Create timer.node called "initialization" to record initialization time
-        self.timer.node[
-            "initialization"
-        ].start()  # Start recording "initialization" time
 
-        self.params = (
-            sim_params()
-        )  # Create sim_params object to set simulation parameters
+        # Create timer.node called "initialization" to record initialization time
+        self.timer.node["initialization"] = timer_node()
 
-        self.timer.node["initialization"].stop()  # Stop recording "initialization" time
+        # Start recording "initialization" time
+        self.timer.node["initialization"].start()
+
+        # Create sim_params object to set simulation parameters
+        self.params = sim_params()
+
+        # Stop recording "initialization" time
+        self.timer.node["initialization"].stop()
 
     def init(
         self,
@@ -147,6 +158,13 @@ class DartsModel:
         assert self.reservoir is not None, "Reservoir object has not been defined"
         self.reservoir.init_reservoir(verbose)
         self.set_wells()
+        self.has_dfm_well = self.physics.has_dfm_well = any(
+            well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
+        )
+        if self.has_dfm_well:
+            self.timer.node["simulation"].node["dfm_well_velocity_calculation"] = (
+                timer_node()
+            )
 
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
@@ -170,6 +188,10 @@ class DartsModel:
         self.set_boundary_conditions()
         self.set_well_controls()
 
+        # for separate mineral fraction in reactive flow formulations
+        if n_solid is not None:
+            self.physics.engine.n_solid = n_solid
+
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
         if restart is False:
@@ -186,10 +208,6 @@ class DartsModel:
                 + ' > 30000',
                 stacklevel=2,
             )
-
-        # element-based reactive flow
-        if n_solid is not None:
-            self.physics.engine.n_solid = n_solid
 
     def reset(self):
         """
@@ -366,6 +384,7 @@ class DartsModel:
         newton_type=None,
         newton_params=None,
         line_search: bool = False,
+        coupled_well_res_norm_method: int = 1,
     ):
         """
         Function to set simulation parameters.
@@ -388,6 +407,8 @@ class DartsModel:
         :type it_linear: int
         :param newton_type:
         :param newton_params:
+        :param coupled_well_res_norm_method: Method of norm evaluation of residuals for the coupled well-reservoir model
+        :type coupled_well_res_norm_method: int
         """
         self.data_ts = DataTS(self.physics.n_vars)
 
@@ -424,6 +445,12 @@ class DartsModel:
             it_linear if it_linear is not None else self.data_ts.linear_max_iter
         )
 
+        assert coupled_well_res_norm_method in [1, 2], (
+            "Method number for calculating the norm of coupled "
+            "well-reservoir residuals must be either 1 or 2."
+        )
+        self.data_ts.coupled_well_res_norm_method = coupled_well_res_norm_method
+
         self.runtime = runtime
 
         self.copy_data_ts_to_sim_params()
@@ -450,12 +477,13 @@ class DartsModel:
         :type days: float
         :param restart_dt: Restart value for timestep size [days, optional]
         :type restart_dt: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
         """
-        days = days if days is not None else self.runtime
         self.physics = physics
         self.data_ts = data_ts
+
+        days = days if days is not None else self.runtime
+        assert days > 0, "Time must be a positive value!"
+
         verbose = False
 
         # get current engine time
@@ -537,7 +565,10 @@ class DartsModel:
         assert hasattr(self, 'output'), (
             "self.output does not exist, please call m.set_output() after m.init()"
         )
+
         days = days if days is not None else self.runtime
+        assert days > 0, "Time must be a positive value!"
+
         data_ts = self.data_ts
 
         self.output.save_well_after_run = save_well_data_after_run
@@ -567,7 +598,7 @@ class DartsModel:
 
         self.prev_dt = dt
 
-        ts = 0
+        ts_counter = 0
 
         nc = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
@@ -589,7 +620,7 @@ class DartsModel:
             if converged:
                 t += dt
                 self.physics.engine.t = t
-                ts += 1
+                ts_counter += 1
 
                 x = np.array(self.physics.engine.X, copy=False)[: nb * nc]
                 dt_mult_new = data_ts.dt_mult
@@ -602,8 +633,9 @@ class DartsModel:
                         dt_mult_new = mult
 
                 if verbose:
+                    max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
                     print(
-                        f"T={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tMULT={dt_mult_new:3.3g}\tdX={np.round(max_dx, 3)}"
+                        f"T={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tMULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -685,24 +717,47 @@ class DartsModel:
         :param verbose: Switch for verbose, default is True
         :type verbose: bool
         """
+        assert dt > 0, "Time step size must be a positive value!"
+
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node["simulation"].start()
+
+        self.iter_counter = 0
+
         residual_history = []
         for i in range(max_newt + 1):
-            self.physics.engine.assemble_linear_system(
-                dt
-            )  # assemble Jacobian and residual of reservoir and well blocks
-            self.apply_rhs_flux(dt, t)  # apply RHS flux
+            # Update well phase velocities and derivatives if DFM wells are used
+            if self.has_dfm_well:
+                self.update_dfm_well_vels_and_ders(dt, t, self.iter_counter)
+
+            # assemble Jacobian and residual of reservoir and well blocks
+            self.physics.engine.assemble_linear_system(dt)
+
+            # apply RHS flux
+            self.apply_rhs_flux(dt, t)
+
+            if self.has_dfm_well:
+                self.apply_dfm_well_lateral_heat_flux(dt, t)
+
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
 
-            self.physics.engine.newton_residual_last_dt = (
-                self.physics.engine.calc_newton_residual()
-            )  # calc norm of residual
+            if not self.has_dfm_well:
+                self.physics.engine.newton_residual_last_dt = (
+                    self.physics.engine.calc_newton_residual()
+                )  # calc norm of residual
+            # TODO Function line_search is not updated for the coupled model.
+            elif self.has_dfm_well:
+                # Method is either 1 or 2
+                self.physics.engine.newton_residual_last_dt = (
+                    self.physics.engine.calc_coupled_well_reservoir_residual(
+                        self.data_ts.coupled_well_res_norm_method
+                    )
+                )
 
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
@@ -737,7 +792,9 @@ class DartsModel:
                 < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult
             ) or self.physics.engine.n_newton_last_dt == max_newt:
                 if i > 0:  # min_i_newton
+                    self.iter_counter = 0
                     break
+            self.iter_counter += 1
 
             # line search
             if (
@@ -788,6 +845,82 @@ class DartsModel:
 
         self.timer.node["simulation"].stop()
         return converged
+
+    def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):
+        """
+        Update phase velocities and their corresponding derivatives in DFM wells
+
+        :param dt: Time step size [day]
+        :type dt: float
+        :param t: Simulation time [day]
+        :type t: float
+        :param iter_counter: Newton-Raphson iteration counter for the current time step
+        :type iter_counter: int
+        """
+        self.timer.node["simulation"].node["dfm_well_velocity_calculation"].start()
+        for w in self.reservoir.wells:
+            if w.ms_type == ms_well.MS_Type.DFM:
+                start = w.well_head_idx * self.physics.n_vars
+                stop = (w.well_head_idx + w.num_segments) * self.physics.n_vars
+
+                Xn_dfm_well = np.asarray(self.physics.engine.Xn)[start:stop]
+                X_dfm_well = np.asarray(self.physics.engine.X)[start:stop]
+                well_phase_v, well_phase_v_d = self.wells[
+                    w.name
+                ].eval_phase_vels_and_ders(Xn_dfm_well, X_dfm_well, dt, t, iter_counter)
+                w.phases_vels = value_vector(well_phase_v)
+                w.phases_vels_ders = value_vector(well_phase_v_d)
+        self.timer.node["simulation"].node["dfm_well_velocity_calculation"].stop()
+
+    def apply_dfm_well_lateral_heat_flux(self, dt, t):
+        for well in self.reservoir.wells:
+            if (
+                well.ms_type == ms_well.MS_Type.DFM
+                and self.wells[well.name].lateral_heat_rate_eval is not None
+            ):
+                # Get temperatures of segments
+                if self.physics.state_spec == self.physics.StateSpecification.PT:
+                    T_segments = self.physics.engine.X[
+                        well.well_head_idx * self.physics.n_vars
+                        + (self.physics.n_vars - 1) : (
+                            well.well_head_idx + well.num_segments
+                        )
+                        * self.physics.n_vars
+                        + (self.physics.n_vars - 1) : self.physics.n_vars
+                    ]
+                elif self.physics.state_spec == self.physics.StateSpecification.PH:
+                    T_segments = np.zeros(well.num_segments)
+                    for i in range(well.num_segments):
+                        state = self.physics.engine.X[
+                            (well.well_head_idx + i) * self.physics.n_vars : (
+                                well.well_head_idx + i + 1
+                            )
+                            * self.physics.n_vars
+                        ]
+                        self.physics.property_containers[0].evaluate(state)
+                        T_segments[i] = self.physics.property_containers[0].temperature
+
+                # Evaluate lateral heat rates and add them to the rhs
+                if isinstance(
+                    self.wells[well.name].lateral_heat_rate_eval,
+                    SemiAnalyticalWellLateralHeatTransfer,
+                ):
+                    well_lateral_heat_rate = self.wells[
+                        well.name
+                    ].lateral_heat_rate_eval.evaluate(T_segments, t + dt)
+                    rhs = np.array(self.physics.engine.RHS, copy=False)
+                    rhs[
+                        well.well_head_idx * self.physics.n_vars
+                        + (self.physics.n_vars - 1) : (
+                            well.well_head_idx + well.num_segments
+                        )
+                        * self.physics.n_vars
+                        + (self.physics.n_vars - 1) : self.physics.n_vars
+                    ] -= well_lateral_heat_rate * dt
+                else:
+                    raise TypeError(
+                        f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
+                    )
 
     def line_search(self, dt, t, coef, history, verbose: bool = False):
         """
@@ -952,8 +1085,7 @@ class DartsModel:
             # If the function has not been overloaded, pass
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
-        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
-        rhs[:n_res] += self.set_rhs_flux(t) * dt
+        rhs += self.set_rhs_flux(t) * dt
         return
 
     def print_timers(self):

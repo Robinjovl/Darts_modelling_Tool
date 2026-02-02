@@ -1,9 +1,14 @@
 from darts.engines import timer_node, value_vector
-from darts.physics.base.operators_base import WellControlOperators, WellInitOperators
+from darts.physics.base.operators_base import (
+    PropertyOperators as BasePropertyOperators,
+)
+from darts.physics.base.operators_base import (
+    WellControlOperators,
+    WellInitOperators,
+)
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
-    CoversionOperators,
-    PropertyOperators,
+    ConversionOperators,
     ReservoirOperators,
 )
 from darts.physics.super.physics import Compositional
@@ -59,6 +64,7 @@ class ElementBasedReactiveFlow(Compositional):
         """
         vars = ["p"] + elements[:-1]
         self.initial_operators = {}
+        self.output_property_containers = {}
 
         super().__init__(
             components=elements,
@@ -86,11 +92,11 @@ class ElementBasedReactiveFlow(Compositional):
             self.reservoir_operators[region] = ReservoirOperators(
                 self.property_containers[region]
             )
-            self.initial_operators[region] = CoversionOperators(
+            self.initial_operators[region] = ConversionOperators(
                 self.property_containers[region]
             )
-            self.property_operators[region] = PropertyOperators(
-                self.property_containers[region]
+            self.property_operators[region] = BasePropertyOperators(
+                self.output_property_containers[region], self.thermal
             )
 
         self.well_ctrl_operators = WellControlOperators(
@@ -101,6 +107,12 @@ class ElementBasedReactiveFlow(Compositional):
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
         )
+
+    def add_property_region(
+        self, property_container, output_property_container, region: int = 0
+    ):
+        super().add_property_region(property_container, region)
+        self.output_property_containers[region] = output_property_container
 
     def set_interpolators(
         self,

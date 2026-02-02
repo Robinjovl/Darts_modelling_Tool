@@ -1,6 +1,5 @@
 import numpy as np
 
-from darts.engines import operator_set_evaluator_iface
 from darts.physics.super.operator_evaluator import OperatorsSuper
 
 
@@ -64,6 +63,7 @@ class ReservoirOperators(OperatorsSuper):
         # state and values numpy vectors:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
+        values_np[:] = 0
 
         # pore pressure
         _p = state_np[0]
@@ -83,11 +83,10 @@ class ReservoirOperators(OperatorsSuper):
 
         nc = self.property.nc
         ns = self.property.n_solid
-        nph = 2
+        nph = self.property.nph
         ne = nc
 
         """ CONSTRUCT OPERATORS HERE """
-        values_np[:] = 0.0
 
         """ Alpha operator represents accumulation term: """
         values_np[self.ACC_OP : self.ACC_OP + ns] = z[:ns] * rho_t
@@ -101,6 +100,11 @@ class ReservoirOperators(OperatorsSuper):
                 self.property.x[j] * self.property.dens_m[j]
             )
 
+        """ molar density operator """
+        values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
+            self.property.ph
+        ]
+
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         for j in range(nph):
             values_np[self.UPSAT_OP + j] = (
@@ -110,9 +114,7 @@ class ReservoirOperators(OperatorsSuper):
         """ Chi operator for diffusion """
         for j in self.property.ph:
             values_np[self.GRAD_OP + j * self.ne : self.GRAD_OP + (j + 1) * self.ne] = (
-                self.property.diffusivity[j]
-                * self.property.x[j]
-                * self.property.dens_m[j]
+                self.property.diffusivity[j] * self.property.x[j]
             )
 
         """ Delta operator for reaction """
@@ -123,11 +125,12 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Gravity and Capillarity operators """
         # E3-> gravity
-        values_np[self.GRAV_OP + self.property.ph] = 0
+        values_np[self.GRAV_OP + self.property.ph] = self.property.dens[
+            self.property.ph
+        ]
 
         # E4-> capillarity
-        for i in range(nph):
-            values_np[self.PC_OP + i] = 0
+        values_np[self.PC_OP + self.property.ph] = self.property.pc[self.property.ph]
 
         """ Permeability multiplier k/kmax """
         # E5_> permeability multiplier due to permporo relationship
@@ -149,10 +152,25 @@ class ReservoirOperators(OperatorsSuper):
         # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
         values_np[self.PRES_OP] = state_np[0]
 
+        if self.thermal:
+            self.evaluate_thermal(state_np, values_np)
+
         return 0
 
+    def evaluate_thermal(self, state, values):
+        """
+        Class methods which evaluates the state operators for the element-based
+        formulation of reactive flow physics for thermal case.
+        :param state: state variables [p, z_{1}, ..., z_{n_m}, z_{n_m+1}, ..., z_{n_c-1}, T]
+        :type state: value_vector
+        :param values: values of the operators (used for storing the operator values)
+        :type values: value_vector
+        :rtype: int
+        """
+        pass  # TODO: implement thermal evaluation
 
-class CoversionOperators(ReservoirOperators):
+
+class ConversionOperators(ReservoirOperators):
     """
     Operator required for initialization, to convert given volume fraction to molar one
     Therefore, it works with state DIFFERENT from ReservoirOperators:
@@ -165,7 +183,7 @@ class CoversionOperators(ReservoirOperators):
 
     def __init__(self, properties):
         """
-        Constructor for CoversionOperators class.
+        Constructor for ConversionOperators class.
         :param properties: Property container object
         :type properties: user-defined or built-in PropertyContainer class
         """
@@ -207,119 +225,5 @@ class CoversionOperators(ReservoirOperators):
         )
         nu_m = mineral_mole / (mineral_mole.sum() + self.fluid_mole)
         values_np[: self.property.n_solid] = nu_m
-
-        return 0
-
-
-class PropertyOperators(operator_set_evaluator_iface):
-    """
-    Operator required for evaluation of output properties.
-    state:
-    p - pressure in [bar]
-    z_{1}, ..., z_{n_m} - mineral molar fractions in rock + fluid mixture
-    z_{n_m+1}, ..., z_{n_c-1} - fluid molar fractions in fluid only
-    values:
-    - molar fractions of aqueous fluid species in aqueous phase
-    - molar fractions of vapourous fluid species in vapour phase
-    - vapour saturation in fluid only
-    - porosity
-    - activity of H+
-    - activity of CO2
-    - saturation ratio of minerals
-    - reaction rate of minerals
-    """
-
-    def __init__(self, properties):
-        """
-        Constructor for PropertyOperators class.
-        :param properties: Property container object
-        :type properties: user-defined or built-in PropertyContainer class
-        """
-        # Initialize base-class
-        super().__init__()
-        self.property = properties
-        self.props_name = (
-            ['x' + prop for prop in properties.flash_ev.aqueous_species]
-            + ['x' + prop for prop in properties.flash_ev.gas_species]
-            + ['satV']
-            + ['porosity']
-            + ['Act(H+)', 'Act(CO2)']
-            + ['SR_' + mineral for mineral in self.property.flash_ev.mineral_names]
-            + ['rate_' + mineral for mineral in self.property.flash_ev.mineral_names]
-        )
-
-    def evaluate(self, state, values):
-        """
-        Class methods which evaluates the property operators for
-        the element-based formulation of reactive flow physics
-        :param state: state variables [p, z_{1}, ..., z_{n_m}, z_{n_m+1}, ..., z_{n_c-1}]
-        :type state: value_vector
-        :param values: values of the operators (used for storing the operator values)
-        :type values: value_vector
-        :rtype: int
-        """
-        state_np = state.to_numpy()
-        values_np = values.to_numpy()
-        (
-            nu_v,
-            _,
-            _,
-            rho_phases,
-            kin_state,
-            _,
-            molar_aq_fractions,
-            molar_gas_fractions,
-        ) = self.property.flash_ev.evaluate(state_np)
-        shift = 0
-
-        # aquesous fractions
-        values_np[: molar_aq_fractions.size] = molar_aq_fractions
-        shift += molar_aq_fractions.size
-
-        # gaseous fractions
-        values_np[shift : shift + molar_gas_fractions.size] = molar_gas_fractions
-        shift += molar_gas_fractions.size
-
-        # gas saturation
-        nu_s_minerals = state_np[self.property.s_mask_state]
-        nu_s = nu_s_minerals.sum()
-        dens_m_solid = np.array(
-            [
-                v.evaluate(state_np[0]) / self.property.Mw[k]
-                for k, v in self.property.rock_density_ev.items()
-            ]
-        )
-        nu_s_rho_s = (nu_s_minerals / dens_m_solid).sum()
-        nu_v = nu_v * (1 - nu_s)  # convert to overall molar fraction
-        nu_a = 1 - nu_v - nu_s
-        rho_a, rho_v = rho_phases['aq'], rho_phases['gas']
-
-        if nu_v > 0:
-            sum = nu_v / rho_v + nu_a / rho_a + nu_s_rho_s
-            sv = nu_v / rho_v / sum
-        else:
-            sum = nu_a / rho_a + nu_s_rho_s
-            sv = 0
-        sa = nu_a / rho_a / sum
-        ss = nu_s_rho_s / sum
-        sat_minerals = nu_s_minerals / dens_m_solid / sum
-
-        values_np[shift] = sv / (sv + sa)
-        values_np[shift + 1] = 1 - ss
-
-        # extra kinetic props
-        values_np[shift + 2] = kin_state['Act(H+)']
-        values_np[shift + 3] = kin_state['Act(CO2)']
-
-        # saturation ratios of minerals
-        for i, mineral in enumerate(self.property.flash_ev.mineral_names):
-            values_np[shift + 4 + i] = kin_state['SR_' + mineral]
-
-        # kinetic rate
-        shift += len(self.property.flash_ev.mineral_names)
-        for i, k in enumerate(self.property.rock_compr_ev.keys()):
-            values_np[shift + 4 + i] = self.property.kinetic_rate_ev[k].evaluate(
-                kin_state, sat_minerals[i], dens_m_solid[i], self.property.temperature
-            )
 
         return 0

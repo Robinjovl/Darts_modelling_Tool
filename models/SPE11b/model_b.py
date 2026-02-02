@@ -214,7 +214,7 @@ class Model(DartsModel):
         #     # return rhs
         #     pass
 
-    def set_physics(self, temperature: float = None, n_points: int = 10001):
+    def set_physics(self, temperature: float = None, n_points: int = 1001):
         """Physical properties"""
 
         # define the Corey parameters for each layer (rock type) according to the technical description of the CSP

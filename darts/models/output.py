@@ -1,5 +1,6 @@
 import os
 import shutil
+import warnings
 
 import h5py
 import matplotlib.pyplot as plt
@@ -137,7 +138,7 @@ class Output:
 
     def set_phase_properties(self):
         """
-        This function constructs a predefined set of property operators for the compositiol/geothermal physics class.
+        This function constructs a predefined set of property operators for the compositional/geothermal physics class.
         """
 
         if type(self.physics) is Compositional or type(self.physics) is BlackOil:
@@ -544,6 +545,59 @@ class Output:
 
         return 0
 
+    def _get_output_cell_centers(self):
+        """
+        Resolve cell center coordinates for the entire reservoir.
+
+        This method supports multiple reservoir/discretizer variants with different
+        centroid storage fields and returns all available centroids as-is.
+
+        :returns: numpy array of shape (n_cells, 3) with [x, y, z] coordinates
+        :raises ValueError: when centroids are missing or have unexpected shape
+        """
+        # Resolve the centroids array from known reservoir/discretizer fields.
+        centroids = None
+        if hasattr(self.reservoir, "discretizer"):
+            if hasattr(self.reservoir.discretizer, "centroids_all_cells"):
+                centroids = self.reservoir.discretizer.centroids_all_cells
+            elif hasattr(self.reservoir.discretizer, "centroid_all_cells"):
+                centroids = self.reservoir.discretizer.centroid_all_cells
+
+        if centroids is None and hasattr(self.reservoir, "centroids_all_cells"):
+            centroids = self.reservoir.centroids_all_cells
+        if centroids is None and hasattr(self.reservoir, "centroids"):
+            centroids = self.reservoir.centroids
+        if centroids is None and hasattr(self.reservoir, "discr_mesh"):
+            if hasattr(self.reservoir.discr_mesh, "centroids"):
+                centroids = self.reservoir.discr_mesh.centroids
+        if centroids is None and hasattr(self.reservoir, "mesh"):
+            if hasattr(self.reservoir.mesh, "centroids"):
+                centroids = self.reservoir.mesh.centroids
+
+        if centroids is None:
+            raise ValueError(
+                "Cell centroids are not available for this reservoir type."
+            )
+
+        # Convert possible wrapped containers to a numpy array.
+        centroids = np.asarray(centroids)
+        if (
+            centroids.ndim == 1
+            and centroids.size > 0
+            and hasattr(centroids[0], "values")
+        ):
+            centroids = np.vstack(
+                [np.asarray(c.values, dtype=np.float64) for c in centroids]
+            )
+
+        # Expect a 2D array with x/y/z columns.
+        if centroids.ndim != 2 or centroids.shape[1] != 3:
+            raise ValueError(
+                f"Expected centroids with shape (n_cells, 3), got {centroids.shape}."
+            )
+
+        return centroids
+
     def configure_h5_output(
         self, filename: str, cell_ids, description, add_static_data: bool = False
     ):
@@ -558,8 +612,20 @@ class Output:
 
         with h5py.File(filename, "w") as f:
             # add static data group
+            need_static = add_static_data or (
+                cell_ids.size == self.reservoir.mesh.n_res_blocks
+            )
+            static_group = f.require_group("static") if need_static else None
+            if cell_ids.size == self.reservoir.mesh.n_res_blocks:
+                cell_centers = self._get_output_cell_centers().astype(
+                    self.precision_map[self.precision], copy=False
+                )
+                static_group.create_dataset(
+                    "cell_centers",
+                    data=cell_centers,
+                    dtype=self.precision_map[self.precision],
+                )
             if add_static_data:
-                static_group = f.create_group("static")
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
                 static_group.create_dataset("block_m", data=block_m)
@@ -820,7 +886,7 @@ class Output:
         engine=False,
     ) -> tuple[np.ndarray, dict]:
         """
-        Evaluates and returns properties from saved data (HDF5 file) or a simulation engine.
+        Evaluates and returns reservoir properties from saved data (HDF5 file) or a simulation engine.
 
         :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
         :type filepath: str, optional
@@ -956,8 +1022,8 @@ class Output:
         """
         Function to export results at timestamp t into `.vtk` format for viewing in Paraview.
 
-        :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
-        :type filepath: str, optional
+        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
+        :type sol_filepath: str, optional
         :param ith_step: i'th reporting step indicates which timestep to create a .vtk from. Defaults to None, in which case all saved data points are evaluated.
         :type ith_step: int
         :param output_directory: directory of where to save .vtk file. Defaults to none in which case the 'self.output_folder/vtk' is used.
@@ -1199,7 +1265,8 @@ class Output:
         self, types_of_well_rates: list = None, save_output_files: bool = False
     ):
         """
-        Compute and store well time data including rates and bottom-hole conditions (BHT and BHP).
+        Compute and store well time data including rates and bottom-hole conditions (BHT and BHP)
+
         Rates are calculated for each perforation and also total rate of each well. Total rates are calculated using
         two different methods:
         1- summing up the rates of perforations
@@ -1215,8 +1282,6 @@ class Output:
         :type types_of_well_rates: list
         :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default false
         :type save_output_files: bool
-
-        Well data is saved as a *.pkl file and .xlsx file in the dartsmodel.output_folder.
         """
         # Start timer for store_well_time_data
         self.timer.start()
@@ -1229,8 +1294,8 @@ class Output:
         time_data_dict = {"time": time}
 
         (
-            perfs_conn_ids,
-            well_head_conn_ids,
+            perfs_conn_idxs,
+            well_head_conn_idxs,
             geometric_WI,
             well_head_conn_trans,
         ) = self.get_wellhead_perf_connection_info()
@@ -1258,9 +1323,9 @@ class Output:
             ].physics_type == "geothermal_engine":
                 continue
             # Compute perforation rates
-            rates_perfs = self.calc_rates_at_connections(
+            rates_perfs = self.calc_rates_at_conns(
                 h5_well_data,
-                perfs_conn_ids,
+                perfs_conn_idxs,
                 geometric_WI,
                 self.physics.thermal,
                 rate_type,
@@ -1270,9 +1335,9 @@ class Output:
             # Store well rates by summing perforation rates
             self.store_well_rates_sums(time_data_dict, rates_perfs, rate_type)
             # Compute wellhead rates
-            rates_wellhead = self.calc_rates_at_connections(
+            rates_wellhead = self.calc_rates_at_conns(
                 h5_well_data,
-                well_head_conn_ids,
+                well_head_conn_idxs,
                 well_head_conn_trans,
                 self.physics.thermal,
                 rate_type,
@@ -1296,7 +1361,7 @@ class Output:
 
     def configure_physics(self):
         """
-        This function makes the physics of the geothermal engine compatible with how the physics of the super engine
+        Make the physics of the geothermal engine compatible with how the physics of the super engine
         is defined. This function is used in the method store_well_time_data of the current class.
         """
         pc = self.physics.property_containers[0]
@@ -1311,57 +1376,58 @@ class Output:
 
     def get_wellhead_perf_connection_info(self):
         """
-        This function gives information of the connections, including perforations and wellhead, for evaluation of
+        Give information of the connections, including perforations and wellhead, for evaluation of
         perforation and wellhead rates in the method store_well_time_data of the current class.
         """
         block_m = np.array(self.reservoir.mesh.block_m, copy=False)
         block_p = np.array(self.reservoir.mesh.block_p, copy=False)
         # Create a dictionary containing connection indices of perforations for each well (values are lists)
-        well_perf_conn_ids = {}
+        well_perf_conn_idxs = {}
         # Create a dictionary containing connection index of wellhead for each well (values are integers)
-        well_head_conn_id = {}
-        for idx, well in enumerate(self.reservoir.wells):
-            res_cell_ids = [perf[1] for perf in well.perforations]
+        well_head_conn_idx = {}
+        for iw, well in enumerate(self.reservoir.wells):
+            res_cell_idxs = [perf[1] for perf in well.perforations]
 
-            # Find ids of those connections which 1. block_p is in res_cell_ids, 2. block_m is in the desired well
-            if idx + 1 < len(self.reservoir.wells):  # If there is a next well
-                next_well = self.reservoir.wells[idx + 1]
+            # Find indices of perforations in the connection list (those connections
+            # which 1. block_m is in the desired well and 2. block_p is in res_cell_idxs)
+            if iw + 1 < len(self.reservoir.wells):  # If there is a next well
+                next_well = self.reservoir.wells[iw + 1]
                 mask = np.logical_and(
-                    np.isin(block_p, res_cell_ids),
                     np.logical_and(
                         block_m >= well.well_head_idx, block_m < next_well.well_head_idx
                     ),
+                    np.isin(block_p, res_cell_idxs),
                 )
             else:  # If there is no next well
                 mask = np.logical_and(
-                    np.isin(block_p, res_cell_ids), block_m >= well.well_head_idx
+                    block_m >= well.well_head_idx,
+                    np.isin(block_p, res_cell_idxs),
                 )
 
-            conn_ids = np.nonzero(mask)
-            well_perf_conn_ids[well.name] = conn_ids[0]
-            assert (
-                well_perf_conn_ids[well.name].size == len(well.perforations)
-                and (
-                    block_m[well_perf_conn_ids[well.name]]
-                    > self.reservoir.mesh.n_res_blocks
-                ).all()
+            conn_idxs = np.nonzero(mask)
+            well_perf_conn_idxs[well.name] = conn_idxs[0]
+            assert well_perf_conn_idxs[well.name].size == len(
+                well.perforations
+            ) and np.all(
+                block_m[well_perf_conn_idxs[well.name]]
+                > self.reservoir.mesh.n_res_blocks
             )
 
-            # Find id of well_head -> well_body connection in the connection list
-            wh_conn_id = np.where(
+            # Find idx of well_head-well_body connection in the connection list
+            wh_conn_idx = np.where(
                 np.logical_and(
                     block_m == well.well_head_idx, block_p == well.well_body_idx
                 )
             )[0]
-            assert len(wh_conn_id) == 1
-            well_head_conn_id[well.name] = wh_conn_id[0]
+            assert len(wh_conn_idx) == 1
+            well_head_conn_idx[well.name] = wh_conn_idx[0]
 
         # Get perforation connection indices for all wells
-        perfs_conn_ids = [
-            item for sublist in well_perf_conn_ids.values() for item in sublist
+        perfs_conn_idxs = [
+            item for sublist in well_perf_conn_idxs.values() for item in sublist
         ]
         # Get wellhead connection indices for all wells
-        well_head_conn_ids = list(well_head_conn_id.values())
+        well_head_conn_idxs = list(well_head_conn_idx.values())
 
         # Get well indices (WI) for each perforation
         geometric_WI = np.array(
@@ -1369,16 +1435,16 @@ class Output:
         )
         # Get transmissibility for each wellhead connection
         well_head_conn_trans = np.array(
-            [well.segment_transmissibility for well in self.reservoir.wells]
+            [well.well_transmissibility for well in self.reservoir.wells]
         )
 
-        return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
+        return perfs_conn_idxs, well_head_conn_idxs, geometric_WI, well_head_conn_trans
 
     def store_perf_rates(
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
     ):
         """
-        This function stores perforation rates from the 3D numpy array rates_perfs for the rate type rate_type in the
+        Store perforation rates from the 3D numpy array rates_perfs for the rate type rate_type in the
         dict time_data_dict. This function is used in the method store_well_time_data of the current class.
 
         :param time_data_dict: Dictionary in which well time series will be stored
@@ -1418,7 +1484,7 @@ class Output:
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
     ):
         """
-        This function stores summation of perforation rates for each well from the 3D numpy array rates_perfs for the
+        Store summation of perforation rates for each well from the 3D numpy array rates_perfs for the
         rate type rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of
         the current class.
 
@@ -1472,7 +1538,7 @@ class Output:
         self, time_data_dict: dict, wh_rates: np.ndarray, rate_type: str
     ):
         """
-        This function stores wellhead rate for each well from the 3D numpy array rates_perfs for the rate type
+        Store wellhead rate for each well from the 3D numpy array rates_perfs for the rate type
         rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of the
         current class.
 
@@ -1506,7 +1572,7 @@ class Output:
 
     def store_bhp_bht(self, h5_well_data: dict, time_data_dict: dict):
         """
-        This function stores bottom-hole pressure (BHP) and temperature (BHT) of wells over time in time_data_dict.
+        Store bottom-hole pressure (BHP) and temperature (BHT) of wells over time in time_data_dict.
         This function is used in the method store_well_time_data of the current class.
 
         :param h5_well_data: Dictionary extracted from the HDF5 file that stores well primary variables, etc.
@@ -1528,12 +1594,11 @@ class Output:
             )
             p_idx = variable_names.index("pressure")
             for i in range(nt):
-                p = X[i, :, p_idx]
-                BHP[i] = p[wellhead_cell_idx]
+                BHP[i] = X[i, wellhead_cell_idx, p_idx]
                 if self.physics.thermal:
                     if "temperature" in variable_names:
                         t_idx = variable_names.index("temperature")
-                        BHT[i] = X[i, :, t_idx][wellhead_cell_idx]
+                        BHT[i] = X[i, wellhead_cell_idx, t_idx]
                     else:
                         h_idx = variable_names.index("enthalpy")
                         BHT[i] = pc.temperature_ev.evaluate(
@@ -1542,22 +1607,22 @@ class Output:
             time_data_dict[f"well_{well.name}_BHP"] = BHP
             time_data_dict[f"well_{well.name}_BHT"] = BHT
 
-    def calc_rates_at_connections(
+    def calc_rates_at_conns(
         self,
         h5_well_data: dict,
-        conn_ids: list,
+        conn_idxs: list,
         trans: np.ndarray,
         thermal: bool,
         rate_type: str,
     ):
         """
-        This function calculates different types of rates at perforations or wellhead connections of wells.
+        Calculate different types of rates at perforations or wellhead connections of wells.
         This function is used in the method store_well_time_data of the current class.
 
         :param h5_well_data: Well data stored in the HDF5 file
         :type h5_well_data: dict
-        :param conn_ids: IDs of connections
-        :type conn_ids: list
+        :param conn_idxs: Indices of the desired connections in the connection list
+        :type conn_idxs: list
         :param trans: Transmissibility (For perforations, it is geometric part of well index)
         :type trans: np.ndarray
         :param thermal: If the model is thermal or not
@@ -1565,27 +1630,27 @@ class Output:
         :param rate_type: Type of well rate to calculate
         :type rate_type: str
         """
-        # Evaluate position of block_m, block_p in stored data, for every connection
+        # Evaluate position of block_m, block_p in stored data for every connection
         block_m = h5_well_data["static"]["block_m"]
         block_p = h5_well_data["static"]["block_p"]
         cell_id = h5_well_data["dynamic"]["cell_id"]
-        cell_m = self.find_values_in_an_array(block_m[conn_ids], cell_id)  # well cells
-        cell_p = self.find_values_in_an_array(
-            block_p[conn_ids], cell_id
-        )  # reservoir cells
-        num_conn = len(conn_ids)
-        assert cell_m.size == num_conn and cell_p.size == num_conn
+        # Line below finds indices of the m cells of the connections in cell_id
+        cell_m = self.find_values_in_an_array(block_m[conn_idxs], cell_id)
+        # Line below finds indices of the p cells of the connections in cell_id
+        cell_p = self.find_values_in_an_array(block_p[conn_idxs], cell_id)
+        n_conns = len(conn_idxs)
+        assert cell_m.size == n_conns and cell_p.size == n_conns
 
-        num_ts = h5_well_data["dynamic"]["time"].size
+        n_ts = h5_well_data["dynamic"]["time"].size
 
         pc = self.physics.property_containers[0]
+        ne = self.physics.reservoir_operators[0].ne
 
         p_idx = h5_well_data["dynamic"]["variable_names"].index("pressure")
         if thermal:
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                t_idx = h5_well_data["dynamic"]["variable_names"].index(
-                    "temperature"
-                )  # This does not work for geothermal engine
+                # Line below does not work for geothermal engine
+                t_idx = h5_well_data["dynamic"]["variable_names"].index("temperature")
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
                 pass
             else:
@@ -1598,27 +1663,29 @@ class Output:
             )
 
         p = h5_well_data["dynamic"]["X"][:, :, p_idx]
-
         dp = p[:, cell_p] - p[:, cell_m]
-
-        id_upwind = np.where(dp < 0, cell_m, cell_p)
+        idx_upwind = np.where(dp < 0, cell_m, cell_p)
 
         # This adds a new axis, turning a 1D array into a 2D column vector
-        time_idx = np.arange(num_ts)[:, None]
+        time_idx = np.arange(n_ts)[:, None]
 
-        states = h5_well_data["dynamic"]["X"][time_idx, id_upwind]
+        states = h5_well_data["dynamic"]["X"][time_idx, idx_upwind]
 
         if self.precision == "s":
             states = np.clip(
                 states,
-                self.physics.axes_min[None, None, :],
-                self.physics.axes_max[None, None, :],
+                np.array(self.physics.axes_min),
+                np.array(self.physics.axes_max),
             )
 
-        batch_size = num_ts * num_conn
-        flat_states = states.reshape(batch_size, self.physics.n_vars)
+        batch_size = n_ts * n_conns
+        n_well_ctrl_ops = self.physics.well_ctrl_operators.n_ops
+        n_reservoir_ops = self.physics.reservoir_operators[0].n_ops
+        n_vars = self.physics.n_vars
+        block_idx = index_vector(np.arange(batch_size).astype(np.int32))
+        states_2d = states.reshape(batch_size, n_vars)
 
-        states_vec = value_vector(flat_states.ravel())
+        states_vec = value_vector(states_2d.ravel())
 
         if rate_type in [
             "phase_molar_rates",
@@ -1626,46 +1693,30 @@ class Output:
             "phase_volumetric_rates",
             "advective_heat_rates",
         ]:
-            values = value_vector(
-                np.zeros(num_ts * num_conn * self.physics.well_ctrl_operators.n_ops)
-            )
+            values = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
             dvalues = value_vector(
-                np.zeros(
-                    (num_ts * num_conn * self.physics.well_ctrl_operators.n_ops)
-                    * self.physics.n_vars
-                )
+                np.zeros((batch_size * n_well_ctrl_ops) * self.physics.n_vars)
             )
 
-            block_idx = np.arange(num_ts * num_conn).astype(np.int32)
             self.physics.well_ctrl_itor.evaluate_with_derivatives(
-                states_vec, index_vector(block_idx), values, dvalues
+                states_vec, block_idx, values, dvalues
             )
 
             # self.physics.well_ctrl_itor.evaluate(states_vec, values)
 
-            values_reshaped = np.asarray(values).reshape(
-                batch_size, self.physics.well_ctrl_operators.n_ops
-            )
+            values_reshaped = np.asarray(values).reshape(batch_size, n_well_ctrl_ops)
 
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            values = value_vector(
-                np.zeros(num_ts * num_conn * self.physics.reservoir_operators[0].n_ops)
-            )
+            values = value_vector(np.zeros(batch_size * n_reservoir_ops))
             dvalues = value_vector(
-                np.zeros(
-                    (num_ts * num_conn * self.physics.reservoir_operators[0].n_ops)
-                    * self.physics.n_vars
-                )
+                np.zeros((batch_size * n_reservoir_ops) * self.physics.n_vars)
             )
 
-            block_idx = np.arange(num_ts * num_conn).astype(np.int32)
             self.physics.acc_flux_itor[0].evaluate_with_derivatives(
-                states_vec, index_vector(block_idx), values, dvalues
+                states_vec, block_idx, values, dvalues
             )
 
-            values_reshaped = np.asarray(values).reshape(
-                batch_size, self.physics.reservoir_operators[0].n_ops
-            )
+            values_reshaped = np.asarray(values).reshape(batch_size, n_reservoir_ops)
 
         else:
             raise Exception(
@@ -1683,12 +1734,29 @@ class Output:
             ops = values_reshaped[:, op_start : op_start + pc.nph]
         elif rate_type == "component_molar_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
-            ops = values_reshaped[
-                :, op_start : op_start + pc.nc_fl * pc.nph
-            ]  # molar ops
+            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
+            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+
+            op_start = self.physics.reservoir_operators[0].LAMBDA_OP
+            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            lambda_op = lambda_op[:, :, np.newaxis]
+
+            molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
+            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_fl)
+
+            ops = molar_ops
         elif rate_type == "component_mass_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
-            molar_ops = values_reshaped[:, op_start : op_start + pc.nc_fl * pc.nph]
+            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
+            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+
+            op_start = self.physics.reservoir_operators[0].LAMBDA_OP
+            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            lambda_op = lambda_op[:, :, np.newaxis]
+
+            molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
+            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_fl)
+
             mw = np.array(self.physics.property_containers[0].Mw[: pc.nc_fl])
             mw_tiled = np.tile(mw, pc.nph)
             ops = molar_ops * mw_tiled
@@ -1698,30 +1766,50 @@ class Output:
 
             # Calc heat operators for the dead state (1 atm and 15 deg C)
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                flat_states[:, p_idx] = 1.01325  # Dead pressure (1 atm)
-                flat_states[:, t_idx] = 273.15 + 15  # Dead temperature (15 deg C)
-                states_vec_dead = value_vector(flat_states.ravel())
+                p_dead = 1.01325  # Dead pressure (1 atm)
+                T_dead = 273.15 + 15  # Dead temperature (15 deg C)
+                if not (
+                    self.physics.axes_min[p_idx]
+                    <= p_dead
+                    <= self.physics.axes_max[p_idx]
+                ):
+                    warnings.warn(
+                        f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
+                        stacklevel=1,
+                    )
+                if not (
+                    self.physics.axes_min[-1] <= T_dead <= self.physics.axes_max[-1]
+                ):
+                    warnings.warn(
+                        f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
+                        stacklevel=1,
+                    )
+
+                states_2d[:, p_idx] = p_dead
+                states_2d[:, t_idx] = T_dead
+                states_vec_dead = value_vector(states_2d.ravel())
+
+                values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
+                dvalues_dead = value_vector(
+                    np.zeros((batch_size * n_well_ctrl_ops) * self.physics.n_vars)
+                )
+
                 self.physics.well_ctrl_itor.evaluate_with_derivatives(
-                    states_vec_dead, index_vector(block_idx), values, dvalues
+                    states_vec_dead, block_idx, values_dead, dvalues_dead
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-                values_reshaped_dead = np.asarray(values).reshape(
-                    batch_size, self.physics.well_ctrl_operators.n_ops
+                values_reshaped_dead = np.asarray(values_dead).reshape(
+                    batch_size, n_well_ctrl_ops
                 )
                 ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
                 # TODO This does not work properly if the super engine is of the PH type
-                enthalpy_w, dens_m_w, kr_w, miu_w = (
-                    -44582.229072,
-                    55.457385,
-                    1,
-                    1.132781,
-                )  # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
+                # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
+                enthalpy_w, dens_m_w, kr_w, miu_w = -44582.2291, 55.4574, 1, 1.1328
                 ops_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
                 ops_dead = np.zeros(ops.shape)
-                ops_dead[ops != 0.0] = (
-                    ops_dead_phase  # If value is zero, no need to subtract ops_dead_phase from it
-                )
+                # If value is zero, no need to subtract ops_dead_phase from it
+                ops_dead[ops != 0.0] = ops_dead_phase
 
             ops = ops - ops_dead
 
@@ -1731,57 +1819,17 @@ class Output:
             "phase_mass_rates",
             "phase_volumetric_rates",
         ]:
-            ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
+            ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            ops_reshaped = ops.reshape(num_ts, num_conn, -1)
+            ops_reshaped = ops.reshape(n_ts, n_conns, -1)
         elif rate_type == "advective_heat_rates":
-            ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
+            ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
 
-        trans_exp = trans[None, :, None]
-        dp_exp = dp[:, :, None]
-        rates = -ops_reshaped * trans_exp * dp_exp
+        tran = trans[None, :, None]
+        dpr = dp[:, :, None]
+        rates = -ops_reshaped * tran * dpr
 
         return rates
-
-    # %% Auxiliary functions
-    def find_conn_ids_for_perfs(
-        self, perfs: list, block_m: np.ndarray, block_p: np.ndarray, n_res_blocks: int
-    ):
-        """
-        This function finds the connection IDs of perforations
-
-        :param perfs: List of perforations (well_block_index, reservoir_block_index, well_index, well_indexD)
-        :type perfs: List
-        :param block_m: block_m of the connection list
-        :type block_m: np.ndarray
-        :param block_p: block_p of the connection list
-        :type block_p: np.ndarray
-        :param n_res_blocks: Number of reservoir blocks
-        :type n_res_blocks: int
-        """
-        res_cell_ids = [perf[1] for perf in perfs]
-        perfs_conn_ids = np.nonzero(
-            np.logical_and(np.isin(block_p, res_cell_ids), block_m >= n_res_blocks)
-        )[0]
-        assert (
-            len(perfs_conn_ids) == len(perfs)
-            and (block_m[perfs_conn_ids] > n_res_blocks).all()
-        )
-        return perfs_conn_ids
-
-    def find_values_in_an_array(self, to_find: np.ndarray | list, in_array: np.ndarray):
-        """
-        :param to_find: The values the indices of which we want to find in in_array
-        :type to_find: np.ndarray or list
-        :param in_array: The array in which we want to find the values in to_find
-        :type in_array: np.ndarray
-        """
-        indices = []
-        for element in to_find:
-            id = np.where(in_array == element)[0]
-            if id.size > 0:
-                indices.append(id[0])
-        return np.array(indices, dtype=np.intp)
 
     def plot_well_time_data(self, types_of_well_rates: list = None):
         """
@@ -1889,7 +1937,7 @@ class Output:
 
     def create_perf_dirs(self, main_dir: str):
         """
-        This function creates a new directory (folder) for each perforation of each well. The rates for each perforation
+        Create a new directory (folder) for each perforation of each well. The rates for each perforation
         will be stored in their corresponding directory later. This function is used in the method plot_well_time_data
         of the current class.
 
@@ -1905,7 +1953,7 @@ class Output:
 
     def create_perf_keys(self, rtype: str, well_name: str, perf_idx: int):
         """
-        This function creates keys for perforation rates. This function is used in the method plot_well_time_data
+        Create keys for perforation rates. This function is used in the method plot_well_time_data
         of the current class.
 
         :param rtype: Type of the well rate
@@ -1940,7 +1988,7 @@ class Output:
 
     def create_total_keys(self, rtype: str, well_name: str):
         """
-        This function creates keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
+        Create keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
         method plot_well_time_data of the current class.
 
         :param rtype: Type of well rate
@@ -2003,3 +2051,18 @@ class Output:
             )
             keys.append((f"{base}{rtype}", label))
         return keys
+
+    # %% Auxiliary functions
+    def find_values_in_an_array(self, to_find: np.ndarray | list, arr: np.ndarray):
+        """
+        :param to_find: The values the indices of which we want to find in arr
+        :type to_find: np.ndarray or list
+        :param arr: The array in which we want to find the values in to_find
+        :type arr: np.ndarray
+        """
+        indices = []
+        for element in to_find:
+            idx = np.where(arr == element)[0]
+            if idx.size > 0:
+                indices.append(idx[0])
+        return np.array(indices, dtype=np.intp)
