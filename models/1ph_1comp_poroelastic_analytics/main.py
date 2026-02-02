@@ -5,15 +5,54 @@ import meshio
 from math import fabs
 import os
 from scipy.interpolate import interp1d
+import subprocess
+from darts.tools.gen_msh import generate_box_3d
+from convergence_plot import plot_conv_main
 
 from matplotlib import pyplot as plt
 from matplotlib import rcParams
+import shutil
+
 rcParams["text.usetex"]=False
 plt.rc('xtick',labelsize=16)
 plt.rc('ytick',labelsize=16)
 font = {'family' : 'normal',
         'size'   : 18}
 plt.rc('legend',fontsize=12)
+
+try:
+    # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
+    from darts.engines import set_num_threads
+    set_num_threads(1)
+except:
+    pass
+
+def generate_mesh(mesh='rect'):
+    '''
+    generate mesh and output a .msh file with a resolution NX, where NX is taken from mesh str argument: rect_NX
+    reads meshes/transfinite_template.geo
+    :param mesh: 'rect' or 'rect_N' with integer NX
+    '''
+
+    nx = 30  # default case - if there is no '_' symbol in the "mesh" argument
+    suffix = ''
+    filename = os.path.join('meshes', 'transfinite')
+    if len(mesh.split('_')) > 1:  # for the convergence_analysis
+        nx = int(mesh.split('_')[1])
+        suffix = '_' + str(nx)
+    msh_filename = filename + suffix + '.msh'
+
+    tags = dict()
+    tags['BND_X-'] = 991
+    tags['BND_X+'] = 992
+    tags['BND_Y-'] = 993
+    tags['BND_Y+'] = 994
+    tags['BND_Z-'] = 995
+    tags['BND_Z+'] = 996
+    tags['MATRIX'] = 99991
+
+    generate_box_3d(X=100., Y=100., Z=10., NX=nx, NY=nx, NZ=1, filename=msh_filename, tags=tags,
+                    is_transfinite=True, is_recombine=True, refinement_mult=1)
 
 def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
@@ -108,7 +147,17 @@ def run_timestep_python(m, dt, t):
                     converged = 0
                 break
 
-        r_code = self.e.solve_linear_equation()
+        from darts.input.input_data import linear_solver_types
+        if hasattr(self, 'data_ts') and type(self.data_ts.linear_type) == linear_solver_types: # solvers via Python-exposed jacobian
+            if self.data_ts.linear_type in [linear_solver_types.CPU_PETSC_CPR, linear_solver_types.CPU_PETSC_FS]:
+                self.petsc_solve_linear_equation()
+            elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
+                self.pardiso_solve_linear_equation()
+            else:
+                raise Exception("Unknown linear solver type", self.idata.data_ts.linear_type)
+        else: # compile-tyme C++ linear solvers
+            r_code = self.e.solve_linear_equation()
+
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)
         self.timer.node["newton update"].stop()
@@ -130,24 +179,17 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
     print('case:' + case, 'discr_name:' + discr_name, 'mesh: ' + mesh, 'overwrite: ' + overwrite, sep=', ')
     import platform
 
-    try:
-        # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
-        from darts.engines import set_num_threads
-        set_num_threads(1)
-    except:
-        pass
-
     nt = 20
     max_dt = 200
     t = np.logspace(-3, np.log10(max_dt), nt)
     # nt = 200
     # max_t = 200
     # t = max_t / nt * np.ones(nt)
-
+    if 'rect' in mesh:
+        generate_mesh(mesh=mesh)
     m = Model(case=case, discretizer=discr_name, mesh=mesh)
     m.init()
     redirect_darts_output('log.txt')
-    # redirect_darts_output('log.txt')
     # output_directory = 'sol_{:s}'.format(m.physics_type)
     m.timer.node["update"] = timer_node()
     m.physics.engine.find_equilibrium = False
@@ -199,7 +241,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
         return (failed > 0), data[-1]['simulation time']
     else:
         return False, -1.0
-def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
+def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', convergence_analysis=False):
     # GeosX
     # t = np.empty(shape=(0,), dtype=np.float64)
     # t = np.append(t, 60 * np.ones(int((600 - 0) / 60)) / 86400)
@@ -207,11 +249,31 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     # t = np.append(t, 3600 * np.ones(int((86400-3600) / 3600)) / 86400)
     # t = np.append(t, 86400 * np.ones(int((17280000-86400) / 86400)) / 86400)
     # nt = t.size
-
+    if 'rect' in mesh:
+        generate_mesh(mesh=mesh)
     m = Model(case=case, discretizer=discretizer, mesh=mesh)
     m.init()
+
+    if convergence_analysis:  # uniform dt, except the last timestep
+        # T = self.idata.sim.time_steps.sum()
+        if case == 'bai':
+            T = 10 / 60 / 24 # 0.5
+            nx = int(m.idata.mesh.mesh_filename.split('_')[-2])
+            dt = T / 10 / nx
+        else:
+            T = 10.
+            nx = int(m.idata.mesh.mesh_filename.split('_')[-1].split('.')[0])
+            dt = T / nx
+        nt = int(T / dt)
+        print('convergence_analysis: dt=', dt)
+        m.idata.sim.time_steps = np.zeros(nt) + dt
+        if m.idata.sim.time_steps.sum() < T:
+            m.idata.sim.time_steps = np.append(m.idata.sim.time_steps, T - m.idata.sim.time_steps.sum())
+
     redirect_darts_output('log.txt')
     m.output_directory = 'sol_' + case + '_' + discretizer + '_' + mesh
+    shutil.rmtree(m.output_directory, ignore_errors=True)
+    os.makedirs(m.output_directory, exist_ok=True)
     m.timer.node["update"] = timer_node()
     # m.physics.engine.find_equilibrium = False
 
@@ -324,10 +386,8 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
         pres['time'][ith_step + 1] = time
         disp['time'][ith_step + 1] = time
         # write a vtk snapshot
-        if discretizer == 'mech_discretizer':
-            m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
-        elif discretizer == 'pm_discretizer':
-            m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
+
     m.print_timers()
 
     if case != 'terzaghi_two_layers_no_analytics' and case != 'bai':
@@ -335,9 +395,10 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
         plot_comparison(m, pres, discretizer, case, save_data=save_data)
         plot_comparison(m, disp, discretizer, case, save_data=save_data)
     elif case == 'bai':
-        plot_bai_comparison(m, pres, save_data=False)
-        plot_bai_comparison(m, temp, save_data=False)
-        plot_bai_comparison(m, disp, save_data=False)
+        plot_bai_comparison(m, pres, save_data=True)
+        plot_bai_comparison(m, temp, save_data=True)
+        plot_bai_comparison(m, disp, save_data=True)
+
 def plot_comparison(m, data, discretizer, case, save_data=False):
     prefix = m.output_directory
     tD, dataD = m.reservoir.tD, m.reservoir.pD
@@ -393,17 +454,18 @@ def plot_comparison(m, data, discretizer, case, save_data=False):
     plt.yticks(fontsize=14)
     fig.tight_layout()
     if name == 'p':
-        plt.savefig(prefix + '/' + 'pressure_' + discretizer + '_' + case + '.png')
+        plt.savefig(os.path.join(prefix, 'pressure_' + discretizer + '_' + case + '.png'))
     elif name == 'u':
-        plt.savefig(prefix + '/' + 'displacement_' + discretizer + '_' + case + '.png')
+        plt.savefig(os.path.join(prefix, 'displacement_' + discretizer + '_' + case + '.png'))
     # plt.show()
 
     if save_data:
-        filename = prefix + '/' + name + '_data.txt'
+        filename = os.path.join(prefix, name + '_data.txt')
         A = np.zeros((data['time'].shape[0], data['x'].shape[0], 2))
         A[:, :, 0] = data['time'][:, np.newaxis]
         A[:, :, 1] = data['x'][np.newaxis, :]
-        np.savetxt(filename, np.c_[A[:,:,0].flatten(), A[:,:,1].flatten(), data['analytics'].flatten()])
+        np.savetxt(filename, np.c_[A[:,:,0].flatten(), A[:,:,1].flatten(), data['darts'].flatten(), data['analytics'].flatten()])
+    plt.close()
 def plot_bai_comparison(m, data, save_data=False):
     prefix = m.output_directory
     colors = ['b', 'r', 'g']
@@ -436,10 +498,31 @@ def plot_bai_comparison(m, data, save_data=False):
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
     fig.tight_layout()
-    plt.savefig(prefix + '/' + data['name'] + '_bai.png')
+    plt.savefig(os.path.join(prefix, data['name'] + '_bai.png'))
     # plt.show()
+    plt.close()
+
+    if save_data:
+        filename = os.path.join(prefix, data['name'] + '_data.txt')
+        A = np.zeros((data['time'].shape[0], len(data['x']), 2))
+        A[:, :, 0] = data['time'][:, np.newaxis]
+        A[:, :, 1] = np.array(data['x'])[np.newaxis, :]
+        darts_data = np.array([v for k, v in data['darts'].items()])
+        # interpolation of analytics to the common time grid
+        interpolated_data = []
+        for v in data['analytics'].values():
+            times = v[:, 0] / 86400 # Extract time values
+            values = v[:, 1]  # Extract data values
+            # Create an interpolating function
+            f_interp = interp1d(times, values, kind='linear', bounds_error=False, fill_value='extrapolate')
+            # Interpolate on the common time array
+            interpolated_data.append(f_interp(data['time']))
+        analytics_data = np.array(interpolated_data)
+        np.savetxt(filename, np.c_[A[:,:,0].flatten(), A[:,:,1].flatten(), darts_data.flatten(), analytics_data.flatten()])
 
 def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
+    if 'rect' in mesh:
+        generate_mesh(mesh=mesh)
     m = Model(case=case, discretizer=discretizer, mesh=mesh)
     m.init()
 
@@ -456,20 +539,15 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     # m.physics.engine.find_equilibrium = False
 
     # m.physics.engine.print_linear_system = True
-    if discretizer == 'mech_discretizer':
-        m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, 0, m.physics.engine)
-    elif discretizer == 'pm_discretizer':
-        m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, 0, m.physics.engine)
+    m.reservoir.write_to_vtk(m.output_directory, 0, m.physics.engine)
+
     time = 0.0
     for ith_step, dt in enumerate(m.idata.sim.time_steps):
         time += dt
         m.params.first_ts = dt
         m.params.max_ts = dt
         run_python(m, dt)
-        if discretizer == 'mech_discretizer':
-            m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
-        elif discretizer == 'pm_discretizer':
-            m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
 
     m.print_timers()
 
@@ -561,14 +639,14 @@ if __name__ == '__main__':
     #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='wedge')
 
     # Unstructured hexahedral grid
-    #run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
+    run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
     # run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
     # run(case='mandel', discretizer='mech_discretizer', mesh='hex')
     # run(case='mandel', discretizer='pm_discretizer', mesh='hex')
     # run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
-    #test_all = False
-    test_all = True
+    test_all = False
+    #test_all = True
     cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
     if test_all:
         for case in cases_list:
@@ -578,5 +656,18 @@ if __name__ == '__main__':
                 mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
                 if case != 'bai':  # is not supported by poroelastic as bai is thermoporoelasticity
                     pm_res   = test(case=case, discr_name='pm_discretizer',   mesh=mesh)
+
+        print('Ok')
+
+    convergence_analysis = False
+    #convergence_analysis = True  #the FS_CPR preconditioner option is recommended to use for larger mesh cases (nx=50 and larger).
+    if convergence_analysis:
+        cases_list = ['terzaghi', 'mandel', 'bai']
+        nx_list = [5, 15, 50]
+        for case in cases_list:
+            for nx in nx_list:
+                mech_result = run_and_plot(case=case, discretizer='mech_discretizer', mesh='rect_' + str(nx), convergence_analysis=True)
+
+        plot_conv_main(nx_list=nx_list, case=case)
 
         print('Ok')

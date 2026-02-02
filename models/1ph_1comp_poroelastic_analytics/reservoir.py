@@ -24,8 +24,10 @@ from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.input.input_data import InputData
 
 def get_mesh_filename(mesh='rect', suffix='', prop=''):
-    if mesh == 'rect':
-        mesh_filename = 'meshes/transfinite'
+    if 'rect' in mesh:
+        mesh_filename = ('meshes/transfinite')
+        if len(mesh.split('_')) > 1:  # for the convergence_analysis
+            mesh_filename += '_' + mesh.split('_')[1]
     elif mesh == 'wedge':
         mesh_filename = 'meshes/wedge'
     elif mesh == 'hex':

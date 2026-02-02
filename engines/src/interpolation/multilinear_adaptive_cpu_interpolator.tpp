@@ -104,17 +104,18 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
 // this guarantees correct data insertion into point_data and hypercube_data,
 // and also allows for not thread-safe operator generation
 #pragma omp single
-  for (index_t p = 0; p < points_idxs.size(); p++)
+  for (size_t p = 0; p < points_idxs.size(); p++)
   {
     index_t offset = points_idxs[p];
     index_t hypercube_idx = 0;
 
-    for (int i = 0; i < N_DIMS; ++i)
+    for (uint8_t i = 0; i < N_DIMS; ++i)
     {
-      int axis_idx = get_axis_interval_index<value_t>(points[offset * N_DIMS + i],
+      index_t index = offset * static_cast<index_t>(N_DIMS) + static_cast<index_t>(i);
+      int axis_idx = get_axis_interval_index<value_t>(points[index],
                                                       this->axes_min_internal[i], this->axes_max_internal[i],
                                                       this->axes_step_inv_internal[i], this->axes_points[i]);
-      hypercube_idx += axis_idx * this->axis_hypercube_mult[i];
+      hypercube_idx += static_cast<index_t>(axis_idx) * this->axis_hypercube_mult[i];
     }
     (void)this->get_hypercube_data(hypercube_idx);
   }

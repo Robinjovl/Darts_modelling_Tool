@@ -3,10 +3,9 @@ from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
-from darts.engines import value_vector, sim_params
+from darts.engines import value_vector, sim_params, ms_well
 
 from darts.input.input_data import InputData
-from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
 
 
 class Model(CICDModel):
@@ -22,18 +21,11 @@ class Model(CICDModel):
         self.set_input_data(n_points)
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-3, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
+        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
                             it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
                             newton_params=value_vector([1]))
 
         self.timer.node["initialization"].stop()
-
-        T_init = 350.
-        state_init = value_vector([200., 0.])
-        enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, T_init)
-        self.initial_values = {self.physics.vars[0]: state_init[0],
-                               self.physics.vars[1]: enth_init
-                               }
 
     def set_reservoir(self):
         (nx, ny, nz) = (60, 60, 3)
@@ -64,33 +56,101 @@ class Model(CICDModel):
         jw = [14, 46]
 
         # add well
-        self.reservoir.add_well("INJ")
+        well_type = ms_well.MS_Type.EPM
+        self.reservoir.add_well("INJ", well_type)
         for k in range(1, self.reservoir.nz):
-            self.reservoir.add_perforation("INJ", cell_index=(iw[0], jw[0], k + 1),
-                                           well_radius=0.16, multi_segment=True)
+            self.reservoir.add_perforation("INJ", res_cell_idx=(iw[0], jw[0], k + 1),
+                                           well_diameter=0.32, ms_epm=True)
 
         # add well
-        self.reservoir.add_well("PRD")
+        self.reservoir.add_well("PRD", well_type)
         for k in range(1, self.reservoir.nz):
-            self.reservoir.add_perforation("PRD", cell_index=(iw[1], jw[1], k + 1),
-                                           well_radius=0.16, multi_segment=True)
+            self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], jw[1], k + 1),
+                                           well_diameter=0.32, ms_epm=True)
 
     def set_physics(self):
         if self.iapws_physics:
+            from darts.physics.geothermal.geothermal import Geothermal
             self.physics = Geothermal(self.idata, self.timer)
         else:
-            self.physics = GeothermalPH(self.idata, self.timer)
-            self.physics.determine_obl_bounds(state_min=[self.idata.obl.min_p, 273.15],
-                                              state_max=[self.idata.obl.max_p, 373.15])
+            if self.compositional:
+                # Define fluid components, phases and Flash object
+                from dartsflash.libflash import PXFlash, FlashParams, EoS
+                from dartsflash.libflash import CubicEoS, AQEoS
+                from dartsflash.components import CompData
+                phases = ['water', 'steam']
+                components = ["H2O"]
+                comp_data = CompData(components=components, setprops=True)
+                Mw = comp_data.Mw
+                ceos = CubicEoS(comp_data, CubicEoS.PR)
+                ceos.set_preferred_roots(0, 0.75, EoS.MAX)
+                aq = AQEoS(comp_data, AQEoS.Jager2003)
+                aq.set_eos_range(0, [0.6, 1.])
+
+                flash_params = FlashParams(comp_data)
+
+                # EoS-related parameters
+                flash_params.add_eos("CEOS", ceos)
+                flash_params.add_eos("AQ", aq)
+                flash_params.eos_order = ["AQ", "CEOS"]
+
+                flash_params.T_min = 250.
+                flash_params.T_max = 575.
+                flash_params.phflash_Htol = 1e-3
+                flash_params.phflash_Ttol = 1e-8
+
+                # Define PropertyContainer
+                from darts.physics.super.property_container import PropertyContainer
+                zero = 1e-10
+                property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, min_z=zero/10)
+
+                property_container.flash_ev = PXFlash(flash_params, PXFlash.ENTHALPY)
+
+                # properties implemented in python
+                from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+                from darts.physics.properties.density import Spivey2004
+                from darts.physics.properties.viscosity import MaoDuan2009
+                from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+                property_container.enthalpy_ev = {'water': EoSEnthalpy(aq),
+                                                  'steam': EoSEnthalpy(ceos)}
+                property_container.density_ev = {'water': Spivey2004(components),
+                                                 'steam': EoSDensity(ceos, comp_data.Mw)}
+                property_container.viscosity_ev = {'water': MaoDuan2009(components),
+                                                   'steam': ConstFunc(0.01)}
+                property_container.conductivity_ev = {'water': ConstFunc(172.8),
+                                                      'steam': ConstFunc(0.)}
+                property_container.rel_perm_ev = {'water': PhaseRelPerm("water"),
+                                                  'steam': PhaseRelPerm("gas")}
+                property_container.output_props = {'temperature': lambda: property_container.temperature,
+                                                   'satAq': lambda: property_container.sat[0]}
+
+                from darts.physics.super.physics import Compositional
+                self.physics = Compositional(components, phases, self.timer, state_spec=Compositional.StateSpecification.PH,
+                                             n_points=1001, min_p=1, max_p=400, min_z=zero / 10, max_z=1 - zero / 10,
+                                             min_t=273.15, max_t=373.15, cache=False)
+                self.physics.add_property_region(property_container)
+
+            else:
+                from darts.physics.geothermal.geothermal import GeothermalPH
+                self.physics = GeothermalPH(self.idata, self.timer)
+
+    def set_initial_conditions(self):
+        input_distribution = {'pressure': 200.,
+                              'temperature': 350.
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_water_inj(8000, 300)
-                # w.control = self.physics.new_bhp_water_inj(230, 308.15)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                               is_inj=True, target=8000., phase_name='water', inj_composition=[], inj_temp=300.)
             else:
-                w.control = self.physics.new_rate_water_prod(8000)
-                # w.control = self.physics.new_bhp_prod(180)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                               is_inj=False, target=8000., phase_name='water')
 
     def compute_temperature(self, X):
         nb = self.reservoir.mesh.n_res_blocks
@@ -107,9 +167,16 @@ class Model(CICDModel):
         self.idata.rock.compressibility_ref_T = 273.15  # [K]
 
         if self.iapws_physics:
+            from darts.physics.geothermal.geothermal import GeothermalIAPWSFluidProps
             self.idata.fluid = GeothermalIAPWSFluidProps()
+            self.compositional = False
         else:
-            self.idata.fluid = GeothermalPHFluidProps()
+            self.compositional = True
+            if self.compositional:
+                pass
+            else:
+                from darts.physics.geothermal.geothermal import GeothermalPHFluidProps
+                self.idata.fluid = GeothermalPHFluidProps()
 
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)

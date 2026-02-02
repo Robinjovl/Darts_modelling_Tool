@@ -18,14 +18,15 @@ def input_data_case_2():
     idata.geom['mesh_prefix'] = 'raw_lc'
 
     # well locations
-    idata.geom['inj_well_coords'] = [[1, 1, 25]]  # X, Y, Z (only one perforation)
-    idata.geom['prod_well_coords'] = [[99, 99, 25]]
+    idata.geom['well_coords'] = dict()
+    idata.geom['well_coords']['I1'] = [1., 1., 25., 25.]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['P1'] = [99., 99., 25., 25.]  # X, Y, Z1, Z2
 
     # well in the matrix cells or in the fractures
     idata.geom['well_loc_type'] = 'wells_in_frac'
 
     # well controls
-    wctrl = idata.wells.controls
+    wctrl = idata.well_data.controls
     wctrl.rate_prod = None#10  # m3/day
     wctrl.rate_inj = None#5  # m3/day
     wctrl.delta_temp = 10  # inj_temp = initial_temp - delta_temp

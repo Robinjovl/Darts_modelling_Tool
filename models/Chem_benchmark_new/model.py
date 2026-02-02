@@ -1,19 +1,19 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params, value_vector, operator_set_evaluator_iface
+from darts.engines import sim_params, value_vector, operator_set_evaluator_iface, ms_well
 import numpy as np
 from copy import deepcopy
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.kinetics import KineticBasic
 
-from darts.physics.super.operator_evaluator import ReservoirOperators, RateOperators
+from darts.physics.super.operator_evaluator import ReservoirOperators
 
 import matplotlib.pyplot as plt
 
@@ -61,12 +61,12 @@ class Model(CICDModel):
 
     def set_reservoir(self, grid_1D: bool, res: int, solid_init):
         """Reservoir"""
-        trans_exp = 3
-        self.params.trans_mult_exp = trans_exp
+        self.permporo = PermPoroRelationship()
+        self.params.enable_permporo = True
         if self.grid_1D:
             self.dx = 1
             self.dy = 1
-            perm = 100 / (1 - solid_init) ** trans_exp
+            perm = 100 / self.permporo.evaluate(1 - solid_init)
             (self.nx, self.ny) = (1000, 1)
             self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=1, dx=self.dx, dy=self.dy, dz=1,
                                              permx=perm, permy=perm, permz=perm / 10, poro=1, depth=1000)
@@ -81,7 +81,7 @@ class Model(CICDModel):
 
             self.map = create_map(Lx, Ly, self.nx, self.ny)
 
-            perm = np.ones(self.nx * self.ny) * 100 / (1 - solid_init) ** trans_exp
+            perm = np.ones(self.nx * self.ny) * 100 / self.permporo.evaluate(1 - solid_init)
 
             # Add inclination in y-direction:
             self.depth = np.ones((self.nx * self.ny,)) * 1000
@@ -94,18 +94,19 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
+        well_type = ms_well.MS_Type.EPM
         if self.grid_1D:
             """well location"""
-            self.reservoir.add_well("INJ_GAS")
-            self.reservoir.add_perforation("INJ_GAS", cell_index=(1, 1, 1))
+            self.reservoir.add_well("INJ_GAS", well_type)
+            self.reservoir.add_perforation("INJ_GAS", res_cell_idx=(1, 1, 1))
 
-            self.reservoir.add_well("PROD")
-            self.reservoir.add_perforation("PROD", cell_index=(self.reservoir.nx, 1, 1))
+            self.reservoir.add_well("PROD", well_type)
+            self.reservoir.add_perforation("PROD", res_cell_idx=(self.reservoir.nx, 1, 1))
 
         else:
-            self.reservoir.add_well("PROD_" + str(1))
+            self.reservoir.add_well("PROD_" + str(1), well_type)
             for k in range(self.reservoir.ny):
-                self.reservoir.add_perforation("PROD_" + str(1), cell_index=(self.reservoir.nx, 1, k + 1))
+                self.reservoir.add_perforation("PROD_" + str(1), res_cell_idx=(self.reservoir.nx, 1, k + 1))
 
     def set_physics(self, grid_1D: bool, solid_init: float, custom_physics: bool):
         """PHYSICS AND RESERVOIR"""
@@ -118,8 +119,6 @@ class Model(CICDModel):
         self.physics_type = 'kin'  # equi or kin
 
         """Reservoir"""
-        trans_exp = 3
-        self.params.trans_mult_exp = trans_exp
         if grid_1D:
             self.inj_gas_rate = 0.2
 
@@ -153,22 +152,23 @@ class Model(CICDModel):
         nc = len(components)
 
         if self.combined_ions:
-            zc_fl_inj_stream_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
-            zc_fl_inj_stream_liq = [2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
+            zc_fl_inj_composition_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
+            zc_fl_inj_composition_liq = [2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
         else:
-            zc_fl_inj_stream_gas = [1 - 3 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject), self.zero
+            zc_fl_inj_composition_gas = [1 - 3 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject), self.zero
                                     / (1 - solid_inject)]
-            zc_fl_inj_stream_liq = [3 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject),
+            zc_fl_inj_composition_liq = [3 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject),
                                     self.zero / (1 - solid_inject)]
 
-        zc_fl_inj_stream_gas = zc_fl_inj_stream_gas + [1 - sum(zc_fl_inj_stream_gas)]
-        self.inj_stream_gas = [x * (1 - solid_inject) for x in zc_fl_inj_stream_gas]
+        zc_fl_inj_composition_gas = zc_fl_inj_composition_gas + [1 - sum(zc_fl_inj_composition_gas)]
+        self.inj_composition_gas = [x * (1 - solid_inject) for x in zc_fl_inj_composition_gas]
 
-        zc_fl_inj_stream_liq = zc_fl_inj_stream_liq + [1 - sum(zc_fl_inj_stream_liq)]
-        self.inj_stream_wat = [x * (1 - solid_inject) for x in zc_fl_inj_stream_liq]
+        zc_fl_inj_composition_liq = zc_fl_inj_composition_liq + [1 - sum(zc_fl_inj_composition_liq)]
+        self.inj_composition_wat = [x * (1 - solid_inject) for x in zc_fl_inj_composition_liq]
 
         thermal = 0
         ne = nc + thermal
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
 
         """ properties correlations """
         if self.combined_ions:
@@ -196,13 +196,14 @@ class Model(CICDModel):
         if custom_physics:  # custom_physics inherits operators and physics for regions with source term
             self.physics = CustomPhysics(components, phases, self.timer,
                                          n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-                                         cache=0, volume=delta_volume, num_wells=num_well_blocks)
+                                         state_spec=state_spec, cache=0, volume=delta_volume, num_wells=num_well_blocks)
         else:  # default physics adds mass source term to kinetic operator in regions with source term
             mass_sources = [None,
                             MassSource(0, 1000, delta_volume, num_well_blocks),
                             MassSource(2, 200, delta_volume, num_well_blocks)]
             self.physics = Compositional(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10, cache=0)
+                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
+                                         state_spec=state_spec, cache=0)
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
@@ -214,6 +215,7 @@ class Model(CICDModel):
             property_container.rel_perm_ev = rel_perm_ev
             property_container.diffusion_ev = diffusion_ev
             property_container.kinetic_rate_ev = deepcopy(kinetic_rate_ev)  # deepcopy because mass source BC doesn't work otherwise
+            property_container.permporo_mult_ev = self.permporo
 
             if not custom_physics:
                 if mass_sources[i] is not None:
@@ -237,29 +239,36 @@ class Model(CICDModel):
     # Initialize reservoir and set boundary conditions:
     def set_initial_conditions(self):
         """ initialize conditions for all scenarios"""
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, self.init_pres, self.ini_comp)
+        input_distribution = {'pressure': self.init_pres}
+        input_distribution.update({comp: self.ini_comp[i] for i, comp in enumerate(self.physics.components[:-1])})
+        self.physics.set_initial_conditions_from_array(self.reservoir.mesh, input_distribution=input_distribution)
 
         if len(self.map) > 0:
             nc = self.physics.nc
             nb = self.reservoir.mesh.n_res_blocks
-            composition = np.array(self.reservoir.mesh.composition, copy=False)
+            initial_state = np.array(self.reservoir.mesh.initial_state, copy=False)
             zc = np.zeros(nb)
             for i in range(nc-1):
                 zc[:] = self.ini_comp[i]
                 zc[self.map == 0] = self.ini_void[i]
-                composition[i:(nc-1)*nb:nc-1] = zc
+                initial_state[(i+1):self.physics.n_vars*nb:self.physics.n_vars] = zc
         return
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if "INJ_GAS" in w.name:
-                w.control = self.physics.new_rate_inj(self.inj_gas_rate, self.inj_stream_gas, 0)
-                # w.control = self.physics.new_bhp_inj(125, self.inj_stream_gas)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, phase_name='gas', target=self.inj_gas_rate,
+                                               inj_composition=self.inj_composition_gas)
             elif "INJ_WAT" in w.name:
-                w.control = self.physics.new_rate_inj(self.inj_wat_rate, self.inj_stream_wat, 1)
-                # w.control = self.physics.new_bhp_inj(125, self.inj_stream_wat)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, phase_name='wat', target=self.inj_wat_rate,
+                                               inj_composition=self.inj_composition_wat,
+                                               )
             else:
-                w.control = self.physics.new_bhp_prod(95)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=95.)
 
     def set_op_list(self):
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
@@ -328,8 +337,8 @@ class Model(CICDModel):
 
         fig, ax = plt.subplots(3, 2, figsize=(8, 5), dpi=200, facecolor='w', edgecolor='k')
         names = ['z_co2', 'z_h2o', 'z_inert', 'P', 'Sg', 'phi']
-        titles = ['$z_{CO_2}$ [-]', '$z_{H_2O}$ [-]', '$z_{w, Ca} + z_{w, CO_3}$ [-]',
-                  '$P$ [bars]', '$s_g$ [-]', '$\phi$ [-]']
+        titles = [r'$z_{CO_2}$ [-]', r'$z_{H_2O}$ [-]', r'$z_{w, Ca} + z_{w, CO_3}$ [-]',
+                  r'$P$ [bars]', r'$s_g$ [-]', r'$\phi$ [-]']
         for i in range(3):
             for j in range(2):
                 n = i + j * 3
@@ -390,8 +399,8 @@ class Model(CICDModel):
         fig, ax = plt.subplots(3, 2, figsize=(10, 6), dpi=200, facecolor='w', edgecolor='k')
         plt.set_cmap('jet')
         names = ['z_co2', 'z_h2o', 'z_inert', 'P', 'Sg', 'phi']
-        titles = ['$z_{CO_2}$ [-]', '$z_{H_2O}$ [-]', '$z_{w, Ca} + z_{w, CO_3}$ [-]',
-                  '$P$ [bars]', '$s_g$ [-]', '$\phi$ [-]']
+        titles = [r'$z_{CO_2}$ [-]', r'$z_{H_2O}$ [-]', r'$z_{w, Ca} + z_{w, CO_3}$ [-]',
+                  r'$P$ [bars]', r'$s_g$ [-]', r'$\phi$ [-]']
         for i in range(3):
             for j in range(2):
                 n = i + j * 3
@@ -456,13 +465,13 @@ class MassSource:
 
 
 class CustomPhysics(Compositional):
-    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=-1, max_t=-1, thermal=0,
-                 cache=False, volume=0, num_wells=0):
+    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=-1, max_t=-1,
+                 state_spec = Compositional.StateSpecification.P, cache=False, volume=0, num_wells=0):
 
         self.delta_volume = volume
         self.num_well_blocks = num_wells
 
-        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, thermal, cache)
+        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, state_spec, cache)
 
     def set_operators(self):  # default definition of operators
         self.reservoir_operators[0] = ReservoirOperators(self.property_containers[0], self.thermal)
@@ -480,7 +489,7 @@ class CustomPhysics(Compositional):
                                                                    num_well_blocks=self.num_well_blocks)
         self.property_operators[2] = PropertyOperators(self.property_containers[0], self.thermal)
 
-        self.rate_operators = RateOperators(self.property_containers[0])
+        self.rate_operators = WellControlOperators(self.property_containers[0], self.thermal)
 
         return
 
@@ -520,3 +529,7 @@ class ReservoirWithSourceOperators(ReservoirOperators):
                                        * self.property.density_ev['wat'].evaluate(pressure, 0) / 18.015
 
         return 0
+
+class PermPoroRelationship:
+    def evaluate(self, poro):
+        return poro ** 3

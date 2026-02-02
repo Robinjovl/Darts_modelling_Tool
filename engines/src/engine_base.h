@@ -9,6 +9,7 @@
 #include "globals.h"
 #include "conn_mesh.h"
 #include "interpolator_base.hpp"
+#include "pybind11/py_globals.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/data_types.hpp"
@@ -16,12 +17,15 @@
 #include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_fs_cpr.hpp"
+#include "openDARTS/linear_solvers/csr_matrix.hpp"
+using namespace opendarts::linear_solvers;
 #else
 #include "linsolv_bos_gmres.h"
 #include "linsolv_bos_bilu0.h"
 #include "linsolv_bos_cpr.h"
 #include "linsolv_bos_fs_cpr.h"
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#include "csr_matrix.h"
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef WITH_GPU
 #include "linsolv_bos_cpr_gpu.h"
@@ -81,6 +85,10 @@ public:
 
 		print_linear_system = false;
 		output_counter = 0;
+		enabled_flux_output = false;
+		is_fickian_energy_transport_on = true;
+		newton_update_coefficient = 1.0;
+		n_solid = 0;
 	};
 
 	~engine_base()
@@ -113,6 +121,9 @@ public:
 	// get the index of Z variable
 	virtual uint8_t get_z_var() const = 0;
 
+	// get the number of solid/mineral species
+	virtual uint8_t get_n_solid() const { return n_solid; };
+
 	// initialization
 	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) = 0;
 
@@ -132,6 +143,7 @@ public:
 	virtual double calc_well_residual_L1();
 	virtual double calc_well_residual_L2();
 	virtual double calc_well_residual_Linf();
+	virtual double calc_coupled_well_reservoir_residual(int method);
 
 	virtual void average_operator(std::vector<value_t> &av_op);
 
@@ -141,7 +153,6 @@ public:
 	virtual void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 	virtual void apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 
-	void apply_composition_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_local_chop_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX);
 
 	void apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
@@ -174,6 +185,83 @@ public:
 	virtual int test_assembly(int n_times, int kernel_number = 0, int dump_jacobian = 0);
 
 	virtual int test_spmv(int n_timer, int kernel_number = 0, int dump_result = 0);
+
+	/// @brief row-wise scaling of Jacobian by maximum value
+	template<uint16_t N_VARS>
+	void dimensionalize_rows()
+	{
+	  constexpr uint16_t N_VARS_SQ = N_VARS * N_VARS;
+	  const index_t n_blocks = mesh->n_blocks;
+	  value_t* Jac = Jacobian->get_values();
+	  const index_t* rows = Jacobian->get_rows_ptr();
+
+	  // maximum values
+	  std::fill_n(max_row_values_inv.data(), n_blocks * N_VARS, 0.0);
+
+	  #pragma omp parallel for
+	  for (index_t i = 0; i < n_blocks; i++)
+	  {
+		index_t csr_start = rows[i];
+		index_t csr_end = rows[i + 1];
+		for (index_t j = csr_start; j < csr_end; j++)
+		{
+		  const index_t base = j * N_VARS_SQ;
+		  for (uint8_t c = 0; c < N_VARS; c++)
+		  {
+			value_t current_max = max_row_values_inv[i * N_VARS + c];
+			for (uint8_t v = 0; v < N_VARS; v++)
+			{
+			  const index_t idx = base + c * N_VARS + v;
+			  value_t val = fabs(Jac[idx]);
+			  if (val > current_max)
+				current_max = val;
+			}
+			max_row_values_inv[i * N_VARS + c] = current_max;
+		  }
+		}
+	  }
+
+	  // compute inverses
+	  for (index_t i = 0; i < n_blocks; i++)
+	  {
+		for (uint8_t c = 0; c < N_VARS; c++)
+		{
+		  value_t& val = max_row_values_inv[i * N_VARS + c];
+		  if (val != 0.0)
+			val = 1.0 / val;
+		  else
+			val = 1.0;
+		}
+	  }
+
+	  // scaling
+	  #pragma omp parallel for
+	  for (index_t i = 0; i < n_blocks; i++)
+	  {
+		index_t csr_start = rows[i];
+		index_t csr_end = rows[i + 1];
+		value_t inv_vals[N_VARS];
+
+		// copy values to local array
+		for (uint8_t c = 0; c < N_VARS; c++)
+		  inv_vals[c] = max_row_values_inv[i * N_VARS + c];
+
+		// scale jacobian
+		for (index_t j = csr_start; j < csr_end; j++)
+		{
+		  const index_t base = j * N_VARS_SQ;
+		  for (uint8_t c = 0; c < N_VARS; c++)
+		  {
+			for (uint8_t v = 0; v < N_VARS; v++)
+			  Jac[base + c * N_VARS + v] *= inv_vals[c];
+		  }
+		}
+
+		// scale residual
+		for (uint8_t c = 0; c < N_VARS; c++)
+		  RHS[i * N_VARS + c] *= inv_vals[c];
+	  }
+	};
 
 	/// @} // end of Methods
 
@@ -211,6 +299,26 @@ public:
 	/// @brief unsorted map containing well information (BHP, rates)
 	std::unordered_map<std::string, std::vector<value_t>> time_data;
 
+	// @brief python wrapper for jacobian values
+	py::array_t<value_t> jac_vals;
+
+	// @brief python wrappers for storing BCSR jacobian structure
+	py::array_t<index_t> jac_rows, jac_cols, jac_diags;
+
+	// @brief method to initialize python wrappers for Jacobian matrix
+	void expose_jacobian()
+	{
+	  value_t* values = Jacobian->get_values();
+	  index_t* rows = Jacobian->get_rows_ptr();
+	  index_t* cols = Jacobian->get_cols_ind();
+	  index_t* diag_ind = Jacobian->get_diag_ind();
+
+	  jac_vals = get_raw_array(values, n_vars * n_vars * rows[mesh->n_blocks]);
+	  jac_rows = get_raw_array(rows, mesh->n_blocks + 1);
+	  jac_cols = get_raw_array(cols, rows[mesh->n_blocks]);
+	  jac_diags = get_raw_array(diag_ind, mesh->n_blocks);
+	};
+
 	/// @} // end of Parameters
 
 	linsolv_iface *linear_solver;
@@ -222,11 +330,11 @@ public:
 	uint8_t n_ops;
 	uint8_t nc;
 	uint8_t z_var;
+	// number of mineral/solid species
+	uint8_t n_solid;
 	double min_zc;
 	double max_zc;
 	std::vector<value_t> old_z, new_z; // [NC] array for local chop
-
-	uint8_t nc_fl;
 	std::vector<value_t> old_z_fl, new_z_fl; // [NC_FLUID] array for local chop
 
 	std::vector<value_t> X_init;				   // [N_VARS * n_blocks] array of initial solution
@@ -254,9 +362,12 @@ public:
 	std::vector<value_t> X0, RHS, dX;
 
 	value_t dt, prev_usual_dt, stop_time;
-	
+
 	index_t output_counter;
 	bool print_linear_system;
+
+	// switch on/off heat fluxes related to Fickian mass transport
+	bool is_fickian_energy_transport_on;
 
 	// statistics
 	value_t CFL_max; // maximum value of CFL for last Jacobian assebly
@@ -265,23 +376,41 @@ public:
 	double well_residual_last_dt;
 	int linear_solver_error_last_dt;
 
+	value_t newton_update_coefficient; // Newton update coefficient for line search
+
 	timer_node *timer;
 	timer_node full_step_timer;
 	double full_step_run_timer, t_full_step; // for more accurate estimation of time left
 
 	std::string engine_name;
 
+	// flags to apply dimension-based and row-wise scaling respectively
+	bool scale_dimless, scale_rows;
 
+	// dimensions for scaling
+	value_t e_dim, t_dim, m_dim, p_dim;
 
+	// maximum absolute values in rows of jacobian
+	std::vector<value_t> max_row_values_inv;
 
+	// flag to turn on fluxes output
+	bool enabled_flux_output;
+	virtual void enable_flux_output() {};
 
-
-
+	// mass fluxes
+	std::vector<value_t> darcy_fluxes;
+	std::vector<value_t> diffusion_fluxes;
+	std::vector<value_t> dispersion_fluxes;
+	// energy fluxes
+	std::vector<value_t> heat_darcy_advection_fluxes;
+	std::vector<value_t> heat_diffusion_advection_fluxes;
+	std::vector<value_t> heat_dispersion_advection_fluxes;
+	std::vector<value_t> fourier_fluxes;
 
 	// adjoint method--------------------------------------------------------------------------------------
 
 	// initialize dg_dT_general, which is similar to the jacobian initialization
-	int init_adjoint_structure(csr_matrix_base* init_adjoint);  
+	int init_adjoint_structure(csr_matrix_base* init_adjoint);
 
 	// assemble dg_dx_n, dg_dT, dj_dx. This is similar to "init_jacobian_structure" in the forward simulation
 	virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) = 0;
@@ -328,7 +457,7 @@ public:
 
 	linsolv_iface* linear_solver_ad;
 
-	// the total number of the cell interfaces, 
+	// the total number of the cell interfaces,
     // including 1. res to res (trans), 2. res to well_body (WI), 3. well_body to well_head
 	// n_interfaces = mesh->n_conns / 2;
 	index_t n_interfaces;
@@ -355,7 +484,7 @@ public:
 	typedef std::vector<std::vector<std::vector<value_t>>> vec_3d;
 
 	int prepare_dj_dx(vec_3d q, vec_3d q_inj,
-		std::vector<std::vector<value_t>> bhp, std::vector<std::vector<value_t>> well_tempr, 
+		std::vector<std::vector<value_t>> bhp, std::vector<std::vector<value_t>> well_tempr,
 		std::vector<std::vector<value_t>> temperature, std::vector<std::vector<value_t>> customized_op,
 		index_t idx_sim_ts, index_t idx_obs_ts);
 
@@ -478,7 +607,7 @@ public:
 	std::vector<value_t> test_value_vec;
 	std::vector<index_t> test_index_vec;
 
-
+	well_control_iface::WellControlType observation_rate_type;
 };
 
 template <uint8_t N_VARS>
@@ -525,7 +654,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	}
 #endif
 
-	std::string linear_solver_type_str;	
+	std::string linear_solver_type_str;
 	// create linear solver
 	if (!linear_solver)
 	{
@@ -534,10 +663,19 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		case sim_params::CPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
-			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
-			cpr->set_prec(new linsolv_bos_amg<1>);
-			linear_solver->set_prec(cpr);
-			linear_solver_type_str = "CPU_GMRES_CPR_AMG";
+			if constexpr (N_VARS > 1)
+			{
+			  linsolv_iface* cpr = new linsolv_bos_cpr<N_VARS>;
+			  cpr->set_prec(new linsolv_bos_amg<1>);
+			  linear_solver->set_prec(cpr);
+			  linear_solver_type_str = "CPU_GMRES_CPR_AMG";
+			}
+			else
+			{
+			  linear_solver->set_prec(new linsolv_bos_amg<1>);
+			  linear_solver_type_str = "CPU_GMRES_AMG";
+			}
+
 			break;
 		}
 #ifdef _WIN32
@@ -552,7 +690,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			linear_solver_type_str = "CPU_GMRES_CPR_AMG1R5";
 			break;
 		}
-#endif 
+#endif
 #endif //_WIN32
 		case sim_params::CPU_GMRES_ILU0:
 		{
@@ -571,6 +709,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 #ifdef WITH_GPU
 		case sim_params::GPU_GMRES_CPR_AMG:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
@@ -579,11 +719,19 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			linear_solver_type_str = "GPU_GMRES_CPR_AMG";
+			}
+			else
+			{
+			  linear_solver->set_prec(new linsolv_bos_amg<1>);
+			  linear_solver_type_str = "GPU_GMRES_AMG";
+			}
 			break;
 		}
 #ifdef WITH_AIPS
 		case sim_params::GPU_GMRES_CPR_AIPS:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
@@ -612,12 +760,15 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			cpr->set_prec(new linsolv_aips<1>(n_terms, print_radius, aips_type, print_structure));
 			linear_solver->set_prec(cpr);
+			}
 			linear_solver_type_str = "GPU_GMRES_CPR_AIPS";
 			break;
 		}
 #endif //WITH_AIPS
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
@@ -629,11 +780,19 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>);
 			linear_solver->set_prec(cpr);
 			linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+			}
+			else
+			{
+			  linear_solver->set_prec(new linsolv_amgx<1>);
+			  linear_solver_type_str = "GPU_GMRES_AMGX";
+			}
 			break;
 		}
 #ifdef WITH_ADGPRS_NF
 		case sim_params::GPU_GMRES_CPR_NF:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			// NF was initially created for CPU-based solver, so keeping unnesessary GPU->CPU->GPU copies so far for simplicity
@@ -674,6 +833,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 			cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
 			linear_solver->set_prec(cpr);
+			}
 			linear_solver_type_str = "GPU_GMRES_CPR_NF";
 			break;
 		}
@@ -681,7 +841,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		case sim_params::GPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-            linear_solver_type_str = "GPU_GMRES_ILU0";
+			linear_solver_type_str = "GPU_GMRES_ILU0";
 			break;
 		}
 #endif
@@ -690,7 +850,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		    std::cerr << "Linear solver type " << params->linear_type << " is not supported for " << engine_name << std::endl << std::flush;
 		    exit(1);
 		}
-		
+
 		}
 	}
 
@@ -700,24 +860,22 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	z_var = get_z_var();
-	nc_fl = get_n_comps();
 
-	X_init.resize(n_vars * mesh->n_blocks);
+	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
+	mesh->n_vars = n_vars;
+
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
-	old_z_fl.resize(nc_fl);
-	new_z_fl.resize(nc_fl);
+	old_z_fl.resize(nc - n_solid);
+	new_z_fl.resize(nc - n_solid);
 
+	X_init = mesh->initial_state;  // initialize only reservoir blocks with mesh->initial_state array
+	X_init.resize(n_vars * mesh->n_blocks);
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
-		X_init[n_vars * i] = mesh->pressure[i];
-		for (uint8_t c = 0; c < nc - 1; c++)
-		{
-			X_init[n_vars * i + c + 1] = mesh->composition[i * (nc - 1) + c];
-		}
 		PV[i] = mesh->volume[i] * mesh->poro[i];
 		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}
@@ -759,10 +917,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");
 	std::cout << buffer << std::flush;
 
-	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		// initialize the state of well blocks of the type EPM
+		if (w->ms_type == ms_well::MS_Type::EPM)
+			w->initialize_control(X_init);
+		// initialize the state of well blocks of the type DFM
+		else if (w->ms_type == ms_well::MS_Type::DFM)
+			std::copy(w->init_state.begin(), w->init_state.end(), X_init.begin() + w->well_head_idx * n_vars);
 	}
 
 	Xn = X = X_init;
@@ -829,9 +991,9 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		// prepare dg_dx_n_temp
 		init_adjoint_structure(dg_dx_n_temp);
 
-		// here we remove wells.size() transmissibility between well head and well body (i.e. segment_transmissibility)
-		// because there is no need to optimize segment_transmissibility, which is usually a large value of 100000
-		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);  
+		// here we remove wells.size() transmissibility between well head and well body (i.e. well_transmissibility)
+		// because there is no need to optimize well_transmissibility, which is usually a large value of 100000
+		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
 		col_dT_du = Temp_1;
 
 

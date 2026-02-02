@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import value_vector
+from darts.engines import value_vector, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -26,10 +26,6 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {self.physics.vars[0]: 200.,
-                               self.physics.vars[1]: 350.
-                               }
-
     def set_reservoir(self):
         nx = 500
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=300, permy=300,
@@ -37,10 +33,11 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        well_type = ms_well.MS_Type.EPM
+        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
+        self.reservoir.add_well("P1", well_type)
+        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         """Physical properties"""
@@ -67,22 +64,30 @@ class Model(CICDModel):
 
         # create physics
         thermal = True
-        self.physics = Compositional(components, phases, self.timer,
-                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
-                                     min_t=273.15 + 20, max_t=273.15 + 200, thermal=thermal)
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero, min_t=273.15, max_t=273.15 + 200)
         self.physics.add_property_region(property_container)
 
         return
 
+    def set_initial_conditions(self):
+        input_distribution = {self.physics.vars[0]: 200.,
+                              self.physics.vars[1]: 350.,
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                #w.control = self.physics.new_rate_inj(200, self.inj, 1)
-                #w.control = self.physics.new_bhp_inj(210, self.inj)
-                w.control = self.physics.new_rate_inj(5, self.inj, 0)
-                #w.control = self.physics.new_bhp_inj(450, self.inj)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=5., phase_name='wat', inj_composition=self.inj[:-1],
+                                               inj_temp=self.inj[-1])
             else:
-                w.control = self.physics.new_bhp_prod(180)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=180.)
 
 
 class ModelProperties(PropertyContainer):
@@ -103,6 +108,7 @@ class ModelProperties(PropertyContainer):
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
+        self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         self.ph = np.array([0], dtype=np.intp)
 

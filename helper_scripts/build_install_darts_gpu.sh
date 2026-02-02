@@ -1,35 +1,55 @@
 #!/bin/bash
 set -e
 
-# get linear solvers binary compiled with GPU and include files
-cd engines/lib
-rm -rf darts_linear_solvers
-mkdir darts_linear_solvers && cd darts_linear_solvers && mkdir lib && mkdir include && cd ..
-cp -r $GSELINSOLVERSPATH/lib darts_linear_solvers
-cp -r $GSELINSOLVERSPATH/include darts_linear_solvers
-cd ../..
+if [[ "$GSELINSOLVERSPATH" == "" ]]; then
+  echo "Error: the environment variable GSELINSOLVERSPATH is not defined!"
+  exit 1
+fi
 
-# compile discretizer using the Makefile (no GPU)
-cd discretizer
-set +e # temporarily turn off set -e
-make release -j 20 USE_OPENDARTS_LINEAR_SOLVERS=false 1>../make_discretizer_out.log 2>../make_discretizer_err.log
-# sometimes the command above fails for file discretizer_build_info.cpp.in, so run it twice
-make release USE_OPENDARTS_LINEAR_SOLVERS=false 1>>../make_discretizer_out.log 2>>../make_discretizer_err.log
-set -e
-cd ..
+CLEAN_FLAG=""
+PHREEQC_FLAG=""
+DEBUG_FLAG=""
+JOBS_ARG="-j20"
 
-# need to link engines
-cd engines
-cp ../darts/discretizer.so .
+# Scan all args, including -j for parallel jobs
+while (( "$#" )); do
+  case "$1" in
+    -c) CLEAN_FLAG="-c"; shift ;;        # trigger clean
+    -p) PHREEQC_FLAG="-p"; shift ;;      # enable IPhreeqc/Reaktoro support
+    -d) DEBUG_FLAG="-d Debug"; shift ;;  # enable Debug configuration
+    -r) REQUIREMENTS_FLAG="-r"; shift ;; # clean previous cmake configuration for third parties
+    -j)
+      if [[ -n "${2:-}" && "$2" =~ ^[0-9]+$ ]]; then
+        JOBS_ARG="-j$2"
+        shift 2
+      else
+        echo "Error: -j requires a numeric argument"
+        exit 1
+      fi
+      ;;
+    -j*)
+      local_jobs="${1#-j}"
+      if [[ "$local_jobs" =~ ^[0-9]+$ ]]; then
+        JOBS_ARG="-j$local_jobs"
+        shift
+      else
+        echo "Error: invalid -j value: $1"
+        exit 1
+      fi
+      ;;
+    *)
+      echo "Warning: ignoring unknown argument: $1"
+      shift
+      ;;
+  esac
+done
 
-# compile engines using the Makefile
-make clean
-make gpu -j 20 USE_OPENDARTS_LINEAR_SOLVERS=false 1>../make_engines_out.log 2>../make_engines_err.log
-cd ..
-
-# to add amgx shared library to wheels
-cp -v ./engines/lib/darts_linear_solvers/lib/libamgxsh.so ./darts
-
-# build DARTS wheel
-./helper_scripts/build_install_darts.sh
-
+./helper_scripts/build_darts_cmake.sh \
+  -G \
+  $JOBS_ARG \
+  -b $GSELINSOLVERSPATH \
+  -w \
+  $CLEAN_FLAG \
+  $PHREEQC_FLAG \
+  $DEBUG_FLAG \
+  $REQUIREMENTS_FLAG

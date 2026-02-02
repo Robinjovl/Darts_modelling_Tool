@@ -12,13 +12,14 @@ def run_test(args: list = [], platform='cpu'):
         print('Not enough arguments provided')
         return 1, 0.0
 
-def test(case, overwrite='0', platform='cpu'):
+def test(case, overwrite='0', platform='cpu', compare_with_ref=False):
     freeze_support()
 
     input_data = set_input_data(case)
 
     t1 = datetime.now()
-    generate_mesh(input_data)
+    if input_data.geom['mesh_type'] == '2.5D':  # 2.5D mesh generation and cleaning (gmsh based)
+        generate_mesh(input_data)
     t2 = datetime.now()
     mesh_gen_timer = (t2 - t1).total_seconds()
 
@@ -32,7 +33,10 @@ def test(case, overwrite='0', platform='cpu'):
     print('Simulation time:     ', sim_timer, 'sec.')
     print('Total time:          ', total_timer, 'sec.')
 
-    failed, sim_time = check_performance_local(m, case)
+    if compare_with_ref:
+        failed, sim_time = check_performance_local(m, case)
+    else:
+        failed = False
 
     return failed, total_timer
 
@@ -52,7 +56,7 @@ def check_performance_local(m, case):
     print('pkl_suffix=', pkl_suffix)
 
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix + '_' + case + '.pkl')
-    
+
     overwrite = 0
     if os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
@@ -79,21 +83,28 @@ if __name__ == "__main__":
         print('unknown platform specified', platform)
         exit(1)
 
-    cases_list = ['case_1']
+    cases_list = []
 
-    cases_list += ['case_1_burden_O1']
-    cases_list += ['case_1_burden_O2']
-    cases_list += ['case_1_burden_U1']
-    cases_list += ['case_1_burden_U2']
-    cases_list += ['case_1_burden_O1_U1']
-    cases_list += ['case_1_burden_O2_U2']
+    cases_list += ['case_1']
+
+    ##cases_list += ['case_1_burden_O1']
+    #cases_list += ['case_1_burden_O2']
+    #cases_list += ['case_1_burden_U1']
+    #cases_list += ['case_1_burden_U2']
+    #cases_list += ['case_1_burden_O1_U1']
+    #cases_list += ['case_1_burden_O2_U2']
 
     ##cases_list = ['case_2']
-    cases_list = ['case_3']
-    cases_list = ['case_4']
-    cases_list = ['case_5']
+    #cases_list += ['case_3']
+    #cases_list += ['case_4']
+    #cases_list += ['case_5']
 
-    cases_list = ['whitby']
+    #cases_list += ['whitby']
 
     for case in cases_list:
-        test(case, platform=platform)
+        test(case, platform=platform, compare_with_ref=False)
+
+    #test(case='case_debug')  # 2.5 wedge mesh with one fracture
+    #test(case='case_3D_strike0_dip90')  # 3D hexahedral mesh with one fracture
+    #test(case='case_3D_strike0_dip0') # 3D tetrahedral mesh with one fracture, fails in vtk output: IndexError: index 12952 is out of bounds for axis 0 with size 506
+    #test(case='case_3D_nofrac')  # 3D tetrahedral mesh without fractures

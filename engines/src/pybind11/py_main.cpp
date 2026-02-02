@@ -27,6 +27,7 @@ void pybind_operator_set_from_files(py::module &);
 
 void pybind_operator_set_interpolator_rates(py::module &);
 void pybind_operator_set_interpolator_super(py::module &);
+void pybind_operator_set_interpolator_pze_gra(py::module &);
 void pybind_operator_set_interpolator_pz_cap_gra(py::module &);
 void pybind_operator_set_interpolator_super_elastic(py::module &);
 
@@ -104,6 +105,79 @@ PYBIND11_MODULE(engines, m)
       .def("to_numpy", [](std::vector<value_t>& vec) {
           return to_numpy(vec);  // Call the conversion function
       }, "Converts the vector to a NumPy array");
+	  
+  
+  // Logging related bindings
+  py::module_ m_logging = m.def_submodule(
+    "logging", 
+    "A submodule for logging related functionalities."
+  );
+  py::enum_<logging::LoggingLevel>(m_logging, "LoggingLevel")
+    .value("DEBUG", logging::LoggingLevel::DEBUG)
+    .value("INFO", logging::LoggingLevel::INFO)
+    .value("WARNING", logging::LoggingLevel::WARNING)
+    .value("ERROR", logging::LoggingLevel::ERROR)
+    .value("CRITICAL", logging::LoggingLevel::CRITICAL)
+    .export_values();
+  m_logging.def(
+    "log", 
+    py::overload_cast<const std::string&, logging::LoggingLevel>(
+      &logging::log
+    ),  
+    "Adds a message to logs.",
+    py::arg("message"),
+    py::arg("level") = logging::LoggingLevel::INFO
+  );
+  m_logging.def(
+    "set_logging_level",
+    &logging::set_logging_level,
+    "Sets logging verbosity level.",
+    py::arg("level")
+  );
+  m_logging.def(
+    "duplicate_output_to_file", 
+    &logging::duplicate_output_to_file, 
+    "Duplicates outputs to a file.",
+    py::arg("file_path"));
+  m_logging.def("flush", &logging::flush, "Flushes output streams.");
+  m_logging.def(
+    "debug", 
+    &logging::debug, 
+    "Detailed information, typically only of interest to a developer " 
+    "trying to diagnose a problem.",
+    py::arg("message")
+  );
+  m_logging.def(
+    "info", 
+    &logging::info, 
+    "Confirmation that things are working as expected.",
+    py::arg("message")
+  );
+  m_logging.def(
+    "warning", 
+    &logging::warning, 
+    "An indication that something unexpected happened, or that a problem might "
+    "occur in the near future (e.g. ‘disk space low’). The software is still "
+    "working as expected.",
+    py::arg("message")
+  );
+  m_logging.def(
+    "error", 
+    &logging::error, 
+    "Due to a more serious problem, the software has not been able to perform "
+    "some function.",
+    py::arg("message")
+  );
+  m_logging.def(
+    "critical", 
+    &logging::critical, 
+    "A serious error, indicating that the program itself may be unable to "
+    "continue running.",
+    py::arg("message")
+  );
+  // end pybind logging
+
+	  
   py::bind_vector<std::vector<ms_well *>>(m, "ms_well_vector");
   py::bind_vector<std::vector<operator_set_gradient_evaluator_iface *>>(m, "op_vector");
   py::bind_map<std::map<std::string, timer_node>>(m, "timer_map");
@@ -128,6 +202,7 @@ PYBIND11_MODULE(engines, m)
 
   pybind_operator_set_interpolator_rates(m);
   pybind_operator_set_interpolator_super(m);
+  pybind_operator_set_interpolator_pze_gra(m);
   pybind_operator_set_interpolator_pz_cap_gra(m);
 
 #ifdef WITH_GPU

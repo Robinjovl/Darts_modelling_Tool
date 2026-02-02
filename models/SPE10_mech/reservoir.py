@@ -16,11 +16,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         thermoporoelasticity = True if 'temperature' in fluid_vars else False
         super().__init__(timer, discretizer='mech_discretizer',
                          thermoporoelasticity=thermoporoelasticity, fluid_vars=fluid_vars)
-        # self.n_vars = n_vars
-        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
-                    bnd_xm_tag=991, bnd_xp_tag=992,
-                    bnd_ym_tag=993, bnd_yp_tag=994,
-                    bnd_zm_tag=995, bnd_zp_tag=996)
+
+        self.bnd_tags = idata.mesh.bnd_tags
+        self.domain_tags = set_domain_tags(matrix_tags=idata.mesh.matrix_tags, bnd_tags=list(self.bnd_tags.values()))
 
         self.spe10(model_folder=model_folder, idata=idata, uniform_props=uniform_props)
         self.init_reservoir_main(idata=idata)
@@ -43,7 +41,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.mesh_data = meshio.read(self.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
-        self.set_boundary_conditions()
+        self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
         self.grav = -9.80665e-5
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
@@ -72,15 +70,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
-    def set_boundary_conditions(self):
+    def set_boundary_conditions(self, idata: InputData):
         self.F = -900.0
         self.boundary_conditions = {}
-        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]) }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]) }
 
         if self.thermoporoelasticity:
             for key, bc in self.boundary_conditions.items():
@@ -129,35 +127,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             if self.thermoporoelasticity:
                 self.discr.heat_conductions.append(disc_matrix33(idata.rock.conductivity))
                 self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn[cell_id]))
-
-    def add_well(self, name, depth):
-        """
-        Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
-        :param name:
-        :param depth:
-        :return:
-        """
-        well = ms_well()
-        well.name = name
-        well.segment_volume = 0.0785 * 40  # 2.5 * pi * 0.15**2 / 4
-        well.well_head_depth = depth
-        well.well_body_depth = depth
-        well.segment_transmissibility = 1e5
-        well.segment_depth_increment = 1
-        self.wells.append(well)
-        return 0
-
-    def add_perforation(self, well, res_block, well_index):
-        """
-        Class method which ads perforation to each (existing!) well
-        :param well: data object which contains data of the particular well
-        :param res_block: reservoir block in which the well has a perforation
-        :param well_index: well index (productivity index)
-        :return:
-        """
-        well_block = 0
-        well.perforations = well.perforations + [(well_block, res_block, well_index, 0.0)]
-        return 0
 
     def write_to_vtk(self, output_directory, ith_step, engine):
         """

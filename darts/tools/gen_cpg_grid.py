@@ -1,11 +1,26 @@
 import numpy as np
+
 from darts.tools.keyword_file_tools import save_few_keywords
 
-def gen_cpg_grid(nx : int, ny : int, nz : int, 
-                 dx, dy, dz,
-                 permx : float, permy : float, permz : float, poro : float,
-                 gridname=None, propname=None, burden_dz=None,
-                 start_x : float=0, start_y : float =0, start_z : float =2000):
+
+def gen_cpg_grid(
+    nx: int,
+    ny: int,
+    nz: int,
+    dx,
+    dy,
+    dz,
+    permx: float,
+    permy: float,
+    permz: float,
+    poro: float,
+    gridname=None,
+    propname=None,
+    burden_dz=None,
+    start_x: float = 0,
+    start_y: float = 0,
+    start_z: float = 2000,
+):
     '''
     Generate a regular grid in corner point geometry format (COORD, ZCORN) and optionally output it to the file
     :param nx: number of reservoir blocks in the x-direction
@@ -23,7 +38,7 @@ def gen_cpg_grid(nx : int, ny : int, nz : int,
     :param burden_dz: array of thickness for over and under burden layers. If None - do not add burden layers
     :param start_x: mesh lower bound coordinate by X [m]
     :param start_y: mesh lower bound coordinate by Y [m]
-    :param start_z: mesh lower bound coordinate by Z (the depth of the top layer) [m]  
+    :param start_z: mesh lower bound coordinate by Z (the depth of the top layer) [m]
     '''
     if np.isscalar(dx):
         dx_array = np.zeros(nx) + dx
@@ -59,22 +74,23 @@ def gen_cpg_grid(nx : int, ny : int, nz : int,
                 x += dx_array[i]
         if j < ny:
             y += dy_array[j]
-    zcorn[:4 * nx * ny] = start_z
+    zcorn[: 4 * nx * ny] = start_z
     z = start_z
     for k in range(1, nz + 1):
         z += dz_array[k - 1]
-        zcorn[(2 * k - 1) * 4 * nx * ny:(2 * k + 1) * 4 * nx * ny] = z
+        zcorn[(2 * k - 1) * 4 * nx * ny : (2 * k + 1) * 4 * nx * ny] = z
 
     if burden_dz is not None:
         for i in range(0, len(burden_dz)):
             # for each burden layer, zcorn has 4 * nx * ny number of values
             zcorn = np.concatenate(
-                [zcorn[:4 * nx * ny] - burden_dz[i],
-                 zcorn[:4 * nx * ny],
-                 zcorn,
-                 zcorn[-4 * nx * ny:],
-                 zcorn[-4 * nx * ny:] + burden_dz[i],
-                 ]
+                [
+                    zcorn[: 4 * nx * ny] - burden_dz[i],
+                    zcorn[: 4 * nx * ny],
+                    zcorn,
+                    zcorn[-4 * nx * ny :],
+                    zcorn[-4 * nx * ny :] + burden_dz[i],
+                ]
             )
 
     if burden_dz is not None:
@@ -99,7 +115,12 @@ def gen_cpg_grid(nx : int, ny : int, nz : int,
 
         data = []
         keys = []
-        for arr, arr_name in [(poro_arr, 'PORO'), (permx_arr, 'PERMX'), (permy_arr, 'PERMY'), (permz_arr, 'PERMZ')]:
+        for arr, arr_name in [
+            (poro_arr, 'PORO'),
+            (permx_arr, 'PERMX'),
+            (permy_arr, 'PERMY'),
+            (permz_arr, 'PERMZ'),
+        ]:
             data.append(arr)
             keys.append(arr_name)
         save_few_keywords(propname, keys, data)
@@ -116,10 +137,21 @@ def gen_cpg_grid(nx : int, ny : int, nz : int,
     return arrays
 
 
-if __name__ =='__main__':
+if __name__ == '__main__':
     nx = 200
     ny = 200
     nz = 100
-    gen_cpg_grid(nx=nx, ny=ny, nz=nz, dx=50, dy=50, dz=10,
-                 permx=10, permy=10, permz=10, poro=0.2,
-                 gridname='grid.grdecl', propname='reservoir.in')
+    gen_cpg_grid(
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        dx=50,
+        dy=50,
+        dz=10,
+        permx=10,
+        permy=10,
+        permz=10,
+        poro=0.2,
+        gridname='grid.grdecl',
+        propname='reservoir.in',
+    )

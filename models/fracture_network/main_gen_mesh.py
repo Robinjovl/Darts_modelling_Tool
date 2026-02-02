@@ -1,11 +1,12 @@
 import numpy as np
 from multiprocessing import freeze_support
-
-from darts.input.input_data import InputData
-from darts.tools.fracture_network.preprocessing_code import frac_preprocessing
 import os
 from datetime import datetime
 import shutil
+
+from darts.input.input_data import InputData
+from darts.tools.fracture_network.preprocessing_code import frac_preprocessing
+from darts.engines import redirect_darts_output
 
 def rotate_input(input_data, frac_data_raw):
     rot_angle_degrees = 90 - input_data['SHmax_azimuth']
@@ -41,6 +42,7 @@ def generate_mesh(idata : InputData):
     case_name = idata.geom['case_name']
     print('case', case_name)
     output_dir = 'meshes_' + case_name
+
     if idata.geom['frac_format'] == 'simple':
         frac_data_raw = np.genfromtxt(idata.geom['frac_file'])
     else:
@@ -57,17 +59,19 @@ def generate_mesh(idata : InputData):
 
     # rename output dir if exists
     if os.path.exists(output_dir):
-        ren_fname = output_dir + '_prev'
-        if os.path.exists(ren_fname):
-            shutil.rmtree(ren_fname)
-        os.renames(output_dir, ren_fname)
-    os.makedirs(output_dir)
+        try:
+            shutil.rmtree(output_dir)
+        except:
+            pass
+    os.makedirs(output_dir, exist_ok=True)
 
     #rotate_input(input_data, frac_data_raw)
 
     # 2D geometry plot (wells and fractures)
     import matplotlib.pyplot as plt
     plt.gca().set_aspect('equal')
+    if len(frac_data_raw.shape) == 1: # if just one fracture
+        frac_data_raw = frac_data_raw.reshape((1,frac_data_raw.size))
     for i in range(frac_data_raw.shape[0]):
         plt.plot(np.append(frac_data_raw[i, 0], frac_data_raw[i, 2]),
                  np.append(frac_data_raw[i, 1], frac_data_raw[i, 3]))

@@ -70,7 +70,6 @@ public:
   int apply_newton_update(value_t dt);
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
   index_t output_counter;
-  value_t newton_update_coefficient;
   std::vector<value_t> fluxes;
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);

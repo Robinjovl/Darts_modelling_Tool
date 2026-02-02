@@ -25,8 +25,9 @@ def input_data_case_4():
     idata.initial.initial_temperature = 350.  # K
 
     # well locations
-    idata.geom['inj_well_coords'] = [[0, 0, 25]]  # X, Y, Z (only one perforation)
-    idata.geom['prod_well_coords'] = [[50, 50, 25]]
+    idata.geom['well_coords'] = dict()
+    idata.geom['well_coords']['I1'] = [0., 0., 25., 25.]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['P1'] = [50., 50., 25., 25.]  # X, Y, Z1, Z2
 
     # well in the matrix cells or in the fractures
     idata.geom['well_loc_type'] = 'wells_in_nearest_cell'
@@ -40,7 +41,7 @@ def input_data_case_4():
     idata.geom['frac_aper'] = 1e-9  # (initial) fracture aperture [m]
 
     # well controls
-    wctrl = idata.wells.controls
+    wctrl = idata.well_data.controls
     wctrl.rate_prod = 0  # m3/day
     wctrl.rate_inj = 1000  # m3/day
     wctrl.delta_temp = 40 # inj_temp = initial_temp - delta_temp

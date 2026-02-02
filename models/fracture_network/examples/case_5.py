@@ -33,10 +33,11 @@ def input_data_case_5():
     idata.geom['well_loc_type'] = 'wells_in_frac'
 
     # well locations
-    idata.geom['inj_well_coords'] = [[200, 200, 2000]]  # X, Y, Z (only one perforation)
-    idata.geom['prod_well_coords'] = [[800, 800, 2000]]
+    idata.geom['well_coords'] = dict()
+    idata.geom['well_coords']['I1'] = [200, 200, 2000, 2000]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['P1'] = [800, 800, 2000, 2000]  # X, Y, Z1, Z2
 
-    wctrl = idata.wells.controls
+    wctrl = idata.well_data.controls
     wctrl.delta_temp = 40   # bars. inj_temp = initial_temp - delta_temp
     wctrl.delta_p_inj  = 20  # bars. inj_bhp = initial_pressure + delta_p_inj
     wctrl.delta_p_prod = 20  # bars. inj_prod = initial_pressure - delta_p_prod

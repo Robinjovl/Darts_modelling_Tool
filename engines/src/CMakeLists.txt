@@ -30,7 +30,7 @@ set(OD_ENGINES_GLOBAL_PUBLIC_HEADER_FILES
 # This is always a static library since we wish to use it internally only
 add_library(engines_global OBJECT "")
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(engines_global PUBLIC OPENDARTS_LINEAR_SOLVERS)
@@ -48,6 +48,13 @@ target_link_libraries(engines_global
     linear_solvers # gets auxiliary and config via linear_solver. Kept like this for compatibility with old linear solvers
 )
 
+if (CUDA)
+  target_link_libraries(engines_global
+    PUBLIC
+      CUDA::cudart
+  )
+endif()
+
 # Define the include directories required internally (BUILD_INTERFACE)
 # and the ones to propagate when linking to this library (INSTALL_INTERFACE)
 target_include_directories(engines_global
@@ -61,13 +68,13 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_GLOBAL_SRC_F
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_GLOBAL_PUBLIC_HEADER_FILES})
 
 # Install the library file of engines_global
-install(TARGETS engines_global 
-  CONFIGURATIONS RELEASE    
+install(TARGETS engines_global
+  CONFIGURATIONS RELEASE
   DESTINATION lib
 )
 
 install(TARGETS engines_global
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 
@@ -107,7 +114,7 @@ set(OD_ENGINES_BUILD_INFO_PUBLIC_HEADER_FILES
 # This is always a static library since we wish to use it internally only
 add_library(engines_build_info OBJECT "")
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(engines_build_info PUBLIC OPENDARTS_LINEAR_SOLVERS)
@@ -137,13 +144,13 @@ target_include_directories(engines_build_info
 #source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_BUILD_INFO_PUBLIC_HEADER_FILES})
 
 # Install the library file of engines_build_info
-install(TARGETS engines_build_info 
-  CONFIGURATIONS RELEASE    
+install(TARGETS engines_build_info
+  CONFIGURATIONS RELEASE
   DESTINATION lib
 )
 
 install(TARGETS engines_build_info
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 
@@ -172,7 +179,7 @@ set(OD_ENGINES_CONN_MESH_PUBLIC_HEADER_FILES
 # This is always a static library since we wish to use it internally only
 add_library(engines_conn_mesh OBJECT "")
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(engines_conn_mesh PUBLIC OPENDARTS_LINEAR_SOLVERS)
@@ -207,12 +214,12 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_CONN_MESH_PU
 
 # Install the library file of engines_conn_mesh
 install(TARGETS engines_conn_mesh
-  CONFIGURATIONS RELEASE    
+  CONFIGURATIONS RELEASE
   DESTINATION lib
 )
 
 install(TARGETS engines_conn_mesh
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 
@@ -243,7 +250,7 @@ set(OD_ENGINES_WELLS_PUBLIC_HEADER_FILES
 # This is always a static library since we wish to use it internally only
 add_library(engines_wells OBJECT "")
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(engines_wells PUBLIC OPENDARTS_LINEAR_SOLVERS)
@@ -275,13 +282,13 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_WELLS_SRC_FI
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_WELLS_PUBLIC_HEADER_FILES})
 
 # Install the library file of engines_wells
-install(TARGETS engines_wells 
-  CONFIGURATIONS RELEASE    
+install(TARGETS engines_wells
+  CONFIGURATIONS RELEASE
   DESTINATION lib
 )
 
 install(TARGETS engines_wells
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 
@@ -302,7 +309,9 @@ set(OD_ENGINES_ENGINES_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nl_cpu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/logging.cpp
 )
+
 
 # Then the public headers
 set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
@@ -314,13 +323,28 @@ set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_mp_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_mp_cpu.tpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/logging.h
 )
 
 # Define the engines_engines library
 # This is always a static library since we wish to use it internally only
 add_library(engines_engines OBJECT "")
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+if (CUDA)
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_base_gpu.cpp
+
+    PROPERTIES LANGUAGE CUDA)
+
+  target_sources(engines_engines PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_base_gpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_gpu.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_gpu.cu
+  )
+endif()
+
+
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(engines_engines PUBLIC OPENDARTS_LINEAR_SOLVERS)
@@ -330,7 +354,7 @@ target_sources(engines_engines
   PRIVATE
     ${OD_ENGINES_ENGINES_SRC_FILES}
     ${OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
-	${HYPRE_INCLUDE_DIRS}
+	  ${HYPRE_INCLUDE_DIRS}
 )
 
 target_link_libraries(engines_engines
@@ -338,8 +362,8 @@ target_link_libraries(engines_engines
     opendarts_compiler_flags
     linear_solvers
     engines_interpolator
-    Eigen3::Eigen
 	HYPRE::HYPRE
+    pybind11::pybind11
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)
@@ -355,13 +379,13 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_ENGINES_SRC_
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES})
 
 # Install the library file of engines_engines
-install(TARGETS engines_engines 
-  CONFIGURATIONS RELEASE    
+install(TARGETS engines_engines
+  CONFIGURATIONS RELEASE
   DESTINATION lib
 )
 
 install(TARGETS engines_engines
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 

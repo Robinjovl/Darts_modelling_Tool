@@ -269,7 +269,7 @@ class UnstructReservoir:
 
         return bc_flow, bc_heat
 
-    def add_well(self, name, depth, wellbore_diameter=0.15):
+    def add_well(self, name, ms_well_type, depth, wellbore_diameter=0.15):
         """
         Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
         :param name:
@@ -278,10 +278,11 @@ class UnstructReservoir:
         """
         well = ms_well()
         well.name = name
+        well.ms_type = ms_well_type
         well.segment_volume =  pi * wellbore_diameter ** 2 / 4
         well.well_head_depth = depth
         well.well_body_depth = depth
-        well.segment_transmissibility = 1e5
+        well.well_transmissibility = 1e5
         well.segment_depth_increment = 1
         self.wells.append(well)
         return 0
@@ -522,7 +523,7 @@ class UnstructReservoir:
         for cell_block in self.mesh_data.cells:
             if cell_block.type in available_matrix_geometries:
                 cells.append(cell_block)
-                cell_ids = np.array(self.discr_mesh.elem_type_map[available_matrix_geometries[cell_block.type]], copy=False, dtype=np.int64)
+                cell_ids = np.array(self.discr_mesh.elem_type_map[available_matrix_geometries[cell_block.type]], dtype=np.int64)
                 for i in range(props_num):
                     if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
                     cell_data[cell_property[i]].append(property_array[props_num * cell_ids + i])

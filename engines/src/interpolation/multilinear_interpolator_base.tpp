@@ -22,11 +22,11 @@ multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_inte
       axes_step_internal(axes_step),
       axes_step_inv_internal(axes_step_inv)
 {
-
-  if (n_points_total_fp > std::numeric_limits<index_t>::max())
+  double int_type_max = static_cast<double>(std::numeric_limits<index_t>::max());
+  if (n_points_total_fp > int_type_max)
   {
     std::string error = "Error: The total requested amount of points (" + std::to_string(n_points_total_fp) +
-                        ") exceeds the limit in index type (" + std::to_string(std::numeric_limits<index_t>::max()) + ")\n";
+                        ") exceeds the limit in index type (" + std::to_string(int_type_max) + ")\n";
     throw std::range_error(error);
   }
   axis_point_mult.resize(N_DIMS);
@@ -55,8 +55,8 @@ void multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_point_c
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 void multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_points(index_t hypercube_idx, hypercube_points_index_t &hypercube_points)
 {
-  auto remainder_idx = hypercube_idx;
-  auto pwr = N_VERTS;
+  index_t remainder_idx = hypercube_idx;
+  index_t pwr = N_VERTS;
   hypercube_points.fill(0);
 
   for (auto i = 0; i < N_DIMS; ++i)
@@ -67,9 +67,9 @@ void multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_hypercu
 
     pwr /= 2;
 
-    for (auto j = 0; j < N_VERTS; ++j)
+    for (uint64_t j = 0; j < N_VERTS; ++j)
     {
-      auto zero_or_one = (j / pwr) % 2;
+      index_t zero_or_one = (static_cast<index_t>(j) / pwr) % 2;
       hypercube_points[j] += (axis_idx + zero_or_one) * axis_point_mult[i];
     }
   }
@@ -107,7 +107,7 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_
                                                              this->axes_min_internal[i], this->axes_max_internal[i], this->axes_step_internal[i],
                                                              this->axes_step_inv_internal[i], axes_points[i],
                                                              &axis_low[i], &mult[i]);
-    hypercube_idx += axis_idx * axis_hypercube_mult[i];
+    hypercube_idx += static_cast<index_t>(axis_idx) * axis_hypercube_mult[i];
   }
   const hypercube_data_t &hypercube = this->get_hypercube_data(hypercube_idx);
   interpolate_point_with_derivatives<value_t, N_DIMS, N_OPS>(point, hypercube.data(),

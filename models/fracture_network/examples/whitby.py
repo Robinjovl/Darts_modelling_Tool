@@ -22,8 +22,9 @@ def input_data_case_whitby():
     idata.geom['rsv_layers'] = 1
 
     # well locations
-    idata.geom['inj_well_coords'] = [[400, 800, 25]]  # X, Y, Z (only one perforation)
-    idata.geom['prod_well_coords'] = [[400, 200, 25]]
+    idata.geom['well_coords'] = dict()
+    idata.geom['well_coords']['I1'] = [400, 800, 25, 25]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['P1'] = [400, 200, 25, 25]  # X, Y, Z1, Z2
 
     # well in the matrix cells or in the fractures
     idata.geom['well_loc_type'] = 'wells_in_frac'
@@ -35,7 +36,7 @@ def input_data_case_whitby():
     idata.rock.conductivity = 181.44  # [kJ/m/day/K]
 
     # well controls
-    wctrl = idata.wells.controls
+    wctrl = idata.well_data.controls
     wctrl.prod_rate = None  # m3/day. if None, well will work under BHP control
     wctrl.inj_rate = None   # m3/day. if None, well will work under BHP control
     wctrl.delta_temp = 40   # bars. inj_temp = initial_temp - delta_temp

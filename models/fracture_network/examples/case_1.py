@@ -23,8 +23,13 @@ def input_data_case_1():
     idata.initial.initial_temperature = 348.15  # K
 
     # well locations
-    idata.geom['inj_well_coords'] = [[100, 200, 25]]  # X, Y, Z (only one perforation)
-    idata.geom['prod_well_coords'] = [[800, 800, 25]]
+    idata.geom['well_coords'] = dict()
+    # one perforation at the top layer
+    idata.geom['well_coords']['I1'] = [100., 200., 2000., 2000.]  # X, Y, Z1, Z2
+    idata.geom['well_coords']['P1'] = [800., 800., 2000., 2000.]  # X, Y, Z1, Z2
+    # multiple perforations - through all depth of the reservoir
+    #idata.geom['well_coords']['I1'] = [100., 200., 2000., 2020.]  # X, Y, Z1, Z2
+    #idata.geom['well_coords']['P1'] = [800., 800., 2000., 2020.]  # X, Y, Z1, Z2
 
     # well in the matrix cells or in the fractures
     idata.geom['well_loc_type'] = 'wells_in_nearest_cell'
@@ -32,17 +37,16 @@ def input_data_case_1():
     # extrusion - number of layers by Z axis
     idata.geom['rsv_layers'] = 3
 
-    idata.geom['z_top'] = 2000  # [m]
-    idata.geom['height_res'] = 20  # [m]
+    idata.geom['z_top'] = 2000.  # [m]
+    idata.geom['height_res'] = 20.  # [m]
 
     idata.geom['frac_aper'] = 1e-3  # (initial) fracture aperture [m]
 
-    idata.wells.controls.delta_temp = 40  # inj_temp = initial_temp - delta_temp
-    idata.wells.controls.delta_p_inj  = 30  # inj_bhp = initial_pressure + delta_p_inj
-    idata.wells.controls.delta_p_prod = 30  # inj_prod = initial_pressure - delta_p_prod
+    wctrl = idata.well_data.controls
+    wctrl.delta_temp = 40  # inj_temp = initial_temp - delta_temp
+    wctrl.delta_p_inj  = 30  # inj_bhp = initial_pressure + delta_p_inj
+    wctrl.delta_p_prod = 30  # inj_prod = initial_pressure - delta_p_prod
 
     #idata.geom['box_data'] = np.array([[0, 0], [0, 1000], [1000, 0], [1000, 1000]])
 
     return idata
-
-

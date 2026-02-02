@@ -38,7 +38,6 @@ struct engine_super_elastic_exposer
 			.def("eval_stresses_and_velocities", &engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities) \
 			.def_readwrite("find_equilibrium", &engine_super_elastic_cpu<NC, NP, THERMAL>::FIND_EQUILIBRIUM) \
 			.def_readwrite("geomechanics_mode", &engine_super_elastic_cpu<NC, NP, THERMAL>::geomechanics_mode) \
-			.def_readwrite("newton_update_coefficient", &engine_super_elastic_cpu<NC, NP, THERMAL>::newton_update_coefficient) \
 			.def_readwrite("dev_u", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_u) \
 			.def_readwrite("dev_p", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_p) \
 			.def_readwrite("dev_e", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_e) \

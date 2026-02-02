@@ -12,7 +12,7 @@
 #include "engine_nce_g_gpu.hpp"
 #define H2O_MW 18.01528
 
-template <uint8_t NC, uint8_t NP, uint8_t N_VARS, uint8_t P_VAR, uint8_t E_VAR, uint8_t N_OPS, uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t FE_ACC_OP, uint8_t RE_ACC_OP, uint8_t FE_TEMP_OP, uint8_t FE_FLUX_OP, uint8_t FE_COND_OP, uint8_t RE_COND_OP, uint8_t DENS_OP>
+template <uint8_t NC, uint8_t NP, uint8_t N_VARS, uint8_t P_VAR, uint8_t E_VAR, uint8_t N_OPS, uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t FE_ACC_OP, uint8_t FE_FLUX_OP, uint8_t FE_COND_OP, uint8_t DENS_OP, uint8_t TEMP_OP>
 __global__ void
 assemble_jacobian_array_kernel(const unsigned int n_blocks, value_t dt,
                                value_t *X, value_t *RHS,
@@ -59,12 +59,12 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, value_t dt,
   // fluid energy
   RHS_l[NC] = PV[i] * (op_vals_arr[i * N_OPS + FE_ACC_OP] - op_vals_arr_n[i * N_OPS + FE_ACC_OP]);
   // + rock energy (no rock compressibility included in these computations)
-  RHS_l[NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_ACC_OP] - op_vals_arr_n[i * N_OPS + RE_ACC_OP]) * hcap[i];
+  RHS_l[NC] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
   for (uint8_t v = 0; v < N_VARS; v++)
   {
     jac_diag_l[NC * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v];
-    jac_diag_l[NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_ACC_OP) * N_VARS + v] * hcap[i];
+    jac_diag_l[NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
   }
 
   // index of first entry for block i in CSR cols array
@@ -87,7 +87,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, value_t dt,
     }
 
     p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
-    t_diff = op_vals_arr[j * N_OPS + FE_TEMP_OP] - op_vals_arr[i * N_OPS + FE_TEMP_OP];
+    t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
     gamma_t_diff = tranD[conn_idx] * dt * t_diff;
 
     // set offdiagonal values to 0 since they are added up in the loop over phases
@@ -189,34 +189,32 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, value_t dt,
       // energy outflow
 
       // conduction
-      value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[i * N_OPS + FE_COND_OP] * poro[i] + op_vals_arr[i * N_OPS + RE_COND_OP] * (1 - poro[i]) * rock_cond[i]);
+      value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[i * N_OPS + FE_COND_OP] * poro[i] + (1 - poro[i]) * rock_cond[i]);
 
       RHS_l[NC] -= local_cond_dt * t_diff;
       for (uint8_t v = 0; v < N_VARS; v++)
       {
         // conduction part derivative
         jac_diag_l[NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(i * N_OPS + FE_COND_OP) * N_VARS + v] * poro[i];
-        jac_diag_l[NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(i * N_OPS + RE_COND_OP) * N_VARS + v] * (1 - poro[i]) * rock_cond[i];
         // t_diff derivatives
-        jac_offd_l[NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + FE_TEMP_OP) * N_VARS + v] * local_cond_dt;
-        jac_diag_l[NC * N_VARS + v] += op_ders_arr[(i * N_OPS + FE_TEMP_OP) * N_VARS + v] * local_cond_dt;
+        jac_offd_l[NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * local_cond_dt;
+        jac_diag_l[NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * local_cond_dt;
       }
     }
     else
     {
       //energy inflow
       // conduction
-      value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[j * N_OPS + FE_COND_OP] * poro[j] + op_vals_arr[j * N_OPS + RE_COND_OP] * (1 - poro[j]) * rock_cond[j]);
+      value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[j * N_OPS + FE_COND_OP] * poro[j] + (1 - poro[j]) * rock_cond[j]);
 
       RHS_l[NC] -= local_cond_dt * t_diff;
       for (uint8_t v = 0; v < N_VARS; v++)
       {
         // conduction part derivative
         jac_offd_l[NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(j * N_OPS + FE_COND_OP) * N_VARS + v] * poro[j];
-        jac_offd_l[NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(j * N_OPS + RE_COND_OP) * N_VARS + v] * (1 - poro[j]) * rock_cond[j];
         // t_diff derivatives
-        jac_offd_l[NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + FE_TEMP_OP) * N_VARS + v] * local_cond_dt;
-        jac_diag_l[NC * N_VARS + v] += op_ders_arr[(i * N_OPS + FE_TEMP_OP) * N_VARS + v] * local_cond_dt;
+        jac_offd_l[NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * local_cond_dt;
+        jac_diag_l[NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * local_cond_dt;
       }
     }
     conn_idx++;
@@ -247,13 +245,6 @@ int engine_nce_g_gpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &wel
                                    std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                    sim_params *params_, timer_node *timer_)
 {
-  X_init.resize(N_VARS * mesh_->n_blocks);
-
-  for (index_t i = 0; i < mesh_->n_blocks; i++)
-  {
-    X_init[N_VARS * i + E_VAR] = mesh_->enthalpy[i];
-  }
-
   engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
   allocate_device_data(RV, &RV_d);
@@ -277,7 +268,7 @@ template <uint8_t NC, uint8_t NP>
 int engine_nce_g_gpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
   timer->node["jacobian assembly"].node["kernel"].start_gpu();
-  assemble_jacobian_array_kernel<NC, NP, N_VARS, P_VAR, E_VAR, N_OPS, ACC_OP, FLUX_OP, FE_ACC_OP, RE_ACC_OP, FE_TEMP_OP, FE_FLUX_OP, FE_COND_OP, RE_COND_OP, DENS_OP>
+  assemble_jacobian_array_kernel<NC, NP, N_VARS, P_VAR, E_VAR, N_OPS, ACC_OP, FLUX_OP, FE_ACC_OP, FE_FLUX_OP, FE_COND_OP, DENS_OP, TEMP_OP>
       KERNEL_1D_THREAD(mesh->n_blocks, KERNEL_BLOCK_SIZE)(mesh->n_blocks, dt,
                                                           X_d, RHS_d,
                                                           jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
@@ -330,7 +321,7 @@ engine_nce_g_gpu<NC, NP>::calc_newton_residual_L2()
       res_m += res * res;
     }
 
-    res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
+    res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
     res_e += res * res;
   }
   residual = sqrt(res_m + res_e);
@@ -353,7 +344,7 @@ engine_nce_g_gpu<NC, NP>::calc_newton_residual_Linf()
         residual = res;
     }
 
-    res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
+    res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
     if (res > residual)
       residual = res;
   }
