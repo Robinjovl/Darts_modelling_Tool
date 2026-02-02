@@ -13,10 +13,10 @@ class UnstructRadialReservoir(UnstructReservoir):
         timer: timer_node,
         mesh_properties: MeshProperties,
         angle: float,
+        poro,
         permx,
         permy,
         permz,
-        poro,
         rcond=181.44,
         hcap=2200.0,
     ):
@@ -29,14 +29,14 @@ class UnstructRadialReservoir(UnstructReservoir):
         :type mesh_properties: MeshProperties
         :param angle: Angle of radial slice [degrees], default is 360
         :type angle: float
+        :param poro: Matrix (and fracture?) porosity
+        :type poro: float or vector
         :param permx: Matrix permeability in the x-direction
         :type permx: float or vector
         :param permy: Matrix permeability in the y-direction
         :type permy: float or vector
         :param permz: Matrix permeability in the z-direction
         :type permz: float or vector
-        :param poro: Matrix (and fracture?) porosity
-        :type poro: float or vector
         :param rcond: Rock conductivity [kJ/m.K.day]
         :param hcap: Rock volumetric heat capacity [kJ/m3.K]
         """
