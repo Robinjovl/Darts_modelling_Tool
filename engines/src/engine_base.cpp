@@ -2662,10 +2662,9 @@ int engine_base::test_spmv(int n_times, int kernel_number, int dump_result)
 	return 0;
 }
 
-int engine_base::assemble_linear_system(value_t deltat)
+int engine_base::evaluate_obl(value_t deltat)
 {
 	// switch constraints if needed
-	timer->node["jacobian assembly"].start();
 	for (ms_well *w : wells)
 	{
 		w->check_constraints(deltat, X);
@@ -2682,6 +2681,15 @@ int engine_base::assemble_linear_system(value_t deltat)
 	}
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();
+	return 0;
+}
+
+int engine_base::assemble_linear_system(value_t deltat)
+{
+	// switch constraints if needed
+	timer->node["jacobian assembly"].start();
+
+	evaluate_obl(deltat);
 
 	// assemble jacobian
 	assemble_jacobian_array(deltat, X, Jacobian, RHS);

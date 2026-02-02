@@ -73,27 +73,35 @@ int engine_base_gpu::post_newtonloop(value_t deltat, value_t time)
 	return converged;
 }
 
-int engine_base_gpu::assemble_linear_system(value_t deltat)
+int engine_base_gpu::evaluate_obl(value_t deltat)
 {
-	// switch constraints if needed
-	timer->node["jacobian assembly"].start_gpu();
-
 	for (ms_well *w : wells)
 	{
 		w->check_constraints(deltat, X);
 	}
 
-	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start_gpu();
-
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
+		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(
+			block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
 		if (result < 0)
 			return 0;
 	}
-
 	timer->node["jacobian assembly"].node["interpolation"].stop_gpu();
+
+	timer->node["host<->device_overhead"].start_gpu();
+	copy_data_to_host(op_vals_arr, op_vals_arr_d);
+	copy_data_to_host(op_ders_arr, op_ders_arr_d);
+	timer->node["host<->device_overhead"].stop_gpu();
+	return 0;
+}
+
+int engine_base_gpu::assemble_linear_system(value_t deltat)
+{
+	timer->node["jacobian assembly"].start_gpu();
+
+	evaluate_obl(deltat);
 
 	// assemble jacobian
 	assemble_jacobian_array(deltat, X, Jacobian, RHS);
@@ -102,7 +110,6 @@ int engine_base_gpu::assemble_linear_system(value_t deltat)
 
 	timer->node["host<->device_overhead"].start_gpu();
 	copy_data_to_host(RHS, RHS_d);
-	copy_data_to_host(op_vals_arr, op_vals_arr_d);
 	timer->node["host<->device_overhead"].stop_gpu();
 
 	return 0;
