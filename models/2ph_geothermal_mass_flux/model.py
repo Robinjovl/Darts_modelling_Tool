@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
 import numpy as np
 
@@ -11,7 +11,7 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, mode='rhs', well_rate=1, outflow=1000):
         # call base class constructor
         super().__init__()
@@ -24,7 +24,7 @@ class Model(CICDModel):
         self.wells_mode = mode
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1, tol_newton=1e-3, tol_linear=1e-6)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, tol_newton=1e-3, tol_linear=1e-6)
 
         # add outflux to the middle cell
         self.inflow_cells = np.array([self.reservoir.nx // 2])

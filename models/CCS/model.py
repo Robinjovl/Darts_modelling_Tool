@@ -30,10 +30,9 @@ class Model(DartsModel):
         self.p_prod = 50.
 
         self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3,
-                                    tol_linear=1e-5, it_newton=10, it_linear=50)
+                            tol_linear=1e-5, it_newton=10, it_linear=50)
 
         self.timer.node["initialization"].stop()
-
 
     def set_reservoir(self):
         nx = 100

@@ -189,7 +189,7 @@ The discretized energy conservation equation in operator form can be written as:
 
 ```{math}
 \begin{aligned}
-V \phi_0 [\alpha_{ef}(\omega) &- \alpha_{ef}(\omega_n) ] - 
+V \phi_0 [\alpha_{ef}(\omega) &- \alpha_{ef}(\omega_n) ] -
 \Delta{t}\sum_{l\in L(i)} \sum_{j=1}^{n_p}[\Gamma^l\beta_{ej}^l(\omega^{u})\Delta\psi_{j}^l
 + \Gamma_d^l\gamma_{j}(\omega) \Delta \chi_{ej}]
 + \Delta t V \delta_e(\omega) \\

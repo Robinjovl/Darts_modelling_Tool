@@ -7,21 +7,22 @@ from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
 from matplotlib import cm
+from darts.models.cicd_model import compare_solution_with_reference, get_platform
 
-def plot_sol(n):
-    Xn = np.array(n.physics.engine.X, copy=False)
-    nc = n.property_container.nc + n.thermal
-    nb = n.reservoir.mesh.n_res_blocks
+def plot_sol(m):
+    Xn = np.array(m.physics.engine.X, copy=False)
+    nc = m.property_container.nc + m.thermal
+    nb = m.reservoir.mesh.n_res_blocks
 
     P = Xn[0:nb * nc:nc]
     z = np.ones((nc, nb))
     phi = np.ones(nb)
-    sat_ev = props(n.property_container)
-    prop = np.zeros(2*n.property_container.nph)
+    sat_ev = props(m.property_container)
+    prop = np.zeros(2*m.property_container.nph)
 
     plt.figure(num=1, figsize=(12, 8), dpi=100)
     for i in range(nc-1):
-        z[i][:] = Xn[i + 1:n.reservoir.nb * nc:nc]
+        z[i][:] = Xn[i + 1:m.reservoir.nb * nc:nc]
         z[-1][:] -= z[i][:]
 
     for i in range(nb):
@@ -47,35 +48,33 @@ def plot_sol(n):
 
     plt.show()
 
-if __name__ == '__main__':
-
+def run(platform='cpu'):
     redirect_darts_output('run.log')
 
-    n = Model()
-    # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
-    n.init()
-    n.set_output()
-    time_data_filename = n.output_folder + "/darts_time_data.pkl"
+    m = Model()
+    # m.params.linear_type = m.params.linear_solver_t.cpu_superlu
+    m.init(platform=platform)
+    m.set_output()
+    time_data_filename = m.output_folder + "/darts_time_data.pkl"
 
     if True:
-        n.run(1000)
-        # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
-        # n.run_python(300, restart_dt=1e-3)
-        n.print_timers()
-        n.print_stat()
+        m.run(1000)
+        # m.reservoir.wells[0].control = m.physics.new_bhp_inj(100, 3*[m.zero])
+        # m.run_python(300, restart_dt=1e-3)
+        m.print_timers()
+        m.print_stat()
 
         # compute and save well time data
-        time_data_dict = n.output.store_well_time_data(save_output_files=True)
-
+        time_data_dict = m.output.store_well_time_data(save_output_files=True)
     else:
-        # n.load_restart_data()
-        n.load_restart_data('output/solution.h5')
+        # m.load_restart_data()
+        m.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle(time_data_filename)
 
     if True:
-        Xn = np.array(n.physics.engine.X, copy=False)
-        nc = n.physics.nc + n.physics.thermal
-        nb = n.reservoir.mesh.n_res_blocks
+        Xn = np.array(m.physics.engine.X, copy=False)
+        nc = m.physics.nc + m.physics.thermal
+        nb = m.reservoir.mesh.n_res_blocks
 
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
@@ -84,17 +83,23 @@ if __name__ == '__main__':
         plt.savefig('out.png')
     else:
         #plot_sol(n)
-        n.print_and_plot('sim_data')
+        m.print_and_plot('sim_data')
 
-#z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
+    #m.compare_well_rates(time_data_filename)
 
-# rho_aq = n.property_container.density_ev['wat'].evaluate(P, z_co2)
-# Sg = np.zeros(n.reservoir.nb)
+    # for CI/CD
+    failed, sim_time = compare_solution_with_reference(m=m)
+    return failed
+
+#z_c10 = Xn[nc-1:m.reservoir.nb*nc:nc]
+
+# rho_aq = m.property_container.density_ev['wat'].evaluate(P, z_co2)
+# Sg = np.zeros(m.reservoir.nb)
 #
-# for i in range (n.reservoir.nb):
+# for i in range (m.reservoir.nb):
 #     x_list = Xn[i*nc:(i+1)*nc]
 #     state = value_vector(x_list)
-#     Sg[i] = n.properties(state)
+#     Sg[i] = m.properties(state)
 
 # """ start plots """
 # plt.figure(num=1, figsize=(12, 8), dpi=100)
@@ -120,7 +125,7 @@ if __name__ == '__main__':
 # plt.title('Gas saturation', y=1)
 
 
-# time_data1 = pd.DataFrame.from_dict(n.physics.engine.time_data)
+# time_data1 = pd.DataFrame.from_dict(m.physics.engine.time_data)
 # from darts.tools.plot_darts import *
 # writer = pd.ExcelWriter('time_data.xlsx')
 # plot_phase_rate_darts('I1', time_data1, 'wat')
@@ -129,8 +134,8 @@ if __name__ == '__main__':
 # plt.show()
 
 # from darts.tools.plot_darts import *
-# time_data1 = pd.DataFrame.from_dict(n.physics.engine.time_data)
-# for i, w in enumerate(n.reservoir.wells):
+# time_data1 = pd.DataFrame.from_dict(m.physics.engine.time_data)
+# for i, w in enumerate(m.reservoir.wells):
 #     # plot oil rate
 #     ax1 = plot_oil_rate_darts(w.name, time_data1, color='b')
 #     ax1.tick_params(labelsize=14)
@@ -141,3 +146,6 @@ if __name__ == '__main__':
 #     ax3.set_xlabel('Days', fontsize=14)
 #
 # plt.show()
+
+if __name__ == '__main__':
+    exit(run(platform=get_platform()))

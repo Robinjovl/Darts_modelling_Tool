@@ -9,10 +9,11 @@ from darts.tools.logging import redirect_all_output, abort_redirection
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
+from darts.models.cicd_model import compare_solution_with_reference, get_platform, is_iter_solvers
 from model_CO2 import ModelCCS
 
 
-def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=False):
+def run_case(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=False):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
@@ -142,13 +143,10 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         m.output.store_well_time_data(save_output_files=True)
         m.output.plot_well_time_data()
 
-    m.print_timers()
-
-
-    if compare_with_ref:
-        failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
-    else:
-        failed, sim_time = 0, 0.0
+    # for CI/CD
+    failed, sim_time = False, -1.
+    if '5x3x4' in case:
+        failed, sim_time = compare_solution_with_reference(m=m, pkl_custom_suffix='_' + case + '_' + physics_type)
 
     if redirect_log:
         abort_redirection(log_stream)
@@ -156,7 +154,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
 
-##########################################################################################################
+
 def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, label_list, physics_type, out_dir):
     plt.rc('font', size=12)
 
@@ -230,58 +228,9 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
         plt.tight_layout()
         plt.close()
 
-##########################################################################################################
-# for CI/CD
-def check_performance_local(m, case, physics_type):
-    import platform
-
-    os.makedirs('ref', exist_ok=True)
-
-    pkl_suffix = ''
-    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-        pkl_suffix = '_gpu'
-    elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
-    else:
-        pkl_suffix = '_odls'
-    print('pkl_suffix=', pkl_suffix)
-
-    file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
-                             '_' + case + '_' + physics_type + '.pkl')
-    overwrite = 0
-    if os.getenv('UPLOAD_PKL') == '1':
-        overwrite = 1
-
-    is_plk_exist = os.path.isfile(file_name)
-
-    failed = m.check_performance(perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
-
-    if not is_plk_exist or overwrite == '1':
-        m.save_performance_data(file_name=file_name, pkl_suffix=pkl_suffix)
-        return False, 0.0
-
-    if is_plk_exist:
-        return (failed > 0), -1.0 #data[-1]['simulation time']
-    else:
-        return False, -1.0
-
-def run_test(args: list = [], platform='cpu'):
-    if len(args) > 1:
-        case = args[0]
-        physics_type = args[1]
-
-        out_dir = 'results_' + physics_type + '_' + case
-        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform, compare_with_ref=True)
-        return ret[0], ret[1] #failed_flag, sim_time
-    else:
-        print('Not enough arguments provided')
-        return True, 0.0
-##########################################################################################################
-
 if __name__ == '__main__':
-    platform = 'cpu'
-    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-            platform = 'gpu'
+    platform = get_platform()
+    iter_solvers = is_iter_solvers()
 
     physics_list = []
     physics_list += ['geothermal']
@@ -291,31 +240,41 @@ if __name__ == '__main__':
 
     cases_list = []
     cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
+    if iter_solvers:
+        cases_list += ['generate_51x51x1']
+        cases_list += ['case_40x40x10']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['40x40x10']
     #cases_list += ['40x40x10_hcap']
     #cases_list += ['40x40x10_regions']
+    #cases_list += ['brugge']
 
     well_controls = []
     well_controls += ['wrate']
-    #well_controls += ['wbhp']
+    # well_controls += ['wbhp']
     #well_controls += ['wperiodic']
 
+    n_failed = 0
     for physics_type in physics_list:
         for case_geom in cases_list:
             for wctrl in well_controls:
                 if physics_type == 'deadoil' and wctrl == 'wrate':
-                    continue
+                    continue  # TODO fix convergence
                 case = case_geom + '_' + wctrl
                 out_dir = 'results_' + physics_type + '_' + case
-                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
-                                                                                        case=case, out_dir=out_dir,
-                                                                                        redirect_log=False,
-                                                                                        platform=platform,
-                                                                                        export_vtk = True,
-                                                                                        )
+                print('Running', os.path.basename(__file__), case, physics_type)
+                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run_case(physics_type=physics_type,
+                                                                                             case=case, out_dir=out_dir,
+                                                                                             redirect_log=False,
+                                                                                             platform=platform,
+                                                                                             export_vtk = True,
+                                                                                             )
+                n_failed += failed
+                if failed:
+                    print('FAIL')
+                else:
+                    print('OK')
 
                 # one can read well results from pkl file to add/change well plots without re-running the model
                 pkl1_dir = '.'
@@ -336,3 +295,4 @@ if __name__ == '__main__':
                 plot_results(wells=wells, well_is_inj=well_is_inj,
                              time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
                              physics_type=physics_type, out_dir=out_dir)
+    exit(n_failed)

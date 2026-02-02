@@ -41,7 +41,7 @@ class Model(DartsModel):
         else:
             max_ts_mult = 5.
         max_ts = min(4., max_ts_mult * 1000 / self.nx)
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=max_ts, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=max_ts, tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
         # self.params.linear_type = sim_params.cpu_superlu
 

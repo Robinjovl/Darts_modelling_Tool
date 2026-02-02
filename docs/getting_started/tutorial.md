@@ -12,7 +12,7 @@ They are usually organized in a way that `main.py` is a startup scripts where th
 Apart of these three Python scripts, the project folder `GeoRising` may contain extra files used to initilize a reservoir, e.g. the permeability distrition file `permXVanEssen.in`. It also may include a `mesh` folder, or just *.geo, *.msh, *.grdecl files placed in the project folder. They define computational grids used in the model. After the simulation run the program may will create several output files in the project folder.
 - `vtk` folder contains dynamic temperature, pressure solution of all grid cells, e.g. `solution_ts*.vts` and mesh of grid cells, e.g. `mesh.vts`
 - `darts_time_data.pkl` is time data pickle file which contains the dynamic simulation results of Bottom Hole Pressure (BHP), temperature, injection/production water rate,
-accumulated water produced of the injection wells and production wells for the given simulation time 
+accumulated water produced of the injection wells and production wells for the given simulation time
 - `output.png` production well temperature profile in 3650 days with techinical temperature limit
 - `solution.pvd` is xml file which contains the `vtk` information linking to `*.vtu` files in `vtk` folder
 - `time_data.xlsx` is Excel file contains which contains the dynamic simulation results of Bottom Hole Pressure (BHP), temperature, injection/production water rate,

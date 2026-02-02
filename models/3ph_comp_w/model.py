@@ -1,6 +1,6 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, ms_well
 
 from darts.physics.super.physics import Compositional
@@ -10,9 +10,8 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 
-import numpy as np
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -23,7 +22,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=100, tol_newton=1e-2, tol_linear=1e-3,
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()

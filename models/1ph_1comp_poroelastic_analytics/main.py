@@ -4,6 +4,7 @@ import numpy as np
 import meshio
 from math import fabs
 import os
+import platform
 from scipy.interpolate import interp1d
 import subprocess
 from darts.tools.gen_msh import generate_box_3d
@@ -13,6 +14,7 @@ from matplotlib import pyplot as plt
 from matplotlib import rcParams
 import shutil
 
+
 rcParams["text.usetex"]=False
 plt.rc('xtick',labelsize=16)
 plt.rc('ytick',labelsize=16)
@@ -20,12 +22,8 @@ font = {'family' : 'normal',
         'size'   : 18}
 plt.rc('legend',fontsize=12)
 
-try:
-    # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
-    from darts.engines import set_num_threads
-    set_num_threads(1)
-except:
-    pass
+from darts.models.cicd_model import get_platform, is_iter_solvers, set_one_thread, is_overwrite_pkl, pkl_suffix_solvers
+
 
 def generate_mesh(mesh='rect'):
     '''
@@ -53,6 +51,7 @@ def generate_mesh(mesh='rect'):
 
     generate_box_3d(X=100., Y=100., Z=10., NX=nx, NY=nx, NZ=1, filename=msh_filename, tags=tags,
                     is_transfinite=True, is_recombine=True, refinement_mult=1)
+
 
 def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
@@ -168,7 +167,9 @@ def run_timestep_python(m, dt, t):
     converged = self.e.post_newtonloop(dt, t, converged)
     self.timer.node['simulation'].stop()
     return converged
-def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0'):
+
+
+def run_case(case='mandel', discr_name='mech_discretizer', mesh='rect'):
     '''
     :param case: mandel/terzaghi
     :param scheme: stabilized/non_stabilized
@@ -176,8 +177,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
     :param overwrite: write pkl file even if it exists
     :return: tuple (bool failed, float64 time)
     '''
-    print('case:' + case, 'discr_name:' + discr_name, 'mesh: ' + mesh, 'overwrite: ' + overwrite, sep=', ')
-    import platform
+    print('case:' + case, 'discr_name:' + discr_name, 'mesh: ' + mesh, sep=', ')
 
     nt = 20
     max_dt = 200
@@ -199,9 +199,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
 
     # poromech tests run with direct linear solvers (superlu), but somehow there is a difference
     # while using old and new lib. To handle this, use '_iter' pkls for old lib
-    pkl_suffix = ''
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
+    pkl_suffix = pkl_suffix_solvers()
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
                              '_' + case + '_' + discr_name + '_' + mesh + '.pkl')
     failed = 0
@@ -231,16 +229,18 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
                 ref_data_step = ref_data[ith_step]
             failed += m.check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
                                              png_suffix=case+'_'+discr_name+'_'+mesh+'_'+str(ith_step))
+        else:
+            print('PKL FILE', file_name, 'was not found!')
+            failed = True
 
-    if not is_plk_exist or overwrite == '1':
+    if is_overwrite_pkl():
         m.save_performance_data(data=data, file_name=file_name)
-        return False, 0.0
+
     # m.print_timers()
 
-    if is_plk_exist:
-        return (failed > 0), data[-1]['simulation time']
-    else:
-        return False, -1.0
+    return failed
+
+
 def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', convergence_analysis=False):
     # GeosX
     # t = np.empty(shape=(0,), dtype=np.float64)
@@ -551,13 +551,6 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
 
     m.print_timers()
 
-def run_test(args: list = [], platform='cpu'):
-    if len(args) == 4:
-        return test(case=args[0], discr_name=args[1], mesh=args[2], overwrite=args[3])
-    else:
-        print('Wrong number of arguments provided to the run_test:', args)
-        return 1, 0.0
-
 
 def get_x(m, discr_name):
     # for rectangular grid
@@ -622,6 +615,8 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
     return sol_data_slice
 
 if __name__ == '__main__':
+    set_one_thread()
+
     # Rectangular grid, comparison to analytics
     #run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
     #run_and_plot(case='terzaghi', discretizer='pm_discretizer', mesh='rect')
@@ -645,17 +640,24 @@ if __name__ == '__main__':
     # run(case='mandel', discretizer='pm_discretizer', mesh='hex')
     # run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
+    n_failed = 0
     test_all = False
-    #test_all = True
+    # test_all = True
     cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
     if test_all:
         for case in cases_list:
             for mesh in ['rect', 'wedge', 'hex']:
                 if case == 'terzaghi_two_layers' and mesh == 'hex':
                     continue
-                mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
+                print('Running', os.path.basename(__file__), case, mesh)
+                failed = run_case(case=case, discr_name='mech_discretizer', mesh=mesh)
                 if case != 'bai':  # is not supported by poroelastic as bai is thermoporoelasticity
-                    pm_res   = test(case=case, discr_name='pm_discretizer',   mesh=mesh)
+                    failed = run_case(case=case, discr_name='pm_discretizer',   mesh=mesh)
+                n_failed += failed
+                if failed:
+                    print('FAIL')
+                else:
+                    print('OK')
 
         print('Ok')
 
@@ -671,3 +673,5 @@ if __name__ == '__main__':
         plot_conv_main(nx_list=nx_list, case=case)
 
         print('Ok')
+
+    exit(n_failed)

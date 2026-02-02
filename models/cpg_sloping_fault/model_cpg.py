@@ -7,14 +7,14 @@ from darts.reservoirs.cpg_reservoir import read_int_array, read_float_array
 
 from darts.tools.gen_cpg_grid import gen_cpg_grid
 
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 
 def fmt(x):
     return '{:.3}'.format(x)
 
 #####################################################
 
-class Model_CPG(CICDModel):
+class Model_CPG(DartsModel):
     def __init__(self):
         super().__init__()
 

@@ -440,4 +440,3 @@ engine_nce_g_gpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<valu
 };
 
 template class engine_nce_g_gpu<1, 2>;
-

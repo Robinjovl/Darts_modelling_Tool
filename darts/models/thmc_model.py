@@ -94,6 +94,8 @@ class THMCModel(DartsModel):
             ls1.max_i_linear = 500
             self.physics.engine.ls_params.append(ls1)
 
+        self.params.finalize_mpi = False
+
     def set_input_data(self):
         self.idata.check()
 
@@ -368,6 +370,7 @@ class THMCModel(DartsModel):
         """
         if os.path.exists(file_name):
             with open(file_name, "rb") as fp:
+                print('Reading PKL FILE', file_name)
                 return pickle.load(fp)
         else:
             print('PKL FILE', file_name, 'does not exist. Skipping.')

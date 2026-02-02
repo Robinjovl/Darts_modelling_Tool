@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
@@ -8,7 +8,7 @@ from darts.engines import value_vector, sim_params, ms_well
 from darts.input.input_data import InputData
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, n_points=128, iapws_physics: bool = True):
         # call base class constructor
         super().__init__()
@@ -21,7 +21,7 @@ class Model(CICDModel):
         self.set_input_data(n_points)
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
+        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, tol_newton=1e-2, tol_linear=1e-6,
                             it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
                             newton_params=value_vector([1]))
 

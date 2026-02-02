@@ -1,7 +1,7 @@
 from model import Model
 from darts.engines import *
 import numpy as np
-import meshio
+import os
 from math import fabs
 
 from matplotlib import pyplot as plt
@@ -12,12 +12,7 @@ rcParams["font.serif"] = ["Liberation Serif"]
 plt.rc('xtick',labelsize=14)
 plt.rc('ytick',labelsize=14)
 
-try:
-    # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
-    from darts.engines import set_num_threads
-    set_num_threads(1)
-except:
-    pass
+from darts.models.cicd_model import get_platform, is_iter_solvers, set_one_thread
 
 def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
@@ -309,27 +304,40 @@ def run_thermoporoelastic_convergence_study_peclet_number(mesh='rect'):
     fig.savefig('conv_peclet_' + str(mesh) + '.png')
     plt.show()
 
-def run_test(args: list = [], platform='cpu'):
+def run_test():
     n_res = [3, 3, 3, 3, 3]
     discretizers = ['pm_discretizer', 'mech_discretizer', 'mech_discretizer', 'mech_discretizer', 'mech_discretizer']
     modes = ['poroelastic', 'poroelastic', 'poroelastic', 'thermoporoelastic', 'thermoporoelastic']
     meshes = ['rect', 'rect', 'tetra', 'rect', 'tetra']
 
     test_passed = 1
-    time = 0.0
+    timer = 0.0
     for i in range(len(n_res)):
         test_passed_cur, time_cur = run_convergence_study(n_res=n_res[i], discretizer=discretizers[i],
                                                             mode=modes[i], mesh=meshes[i])
         test_passed *= test_passed_cur
-        time += time_cur
+        timer += time_cur
 
-    return (1 - test_passed), time
+    return (1 - test_passed), timer
 
 if __name__ == '__main__':
-    run_convergence_study(n_res=3, discretizer='pm_discretizer', mode='poroelastic')
-    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
-    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')
-    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
-    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='tetra')
-    run_thermoporoelastic_convergence_study_peclet_number(mesh='rect')
-    run_thermoporoelastic_convergence_study_peclet_number(mesh='tetra')
+    set_one_thread()
+
+    #run_convergence_study(n_res=3, discretizer='pm_discretizer', mode='poroelastic')
+    #run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
+    #run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')
+    #run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
+    #run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='tetra')
+    #run_thermoporoelastic_convergence_study_peclet_number(mesh='rect')
+    #run_thermoporoelastic_convergence_study_peclet_number(mesh='tetra')
+
+    print('Running', os.path.basename(__file__))
+
+    failed, timer = run_test()
+
+    if failed:
+        print('FAIL', timer)
+    else:
+        print('OK', timer)
+
+    exit(failed)

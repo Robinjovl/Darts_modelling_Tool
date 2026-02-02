@@ -67,12 +67,12 @@ gpu_simulator_nc3::init (conn_mesh *_mesh, std::string table_base_name)
   cpu_solver->set_prec (cpu_preconditioner);
 #endif
 
-  
+
   X.resize (3 * mesh->n_blocks);
   Xn.resize (3 * mesh->n_blocks);
   RHS.resize (3 * mesh->n_blocks);
   dX.resize (3 * mesh->n_blocks);
-  
+
   X = mesh->initial_state;
   X.resize(3 * mesh->n_blocks);
   for (index_t i = 0; i < mesh->n_blocks; i++)
@@ -195,7 +195,7 @@ gpu_simulator_nc3::init (conn_mesh *_mesh, std::string table_base_name)
   CUDA_CHECK_RETURN(cudaMalloc((void **)&gpu_dx, sizeof(value_t)* 3 * mesh->n_blocks));
   CUDA_CHECK_RETURN (cudaMalloc ((void **)&gpu_rhs, sizeof (value_t) * 3 * mesh->n_blocks));
   CUDA_CHECK_RETURN (cudaMalloc ((void **)&gpu_update_ratio, sizeof (float) * 3 * mesh->n_blocks));
-  
+
 
   CUDA_CHECK_RETURN(cudaMemcpy(gpu_x, &X[0], sizeof(value_t)* 3 * mesh->n_blocks, cudaMemcpyHostToDevice));
   CUDA_CHECK_RETURN(cudaMemcpy(gpu_xn, gpu_x, sizeof(value_t)* 3 * mesh->n_blocks, cudaMemcpyDeviceToDevice));
@@ -220,7 +220,7 @@ int gpu_simulator_nc3::assemble_jacobian (value_t dt, int is_first)
   const int simple_ops_cuda_blocks = (mesh->n_blocks + SIMPLE_OPS_BLOCK_SIZE - 1) / SIMPLE_OPS_BLOCK_SIZE;
 
 
- 
+
   // Step 1. Calculate interpolations
 
   interpolation_timer -= clock ();
@@ -236,7 +236,7 @@ int gpu_simulator_nc3::assemble_jacobian (value_t dt, int is_first)
     (mesh->n_blocks, acc3->ax1_npoints, acc3->ax1_min, acc3->ax1_step_inv, acc3->ax2_npoints, acc3->ax2_min, acc3->ax2_step_inv,
     acc3->ax3_npoints, acc3->ax3_min, acc3->ax3_step_inv, gpu_acc3_data, gpu_x, gpu_acc3_res);
 
-  
+
   trilinear_interpolation_kernel<int, interp_value_t, INTERP_BLOCK_SIZE> << <interp_cuda_blocks, INTERP_BLOCK_SIZE >> >
     (mesh->n_blocks, flu1->ax1_npoints, flu1->ax1_min, flu1->ax1_step_inv, flu1->ax2_npoints, flu1->ax2_min, flu1->ax2_step_inv,
     flu1->ax3_npoints, flu1->ax3_min, flu1->ax3_step_inv, gpu_flu1_data, gpu_x, gpu_flu1_res);
@@ -248,10 +248,10 @@ int gpu_simulator_nc3::assemble_jacobian (value_t dt, int is_first)
   trilinear_interpolation_kernel<int, interp_value_t, INTERP_BLOCK_SIZE><<<interp_cuda_blocks, INTERP_BLOCK_SIZE>>>
   				(mesh->n_blocks, flu3->ax1_npoints, flu3->ax1_min, flu3->ax1_step_inv, flu3->ax2_npoints, flu3->ax2_min, flu3->ax2_step_inv,
   				 flu3->ax3_npoints, flu3->ax3_min, flu3->ax3_step_inv, gpu_flu3_data, gpu_x, gpu_flu3_res);
-  
+
   cudaDeviceSynchronize();
   interpolation_timer += clock ();
-  
+
   if (is_first)
     copy_acc_interpolation_nc3<index_t, interp_value_t, SIMPLE_OPS_BLOCK_SIZE> << <simple_ops_cuda_blocks, SIMPLE_OPS_BLOCK_SIZE >> >
 	(mesh->n_blocks, gpu_acc1_res, gpu_acc2_res, gpu_acc3_res, gpu_acc_n_res);
@@ -328,7 +328,7 @@ int gpu_simulator_nc3::run (sim_params *params)
   log << "\tMax ts: \t" << params->max_ts << std::endl;
   log << "\tMult ts: \t" << params->mult_ts << std::endl;
   log << "\tTotal ts: \t" << params->total_time << std::endl;
-  
+
   log << "\tMax i newton: \t" << params->max_i_newton << std::endl;
   log << "\tMax i linear: \t" << params->max_i_linear << std::endl;
   log << "\tTol newton: \t" << params->tolerance_newton << std::endl;
@@ -347,7 +347,7 @@ int gpu_simulator_nc3::run (sim_params *params)
   int max_update_ratio_idx;
   float max_ratio;
   double alpha;
-  
+
   Xn = X;
   dt = params->first_ts;
 
@@ -427,12 +427,12 @@ int gpu_simulator_nc3::run (sim_params *params)
       // exit if target tolerance reached
       if (residual_newton < params->tolerance_newton)
         break;
-      
+
       linear_setup_timer -= clock ();
 
 #ifdef USE_CPU_SOLVER
       r_code = cpu_solver->setup (&Jacobian);
-      
+
       if (r_code)
       {
         printf ("ERROR: Linear solver setup returned %d\n", r_code);

@@ -3,33 +3,46 @@ import pandas as pd
 import os
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
-
-redirect_darts_output('binary.log')
-
-n = Model()
-n.init()
-
-time = 10
-n.run(time)
-
-Xn = np.array(n.physics.engine.X, copy=False)
-P = Xn[0::2]
-z_co2 = Xn[1::2]
-
-num_wells_tot = 1
-tot_properties = 2
-tot_unknws = n.reservoir.unstr_discr.matrix_cell_count + num_wells_tot*2
-n.cell_property = ['pressure', 'composition']
-property_array = np.empty((tot_unknws, tot_properties))
-property_array[:, 0] = P
-property_array[:, 1] = z_co2
-
-n.reservoir.unstr_discr.write_to_vtk('results', property_array, n.cell_property, time)
+from darts.models.cicd_model import compare_solution_with_reference, get_platform
 
 
-n.print_timers()
-n.print_stat()
-n.save_restart_data()
+def run(platform='cpu'):
+    redirect_darts_output('binary.log')
 
-# compute and save well time data
-time_data_dict = n.output.store_well_time_data(save_output_files=True)
+    m = Model()
+    m.init(platform=platform)
+
+    time = 10
+    m.run(time)
+
+    Xn = np.array(m.physics.engine.X, copy=False)
+    P = Xn[0::2]
+    z_co2 = Xn[1::2]
+
+    num_wells_tot = 1
+    tot_properties = 2
+    tot_unknws = m.reservoir.unstr_discr.matrix_cell_count + num_wells_tot*2
+    m.cell_property = ['pressure', 'composition']
+    property_array = np.empty((tot_unknws, tot_properties))
+    property_array[:, 0] = P
+    property_array[:, 1] = z_co2
+
+    m.reservoir.unstr_discr.write_to_vtk('results', property_array, m.cell_property, time)
+
+
+    m.print_timers()
+    m.print_stat()
+
+    # compute and save well time data
+    time_data_dict = m.output.store_well_time_data(save_output_files=True)
+
+    m.save_restart_data()
+
+    # for CI/CD
+    failed, sim_time = compare_solution_with_reference(m=m)
+    print('Failed' if failed else 'Ok')
+    return failed
+
+
+if __name__ == '__main__':
+    exit(run(platform=get_platform()))

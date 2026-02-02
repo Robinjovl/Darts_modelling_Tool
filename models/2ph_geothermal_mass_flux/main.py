@@ -6,6 +6,7 @@ from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
+from darts.models.cicd_model import compare_solution_with_reference, get_platform
 
 
 def plot_sol(n):
@@ -47,20 +48,21 @@ def plot_sol(n):
 
     plt.show()
 
-def run_darts(mode):
+
+def run(mode: str, platform='cpu'):
     redirect_darts_output('run_' + mode + '.log')
-    n = Model(mode=mode)
-    n.init()
-    n.set_output()
+    m = Model(mode=mode)
+    m.init(platform=platform)
+    m.set_output()
 
     if mode != 'plot':
-        n.run()
-        n.print_timers()
-        n.print_stat()
+        m.run(1)
+        m.print_timers()
+        m.print_stat()
 
         if mode == 'wells':
             # compute well time data
-            time_data_dict = n.output.store_well_time_data()
+            time_data_dict = m.output.store_well_time_data()
 
             # plot well time data
             time_data_df = pd.DataFrame.from_dict(time_data_dict)
@@ -69,28 +71,33 @@ def run_darts(mode):
             #plt.show()
             plt.close()
 
-        Xn = np.array(n.physics.engine.X, copy=False)
+        Xn = np.array(m.physics.engine.X, copy=False)
         np.save(mode + '.npy', Xn)
     else:
         Xn_rhs = np.load('rhs.npy')
         Xn_wells = np.load('wells.npy')
-        nc = n.physics.nc + n.physics.thermal
-        nb = n.reservoir.mesh.n_res_blocks
+        nc = m.physics.nc + m.physics.thermal
+        nb = m.reservoir.mesh.n_res_blocks
 
         plt.autoscale(False)
         plt.ylim(0, 400)
-        plt.xlim(0, n.reservoir.nx - 1)
+        plt.xlim(0, m.reservoir.nx - 1)
         plt.plot(Xn_rhs[0:nb*nc:nc], label='rhs')
         plt.plot(Xn_wells[0:nb * nc:nc], label='wells')
         plt.legend()
         plt.savefig('out.png')
 
+    # for CI/CD
+    failed, sim_time = compare_solution_with_reference(m=m)
+    return failed
+
+
 if __name__ == '__main__':
     # run with prod. well, and save solution vector at the last timestep to wells.npy
     # run with rhs_flux, and save solution vector at the last timestep to rhs.npy
     # read .npy file and plot
-    mode_list = ['wells', 'rhs', 'plot']
-    #mode_list = ['rhs']
+    #mode_list = ['wells', 'rhs', 'plot']
+    #for mode in mode_list:
+    #    run(mode=mode, platform=get_platform())
 
-    for mode in mode_list:
-        run_darts(mode)
+    exit(run(mode='rhs', platform=get_platform()))

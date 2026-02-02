@@ -26,8 +26,3 @@ py::array_t<T> get_raw_array(T* arr, size_t size) {
 }
 
 #endif
-
-
-
-
-

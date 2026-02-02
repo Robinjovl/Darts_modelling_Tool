@@ -63,7 +63,7 @@ int interpolator_base::evaluate_with_derivatives(const std::vector<double> &stat
 {
     // check consistency of input arrays
     assert(n_dims * values.size() == derivatives.size());
-    if (!states_idxs.empty()) 
+    if (!states_idxs.empty())
     {
         auto max_idx = *std::max_element(states_idxs.begin(), states_idxs.end());
         assert(states.size() > max_idx * n_dims);

@@ -1,14 +1,10 @@
 from model import Model
 import numpy as np
 import os
-from darts.engines import redirect_darts_output, timer_node
+import platform
 
-try:
-    # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
-    from darts.engines import set_num_threads
-    set_num_threads(1)
-except:
-    pass
+from darts.engines import redirect_darts_output, timer_node
+from darts.models.cicd_model import get_platform, is_iter_solvers, set_one_thread, is_overwrite_pkl, is_test_all_models
 
 def run_python(m, days=0, restart_dt=0, init_step = False):
     if days:
@@ -118,9 +114,8 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type, is_finalize=True):
-    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=False)
-    m.params.finalize_mpi = is_finalize
+def run(model_folder, physics_type, uniform_props):
+    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props)
     m.init()
     #redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
@@ -161,26 +156,16 @@ def run(model_folder, physics_type, is_finalize=True):
 
     return m, data
 
-def test(mesh_type, physics_type, overwrite='0'):
+def run_case(mesh_type, physics_type, uniform_props):
     '''
     :param overwrite: write pkl file even if it exists
     :return: tuple (bool failed, float64 time)
     '''
-    print('mesh_type:' + mesh_type, 'physics_type:' + physics_type, 'overwrite: ' + overwrite, sep=', ')
-    import platform
+    print('mesh_type:' + mesh_type, 'physics_type:' + physics_type, sep=', ')
 
-    try:
-        # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
-        from darts.engines import set_num_threads
-        set_num_threads(1)
-    except:
-        pass
+    m, data = run(mesh_type, physics_type, uniform_props)
 
-    m, data = run(mesh_type, physics_type)
-
-    pkl_suffix = ''
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
+    pkl_suffix = '_iter' if is_iter_solvers() else ''
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
                              '_' + mesh_type + '_' + physics_type + '.pkl')
     failed = 0
@@ -195,49 +180,46 @@ def test(mesh_type, physics_type, overwrite='0'):
             ref_data_step = ref_data[ith_step]
             failed += m.check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
                                              png_suffix=mesh_type+'_'+physics_type+'_'+str(ith_step))
+        else:
+            failed = True
 
-    if not is_plk_exist or overwrite == '1':
+    if is_overwrite_pkl():
         m.save_performance_data(data=data, file_name=file_name)
-        return False, 0.0
 
-    if is_plk_exist:
-        return (failed > 0), data[-1]['simulation time']
-    else:
-        return False, -1.0
+    return failed
 
-def run_test(args: list = [], platform='cpu'):
-    if len(args) == 3:
-        return test(mesh_type=args[0], physics_type=args[1], overwrite=args[2])
-    else:
-        print('Wrong number of arguments provided to the run_test:', args)
-        return 1, 0.0
 
 if __name__ == '__main__':
-    try:
-        # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
-        from darts.engines import set_num_threads
-        set_num_threads(1)
-    except:
-        pass
+    set_one_thread()
 
+    meshes_list = []
+    meshes_list += ['data_10_10_10']
+    #if is_test_all_models():
+    #    meshes_list += ['data_20_40_40']
+
+    physics_list = []
+    physics_list += ['single_phase']
+    physics_list += ['single_phase_thermal']
+    physics_list += ['dead_oil']
+    physics_list += ['dead_oil_thermal']
+
+    uniform_props_list = []
+    uniform_props_list += [False]
+    #uniform_props_list += [True]
+
+    n_failed = 0
     test_all = False
     test_all = True
-    physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
-    meshes_list = ['data_10_10_10', 'data_20_40_40']
     if test_all:
         is_finalize = False
         for physics in physics_list:
             for mesh in meshes_list:
-                if physics == physics_list[-1] and mesh == meshes_list[-1]:
-                    is_finalize = True
-                run(model_folder=mesh, physics_type=physics, is_finalize=is_finalize)
-
-    #run(model_folder='data_10_10_10', physics_type='single_phase')
-    #run(model_folder='data_10_10_10', physics_type='single_phase_thermal')
-    #run(model_folder='data_10_10_10', physics_type='dead_oil')
-    #run(model_folder='data_10_10_10', physics_type='dead_oil_thermal')
-
-    #run(model_folder='data_20_40_40', physics_type='single_phase')
-    #run(model_folder='data_20_40_40', physics_type='single_phase_thermal')
-    #run(model_folder='data_20_40_40', physics_type='dead_oil')
-    #run(model_folder='data_20_40_40', physics_type='dead_oil_thermal')
+                for uniform_props in uniform_props_list:
+                    print('Running', os.path.basename(__file__), physics, mesh, uniform_props)
+                    failed = run_case(mesh_type=mesh, physics_type=physics, uniform_props=uniform_props)
+                    n_failed += failed
+                    if failed:
+                        print('FAIL')
+                    else:
+                        print('OK')
+    exit(n_failed)

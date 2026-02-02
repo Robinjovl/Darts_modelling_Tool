@@ -1,6 +1,6 @@
 from darts.engines import value_vector, sim_params, well_control_iface
 from darts.physics.geothermal.geothermal import Geothermal
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from darts.engines import ms_well
@@ -14,7 +14,7 @@ def fmt(x):
 
 # Here the Model class is defined (child-class from DartsModel) in which most of the data and properties for the
 # simulation are defined, e.g. for the reservoir/physics/sim_parameters/etc.
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, idata : InputData):
         # base class constructor
         super().__init__()

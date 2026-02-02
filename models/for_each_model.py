@@ -173,12 +173,12 @@ def run_single_test(dir, module_name, args, ret_value, platform):
         _ensure_parent_dir(log_file)
         f = open(log_file, 'w')
         f.close()
-        log_stream = redirect_all_output(log_file)
+        #log_stream = redirect_all_output(log_file)
         shutil.rmtree("__pycache__", ignore_errors=True)
         # create model instance
         ret_value.value, test_time = mod.run_test(args, platform=platform)
-        log_stream = redirect_all_output(log_file)
-        abort_redirection(log_stream)
+        ###log_stream = redirect_all_output(log_file)
+        #abort_redirection(log_stream)
         if ret_value.value:
             print('FAIL, \t%.2f s' % test_time)
         else:
@@ -223,14 +223,14 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             _ensure_parent_dir(log_file)
             f = open(log_file, "w")
             f.close()
-            log_stream = redirect_all_output(log_file)
+            #log_stream = redirect_all_output(log_file)
             starting_time = time.time()
             arg_o = arg + [overwrite] if type(arg) == list else arg  # add overwrite [pkl] flag if a list
             p = Process(target=run_single_test, args=(dir, 'main', arg_o, ret_value, platform), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
-            abort_redirection(log_stream)
+            #abort_redirection(log_stream)
             ending_time = time.time()
             str_status = 'OK' if not ret_value.value else 'FAIL'
             if isinstance(arg, list):

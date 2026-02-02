@@ -88,6 +88,7 @@ class DartsModel:
         :type params: :class:`darts.engines.sim_params`
         """
         # print out build information
+        print('darts imported from', os.path.dirname(__file__))
         engines_pbi()
         discretizer_pbi()
         package_pbi()
