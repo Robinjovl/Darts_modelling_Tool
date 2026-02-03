@@ -161,6 +161,10 @@ class DartsModel:
         self.has_dfm_well = self.physics.has_dfm_well = any(
             well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
         )
+        if self.has_dfm_well:
+            self.timer.node["simulation"].node["dfm_well_velocity_calculation"] = (
+                timer_node()
+            )
 
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
@@ -184,6 +188,10 @@ class DartsModel:
         self.set_boundary_conditions()
         self.set_well_controls()
 
+        # for separate mineral fraction in reactive flow formulations
+        if n_solid is not None:
+            self.physics.engine.n_solid = n_solid
+
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
         if restart is False:
@@ -200,10 +208,6 @@ class DartsModel:
                 + ' > 30000',
                 stacklevel=2,
             )
-
-        # element-based reactive flow
-        if n_solid is not None:
-            self.physics.engine.n_solid = n_solid
 
     def reset(self):
         """
@@ -629,8 +633,9 @@ class DartsModel:
                         dt_mult_new = mult
 
                 if verbose:
+                    max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
                     print(
-                        f"T={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tMULT={dt_mult_new:3.3g}\tdX={np.round(max_dx, 3)}"
+                        f"T={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tMULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -852,6 +857,7 @@ class DartsModel:
         :param iter_counter: Newton-Raphson iteration counter for the current time step
         :type iter_counter: int
         """
+        self.timer.node["simulation"].node["dfm_well_velocity_calculation"].start()
         for w in self.reservoir.wells:
             if w.ms_type == ms_well.MS_Type.DFM:
                 start = w.well_head_idx * self.physics.n_vars
@@ -864,6 +870,7 @@ class DartsModel:
                 ].eval_phase_vels_and_ders(Xn_dfm_well, X_dfm_well, dt, t, iter_counter)
                 w.phases_vels = value_vector(well_phase_v)
                 w.phases_vels_ders = value_vector(well_phase_v_d)
+        self.timer.node["simulation"].node["dfm_well_velocity_calculation"].stop()
 
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:

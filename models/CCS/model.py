@@ -49,15 +49,15 @@ class Model(DartsModel):
         return
 
     def set_wells(self):
-        from darts.reservoirs.reservoir_base import ReservoirBase
-        if 0:  # type(self.reservoir).set_wells is not ReservoirBase.set_wells:
-            # If the function has not been overloaded, pass
-            self.reservoir.set_wells()
-        else:
-            self.reservoir.add_well("I1", well_type=ms_well.MS_Type.EPM)
-            for k in range(4, 20):
-                self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, k + 1), well_index=100, well_indexD=100,
-                                               ms_epm=self.ms_well_flag, verbose=True, )
+        well_type = ms_well.MS_Type.EPM
+        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, self.reservoir.nz), well_index=100,
+                                       well_indexD=100)
+
+        self.reservoir.add_well("P1", well_type)
+        for k in range(self.reservoir.nz):
+            self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, self.reservoir.ny, k + 1),
+                                           well_index=100, well_indexD=100)
 
     def set_physics(self,  zero, n_points, temperature=None, temp_inj=350.):
         """Physical properties"""
@@ -107,7 +107,7 @@ class Model(DartsModel):
                                            "satV": lambda: property_container.sat[1],
                                            "xCO2": lambda: property_container.x[0, 1],
                                            "yH2O": lambda: property_container.x[1, 0],
-                                           "rhoV": lambda: property_container.dens[0],
+                                           "rhoV": lambda: property_container.dens[1],
                                            }
 
         """ Define state specification and initialize Physics object """

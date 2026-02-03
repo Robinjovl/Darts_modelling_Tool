@@ -1121,7 +1121,6 @@ class StructDiscretizer:
                             / (np.log(conduction_rad / well_radius) + skin)
                         )
                 elif not with_peaceman:
-                    # assert dx == dy, "dx and dy of the reservoir block in which the perforation is located should be equal!"
                     assert skin == 0, (
                         "Skin factor can be applied only when the Peaceman model is used!"
                     )

@@ -12,9 +12,9 @@ class StructRadialReservoir(StructReservoir):
         nz: int,
         dr,
         dz,
+        poro,
         permr,
         permz,
-        poro,
         logspace: bool = False,
         R0: float = 0.0,
         R1: float = None,
@@ -36,9 +36,9 @@ class StructRadialReservoir(StructReservoir):
         :type nz: int
         :param dr: Element size in radial direction
         :param dz: Element size in vertical direction
+        :param poro: Porosity
         :param permr: Permeability in radial direction
         :param permz: Permeability in vertical direction
-        :param poro: Porosity
         :param logspace: Switch for logarithmic element sizes in radial direction
         :type logspace: bool
         :param R0: Inner radius [m], default is 0
