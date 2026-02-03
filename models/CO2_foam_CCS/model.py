@@ -109,8 +109,8 @@ class Model(CICDModel):
 
 class CustomPhysics(Compositional):
     def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=None, max_t=None,
-                 state_spec = Compositional.StateSpecification.P, discr_type='tpfa', cache=False):
-        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, state_spec, discr_type, cache)
+                 state_spec = Compositional.StateSpecification.P, cache=False):
+        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, state_spec, cache)
 
     def set_operators(self, regions, output_properties=None):
         for region, prop_container in self.property_containers.items():
