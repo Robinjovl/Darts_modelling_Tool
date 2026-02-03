@@ -76,22 +76,26 @@ class OperatorsBase(operator_set_evaluator_iface):
             p = vec[0]
             z = vec[1:].copy()
 
-        d = self.nc - 1
+        zero_comps = [i for i in range(self.nc - 1) if z[i] <= 2 * self.eps_z]
+        nonzero_comps = [1 if z[i] > 2 * self.eps_z else 0 for i in range(self.nc - 1)]
+        nonzero_comp_idxs = [
+            i for i, is_nonzero in enumerate(nonzero_comps) if is_nonzero
+        ]
+        dims = np.sum(nonzero_comps)
 
         # Build supporting points from the downward hypercube (excluding incoming).
         # Filter nodes by the shared plane constraint, then take the furthest node and the
-        # nc-1 closest nodes from the filtered set.
-        plane_offset = (self.nc - 1) * self.eps_z
+        # nc_nonzero-1 closest nodes from the filtered set.
         candidates = []
-        n_axes = self.nc - 1
-        for mask in range(1, 1 << n_axes):
+        for mask in range(1, 1 << dims):  # 1 << n_axes multiplies 1 by 2^d
             zp = z.copy()
-            for axis in range(n_axes):
-                if mask & (1 << axis):
+            for i, axis in enumerate(nonzero_comp_idxs):
+                # binary operator & compares binary notation of 'mask' and 2^axis
+                if mask & (1 << i):
                     zp[axis] -= self.dz
             dist2 = np.sum((zp - z) ** 2)
-            plane_ok = 1.0 - plane_offset - np.sum(zp) >= 0.0
-            candidates.append((dist2, mask, zp, plane_ok))
+            last_z = 1.0 - np.sum(zp)
+            candidates.append((dist2, mask, zp, last_z >= 0.0))
 
         filtered = [c for c in candidates if c[3]]
         if not filtered:
@@ -99,12 +103,14 @@ class OperatorsBase(operator_set_evaluator_iface):
         filtered = sorted(filtered, key=lambda c: c[0])
 
         furthest = filtered[-1]
-        closest = [c for c in filtered if c[1] != furthest[1]][: self.nc - 1]
+        closest = [c for c in filtered if c[1] != furthest[1]][:dims]
         selected = [furthest] + closest
-        if len(selected) < self.nc:
+
+        n_supporting_points = dims + 1
+        if len(selected) < n_supporting_points:
             remaining = [c for c in candidates if c[1] not in {s[1] for s in selected}]
             remaining = sorted(remaining, key=lambda c: c[0])
-            selected.extend(remaining[: self.nc - len(selected)])
+            selected.extend(remaining[: n_supporting_points - len(selected)])
 
         supporting_points = [c[2] for c in selected]
 
@@ -122,19 +128,21 @@ class OperatorsBase(operator_set_evaluator_iface):
             vals_list.append(ref_vals.to_numpy())
 
         # Use the first d+1 valid points to define hyperplane implicitly via val = a·z + c
-        zps = np.stack(zps_list[: d + 1])  # shape (d+1, d)
-        vals = np.stack(vals_list[: d + 1])  # shape (d+1, n_ops)
+        zps = np.stack(zps_list[: dims + 1])  # shape (dims+1, dims)
+        vals = np.stack(vals_list[: dims + 1])  # shape (dims+1, n_ops)
 
         # Build and solve B · X = vals, where B = [zps | 1]
-        B = np.hstack((zps, np.ones((d + 1, 1))))  # shape (d+1, d+1)
-        X = np.linalg.solve(B, vals)  # shape (d+1, n_ops)
+        B = np.hstack((zps, np.ones((dims + 1, 1))))  # shape (dims+1, dims+1)
+        B = np.delete(B, zero_comps, axis=1)
+        X = np.linalg.solve(B, vals)  # shape (dims+1, n_ops)
 
         # Separate coefficients
-        a = X[:-1, :]  # shape (d, n_ops)
+        a = X[:-1, :]  # shape (dims, n_ops)
         c = X[-1, :]  # shape (n_ops,)
 
         # Extrapolate values
-        ext = a.T.dot(z) + c
+        z_nonzero = z[nonzero_comp_idxs]
+        ext = a.T.dot(z_nonzero) + c
 
         # Write back into values array
         out = np.array(values, copy=False)
