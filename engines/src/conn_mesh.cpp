@@ -29,6 +29,11 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
 
+  // All the connections in the connection list until now are reservoir connections, so
+  // one_way_is_dfm_conn is set to false for all reservoir connections in the following line.
+  // This list can be updated when using the method conn_mesh::add_conn.
+  one_way_is_dfm_conn.insert(one_way_is_dfm_conn.end(), n_one_way_conns_res, false);
+
   poro.resize(n_res_blocks);
   volume.resize(n_res_blocks);
   initial_state.resize(n_res_blocks * n_vars);
@@ -1885,11 +1890,6 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   index_t well_head_idx = n_res_blocks;
   n_perfs = 0;
   n_res_conns = n_conns;
-
-  // All the connections in the connection list until now are reservoir connections, so
-  // one_way_is_dfm_conn is set to false for all reservoir connections in the following line.
-  // This list is updated when using the method conn_mesh::add_conn.
-  one_way_is_dfm_conn.insert(one_way_is_dfm_conn.end(), n_res_conns, false);
 
   //  Add well connections
   for (index_t iw = 0; iw < wells.size(); iw++)
