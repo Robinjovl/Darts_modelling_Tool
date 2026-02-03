@@ -127,7 +127,6 @@ m.reservoir.output_to_plt(data=property_array, output_props=output_props, lims=l
                           aspect_ratio=aspect, logx=logx, cmap=cmap)
 # m.output.output_to_vtk(ith_step=0, output_properties=output_props)  # initial conditions
 plt.savefig('step0.png', format='png')
-plt.show()
 
 data_dt = None
 
@@ -153,7 +152,6 @@ for j, ts in enumerate(timesteps[:2]):
                               aspect_ratio=aspect, logx=logx, cmap=cmap)
 
     plt.savefig('step' + str(j+1) + '.png', format='png')
-    plt.show()
 
     # compute and save well time data in m.output_folder
     time_data_dict = m.output.store_well_time_data()
