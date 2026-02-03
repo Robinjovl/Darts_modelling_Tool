@@ -108,18 +108,18 @@ if %skip_req%==false (
   mkdir build
 
   rem -- Install Hypre with MGR support (enabled by default)
-  if not exist hypre\src\cmbuild mkdir hypre\src\cmbuild
-  cd hypre\src\cmbuild
+  if not exist hypre\build mkdir hypre\build
+  cd hypre\build
   rem For debugging: -DHYPRE_ENABLE_PRINT
   rem Building with MGR support by default (MGR is always built in HYPRE)
   cmake -D HYPRE_TIMING=OFF ^
         -D HYPRE_BUILD_TESTS=OFF ^
         -D HYPRE_BUILD_EXAMPLES=OFF ^
         -D HYPRE_ENABLE_MPI=OFF ^
-        -D CMAKE_INSTALL_PREFIX=..\..\..\install ^
-        -D HYPRE_SEQUENTIAL=ON .. > ..\..\..\..\make_hypre.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error
-  cd ..\..\..\
+        -D CMAKE_INSTALL_PREFIX=..\..\install ^
+        -D HYPRE_SEQUENTIAL=ON ../src > ..\..\..\..\make_hypre.log || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\make_hypre.log || goto :error
+  cd ..\..\
 
   echo -- Install SuperLU
   cd SuperLU_5.2.1
