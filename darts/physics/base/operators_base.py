@@ -76,44 +76,37 @@ class OperatorsBase(operator_set_evaluator_iface):
             p = vec[0]
             z = vec[1:].copy()
 
-        zero_comps = [i for i in range(self.nc - 1) if z[i] <= 2 * self.eps_z]
-        nonzero_comps = [1 if z[i] > 2 * self.eps_z else 0 for i in range(self.nc - 1)]
-        d = np.sum(nonzero_comps)
-        last_z = 1.0 - np.sum(z)
+        d = self.nc - 1
 
-        # Build candidate points by subtracting dz along each axis and uniformly
-        # Axes where z[i] = zero degenerate for extrapolation (e.g., a 3D extrapolation reduces to 2D)
-        # There exist two cases of supporting points: one where points are on the same side, one where they are on opposite side
-        # (see hydrate paper, https://doi.org/10.1016/j.ecmx.2026.101616)
-        # TODO: check if this setup is general for any number of components. It certainly works for NC = 3 and NC = 4
-        supporting_points = []
-        # z[-1] = -dz (points on same side of hypercube)
-        if last_z >= -1.1 * self.dz:
-            for i in range(self.nc - 1):
-                if nonzero_comps[i]:
-                    zp = z.copy()
-                    # subtract dz from z[i] to obtain the ith supporting point
-                    zp[i] -= self.dz
-                    supporting_points.append(zp)
-        # z[-1] < -dz (opposite points in hypercube)
-        else:
-            for i in range(self.nc - 1):
-                if nonzero_comps[i]:  # only for nonzero compositions,
-                    for j in range(i + 1, self.nc - 1):
-                        zp = z.copy()
-                        # subtract dz from z[i] and z[j] to obtain the ith supporting point
-                        zp[i] -= self.dz
-                        zp[j] -= self.dz
-                        supporting_points.append(zp)
-        # Finally, append the point directly opposite to the extrapolated point
-        supporting_points.append(
-            np.array(
-                [
-                    z[i] - self.dz if nonzero_comps[i] else z[i]
-                    for i in range(self.nc - 1)
-                ]
-            )
-        )
+        # Build supporting points from the downward hypercube (excluding incoming).
+        # Filter nodes by the shared plane constraint, then take the furthest node and the
+        # nc-1 closest nodes from the filtered set.
+        plane_offset = (self.nc - 1) * self.eps_z
+        candidates = []
+        n_axes = self.nc - 1
+        for mask in range(1, 1 << n_axes):
+            zp = z.copy()
+            for axis in range(n_axes):
+                if mask & (1 << axis):
+                    zp[axis] -= self.dz
+            dist2 = np.sum((zp - z) ** 2)
+            plane_ok = 1.0 - plane_offset - np.sum(zp) >= 0.0
+            candidates.append((dist2, mask, zp, plane_ok))
+
+        filtered = [c for c in candidates if c[3]]
+        if not filtered:
+            filtered = candidates
+        filtered = sorted(filtered, key=lambda c: c[0])
+
+        furthest = filtered[-1]
+        closest = [c for c in filtered if c[1] != furthest[1]][: self.nc - 1]
+        selected = [furthest] + closest
+        if len(selected) < self.nc:
+            remaining = [c for c in candidates if c[1] not in {s[1] for s in selected}]
+            remaining = sorted(remaining, key=lambda c: c[0])
+            selected.extend(remaining[: self.nc - len(selected)])
+
+        supporting_points = [c[2] for c in selected]
 
         # Gather valid reference points
         zps_list = []
@@ -134,7 +127,6 @@ class OperatorsBase(operator_set_evaluator_iface):
 
         # Build and solve B · X = vals, where B = [zps | 1]
         B = np.hstack((zps, np.ones((d + 1, 1))))  # shape (d+1, d+1)
-        B = np.delete(B, zero_comps, axis=1)
         X = np.linalg.solve(B, vals)  # shape (d+1, n_ops)
 
         # Separate coefficients
@@ -142,8 +134,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         c = X[-1, :]  # shape (n_ops,)
 
         # Extrapolate values
-        z_nonzero = z[z > 2 * self.eps_z]
-        ext = a.T.dot(z_nonzero) + c
+        ext = a.T.dot(z) + c
 
         # Write back into values array
         out = np.array(values, copy=False)
