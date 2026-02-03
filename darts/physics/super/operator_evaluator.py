@@ -376,6 +376,8 @@ class WellOperators(OperatorsSuper):
         )
 
         """ Delta operator for reaction """
+        # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
+        values[self.KIN_OP + self.nc] = self.property.energy_source
 
         """ Phase enthalpy operator """
         for j in range(self.nph):
