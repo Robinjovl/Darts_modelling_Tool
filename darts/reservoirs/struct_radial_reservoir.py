@@ -8,7 +8,6 @@ class StructRadialReservoir(StructReservoir):
     def __init__(
         self,
         timer: timer_node,
-        nr: int,
         nz: int,
         dr,
         dz,
@@ -16,6 +15,7 @@ class StructRadialReservoir(StructReservoir):
         permr,
         permz,
         logspace: bool = False,
+        nr: int = None,
         R0: float = 0.0,
         R1: float = None,
         depth: float = 0,
@@ -30,20 +30,20 @@ class StructRadialReservoir(StructReservoir):
 
         :param timer: Timer from DartsModel class
         :type timer: timer_node
-        :param nr: Number of elements in radial direction
-        :type nr: int
         :param nz: Number of elements in vertical direction
         :type nz: int
-        :param dr: Element size in radial direction
+        :param dr: Element size in radial direction (in logspace case, first grid block size)
         :param dz: Element size in vertical direction
         :param poro: Porosity
-        :param permr: Permeability in radial direction
-        :param permz: Permeability in vertical direction
+        :param permr: Layer permeability in radial direction (length nz)
+        :param permz: Layer permeability in vertical direction (length nz)
         :param logspace: Switch for logarithmic element sizes in radial direction
         :type logspace: bool
+        :param nr: Number of elements in radial direction (only in case of logspace)
+        :type nr: int
         :param R0: Inner radius [m], default is 0
         :type R0: float
-        :param R1: Outer radius [m], only needs to be specified with logspace
+        :param R1: Outer radius [m]
         :type R1: float
         :param depth: Depth of centroid of top layer [m]
         :type depth: float
@@ -67,6 +67,9 @@ class StructRadialReservoir(StructReservoir):
             '''
             Near-centre refined grid
             '''
+            assert nr is not None and R1 is not None, (
+                "Please provide nr and R1 arguments for logspace reservoir"
+            )
             # Find dr distribution such that outer radius is R1
             from scipy.optimize import fsolve
 
@@ -81,12 +84,14 @@ class StructRadialReservoir(StructReservoir):
             '''
             Uniform grid size in radial direction
             '''
-            dr = np.ones(nr) * dr
+            dr = np.ones(int((R1 - R0) / dr)) * dr
         else:
             '''
             Pre-defined cell sizes
             '''
-            assert nr == len(dr)
+            pass
+
+        nr = len(dr)
         R1 = R0 + np.sum(dr)
 
         # Calculate distance in radial direction
@@ -139,6 +144,75 @@ class StructRadialReservoir(StructReservoir):
 
         else:
             self.z = np.array([depth])
+
+        # Create poro and perm arrays
+        # Poro and perm arrays can be scalar, 2D (nr, nz) or 1D (len nr or nz, which means homogeneous in the other direction)
+        if hasattr(poro, "__len__"):
+            assert (
+                np.shape(poro) == (nr, nz)
+                if poro.ndim == 2
+                else (len(poro) == nr or len(poro) == nz)
+            ), ("Length of poro array is incompatible with nr/nz: ", poro.shape, nr, nz)
+        else:
+            poro = np.ones((nr, nz)) * poro
+        poro = (
+            poro
+            if poro.ndim == 2
+            else (
+                np.tile(poro, (nr, 1))
+                if len(poro) == nz
+                else np.tile(poro, (nz, 1)).transpose()
+            )
+        )
+        poro = poro.flatten(order="F")
+
+        if hasattr(permr, "__len__"):
+            assert (
+                np.shape(permr) == (nr, nz)
+                if permr.ndim == 2
+                else (len(permr) == nr or len(permr) == nz)
+            ), (
+                "Length of permr array is incompatible with nr/nz: ",
+                permr.shape,
+                nr,
+                nz,
+            )
+        else:
+            permr = np.ones((nr, nz)) * permr
+        permr = (
+            permr
+            if permr.ndim == 2
+            else (
+                np.tile(permr, (nr, 1))
+                if len(permr) == nz
+                else np.tile(permr, (nz, 1)).transpose()
+            )
+        )
+        permr = permr.flatten(order="F")
+
+        if hasattr(permz, "__len__"):
+            assert (
+                np.shape(permz) == (nr, nz)
+                if permz.ndim == 2
+                else (len(permz) == nr or len(permz) == nz)
+            ), (
+                "Length of permz array is incompatible with nr/nz: ",
+                permz.shape,
+                nr,
+                nz,
+            )
+        else:
+            permz = np.ones((nr, nz)) * permz
+        permz = (
+            permz
+            if permz.ndim == 2
+            else (
+                np.tile(permz, (nr, 1))
+                if len(permz) == nz
+                else np.tile(permz, (nz, 1)).transpose()
+            )
+        )
+        permz = permz.flatten(order="F")
 
         super().__init__(
             timer,
