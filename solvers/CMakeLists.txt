@@ -29,6 +29,13 @@ add_subdirectory(src)
 # ensures HYPRE's static state is consistent across all solver code.
 add_library(opendarts_solvers SHARED "")
 
+# Fix Windows DLL export: export all symbols to generate import library (.lib)
+if(WIN32)
+  set_target_properties(opendarts_solvers PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+  )
+endif()
+
 # Link the unified linear_solvers library (which includes MGR)
 target_link_libraries(opendarts_solvers
   PUBLIC
@@ -48,11 +55,8 @@ target_include_directories(opendarts_solvers
 # Alias for easier linking
 add_library(opendarts::solvers ALIAS opendarts_solvers)
 
-# Install the shared solvers library next to Python modules
-install(TARGETS opendarts_solvers
-  CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
-  DESTINATION ./
-)
+# Note: opendarts_solvers.dll and .lib are NOT installed to darts directory
+# They are only needed during build time for linking Python modules
 
 message(STATUS "Shared solvers library configured (unified)")
 

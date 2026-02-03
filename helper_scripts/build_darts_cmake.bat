@@ -72,12 +72,12 @@ echo    rebuild_hypre = %rebuild_hypre%
 echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
-del darts\*.pyd 2> NUL
-rmdir /s /q dist 2> NUL
+del darts\*.pyd 2>NUL
+rmdir /s /q dist 2>NUL
 
 if %clean_mode%==true (
   echo - Cleaning up
-  rmdir /s /q build 2> NUL
+  rmdir /s /q build 2>NUL
   REM goto :eof
 )
 
@@ -86,8 +86,8 @@ if %skip_req%==false (
 
   if %rebuild_hypre%==true (
       echo Cleaning HYPRE build for rebuild...
-      rmdir /s /q thirdparty\hypre\src\cmbuild 2> NUL
-      rmdir /s /q thirdparty\install 2> NUL
+      rmdir /s /q thirdparty\hypre\src\cmbuild 2>NUL
+      rmdir /s /q thirdparty\install 2>NUL
   )
 
   rmdir /s /q thirdparty\eigen thirdparty\pybind11 thirdparty\MshIO thirdparty\hypre
@@ -108,6 +108,7 @@ if %skip_req%==false (
   mkdir build
 
   rem -- Install Hypre with MGR support (enabled by default)
+  if not exist hypre\src\cmbuild mkdir hypre\src\cmbuild
   cd hypre\src\cmbuild
   rem For debugging: -DHYPRE_ENABLE_PRINT
   rem Building with MGR support by default (MGR is always built in HYPRE)
@@ -146,7 +147,7 @@ echo ========================================================================
 echo   Building openDARTS: START
 echo ========================================================================
 
-rmdir /s /q build 2> NUL
+rmdir /s /q build 2>NUL
 mkdir build
 cd build
 
