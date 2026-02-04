@@ -12,10 +12,8 @@ class UnstructRadialReservoir(UnstructReservoir):
         self,
         timer: timer_node,
         mesh_properties: MeshProperties,
-        angle: float,
         poro,
-        permx,
-        permy,
+        permr,
         permz,
         rcond=181.44,
         hcap=2200.0,
@@ -27,8 +25,6 @@ class UnstructRadialReservoir(UnstructReservoir):
         :type timer: timer_node
         :param mesh_properties:
         :type mesh_properties: MeshProperties
-        :param angle: Angle of radial slice [degrees], default is 360
-        :type angle: float
         :param poro: Matrix (and fracture?) porosity
         :type poro: float or vector
         :param permx: Matrix permeability in the x-direction
@@ -61,7 +57,7 @@ class UnstructRadialReservoir(UnstructReservoir):
                 Circle(
                     center=mesh_properties.center,
                     orientation=mesh_properties.orientation,
-                    angle=angle,
+                    angle=360.0,
                     lc=mesh_properties.lc,
                     radii=mesh_properties.radii,
                     hole=mesh_properties.hole,
@@ -93,8 +89,8 @@ class UnstructRadialReservoir(UnstructReservoir):
         super().__init__(
             timer=timer,
             mesh_file=filename + '.msh',
-            permx=permx,
-            permy=permy,
+            permx=permr,
+            permy=permr,
             permz=permz,
             poro=poro,
             hcap=hcap,
@@ -168,7 +164,4 @@ class UnstructRadialReservoir(UnstructReservoir):
                 well_name="P1", cell_index=cell_index, well_index=100, well_indexD=100
             )
 
-        return
-
-    def plot(self, data):
         return
