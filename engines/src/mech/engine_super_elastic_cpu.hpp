@@ -202,9 +202,7 @@ public:
   std::vector<index_t> geomechanics_mode;
   std::array<value_t, ND> gravity;
 
-  void apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
   void apply_global_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
-  void apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
   void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 
   void apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX);

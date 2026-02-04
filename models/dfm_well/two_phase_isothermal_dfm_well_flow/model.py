@@ -81,19 +81,20 @@ class Model(CICDModel):
         components_names = ['CO2', 'H2O']
         phases_names = ['gas', 'aqueous']
         comp_data = CompData(components_names, setprops=True)
+        epsilon = self.zero / 10
 
         """ Define state specification and initialize physics object """
         # ph = True
         # state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
         state_spec = Compositional.StateSpecification.P
         self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
-                                     n_points=10000, min_p=1, max_p=500, min_z=self.zero / 10, max_z=1 - self.zero / 10,
+                                     n_points=10000, min_p=1, max_p=500, min_z=0, max_z=1, epsilon_z=epsilon,
                                      min_t=150, max_t=500)
 
         """ PropertyContainer object and correlations """
         system_temperature = 25 + 273.15
 
-        property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, min_z=self.zero / 10,
+        property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, eps_z=epsilon,
                                                temperature=system_temperature, rock_comp=0)
 
         """ Define flash """
