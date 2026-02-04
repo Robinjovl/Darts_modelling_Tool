@@ -68,20 +68,16 @@ class DartsModel:
     This is a base class for creating a model in DARTS.
     A model is composed of a :class:`Reservoir` object and a :class:`Physics` object.
     Initialization and communication between these two objects takes place through the Model object
-
-    :ivar reservoir: Reservoir object
-    :type reservoir: :class:`ReservoirBase`
-    :ivar physics: Physics object
-    :type physics: :class:`PhysicsBase`
     """
-
-    reservoir: ReservoirBase
-    physics: PhysicsBase
 
     def __init__(self):
         """
         Initialize DartsModel class.
 
+        :ivar reservoir: Reservoir object
+        :type reservoir: :class:`ReservoirBase`
+        :ivar physics: Physics object
+        :type physics: :class:`PhysicsBase`
         :ivar timer: Timer object
         :type timer: :class:`darts.engines.timer_node`
         :ivar params: Object to set simulation parameters
@@ -91,6 +87,10 @@ class DartsModel:
         engines_pbi()
         discretizer_pbi()
         package_pbi()
+
+        # Create member variables reservoir and physics
+        self.reservoir: ReservoirBase = None
+        self.physics: PhysicsBase = None
 
         # Create time_node object for time record
         self.timer = timer_node()
