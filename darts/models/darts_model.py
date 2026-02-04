@@ -179,6 +179,7 @@ class DartsModel:
         )
         if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
+        self.params.sim_eps = self.physics.sim_eps
 
         # Initialize well objects
         self.reservoir.init_wells()
@@ -590,7 +591,7 @@ class DartsModel:
 
         # same logic as in engine.run
         if fabs(t) < 1e-15 or not hasattr(self, "prev_dt"):
-            dt = data_ts.dt_first
+            dt = min(data_ts.dt_first, days)
         elif restart_dt > 0.0:
             dt = restart_dt
         else:

@@ -111,8 +111,8 @@ public:
   value_t *darcy_velocities_d;         // [n_res_blocks * NP * ND] array of phase Darcy velocities for every reservoir cell
   value_t *mesh_velocity_appr_d;       // coefficients of approximation of Darcy phase velocities over fluxes
   index_t *mesh_velocity_offset_d;     // offsets in the approximation of Darcy phase velocities over fluxes
-  index_t *mesh_op_num_d;              // regions indices for every cell 
-  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory 
+  index_t *mesh_op_num_d;              // regions indices for every cell
+  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory
 };
 
 template <uint8_t N_VARS>
@@ -157,8 +157,8 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   {
     params->linear_type = sim_params::GPU_GMRES_CPR_AMGX_ILU;
   }
-  
-  std::string linear_solver_type_str;	
+
+  std::string linear_solver_type_str;
   if (!linear_solver)
   {
     switch (params->linear_type)
@@ -396,15 +396,29 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     }
     }
   }
-  
+
   std::cout << "Linear solver type is " << params->linear_type << std::endl;
-	
+
   // *** allocate host data ***
 
   n_vars = get_n_vars();
   n_ops = get_n_ops();
   nc = get_n_comps();
   z_var = get_z_var();
+
+  if (params->log_transform == 0)
+  {
+    min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+  }
+  else if (params->log_transform == 1)
+  {
+    min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+
+  }
+  min_sim_z = min_axis_z + params->sim_eps;
+  max_sim_z = max_axis_z - params->sim_eps;
 
   X.resize(n_vars * mesh->n_blocks);
   Xn.resize(n_vars * mesh->n_blocks);
@@ -446,6 +460,8 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
   // *** initialize host data ***
   X_init = mesh->initial_state;
+  this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
   X_init.resize(n_vars * mesh->n_blocks);
   for (index_t i = 0; i < mesh->n_blocks; i++)
   {
@@ -524,18 +540,6 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
   time_data.clear();
   time_data_report.clear();
-
-  if (params->log_transform == 0)
-  {
-    min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-    max_zc = 1 - min_zc * params->obl_min_fac;
-    //max_zc = acc_flux_op_set_list[0]->get_maxzc();
-  }
-  else if (params->log_transform == 1)
-  {
-    min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-    max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));                       //log based composition
-  }
 
   // *** initialize device data ***
   copy_data_to_device(X, X_d);

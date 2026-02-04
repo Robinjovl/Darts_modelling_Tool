@@ -72,7 +72,8 @@ class Model(DartsModel):
             # read properties
             self.nx, self.ny, self.nz = [int(n) for n in self.reservoir_type.split('_')[1:]]
             input_folder = os.path.join('input', self.reservoir_type.split('_')[0], '_'.join(self.reservoir_type.split('_')[1:]))
-            porosity = np.flip(np.swapaxes(load_single_keyword(os.path.join(input_folder, 'poro.txt'), 'PORO', cache=0).
+            porosity = np.flip(np.swapaxes(load_single_keyword(file_name=os.path.join(input_folder, 'poro.txt'),
+                                                               keyword='PORO', cache=0).
                                      reshape(self.nz, self.ny, self.nx), 0, 2), axis=2)
             permeability = np.flip(np.swapaxes(load_single_keyword(os.path.join(input_folder, 'perm.txt'), 'PERM', cache=0).
                                      reshape(self.nz, self.ny, self.nx, 3), 0, 2), axis=2)
@@ -174,6 +175,7 @@ class Model(DartsModel):
     def set_physics(self):
         """Physical properties"""
         self.zero = 1e-8
+        epsilon = 1e-9
         # Create property containers:
 
         n_comps = len(self.components)
@@ -259,7 +261,7 @@ class Model(DartsModel):
         thermal = 0
 
         property_container = ModelProperties(phases_name=phases, components_name=self.components,
-                                               Mw=Mw, min_z=self.zero / 10, temperature=1.)
+                                             Mw=Mw, eps_z=epsilon, temperature=1.)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(len(self.components), K, self.zero)
@@ -273,7 +275,7 @@ class Model(DartsModel):
         """ Activate physics """
         max_p = 500.
         if n_comps != 20:
-            axes_max = [max_p, 1.-self.zero/10, 0.9]
+            axes_max = [max_p, 1. - (n_comps-1) * epsilon, 0.9]
             if n_comps > 3:
                 axes_max += [0.7]
             if n_comps > 4:
@@ -282,7 +284,7 @@ class Model(DartsModel):
                 axes_max += (n_comps - 5) * [0.4]
             assert(len(axes_max) == n_comps)
         else:
-            axes_max = np.array([max_p, 1-self.zero/10, 0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
+            axes_max = np.array([max_p, 1. - (n_comps-1) * epsilon, 0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
                                  0.040, 0.035, 0.030, 0.025, 0.020, 0.015, 0.010, 0.007, 0.005])
             axes_max[2:] *= 2
             assert(axes_max.size == n_comps)
@@ -295,8 +297,8 @@ class Model(DartsModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec, n_points=self.obl_points,
-                                     min_p=40, max_p=max_p, min_z=self.zero/10, max_z=1-self.zero/10, cache=False,
-                                     axes_max=axes_max)
+                                     min_p=40, max_p=max_p, min_z=0., max_z=1., epsilon_z=epsilon, cache=False,
+                                     axes_max=axes_max, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -311,37 +313,48 @@ class Model(DartsModel):
             return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
                                                                   input_distribution=input_distribution)
         else:
-            # get depths
-            depths = np.asarray(self.reservoir.mesh.depth)
-            min_depth = np.min(depths)
-            max_depth = np.max(depths)
+            # run initialization over depth with specified GOC, pure liquid above, pure vapour under
+            from darts.physics.super.initialize import Initialize
+            init = Initialize(physics=self.physics, algorithm=self.itor_type, mode=self.itor_mode,
+                              is_barycentric=self.is_barycentric)
 
-            # calculate phase equilibrium for given uniform composition
+            # top boundary: calculate phase equilibrium for given uniform composition
             props = self.physics.reservoir_operators[0].property
             state = [np.mean(self.p_init)] + self.ini_comp
             props.evaluate(state)
-
-            # run initialization over depth with specified GOC, pure liquid above, pure vapour under
-            from darts.physics.super.initialize import Initialize
-            nc = self.physics.nc
-            # top boundary
             boundary_state = {var: props.x[0, c] for c, var in enumerate(self.physics.components[:-1])}
-            boundary_state['temperature'] = 350.
+            # boundary_state['temperature'] = 350.
             boundary_state['pressure'] = np.min(self.p_init)
-            init = Initialize(physics=self.physics, algorithm=self.itor_type, mode=self.itor_mode, is_barycentric=self.is_barycentric)
-            # GOC
-            nb = 100
-            mid_depth = (min_depth + max_depth) / 2
-            z = np.zeros((nb, nc - 1))
-            init_depths = np.linspace(start=min_depth, stop=max_depth, num=nb)
 
-            z[init_depths < mid_depth, :] = props.x[0, :-1]  # vapour is above GOC
-            z[init_depths >= mid_depth, :] = props.x[1, :-1]  # liquid is below GOC
-            primary_specs = {var: z[:, i] for i, var in enumerate(self.physics.components[:-1])}
-            # run initialization
-            X = init.solve(depth_bottom=max_depth, depth_top=min_depth, depth_known=min_depth,
-                           nb=nb, primary_specs=primary_specs, boundary_state=boundary_state,
-                           dTdh=0.).reshape((nb, self.physics.n_vars))
+            # Solve boundary state
+            X0 = init.solve_state(Xi=[boundary_state['pressure']]
+                                     + [props.x[0, c] for c, var in enumerate(self.physics.components[:-1])]
+                                     # + [boundary_state['temperature']]
+                                  ,
+                                  specs=boundary_state,
+                                  )
+
+            # Initialize depth table
+            nb = 100
+            depths = np.asarray(self.reservoir.mesh.depth)
+            min_depth = np.min(depths)
+            max_depth = np.max(depths)
+            mid_depth = (min_depth + max_depth) / 2  # GOC
+            X, bc_idx = init.init_depth_table(depth_bottom=max_depth,
+                                              depth_top=min_depth,
+                                              depth_known=mid_depth,
+                                              X0=X0,
+                                              nb=nb,
+                                              dTdh=0.0
+                                              )
+
+            # Solve vertical equilibrium in region above GOC: gas composition
+            above_specs = {var: props.x[0, i] for i, var in enumerate(self.physics.components[:-1])}
+            X = init.solve(X=X, bc_idx=bc_idx, specs=above_specs, downward=False)  # solve above
+
+            # Solve vertical equilibrium in region below GOC: liquid composition
+            below_specs = {var: props.x[1, i] for i, var in enumerate(self.physics.components[:-1])}
+            X = init.solve(X=X, bc_idx=bc_idx, specs=below_specs, downward=True)  # solve below
 
             # assign initial condition with evaluated initialized properties
             self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, input_depth=init.depths,
@@ -442,11 +455,11 @@ class Model(DartsModel):
         return
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, temperature = 1.):
+    def __init__(self, phases_name, components_name, Mw, eps_z=1e-11, temperature = 1.):
         # Call base class constructor
         self.nph = len(phases_name)
         # Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=1.)
 
     def evaluate(self, state: value_vector):
         """
@@ -459,6 +472,7 @@ class ModelProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         pressure, temperature, zc = self.get_state(state)
+        self.pressure, self.temperature = pressure, temperature
 
         self.clean_arrays()
 
