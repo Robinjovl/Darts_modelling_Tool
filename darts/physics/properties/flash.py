@@ -5,15 +5,15 @@ from numba import jit
 
 
 class Flash:
-    nu: []
-    X: []
-    temperature: float
-
     def __init__(self, nph, nc, ni=0):
         self.nph = nph
         self.nc = nc
         self.ni = ni
         self.ns = nc + ni
+
+        self.nu = []
+        self.X = []
+        self.temperature: float = 0.0
 
     @abc.abstractmethod
     def evaluate(self, pressure, temperature, zc):
@@ -73,6 +73,76 @@ def RR2(k, zc, eps):
     y = k * x
 
     return [V, 1 - V], [y, x]
+
+
+class SolidFlash(Flash):
+    """
+    SolidFlash class is a wrapper around a flash of fluid components/phases and normalized solid that reacts kinetically
+    This is used in a formulation where the solid is a regular component with mole fractions, just does not flow
+    It is a composition of a Flash object.
+    During evaluate(), it normalizes fluid composition, evaluates Flash and renormalizes
+    """
+
+    def __init__(
+        self,
+        flash: Flash,
+        nc_fl: int,
+        np_fl: int,
+        ni: int = 0,
+        nc_sol: int = 0,
+        np_sol: int = 0,
+    ):
+        """
+        Constructor of SolidFlash
+
+        :param flash: Flash object for fluid components/phases
+        :param nc_fl: Number of fluid components
+        :param np_fl: Number of fluid phases
+        :param ni: Number of ions
+        :param nc_sol: Number of solid components
+        :param np_sol: Number of solid phases
+        """
+        super().__init__(np_fl, nc_fl, ni)
+        self.flash = flash
+
+        self.nc_fl = self.ns
+        self.np_fl = self.nph
+        self.nc_sol = nc_sol
+        self.np_sol = np_sol
+
+    def evaluate(self, pressure, temperature, zc):
+        """Evaluate flash normalized for solids"""
+        # Normalize compositions
+        zc_sol = zc[self.nc_fl :]
+        zc_sol_tot = np.sum(zc_sol)
+        zc_norm = zc[: self.nc_fl] / (1.0 - zc_sol_tot)
+
+        # Evaluate flash for normalized composition
+        error_output = self.flash.evaluate(pressure, temperature, zc_norm)
+        flash_results = self.flash.get_flash_results()
+        nu = np.array(flash_results.nu)
+        try:
+            x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
+        except ValueError as e:
+            print(e.args[0], pressure, temperature, zc)
+            error_output += 1
+
+        # Re-normalize solids and append to nu, x
+        NU = np.zeros(self.np_fl + self.np_sol)
+        X = np.zeros((self.np_fl + self.np_sol, self.nc_fl + self.nc_sol))
+        for j in range(self.np_fl):
+            NU[j] = nu[j] * (1.0 - zc_sol_tot)
+            X[j, : self.nc_fl] = x[j, :]
+
+        for j in range(self.np_sol):
+            NU[self.np_fl + j] = zc_sol[j]
+            X[self.np_fl + j, self.nc_fl + j] = 1.0
+
+        self.nu = NU
+        self.X = X
+        self.temperature = flash_results.temperature
+
+        return error_output
 
 
 class IonFlash(Flash):

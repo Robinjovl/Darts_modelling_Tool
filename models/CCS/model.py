@@ -104,6 +104,7 @@ class Model(DartsModel):
     def set_physics(self,  zero, n_points, temperature: float = None, ph: bool = False, vl_phases: bool = False):
         """Physical properties"""
         self.zero = zero
+        epsilon = zero/10
 
         from dartsflash.libflash import EoS
         from dartsflash.components import CompData
@@ -114,10 +115,6 @@ class Model(DartsModel):
         phases = ["Aq", "V", "L"] if vl_phases else ["Aq", "V"]
         comp_data = CompData(components, setprops=True)
         nc = len(components)
-
-        """ PropertyContainer object and correlations """
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
-                                               temperature=temperature, min_z=zero / 10)
 
         """ Define flash """
         flash_ev = VLAq(comp_data, hybrid=True)
@@ -135,7 +132,7 @@ class Model(DartsModel):
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
-                                               temperature=temperature, min_z=zero/10)
+                                               temperature=temperature, eps_z=epsilon)
 
         property_container.flash_ev = flash_ev
         property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
@@ -175,8 +172,9 @@ class Model(DartsModel):
         else:
             state_spec = Compositional.StateSpecification.P
 
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=500, min_z=zero/10,
-                                     max_z=1-zero/10, min_t=273.15, max_t=473.15, state_spec=state_spec, cache=False)
+        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=0., max_z=1.,
+                                     epsilon_z=epsilon, min_t=273.15, max_t=373.15, state_spec=state_spec, cache=False,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -184,18 +182,35 @@ class Model(DartsModel):
     def set_initial_conditions(self):
         if 1:
             from darts.physics.super.initialize import Initialize
-            # depth corresponding to boundary_idx = 10
-            b_depth = self.reservoir.global_data['depth'].min() + (self.reservoir.global_data['depth'].max() - self.reservoir.global_data['depth'].min()) / 4.
-            boundary_state = {'H2O': 0.92, 'pressure': self.p_init, 'temperature': self.t_init}
             init = Initialize(physics=self.physics)
-            primary_specs = {} #{'H2O': 1 - self.zero}
-            secondary_specs = {'satAq': self.swc}
-            X = init.solve(depth_bottom=self.reservoir.global_data['depth'].max(),
-                           depth_top=self.reservoir.global_data['depth'].min(),
-                           depth_known=b_depth, boundary_state=boundary_state,
-                           primary_specs=primary_specs, secondary_specs=secondary_specs)
+
+            # Solve boundary state
+            boundary_state = {'H2O': 1 - self.zero, 'pressure': 100., 'temperature': 350.}
+            X0 = init.solve_state(Xi=[boundary_state['pressure'], 1 - self.zero, boundary_state['temperature']],
+                                  specs=boundary_state,
+                                  )
+
+            # Initialize depth table
+            nb = 100
+            min_depth = self.reservoir.global_data['depth'].min()
+            max_depth = self.reservoir.global_data['depth'].max()
+            b_depth = min_depth + (max_depth - min_depth) / 4.
+            X, bc_idx = init.init_depth_table(depth_bottom=max_depth,
+                                              depth_top=min_depth,
+                                              depth_known=b_depth,
+                                              X0=X0,
+                                              nb=nb,
+                                              dTdh=0.03
+                                              )
+
+            # Solve vertical equilibrium
+            specs = {'H2O': 1. - self.zero}
+            X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=False)  # solve above
+            X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=True)  # solve below
+
+            # assign initial condition with evaluated initialized properties
             self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, input_depth=init.depths,
-                                                                 input_distribution={var: X[i::self.physics.n_vars] for i, var in
+                                                                 input_distribution={var: X[:, i] for i, var in
                                                                                      enumerate(self.physics.vars)})
         else:
             input_distribution = {self.physics.vars[0]: 100.,

@@ -112,7 +112,9 @@ class Geothermal(PhysicsBase):
                 self.property_containers[region]
             )
             self.property_operators[region] = PropertyOperators(
-                self.property_containers[region], thermal=True
+                self.property_containers[region],
+                thermal=True,
+                extrapolation_flag=False,
             )
         self.well_operators = acc_flux_gravity_evaluator_python_well(
             self.property_containers[self.regions[0]]
@@ -120,12 +122,15 @@ class Geothermal(PhysicsBase):
 
         # create well control operators evaluator
         self.well_ctrl_operators = WellControlOperators(
-            self.property_containers[self.regions[0]], self.thermal
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=False,
         )
         self.well_init_operators = WellInitOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
+            extrapolation_flag=False,
         )
 
         return

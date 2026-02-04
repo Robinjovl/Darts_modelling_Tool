@@ -7,10 +7,26 @@ from darts.physics.super.property_container import PropertyContainer
 class OperatorsSuper(OperatorsBase):
     property: PropertyContainer
 
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
+    def __init__(
+        self,
+        property_container: PropertyContainer,
+        thermal: bool,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+    ):
+        """
+        Constructor of OperatorsSuper base class
 
-        self.min_z = property_container.min_z
+        :param property_container: Property container of type PropertyContainer
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
+        """
+        super().__init__(
+            property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
+        )  # Initialize base-class
+
         self.nc_fl = property_container.nc_fl
         self.ns = property_container.ns
         self.np_fl = property_container.np_fl
@@ -81,6 +97,10 @@ class ReservoirOperators(OperatorsSuper):
         :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
+
         # Composition vector and pressure from state:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
@@ -253,6 +273,10 @@ class WellOperators(OperatorsSuper):
         :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
+
         # Composition vector and pressure from state:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
@@ -381,8 +405,25 @@ class WellOperators(OperatorsSuper):
 
 
 class GeomechanicsReservoirOperators(ReservoirOperators):
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
+    def __init__(
+        self,
+        property_container: PropertyContainer,
+        thermal: bool,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+    ):
+        """
+        Constructor of GeomechanicsReservoirOperators class
+
+        :param property_container: Property container of type PropertyContainer
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
+        """
+        super().__init__(
+            property_container, thermal, extrapolation_flag, dz
+        )  # Initialize base-class
 
         self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
         self.n_ops = self.ROCK_DENS_OP + 1
@@ -419,6 +460,9 @@ class SinglePhaseGeomechanicsOperators(OperatorsBase):
         :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
 
         state_np = state.to_numpy()
         values_np = values.to_numpy()
