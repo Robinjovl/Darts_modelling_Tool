@@ -7,85 +7,18 @@ from model import Model
 
 redirect_darts_output('binary.log')
 
-# define the model
-m = Model()
-
-logspace = True
-if logspace:
-    dr = 1.
-    R1 = 1000.
-    nz = 24
-
-    poro = np.ones(nz) * 0.001
-    perm = np.ones(nz) * 0.001
-    poro[4:20] = 0.2
-    perm[4:20] = 20
-    perm[6:12] = 100
-
-    m.set_reservoir(dr=dr, R1=R1, logspace=logspace, nz=nz, dz=5, poro=poro, perm=perm)
-
-else:
-    # lower detfurth
-    (nr, nz) = (10, 24)
-    dr = 1.
-    R1 = nr * dr
-
-    if 0:
-        poro = 0.2
-        perm = 100
-
-    elif 1:
-        poro = np.ones((nr, nz)) * 0.001
-        perm = np.ones((nr, nz)) * 0.001
-        poro[:, 4:20] = 0.2
-        perm[:, 4:20] = 20
-        perm[:, 6:12] = 100
-
-    else:
-        poro = np.ones((nr, nz)) * 0.075
-        perm = np.ones((nr, nz)) * 0.29
-        # upper detfurth
-        perm[:, :16] = 12.6
-        # hardegsen
-        poro[:, :10] = 0.09
-        perm[:, :10] = 24
-        # hardegsen high perm
-        poro[:, :8] = 0.2
-        perm[:, :8] = 550
-        # hardegsen
-        poro[:, :6] = 0.09
-        perm[:, :6] = 24
-        # caprock
-        poro[:, :4] = 0.01
-        perm[:, :4] = 0.01
-
-    m.set_reservoir(dr=dr, R1=R1, logspace=False, nz=nz, dz=5, poro=poro, perm=perm)
-
-# Specify initial and injection conditions
-m.p_init = 100.
-m.p_inj = m.p_init + 1.
-m.t_init = 350.
-m.t_inj = 300.
-m.swc = 0.25
-
-zero = 1e-12
-m.set_physics(zero, n_points=1001, temperature=None, ph=False, vl_phases=False)
-m.inj_stream = [0.001] if m.components[0] == "H2O" else [0.999]
-
-m.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=1., tol_newton=1e-6, tol_linear=1e-6, it_newton=8,
-                 it_linear=50,
-                 # newton_type=m.params.newton_global_chop,  # Type of newton method (related to chopping strategy?)
-                 # newton_params=value_vector([0.2]),  # Probably chop-criteria(?)
-                 )
-# m.params.nonlinear_norm_type = m.params.L1
-# m.params.linear_type = m.params.cpu_superlu
-
-# init the model
+m = Model(logspace=True)
 m.init()
-# set the output
 m.set_output()
 
-""" DEFINE OUTPUT """
+m.run(1000)
+
+time_data_dict = m.output.store_well_time_data(save_output_files=True)
+
+m.print_timers()
+m.print_stat()
+
+""" Define output """
 props = ['satV', 'rho_g']
 output_props = ['pressure'] + props if not m.physics.thermal else ['pressure', 'temperature'] + props
 # output_props += ['y' + comp for comp in m.components[2:]]
@@ -95,30 +28,6 @@ lims.update({'satLCO2': [0., 1.]})
 aspect = 'equal'  # 'equal', 'auto' or float
 cmap = 'RdBu_r'
 logx = True
-
-data_dt = None
-
-timesteps = [1.e-3, 0.92, 2.-1e-3, 8., 55., 300.] + [365] * 9
-max_ts = [1e-3, 0.01, 0.02, 0.5, 1., 5.] + [20] * 9
-
-for j, ts in enumerate(timesteps[:2]):
-
-    m.data_ts.dt_mult = 2
-    m.data_ts.dt_max = max_ts[j]
-    m.data_ts.eta[-1] = 100
-
-    if data_dt is not None:
-        data_dt.dt_max = max_ts[j]
-        m.run(data_dt, ts)
-    else:
-        # m.set_sim_params(max_ts=max_ts[j])
-        m.run(ts)
-
-    # compute and save well time data in m.output_folder
-    time_data_dict = m.output.store_well_time_data()
-
-m.print_timers()
-m.print_stat()
 
 # Output to xarray and plot with plt
 m.output.output_to_plt(sol_filepath=m.output.sol_filepath,  # if not provided, it will plot last timestep from engine

@@ -12,6 +12,79 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 
 class Model(DartsModel):
+    def __init__(self, logspace: bool = True):
+        # Call base class constructor
+        super().__init__()
+
+        if logspace:
+            dr = 1.
+            R1 = 1000.
+            nz = 24
+
+            poro = np.ones(nz) * 0.001
+            perm = np.ones(nz) * 0.001
+            poro[4:20] = 0.2
+            perm[4:20] = 20
+            perm[6:12] = 100
+
+            self.set_reservoir(dr=dr, R1=R1, logspace=logspace, nz=nz, dz=5, poro=poro, perm=perm)
+
+        else:
+            # lower detfurth
+            (nr, nz) = (10, 24)
+            dr = 1.
+            R1 = nr * dr
+
+            if 0:
+                poro = 0.2
+                perm = 100
+
+            elif 1:
+                poro = np.ones((nr, nz)) * 0.001
+                perm = np.ones((nr, nz)) * 0.001
+                poro[:, 4:20] = 0.2
+                perm[:, 4:20] = 20
+                perm[:, 6:12] = 100
+
+            else:
+                poro = np.ones((nr, nz)) * 0.075
+                perm = np.ones((nr, nz)) * 0.29
+                # upper detfurth
+                perm[:, :16] = 12.6
+                # hardegsen
+                poro[:, :10] = 0.09
+                perm[:, :10] = 24
+                # hardegsen high perm
+                poro[:, :8] = 0.2
+                perm[:, :8] = 550
+                # hardegsen
+                poro[:, :6] = 0.09
+                perm[:, :6] = 24
+                # caprock
+                poro[:, :4] = 0.01
+                perm[:, :4] = 0.01
+
+            self.set_reservoir(dr=dr, R1=R1, logspace=False, nz=nz, dz=5, poro=poro, perm=perm)
+
+        # Specify initial and injection conditions
+        self.p_init = 100.
+        self.p_inj = self.p_init + 1.
+        self.t_init = 350.
+        self.t_inj = 300.
+        self.swc = 0.25
+
+        zero = 1e-12
+        self.set_physics(zero, n_points=1001, temperature=None, ph=False, vl_phases=False)
+        self.inj_stream = [0.001] if self.components[0] == "H2O" else [0.999]
+
+        self.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20., tol_newton=1e-6, tol_linear=1e-6, it_newton=8,
+                            it_linear=50, runtime=1000,
+                            # newton_type=self.params.newton_global_chop,  # Type of newton method (related to chopping strategy?)
+                            # newton_params=value_vector([0.2]),  # Probably chop-criteria(?)
+                            )
+        # self.params.nonlinear_norm_type = self.params.L1
+        # self.params.linear_type = self.params.cpu_superlu
+
     def set_reservoir(self, dr, R1, logspace, nz, dz, poro, perm):
         self.seg_ratio = 1
 
@@ -53,13 +126,11 @@ class Model(DartsModel):
                             stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
                             )
         flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
-        pr = flash_ev.eos["VL"]
-        aq = flash_ev.eos["Aq"]
 
         flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash,
                             eos_order=["Aq", "VL"],
                             t_min=270., t_max=500., t_init=300., t_tol=1e-3,
-                            verbose=True
+                            verbose=False
                             )
 
         """ properties correlations """
