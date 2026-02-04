@@ -11,7 +11,7 @@ m = Model(logspace=True)
 m.init()
 m.set_output()
 
-m.run(1000)
+m.run(1)
 
 time_data_dict = m.output.store_well_time_data(save_output_files=True)
 

@@ -78,7 +78,7 @@ class Model(DartsModel):
         self.inj_stream = [0.001] if self.components[0] == "H2O" else [0.999]
 
         self.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20., tol_newton=1e-6, tol_linear=1e-6, it_newton=8,
-                            it_linear=50, runtime=1000,
+                            it_linear=50, runtime=1,
                             # newton_type=self.params.newton_global_chop,  # Type of newton method (related to chopping strategy?)
                             # newton_params=value_vector([0.2]),  # Probably chop-criteria(?)
                             )
