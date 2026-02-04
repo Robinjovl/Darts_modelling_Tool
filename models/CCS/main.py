@@ -4,33 +4,8 @@ import os
 from darts.engines import redirect_darts_output
 from model import Model
 
-import matplotlib.pyplot as plt
+
 redirect_darts_output('binary.log')
-
-
-class DataTS:
-    dt_min: float
-    omega: float
-    eta: float
-    dt_max: float
-    tol_res: float
-    tol_wel: float
-    tol_sta: float
-    max_it_nl: int
-    def __init__(self, nc):
-        self.eta = 1e20 * np.ones(nc)  # avoid limitation for changes
-
-        # default values
-        self.dt_min = 1e-2
-        self.omega = 1
-        self.dt_max = 365
-        self.tol_res = 1e-2
-        self.tol_wel_mult = 1
-        self.tol_sta = 1e-2
-        self.max_it_nl = 12
-
-
-filename = 'out'
 
 # define the model
 m = Model()
@@ -121,13 +96,6 @@ aspect = 'equal'  # 'equal', 'auto' or float
 cmap = 'RdBu_r'
 logx = True
 
-timestep, property_array = m.output.output_properties(output_properties=output_props, timestep=-1)
-
-m.reservoir.output_to_plt(data=property_array, output_props=output_props, lims=lims, plot_zeros=False,
-                          aspect_ratio=aspect, logx=logx, cmap=cmap)
-# m.output.output_to_vtk(ith_step=0, output_properties=output_props)  # initial conditions
-plt.savefig('step0.png', format='png')
-
 data_dt = None
 
 timesteps = [1.e-3, 0.92, 2.-1e-3, 8., 55., 300.] + [365] * 9
@@ -146,15 +114,13 @@ for j, ts in enumerate(timesteps[:2]):
         # m.set_sim_params(max_ts=max_ts[j])
         m.run(ts)
 
-    timesteps, property_array = m.output.output_properties(output_properties=output_props, timestep=-1)
-
-    m.reservoir.output_to_plt(data=property_array, output_props=output_props, lims=lims, plot_zeros=False,
-                              aspect_ratio=aspect, logx=logx, cmap=cmap)
-
-    plt.savefig('step' + str(j+1) + '.png', format='png')
-
     # compute and save well time data in m.output_folder
     time_data_dict = m.output.store_well_time_data()
 
 m.print_timers()
 m.print_stat()
+
+# Output to xarray and plot with plt
+m.output.output_to_plt(sol_filepath=m.output.sol_filepath,  # if not provided, it will plot last timestep from engine
+                       output_properties=output_props, lims=lims, plot_zeros=False,
+                       aspect_ratio=aspect, logx=logx, cmap=cmap)
