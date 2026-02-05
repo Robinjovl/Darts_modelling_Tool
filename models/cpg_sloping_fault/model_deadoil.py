@@ -155,9 +155,10 @@ class ModelDeadOil(Model_CPG):
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13
+        self.idata.obl.epsilon_z = 1e-14
         self.idata.obl.min_p = 0.
         self.idata.obl.max_p = 1000.
         self.idata.obl.min_t = 10.
         self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
+        self.idata.obl.min_z = 0.
+        self.idata.obl.max_z = 1.

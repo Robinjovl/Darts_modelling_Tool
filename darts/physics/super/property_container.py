@@ -14,7 +14,7 @@ class PropertyContainer(PropertyBase):
         Mw: list,
         nc_sol: int = 0,
         np_sol: int = 0,
-        min_z: float = 1e-11,
+        eps_z: float = 1e-11,
         rock_comp: float = 1e-6,
         rate_ann_mat=None,
         temperature: float = None,
@@ -27,7 +27,7 @@ class PropertyContainer(PropertyBase):
         :param Mw: List of molecular weights [g/mol]
         :param nc_sol: Number of solid components, default is 0
         :param np_sol: Number of solid phases, default is 0
-        :param min_z: Minimum bound of component mole fractions in OBL grid, default is 1e-11
+        :param eps_z: Minimum bound of component mole fractions in OBL grid, default is 1e-11
         :param rock_comp: Rock compressibility, default is 1e-6
         :param rate_ann_mat: Rate annihilation matrix, optional
         :param temperature: Constant temperature for isothermal simulation, default is None (thermal)
@@ -47,7 +47,7 @@ class PropertyContainer(PropertyBase):
         self.nelem = self.rate_ann_mat.shape[0]
 
         self.Mw = Mw
-        self.min_z = min_z
+        self.eps_z = eps_z
 
         if temperature:  # constant T specified
             self.thermal = False
@@ -122,7 +122,7 @@ class PropertyContainer(PropertyBase):
         zc = np.append(
             vec_state_as_np[1 : self.nc], 1 - np.sum(vec_state_as_np[1 : self.nc])
         )
-        if zc[-1] < self.min_z:
+        if zc[-1] < 0.99 * self.eps_z:
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:
@@ -139,14 +139,14 @@ class PropertyContainer(PropertyBase):
         check_vec = np.zeros((len(vec_composition),))
 
         for ith_comp, zi in enumerate(vec_composition):
-            if zi < self.min_z:
+            if zi < 0.99 * self.eps_z:
                 # print(vec_composition)
-                vec_composition[ith_comp] = self.min_z
+                vec_composition[ith_comp] = self.eps_z
                 count_corr += 1
                 check_vec[ith_comp] = 1
-            elif zi > 1 - self.min_z:
+            elif zi > 1 - (self.nc - 1) * self.eps_z - 1e-15:
                 # print(vec_composition)
-                vec_composition[ith_comp] = 1 - self.min_z
+                vec_composition[ith_comp] = 1 - (self.nc - 1) * self.eps_z
                 temp_sum += vec_composition[ith_comp]
             else:
                 temp_sum += vec_composition[ith_comp]
@@ -154,7 +154,7 @@ class PropertyContainer(PropertyBase):
         for ith_comp, zi in enumerate(vec_composition):
             if check_vec[ith_comp] != 1:
                 vec_composition[ith_comp] = (
-                    zi / temp_sum * (1 - count_corr * self.min_z)
+                    zi / temp_sum * (1 - count_corr * self.eps_z)
                 )
         return vec_composition
 
@@ -243,10 +243,9 @@ class PropertyContainer(PropertyBase):
 
     def evaluate_mass_source(self, pressure, temperature, zc):
         self.dX = np.zeros(len(self.kinetic_rate_ev))
-
-        for j, reaction in self.kinetic_rate_ev.items():
-            dm, self.dX[j] = reaction.evaluate(
-                pressure, temperature, self.x, zc[self.nc_fl + j]
+        for _j, reaction in self.kinetic_rate_ev.items():
+            dm, self.dX[_j] = reaction.evaluate(
+                pressure, temperature, self.x, self.sat[-1]
             )
             self.mass_source += dm
 
@@ -269,6 +268,7 @@ class PropertyContainer(PropertyBase):
         self.ph = self.run_flash(
             pressure, temperature, zc, evaluate_PT=self.evaluate_PT_bool
         )
+        self.pressure = pressure
         self.temperature = (
             self.flash_ev.get_flash_results().temperature
             if not isinstance(self.flash_ev, int)
@@ -341,9 +341,9 @@ class PropertyContainer(PropertyBase):
         if self.energy_source_ev:
             self.energy_source += self.energy_source_ev.evaluate(state)
 
-        for j, reaction in self.kinetic_rate_ev.items():
+        for _, reaction in self.kinetic_rate_ev.items():
             self.energy_source += reaction.evaluate_enthalpy(
-                pressure, self.temperature, self.x, zc[self.nc_fl + j]
+                pressure, self.temperature, self.x, self.sat[-1]
             )
 
         return
