@@ -55,7 +55,7 @@ extern int device_num;
 #ifdef _MSC_VER
 #include <__msvc_int128.hpp>
 
-struct __uint128_t : std::_Unsigned128 
+struct __uint128_t : std::_Unsigned128
 {
   // Inherit constructors
   using std::_Unsigned128::_Unsigned128;

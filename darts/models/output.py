@@ -891,7 +891,7 @@ class Output:
         filepath: str = None,
         output_properties: list = None,
         timestep: int = None,
-        engine=False,
+        engine: bool = False,
     ) -> tuple[np.ndarray, dict]:
         """
         Evaluates and returns reservoir properties from saved data (HDF5 file) or a simulation engine.
@@ -1030,7 +1030,7 @@ class Output:
         """
         Function to export results at timestamp t into `.vtk` format for viewing in Paraview.
 
-        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
+        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
         :type sol_filepath: str, optional
         :param ith_step: i'th reporting step indicates which timestep to create a .vtk from. Defaults to None, in which case all saved data points are evaluated.
         :type ith_step: int
@@ -1124,7 +1124,7 @@ class Output:
 
     def output_to_xarray(
         self,
-        filepath: str = None,
+        sol_filepath: str = None,
         output_properties: list = None,
         timestep: int = None,
         engine: bool = False,
@@ -1134,8 +1134,8 @@ class Output:
         State variables area obtained from the engine or *.h5 file.
         Properties are interpolated by the property iterator.
 
-        :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
-        :type filepath: str, optional
+        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
+        :type sol_filepath: str, optional
         :param output_properties: List of properties to include in the dataset. If None, all properties are included.
         :type output_properties: list, optional
         :param timestep: Specific timestep to output. If None, all timesteps are included.
@@ -1145,10 +1145,11 @@ class Output:
         :returns: xarray Dataset containing the property data.
         :rtype: xarray.Dataset
         """
+        from darts.reservoirs.struct_reservoir import StructReservoir
 
         # Interpolate properties
         time, data = self.output_properties(
-            filepath, output_properties, timestep, engine
+            sol_filepath, output_properties, timestep, engine
         )
         props = list(data.keys())
 
@@ -1163,7 +1164,7 @@ class Output:
             data[prop] = array.reshape(array_shape)
 
         # Initialize coords and data_vars for Xarray Dataset
-        if type(self.reservoir).__name__ == "StructReservoir":
+        if isinstance(self.reservoir, StructReservoir):
             dx, dy, dz = (
                 self.reservoir.global_data["dx"],
                 self.reservoir.global_data["dy"],
@@ -1205,69 +1206,277 @@ class Output:
 
         return dataset
 
-    def plot_xarray(
+    def output_to_plt(
         self,
-        xarray_data,
-        timestep: int = -1,
-        x: int = None,
-        y: int = None,
-        z: int = None,
+        sol_filepath: str = None,
+        xarray_data: xr.Dataset = None,
+        output_properties: list = None,
+        timestep: int = None,
+        x_slice: int = None,
+        y_slice: int = None,
+        z_slice: int = None,
+        lims: dict = None,
+        fig_size: tuple = None,
+        axs_shape: tuple = None,
+        aspect_ratio: str = "equal",
+        logx: bool = False,
+        plot_zeros: bool = True,
+        cmap: str = "jet",
+        colorbar_loc: str = "right",
     ):
         """
-        :param xarray_data: xarray data set
-        :param timestep: time index
-        :param x: index in x-dimension
-        :param y: index in y-dimension
-        :param z: index in z-dimension
-        """
+        Method for plotting output using matplotlib library.
 
+        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
+        :type sol_filepath: str, optional
+        :param xarray_data: Data for output
+        :type xarray_data: xr.Dataset
+        :param output_properties: List of properties to plot
+        :type output_properties: list
+        :param timestep: Timesteps to plot (int or list of int)
+        :type timestep: int
+        :param x_slice: index for cross-section in x-dimension
+        :param y_slice: index for cross-section in y-dimension
+        :param z_slice: index for cross-section in z-dimension
+        :param lims: Dictionary of lists with [lower, upper] limits for output variables, will default to [None, None]
+        :type lims: dict
+        :param fig_size: Tuple of (width, height) for figure
+        :param axs_shape: Tuple of (rows, columns) for figure
+        :param aspect_ratio: Aspect ratio ('equal', 'auto', or float), default is 'equal'
+        :param logx: Bool to plot x-axis in logscale, default is False
+        :param plot_zeros: Bool to plot zero values, default is True
+        :param cmap: plt.Colourmap, default is 'jet'
+        :param colorbar_loc: Location of colorbar ('right' or 'bottom'), default is 'right'
+        """
         from darts.reservoirs.struct_reservoir import StructReservoir
 
-        if type(self.reservoir) is not StructReservoir:
-            raise AttributeError(
-                "Reservoir class must be exactly of type StructReservoir."
-            )
+        if not isinstance(self.reservoir, StructReservoir):
+            raise AttributeError("Reservoir class must be of type StructReservoir.")
+        dims_to_plot = (
+            self.reservoir.ndims
+            - (x_slice is not None)
+            - (y_slice is not None)
+            - (z_slice is not None)
+        )
+        assert dims_to_plot <= 2, "No implementation exists for 3D plt"
 
         output_directory = os.path.join(self.output_folder, "figures")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory, exist_ok=True)
 
-        assert isinstance(timestep, int) and timestep < len(xarray_data['time']), (
-            f"Timestep should be an integer less than {len(xarray_data['time'])}."
+        # Check what data to use
+        if sol_filepath is not None and xarray_data is not None:
+            warnings.warn(
+                "Both solution filepath and xarray Dataset were provided to output_to_plt(), choosing xarray",
+                stacklevel=2,
+            )
+        # If no xarray_data has been provided, either generate from solution file or engine.X
+        if xarray_data is None:
+            xarray_data = self.output_to_xarray(
+                sol_filepath=sol_filepath,
+                output_properties=output_properties,
+                timestep=timestep,
+                engine=(sol_filepath is None),  # get from engine if no file provided
+            )
+
+        # Check if slices are consistent
+        if x_slice is not None:
+            assert x_slice < len(xarray_data['x']), (
+                f"x-level step should be less than {len(xarray_data['x']):d}"
+            )
+        if y_slice is not None:
+            assert y_slice < len(xarray_data['y']), (
+                f"y-level step should be less than {len(xarray_data['y']):d}"
+            )
+        if z_slice is not None:
+            assert z_slice < len(xarray_data['z']), (
+                f"z-level step should be less than {len(xarray_data['z']):d}"
+            )
+
+        # Set subplots, shape and size
+        axs_shape = axs_shape if axs_shape is not None else (1, len(output_properties))
+        fig_size = (
+            fig_size
+            if fig_size is not None
+            else (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
         )
 
-        var_names = list(xarray_data.data_vars)
-        for _i, var in enumerate(var_names):
-            plt.figure()
-            if z is not None:
-                assert z < len(xarray_data['z']), (
-                    f"z-level step should be less than {len(xarray_data['z']):d}"
-                )
-                xarray_data[var].isel(time=timestep, z=z).plot()
-                plt.savefig(output_directory + f'/{var} ts{timestep:d} z{z:d}.png')
+        # Define limits for properties
+        lims = lims if lims is not None else {}
+        for prop in output_properties:
+            if prop not in lims.keys():
+                lims[prop] = [None, None]
 
-            elif y is not None:
-                assert y < len(xarray_data['y']), (
-                    f"y-level step should be less than {len(xarray_data['y']):d}"
-                )
-                xarray_data[var].isel(time=timestep, y=y).plot()
-                plt.savefig(output_directory + f'/{var} ts{timestep:d} y{y:d}.png')
+        # Slice dataset in space
+        slices = {
+            key: val
+            for key, val in {'z': z_slice, 'y': y_slice, 'x': x_slice}.items()
+            if val is not None
+        }
+        data = xarray_data.isel(slices)
 
-            elif x is not None:
-                assert x < len(xarray_data['x']), (
-                    f"x-level step should be less than {len(xarray_data['x']):d}"
-                )
-                xarray_data[var].isel(time=timestep, x=x).plot()
-                plt.savefig(
-                    output_directory
-                    + f'/{var} ts{timestep:d} zx{z if z is not None else 0:d}.png'
-                )
+        # Set zeros to nan if plot_zeros = False
+        if not plot_zeros:
+            data = data.where(data != 0.0, np.nan)
 
+        # For 1D plot
+        if dims_to_plot == 1:
+            # Plot each timestep (plot over old fig object if provided)
+            for t, _ts in enumerate(data['time']):
+                fig, axs = plt.subplots(
+                    nrows=axs_shape[0],
+                    ncols=axs_shape[1],
+                    figsize=fig_size,
+                    dpi=100,
+                    facecolor="w",
+                    edgecolor="k",
+                )
+                for j, prop in enumerate(output_properties):
+                    axs[j].set_title(prop)
+
+                # Plot all output_properties
+                for j, prop in enumerate(output_properties):
+                    ax = fig.axes[j]
+
+                    # Horizontal slice
+                    if (self.reservoir.nx > 1 and x_slice is None) or (
+                        self.reservoir.ny > 1 and y_slice is None
+                    ):
+                        x = (
+                            self.reservoir.discretizer.centroids_all_cells[:, 0]
+                            if x_slice is None
+                            else self.reservoir.discretizer.centroids_all_cells[:, 1]
+                        )
+
+                        ax.plot(x, data[prop].isel(time=t).squeeze().values)
+                        ax.set(ylim=lims[prop])
+                        if logx:
+                            ax.set_xscale("log")
+                            ax.set_xlim([np.min(x), np.max(x)])
+                    # Vertical slice
+                    elif self.reservoir.nz > 1 and z_slice is None:
+                        z = self.reservoir.discretizer.centroids_all_cells[:, 2]
+                        ax.plot(data[prop].isel(time=t), z)
+                        if prop in lims.keys():
+                            ax.set(xlim=lims[prop])
+                    else:
+                        raise AssertionError(
+                            "Slices for 1D plot inconsistent with reservoir dimensions"
+                        )
+
+                # Save figure
+                filename = (
+                    f'ts{t:d}'
+                    + (f' x{x_slice:d}' if x_slice is not None else '')
+                    + (f' y{y_slice:d}' if y_slice is not None else '')
+                    + (f' z{x_slice:d}' if z_slice is not None else '')
+                    + '.png'
+                )
+                plt.savefig(os.path.join(output_directory, filename))
+
+        # For 2D plot
+        else:
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+            dx, dy, dz = (
+                self.reservoir.global_data["dx"],
+                self.reservoir.global_data["dy"],
+                self.reservoir.global_data["dz"],
+            )
+            # Use dx or dy for xgrid, depending on whether x-dimension/y-dimension exists
+            x_used, y_used = False, False  # track which dimensions
+            if self.reservoir.nx > 1 and x_slice is None:
+                xgrid = np.append(0, np.cumsum(dx[:, 0, 0]))
+                x_used = True
+            elif self.reservoir.ny > 1 and y_slice is None:
+                xgrid = np.append(0, np.cumsum(dy[0, :, 0]))
+                y_used = True
             else:
-                # model is a 1D reservoir
-                xarray_data[var].isel(time=timestep).plot()
-                plt.savefig(output_directory + f'/{var} ts{timestep:d}.png')
+                raise AssertionError(
+                    "Slices for 2D plot inconsistent with reservoir dimensions"
+                )
+
+            # Use dy or dz for ygrid, depending on whether y-dimension/z-dimension exists
+            # If y-dimension was already used for xgrid, use z-dimension
+            if self.reservoir.ny > 1 and y_slice is None and not y_used:
+                ygrid = np.append(0, np.cumsum(dy[0, :, 0]))
+                y_used = True
+            elif self.reservoir.nz > 1 and z_slice is None:
+                ygrid = np.append(0, np.cumsum(dz[0, 0, :]))
+            else:
+                raise AssertionError(
+                    "Slices for 2D plot inconsistent with reservoir dimensions"
+                )
+
+            # Create meshgrid object and determine size
+            X, Y = np.meshgrid(xgrid, ygrid)
+            if x_used and y_used:  # Both: x, y
+                shape = (self.reservoir.ny, self.reservoir.nx)
+                # transpose = False
+            elif x_used:  # Only x: x, z
+                shape = (self.reservoir.nz, self.reservoir.nx)
+                # transpose = True
+            else:  # Not x: y, z
+                shape = (self.reservoir.nz, self.reservoir.ny)
+                # transpose = True
+
+            # Plot each timestep (plot over old fig object if provided)
+            for t, _ts in enumerate(data['time']):
+                fig, axs = plt.subplots(
+                    nrows=axs_shape[0],
+                    ncols=axs_shape[1],
+                    figsize=fig_size,
+                    dpi=100,
+                    facecolor="w",
+                    edgecolor="k",
+                )
+                for j, prop in enumerate(output_properties):
+                    axs[j].set_title(prop)
+
+                # Plot all output_properties
+                for j, prop in enumerate(output_properties):
+                    ax = fig.axes[j]
+
+                    im = ax.pcolormesh(
+                        X,
+                        Y,
+                        data[prop].isel(time=t).squeeze().values.reshape(shape),
+                        cmap=cmap,
+                        vmin=lims[prop][0],
+                        vmax=lims[prop][1],
+                    )
+                    if not x_used or not y_used:  # z-dimension used, invert y-axis
+                        ax.invert_yaxis()
+                    if logx:
+                        ax.set_xscale("log")
+                        ax.set_xlim([xgrid[1], xgrid[-1]])
+                        ax.set_aspect("auto")
+                    else:
+                        ax.set_aspect(aspect_ratio)
+
+                    divider = make_axes_locatable(ax)
+                    if colorbar_loc == 'right':
+                        cax = divider.append_axes('right', size='5%', pad=0.05)
+                        fig.colorbar(im, cax=cax, orientation='vertical')
+                    else:
+                        cax = divider.append_axes('bottom', size='15%', pad=0.3)
+                        fig.colorbar(im, cax=cax, orientation='horizontal')
+                    # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
+                    # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
+                plt.tight_layout()
+
+                # Save figure
+                filename = (
+                    f'ts{t:d}'
+                    + (f' x{x_slice:d}' if x_slice is not None else '')
+                    + (f' y{y_slice:d}' if y_slice is not None else '')
+                    + (f' z{x_slice:d}' if z_slice is not None else '')
+                    + '.png'
+                )
+                plt.savefig(os.path.join(output_directory, filename))
+
         plt.close('all')
+        return fig
 
     def store_well_time_data(
         self, types_of_well_rates: list = None, save_output_files: bool = False

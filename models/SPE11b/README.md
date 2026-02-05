@@ -1,14 +1,14 @@
 # SPE11b Carbon Capture and Storage Benchmark
-The SPE11 comparative solution project (CSP) aims to provide a reference case for the development of numerical simulation of GCS and offers a baseline for simulation of CO2 storage in aquifers. 
-The reservoir is a heterogeneous reservoir storage complex reminicent of the Norwegian continental shelf. 
-Three versions of the benchmark are presented in the CSP. The second, 11b, is a 2D model at reservoir scale and conditions. 
-The SPE11 CSP explicitly specifies all reservoir and fluid properties in Nordbotten et al. (2024). 
-This repository contains a model implementation for the SPE11b utilizing the Delft Advanced Research Terra Simulator (DARTS) of Delft University of Technology. 
+The SPE11 comparative solution project (CSP) aims to provide a reference case for the development of numerical simulation of GCS and offers a baseline for simulation of CO2 storage in aquifers.
+The reservoir is a heterogeneous reservoir storage complex reminicent of the Norwegian continental shelf.
+Three versions of the benchmark are presented in the CSP. The second, 11b, is a 2D model at reservoir scale and conditions.
+The SPE11 CSP explicitly specifies all reservoir and fluid properties in Nordbotten et al. (2024).
+This repository contains a model implementation for the SPE11b utilizing the Delft Advanced Research Terra Simulator (DARTS) of Delft University of Technology.
 
 ## Running the Simulation
 
-Simulation parameters are configured using the `model_specs` list, where each entry is a dictionary describing a specific realization. 
-The reporting grid of the SPE11b corresponds to a grid block of 10m by 10m and thus contains approx. 100K grid blocks.  
+Simulation parameters are configured using the `model_specs` list, where each entry is a dictionary describing a specific realization.
+The reporting grid of the SPE11b corresponds to a grid block of 10m by 10m and thus contains approx. 100K grid blocks.
 
 ```python
 nx = 840
@@ -46,7 +46,7 @@ model_specs = [
 | `post_process` | If a string is provided, post-processes previously saved data in that folder instead of running the simulation.                                                 |
 | `gpu_device`   | Runs the model on GPU if `True`; otherwise, on CPU.                                                                                                             |
 
-## Reservoir and wells 
+## Reservoir and wells
 Seven different facies are defined for SPE11b. Facies 1 represents the storage
 complex and serves as a capillary barrier to migrating CO2. Facies 2 through 5 consist of permeable reservoir
 sands, while Facies 6 corresponds to fault infill. Finally, Facies 7 forms an impermeable barrier. In our model, the
@@ -57,21 +57,21 @@ simulations, a structured mesh is constructed and populated according to the fac
 
 ![porosity](Images/porosity.png "porosity")
 
-In model 11b, z=0 is defined at the bottom of the reservoir and x=0 at the left edge. There are two wells. Well 1 is located at (x=2700, z=300), and well 2 at (x=5100,z=1100). 
-Injection starts in well 1 at t = 0yr and continues until t = 50yr. Well 2 starts injection at t = 25yr, lasting until t = 50yr. In the post-injection period, 
+In model 11b, z=0 is defined at the bottom of the reservoir and x=0 at the left edge. There are two wells. Well 1 is located at (x=2700, z=300), and well 2 at (x=5100,z=1100).
+Injection starts in well 1 at t = 0yr and continues until t = 50yr. Well 2 starts injection at t = 25yr, lasting until t = 50yr. In the post-injection period,
 the simulation continues for 1000 years. In both wells, CO2 is injected at 10degC. In 11b the injection rate is equal to 3024kg/day.
 The wells are defined at their `well centers`, per their coordinates in meters, and passed to the reservoir object.
-```python 
+```python
     well_centers = {
             "I1": [2700.0, 0.0, 300.0],
             "I2": [5100.0, 0.0, 700.0]
             }
-    
+
     # structured reservoir
     m.reservoir = FluidFlowerStruct(timer=m.timer, layer_properties=layer_props, layers_to_regions=layers_to_regions,
                                     model_specs=specs, well_centers=well_centers)
 ```
-The rate is specified in `m.inj_rate` as a list a where the first and second entry correspond to the mass injection rate of well 1 and 2 respectively. 
+The rate is specified in `m.inj_rate` as a list a where the first and second entry correspond to the mass injection rate of well 1 and 2 respectively.
 ```python
     m.inj_rate = [inj_rate, inj_rate]
 ```
@@ -88,18 +88,18 @@ Two options, are included for the model, RHS-correction and well controls. If `s
                                        )
         print(f'Set well {w.name} to {self.inj_rate[i]} kg/day with {self.inj_stream[:-1]} {self.components[:-1]} at 10°C...')
 ```
-, acoording to `self.inj_stream`.   
+, acoording to `self.inj_stream`.
 
 ## Initial and boundary conditions
-In the SPE11b the temperatures at the top and bottom boundaries are fixed, all boundaries are impermeable and the boundary 
-volumes are increased to 5e4Δz. A geothermal gradient of 25 degC/km is applied along with a temperature of 70 degC at the bottom boundary while pressure is hydrostatic. 
-Initial conditions are set in `m.set_initial_conditions()` where, 
+In the SPE11b the temperatures at the top and bottom boundaries are fixed, all boundaries are impermeable and the boundary
+volumes are increased to 5e4Δz. A geothermal gradient of 25 degC/km is applied along with a temperature of 70 degC at the bottom boundary while pressure is hydrostatic.
+Initial conditions are set in `m.set_initial_conditions()` where,
 ```python
-    m.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, 
+    m.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
                                                       input_depth=input_depths,
                                                       input_distribution=self.input_distribution)
 ```
-, specifies the initial conditions according to the input_depths and and input_idstributions. 
+, specifies the initial conditions according to the input_depths and and input_idstributions.
 
 The temperature boundary conditions are included in the model by calling `m.set_top_bot_temp()` in the Newton loop for specified timestep:
 ```python
@@ -110,7 +110,7 @@ The temperature boundary conditions are included in the model by calling `m.set_
             T_spec_bot = 273.15 + 70 - self.reservoir.centroids[bot_cell, 2] * 0.025
             target_cell = bot_cell*nv+nv-1
             self.physics.engine.X[target_cell] = T_spec_bot
-    
+
         for top_cell in self.reservoir.top_cells:
             # T = 70 - 0.025 * z  - origin at bottom
             T_spec_top = 273.15 + 70 - self.reservoir.centroids[top_cell, 2] * 0.025
@@ -119,12 +119,12 @@ The temperature boundary conditions are included in the model by calling `m.set_
         return
 ```
 
-## Visualization 
-The initial conditions are visualized by either calling, 
+## Visualization
+The initial conditions are visualized by either calling,
 ```python
     m.output.output_to_vtk(output_properties=output_props, ith_step=0)
 ```
-, and exporting the initial conditions to as *.vtk files or by accessing the solution vector in `m.physics.engine.X` directly in python. 
+, and exporting the initial conditions to as *.vtk files or by accessing the solution vector in `m.physics.engine.X` directly in python.
 ```python
 solution_vector = np.array(m.physics.engine.X)
 for i, name in enumerate(vars):
@@ -138,13 +138,13 @@ for i, name in enumerate(vars):
 ```
 
 ## Model physics
-### Thermodynamics 
-Thermodynamics properties are provided by the DARTS-flash python module. 
+### Thermodynamics
+Thermodynamics properties are provided by the DARTS-flash python module.
 A negative flash procedure with successive substitution is employed for resolving thermodynamic equilibrium
 calculations (Michelsen, 1982; Whitson and Michelsen, 1989). The fugacities of the vapor phase are evaluated
 using a cubic equation of state (Peng and Robinson, 1976) and the fugacities of the water phase are calculated
 using an activity model based on Henry’s constants (Ziabakhsh-Ganji and Kooi, 2012). The property correlations for SPE11
-and open-DARTS are presented in the following table. 
+and open-DARTS are presented in the following table.
 
 ![properties](Images/properties.PNG "properties")
 
@@ -173,12 +173,12 @@ for i, (region, corey_params) in enumerate(corey.items()):
     self.physics.add_property_region(property_container, i)
 ```
 
-### Dispersion 
-The diffusive flux is described by Fick's law and includes a dispersivity term. This term multiplies the scalar dispersivity coefficient, E, 
+### Dispersion
+The diffusive flux is described by Fick's law and includes a dispersivity term. This term multiplies the scalar dispersivity coefficient, E,
 with Darcy’s velocity. The velocity vector is reconstructed at cell centers using a least-squares
 solution of fluxes across all cell’s interfaces, then averaged between neighboring cells and explicitly incorporated
-into the numerical approximation of the dispersion term. By calling, 
+into the numerical approximation of the dispersion term. By calling,
 ```python
     m.init_dispersion()
 ```
-, velocity reconstruction is activated and the dispersion coefficients are set. 
+, velocity reconstruction is activated and the dispersion coefficients are set.
