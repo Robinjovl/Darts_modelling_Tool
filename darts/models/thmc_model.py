@@ -108,14 +108,14 @@ class THMCModel(DartsModel):
                 phases_name=phases,
                 components_name=components,
                 Mw=Mw,
-                eps_z=self.idata.obl.epsilon_z,
+                eps_z=self.idata.obl.min_z,
             )
         else:
             property_container = PropertyContainer(
                 phases_name=phases,
                 components_name=components,
                 Mw=Mw,
-                eps_z=self.idata.obl.epsilon_z,
+                eps_z=self.idata.obl.min_z,
                 temperature=1.0,
             )
 
@@ -165,7 +165,7 @@ class THMCModel(DartsModel):
                 max_p=self.idata.obl.max_p,
                 min_z=self.idata.obl.min_z,
                 max_z=self.idata.obl.max_z,
-                epsilon_z=self.idata.obl.epsilon_z,
+                epsilon_z=self.idata.obl.min_z,
                 min_t=self.idata.obl.min_t,
                 max_t=self.idata.obl.max_t,
                 state_spec=state_spec,
@@ -188,7 +188,7 @@ class THMCModel(DartsModel):
                 max_p=self.idata.obl.max_p,
                 min_z=self.idata.obl.min_z,
                 max_z=self.idata.obl.max_z,
-                epsilon_z=self.idata.obl.epsilon_z,
+                epsilon_z=self.idata.obl.min_z,
                 state_spec=state_spec,
                 discretizer=self.discretizer_name,
                 extrapolation_flag=True,
