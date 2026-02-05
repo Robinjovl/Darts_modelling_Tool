@@ -38,13 +38,13 @@ class Model(ZerodModel):
     def __init__(
         self,
         mode='analytical',
-        p_init=1e-3,
+        p_init=1e-5,
         sv_init=0.535,
         fixed_pressure=False,
         fixed_temperature=False,
-        energy_source=-2e3,
+        energy_source=1e5,
         poro=0.3,
-        dens_rock=3100.0,
+        dens_rock=1100.0,
         c_r=0.920,
     ):
         """
@@ -59,11 +59,11 @@ class Model(ZerodModel):
         :type fixed_pressure: bool
         :param fixed_temperature: flag to fix temperature or not
         :type fixed_temperature: bool
-        :param energy_source: float, energy source, in kJ/day
+        :param energy_source: float, energy source, in kJ/day/m3
         :type energy_source: float
         :param poro: float, porosity of the reservoir
         :type poro: float
-        :param dens_rock: float, density of the rock, in kg/m^3
+        :param dens_rock: float, density of the rock, in kg/m3
         :type dens_rock: float
         :param c_r: float, heat capacity of the rock, in kJ/kg/K
         :type c_r: float

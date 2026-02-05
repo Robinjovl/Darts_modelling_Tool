@@ -42,8 +42,8 @@ if __name__ == "__main__":
     with tee_stdout("simulation.log"):
         m = Model(
             mode="analytical",
-            p_init=1e-3,
-            energy_source=2e5,
+            p_init=1e-5,
+            energy_source=1e5,
             sv_init=0.535,
             fixed_pressure=False,
         )
@@ -54,4 +54,4 @@ if __name__ == "__main__":
             raise RuntimeError("Zerod run failed to reach the final time.")
 
         m.plot_ph_path(use_log_p=True)
-        m.plot_state_history()
+        m.plot_state_history(use_log_p=True)

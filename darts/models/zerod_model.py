@@ -239,7 +239,7 @@ class ZerodModel(DartsModel):
             ## accumulation
             dAdx = np.zeros((n_vars, n_vars))
 
-            # mass accumulation: M = c_r * PV * z_c * sum(sat * rho_m) [kmol/m3]
+            # mass accumulation: M = phi * z_c * sum(sat * rho_m) [kmol/m3]
             zc = np.append(x[1:nc], 1 - np.sum(x[1:nc]))
             dz_dx = np.zeros((nc, n_vars))
             for i in range(nc - 1):
@@ -251,7 +251,7 @@ class ZerodModel(DartsModel):
             ) + np.sum(props.sat[ph, None] * props.dens_m_ders[ph], axis=0)
             dAdx[:nc] = self.poro * (dz_dx * rho_t + zc * drho_t_dx)
 
-            # solid energy accumulation: Es = c_r * RV * c_r * rho_m_r * T - T0 [kJ/m3]
+            # solid energy accumulation: Es = phi * rho_r * c_r * (T - T0) [kJ/m3]
             dEs_dx = np.zeros(n_vars)
             dEs_dx[0] = (1 - self.poro) * self.dens_rock * self.c_r * props.dTdP
             dEs_dx[1:nc] = (
@@ -260,7 +260,7 @@ class ZerodModel(DartsModel):
             dEs_dx[nc] = (1 - self.poro) * self.dens_rock * self.c_r * props.dTdX
             dAdx[nc] += dEs_dx
 
-            # fluid energy accumulation: Ef = c_r * PV * sum(sat * rho_m * h) [kJ/m3]
+            # fluid energy accumulation: Ef = phi * sum(sat * rho_m * h) [kJ/m3]
             dEf_dx = (
                 np.sum(
                     props.sat_ders[ph]
@@ -712,10 +712,10 @@ class ZerodModel(DartsModel):
         alpha=1.0,
         grid=True,
         legend=True,
-        label_fontsize=10,
+        label_fontsize=12,
         title_fontsize=12,
-        tick_fontsize=9,
-        legend_fontsize=9,
+        tick_fontsize=12,
+        legend_fontsize=12,
         time_label="time",
         time_units="days",
         pressure_label="pressure, bar",
@@ -725,6 +725,7 @@ class ZerodModel(DartsModel):
         temperature_color="tab:orange",
         enthalpy_color="tab:green",
         composition_colors=None,
+        use_log_p=False,
     ):
         """
         Plot pressure, compositions, enthalpy, and temperature vs time.
@@ -771,6 +772,8 @@ class ZerodModel(DartsModel):
         :type enthalpy_color: str
         :param composition_colors: Colors for compositions (list or dict).
         :type composition_colors: list[str] or dict[str, str] or None
+        :param use_log_p: Use logarithmic scale for pressure axis.
+        :type use_log_p: bool
         :return: Matplotlib figure and axes.
         :rtype: tuple(matplotlib.figure.Figure, list[matplotlib.axes.Axes])
         """
@@ -847,6 +850,10 @@ class ZerodModel(DartsModel):
             alpha=alpha,
             label=pressure_label,
         )
+        if use_log_p:
+            if np.any(pressure <= 0):
+                raise ValueError("Log pressure scale requires positive pressures.")
+            axes[idx].set_yscale("log")
         axes[idx].set_ylabel(pressure_label, fontsize=label_fontsize)
         axes[idx].set_title("Pressure", fontsize=title_fontsize)
         idx += 1
