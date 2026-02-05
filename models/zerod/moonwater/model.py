@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.optimize import root_scalar
 
 from darts.engines import value_vector
 from darts.models.zerod_model import ZerodModel
@@ -38,7 +39,6 @@ class Model(ZerodModel):
         self,
         mode='analytical',
         p_init=1e-3,
-        t_init=230.0,
         sv_init=0.535,
         fixed_pressure=False,
         fixed_temperature=False,
@@ -54,8 +54,6 @@ class Model(ZerodModel):
         :type mode: str
         :param p_init: float, initial pressure, in bar
         :type p_init: float
-        :param t_init: float, initial temperature, in Kelvin
-        :type t_init: float
         :param sv_init: float, initial vapour saturation
         :type sv_init: float
         :param fixed_pressure: flag to fix pressure or not
@@ -78,7 +76,6 @@ class Model(ZerodModel):
         self.timer.node["initialization"].start()
         self.mode = mode
         self.p_init = p_init
-        self.t_init = t_init
         self.sv_init = sv_init
         self.energy_source = EnergySource(energy_source)
         self.volume = volume
@@ -88,7 +85,7 @@ class Model(ZerodModel):
 
         self.set_physics()
 
-        self.set_sim_params(n_vars=self.property_container.n_vars, first_ts=1e-4, mult_ts=2, max_ts=1e-3)
+        self.set_sim_params(n_vars=self.property_container.n_vars, first_ts=1e-4, mult_ts=2, max_ts=1e-4)
         self.timer.node["initialization"].stop()
 
     def set_physics(self):
@@ -107,13 +104,15 @@ class Model(ZerodModel):
         flash_ph = DARTSFlash(comp_data=comp_data)
         flash_ph.add_eos("ice", ice_eos)
         flash_ph.add_eos("steam", steam_eos)
+        self.temp_min = 180.0
+        self.temp_max = 650.0
         flash_ph.init_flash(
             flash_type=DARTSFlash.FlashType.PHFlash,
             eos_order=phases,
             f_tol=1e-8,
             t_tol=1e-1,
-            t_min=180.0,
-            t_max=650.0,
+            t_min=self.temp_min,
+            t_max=self.temp_max,
         )
         self.flash_ph = flash_ph
 
@@ -183,25 +182,91 @@ class Model(ZerodModel):
         h_steam_ev = self.property_container.enthalpy_ev['steam']
         rho_ice_ev = self.property_container.density_ev['ice']
         rho_steam_ev = self.property_container.density_ev['steam']
+        phases = self.property_container.phases_name
+        try:
+            steam_idx = phases.index("steam")
+        except ValueError as exc:
+            raise RuntimeError("Expected 'steam' in phase list.") from exc
 
-        h_ice = h_ice_ev.evaluate(pressure=self.p_init, temperature=self.t_init, x=[1.0])
-        rho_ice = rho_ice_ev.evaluate(pressure=self.p_init, temperature=self.t_init, x=[1.0])
-        h_steam = h_steam_ev.evaluate(pressure=self.p_init, temperature=self.t_init, x=[1.0])
-        rho_steam = rho_steam_ev.evaluate(pressure=self.p_init, temperature=self.t_init, x=[1.0])
+        if not 0.0 <= self.sv_init <= 1.0:
+            raise ValueError("sv_init must be in [0, 1].")
+
+        t_min = getattr(self, "temp_min", 180.0)
+        t_max = getattr(self, "temp_max", 650.0)
+
+        def saturation_error(enthalpy):
+            state = np.array([self.p_init, enthalpy], dtype=float)
+            self.property_container.evaluate(state)
+            return float(self.property_container.sat[steam_idx] - self.sv_init)
+
+        # Bracket enthalpy using pure-phase enthalpies at temperature bounds
+        h_low = h_ice_ev.evaluate(pressure=self.p_init, temperature=t_min, x=[1.0])
+        h_high = h_steam_ev.evaluate(pressure=self.p_init, temperature=t_max, x=[1.0])
+
+        if h_low > h_high:
+            h_low, h_high = h_high, h_low
+
+        f_low = saturation_error(h_low)
+        f_high = saturation_error(h_high)
+
+        if np.isclose(f_low, 0.0, atol=1e-10):
+            self.h_init = float(h_low)
+        elif np.isclose(f_high, 0.0, atol=1e-10):
+            self.h_init = float(h_high)
+        else:
+            if f_low * f_high > 0:
+                bracket = None
+                grid = np.linspace(h_low, h_high, 25)
+                h_prev, f_prev = h_low, f_low
+                for h_val in grid[1:]:
+                    f_val = saturation_error(h_val)
+                    if f_prev * f_val <= 0:
+                        bracket = (h_prev, h_val)
+                        break
+                    h_prev, f_prev = h_val, f_val
+                if bracket is None:
+                    raise RuntimeError(
+                        f"Failed to bracket enthalpy for sv_init={self.sv_init} "
+                        f"at p_init={self.p_init}."
+                    )
+                h_low, h_high = bracket
+
+            sol = root_scalar(
+                saturation_error,
+                bracket=(h_low, h_high),
+                method="brentq",
+                xtol=1e-10,
+                rtol=1e-8,
+                maxiter=200,
+            )
+            if not sol.converged:
+                raise RuntimeError(
+                    f"Enthalpy solve did not converge for p_init={self.p_init}, "
+                    f"sv_init={self.sv_init}."
+                )
+            self.h_init = float(sol.root)
+
+        # Evaluate properties at solved enthalpy
+        self.property_container.evaluate(np.array([self.p_init, self.h_init], dtype=float))
+        self.temp = float(self.property_container.temperature)
+
+        sv_effective = float(self.property_container.sat[steam_idx])
+        h_ice = h_ice_ev.evaluate(pressure=self.p_init, temperature=self.temp, x=[1.0])
+        rho_ice = rho_ice_ev.evaluate(pressure=self.p_init, temperature=self.temp, x=[1.0])
+        h_steam = h_steam_ev.evaluate(pressure=self.p_init, temperature=self.temp, x=[1.0])
+        rho_steam = rho_steam_ev.evaluate(pressure=self.p_init, temperature=self.temp, x=[1.0])
 
         rho_regolith = 3100.  # density=3100 kg/m3
         poro = self.poro
 
-        # Mass fractions for the mixed phase (5.6% ice, 94.4% steam)
-        mass_fraction_ice = poro * (1 - self.sv_init) * rho_ice / \
-                            (poro * ((1 - self.sv_init) * rho_ice + self.sv_init * rho_steam) + (1 - poro) * rho_regolith)
-        molar_fraction_ice = rho_ice * (1 - self.sv_init) / (rho_ice * (1 - self.sv_init) + self.sv_init * rho_steam)
+        # Mass fractions for the mixed phase
+        mass_fraction_ice = poro * (1 - sv_effective) * rho_ice / \
+                            (poro * ((1 - sv_effective) * rho_ice + sv_effective * rho_steam) + (1 - poro) * rho_regolith)
 
-        # Calculate enthalpy for ice and steam
-        self.h_init = molar_fraction_ice * h_ice + (1 - molar_fraction_ice) * h_steam
         self.initial_state = np.array([self.p_init, self.h_init])
 
-        print(f"Setting intial conditions for p={self.p_init}, t={self.t_init}, sv={self.sv_init}")
+        print(f"Setting initial conditions for given p={self.p_init}, sv={sv_effective}")
+        print(f"Target sv={self.sv_init}, solved h_total={self.h_init} temp={self.temp}")
         print(f"wt_ice={mass_fraction_ice}")
-        print(f"Calculated h_ice: {h_ice}, h_steam: {h_steam}, h_total: {self.h_init}")
+        print(f"Calculated h_ice: {h_ice}, h_steam: {h_steam}")
         print(f"Ice density = {rho_ice}, Steam density = {rho_steam}")
