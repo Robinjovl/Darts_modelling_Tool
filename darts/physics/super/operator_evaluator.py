@@ -120,7 +120,7 @@ class ReservoirOperators(OperatorsSuper):
         """ CONSTRUCT OPERATORS HERE """
 
         """ Alpha operator represents accumulation term """
-        # fluid mass accumulation: c_r phi^T z_c* [-] rho_m^T [kmol/m3]
+        # fluid mass accumulation: c_r [1/bar] z_c* [-] rho_m^T [kmol/m3]
         values_np[self.ACC_OP : self.ACC_OP + self.nc_fl] = (
             self.compr * density_tot * zc[: self.nc_fl]
         )
@@ -140,16 +140,17 @@ class ReservoirOperators(OperatorsSuper):
             ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
         """ Molar density operator """
+        # molar density: rho_mj [kmol/m3]
         values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
             self.property.ph
         ]
 
         """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
-        # fluid diffusive flux sat: c_r phi_f s_j rho_mj [kmol/m3] (kmol/m3)
+        # fluid diffusive flux sat: c_r [1/bar] phi_f s_j (1/bar)
         values_np[self.UPSAT_OP + self.property.ph] = (
             self.compr * self.phi_f * self.property.sat[self.property.ph]
         )
-        # solid diffusive flux sat: c_r z_s* (-)
+        # solid diffusive flux sat: c_r [1/bar] z_s* (1/bar)
         values_np[self.UPSAT_OP + self.np_fl : self.UPSAT_OP + self.np_fl + self.ns] = (
             self.compr * zc[self.nc_fl : self.nc_fl + self.ns]
         )
