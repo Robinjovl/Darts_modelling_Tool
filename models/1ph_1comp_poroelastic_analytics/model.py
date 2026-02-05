@@ -243,11 +243,12 @@ class Model(THMCModel):
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
+        self.idata.obl.epsilon_z = 1e-10
         self.idata.obl.min_p = -5.
         self.idata.obl.max_p = 500.
         self.idata.obl.min_t = -10.
         self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
+        self.idata.obl.min_z = 0.
+        self.idata.obl.max_z = 1.
 
         super().set_input_data()  # check

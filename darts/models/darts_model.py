@@ -68,20 +68,16 @@ class DartsModel:
     This is a base class for creating a model in DARTS.
     A model is composed of a :class:`Reservoir` object and a :class:`Physics` object.
     Initialization and communication between these two objects takes place through the Model object
-
-    :ivar reservoir: Reservoir object
-    :type reservoir: :class:`ReservoirBase`
-    :ivar physics: Physics object
-    :type physics: :class:`PhysicsBase`
     """
-
-    reservoir: ReservoirBase
-    physics: PhysicsBase
 
     def __init__(self):
         """
         Initialize DartsModel class.
 
+        :ivar reservoir: Reservoir object
+        :type reservoir: :class:`ReservoirBase`
+        :ivar physics: Physics object
+        :type physics: :class:`PhysicsBase`
         :ivar timer: Timer object
         :type timer: :class:`darts.engines.timer_node`
         :ivar params: Object to set simulation parameters
@@ -91,6 +87,10 @@ class DartsModel:
         engines_pbi()
         discretizer_pbi()
         package_pbi()
+
+        # Create member variables reservoir and physics
+        self.reservoir: ReservoirBase = None
+        self.physics: PhysicsBase = None
 
         # Create time_node object for time record
         self.timer = timer_node()
@@ -179,6 +179,7 @@ class DartsModel:
         )
         if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
+        self.params.sim_eps = self.physics.sim_eps
 
         # Initialize well objects
         self.reservoir.init_wells()
@@ -590,7 +591,7 @@ class DartsModel:
 
         # same logic as in engine.run
         if fabs(t) < 1e-15 or not hasattr(self, "prev_dt"):
-            dt = data_ts.dt_first
+            dt = min(data_ts.dt_first, days)
         elif restart_dt > 0.0:
             dt = restart_dt
         else:
@@ -635,7 +636,7 @@ class DartsModel:
                 if verbose:
                     max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
                     print(
-                        f"T={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tMULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
+                        f"#{ts_counter:d}\tT={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)

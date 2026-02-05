@@ -50,6 +50,7 @@ class Model(CICDModel):
     def set_physics(self, idata: InputData):
         self.physics = BlackOil(idata, self.timer, thermal=False)
         zero = 1e-12
+        # epsilon = 1e-13
         self.inj_composition = [1 - 2 * zero, zero]
         self.ini_stream = [0.001225901537, 0.7711341309]
 
@@ -80,13 +81,17 @@ class Model(CICDModel):
         # example - how to change the properties
         # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
 
-        idata.obl.n_points = 5000
+        idata.obl.n_points = 5001
         idata.obl.zero = 1e-12
+        idata.obl.epsilon_z = 1e-13
+        # idata.obl.epsilon_z = 0.
         idata.obl.min_p = 1.
         idata.obl.max_p = 450.
         idata.obl.min_t = -10.
         idata.obl.max_t = 100.
-        idata.obl.min_z = idata.obl.zero/10
-        idata.obl.max_z = 1 - idata.obl.zero/10
+        idata.obl.min_z = 0.
+        # idata.obl.min_z = 1e-13
+        idata.obl.max_z = 1.
+        # idata.obl.max_z = 1.-1e-13
 
         return idata

@@ -60,7 +60,7 @@ class Model(CICDModel):
         self.ini_stream = [1e-6]
         self.inj_composition = [0.3]
 
-        property_container = PropertyContainer(phase_name=phases, component_name=components, min_z=zero, Mw=Mw)
+        property_container = PropertyContainer(phase_name=phases, component_name=components, eps_z=zero, Mw=Mw)
 
         """ properties correlations """
         # foam parameter, fmmob, fmdry, epdry, fmmob = 0 no foam generation
@@ -68,7 +68,7 @@ class Model(CICDModel):
 
         ki = np.array([44.5, 2.05e-2])
         # ki = np.array([40, 2.47e-4])
-        property_container.flash_ev = ConstantK(nc=len(components), ki=ki, eps=1e-12)
+        property_container.flash_ev = ConstantK(nc=len(components), ki=ki, eps_z=1e-12)
         # property_container.flash_ev = Flash(components)
         # property_container.density_ev = dict([('wat', DensityBrine()),
         #                                       ('gas', DensityVap())])
@@ -84,7 +84,7 @@ class Model(CICDModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = CustomPhysics(components, phases, self.timer,
-                                     n_points=200, min_p=1., max_p=1000., min_z=zero/10, max_z=1.-zero/10,
+                                     n_points=200, min_p=1., max_p=1000., min_z=0., max_z=1., epsilon_z=eps_z,
                                      state_spec=state_spec, cache=False)
         self.physics.add_property_region(property_container)
         return

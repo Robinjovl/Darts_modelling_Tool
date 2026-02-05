@@ -117,7 +117,7 @@ for mdir in accepted_dirs:
         # save properties as an *.nc file
         # !! only for structured reservoir class !!
         xarray_dataset = n.output.output_to_xarray(output_properties = output_props)
-        n.output.plot_xarray(xarray_dataset, timestep=Nt, x = None, y = None, z = 0)
+        n.output.output_to_plt(xarray_data=xarray_dataset, timestep=Nt, x_slice=None, y_slice=None, z_slice=0)
     except:
         pass
 
@@ -173,7 +173,7 @@ for mdir in accepted_dirs:
 
     # export and save properties as an *.nc file
     xarray_dataset = m.output.output_to_xarray(output_properties = m.physics.vars + m.output.properties)
-    m.output.plot_xarray(xarray_dataset, timestep=Nt, x=None, y=None, z=0)
+    m.output.output_to_plt(xarray_data=xarray_dataset, timestep=Nt, x_slice=None, y_slice=None, z_slice=0)
 
     # output_to_vtk
     try:
@@ -190,7 +190,7 @@ for mdir in accepted_dirs:
     # m.output.filter_phase_props(new_prop_keys=['somethimgsomething']) # raises a ValueError
     time_vector, property_array = m.output.output_properties(output_properties=m.output.properties)
     xarray_dataset = m.output.output_to_xarray(output_properties=m.output.properties)
-    m.output.plot_xarray(xarray_dataset, timestep=Nt, x=None, y=None, z=0)
+    m.output.output_to_plt(xarray_data=xarray_dataset, timestep=Nt, x_slice=None, y_slice=None, z_slice=0)
 
     """ --------------------- RESTART MODEL --------------------- """
     if RESTART:
@@ -207,8 +207,7 @@ for mdir in accepted_dirs:
 
         output_props = m_restarted.physics.vars + m_restarted.output.properties
         xarray_dataset = m_restarted.output.output_to_xarray(output_properties=output_props)
-        for i in range(len(xarray_dataset['time'])):
-            m_restarted.output.plot_xarray(xarray_dataset, timestep = i, z=0)
+        m_restarted.output.output_to_plt(xarray_data=xarray_dataset, z_slice=0)
 
         try:
             m_restarted.output.output_to_vtk(output_properties=output_props)
