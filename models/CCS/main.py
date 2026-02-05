@@ -11,12 +11,23 @@ m = Model(logspace=True)
 m.init()
 m.set_output()
 
-m.run(1)
+data_dt = None
 
-time_data_dict = m.output.store_well_time_data(save_output_files=True)
+timesteps = [1.e-3, 0.92, 2.-1e-3, 8., 55., 300.] + [365] * 9
+max_ts = [1e-3, 0.01, 0.02, 0.5, 1., 5.] + [20] * 9
 
-m.print_timers()
-m.print_stat()
+for j, ts in enumerate(timesteps[:2]):
+
+    m.data_ts.dt_mult = 2
+    m.data_ts.dt_max = max_ts[j]
+    m.data_ts.eta[-1] = 100
+
+    if data_dt is not None:
+        data_dt.dt_max = max_ts[j]
+        m.run(data_dt, ts)
+    else:
+        # m.set_sim_params(max_ts=max_ts[j])
+        m.run(ts)
 
 """ Define output """
 props = ['satV', 'rho_g']
@@ -33,3 +44,9 @@ logx = True
 m.output.output_to_plt(sol_filepath=m.output.sol_filepath,  # if not provided, it will plot last timestep from engine
                        output_properties=output_props, lims=lims, plot_zeros=False,
                        aspect_ratio=aspect, logx=logx, cmap=cmap)
+
+# compute and save well time data in m.output.output_folder
+m.output.store_well_time_data(save_output_files=True)
+
+m.print_timers()
+m.print_stat()
