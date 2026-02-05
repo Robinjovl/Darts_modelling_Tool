@@ -45,7 +45,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
             '2ph_do_thermal_mpfa',
             # 2ph_do_thermal doesn't converge well, so we skip it on GPU
-            # '2ph_do_thermal',
+            '2ph_do_thermal',
         ]
 
         # Tests for drift-flux well model (DFM) (implemented only for CPU)
