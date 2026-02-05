@@ -40,13 +40,14 @@ class Model(CICDModel):
     def set_physics(self):
         """Physical properties"""
         zero = 1e-13
+        epsilon = 1e-14
         components = ["w", "o"]
         phases = ["wat", "oil"]
 
         self.inj = value_vector([zero])
         self.ini = value_vector([1 - zero])
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=zero/10)
+        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
 
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
                                               ('oil', DensityBasic(compr=5e-3, dens0=500))])
@@ -59,7 +60,8 @@ class Model(CICDModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1 - zero)
+                                     n_points=400, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -85,11 +87,11 @@ class Model(CICDModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
+    def __init__(self, phases_name, components_name, eps_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=1.)
 
     def evaluate(self, state):
         """

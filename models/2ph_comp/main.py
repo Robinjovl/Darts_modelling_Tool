@@ -45,6 +45,8 @@ def plot_sol(n):
 
 
 if __name__ == '__main__':
+
+    redirect_darts_output('run.log')
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()

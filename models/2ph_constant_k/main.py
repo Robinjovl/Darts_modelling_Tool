@@ -727,7 +727,7 @@ nx = 300
 # 2D
 # run(itor_type='linear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='2D', nx=nx, is_barycentric=True, vtk_output=False)
 # SPE10
-run(itor_type='multilinear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='SPE10_60_220_85', is_barycentric=False, vtk_output=True)
+run(itor_type='multilinear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='spe10_60_220_85', is_barycentric=False, vtk_output=True)
 
 # params = {'itor_type': ['multilinear', 'multilinear', 'linear', 'linear'],
 #            'itor_mode': 4 * ['adaptive'],
