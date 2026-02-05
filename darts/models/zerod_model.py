@@ -246,9 +246,9 @@ class ZerodModel(DartsModel):
                 dz_dx[i, i + 1] = 1.0
                 dz_dx[nc - 1, i + 1] = -1.0
             rho_t = np.sum(props.sat[ph] * props.dens_m[ph])
-            drho_t_dx = np.sum(props.sat_ders[ph] * props.dens_m[ph], axis=0) + np.sum(
-                props.sat[ph] * props.dens_m_ders[ph], axis=0
-            )
+            drho_t_dx = np.sum(
+                props.sat_ders[ph] * props.dens_m[ph, None], axis=0
+            ) + np.sum(props.sat[ph, None] * props.dens_m_ders[ph], axis=0)
             dAdx[:nc] = self.poro * (dz_dx * rho_t + zc * drho_t_dx)
 
             # solid energy accumulation: Es = c_r * RV * c_r * rho_m_r * T - T0 [kJ/m3]
@@ -263,13 +263,19 @@ class ZerodModel(DartsModel):
             # fluid energy accumulation: Ef = c_r * PV * sum(sat * rho_m * h) [kJ/m3]
             dEf_dx = (
                 np.sum(
-                    props.sat_ders[ph] * props.dens_m[ph] * props.enthalpy[ph], axis=0
+                    props.sat_ders[ph]
+                    * (props.dens_m[ph] * props.enthalpy[ph])[:, None],
+                    axis=0,
                 )
                 + np.sum(
-                    props.sat[ph] * props.dens_m_ders[ph] * props.enthalpy[ph], axis=0
+                    (props.sat[ph] * props.enthalpy[ph])[:, None]
+                    * props.dens_m_ders[ph],
+                    axis=0,
                 )
                 + np.sum(
-                    props.sat[ph] * props.dens_m[ph] * props.enthalpy_ders[ph], axis=0
+                    (props.sat[ph] * props.dens_m[ph])[:, None]
+                    * props.enthalpy_ders[ph],
+                    axis=0,
                 )
             )
             dEf_dx[0] -= 100

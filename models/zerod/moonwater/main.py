@@ -49,7 +49,7 @@ if __name__ == "__main__":
         )
         m.init()
 
-        ok = m.run(days=0.1, method="radau")
+        ok = m.run(days=1, method="radau")
         if not ok:
             raise RuntimeError("Zerod run failed to reach the final time.")
 
