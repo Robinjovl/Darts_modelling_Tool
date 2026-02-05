@@ -85,21 +85,21 @@ class Model(DartsModel):
             "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 3},
         }    
 
-    def convert_ijk_to_gindex_0based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
+    def convert_ijk_to_gindex_1based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
         """
         Convert (i,j,k) in 1-based to global index in 0-based
         """
         g_index_0based = (k_1based - 1) * nx * ny + (j_1based - 1) * nx + (i_1based - 1)
         return g_index_0based
     
-    def ijk1_to_lin(self, i0: int, j0: int, k0: int, nx: int, ny: int) -> int:
+    def ijk0_to_lin(self, i0: int, j0: int, k0: int, nx: int, ny: int) -> int:
         """Convert 0-based (i,j,k) to linear index"""
         return k0 * nx * ny + j0 * nx + i0
 
     def create_actnum_with_lgr(self, nx0, ny0, nz0, refined_ij_list):
         actnum0 = np.ones(nx0 * ny0 * nz0, dtype=np.int32)
         for (i_c,j_c,k_c) in refined_ij_list:
-            g = self.convert_ijk_to_gindex_0based(i_c, j_c, k_c, nx0, ny0)
+            g = self.convert_ijk_to_gindex_1based(i_c, j_c, k_c, nx0, ny0)
             actnum0[g] = 0  # deactivate the coarse cell that will be refined
         return actnum0
 
@@ -109,18 +109,54 @@ class Model(DartsModel):
         dy_image = np.r_[dy_parent, np.full(ry, dy_parent/ry), dy_parent]
 
         return dx_image, dy_image
+    
+    def build_dz (self, dz0:float, total_thickness: float, ratio: float = 2.0):
+        layers = []
+        s = 0
+        dz = float(dz0)
+        while dz + s < total_thickness:
+            layers.append(dz)
+            s += dz
+            dz*= ratio
+        layers.append(total_thickness - s) # add last layer
+        return np.asarray(layers, dtype=float)    
 
     def set_reservoir(self):
         self.lgrs = self.build_lgr_definition()
 
+        #Build Level0 with actnum + overburden and underburden
+        nx0, ny0 = 80, 80 # global grid size
+        dx0, dy0 = 100, 100
+        nz_res = 40
+        dz_res = 5
 
+        over_thickness = 2000.0
+        under_thickness = 2000.0
+        dz_over = self.build_dz(dz0=dz_res, total_thickness=over_thickness)
+        dz_over = dz_over[::-1]  # reverse for overburden
 
-        #Build Level0 with actnum
-        nx0, ny0, nz0 = 5, 3, 3  # global grid size
-        dx0, dy0, dz0 = 100, 100, 5
+        dz_under = self.build_dz(dz0=dz_res,total_thickness=under_thickness)
+        nz_over = len(dz_over)
+        nz_under = len(dz_under)
+        nz0 = nz_over + nz_res + nz_under
+        dz0_layers = np.concatenate([dz_over, np.full(nz_res, dz_res, dtype=float), dz_under])
         permx0, permy0, permz0 = 50, 50, 50
         poro0 = 0.1
-       
+        poro_burden = 0.01
+        perm_burden = 0.001
+
+        # thermal properties
+        rcond_res = 181.44 # KJ/m/day/k
+        hcap_res = 2650 # kJ/m3/K assume reservoir density here
+        rcond_over, rcond_under = 149.54, 149.54
+        hcap_over, hcap_under = 2347.29, 2347.29
+
+        reservoir_top = 2000
+        
+       # update lgr k range after adding overburden layer
+        for lname, _cfg in self.lgrs.items():
+             _cfg['lgr_coords_in_parent_grid']['k_range'] = [nz_over + 1, nz_over + nz_res]
+
 
         refined_cells_ijk = []
         for name, cfg in self.lgrs.items():
@@ -136,14 +172,26 @@ class Model(DartsModel):
         actnum0 = self.create_actnum_with_lgr(nx0, ny0, nz0, refined_cells_ijk)
 
 
-        self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0,
+        self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
                                       permx=permx0, permy=permy0, permz=permz0, poro=poro0,depth= None, 
-                                      start_z=2000,actnum=actnum0, rcond=259.2, hcap=5250,)
-
+                                      start_z=0,actnum=actnum0, rcond=rcond_res, hcap=hcap_res,)
+        boundary_factor = 1e6
+        base_vol = float(dx0 * dy0 * dz_res)
+        v_big = base_vol * boundary_factor
+        self.level0.boundary_volumes = {
+            "xy_minus": None,
+            "xy_plus": None,
+            "yz_minus": v_big,
+            "yz_plus": v_big,
+            "xz_minus": v_big,
+            "xz_plus": v_big,
+        }
 
         # Build Level1 grids and imaginary grids
         self.level1 = {}
         self.level1_imag = {}
+        self.level1_imag_z = {}
+        
         for name, cfg in self.lgrs.items():
             rx, ry, rz = cfg['lgr_coords_in_parent_grid']['refine']
             k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
@@ -152,18 +200,29 @@ class Model(DartsModel):
             nx1,ny1,nz1 = rx, ry, nk
             dx1 = dx0 / rx
             dy1 = dy0 / ry
-            dz1 = dz0
+            dz1 = dz_res
 
             self.level1[name] = StructReservoir(self.timer, nx=nx1, ny=ny1, nz=nz1, dx=dx1, dy=dy1, dz=dz1,
-                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000, rcond=259.2, hcap=5250)
+                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000, rcond=rcond_res, hcap=hcap_res)
 
             dx_imag, dy_imag = self.auto_image_grid_dx_dy(dx0, dy0, rx, ry)
 
             # 2D imaginary grid per layer
-            self.level1_imag[name] = StructReservoir(self.timer, nx=rx+2, ny=ry+2, nz=1, dx=dx_imag, dy=dy_imag, dz=dz0,
-                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000,rcond=259.2, hcap=5250,)
+            self.level1_imag[name] = StructReservoir(self.timer, nx=rx+2, ny=ry+2, nz=1, dx=dx_imag, dy=dy_imag, dz=dz_res,
+                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000,rcond=rcond_res, hcap=hcap_res,)
 
+            #create a new imaginary grid for overburden and underburden connections
+            permz_x = np.full((rx, ry, 2), permx0, dtype=float) 
+            permz_x [:,:,0] = perm_burden
+            permz_y = np.full((rx, ry, 2), permy0, dtype=float)
+            permz_y [:,:,0] = perm_burden
+            permz_z = np.full((rx, ry, 2), permz0, dtype=float)
+            permz_z [:,:,0] = perm_burden
+        
 
+            self.level1_imag_z[name] = StructReservoir(self.timer, nx=rx, ny=ry,nz=2, dx =dx1, dy=dy1, dz= dz1,
+                                                  permx=permz_x, permy=permz_y, permz=permz_z, poro=poro0, depth= None, start_z=2000,rcond=rcond_res, hcap=hcap_res,)
+            
         cm_all, cp_all, T_all, T_all_therm, meta = self.assemble_lgr_connections_eclipse()
 
        # assemble properties
@@ -174,17 +233,49 @@ class Model(DartsModel):
         dx0_arr = disc0.convert_to_flat_array(self.level0.global_data['dx'], 'dx')[l2g0]
         dy0_arr = disc0.convert_to_flat_array(self.level0.global_data['dy'], 'dy')[l2g0]
         dz0_arr = disc0.convert_to_flat_array(self.level0.global_data['dz'], 'dz')[l2g0]
-        kx0_arr = disc0.convert_to_flat_array(self.level0.global_data['permx'], 'permx')[l2g0]
-        ky0_arr = disc0.convert_to_flat_array(self.level0.global_data['permy'], 'permy')[l2g0]
-        kz0_arr = disc0.convert_to_flat_array(self.level0.global_data['permz'], 'permz')[l2g0]
-        poro0_arr  = disc0.convert_to_flat_array(self.level0.global_data['poro'],  'poro')[l2g0]
+        
         depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
-        vol_g0 = np.ones(self.level0.nx*self.level0.ny*self.level0.nz, dtype=float) * (dx0*dy0*dz0)
-        volume0_arr = vol_g0[l2g0]
+       
+        volume0_arr = np.array(self.level0.volume, copy=False).astype(float)
+        # vol_g0 = (np.repeat(dz0_layers, nx0 * ny0) * dx0 * dy0).astype(float)
+        # volume0_arr = vol_g0[l2g0]
+        # thermal properties for level 0 varying with ob and res
+        k_index0 = np.arange(self.level0.n, dtype=np.int32) // (nx0 * ny0)
+
+        rcon0_full = np.empty(self.level0.n, dtype=float)
+        hcap0_full = np.empty(self.level0.n, dtype=float)
+        poro0_full = np.full(self.level0.n, poro_burden, dtype=float)
+        kx0_full = np.full(self.level0.n, perm_burden, dtype=float)
+        ky0_full = np.full(self.level0.n, perm_burden, dtype=float)
+        kz0_full = np.full(self.level0.n, perm_burden, dtype=float)
+  
+        mask_over = k_index0 < nz_over
+        mask_res  = (k_index0 >= nz_over) & (k_index0 < nz_over + nz_res)
+        mask_under = k_index0 >= (nz_over + nz_res)
+
+        rcon0_full[mask_over] = rcond_over
+        rcon0_full[mask_res] = rcond_res
+        rcon0_full[mask_under] = rcond_under
+        hcap0_full[mask_over] = hcap_over
+        hcap0_full[mask_res] = hcap_res
+        hcap0_full[mask_under] =hcap_under
+        poro0_full[mask_res] = poro0
+        kx0_full [mask_res] = permx0
+        ky0_full [mask_res] = permy0
+        kz0_full [mask_res] = permz0
+
+        rcon0_arr = rcon0_full[l2g0]
+        hcap0_arr = hcap0_full[l2g0]
+        kx0_arr = kx0_full[l2g0]
+        ky0_arr = ky0_full[l2g0]
+        kz0_arr = kz0_full[l2g0]
+        poro0_arr = poro0_full[l2g0]
+        
 
         dx_list = [dx0_arr]; dy_list = [dy0_arr]; dz_list = [dz0_arr]
         kx_list = [kx0_arr]; ky_list = [ky0_arr]; kz_list = [kz0_arr]
         poro_list = [poro0_arr]; depth_list = [depth0_arr]; volume_list = [volume0_arr]
+        rcond_list = [rcon0_arr]; hcap_list = [hcap0_arr]
 
         for name in meta['lgr_orders']:
             rx, ry, rz = self.lgrs[name]['lgr_coords_in_parent_grid']['refine']
@@ -200,7 +291,9 @@ class Model(DartsModel):
 
             poro_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["poro"], "poro"))
             depth_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["depth"], "depth"))
-            volume_list.append(np.ones(self.level1[name].n, dtype=float) * (dx0/rx) * (dy0/ry) * dz0)
+            volume_list.append(np.ones(self.level1[name].n, dtype=float) * (dx0/rx) * (dy0/ry) * dz_res)
+            rcond_list.append(np.ones(self.level1[name].n, dtype=float)*rcond_res)
+            hcap_list.append(np.ones(self.level1[name].n, dtype=float) * hcap_res)
 
         dx = np.concatenate(dx_list)
         dy = np.concatenate(dy_list)
@@ -211,10 +304,10 @@ class Model(DartsModel):
         poro = np.concatenate(poro_list)
         depth = np.concatenate(depth_list)
         volume = np.concatenate(volume_list)
-        rcon = np.ones_like(poro) * 259.2
-        hcap = np.ones_like(poro) * 5250
+        rcon = np.concatenate(rcond_list)
+        hcap = np.concatenate(hcap_list)
 
-
+   
 
         self.reservoir = LGRReservoir(self.timer,
                                         cell_m=cm_all,
@@ -330,10 +423,10 @@ class Model(DartsModel):
             # at each k layer at level0
             for kk_local, k_layer in enumerate(range(k1, k2 +1)):
                 nbr_g = {
-                    "left" :self.convert_ijk_to_gindex_0based(ic-1, jc, k_layer, nx0, ny0),
-                    "right" :self.convert_ijk_to_gindex_0based(ic+1, jc, k_layer, nx0, ny0),
-                    "up" :self.convert_ijk_to_gindex_0based(ic, jc-1, k_layer, nx0, ny0),
-                    "down" :self.convert_ijk_to_gindex_0based(ic, jc+1, k_layer, nx0, ny0),
+                    "left" :self.convert_ijk_to_gindex_1based(ic-1, jc, k_layer, nx0, ny0),
+                    "right" :self.convert_ijk_to_gindex_1based(ic+1, jc, k_layer, nx0, ny0),
+                    "up" :self.convert_ijk_to_gindex_1based(ic, jc-1, k_layer, nx0, ny0),
+                    "down" :self.convert_ijk_to_gindex_1based(ic, jc+1, k_layer, nx0, ny0),
                 }
 
 
@@ -370,6 +463,80 @@ class Model(DartsModel):
                     fc_cp.append(fine_global)
                     fc_T.append(t)
                     fc_Tt.append(tt)
+        # add new z direction connections between overburden and underburden
+
+        cm_burden, cp_burden, T_burden, Tt_burden = [], [], [], []
+
+        for name in lgr_orders:
+            self.level1_imag_z[name].discretize()
+            disc_im = self.level1_imag_z[name].discretizer
+            cmi, cpi, Ti, Ti_therm = disc_im.calc_structured_discr()
+
+            lgr = self.lgrs[name]["lgr_coords_in_parent_grid"]
+            ic = lgr['i_range'][0]   # 1-based
+            jc = lgr['j_range'][0]   # 1-based
+            k1  = lgr['k_range'][0]   # 1-based
+            k2  = lgr['k_range'][1]   # 1-based
+
+            k_over  = k1 - 1
+            k_under = k2 + 1
+
+            over_coarse_local  = int(g2l0[self.convert_ijk_to_gindex_1based(ic, jc, k_over,  self.level0.nx, self.level0.ny)])
+            under_coarse_local = int(g2l0[self.convert_ijk_to_gindex_1based(ic, jc, k_under, self.level0.nx, self.level0.ny)])
+
+            nx_im = self.level1_imag_z[name].nx
+            ny_im = self.level1_imag_z[name].ny
+            nxy_im = nx_im * ny_im
+
+            # build sets/maps for imag grid
+            fine_set = set()
+            coarse_set = set()
+            top_map = {}
+            bot_map = {}
+
+            for j in range(ny_im):
+                for i in range(nx_im):
+                    fine_local = self.ijk0_to_lin(i, j, 1, nx_im, ny_im)   # k=1 fine layer in imag
+                    coarse_local = self.ijk0_to_lin(i, j, 0, nx_im, ny_im) # k=0 coarse/burden layer in imag
+                    fine_set.add(fine_local)
+                    coarse_set.add(coarse_local)
+
+                    # map imag fine-local (k=1) -> real LGR fine global (top/bottom layer)
+                    fine2d = j * nx_im + i
+                    top_fine_global = fine2d + lgr_offsets[name] 
+                    bot_fine_global = top_fine_global + (self.level1[name].n - self.level1[name].nx * self.level1[name].ny)
+                    top_map[fine_local] = top_fine_global
+                    bot_map[fine_local] = bot_fine_global
+
+          
+            def k_of(local_id: int) -> int:
+                return local_id // nxy_im
+
+            for cm, cp, t, tt in zip(cmi, cpi, Ti, Ti_therm):
+
+                # vertical filter
+                if abs(k_of(cm) - k_of(cp)) != 1:
+                    continue
+
+                if cm in fine_set and cp in coarse_set:
+                    fine_local = cm
+                elif cp in fine_set and cm in coarse_set:
+                    fine_local = cp
+                else:
+                    continue
+
+                # --- overburden ↔ LGR TOP ---
+                cm_burden.append(over_coarse_local)
+                cp_burden.append(top_map[fine_local])
+                T_burden.append(t)
+                Tt_burden.append(tt)
+
+                # --- underburden ↔ LGR BOTTOM ---
+                cm_burden.append(under_coarse_local)
+                cp_burden.append(bot_map[fine_local])
+                T_burden.append(t)
+                Tt_burden.append(tt)
+
 
         # assemble all connections
 
