@@ -6,14 +6,14 @@
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 
 /**
  * @brief Virtual interface class for evaluation of physical properties values
  *        Implemented mainly by different C++ physical kernels from darts.physics
  *        However, pure Python implementation is also possible through inheritance
- * 
+ *
  */
 class property_evaluator_iface
 {
@@ -22,7 +22,7 @@ public:
 
    /**
    * @brief Compute property values for specified state
-   * 
+   *
    * @param state Coordinates in parameter space, where operators to be evaluated
    * @return double property value
    */
@@ -31,11 +31,11 @@ public:
    /**
    * @brief Compute property values for all specified states
    *        A surrogate for vectorized evaluate function
-   * 
+   *
    * @param[in] states array of states
    * @param[in] n_blocks the number of states
    * @param[out] values  evaluated property values
-   * @return int 
+   * @return int
    */
    int evaluate(const std::vector<double> &states, int n_blocks, std::vector<double> &values)
    {
@@ -53,29 +53,29 @@ public:
 
 /**
  * @brief Virtual interface class for evaluation of operators values
- *        Implemented mainly by different C++ physical kernels from darts.physics 
+ *        Implemented mainly by different C++ physical kernels from darts.physics
  *        However, pure Python implementation is also possible through inheritance
- * 
+ *
  */
 class operator_set_evaluator_iface
 {
 public:
    /**
    * @brief Construct a new operator set evaluator iface object
-   * 
+   *
    */
    operator_set_evaluator_iface() { timer = 0; };
 
    /**
    * @brief Initialize timer node to provide timing for operator set evaluation
-   * 
+   *
    * @param[in] timer_ Timer node of global timer.
    */
    void init_timer_node(timer_node *timer_) { timer = timer_; };
 
    /**
    * @brief Compute operators values for specified state
-   * 
+   *
    * @param state Coordinates in parameter space, where operators to be evaluated
    * @param values Evaluated operators values
    * @return int 0 if evaluation is successful
@@ -92,16 +92,16 @@ public:
  *        Mainly implemented by a variety of interpolators following OBL method
  *        But also can be derived by, for instance, AD-compatible physics kernel
  *        For GPU-compatible compilation, the interface provides two options: for computations on host and on device.
- *        
- * 
+ *
+ *
  */
 class operator_set_gradient_evaluator_iface : public operator_set_evaluator_iface
 {
 public:
    /**
-     * @brief Initialize evaluator, default empty implementation 
+     * @brief Initialize evaluator, default empty implementation
      * Adds a possibility to initialize the object using properties assigned after construction
-     * 
+     *
      * @return int 0 if successful
      */
    virtual int init() { return 0; };
@@ -134,7 +134,7 @@ public:
 
    /**
      * @brief Get the number of supporting points used, default empty implementation
-     * 
+     *
      * @return the number of supporting points used
      */
    virtual uint64_t get_n_points_used() const { return 0; };
@@ -161,14 +161,14 @@ public:
 #ifdef WITH_GPU
    /**
    * @brief Compute operators values for specified state on device
-   * 
+   *
    * @param state Coordinates in parameter space, where operators to be evaluated
    * @param values Evaluated operators values
    * @return int 0 if evaluation is successful
    */
    virtual int evaluate_d(double *state_d, double *values_d) = 0;
    /**
-     * @brief Compute operators values and their gradients for every specified state on GPU device. 
+     * @brief Compute operators values and their gradients for every specified state on GPU device.
      *
      * @param[in]   n_states_idxs      Number of states marked for interpolation, the length of states_idxs_d array
      * @param[in]   state_d       Array of coordinates in parameter space, where operators to be evaluated, device pointer
@@ -184,10 +184,10 @@ public:
 
 /**
  * @brief A class for evaluation of operators values and their gradients on host
- *        Provides straightforward device implementation by sending input data to host, calling the host function, 
+ *        Provides straightforward device implementation by sending input data to host, calling the host function,
  *        and sending the output back to device
- *        
- * 
+ *
+ *
  */
 class operator_set_gradient_evaluator_cpu : public operator_set_gradient_evaluator_iface
 {
@@ -196,7 +196,7 @@ public:
 
    /**
    * @brief Compute operators values for specified state on device
-   * 
+   *
    * @param state Coordinates in parameter space, where operators to be evaluated
    * @param values Evaluated operators values
    * @return int 0 if evaluation is successful
@@ -204,7 +204,7 @@ public:
    virtual int evaluate_d(double *state_d, double *values_d) final;
 
    /**
-     * @brief Compute operators values and their gradients for every specified state on GPU device. 
+     * @brief Compute operators values and their gradients for every specified state on GPU device.
      *
      * @param[in]   n_states_idxs      Number of states marked for interpolation, the length of states_idxs_d array
      * @param[in]   state_d       Array of coordinates in parameter space, where operators to be evaluated, device pointer
@@ -221,16 +221,16 @@ public:
 #ifdef WITH_GPU
 /**
  * @brief A class for evaluation of operators values and their gradients on device
- *        Provides straightforward host implementation by sending input data to device, calling the device function,  
+ *        Provides straightforward host implementation by sending input data to device, calling the device function,
  *        and sending the output back to host
- * 
+ *
  */
 class operator_set_gradient_evaluator_gpu : public operator_set_gradient_evaluator_iface
 {
 public:
    /**
    * @brief Compute operators values for specified state
-   * 
+   *
    * @param state Coordinates in parameter space, where operators to be evaluated
    * @param values Evaluated operators values
    * @return int 0 if evaluation is successful
