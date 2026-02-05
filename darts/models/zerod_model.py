@@ -237,7 +237,7 @@ class ZerodModel(DartsModel):
             nc = props.nc
 
             ## accumulation
-            dAdt = np.zeros((n_vars, n_vars))
+            dAdx = np.zeros((n_vars, n_vars))
 
             # mass accumulation: M = c_r * PV * z_c * sum(sat * rho_m) [kmol/m3]
             zc = np.append(x[1:nc], 1 - np.sum(x[1:nc]))
@@ -249,24 +249,16 @@ class ZerodModel(DartsModel):
             drho_t_dx = np.sum(props.sat_ders[ph] * props.dens_m[ph], axis=0) + np.sum(
                 props.sat[ph] * props.dens_m_ders[ph], axis=0
             )
-            dAdt[:nc] = self.poro * self.volume * (dz_dx * rho_t + zc * drho_t_dx)
+            dAdx[:nc] = self.poro * (dz_dx * rho_t + zc * drho_t_dx)
 
             # solid energy accumulation: Es = c_r * RV * c_r * rho_m_r * T - T0 [kJ/m3]
             dEs_dx = np.zeros(n_vars)
-            dEs_dx[0] = (
-                (1 - self.poro) * self.volume * self.dens_rock * self.c_r * props.dTdP
-            )
+            dEs_dx[0] = (1 - self.poro) * self.dens_rock * self.c_r * props.dTdP
             dEs_dx[1:nc] = (
-                (1 - self.poro)
-                * self.volume
-                * self.dens_rock
-                * self.c_r
-                * props.dTdzk[: nc - 1]
+                (1 - self.poro) * self.dens_rock * self.c_r * props.dTdzk[: nc - 1]
             )
-            dEs_dx[nc] = (
-                (1 - self.poro) * self.volume * self.dens_rock * self.c_r * props.dTdX
-            )
-            dAdt[nc] += dEs_dx
+            dEs_dx[nc] = (1 - self.poro) * self.dens_rock * self.c_r * props.dTdX
+            dAdx[nc] += dEs_dx
 
             # fluid energy accumulation: Ef = c_r * PV * sum(sat * rho_m * h) [kJ/m3]
             dEf_dx = (
@@ -281,8 +273,8 @@ class ZerodModel(DartsModel):
                 )
             )
             dEf_dx[0] -= 100
-            dEf_dx *= self.poro * self.volume
-            dAdt[nc] += dEf_dx
+            dEf_dx *= self.poro
+            dAdx[nc] += dEf_dx
 
             ## rate -> right-hand side
             b = np.zeros(n_vars)
@@ -290,7 +282,7 @@ class ZerodModel(DartsModel):
                 b[-1] = self.energy_source.evaluate(_t)
 
             try:
-                dxdt = np.linalg.solve(dAdt, b)
+                dxdt = np.linalg.solve(dAdx, b)
             except np.linalg.LinAlgError:
                 dxdt = np.zeros_like(x)
             return dxdt

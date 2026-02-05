@@ -43,7 +43,6 @@ class Model(ZerodModel):
         fixed_pressure=False,
         fixed_temperature=False,
         energy_source=-2e3,
-        volume=1.0,
         poro=0.3,
         dens_rock=3100.0,
         c_r=0.920,
@@ -62,8 +61,6 @@ class Model(ZerodModel):
         :type fixed_temperature: bool
         :param energy_source: float, energy source, in kJ/day
         :type energy_source: float
-        :param volume: float, volume of the reservoir, in m^3
-        :type volume: float
         :param poro: float, porosity of the reservoir
         :type poro: float
         :param dens_rock: float, density of the rock, in kg/m^3
@@ -78,7 +75,6 @@ class Model(ZerodModel):
         self.p_init = p_init
         self.sv_init = sv_init
         self.energy_source = EnergySource(energy_source)
-        self.volume = volume
         self.poro = poro
         self.c_r = c_r
         self.dens_rock = dens_rock

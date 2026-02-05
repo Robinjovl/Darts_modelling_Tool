@@ -43,10 +43,9 @@ if __name__ == "__main__":
         m = Model(
             mode="analytical",
             p_init=1e-3,
-            energy_source=2e3,
-            fixed_pressure=None,
+            energy_source=2e5,
             sv_init=0.535,
-            volume=1.0,
+            fixed_pressure=False,
         )
         m.init()
 
