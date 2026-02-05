@@ -110,7 +110,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		linear_solvers.back()->set_prec(new linsolv_bos_bilu0<N_VARS>);
 		break;
 	  }
-#ifdef WITH_HYPRE
+#ifndef OPENDARTS_LINEAR_SOLVERS
 	  case sim_params::CPU_GMRES_FS_CPR:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
