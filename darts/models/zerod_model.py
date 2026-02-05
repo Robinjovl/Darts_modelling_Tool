@@ -119,12 +119,26 @@ class ZerodModel(DartsModel):
             if "ENTHALPY" in spec_str or "PH" in spec_str:
                 thermal_label = "h"
 
+        temp_val = None
+        try:
+            if thermal_label == "t" and thermal_val is not None:
+                temp_val = thermal_val
+            elif hasattr(props, "evaluate"):
+                temp_val = getattr(props, "temperature", None)
+        except Exception:
+            temp_val = None
+
         if thermal_val is not None:
-            return (
+            state_str = (
                 f"p={p_val:>{num_width}.6g} {z_parts} "
                 f"{thermal_label}={thermal_val:>{num_width}.6g}"
             )
-        return f"p={p_val:>{num_width}.6g} {z_parts}"
+        else:
+            state_str = f"p={p_val:>{num_width}.6g} {z_parts}"
+
+        if temp_val is not None:
+            state_str += f" temp={temp_val:>{num_width}.6g}"
+        return state_str
 
     def set_sim_params(
         self,
@@ -689,3 +703,216 @@ class ZerodModel(DartsModel):
         ph_diagram.add_attributes(title=f"PH-Diagram ({p_min:.1e} to {p_max:.1e} bar)")
         plt.savefig(output_path, bbox_inches="tight")
         plt.close()
+
+    def plot_state_history(
+        self,
+        output_path="state_history.png",
+        show=False,
+        figsize=None,
+        dpi=150,
+        linewidth=2.0,
+        alpha=1.0,
+        grid=True,
+        legend=True,
+        label_fontsize=10,
+        title_fontsize=12,
+        tick_fontsize=9,
+        legend_fontsize=9,
+        time_label="time",
+        time_units="days",
+        pressure_label="pressure, bar",
+        temperature_label="temperature, K",
+        enthalpy_label="enthalpy, kJ/kmol",
+        pressure_color="tab:blue",
+        temperature_color="tab:orange",
+        enthalpy_color="tab:green",
+        composition_colors=None,
+    ):
+        """
+        Plot pressure, compositions, enthalpy, and temperature vs time.
+
+        :param output_path: File path for saving the plot (None to skip saving).
+        :type output_path: str or None
+        :param show: If True, display the plot window.
+        :type show: bool
+        :param figsize: Matplotlib figure size.
+        :type figsize: tuple(float, float) or None
+        :param dpi: Figure DPI.
+        :type dpi: int
+        :param linewidth: Line width for all series.
+        :type linewidth: float
+        :param alpha: Line transparency.
+        :type alpha: float
+        :param grid: Enable grid on subplots.
+        :type grid: bool
+        :param legend: Show legends on subplots.
+        :type legend: bool
+        :param label_fontsize: Font size for axis labels.
+        :type label_fontsize: int
+        :param title_fontsize: Font size for subplot titles.
+        :type title_fontsize: int
+        :param tick_fontsize: Font size for tick labels.
+        :type tick_fontsize: int
+        :param legend_fontsize: Font size for legends.
+        :type legend_fontsize: int
+        :param time_label: Label for the time axis.
+        :type time_label: str
+        :param time_units: Units for the time axis.
+        :type time_units: str
+        :param pressure_label: Label for pressure axis.
+        :type pressure_label: str
+        :param temperature_label: Label for temperature axis.
+        :type temperature_label: str
+        :param enthalpy_label: Label for enthalpy axis.
+        :type enthalpy_label: str
+        :param pressure_color: Line color for pressure.
+        :type pressure_color: str
+        :param temperature_color: Line color for temperature.
+        :type temperature_color: str
+        :param enthalpy_color: Line color for enthalpy.
+        :type enthalpy_color: str
+        :param composition_colors: Colors for compositions (list or dict).
+        :type composition_colors: list[str] or dict[str, str] or None
+        :return: Matplotlib figure and axes.
+        :rtype: tuple(matplotlib.figure.Figure, list[matplotlib.axes.Axes])
+        """
+        import matplotlib.pyplot as plt
+
+        if not self.time_history or not self.state_history:
+            raise RuntimeError("State history is empty. Run the model before plotting.")
+
+        time_arr = np.asarray(self.time_history, dtype=float)
+        state_arr = np.asarray(self.state_history, dtype=float)
+        n_steps = min(time_arr.size, state_arr.shape[0])
+        time_arr = time_arr[:n_steps]
+        state_arr = state_arr[:n_steps]
+
+        props = self.property_container
+        nc = getattr(props, "nc", 0)
+        if nc <= 0:
+            raise RuntimeError("Property container is missing component count.")
+
+        pressure = state_arr[:, 0]
+
+        if nc == 1:
+            zc = np.ones((n_steps, 1))
+        else:
+            zc = np.zeros((n_steps, nc))
+            zc[:, : nc - 1] = state_arr[:, 1:nc]
+            zc[:, -1] = 1.0 - np.sum(zc[:, : nc - 1], axis=1)
+
+        comp_names = getattr(props, "components_name", None)
+        if not comp_names or len(comp_names) != nc:
+            comp_names = [f"comp{i + 1}" for i in range(nc)]
+
+        enthalpy = np.full(n_steps, np.nan)
+        temperature = np.full(n_steps, np.nan)
+        spec = getattr(props, "state_spec", None)
+        spec_str = spec.name if hasattr(spec, "name") else str(spec)
+        is_ph = "ENTHALPY" in spec_str or "PH" in spec_str
+
+        if state_arr.shape[1] > nc:
+            if is_ph:
+                enthalpy[:] = state_arr[:, nc]
+            else:
+                temperature[:] = state_arr[:, nc]
+
+        for i in range(n_steps):
+            try:
+                if is_ph:
+                    props.evaluate(state_arr[i])
+                    temperature[i] = getattr(props, "temperature", np.nan)
+                else:
+                    if hasattr(props, "compute_total_enthalpy"):
+                        enthalpy[i] = props.compute_total_enthalpy(state_arr[i])
+            except Exception:
+                continue
+
+        nplots = 1 + nc + 2
+        fig_height = 2.2 * nplots if figsize is None else None
+        fig, axes = plt.subplots(
+            nrows=nplots,
+            ncols=1,
+            sharex=True,
+            figsize=figsize or (8.0, fig_height),
+            dpi=dpi,
+        )
+        if nplots == 1:
+            axes = [axes]
+
+        idx = 0
+        axes[idx].plot(
+            time_arr,
+            pressure,
+            color=pressure_color,
+            linewidth=linewidth,
+            alpha=alpha,
+            label=pressure_label,
+        )
+        axes[idx].set_ylabel(pressure_label, fontsize=label_fontsize)
+        axes[idx].set_title("Pressure", fontsize=title_fontsize)
+        idx += 1
+
+        color_cycle = None
+        if isinstance(composition_colors, dict):
+            color_cycle = [composition_colors.get(name) for name in comp_names]
+        elif isinstance(composition_colors, list | tuple):
+            color_cycle = list(composition_colors)
+
+        for i, name in enumerate(comp_names):
+            color = None
+            if color_cycle:
+                color = color_cycle[i % len(color_cycle)]
+            axes[idx].plot(
+                time_arr,
+                zc[:, i],
+                color=color,
+                linewidth=linewidth,
+                alpha=alpha,
+                label=f"z_{name}",
+            )
+            axes[idx].set_ylabel(f"z_{name}", fontsize=label_fontsize)
+            axes[idx].set_title(f"Composition {name}", fontsize=title_fontsize)
+            idx += 1
+
+        axes[idx].plot(
+            time_arr,
+            enthalpy,
+            color=enthalpy_color,
+            linewidth=linewidth,
+            alpha=alpha,
+            label=enthalpy_label,
+        )
+        axes[idx].set_ylabel(enthalpy_label, fontsize=label_fontsize)
+        axes[idx].set_title("Enthalpy", fontsize=title_fontsize)
+        idx += 1
+
+        axes[idx].plot(
+            time_arr,
+            temperature,
+            color=temperature_color,
+            linewidth=linewidth,
+            alpha=alpha,
+            label=temperature_label,
+        )
+        axes[idx].set_ylabel(temperature_label, fontsize=label_fontsize)
+        axes[idx].set_title("Temperature", fontsize=title_fontsize)
+
+        for ax in axes:
+            ax.tick_params(labelsize=tick_fontsize)
+            if grid:
+                ax.grid(True, alpha=0.3)
+            if legend:
+                ax.legend(fontsize=legend_fontsize)
+
+        axes[-1].set_xlabel(f"{time_label} ({time_units})", fontsize=label_fontsize)
+        fig.tight_layout()
+
+        if output_path:
+            fig.savefig(output_path, bbox_inches="tight")
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+        return fig, axes

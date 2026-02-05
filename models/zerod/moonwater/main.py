@@ -17,10 +17,9 @@ if __name__ == "__main__":
     )
     m.init()
 
-    dt = 1e-4
-    n_steps = 200
-    ok = m.run(days=dt * n_steps, method="radau", restart_dt=dt)
+    ok = m.run(days=1, method="radau")
     if not ok:
         raise RuntimeError("Zerod run failed to reach the final time.")
 
     m.plot_ph_path(use_log_p=True)
+    m.plot_state_history()

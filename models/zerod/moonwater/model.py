@@ -88,7 +88,7 @@ class Model(ZerodModel):
 
         self.set_physics()
 
-        self.set_sim_params(n_vars=self.property_container.n_vars, first_ts=1e-4, mult_ts=2, max_ts=1.0)
+        self.set_sim_params(n_vars=self.property_container.n_vars, first_ts=1e-4, mult_ts=2, max_ts=1e-3)
         self.timer.node["initialization"].stop()
 
     def set_physics(self):
