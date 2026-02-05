@@ -11,13 +11,13 @@ class PropertyContainerDerivatives(PropertyContainer):
         Mw: list,
         nc_sol: int = 0,
         np_sol: int = 0,
-        min_z: float = 1e-11,
+        eps_z: float = 1e-11,
         rock_comp: float = 1e-6,
         rate_ann_mat=None,
         temperature: float = None,
         state_spec: StateSpecification = StateSpecification.TEMPERATURE
     ):
-        super().__init__(phases_name, components_name, Mw, nc_sol, np_sol, min_z, rock_comp, rate_ann_mat, temperature)
+        super().__init__(phases_name, components_name, Mw, nc_sol, np_sol, eps_z, rock_comp, rate_ann_mat, temperature)
 
         self.state_spec = state_spec
         self.Mw = np.array(Mw)
@@ -87,7 +87,7 @@ class PropertyContainerDerivatives(PropertyContainer):
         self.state = np.array(state, copy=True)
 
         pressure, enthalpy = state[0], state[1]
-        zc_norm = [1. - self.min_z]
+        zc_norm = [1. - self.eps_z]
         error_output = self.flash_ev.evaluate(pressure, enthalpy, zc_norm)
         flash_results = self.flash_ev.get_flash_results(derivs=True)
 

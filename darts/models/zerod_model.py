@@ -76,6 +76,56 @@ class ZerodModel(DartsModel):
         self.time_history.append(float(t))
         self.state_history.append(np.asarray(state, dtype=float).copy())
 
+    def _format_state_for_log(self, state):
+        """
+        Format pressure, composition, and thermal state for logging.
+
+        :param state: State vector to format.
+        :type state: array-like
+        :return: Formatted state string.
+        :rtype: str
+        """
+        props = self.property_container
+        state_arr = np.asarray(state, dtype=float)
+        num_width = 12
+        p_val = state_arr[0] if state_arr.size else float("nan")
+
+        nc = getattr(props, "nc", None)
+        if not nc:
+            return f"p={p_val:>{num_width}.6g}"
+
+        if nc == 1:
+            zc = np.array([1.0])
+        else:
+            zc = np.zeros(nc)
+            zc[: nc - 1] = state_arr[1:nc]
+            zc[-1] = 1.0 - np.sum(zc[: nc - 1])
+
+        comp_names = getattr(props, "components_name", None)
+        if not comp_names or len(comp_names) != nc:
+            comp_names = [f"comp{i + 1}" for i in range(nc)]
+        z_parts = " ".join(
+            f"z_{comp_names[i]}={zc[i]:>{num_width}.6g}" for i in range(nc)
+        )
+
+        thermal_val = None
+        if state_arr.size > nc:
+            thermal_val = state_arr[nc]
+
+        thermal_label = "t"
+        spec = getattr(props, "state_spec", None)
+        if spec is not None:
+            spec_str = spec.name if hasattr(spec, "name") else str(spec)
+            if "ENTHALPY" in spec_str or "PH" in spec_str:
+                thermal_label = "h"
+
+        if thermal_val is not None:
+            return (
+                f"p={p_val:>{num_width}.6g} {z_parts} "
+                f"{thermal_label}={thermal_val:>{num_width}.6g}"
+            )
+        return f"p={p_val:>{num_width}.6g} {z_parts}"
+
     def set_sim_params(
         self,
         n_vars: int,
@@ -346,8 +396,10 @@ class ZerodModel(DartsModel):
                 t += dt
                 ts += 1
                 if verbose:
+                    state_str = self._format_state_for_log(self.state)
                     print(
-                        f"T={t:3g}\tDT={dt:2g}\tNI={result.nlu:d}\tNFEV={result.nfev:d}"
+                        f"T={t:>10.4g}  DT={dt:>10.4g}  "
+                        f"NI={result.nlu:>3d}  NFEV={result.nfev:>4d}  {state_str}"
                     )
 
                 if ts_adaptive and data_ts.eta is not None:
@@ -397,8 +449,11 @@ class ZerodModel(DartsModel):
             return np.array([]), np.array([])
         states = np.asarray(self.state_history)
         pressure = states[:, 0]
-        thermal_idx = self._thermal_var_index()
-        thermal = states[:, thermal_idx] if thermal_idx is not None else None
+        thermal = (
+            states[:, -1]
+            if self.property_container.n_vars > self.property_container.nc
+            else None
+        )
         return pressure, thermal
 
     def plot_pt_path(
@@ -408,9 +463,6 @@ class ZerodModel(DartsModel):
         t_min=250,
         t_max=500,
         use_log_p=False,
-        components=None,
-        eos_order=None,
-        compositions=None,
         output_path="pt_path.png",
     ):
         """
@@ -426,18 +478,14 @@ class ZerodModel(DartsModel):
         :type t_max: float
         :param use_log_p: Use logarithmic pressure axis.
         :type use_log_p: bool
-        :param components: Component names for flash evaluation.
-        :type components: list[str] or None
-        :param eos_order: Phase order for the flash.
-        :type eos_order: list[str] or None
-        :param compositions: Composition dictionary for flash evaluation.
-        :type compositions: dict or None
         :param output_path: File path for saving the PT diagram.
         :type output_path: str
+        Note: If state history exists, limits are set from the path
+        using 0.9 * min and 1.1 * max (sign-aware).
         """
         import matplotlib.pyplot as plt
-        from dartsflash.dartsflash import CompData, DARTSFlash
-        from dartsflash.libflash import EoS, IdealGas, PureSolid
+        from dartsflash.dartsflash import DARTSFlash
+        from dartsflash.libflash import EoS
         from dartsflash.plot import PlotFlash
 
         if (
@@ -446,17 +494,34 @@ class ZerodModel(DartsModel):
         ):
             raise RuntimeError("PT plot requires PT formulation.")
 
-        if components is None:
-            components = ["H2O"]
-        if compositions is None:
-            compositions = {components[0]: 1.0}
+        pressure, thermal = self.get_state_path()
+        if pressure.size and thermal is not None and thermal.size:
+            p_min_val = np.nanmin(pressure)
+            p_max_val = np.nanmax(pressure)
+            p_min = p_min_val * (0.9 if p_min_val >= 0 else 1.1)
+            p_max = p_max_val * (1.1 if p_max_val >= 0 else 0.9)
+            t_min_val = np.nanmin(thermal)
+            t_max_val = np.nanmax(thermal)
+            t_min = t_min_val * (0.9 if t_min_val >= 0 else 1.1)
+            t_max = t_max_val * (1.1 if t_max_val >= 0 else 0.9)
 
-        comp_data = CompData(components, setprops=True)
-        f = DARTSFlash(comp_data=comp_data)
-        f.add_eos("V", IdealGas(comp_data))
-        f.add_eos("I", PureSolid(comp_data, "Ice"))
-        eos_order = eos_order or ["V", "I"]
-        f.init_flash(flash_type=DARTSFlash.FlashType.PTFlash, eos_order=eos_order)
+        flash = getattr(self, "flash_pt", None)
+        if flash is None:
+            flash = getattr(self.property_container, "flash_ev", None)
+            flash_type = getattr(flash, "flash_type", None)
+            if flash_type is not None and flash_type != DARTSFlash.FlashType.PTFlash:
+                flash = None
+
+        if flash is None:
+            raise RuntimeError(
+                "PT flash is not initialized. Provide self.flash_pt or a PT "
+                "flash in property_container.flash_ev."
+            )
+
+        components = list(flash.components)
+        compositions = {components[0]: 1.0}
+
+        f = flash
 
         if use_log_p:
             state_spec_background = {
@@ -512,9 +577,7 @@ class ZerodModel(DartsModel):
         p_max=5e-3,
         t_min=200,
         t_max=270,
-        components=None,
-        eos_order=None,
-        compositions=None,
+        use_log_p=False,
         output_path="ph_path.png",
     ):
         """
@@ -528,18 +591,14 @@ class ZerodModel(DartsModel):
         :type t_min: float
         :param t_max: Maximum temperature for the background grid.
         :type t_max: float
-        :param components: Component names for flash evaluation.
-        :type components: list[str] or None
-        :param eos_order: Phase order for the flash.
-        :type eos_order: list[str] or None
-        :param compositions: Composition dictionary for flash evaluation.
-        :type compositions: dict or None
+        :param use_log_p: Use logarithmic pressure axis.
+        :type use_log_p: bool
         :param output_path: File path for saving the PH diagram.
         :type output_path: str
+        Note: If state history exists, pressure and enthalpy limits are
+        set from the path using 0.9 * min and 1.1 * max (sign-aware).
         """
         import matplotlib.pyplot as plt
-        from dartsflash.dartsflash import CompData, DARTSFlash
-        from dartsflash.libflash import IdealGas, PureSolid
         from dartsflash.plot import PlotFlash
 
         # if (
@@ -548,42 +607,76 @@ class ZerodModel(DartsModel):
         # ):
         #     raise RuntimeError("PH plot requires PH formulation.")
 
-        if components is None:
-            components = ["H2O"]
-        if compositions is None:
-            compositions = {components[0]: 1.0}
+        pressure, thermal = self.get_state_path()
+        enthalpy_min = None
+        enthalpy_max = None
+        if pressure.size and thermal is not None and thermal.size:
+            p_min_val = np.nanmin(pressure)
+            p_max_val = np.nanmax(pressure)
+            p_min = p_min_val * (0.9 if p_min_val >= 0 else 1.1)
+            p_max = p_max_val * (1.1 if p_max_val >= 0 else 0.9)
+            h_min_val = np.nanmin(thermal)
+            h_max_val = np.nanmax(thermal)
+            enthalpy_min = h_min_val * (0.9 if h_min_val >= 0 else 1.1)
+            enthalpy_max = h_max_val * (1.1 if h_max_val >= 0 else 0.9)
 
-        comp_data = CompData(components, setprops=True)
-        f = DARTSFlash(comp_data=comp_data)
-        f.add_eos("ice", PureSolid(comp_data, "Ice"))
-        f.add_eos("steam", IdealGas(comp_data))
-        eos_order = eos_order or ["ice", "steam"]
+        flash = getattr(self, "flash_ph", None)
+        if flash is None:
+            raise RuntimeError(
+                "PH flash is not initialized. Provide self.flash_ph or a PH "
+                "flash in property_container.flash_ev."
+            )
 
-        f.init_flash(
-            flash_type=DARTSFlash.FlashType.PHFlash,
-            eos_order=eos_order,
-            f_tol=1e-8,
-            t_tol=1e-1,
-            t_min=180,
-            t_max=273.0,
-        )
+        f = flash
+
+        flash_params = getattr(f, "flash_params", None)
+        if flash_params is not None:
+            t_min_env = min(t_min, getattr(flash_params, "T_min", t_min))
+            t_max_env = max(t_max, getattr(flash_params, "T_max", t_max))
+        else:
+            t_min_env, t_max_env = t_min, t_max
 
         Xrange = f.get_ranges(
             prange=[p_min, p_max],
-            trange=[t_min, t_max],
+            trange=[t_min_env, t_max_env],
             composition=[1.0],
         )
-        state_spec_background = {
-            "pressure": np.linspace(p_min, p_max, 100),
-            "enthalpy": np.linspace(Xrange[0], Xrange[1], 1000),
-        }
+        if enthalpy_min is None or enthalpy_max is None:
+            enthalpy_min, enthalpy_max = Xrange[0], Xrange[1]
+        else:
+            enthalpy_min = min(enthalpy_min, Xrange[0])
+            enthalpy_max = max(enthalpy_max, Xrange[1])
+            if enthalpy_min >= enthalpy_max:
+                enthalpy_min, enthalpy_max = Xrange[0], Xrange[1]
+        if use_log_p:
+            state_spec_background = {
+                "pressure": np.logspace(np.log10(p_min), np.log10(p_max), 100),
+                "enthalpy": np.linspace(enthalpy_min, enthalpy_max, 1000),
+            }
+        else:
+            state_spec_background = {
+                "pressure": np.linspace(p_min, p_max, 100),
+                "enthalpy": np.linspace(enthalpy_min, enthalpy_max, 1000),
+            }
         results_ph = f.evaluate_flash_1c(state_spec=state_spec_background)
+        np_min = None
+        np_max = None
         if "np" in results_ph:
             results_ph = results_ph.copy()
-            results_ph["np"] = results_ph["np"].fillna(0).round().astype(int)
+            np_values = np.nan_to_num(results_ph["np"].values, nan=0.0)
+            np_min = int(np.nanmin(np_values))
+            np_max = int(np.nanmax(np_values))
+            np_da = results_ph["np"].copy(data=np_values.round().astype(int))
+            results_ph = results_ph.assign(np=np_da)
 
         ph_diagram = PlotFlash.ph(
-            f, results_ph, composition=[1.0], plot_phase_fractions=False, logP=False
+            f,
+            results_ph,
+            composition=[1.0],
+            plot_phase_fractions=False,
+            logP=use_log_p,
+            min_val=np_min,
+            max_val=np_max,
         )
         ax = ph_diagram.ax[0]
 

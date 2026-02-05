@@ -101,12 +101,13 @@ class Model(ZerodModel):
 
         # flash
         comp_data = CompData(components=components, setprops=True)
-        flash = DARTSFlash(comp_data=comp_data)
         ice_eos = PureSolid(comp_data, "Ice")
         steam_eos = IdealGas(comp_data)
-        flash.add_eos("ice", ice_eos)
-        flash.add_eos("steam", steam_eos)
-        flash.init_flash(
+
+        flash_ph = DARTSFlash(comp_data=comp_data)
+        flash_ph.add_eos("ice", ice_eos)
+        flash_ph.add_eos("steam", steam_eos)
+        flash_ph.init_flash(
             flash_type=DARTSFlash.FlashType.PHFlash,
             eos_order=phases,
             f_tol=1e-8,
@@ -114,6 +115,7 @@ class Model(ZerodModel):
             t_min=180.0,
             t_max=650.0,
         )
+        self.flash_ph = flash_ph
 
         # property container
         if self.mode == "analytical":
@@ -121,7 +123,7 @@ class Model(ZerodModel):
                 phases_name=phases,
                 components_name=components,
                 Mw=comp_data.Mw,
-                min_z=zero / 10,
+                eps_z=zero / 10,
                 state_spec=StateSpecification.ENTHALPY,
             )
         else:
@@ -131,7 +133,7 @@ class Model(ZerodModel):
                 Mw=comp_data.Mw,
                 min_z=zero,
             )
-        property_container.flash_ev = flash
+        property_container.flash_ev = flash_ph
         property_container.density_ev = {
             "ice": EoSDensity(eos=ice_eos, Mw=comp_data.Mw),
             "steam": EoSDensity(eos=steam_eos, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),

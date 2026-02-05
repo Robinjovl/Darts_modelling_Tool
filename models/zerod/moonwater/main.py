@@ -23,4 +23,4 @@ if __name__ == "__main__":
     if not ok:
         raise RuntimeError("Zerod run failed to reach the final time.")
 
-    m.plot_ph_path()
+    m.plot_ph_path(use_log_p=True)
