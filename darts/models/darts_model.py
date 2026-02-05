@@ -725,13 +725,15 @@ class DartsModel:
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node["simulation"].start()
 
-        self.iter_counter = 0
-
         residual_history = []
         for i in range(max_newt + 1):
+            self.physics.engine.n_newton_last_dt = i
+
             # Update well phase velocities and derivatives if DFM wells are used
             if self.has_dfm_well:
-                self.update_dfm_well_vels_and_ders(dt, t, self.iter_counter)
+                self.update_dfm_well_vels_and_ders(
+                    dt, t, self.physics.engine.n_newton_last_dt
+                )
 
             # assemble Jacobian and residual of reservoir and well blocks
             self.physics.engine.assemble_linear_system(dt)
@@ -785,7 +787,6 @@ class DartsModel:
                 )
             )  # Newton update coefficient
 
-            self.physics.engine.n_newton_last_dt = i
             #  check tolerance if it converges
             if (
                 self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol
@@ -793,9 +794,7 @@ class DartsModel:
                 < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult
             ) or self.physics.engine.n_newton_last_dt == max_newt:
                 if i > 0:  # min_i_newton
-                    self.iter_counter = 0
                     break
-            self.iter_counter += 1
 
             # line search
             if (
