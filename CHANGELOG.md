@@ -19,6 +19,9 @@
   - Rename input arguments of the method `add_perforation`:\
   {- Before: self.reservoir.add_perforation(..., cell_index, well_radius, multi_segment) -}\
   {+ Now:    self.reservoir.add_perforation(..., res_cell_idx, well_diameter, ms_epm) +}
+  - Plotting methods for structured data `plot_xarray()` has become `output_to_plt()` and has options to plot from solution file, xarray dataset or engine.X:\
+  {- Before: self.output.plot_xarray(xarray_data, output_properties, timestep, ...) -}\
+  {+ Now:    self.output.output_to_plt(sol_filepath, xarray_data, output_properties, timestep, ) +}
 
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
