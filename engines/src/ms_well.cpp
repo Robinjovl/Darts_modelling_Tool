@@ -197,8 +197,6 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
   return 0;
 }
 
-
-
 int ms_well::initialize_control(std::vector<value_t>& X)
 {
   if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
@@ -237,9 +235,6 @@ int ms_well::initialize_control(std::vector<value_t>& X)
   return 0;
 }
 
-
-
-
 int ms_well::cross_flow(std::vector<value_t>& X)
 {
   /*
@@ -263,6 +258,3 @@ int ms_well::cross_flow(std::vector<value_t>& X)
 
   return 0;
 }
-
-
-;
