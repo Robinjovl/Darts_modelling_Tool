@@ -287,7 +287,7 @@ class Model(CICDModel):
 
         # Create property containers:
         property_container = PropertyContainer(phases=self.phases, components_name=self.elements, Mw=Mw,
-                                            stoich_matrix=stoich_matrix, min_z=self.obl_min, temperature=self.temperature,
+                                            stoich_matrix=stoich_matrix, eps_z=self.obl_min, temperature=self.temperature,
                                             fc_mask=self.fc_mask)
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
@@ -300,7 +300,7 @@ class Model(CICDModel):
             # PHREEQC backend expects .dat filenames
             db_filename = f"{self.database}.dat"
             property_container.flash_ev = PhreeqcFlash(
-                min_z=property_container.min_z,
+                min_z=property_container.eps_z,
                 minerals=property_container.minerals,
                 components=property_container.components_name[property_container.fc_mask],
                 temperature=property_container.temperature,
@@ -310,7 +310,7 @@ class Model(CICDModel):
             # Reaktoro expects 'supcrtbl' without .dat; PHREEQC DBs with .dat
             db_filename = 'supcrtbl' if self.database == 'supcrtbl' else f"{self.database}.dat"
             property_container.flash_ev = ReaktoroFlash(
-                min_z=property_container.min_z,
+                min_z=property_container.eps_z,
                 minerals=property_container.minerals,
                 components=property_container.components_name[property_container.fc_mask],
                 temperature=property_container.temperature,
@@ -338,9 +338,10 @@ class Model(CICDModel):
 
         output_property_container = OutputPropertyContainer(property_container)
 
-        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points, phases=phase_name,
-                                    axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
-                                    cache=False)
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name,
+                                                n_points=self.n_points, axes_min=self.axes_min, axes_max=self.axes_max,
+                                                epsilon_z=property_container.eps_z, extrapolation_flag=False,
+                                                cache=False)
         self.physics.add_property_region(property_container, output_property_container, 0)
 
         # Compute injection stream
@@ -552,19 +553,19 @@ class Model(CICDModel):
 
         # self.reservoir.add_well("I1", well_type, well_diameter=w_d)
         # for idx in range(self.domain_cells[1]):
-        #     self.reservoir.add_perforation(well_name='I1', res_cell_idx=(1, idx + 1, 1), multi_segment=False,
+        #     self.reservoir.add_perforation(well_name='I1', res_cell_idx=(1, idx + 1, 1), ms_epm=False,
         #                                    verbose=True, well_diameter=w_d, well_index=well_index,
         #                                    well_indexD=well_index)
 
         self.reservoir.add_well("P1", well_type, well_diameter=w_d)
         if isinstance(self.reservoir, UnstructReservoir):
             for idx in self.prd_cells:
-                self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, multi_segment=False,
+                self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, ms_epm=False,
                                                verbose=True, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
         elif isinstance(self.reservoir, StructReservoir):
             for idx in range(self.domain_cells[1]):
-                self.reservoir.add_perforation(well_name='P1', res_cell_idx=(self.domain_cells[0], idx + 1, 1), multi_segment=False,
+                self.reservoir.add_perforation(well_name='P1', res_cell_idx=(self.domain_cells[0], idx + 1, 1), ms_epm=False,
                                                verbose=True, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
 

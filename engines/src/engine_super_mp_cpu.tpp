@@ -264,6 +264,18 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
 	z_var = get_z_var();
+	if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+	}
+	min_sim_z = min_axis_z + params->sim_eps;
+	max_sim_z = max_axis_z - params->sim_eps;
 
 	X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
 	PV.resize(mesh->n_blocks);
@@ -278,6 +290,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
 
 	X_init = mesh->initial_state;
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 	Xn = X = X_init;
 	for (index_t i = 0; i < mesh->n_blocks; i++)
@@ -367,28 +381,6 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (params->log_transform == 0)
-	{
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	}
-	else if (params->log_transform == 1)
-	{
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
-	}
-
-
-
-
-
-
-
-
-
-
 
 	// for adjoint method------------------------------------------
 

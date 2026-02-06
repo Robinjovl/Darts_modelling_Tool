@@ -60,13 +60,13 @@ class Model(CICDModel):
         self.reservoir.add_well("INJ", well_type)
         for k in range(1, self.reservoir.nz):
             self.reservoir.add_perforation("INJ", res_cell_idx=(iw[0], jw[0], k + 1),
-                                           well_diameter=0.32, multi_segment=True)
+                                           well_diameter=0.32, ms_epm=True)
 
         # add well
         self.reservoir.add_well("PRD", well_type)
         for k in range(1, self.reservoir.nz):
             self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], jw[1], k + 1),
-                                           well_diameter=0.32, multi_segment=True)
+                                           well_diameter=0.32, ms_epm=True)
 
     def set_physics(self):
         if self.iapws_physics:
@@ -102,7 +102,7 @@ class Model(CICDModel):
                 # Define PropertyContainer
                 from darts.physics.super.property_container import PropertyContainer
                 zero = 1e-10
-                property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, min_z=zero/10)
+                property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, eps_z=zero/10)
 
                 property_container.flash_ev = PXFlash(flash_params, PXFlash.ENTHALPY)
 

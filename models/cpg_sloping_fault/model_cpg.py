@@ -125,7 +125,7 @@ class Model_CPG(CICDModel):
                     self.reservoir.add_perforation(wname,
                                                    res_cell_idx=perf_ijk_new,
                                                    well_index=wi, well_indexD=self.idata.geom.well_indexD,
-                                                   multi_segment=perf.multi_segment, verbose=True)
+                                                   ms_epm=perf.ms_epm, verbose=True)
         else:
             # add wells and perforations, 1-based indices
             for wname, wdata in self.idata.well_data.wells.items():
@@ -134,7 +134,7 @@ class Model_CPG(CICDModel):
                     self.reservoir.add_perforation(wname,
                                                    res_cell_idx=(wdata.location.I, wdata.location.J, k),
                                                    well_index=self.idata.geom.well_index, well_indexD=self.idata.geom.well_indexD,
-                                                   multi_segment=False, verbose=True)
+                                                   ms_epm=False, verbose=True)
 
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname

@@ -31,7 +31,10 @@ class CICDModel(DartsModel):
         diff_abs_max_normalized_tol = diff_abs_max_normalized_tol_
         rel_diff_tol = rel_diff_tol_
         nt = int(os.environ.get('OMP_NUM_THREADS', 1))
-        if nt > 1:  # use a looser tolerance for comparison of multithreaded run
+        is_gpu = os.environ.get('TEST_GPU', 0)
+        if (
+            nt > 1 or is_gpu
+        ):  # use a looser tolerance for comparison of multithreaded/gpu run
             diff_norm_normalized_tol = 1e-2
             diff_abs_max_normalized_tol = 1e-1
             rel_diff_tol = 100
@@ -94,8 +97,16 @@ class CICDModel(DartsModel):
                         print(f"#{fail} parameter {key} is {value:d} (was 0)")
                         fail += 1
                 else:
-                    rel_diff = (value - data_et[key]) / reference * 100
-                    if abs(rel_diff) > rel_diff_tol:
+                    abs_diff = value - reference
+                    rel_diff = abs_diff / reference * 100
+                    abs_diff_tol = (
+                        max(int(rel_diff_tol / 100 * reference), 1)
+                        if (nt > 1 or is_gpu)
+                        else 0
+                    )
+                    if not (
+                        abs(rel_diff) <= rel_diff_tol or abs(abs_diff) <= abs_diff_tol
+                    ):
                         print(
                             f"#{fail} parameter {key} is {value:d} (was {reference:d}, {rel_diff:+.2f}%)"
                         )

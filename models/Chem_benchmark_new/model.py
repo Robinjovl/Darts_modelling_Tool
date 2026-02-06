@@ -111,6 +111,7 @@ class Model(CICDModel):
     def set_physics(self, grid_1D: bool, solid_init: float, custom_physics: bool):
         """PHYSICS AND RESERVOIR"""
         self.zero = 1e-12
+        epsilon = 1e-13
         init_ions = 0.5
         equi_prod = (init_ions / 2) ** 2
         solid_inject = self.zero
@@ -195,19 +196,20 @@ class Model(CICDModel):
         num_well_blocks = int(self.ny / 2)
         if custom_physics:  # custom_physics inherits operators and physics for regions with source term
             self.physics = CustomPhysics(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-                                         state_spec=state_spec, cache=0, volume=delta_volume, num_wells=num_well_blocks)
+                                         n_points=401, min_p=1, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                         state_spec=state_spec, cache=0, volume=delta_volume, num_wells=num_well_blocks,
+                                         extrapolation_flag=True)
         else:  # default physics adds mass source term to kinetic operator in regions with source term
             mass_sources = [None,
                             MassSource(0, 1000, delta_volume, num_well_blocks),
                             MassSource(2, 200, delta_volume, num_well_blocks)]
             self.physics = Compositional(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-                                         state_spec=state_spec, cache=0)
+                                         n_points=401, min_p=1, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                         state_spec=state_spec, cache=0, extrapolation_flag=True)
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
-                                                 nc_sol=1, np_sol=1, min_z=self.zero / 10, rock_comp=1e-7)
+                                                 nc_sol=1, np_sol=1, eps_z=epsilon, rock_comp=1e-7)
 
             property_container.flash_ev = flash_ev
             property_container.density_ev = density_ev
@@ -426,10 +428,10 @@ class Model(CICDModel):
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, nc_sol: int = 0, np_sol: int = 0,
-                 min_z=1e-11, rock_comp=1e-6, temperature=1.):
+                 eps_z=1e-11, rock_comp=1e-6, temperature=1.):
         # Call base class constructor
         super().__init__(phases_name, components_name, Mw, nc_sol=nc_sol, np_sol=np_sol,
-                         min_z=min_z, rock_comp=rock_comp, temperature=temperature)
+                         eps_z=eps_z, rock_comp=rock_comp, temperature=temperature)
 
     def evaluate_mass_source(self, pressure, temperature, zc):
         # Kinetic reaction
@@ -465,43 +467,39 @@ class MassSource:
 
 
 class CustomPhysics(Compositional):
-    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=-1, max_t=-1,
-                 state_spec = Compositional.StateSpecification.P, cache=False, volume=0, num_wells=0):
+    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, epsilon_z, min_t=-1, max_t=-1,
+                 state_spec = Compositional.StateSpecification.P, cache=False, extrapolation_flag=True, volume=0, num_wells=0):
 
         self.delta_volume = volume
         self.num_well_blocks = num_wells
 
-        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, state_spec, cache)
+        super().__init__(components=components, phases=phases, timer=timer, n_points=n_points, min_p=min_p, max_p=max_p,
+                         min_z=min_z, max_z=max_z, epsilon_z=epsilon_z, min_t=min_t, max_t=max_t, state_spec=state_spec,
+                         cache=cache, extrapolation_flag=extrapolation_flag)
 
     def set_operators(self):  # default definition of operators
-        self.reservoir_operators[0] = ReservoirOperators(self.property_containers[0], self.thermal)
-        self.property_operators[0] = PropertyOperators(self.property_containers[0], self.thermal)
+        # Call base implementation
+        super().set_operators()
 
-        self.wellbore_operators = ReservoirOperators(self.property_containers[0], self.thermal)
-
-        self.reservoir_operators[1] = ReservoirWithSourceOperators(self.property_containers[0], comp_inj_id=0,
-                                                                   delta_volume=self.delta_volume,
-                                                                   num_well_blocks=self.num_well_blocks)
-        self.property_operators[1] = PropertyOperators(self.property_containers[0], self.thermal)
-
-        self.reservoir_operators[2] = ReservoirWithSourceOperators(self.property_containers[0], comp_inj_id=1,
-                                                                   delta_volume=self.delta_volume,
-                                                                   num_well_blocks=self.num_well_blocks)
-        self.property_operators[2] = PropertyOperators(self.property_containers[0], self.thermal)
-
-        self.rate_operators = WellControlOperators(self.property_containers[0], self.thermal)
+        # Overload reservoir operators for the two regions with source
+        for i, comp_inj_id in enumerate([0, 1]):
+            self.reservoir_operators[i+1] = ReservoirWithSourceOperators(property_container=self.property_containers[0],
+                                                                         comp_inj_id=comp_inj_id,
+                                                                         thermal=self.thermal,
+                                                                         extrapolation_flag=self.extrapolation_flag,
+                                                                         dz=self.dz,
+                                                                         delta_volume=self.delta_volume,
+                                                                         num_well_blocks=self.num_well_blocks)
 
         return
 
 
 class ReservoirWithSourceOperators(ReservoirOperators):
-    def __init__(self, property_container, comp_inj_id, thermal=0,
+    def __init__(self, property_container, comp_inj_id, thermal: bool = False,
+                 extrapolation_flag: bool = False, dz: float = None,
                  delta_volume=1000, num_well_blocks=12):
-        super().__init__(property_container, thermal=thermal)  # Initialize base-class
+        super().__init__(property_container, thermal=thermal, extrapolation_flag=extrapolation_flag, dz=dz)  # Initialize base-class
         # Store your input parameters in self here, and initialize other parameters here in self
-        self.min_z = property_container.min_z
-        self.property = property_container
-        self.thermal = thermal
         self.comp_inj_id = comp_inj_id
         self.delta_volume = delta_volume
         self.num_well_blocks = num_well_blocks

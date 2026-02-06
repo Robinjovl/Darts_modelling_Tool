@@ -34,7 +34,7 @@ RUN apt-get update && \
 RUN apt purge -y cmake && \
     wget https://github.com/Kitware/CMake/releases/download/v3.29.3/cmake-3.29.3.tar.gz && \
     tar -xvf cmake-3.29.3.tar.gz && \
-    cd cmake-3.29.3 && ./bootstrap --prefix=/opt/cmake && make -j$(nproc) && make install && \
+    cd cmake-3.29.3 && ./bootstrap --prefix=/opt/cmake --parallel=$(nproc) && make -j$(nproc) && make install && \
     /opt/cmake/bin/cmake --version
 
 # Step 3: Install conda-forge

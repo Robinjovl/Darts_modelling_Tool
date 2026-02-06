@@ -3,17 +3,14 @@ import numpy as np
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, ms_well, value_vector
 
+from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
+
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
-from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-
-from dartsflash.libflash import Flash, PXFlash
-from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, EoS
-from dartsflash.components import CompData
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
@@ -21,7 +18,6 @@ from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
-from nearwellbore import RadialStruct
 
 class Model(CICDModel):
     def __init__(self):
@@ -55,10 +51,10 @@ class Model(CICDModel):
         permz = permr
 
         self.well_1_ID = 0.1
-        self.reservoir = RadialStruct(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, permr=permr.flatten(order='F'),
-                                      permz=permz.flatten(order='F'), poro=poro.flatten(order='F'),
-                                      R0=self.well_1_ID / 2, R1=10, logspace=True, top_depth=950, rcond=181.44,
-                                      hcap=2200)  # depth is the depth of the top exterface of the reservoir
+        self.reservoir = StructRadialReservoir(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, poro=poro.flatten(order='F'),
+                                               permr=permr.flatten(order='F'), permz=permz.flatten(order='F'),
+                                               R0=self.well_1_ID / 2, R1=10, logspace=True, rcond=181.44, hcap=2200,
+                                               depth=975)  # depth is the depth of the centroid of the top reservoir cell
         self.reservoir.boundary_volumes['yz_minus'] = 1e20
 
         return
@@ -78,50 +74,42 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
+        from dartsflash.libflash import CubicEoS, FlashParams, EoS
+        from dartsflash.components import CompData
+        from dartsflash.mixtures import DARTSFlash, VL
         components_names = ['CO2']
         phases_names = ['gas', 'LCO2']
         comp_data = CompData(components_names, setprops=True)
+        epsilon = self.zero / 10
 
-        flash_params = FlashParams(comp_data)
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-
-        flash_params.add_eos("PR", pr)
-        flash_params.eos_order = ["PR"]
-        flash_params.eos_params["PR"].root_order = [EoS.MAX, EoS.MIN]
-
-        params = flash_params.eos_params["PR"]
-        params.trial_comps = [i for i in range(comp_data.nc)]
-        params.stability_tol = 1e-8
-        params.stability_switch_tol = 1e-10
-        params.stability_max_iter = 50
-        params.use_gmix = False
-        flash_params.comp_tol = 1e-2
-
-        state_spec = Compositional.StateSpecification.PH
+        """ Define state specification and initialize physics object """
+        ph = True
+        state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
         self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
-                                     n_points=10000, min_p=1, max_p=500, min_z=self.zero / 10, max_z=1 - self.zero / 10,
+                                     n_points=10000, min_p=1, max_p=500, min_z=0, max_z=1, epsilon_z=epsilon,
                                      min_t=150, max_t=500)
 
         """ PropertyContainer object and correlations """
-        property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, min_z=self.zero / 10,
+        property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, eps_z=epsilon,
                                                temperature=None, rock_comp=0)
 
-        from dartsflash.libflash import StateSpecification
-        property_container.flash_ev = PXFlash(flash_params, StateSpecification.ENTHALPY)
+        """ Define flash """
+        flash_ev = VL(comp_data)
+        flash_ev.set_vl_eos("PR", root_order=[EoS.MAX, EoS.MIN])
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash)
+        property_container.flash_ev = flash_ev
 
-        prl = CubicEoS(comp_data, CubicEoS.PR)
-
-        property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw)),
-                                              ('LCO2', EoSDensity(eos=prl, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
+        """ Define phase properties """
+        pr = flash_ev.eos["VL"]
+        property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
+                                              ('LCO2', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
                                               ])
-
+        property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MAX)),
+                                               ('LCO2', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MIN)),
+                                               ])
         property_container.viscosity_ev = dict([('gas', Fenghour1998()),
                                                 ('LCO2', Fenghour1998()),
                                                 ])
-
-        property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(eos=pr)),
-                                               ('LCO2', EoSEnthalpy(eos=prl, root_flag=EoS.RootFlag.MIN)),
-                                               ])
 
         property_container.conductivity_ev = dict([('gas', ConstFunc(10.)),
                                                    ('LCO2', ConstFunc(7.)),

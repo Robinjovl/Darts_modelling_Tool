@@ -268,7 +268,12 @@ class UnstructDiscretizer:
                     elif type in self.physical_tags["output"]:
                         self.output_faces_tot += count
                     else:
-                        raise ValueError("Unsupported physical tag found", type)
+                        raise ValueError(
+                            "Unsupported physical tag found",
+                            type,
+                            'physical_tags=',
+                            self.physical_tags,
+                        )
 
             if self.verbose:
                 print(f'Time to load Mesh: {time.time() - start_time_module:f} [sec]')

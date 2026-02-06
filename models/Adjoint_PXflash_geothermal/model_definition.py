@@ -81,36 +81,37 @@ class Model(CICDModel, OptModuleSettings):
             self.physics = Geothermal(self.idata, self.timer)
         else:
             # Define fluid components, phases and Flash object
-            from dartsflash.libflash import StateSpecification, PXFlash, FlashParams, EoS
-            from dartsflash.libflash import CubicEoS, AQEoS
+            from dartsflash.libflash import EoS
             from dartsflash.components import CompData
+            from dartsflash.dartsflash import DARTSFlash
+            from dartsflash.mixtures import IAPWS, VLAq
             phases = ['water', 'steam']
             components = ["H2O"]
             comp_data = CompData(components=components, setprops=True)
             Mw = comp_data.Mw
-            ceos = CubicEoS(comp_data, CubicEoS.PR)
-            ceos.set_preferred_roots(0, 0.75, EoS.MAX)
-            aq = AQEoS(comp_data, AQEoS.Jager2003)
-            aq.set_eos_range(0, [0.6, 1.])
 
-            flash_params = FlashParams(comp_data)
+            """ Initialize flash """
+            pt = False
+            flash_ev = VLAq(comp_data, hybrid=True)
 
-            # EoS-related parameters
-            flash_params.add_eos("CEOS", ceos)
-            flash_params.add_eos("AQ", aq)
-            flash_params.eos_order = ["AQ", "CEOS"]
+            # Add EoS objects for V/L and Aq phases
+            flash_ev.set_vl_eos("PR", root_order=[EoS.MAX])
+            flash_ev.set_aq_eos("Aq", use_gmix=True)
+            ceos = flash_ev.eos["VL"]  # covers vapour phase
+            aq = flash_ev.eos["Aq"]  # aqueous liquid phase
 
-            flash_params.T_min = 250.
-            flash_params.T_max = 575.
-            flash_params.pxflash_Ftol = 1e-6
-            flash_params.pxflash_Ttol = 1e-8
+            # Initialize flash object
+            flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash,
+                                eos_order=["Aq", "VL"], t_min=250., t_max=575.,
+                                t_tol=1e-1, f_tol=1e-10)
 
             # Define PropertyContainer
             from darts.physics.super.property_container import PropertyContainer
             zero = 1e-10
-            property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, min_z=zero / 10)
+            epsilon = 1e-11
+            property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, eps_z=epsilon)
 
-            property_container.flash_ev = PXFlash(flash_params, StateSpecification.ENTHALPY)
+            property_container.flash_ev = flash_ev
 
             # properties implemented in python
             from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
@@ -132,8 +133,8 @@ class Model(CICDModel, OptModuleSettings):
 
             from darts.physics.super.physics import Compositional
             self.physics = Compositional(components, phases, self.timer, state_spec=Compositional.StateSpecification.PH,
-                                         n_points=1001, min_p=1, max_p=400, min_z=zero / 10, max_z=1 - zero / 10,
-                                         min_t=273.15, max_t=373.15, cache=False)
+                                         n_points=1001, min_p=1, max_p=400, min_z=0., max_z=1., epsilon_z=epsilon,
+                                         min_t=273.15, max_t=373.15, cache=False, extrapolation_flag=True)
             self.physics.add_property_region(property_container)
 
         return

@@ -10,7 +10,7 @@ from darts.reservoirs.reservoir_base import ReservoirBase
 
 class UnstructReservoir(ReservoirBase):
     """
-    Class for generating unstructered mesh
+    Class for generating unstructured mesh
 
     :param timer: Timer object
     :type timer: timer_node
@@ -27,14 +27,6 @@ class UnstructReservoir(ReservoirBase):
     :param cache: Switch to load/save cache of discretization
     :type cache: bool
     """
-
-    physical_tags = {
-        "matrix": [],
-        "fracture": [],
-        "boundary": [],
-        "fracture_boundary": [],
-        "output": [],
-    }
 
     def __init__(
         self,
@@ -62,6 +54,14 @@ class UnstructReservoir(ReservoirBase):
         self.rcond = rcond
         self.hcap = hcap
         self.op_num = op_num
+
+        self.physical_tags = {
+            "matrix": [],
+            "fracture": [],
+            "boundary": [],
+            "fracture_boundary": [],
+            "output": [],
+        }
 
         # parameters for optional fracture aperture computation depending on principal stresses
         self.sh_max = None
@@ -177,7 +177,7 @@ class UnstructReservoir(ReservoirBase):
         well_indexD: float = None,
         segment_direction: str = "z_axis",
         skin: float = 0.0,
-        multi_segment: bool = False,
+        ms_epm: bool = False,
         verbose: bool = False,
     ):
         """
@@ -218,7 +218,7 @@ class UnstructReservoir(ReservoirBase):
         assert well_indexD >= 0
 
         # set well segment index (well block) equal to index of perforation layer
-        if multi_segment:
+        if ms_epm:
             well_block = len(well.perforations)
         else:
             well_block = 0

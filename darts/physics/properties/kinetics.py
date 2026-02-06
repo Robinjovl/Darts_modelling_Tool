@@ -181,9 +181,9 @@ class HydrateKinetics(Kinetics):
             # Enthalpy change with dissociation (-ive, rate of hydrate component +ive)
             Cf = 33.72995  # J/kg cal/gmol
             if temperature - 273.15 > 0:
-                (C1, C2) = (13521, -4.02)
+                C1, C2 = (13521, -4.02)
             else:
-                (C1, C2) = (6534, -11.97)
+                C1, C2 = (6534, -11.97)
             en = Cf * (C1 + C2 / temperature) * 1e-3  # kJ/kg
 
             # Calculate molar weight of hydrate component

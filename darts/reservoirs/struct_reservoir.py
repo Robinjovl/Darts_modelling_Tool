@@ -217,7 +217,7 @@ class StructReservoir(ReservoirBase):
         well_indexD: float = 0.0,
         segment_direction: str = "z_axis",
         skin: float = 0.0,
-        multi_segment: bool = None,
+        ms_epm: bool = None,
         with_peaceman_for_coupled_well_reservoir: bool = False,
         verbose: bool = False,
     ):
@@ -232,6 +232,9 @@ class StructReservoir(ReservoirBase):
             assert well_seg_idx is None, (
                 "If the well is of the EPM type, well_seg_idx must not be specified!"
             )
+            assert with_peaceman_for_coupled_well_reservoir is False, (
+                "Coupled well-reservoir can be used only if the well type if DFM!"
+            )
             res_block_local, wi, wid = self.discretizer.calc_well_index(
                 i,
                 j,
@@ -244,8 +247,8 @@ class StructReservoir(ReservoirBase):
             assert well_seg_idx is not None, (
                 "If the well is of the DFM type, well_seg_idx must be specified!"
             )
-            assert multi_segment is None, (
-                "If the well is of the DFM type, multi_segment must not be specified!"
+            assert ms_epm is None, (
+                "If the well is of the DFM type, ms_epm must not be specified!"
             )
             res_block_local, wi, wid = (
                 self.discretizer.calc_well_index_for_coupled_well_reservoir(
@@ -267,7 +270,7 @@ class StructReservoir(ReservoirBase):
 
         if well.ms_type == ms_well.MS_Type.EPM:
             # set well segment index (well block) equal to index of perforation layer
-            if multi_segment:
+            if ms_epm:
                 well_block = len(well.perforations)
             else:
                 well_block = 0
@@ -436,129 +439,6 @@ class StructReservoir(ReservoirBase):
         dy *= self.global_data["actnum"]
         dz *= self.global_data["actnum"]
         return dx, dy, dz
-
-    def output_to_plt(
-        self,
-        data: dict,
-        output_props: list = None,
-        lims: dict = None,
-        fig=None,
-        figsize: tuple = None,
-        axs_shape: tuple = None,
-        aspect_ratio: str = "equal",
-        logx: bool = False,
-        plot_zeros: bool = True,
-        cmap: str = "jet",
-        colorbar_loc: str = "right",
-    ):
-        assert self.ndims <= 2, "No implementation exists for 3D StructReservoir"
-        import matplotlib.pyplot as plt
-
-        output_props = output_props if output_props is not None else list(data.keys())
-        n_plots = len(output_props)
-        lims = lims if lims is not None else {}
-        axs_shape = axs_shape if axs_shape is not None else (1, n_plots)
-        figsize = (
-            figsize if figsize is not None else (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
-        )
-
-        if self.ndims == 1:
-            if fig is None:
-                fig, axs = plt.subplots(
-                    nrows=axs_shape[0],
-                    ncols=axs_shape[1],
-                    figsize=figsize,
-                    dpi=100,
-                    facecolor="w",
-                    edgecolor="k",
-                )
-
-                for j, prop in enumerate(output_props):
-                    axs[j].set_title(prop)
-
-            for j, prop in enumerate(output_props):
-                ax = fig.axes[j]
-
-                if not plot_zeros:
-                    data[prop][data[prop][:] == 0.0] = np.nan
-
-                if self.nx > 1:
-                    x = self.discretizer.centroids_all_cells[:, 0]
-                    ax.plot(x, data[prop][:])
-                    if prop in lims.keys():
-                        ax.set(ylim=lims[prop])
-                    if logx:
-                        ax.set_xscale("log")
-                        ax.set_xlim([np.min(x), np.max(x)])
-                elif self.nz > 1:
-                    z = self.discretizer.centroids_all_cells[:, 2]
-                    ax.plot(data[prop][:], z)
-                    if prop in lims.keys():
-                        ax.set(xlim=lims[prop])
-
-        elif self.ndims == 2:
-            dx, dy, dz = (
-                self.global_data["dx"],
-                self.global_data["dy"],
-                self.global_data["dz"],
-            )
-            xgrid = np.append(0, np.cumsum(dx[:, 0, 0]))
-            ygrid = (
-                np.append(0, np.cumsum(dy[0, :, 0]))
-                if self.ny > 1
-                else np.append(0, np.cumsum(dz[0, 0, :]))
-            )
-            X, Y = np.meshgrid(xgrid, ygrid)
-            shape = (self.ny, self.nx) if self.ny > 1 else (self.nz, self.nx)
-
-            from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-            fig, axs = plt.subplots(
-                nrows=axs_shape[0],
-                ncols=axs_shape[1],
-                figsize=figsize,
-                dpi=100,
-                facecolor="w",
-                edgecolor="k",
-            )
-
-            for j, prop in enumerate(output_props):
-                axs[j].set_title(prop)
-                if prop not in lims.keys():
-                    lims[prop] = [None, None]
-
-                if not plot_zeros:
-                    data[prop][data[prop][:] == 0.0] = np.nan
-
-                im = axs[j].pcolormesh(
-                    X,
-                    Y,
-                    data[prop][:].reshape(shape),
-                    cmap=cmap,
-                    vmin=lims[prop][0],
-                    vmax=lims[prop][1],
-                )
-                if self.nz > 1:
-                    axs[j].invert_yaxis()
-                if logx:
-                    axs[j].set_xscale("log")
-                    axs[j].set_xlim([xgrid[1], xgrid[-1]])
-                    axs[j].set_aspect("auto")
-                else:
-                    axs[j].set_aspect(aspect_ratio)
-
-                divider = make_axes_locatable(axs[j])
-                if colorbar_loc == 'right':
-                    cax = divider.append_axes('right', size='5%', pad=0.05)
-                    fig.colorbar(im, cax=cax, orientation='vertical')
-                else:
-                    cax = divider.append_axes('bottom', size='15%', pad=0.3)
-                    fig.colorbar(im, cax=cax, orientation='horizontal')
-                # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
-                # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
-            plt.tight_layout()
-
-        return fig
 
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
         """

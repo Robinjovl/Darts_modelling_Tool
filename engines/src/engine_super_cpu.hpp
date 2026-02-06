@@ -77,20 +77,19 @@ public:
   std::vector<index_t> stoich_coef;
 
   // Phase velocities at all connections including DFM wells
-  std::vector<value_t> one_way_phase_A_vels;
-  std::vector<value_t> one_way_phase_B_vels;
-  std::vector<value_t> phase_A_vels;
-  std::vector<value_t> phase_B_vels;
+  std::vector<value_t> one_way_phase_vels;
+  std::vector<value_t> phase_vels;
+  std::vector<value_t> phases_vels;
 
   // Derivatives of phase velocities at all connections including DFM wells
   const static uint8_t vel_der_size = N_VARS * 2;   // multiplied by 2 because velocity at connection is differentiated with respect to primary vars of two adjacent blocks
-  std::vector<value_t> one_way_phase_A_vels_ders;
-  std::vector<value_t> one_way_phase_B_vels_ders;
-  std::vector<value_t> phase_A_vels_ders;
-  std::vector<value_t> phase_B_vels_ders;
+  std::vector<value_t> one_way_phase_vels_ders;
+  std::vector<value_t> two_way_phase_vels_ders;
+  std::vector<value_t> phase_vels_ders;
+  std::vector<value_t> phases_vels_ders;
 
   // Specific kinetic energy of phases at segments centroids at the previous time step (explicit)
-  std::vector<value_t> phase_ske_seg0;
+  std::vector<value_t> phases_ske_seg0;
 
   // number of variables per jacobian matrix block
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
@@ -121,6 +120,8 @@ public:
   //double calc_newton_residual();
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
+
+  void update_two_way_phase_vels_and_ders();
 
   void enable_flux_output();
 };

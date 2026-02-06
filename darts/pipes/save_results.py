@@ -127,9 +127,7 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
         else:
             Xn_ms_well = h5_well_data["dynamic"]["X"][i - 1, num_perfs:, :].flatten()
             X_ms_well = h5_well_data["dynamic"]["X"][i, num_perfs:, :].flatten()
-        phase_velocities = next(
-            iter(coupled_model.wells.values())
-        ).evaluate_phase_velocities(
+        phase_velocities = next(iter(coupled_model.wells.values())).eval_phase_vels(
             Xn_ms_well, X_ms_well, dt, time_from_zero[i], iter_counter, flag
         )
         # phase_velocities = np.zeros((num_segments - 1) * 2)
