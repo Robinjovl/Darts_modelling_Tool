@@ -152,7 +152,6 @@ class Compositional(PhysicsBase):
                     "To use extrapolation logic, dz should be equal along all compositional axes"
                 )
 
-        self.has_dfm_well = False
         assert sim_eps_multiplier > 1, (
             "Multiplier for epsilon must be greater than 1 to have consistent "
             "OBL axes/solution vector in engine"
@@ -213,28 +212,12 @@ class Compositional(PhysicsBase):
                 dz=self.dz,
             )
 
-        if not self.has_dfm_well:
-            if self.thermal:
-                self.well_operators = ReservoirOperators(
-                    self.property_containers[self.regions[0]],
-                    self.thermal,
-                    extrapolation_flag=self.extrapolation_flag,
-                    dz=self.dz,
-                )
-            else:
-                self.well_operators = WellOperators(
-                    self.property_containers[self.regions[0]],
-                    self.thermal,
-                    extrapolation_flag=self.extrapolation_flag,
-                    dz=self.dz,
-                )
-        else:
-            self.well_operators = WellOperators(
-                self.property_containers[self.regions[0]],
-                self.thermal,
-                extrapolation_flag=self.extrapolation_flag,
-                dz=self.dz,
-            )
+        self.well_operators = WellOperators(
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
+        )
 
         self.well_ctrl_operators = WellControlOperators(
             self.property_containers[self.regions[0]],
