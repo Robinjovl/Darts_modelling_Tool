@@ -46,6 +46,9 @@ class Model(ZerodModel):
         poro=0.3,
         dens_rock=1100.0,
         c_r=0.920,
+        n_pres_points=10000000,
+        n_enth_points=10000000,
+        max_ts=1e-3,
     ):
         """
         Initialize the model.
@@ -67,6 +70,12 @@ class Model(ZerodModel):
         :type dens_rock: float
         :param c_r: float, heat capacity of the rock, in kJ/kg/K
         :type c_r: float
+        :param n_pres_points: int, number of pressure points
+        :type n_pres_points: int
+        :param n_enth_points: int, number of enthalpy points
+        :type n_enth_points: int
+        :param max_ts: float, maximum timestep
+        :type max_ts: float
         """
         super().__init__(fixed_pressure=fixed_pressure, fixed_temperature=fixed_temperature)
 
@@ -78,10 +87,13 @@ class Model(ZerodModel):
         self.poro = poro
         self.c_r = c_r
         self.dens_rock = dens_rock
+        self.n_pres_points = n_pres_points
+        self.n_enth_points = n_enth_points
 
         self.set_physics()
-
-        self.set_sim_params(n_vars=self.property_container.n_vars, first_ts=1e-4, mult_ts=2, max_ts=1e-3)
+        self.set_sim_params(n_vars=self.property_container.n_vars,
+                            first_ts=min(1e-4, max_ts/10), mult_ts=2, max_ts=max_ts)
+        self.data_ts.eta = np.array([1e-1, 10.0])
         self.timer.node["initialization"].stop()
 
     def set_physics(self):
@@ -121,12 +133,12 @@ class Model(ZerodModel):
                 eps_z=zero / 10,
                 state_spec=StateSpecification.ENTHALPY,
             )
-        else:
+        elif self.mode == "obl":
             property_container = PropertyContainer(
                 phases_name=phases,
                 components_name=components,
                 Mw=comp_data.Mw,
-                min_z=zero,
+                eps_z=zero,
             )
         property_container.flash_ev = flash_ph
         property_container.density_ev = {
@@ -150,23 +162,27 @@ class Model(ZerodModel):
             "steam": ConstFunc(0.1),
         }
         property_container.energy_source_ev = self.energy_source
+        property_container.n_vars = property_container.nc + property_container.thermal
 
         if self.mode == "obl":
-            # self.physics = Compositional(
-            #     components,
-            #     phases,
-            #     self.timer,
-            #     state_spec=state_spec,
-            #     n_points=self.n_points,
-            #     min_p=self.p_min,
-            #     max_p=self.p_max,
-            #     min_z=zero / 10,
-            #     max_z=1.0 - zero / 10,
-            #     min_t=min_t,
-            #     max_t=max_t,
-            # )
-            # self.physics.add_property_region(property_container)
-            pass
+            self.physics = Compositional(
+                components,
+                phases,
+                self.timer,
+                state_spec=Compositional.StateSpecification.PH,
+                n_points=self.n_pres_points, # not used as n_axes_points is used
+                min_p=0.2 * self.p_init,
+                max_p=1.0,
+                min_z=0.0,
+                max_z=1.0,
+                min_t=self.temp_min,
+                max_t=self.temp_max,
+                epsilon_z=zero,
+                n_axes_points=[self.n_pres_points, self.n_enth_points],
+                cache=False,
+            )
+            self.physics.add_property_region(property_container)
+
         self.property_container = property_container
 
     def set_initial_conditions(self):

@@ -3,8 +3,10 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.integrate import solve_ivp
 
+from darts.engines import index_vector, value_vector
 from darts.models.darts_model import DartsModel, DataTS
 from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.super.physics import Compositional
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,16 @@ class ZerodModel(DartsModel):
         """
         Initialize the model state and history.
         """
+        if self.mode == "obl":
+            self.physics.init_physics(
+                discr_type="tpfa",
+                platform="cpu",
+                verbose=False,
+                itor_mode="adaptive",
+                itor_type="multilinear",
+                is_barycentric=False,
+            )
+
         self.set_initial_conditions()
         self.state = self.initial_state
         self.state_history = []
@@ -86,22 +98,18 @@ class ZerodModel(DartsModel):
         :rtype: str
         """
         props = self.property_container
-        state_arr = np.asarray(state, dtype=float)
         num_width = 12
-        p_val = state_arr[0] if state_arr.size else float("nan")
+        p_val = state[0]
 
-        nc = getattr(props, "nc", None)
-        if not nc:
-            return f"p={p_val:>{num_width}.6g}"
-
+        nc = props.nc
         if nc == 1:
             zc = np.array([1.0])
         else:
             zc = np.zeros(nc)
-            zc[: nc - 1] = state_arr[1:nc]
+            zc[: nc - 1] = state[1:nc]
             zc[-1] = 1.0 - np.sum(zc[: nc - 1])
 
-        comp_names = getattr(props, "components_name", None)
+        comp_names = props.components_name
         if not comp_names or len(comp_names) != nc:
             comp_names = [f"comp{i + 1}" for i in range(nc)]
         z_parts = " ".join(
@@ -109,24 +117,35 @@ class ZerodModel(DartsModel):
         )
 
         thermal_val = None
-        if state_arr.size > nc:
-            thermal_val = state_arr[nc]
+        if state.size > nc:
+            thermal_val = state[nc]
 
         thermal_label = "t"
-        spec = getattr(props, "state_spec", None)
-        if spec is not None:
-            spec_str = spec.name if hasattr(spec, "name") else str(spec)
-            if "ENTHALPY" in spec_str or "PH" in spec_str:
+        if self.mode == "analytical":
+            spec = getattr(props, "state_spec", None)
+            if spec is not None:
+                spec_str = spec.name if hasattr(spec, "name") else str(spec)
+                if "ENTHALPY" in spec_str or "PH" in spec_str:
+                    thermal_label = "h"
+        elif self.mode == "obl":
+            if self.physics.state_spec == Compositional.StateSpecification.PH:
                 thermal_label = "h"
 
         temp_val = None
-        try:
-            if thermal_label == "t" and thermal_val is not None:
-                temp_val = thermal_val
-            elif hasattr(props, "evaluate"):
-                temp_val = getattr(props, "temperature", None)
-        except Exception:
-            temp_val = None
+        if self.mode == "analytical":
+            try:
+                if thermal_label == "t" and thermal_val is not None:
+                    temp_val = thermal_val
+                elif hasattr(props, "evaluate"):
+                    temp_val = getattr(props, "temperature", None)
+            except Exception:
+                temp_val = None
+        elif self.mode == "obl":
+            itor = self.physics.acc_flux_itor[0]
+            etor = self.physics.reservoir_operators[0]
+            ops_cpp = value_vector(np.zeros(self.physics.n_ops))
+            itor.evaluate(value_vector(state), ops_cpp)
+            temp_val = ops_cpp[etor.TEMP_OP]
 
         if thermal_val is not None:
             state_str = (
@@ -206,7 +225,7 @@ class ZerodModel(DartsModel):
         """
         pass
 
-    def step_radau_analytical(self, state_prev, dt, t0=0.0, rtol=None, atol=None):
+    def step_radau(self, state_prev, dt, t0=0.0, rtol=None, atol=None):
         """
         Advance the state using the Radau integrator.
 
@@ -225,12 +244,12 @@ class ZerodModel(DartsModel):
         """
         rtol = self.radau_rtol if rtol is None else rtol
         atol = self.radau_atol if atol is None else atol
-        props = self.property_container
 
         # Radau solver considers system resolved w.r.t. unknowns,
         # thus transition from dA/dt = dA/dX * dX/dt = g(t, p, z, T/h) to dX/dt = f(t, p, z, T/h)
         # is necessary.
-        def rhs(_t, x):
+        def rhs_analytical(_t, x):
+            props = self.property_container
             props.evaluate(x)
             ph = props.ph
             n_vars = props.n_vars
@@ -293,6 +312,44 @@ class ZerodModel(DartsModel):
                 dxdt = np.zeros_like(x)
             return dxdt
 
+        def rhs_obl(_t, x):
+            n_vars = self.physics.n_vars
+            nc = self.physics.nc
+            etor = self.physics.reservoir_operators[0]
+            itor = self.physics.acc_flux_itor[0]
+            ops_cpp = value_vector(np.zeros(self.physics.n_ops))
+            ders_cpp = value_vector(np.zeros(self.physics.n_ops * n_vars))
+            itor.evaluate_with_derivatives(
+                value_vector(x), index_vector([0]), ops_cpp, ders_cpp
+            )
+            ders = np.asarray(ders_cpp).reshape(self.physics.n_ops, n_vars)
+
+            dAdx = np.zeros((n_vars, n_vars))
+
+            # mass accumulation
+            dAdx[:nc] = self.poro * ders[etor.ACC_OP : etor.ACC_OP + nc]
+            # energy accumulation
+            dAdx[nc] = (1 - self.poro) * self.dens_rock * self.c_r * ders[
+                etor.TEMP_OP
+            ] + self.poro * ders[etor.ACC_OP + nc]
+
+            ## rate -> right-hand side
+            b = np.zeros(n_vars)
+            if self.energy_source is not None:
+                b[-1] = self.energy_source.evaluate(_t)
+
+            try:
+                dxdt = np.linalg.solve(dAdx, b)
+            except np.linalg.LinAlgError:
+                dxdt = np.zeros_like(x)
+
+            return dxdt
+
+        if self.mode == "analytical":
+            rhs = rhs_analytical
+        elif self.mode == "obl":
+            rhs = rhs_obl
+
         try:
             sol = solve_ivp(
                 rhs,
@@ -342,7 +399,7 @@ class ZerodModel(DartsModel):
             raise ValueError("Timestep size must be positive.")
         state_prev = self.state.copy()
         if method.lower() == "radau":
-            result = self.step_radau_analytical(state_prev, dt, t0=t, **kwargs)
+            result = self.step_radau(state_prev, dt, t0=t, **kwargs)
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -810,7 +867,12 @@ class ZerodModel(DartsModel):
         temperature = np.full(n_steps, np.nan)
         spec = getattr(props, "state_spec", None)
         spec_str = spec.name if hasattr(spec, "name") else str(spec)
-        is_ph = "ENTHALPY" in spec_str or "PH" in spec_str
+        if self.mode == "analytical":
+            is_ph = "ENTHALPY" in spec_str or "PH" in spec_str
+        elif self.mode == "obl":
+            is_ph = self.physics.state_spec == Compositional.StateSpecification.PH
+        else:
+            raise ValueError(f"Invalid mode: {self.mode}")
 
         if state_arr.shape[1] > nc:
             if is_ph:
@@ -821,11 +883,19 @@ class ZerodModel(DartsModel):
         for i in range(n_steps):
             try:
                 if is_ph:
-                    props.evaluate(state_arr[i])
-                    temperature[i] = getattr(props, "temperature", np.nan)
+                    if self.mode == "analytical":
+                        props.evaluate(state_arr[i])
+                        temperature[i] = getattr(props, "temperature", np.nan)
+                    elif self.mode == "obl":
+                        etor = self.physics.reservoir_operators[0]
+                        itor = self.physics.acc_flux_itor[0]
+                        ops_cpp = value_vector(np.zeros(self.physics.n_ops))
+                        itor.evaluate(value_vector(state_arr[i]), ops_cpp)
+                        temperature[i] = ops_cpp[etor.TEMP_OP]
                 else:
-                    if hasattr(props, "compute_total_enthalpy"):
-                        enthalpy[i] = props.compute_total_enthalpy(state_arr[i])
+                    raise ValueError(
+                        f"plot_state_history: Enthalpy evaluation is not supported for mode: {self.mode}"
+                    )
             except Exception:
                 continue
 
