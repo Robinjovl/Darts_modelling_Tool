@@ -120,7 +120,7 @@ class ReservoirOperators(OperatorsSuper):
         """ CONSTRUCT OPERATORS HERE """
 
         """ Alpha operator represents accumulation term """
-        # fluid mass accumulation: c_r phi^T z_c* [-] rho_m^T [kmol/m3]
+        # fluid mass accumulation: c_r [1/bar] z_c* [-] rho_m^T [kmol/m3]
         values_np[self.ACC_OP : self.ACC_OP + self.nc_fl] = (
             self.compr * density_tot * zc[: self.nc_fl]
         )
@@ -141,16 +141,17 @@ class ReservoirOperators(OperatorsSuper):
             ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
         """ Molar density operator """
+        # molar density: rho_mj [kmol/m3]
         values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
             self.property.ph
         ]
 
         """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
-        # fluid diffusive flux sat: c_r phi_f s_j rho_mj [kmol/m3] (kmol/m3)
+        # fluid diffusive flux sat: c_r [1/bar] phi_f s_j (1/bar)
         values_np[self.UPSAT_OP + self.property.ph] = (
             self.compr * self.phi_f * self.property.sat[self.property.ph]
         )
-        # solid diffusive flux sat: c_r z_s* (-)
+        # solid diffusive flux sat: c_r [1/bar] z_s* (1/bar)
         values_np[self.UPSAT_OP + self.np_fl : self.UPSAT_OP + self.np_fl + self.ns] = (
             self.compr * zc[self.nc_fl : self.nc_fl + self.ns]
         )
@@ -164,7 +165,7 @@ class ReservoirOperators(OperatorsSuper):
             ] = D[: self.nc_fl] * self.property.x[j][: self.nc_fl]
 
         """ Delta operator for reaction """
-        # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
+        # fluid/solid mass source: n_c [kmol/m3/day] (kmol/m3/day)
         values_np[self.KIN_OP : self.KIN_OP + self.nc] = self.property.mass_source
 
         """ Gravity and capillarity operators """
@@ -215,7 +216,7 @@ class ReservoirOperators(OperatorsSuper):
         self.property.evaluate_thermal(state)
 
         """ Alpha operator represents accumulation term """
-        # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        # fluid enthalpy: phi_f[-] s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += (
             self.compr
             * self.phi_f
@@ -225,7 +226,7 @@ class ReservoirOperators(OperatorsSuper):
                 * self.property.enthalpy[self.property.ph]
             )
         )  # fluid enthalpy (kJ/m3)
-        # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        # solid enthalpy: phi_s[-] s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += (
             self.compr
             * self.phi_s
@@ -252,7 +253,7 @@ class ReservoirOperators(OperatorsSuper):
         )
 
         """ Delta operator for reaction """
-        # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
+        # energy source: Q [kJ/m3/day] (kJ/m3/day)
         values[self.KIN_OP + self.nc] = self.property.energy_source
 
         """ Phase enthalpy operator """
@@ -296,13 +297,13 @@ class WellOperators(OperatorsSuper):
         """ CONSTRUCT OPERATORS HERE """
 
         """ Alpha operator represents accumulation term """
-        # fluid mass accumulation: c_r phi^T z_c* [-] rho_m^T [kmol/m3]
+        # fluid mass accumulation: z_c* [-] rho_m^T [kmol/m3]
         values_np[self.ACC_OP : self.ACC_OP + self.nc_fl] = (
             density_tot * zc[: self.nc_fl]
         )
 
         """ and alpha for mineral components """
-        # solid mass accumulation: phi^T z_s* [-] rho_ms [kmol/m3]
+        # solid mass accumulation: z_s* [-] rho_ms [kmol/m3]
         values_np[self.ACC_OP + self.nc_fl : self.ACC_OP + self.nc_fl + self.ns] = (
             self.property.dens_m[self.np_fl : self.np_fl + self.ns]
             * zc[self.nc_fl : self.nc_fl + self.ns]
@@ -322,7 +323,7 @@ class WellOperators(OperatorsSuper):
         """ Chi operator for diffusion """
 
         """ Delta operator for reaction """
-        # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
+        # fluid/solid mass source: n_c [kmol/m3/day] (kmol/m3/day)
         values_np[self.KIN_OP : self.KIN_OP + self.nc] = self.property.mass_source
 
         """ Gravity and capillarity operators """
