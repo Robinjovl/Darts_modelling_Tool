@@ -13,13 +13,15 @@ class ReservoirBase:
     Base class for generating a mesh
     """
 
-    mesh: conn_mesh
+    mesh: conn_mesh | None
+    wells: list[ms_well]
 
     def __init__(self, timer: timer_node, cache: bool = False):
         # Initialize timer for initialization and caching
         self.timer = timer.node["initialization"]
 
         self.cache = cache
+        self.mesh = None
         self.wells = []
 
         self.poro, self.permx, self.permy, self.permz = [], [], [], []
@@ -42,7 +44,7 @@ class ReservoirBase:
         It calls discretize() to generate mesh object and adds the wells with perforations to the mesh.
         """
         # if block is used to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
-        if not hasattr(self, "mesh"):
+        if self.mesh is None:
             self.mesh = self.discretize(verbose)
         return
 
