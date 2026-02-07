@@ -7,10 +7,26 @@ from darts.physics.super.property_container import PropertyContainer
 class OperatorsSuper(OperatorsBase):
     property: PropertyContainer
 
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
+    def __init__(
+        self,
+        property_container: PropertyContainer,
+        thermal: bool,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+    ):
+        """
+        Constructor of OperatorsSuper base class
 
-        self.min_z = property_container.min_z
+        :param property_container: Property container of type PropertyContainer
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
+        """
+        super().__init__(
+            property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
+        )  # Initialize base-class
+
         self.nc_fl = property_container.nc_fl
         self.ns = property_container.ns
         self.np_fl = property_container.np_fl
@@ -81,12 +97,16 @@ class ReservoirOperators(OperatorsSuper):
         :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
+
         # Composition vector and pressure from state:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
         values_np[:] = 0
 
-        # Evaluate isothermal properties at current state
+        # Evaluate properties at current state
         self.property.evaluate(state_np)
         self.compr = self.property.rock_compr_ev.evaluate(state_np[0])
 
@@ -106,13 +126,14 @@ class ReservoirOperators(OperatorsSuper):
         )
 
         """ and alpha for mineral components """
+        # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
         values_np[self.ACC_OP + self.nc_fl : self.ACC_OP + self.nc_fl + self.ns] = (
             self.compr
             * self.property.dens_m[self.np_fl : self.np_fl + self.ns]
             * zc[self.nc_fl : self.nc_fl + self.ns]
         )
 
-        """ Beta operator represents flux term: """
+        """ Beta operator """
         for j in self.property.ph:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             values_np[
@@ -146,7 +167,7 @@ class ReservoirOperators(OperatorsSuper):
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
         values_np[self.KIN_OP : self.KIN_OP + self.nc] = self.property.mass_source
 
-        """ Gravity and Capillarity operators """
+        """ Gravity and capillarity operators """
         # E3-> gravity
         values_np[self.GRAV_OP + self.property.ph] = self.property.dens[
             self.property.ph
@@ -159,7 +180,7 @@ class ReservoirOperators(OperatorsSuper):
         # E5_> permeability multiplier due to permporo relationship
         values_np[self.MULT_OP] = self.property.permporo_mult_ev.evaluate(self.phi_f)
 
-        """ Lambda operator for velocity calculations """
+        """ Lambda operator (phase mobility) """
         # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
         values_np[self.LAMBDA_OP + self.property.ph] = (
             self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
@@ -193,7 +214,7 @@ class ReservoirOperators(OperatorsSuper):
         # Evaluate thermal properties at current state
         self.property.evaluate_thermal(state)
 
-        """ Alpha operator represents accumulation term: """
+        """ Alpha operator represents accumulation term """
         # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += (
             self.compr
@@ -217,7 +238,7 @@ class ReservoirOperators(OperatorsSuper):
         # Enthalpy to internal energy conversion
         values[self.ACC_OP + self.nc] -= self.compr * 100 * pressure
 
-        """ Beta operator represents flux term: """
+        """ Beta operator """
         # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
         values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = (
             self.property.enthalpy[self.property.ph]
@@ -234,7 +255,7 @@ class ReservoirOperators(OperatorsSuper):
         # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
         values[self.KIN_OP + self.nc] = self.property.energy_source
 
-        # Phase enthalpy
+        """ Phase enthalpy operator """
         for j in range(self.nph):
             values[self.ENTH_OP + j] = self.property.enthalpy[j]
 
@@ -253,19 +274,24 @@ class WellOperators(OperatorsSuper):
         :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
+
         # Composition vector and pressure from state:
         state_np = state.to_numpy()
         values_np = values.to_numpy()
-
         values_np[:] = 0
 
+        # Evaluate properties at current state
         self.property.evaluate(state_np)
 
         density_tot = np.sum(
             self.property.sat[: self.np_fl] * self.property.dens_m[: self.np_fl]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
-        self.phi_f = 1.0
+        self.phi_s = np.sum(zc[self.nc_fl :])
+        self.phi_f = 1.0 - self.phi_s
 
         """ CONSTRUCT OPERATORS HERE """
 
@@ -276,20 +302,22 @@ class WellOperators(OperatorsSuper):
         )
 
         """ and alpha for mineral components """
-        # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
+        # solid mass accumulation: phi^T z_s* [-] rho_ms [kmol/m3]
         values_np[self.ACC_OP + self.nc_fl : self.ACC_OP + self.nc_fl + self.ns] = (
             self.property.dens_m[self.np_fl : self.np_fl + self.ns]
             * zc[self.nc_fl : self.nc_fl + self.ns]
         )
 
-        """ Beta operator represents flux term: """
+        """ Beta operator """
         for j in self.property.ph:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             values_np[
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
             ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
-        """ Gamma operator for diffusion (same for thermal and isothermal) """
+        """ Molar density operator """
+
+        """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
 
         """ Chi operator for diffusion """
 
@@ -297,17 +325,19 @@ class WellOperators(OperatorsSuper):
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
         values_np[self.KIN_OP : self.KIN_OP + self.nc] = self.property.mass_source
 
-        """ Gravity and Porosity operators """
+        """ Gravity and capillarity operators """
         # E3-> gravity
         values_np[self.GRAV_OP + self.property.ph] = self.property.dens[
             self.property.ph
         ]
 
+        # E4-> capillarity
+
         """ Permeability multiplier k/kmax """
         # E5_> permeability multiplier due to permporo relationship
         values_np[self.MULT_OP] = 1.0
 
-        """ Lambda operator for velocity calculations """
+        """ Lambda operator (phase mobility) """
         # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
         values_np[self.LAMBDA_OP + self.property.ph] = (
             self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
@@ -317,7 +347,8 @@ class WellOperators(OperatorsSuper):
         # phase saturation: s_j [-]
         values_np[self.SAT_OP + self.property.ph] = self.property.sat[self.property.ph]
 
-        # Pressure operator
+        """ Pressure operator """
+        # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
         values_np[self.PRES_OP] = state_np[0]
 
         if self.thermal:
@@ -336,12 +367,11 @@ class WellOperators(OperatorsSuper):
         :return: updated value for operators, stored in values
         """
         pressure = state[0]
-        # temperature = state[-1]
 
         # Evaluate thermal properties at current state
         self.property.evaluate_thermal(state)
 
-        """ Alpha operator represents accumulation term: """
+        """ Alpha operator represents accumulation term """
         # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += self.phi_f * np.sum(
             self.property.sat[self.property.ph]
@@ -349,12 +379,16 @@ class WellOperators(OperatorsSuper):
             * self.property.enthalpy[self.property.ph]
         )  # fluid enthalpy (kJ/m3)
         # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
-        # well does not support solid
+        values[self.ACC_OP + self.nc] += self.phi_s * np.sum(
+            self.property.sat[self.np_fl : self.np_fl + self.ns]
+            * self.property.dens_m[self.np_fl : self.np_fl + self.ns]
+            * self.property.enthalpy[self.np_fl : self.np_fl + self.ns]
+        )
 
         # Enthalpy to internal energy conversion
         values[self.ACC_OP + self.nc] -= 100 * pressure
 
-        """ Beta operator represents flux term: """
+        """ Beta operator """
         # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
         values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = (
             self.property.enthalpy[self.property.ph]
@@ -368,8 +402,10 @@ class WellOperators(OperatorsSuper):
         )
 
         """ Delta operator for reaction """
+        # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
+        values[self.KIN_OP + self.nc] = self.property.energy_source
 
-        # Phase enthalpy
+        """ Phase enthalpy operator """
         for j in range(self.nph):
             values[self.ENTH_OP + j] = self.property.enthalpy[j]
 
@@ -381,8 +417,25 @@ class WellOperators(OperatorsSuper):
 
 
 class GeomechanicsReservoirOperators(ReservoirOperators):
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
+    def __init__(
+        self,
+        property_container: PropertyContainer,
+        thermal: bool,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+    ):
+        """
+        Constructor of GeomechanicsReservoirOperators class
+
+        :param property_container: Property container of type PropertyContainer
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
+        """
+        super().__init__(
+            property_container, thermal, extrapolation_flag, dz
+        )  # Initialize base-class
 
         self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
         self.n_ops = self.ROCK_DENS_OP + 1
@@ -419,6 +472,9 @@ class SinglePhaseGeomechanicsOperators(OperatorsBase):
         :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
 
         state_np = state.to_numpy()
         values_np = values.to_numpy()

@@ -195,7 +195,7 @@ class Model(CICDModel):
         # Create property containers:
         kinetic_mechanisms = ['acidic', 'neutral', 'carbonate']
         property_container = PropertyContainer(phases=self.phases, components_name=self.elements, Mw=Mw,
-                                            stoich_matrix=stoich_matrix, min_z=self.obl_min, temperature=self.temperature,
+                                            stoich_matrix=stoich_matrix, eps_z=self.obl_min, temperature=self.temperature,
                                             fc_mask=self.fc_mask)
 
         property_container.permporo_mult_ev = ConstFunc(1.0)
@@ -205,7 +205,7 @@ class Model(CICDModel):
         property_container.viscosity_ev = { gas: GasViscosity(), liq: LiquidViscosity() }
 
         property_container.flash_ev = Flash(
-            min_z=property_container.min_z,
+            min_z=property_container.eps_z,
             minerals=property_container.minerals,
             components=property_container.components_name[property_container.fc_mask],
             temperature=property_container.temperature,
@@ -232,9 +232,10 @@ class Model(CICDModel):
         output_property_container = MyOutputPropertyContainer(property_container)
 
         # Create instance of (own) physics class:
-        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name, n_points=self.n_points,
-                                          axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
-                                          cache=False)
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name,
+                                                n_points=self.n_points, axes_min=self.axes_min, axes_max=self.axes_max,
+                                                epsilon_z=property_container.eps_z, extrapolation_flag=False,
+                                                cache=False)
 
         self.physics.add_property_region(property_container, output_property_container, 0)
 

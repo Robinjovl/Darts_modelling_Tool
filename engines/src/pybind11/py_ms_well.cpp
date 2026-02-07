@@ -54,6 +54,7 @@ void pybind_ms_well(py::module& m)
         .def_readwrite("init_state", &ms_well::init_state)
         .def_readwrite("phases_vels", &ms_well::phases_vels)
         .def_readwrite("phases_vels_ders", &ms_well::phases_vels_ders)
+        .def_readwrite("phases_ske_seg0", &ms_well::phases_ske_seg0)
         // For lateral heat transfer in DFM wells
         .def_readwrite("with_lateral_heat_transfer", &ms_well::with_lateral_heat_transfer)
         .def_readwrite("connections_for_lateral_heat_transfer", &ms_well::connections_for_lateral_heat_transfer);

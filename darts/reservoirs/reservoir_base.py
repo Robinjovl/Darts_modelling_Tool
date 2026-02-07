@@ -89,17 +89,17 @@ class ReservoirBase:
     def add_well(
         self,
         well_name: str,
-        ms_well_type: ms_well.MS_Type,
+        ms_well_type: ms_well.MS_Type = ms_well.MS_Type.EPM,
         well_diameter: float = 0.15,
         well_geometry: PipeGeometry = None,
     ) -> None:
         """
-        Function to add :class:`ms_well` object to list of wells and generate list of perforations
+        Function to create an ms_well object and add it to the list of wells
 
         :param well_name: Well name
         :type well_name: str
         :param ms_well_type: Type of the multi-segment well model:
-        ms_well.MS_Type.EPM: For the Equivalent Porous Medium model
+        ms_well.MS_Type.EPM: For the Equivalent Porous Medium model (default well type)
         ms_well.MS_Type.DFM: For the Drift-Flux model
         :type ms_well_type: ms_well.MS_Type
         :param well_diameter: Well inside diameter. If ms_well_type is EPM, this input argument is needed. If
@@ -231,42 +231,6 @@ class ReservoirBase:
         self.mesh.init_grav_coef()
         # Initialize specific potential energy at cell centroids and connections for both reservoir and wells
         self.mesh.init_spe(grav_acceleration_for_spe=self.grav_acceleration_for_spe)
-
-    @abc.abstractmethod
-    def output_to_plt(
-        self,
-        data: dict,
-        output_props: list = None,
-        lims: dict = None,
-        fig=None,
-        figsize: tuple = None,
-        axs_shape: tuple = None,
-        aspect_ratio: str = "equal",
-        logx: bool = False,
-        plot_zeros: bool = True,
-        cmap: str = "jet",
-        colorbar_loc: str = "right",
-    ):
-        """
-        Method for plotting output using matplotlib library.
-        Implementation is specific to inherited Reservoir classes
-
-        :param data: Data for output
-        :type data: dict
-        :param output_props: List of properties to plot
-        :type output_props: list
-        :param lims: Dictionary of lists with [lower, upper] limits for output variables, will default to [None, None]
-        :type lims: dict
-        :param fig: Figure object, default is None
-        :param figsize: Tuple of (width, height) for figure
-        :param axs_shape: Tuple of (rows, columns) for figure
-        :param aspect_ratio: Aspect ratio ('equal', 'auto', or float), default is 'equal'
-        :param logx: Bool to plot x-axis in logscale, default is False
-        :param plot_zeros: Bool to plot zero values, default is True
-        :param cmap: plt.Colourmap, default is 'jet'
-        :param colorbar_loc: Location of colorbar ('right' or 'bottom'), default is 'right'
-        """
-        pass
 
     @abc.abstractmethod
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):

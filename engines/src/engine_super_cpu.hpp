@@ -88,6 +88,9 @@ public:
   std::vector<value_t> phase_vels_ders;
   std::vector<value_t> phases_vels_ders;
 
+  // Specific kinetic energy of phases at segments centroids at the previous time step (explicit)
+  std::vector<value_t> phases_ske_seg0;
+
   // number of variables per jacobian matrix block
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
