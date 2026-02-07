@@ -1140,21 +1140,21 @@ class Pipe:
         :param iter_counter: Iteration counter of the current time step
         :type iter_counter: int
         """
-        n_segments = self.geometry.num_segments
         n_conns = self.geometry.num_interfaces
-        n_phase_vels = n_conns * 2
-        n_primary_vars = len(X_dfm_well)
         n_vars = self.physics.n_vars
 
-        # Preallocate the matrix of derivatives of phase velocities
-        vel_der_matrix = np.zeros((n_phase_vels, n_primary_vars))
-
+        # Evaluate phase velocities
         phase_vels = self.eval_phase_vels(
             Xn_dfm_well, X_dfm_well, dt, simulation_time, iter_counter, flag=1
         )
 
         # Construct the matrix of derivatives of phase velocities
         if self.diff_method == "numerical":
+            n_phase_vels = n_conns * 2
+            n_primary_vars = len(X_dfm_well)
+            n_segments = self.geometry.num_segments
+            # Preallocate the matrix of derivatives of phase velocities
+            vel_der_matrix = np.zeros((n_phase_vels, n_primary_vars))
             for i in range(n_segments):
                 # Derivatives of all the phase velocities with respect to the pressure of segment i
                 X_dfm_well[i * n_vars] += self.eps_p
@@ -1171,10 +1171,10 @@ class Pipe:
                 ) / self.eps_p
                 X_dfm_well[i * n_vars] -= self.eps_p
 
-                for j in range(self.physics.nc - 1):
+                for j in range(1, self.physics.nc):
                     # Derivatives of all the phase velocities with respect to the mole fraction of component j in segment i
-                    X_dfm_well[i * n_vars + j + 1] += self.eps_z
-                    vel_der_matrix[:, i * n_vars + j + 1] = (
+                    X_dfm_well[i * n_vars + j] += self.eps_z
+                    vel_der_matrix[:, i * n_vars + j] = (
                         self.eval_phase_vels(
                             Xn_dfm_well,
                             X_dfm_well,
@@ -1185,7 +1185,7 @@ class Pipe:
                         )
                         - phase_vels
                     ) / self.eps_z
-                    X_dfm_well[i * n_vars + j + 1] -= self.eps_z
+                    X_dfm_well[i * n_vars + j] -= self.eps_z
 
                 if not self.isothermal:
                     # Derivatives of all the phase velocities with respect to the temperature of segment i
@@ -1215,25 +1215,26 @@ class Pipe:
             vel_der_matrix_G = self.vG_der
             vel_der_matrix_L = self.vL_der
 
-        vel_der_matrix_G_clean = np.zeros((n_conns, 2 * n_vars))
-        vel_der_matrix_L_clean = np.zeros((n_conns, 2 * n_vars))
+        # Extract the dense matrix of phase velocity derivatives
+        vel_der_dense_matrix_G = np.zeros((n_conns, 2 * n_vars))
+        vel_der_dense_matrix_L = np.zeros((n_conns, 2 * n_vars))
         for a in range(n_conns):
-            vel_der_matrix_G_clean[a] = vel_der_matrix_G[
+            vel_der_dense_matrix_G[a] = vel_der_matrix_G[
                 a, a * n_vars : a * n_vars + 2 * n_vars
             ]
-            vel_der_matrix_L_clean[a] = vel_der_matrix_L[
+            vel_der_dense_matrix_L[a] = vel_der_matrix_L[
                 a, a * n_vars : a * n_vars + 2 * n_vars
             ]
 
-        # Flatten and concatenate both arrays
-        phase_velocities_derivatives = np.concatenate(
+        # Flatten and concatenate both phase arrays
+        phase_vels_ders = np.concatenate(
             (
-                vel_der_matrix_G_clean.flatten(),
-                vel_der_matrix_L_clean.flatten(),
+                vel_der_dense_matrix_G.flatten(),
+                vel_der_dense_matrix_L.flatten(),
             )
         )
 
-        return phase_vels, phase_velocities_derivatives
+        return phase_vels, phase_vels_ders
 
     def get_operator_der_matrix_for_well(self, op_idx):
         """
