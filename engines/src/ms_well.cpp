@@ -13,6 +13,50 @@ using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
+void ms_well::init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_)
+{
+    n_block_size = n_vars_;
+    P_VAR = 0;
+    n_vars = n_vars_;
+    n_phases = int(phase_names_.size());
+    n_ops = n_ops_;
+    phase_names = phase_names_;
+    thermal = thermal_;
+
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+
+    rate_evaluator = well_controls_etor;
+    state.resize(n_vars);
+    state_neighbour.resize(n_vars);
+    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
+
+    rate_etor_ad = well_controls_etor;  //adjoint method
+}
+
+void ms_well::init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_)
+{
+    n_block_size = N_VARS_;
+    P_VAR = P_VAR_;
+    n_vars = n_vars_;
+    n_phases = int(phase_names_.size());
+    n_ops = n_ops_;
+    phase_names = phase_names_;
+    thermal = thermal_;
+
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+
+    rate_evaluator = well_controls_etor;
+    state.resize(n_vars);
+    state_neighbour.resize(n_vars);
+    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
+
+    rate_etor_ad = well_controls_etor;  //adjoint method
+}
+
 int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 {
   if (constraint.get_well_control_type() > well_control_iface::WellControlType::NONE)

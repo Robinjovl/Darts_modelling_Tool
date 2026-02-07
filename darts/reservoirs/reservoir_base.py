@@ -14,7 +14,6 @@ class ReservoirBase:
     """
 
     mesh: conn_mesh
-    wells: ms_well_vector = []
 
     def __init__(self, timer: timer_node, cache: bool = False):
         # Initialize timer for initialization and caching
