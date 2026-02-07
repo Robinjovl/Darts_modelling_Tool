@@ -117,7 +117,9 @@ class ReservoirBase:
             assert well_geometry is None, (
                 "For EPM, well_geometry must not be specified!"
             )
-            # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
+            # Large well trans for EPM well model
+            well.well_transmissibility = 1e5
+            # First put only area in segment_volume to be multiplied by segment length later. segment_volume is the volume of
             # the segment in front of the reservoir cell which is perforated.
             well.segment_volume = pi / 4 * well_diameter**2
             # will be updated in add_perforation

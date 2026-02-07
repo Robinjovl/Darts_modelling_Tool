@@ -25,7 +25,6 @@ struct segment
 };
 
 
-
 /// Class for a multi-segment well
 class ms_well
 {
@@ -43,24 +42,7 @@ public:
         DFM
     };
 
-    ms_well()
-    {
-        segment_volume = 0;
-        well_transmissibility = 100000;   // used for multi-segment wells of the type EPM
-        well_head_depth = 0;
-        well_body_depth = 0;
-        segment_depth_increment = 0;
-        segment_diameter = 0;
-        segment_roughness = 0;
-        well_type = WellType::PRODUCER;
-
-        // Only used for DFM wells
-        segment_volumes = {};
-        segment_depths = {};
-        num_segments = 0;
-        ms_type = MS_Type::EPM;
-        with_lateral_heat_transfer = false;
-    };
+    ms_well();
 
     void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
         operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_ = 0);
@@ -103,30 +85,36 @@ public:
 
     int initialize_control(std::vector<value_t>& X);
 
+    void addSegment();
+
+    bool isProducer() const { return (well_type == WellType::PRODUCER); }
+
     int cross_flow(std::vector<value_t>& X);
 
-    // These properties are only used in discretization, before simulation starts
+    std::string name;
+    MS_Type ms_type;
+    WellType well_type; // type to be producer or injector
+    // segment data type
+    std::vector<segment> segments;
+
     std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
+    bool with_lateral_heat_transfer = false;   // only used for a DFM well. If true, lateral heat transfer between the DFM well segments and reservoir blocks is considered.
+    std::vector<std::tuple<index_t, index_t, value_t>> connections_for_lateral_heat_transfer; // tuple of (dfm_segment_index, reservoir_block_index, geometric_part_of_the_heat_transfer_equation)
+
     value_t segment_volume;
-    value_t well_transmissibility;
+    value_t well_transmissibility;   // used for multi-segment wells of the type EPM
     value_t well_head_depth;
     value_t well_body_depth;
     value_t segment_depth_increment;
     value_t segment_diameter;
     value_t segment_roughness;
 
+    // Only used for DFM wells
     std::vector<value_t> segment_volumes;
     std::vector<value_t> segment_depths;
     index_t num_segments;
+
     std::vector<value_t> init_state;
-
-    // Properties for simulation
-
-    std::string name;
-    MS_Type ms_type;
-
-    bool with_lateral_heat_transfer;   // only used for a DFM well. If true, lateral heat transfer between the DFM well segments and reservoir blocks is considered.
-    std::vector<std::tuple<index_t, index_t, value_t>> connections_for_lateral_heat_transfer; // tuple of (dfm_segment_index, reservoir_block_index, geometric_part_of_the_heat_transfer_equation)
 
     index_t well_head_idx;        // index of the wellhead segment, where well controls apply
     index_t well_body_idx;        // index of the well segment right below the wellhead segment
@@ -153,30 +141,6 @@ public:
     int thermal;
     // n_block_size -- size of the full block, P_VAR -- index of the start of the state variables within block
     uint8_t n_block_size, P_VAR;
-
-    // segment data type
-    std::vector<segment> segments;
-    void addSegment()
-    {
-        double PI = 3.141592;
-        for (index_t p = 0; p < n_segments + 1; p++)
-        {
-            //
-            segment s;
-            s.diameter = segment_diameter;
-            s.length = segment_depth_increment;
-            s.area = PI * (s.diameter * s.diameter) / 4;
-            s.volume = s.length * s.area;  // volume of the segment
-            segments.push_back(s);
-        }
-    }
-
-    WellType well_type; // type to be producer or injector
-
-    bool isProducer() const
-    {
-        return (well_type == WellType::PRODUCER);
-    }
 };
 
 #endif /* MS_WELL_H */
