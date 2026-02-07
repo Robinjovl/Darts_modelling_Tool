@@ -360,10 +360,12 @@ class PhysicsBase:
         inj_temp: float = None,
     ):
         """
-        Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
+        Set well control/constraint. It will call set_bhp_control() or set_rate_control() on the control or constraint
         well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
 
-        :param wctrl: well_control_iface object responsible for control/constraint
+        :param wctrl: well_control_iface object responsible for control/constraint. It must be set to:
+                      - well_obj.control for well control
+                      - well_obj.constraint for well constraint
         :param control_type: Well control type -2) NONE (if constraint needs to be deactivated), -1) BHP,
                              0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
         :param is_inj: Is injection well (true) or production well (false)
