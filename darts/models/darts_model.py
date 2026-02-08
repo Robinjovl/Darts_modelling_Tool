@@ -2,6 +2,8 @@ import os
 import warnings
 from math import fabs
 
+import matplotlib.pyplot as plt
+
 # import h5py
 import numpy as np
 
@@ -117,6 +119,12 @@ class DartsModel:
         self.time = []
         self.n_newton_iters = []
         self.time_step_size = []
+
+        # For plotting during simulation
+        self.plot_newton_iters_vs_time = False
+        self.figs = []
+        self.axes = []
+        self.lines = []
 
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
@@ -842,6 +850,9 @@ class DartsModel:
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
+                # Plot properties vs time
+                if self.plot_newton_iters_vs_time:
+                    self.plot_props_vs_current_time()
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 
@@ -849,8 +860,346 @@ class DartsModel:
         self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
         self.time_step_size.append(dt)
 
+        # # Plot properties vs time
+        # if self.plot_newton_iters_vs_time:
+        #     self.plot_props_vs_current_time()
+
         self.timer.node["simulation"].stop()
         return converged
+
+    def init_plot_props_vs_time(self):
+        """
+        Initialize figure/axes/artist
+        """
+        plt.ion()
+
+        fig, axes = plt.subplots(2, 6, figsize=(22, 7), constrained_layout=True)
+
+        self.figs.append(fig)
+        self.axes.append(axes)
+
+        ax0 = self.axes[0][0, 0]
+        ax1 = self.axes[0][1, 0]
+        ax2 = self.axes[0][0, 1]
+        ax3 = self.axes[0][1, 1]
+        ax4 = self.axes[0][0, 2]
+        ax5 = self.axes[0][1, 2]
+        ax6 = self.axes[0][0, 3]
+        ax7 = self.axes[0][1, 3]
+        ax8 = self.axes[0][0, 4]
+        ax9 = self.axes[0][1, 4]
+        ax10 = self.axes[0][0, 5]
+        ax11 = self.axes[0][1, 5]
+
+        # Axes for number of Newton iterations
+        (line0,) = ax0.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        # ax0.set_xscale("log")
+        ax0.set_xlabel("Time [days]")
+        ax0.set_ylabel("Number of Newton iterations [-]")
+
+        # Axes for time step size
+        (line1,) = ax1.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        # ax1.set_xscale("log")
+        ax1.set_xlabel("Time [days]")
+        ax1.set_ylabel("Time step size [days]")
+
+        # Axes for wellbore pressure
+        (line2,) = ax2.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax2.set_xlabel("Pressure [bar]")
+        ax2.set_ylabel("Segment index [-]")
+        ax2.set_title("** Well prim. vars **")
+        ax2.invert_yaxis()
+
+        # Axes for wellbore specific enthalpy
+        (line3,) = ax3.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax3.set_xlabel("Specific enthalpy [kJ/kmol]")
+        ax3.set_ylabel("Segment index [-]")
+        ax3.invert_yaxis()
+
+        # Axes for wellbore gas volume fraction
+        (line4,) = ax4.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax4.set_xlabel("Gas volume fraction [-]")
+        ax4.set_ylabel("Segment index [-]")
+        ax4.set_title("** Well vol. frac. **")
+        ax4.invert_yaxis()
+
+        # Axes for wellbore liquid volume fraction
+        (line5,) = ax5.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax5.set_xlabel("Liquid volume fraction [-]")
+        ax5.set_ylabel("Segment index [-]")
+        ax5.invert_yaxis()
+
+        # Axes for wellbore gas density
+        (line6,) = ax6.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax6.set_xlabel(r"Gas density [kg/m$^3$]")
+        ax6.set_ylabel("Segment index [-]")
+        ax6.set_title("** Well density **")
+        ax6.invert_yaxis()
+
+        # Axes for wellbore liquid density
+        (line7,) = ax7.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax7.set_xlabel(r"Liquid density [kg/m$^3$]")
+        ax7.set_ylabel("Segment index [-]")
+        ax7.invert_yaxis()
+
+        # Axes for wellbore gas viscosity
+        (line8,) = ax8.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax8.set_xlabel(r"Gas viscosity [cP]")
+        ax8.set_ylabel("Segment index [-]")
+        ax8.set_title("** Well viscosity **")
+        ax8.invert_yaxis()
+
+        # Axes for wellbore liquid viscosity
+        (line9,) = ax9.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax9.set_xlabel(r"Liquid viscosity [cP]")
+        ax9.set_ylabel("Segment index [-]")
+        ax9.invert_yaxis()
+
+        # Axes for reservoir pressure
+        (line10,) = ax10.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax10.set_xscale("log")
+        ax10.set_xlabel("Reservoir radial distance [m]")
+        ax10.set_ylabel("Pressure [bar]")
+        ax10.set_title("** Reservoir **")
+
+        # Axes for reservoir specific enthalpy
+        (line11,) = ax11.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax11.set_xscale("log")
+        ax11.set_xlabel("Reservoir radial distance [m]")
+        ax11.set_ylabel("Specific enthalpy [kJ/kmol]")
+
+        self.lines.append(
+            [
+                line0,
+                line1,
+                line2,
+                line3,
+                line4,
+                line5,
+                line6,
+                line7,
+                line8,
+                line9,
+                line10,
+                line11,
+            ]
+        )
+
+        self.figs[0].show()
+
+    def plot_props_vs_current_time(self):
+        """
+        Plot properties vs current time
+        """
+        # Initialize once (first call only)
+        if not self.figs or not self.axes or not self.lines:
+            self.init_plot_props_vs_time()
+
+        self.lines[0][0].set_data(self.time, self.n_newton_iters)
+        self.axes[0][0, 0].relim()
+        self.axes[0][0, 0].autoscale_view()
+
+        self.lines[0][1].set_data(self.time, self.time_step_size)
+        self.axes[0][1, 0].relim()
+        self.axes[0][1, 0].autoscale_view()
+
+        i_start_well = self.reservoir.wells[0].well_head_idx
+        i_end_well = self.reservoir.wells[0].well_bottom_idx
+        p_idx = self.physics.vars.index('pressure')
+        h_idx = self.physics.vars.index('enthalpy')
+        X_np = np.asarray(self.physics.engine.X).reshape(-1, self.physics.n_vars)
+        p_well = X_np[i_start_well : i_end_well + 1, p_idx]
+        h_well = X_np[i_start_well : i_end_well + 1, h_idx]
+        p_res = X_np[:i_start_well, p_idx][:50]
+        h_res = X_np[:i_start_well, h_idx][:50]
+        x_res = self.reservoir.global_data['dx'].reshape(-1)[:50]
+
+        [
+            xG_mass_well,
+            xL_mass_well,
+            sG_well,
+            rhoG_well,
+            rhoL_well,
+            miuG_well,
+            miuL_well,
+        ] = self.wells['I1'].iter_phases_props
+        n_segments = self.wells['I1'].geometry.num_segments
+
+        self.lines[0][2].set_data(p_well, np.arange(n_segments))
+        self.axes[0][0, 1].relim()
+        self.axes[0][0, 1].autoscale_view()
+
+        self.lines[0][3].set_data(h_well, np.arange(n_segments))
+        self.axes[0][1, 1].relim()
+        self.axes[0][1, 1].autoscale_view()
+
+        self.lines[0][4].set_data(sG_well, np.arange(n_segments))
+        self.axes[0][0, 2].relim()
+        self.axes[0][0, 2].autoscale_view()
+
+        self.lines[0][5].set_data(1 - sG_well, np.arange(n_segments))
+        self.axes[0][1, 2].relim()
+        self.axes[0][1, 2].autoscale_view()
+
+        self.lines[0][6].set_data(rhoG_well, np.arange(n_segments))
+        self.axes[0][0, 3].relim()
+        self.axes[0][0, 3].autoscale_view()
+
+        self.lines[0][7].set_data(rhoL_well, np.arange(n_segments))
+        self.axes[0][1, 3].relim()
+        self.axes[0][1, 3].autoscale_view()
+
+        self.lines[0][8].set_data(miuG_well, np.arange(n_segments))
+        self.axes[0][0, 4].relim()
+        self.axes[0][0, 4].autoscale_view()
+
+        self.lines[0][9].set_data(miuL_well, np.arange(n_segments))
+        self.axes[0][1, 4].relim()
+        self.axes[0][1, 4].autoscale_view()
+
+        self.lines[0][10].set_data(x_res, p_res)
+        self.axes[0][0, 5].relim()
+        self.axes[0][0, 5].autoscale_view()
+
+        self.lines[0][11].set_data(x_res, h_res)
+        self.axes[0][1, 5].relim()
+        self.axes[0][1, 5].autoscale_view()
+
+        self.figs[0].canvas.draw_idle()
+        self.figs[0].canvas.flush_events()
+        # plt.pause(0.5)
 
     def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):
         """
