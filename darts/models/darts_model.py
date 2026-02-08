@@ -114,6 +114,10 @@ class DartsModel:
         # Create sim_params object to set simulation parameters
         self.params = sim_params()
 
+        self.time = []
+        self.n_newton_iters = []
+        self.time_step_size = []
+
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
 
@@ -840,6 +844,10 @@ class DartsModel:
                 self.timer.node["newton update"].stop()
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
+
+        self.time.append(t)
+        self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
+        self.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
         return converged
