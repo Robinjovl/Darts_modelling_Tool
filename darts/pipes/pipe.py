@@ -1206,22 +1206,21 @@ class Pipe:
         Returns
         der : ndarray, shape (num_segments, num_segments * n_vars)
         """
-        op_ders_arr = np.array(self.physics.engine.op_ders_arr)
+        n = self.geometry.num_segments
         n_vars = self.physics.n_vars
         n_ops = self.physics.n_ops
-        total_cells = self.reservoir.mesh.n_blocks
+        n_all_cells = self.reservoir.mesh.n_blocks
 
         well_obj = self.reservoir.get_well(self.name)
         start = well_obj.well_head_idx
-        stop = well_obj.well_head_idx + self.geometry.num_segments
+        stop = well_obj.well_head_idx + n
 
-        # [all_cells, ops, vars]
-        arr = op_ders_arr.reshape(total_cells, n_ops, n_vars)
-        well_indices = np.arange(start, stop)
+        op_ders_arr = np.asarray(self.physics.engine.op_ders_arr)
+        arr = op_ders_arr.reshape(n_all_cells, n_ops, n_vars)
 
-        local = arr[well_indices, op_idx, :]  # (num_segments, n_vars)
+        # (n, n_vars): derivative values for segments of this well, for this operator
+        local = arr[start:stop, op_idx, :]
 
-        n = self.geometry.num_segments
         der = np.zeros((n, n, n_vars), dtype=local.dtype)
         idx = np.arange(n)
         der[idx, idx, :] = local
