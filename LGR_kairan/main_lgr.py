@@ -5,9 +5,12 @@ from Eclipse_method import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
+import matplotlib.tri as mtri
 
 import os
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm, Normalize
+import matplotlib.ticker as mticker
 
 def plot_well_time_data_2(m, time_data_df,
                                 well_names=None,
@@ -132,6 +135,71 @@ def plot_well_time_data_2(m, time_data_df,
 
     print(f"Saved combined plots to: {out_dir}")
 
+def get_physics_field(model):
+    X = np.array(model.physics.engine.X, copy=False)
+    n = int(len(model.reservoir.poro))
+    nb = len(model.physics.vars)
+    X_res = X[:n*nb]
+    Xc = X_res.reshape((n,nb), order="C")
+    return {str(v): Xc[:,i] for i, v in enumerate(model.physics.vars)}
+
+def plot_xz_section(model, values, y0= None, tol= None, savepath="xz.png", title="", 
+                    logscale=False, vmin=None, vmax=None, clip_floor=1e-20):
+    res = model.reservoir
+    x = res.cell_center_x
+    y = res.cell_center_y
+    z = res.cell_center_z
+    v = np.asarray(values, float)
+    if y0 is None:
+        y0 = float(np.median(y))
+    if tol is None:
+        tol = 0.5 * float(np.median(np.asarray(res.dy, float)))
+    
+    m = np.abs(y-y0) <= tol
+    xp, zp, vp = x[m], z[m], v[m]
+    # --- choose normalization ---
+    if logscale:
+        # LogNorm can't handle <=0: clip to small positive
+        vp_plot = np.clip(vp, clip_floor, None)
+
+        if vmin is None:
+            # robust lower bound: smallest positive in slice
+            pos = vp_plot[vp_plot > 0]
+            vmin = float(np.min(pos)) if pos.size else clip_floor
+        if vmax is None:
+            vmax = float(np.max(vp_plot))
+
+        norm = LogNorm(vmin=vmin, vmax=vmax)
+        vals_to_plot = vp_plot
+    else:
+        if vmin is None:
+            vmin = float(np.min(vp))
+        if vmax is None:
+            vmax = float(np.max(vp))
+        norm = Normalize(vmin=vmin, vmax=vmax)
+        vals_to_plot = vp
+    fig, ax = plt.subplots(figsize=(10, 3.8), dpi=150)
+
+    sc = ax.scatter(xp, zp, c=vals_to_plot, s=10, norm=norm)
+
+    cbar = fig.colorbar(sc, ax=ax)
+    # nicer ticks/labels
+    if logscale:
+        cbar.formatter = mticker.LogFormatterMathtext()
+        cbar.update_ticks()
+    else:
+        fmt = mticker.ScalarFormatter(useMathText=True)
+        fmt.set_useOffset(False)
+        cbar.formatter = fmt
+        cbar.update_ticks()
+
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("depth [m]")
+    ax.invert_yaxis()
+    ax.set_title(title or f"XZ @ y={y0:.2f}")
+
+    fig.savefig(savepath, bbox_inches="tight")
+    plt.close(fig)
 
 
 if __name__ == '__main__':
@@ -142,11 +210,40 @@ if __name__ == '__main__':
 
 
     if True:
-        darts_model.run(50)
+        darts_model.run(365)
         # darts_model.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # darts_model.run_python(300, restart_dt=1e-3)
         darts_model.print_timers()
         darts_model.print_stat()
+        save_dict = {
+            "X": np.array(darts_model.physics.engine.X, copy=True),
+            "vars": [str(v) for v in darts_model.physics.vars],
+            "n_cells": int(len(darts_model.reservoir.poro)),
+            "n_vars": len(darts_model.physics.vars),
+            }
+
+        np.save("solution_final.npy", save_dict)
+
+        prim = get_physics_field(darts_model)
+        print("vars:", list(prim.keys()))
+        for k in prim.keys():
+            if "pressure" in k.lower() or k.lower() == "p":
+                plot_xz_section(darts_model, prim[k],
+                                savepath="large_section_P.png",
+                                title=k,
+                                logscale=False)
+                break
+
+     
+        for k in prim.keys():
+            if "co2" in k.lower() :  
+                plot_xz_section(darts_model, prim[k] - 1e-8,
+                                savepath="large_section_CO2.png",
+                                title="CO2_delta",
+                                logscale=False,
+                                vmin=0, vmax=1)   
+                break
+
 
         # compute well time data
         time_data_dict = darts_model.output.store_well_time_data(save_output_files=True)
@@ -171,3 +268,8 @@ if __name__ == '__main__':
     # else:
     #     #plot_sol(n)
     #     n.print_and_plot('sim_data')
+
+
+
+
+

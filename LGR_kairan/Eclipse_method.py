@@ -54,7 +54,7 @@ class Model(DartsModel):
         parent_grid_name = 'global'
         lgr_coords_in_parent_grid = {
         "i_range": [20, 20],
-        "j_range": [60, 60],
+        "j_range": [40, 40],
         "k_range": [1, 40],
         "refine": [3, 3, 1],
         "tag" : "inj"
@@ -68,7 +68,7 @@ class Model(DartsModel):
         parent_grid_name = 'global'
         lgr_coords_in_parent_grid = {
         "i_range": [60, 60],
-        "j_range": [60, 60],
+        "j_range": [40, 40],
         "k_range": [1, 40],
         "refine": [3, 3, 1],
         "tag" : "prd"
@@ -120,6 +120,62 @@ class Model(DartsModel):
             dz*= ratio
         layers.append(total_thickness - s) # add last layer
         return np.asarray(layers, dtype=float)
+    
+     # build cell center coordinates for visualization
+    def build_cell_center(self):
+        if not hasattr(self, 'reservoir') or self.reservoir is None:
+            raise RuntimeError("Reservoir not built yet.")
+        n = self.reservoir.n
+        x = np.empty(n, dtype=float)
+        y = np.empty(n, dtype=float)
+        z = np.asarray(self.reservoir.depth, dtype = float).copy()
+        # level 0 
+        self.level0.discretize()
+        disc0 = self.level0.discretizer
+        l2g0 = np.asarray(disc0.local_to_global, dtype=int)
+        
+        n0 = len(l2g0)
+        nx0= int(self.level0.nx)
+        ny0= int(self.level0.ny)
+        nz0= int(self.level0.nz)
+        dx0 =  float(np.asarray(self.level0.global_data["dx"]).flat[0])
+        dy0 = float(np.asarray(self.level0.global_data["dy"]).flat[0])
+        for local_id, global_id in enumerate(l2g0):
+            k = global_id // (nx0 * ny0) # 0 based
+            j = (global_id % (nx0 * ny0)) // nx0
+            i = global_id % nx0
+            x[local_id] = (i + 0.5) * dx0
+            y[local_id] = (j + 0.5) * dy0
+            
+        # lgr blocks
+        meta = self.lgr_meta
+        for name in meta['lgr_orders']:
+            offset = meta['lgr_offsets'][name]
+            grid = self.level1[name]
+            nx1, ny1, nz1 = int(grid.nx), int(grid.ny), int(grid.nz)
+            cfg = self.lgrs[name]['lgr_coords_in_parent_grid']
+            i_start, j_start = cfg['i_range'][0], cfg['j_range'][0] # 1-based
+            rx, ry, rz = cfg['refine']
+            x0 = (i_start - 1) * dx0 # left corner of lgr block in global coordinate
+            y0 = (j_start - 1) * dy0
+            dx1 = dx0 / rx
+            dy1 = dy0 / ry
+            n_lgr = int(grid.n)
+            nxy1 = nx1 * ny1
+            for lid in range(n_lgr): # local id in lgr block
+                k = lid // nxy1
+                r = lid - k*nxy1
+                j = r//nx1
+                i = r % nx1
+
+                glid = offset + lid
+                x[glid] = x0 + (i+0.5) * dx1
+                y[glid] = y0 + (j+0.5) * dy1
+
+        self.reservoir.cell_center_x = x
+        self.reservoir.cell_center_y = y
+        self.reservoir.cell_center_z = z
+        return x,y,z
     
     def set_reservoir(self):
         self.lgrs = self.build_lgr_definition()
@@ -179,10 +235,14 @@ class Model(DartsModel):
         base_vol = float(dx0 * dy0 * dz_res)
         v_big = base_vol * boundary_factor
 
-        self.level0.set_boundary_volume["yz_min"] = v_big
-        self.level0.set_boundary_volume["yz_max"] = v_big
-        self.level0.set_boundary_volume["xz_min"] = v_big
-        self.level0.set_boundary_volume["xz_max"] = v_big
+        self.level0.boundary_volumes = {
+            "xy_minus": None,
+            "xy_plus": None,
+            "yz_minus": v_big,
+            "yz_plus": v_big,
+            "xz_minus": v_big,
+            "xz_plus": v_big,
+        }
 
 
         # Build Level1 grids and imaginary grids
@@ -232,9 +292,8 @@ class Model(DartsModel):
         dy0_arr = disc0.convert_to_flat_array(self.level0.global_data['dy'], 'dy')[l2g0]
         dz0_arr = disc0.convert_to_flat_array(self.level0.global_data['dz'], 'dz')[l2g0]
         
-        # depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
-        depth0_arr = np.array(self.level0.mesh.depth, copy=False).astype(float)
-        volume0_arr = np.array(self.level0.mesh.volume, copy=False).astype(float)
+        depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
+        volume0_arr = np.array(self.level0.volume, copy=False).astype(float)
         # vol_g0 = (np.repeat(dz0_layers, nx0 * ny0) * dx0 * dy0).astype(float)
         # volume0_arr = vol_g0[l2g0]
         # thermal properties for level 0 varying with ob and res
@@ -305,7 +364,7 @@ class Model(DartsModel):
         rcon = np.concatenate(rcond_list)
         hcap = np.concatenate(hcap_list)
 
-
+        print(f'final volume list is {volume}')
 
         self.reservoir = LGRReservoir(self.timer,
                                         cell_m=cm_all,
@@ -325,9 +384,10 @@ class Model(DartsModel):
                                         kz=kz,
                                         )
         self.lgr_meta = meta
+        self.build_cell_center()
         return
 
-    # uncompleted, the new connections between lgr and overburden and underburden haven't done
+   
     def assemble_lgr_connections_eclipse(self):
         # STEP 1 discretize Level 0
         self.level0.discretize()
@@ -693,7 +753,7 @@ class Model(DartsModel):
         # self.reservoir.mesh.volume[0:3] = 1e20
 
     def set_well_controls(self):
-        inj_composition = [1.0 - 0.5]
+        inj_composition = [1.0 - self.zero]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
