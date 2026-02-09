@@ -38,6 +38,7 @@ class Model(ZerodModel):
     def __init__(
         self,
         mode='analytical',
+        vapour_eos='ideal',
         p_init=1e-5,
         sv_init=0.535,
         fixed_pressure=False,
@@ -54,6 +55,8 @@ class Model(ZerodModel):
         Initialize the model.
         :param mode: str, 'analytical' or 'obl'
         :type mode: str
+        :param vapour_eos: str, 'ideal' or 'cubic'
+        :type vapour_eos: str
         :param p_init: float, initial pressure, in bar
         :type p_init: float
         :param sv_init: float, initial vapour saturation
@@ -81,6 +84,7 @@ class Model(ZerodModel):
 
         self.timer.node["initialization"].start()
         self.mode = mode
+        self.vapour_eos = vapour_eos
         self.p_init = p_init
         self.sv_init = sv_init
         self.energy_source = EnergySource(energy_source)
@@ -107,7 +111,13 @@ class Model(ZerodModel):
         # flash
         comp_data = CompData(components=components, setprops=True)
         ice_eos = PureSolid(comp_data, "Ice")
-        steam_eos = IdealGas(comp_data)
+        if self.vapour_eos == 'ideal':
+            steam_eos = IdealGas(comp_data)
+        elif self.vapour_eos == 'cubic':
+            steam_eos = CubicEoS(comp_data, CubicEoS.PR)
+            steam_eos.set_preferred_roots(0, 0.75, EoS.MAX)
+        else:
+            raise ValueError(f"Invalid vapour EOS: {self.vapour_eos}")
 
         flash_ph = DARTSFlash(comp_data=comp_data)
         flash_ph.add_eos("ice", ice_eos)

@@ -37,6 +37,7 @@ def tee_stdout(filepath):
 
 
 def run_model(mode: str = 'analytical',
+                vapour_eos: str = 'ideal',
                 p_init: float = 1e-5,
                 energy_source: float = 1e5,
                 sv_init: float = 0.535,
@@ -45,9 +46,9 @@ def run_model(mode: str = 'analytical',
                 n_enth_points: int = 10000000,
                 max_ts: float = 1e-3):
     if mode == 'analytical':
-        output_folder = f'output_{mode}_p_{p_init}_q_{energy_source}_sv_{sv_init}'
+        output_folder = f'output_{mode}_{vapour_eos}_p_{p_init}_q_{energy_source}_sv_{sv_init}'
     elif mode == 'obl':
-        output_folder = f'output_{mode}_p_{p_init}_q_{energy_source}_sv_{sv_init}_n_pres_{n_pres_points}_n_enth_{n_enth_points}'
+        output_folder = f'output_{mode}_{vapour_eos}_p_{p_init}_q_{energy_source}_sv_{sv_init}_n_pres_{n_pres_points}_n_enth_{n_enth_points}'
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
     redirect_darts_output(os.path.join(output_folder, 'log.txt'))
@@ -55,6 +56,7 @@ def run_model(mode: str = 'analytical',
     with tee_stdout(os.path.join(output_folder, 'simulation.log')):
         m = Model(
             mode=mode,
+            vapour_eos=vapour_eos,
             p_init=p_init,
             energy_source=energy_source,
             sv_init=sv_init,
@@ -79,8 +81,8 @@ def run_model(mode: str = 'analytical',
 
 if __name__ == "__main__":
     # analytical derivatives
-    # run_model(mode='analytical', p_init=1e-3, energy_source=1e5, sv_init=0.535, fixed_pressure=False)
+    run_model(mode='analytical', vapour_eos='cubic', p_init=1e-5, energy_source=1e5, sv_init=0.535, fixed_pressure=False)
 
     # OBL derivatives
-    run_model(mode='obl', p_init=1e-3, energy_source=1e5, sv_init=0.535, fixed_pressure=False,
-                n_pres_points=1000000000, n_enth_points=1000000000, max_ts=1e-4)
+    # run_model(mode='obl', p_init=1e-3, energy_source=1e5, sv_init=0.535, fixed_pressure=False,
+    #             n_pres_points=1000000000, n_enth_points=1000000000, max_ts=1e-4)

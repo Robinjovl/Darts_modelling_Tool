@@ -632,7 +632,7 @@ class ZerodModel(DartsModel):
         if thermal is None:
             raise RuntimeError("Thermal state is not available for PT plot.")
         ax.plot(
-            thermal, pressure, color="tab:red", linewidth=2, marker="o", markersize=3
+            thermal, pressure, color="tab:red", linewidth=1, marker="o", markersize=1
         )
         pt_plot.add_attributes(
             title=f"PT-Diagram ({p_min:.1e} to {p_max:.1e} bar, {t_min} to {t_max} K)"
@@ -753,7 +753,7 @@ class ZerodModel(DartsModel):
         if thermal is None:
             raise RuntimeError("Thermal state is not available for PH plot.")
         ax.plot(
-            thermal, pressure, color="tab:red", linewidth=2, marker="o", markersize=3
+            thermal, pressure, color="tab:red", linewidth=1, marker="o", markersize=1
         )
         ph_diagram.add_attributes(title=f"PH-Diagram ({p_min:.1e} to {p_max:.1e} bar)")
         plt.savefig(output_path, bbox_inches="tight")
