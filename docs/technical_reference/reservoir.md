@@ -4,7 +4,7 @@ Subsurface reservoirs are the main bodies for the modelling in DARTS. Reservoir 
 
 The kind of computational grid spanning reservoir produces two types of reservoirs: structured and unstructured. The treatment of structured reservoir can be generalized that was done by  [StructReservoir](https://gitlab.tudelft.nl/darts/darts-package/-/blob/master/darts/models/reservoirs/struct_reservoir.py) class provided in DARTS. Many models use it directly without overloading and extension built-in methods. The models working with unstructured reservoir have to provide their own implementation that is usually represented by UnstructReservoir class defined in reservoir.py script.
 
-Open-DARTS adds additional cells for the wells (2 cells per well in non multi_segment case), one can filter them out similarly to a line below, since those additional cells are always in the end
+Open-DARTS adds additional cells for the wells (2 cells per well in non ms_epm case), one can filter them out similarly to a line below, since those additional cells are always in the end
 ```sh
 my_array[:self.reservoir.mesh.n_blocks]
 ```

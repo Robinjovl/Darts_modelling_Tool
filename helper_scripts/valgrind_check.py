@@ -114,11 +114,17 @@ def run_valgrind_for_model(model, timeout=1800):
         print(f"[SKIP] Model directory not found: {model_path}")
         return True  # failed
 
-    # file paths
-    vg_log = os.path.join(log_folder, f'{model}.vg.log')
-    prog_out = os.path.join(log_folder, f'{model}.log')
-    prog_err = os.path.join(log_folder, f'{model}_err.log')
-    summary_file = os.path.join(log_folder, f'{model}.summary.txt')
+    # Use absolute paths for log files and suppression file since valgrind
+    # traces child processes that may run in different working directories
+    # (the Python snippet does os.chdir to the model directory)
+    abs_log_folder = os.path.abspath(log_folder)
+    abs_suppression_file = os.path.abspath(suppression_file)
+
+    # file paths (absolute to avoid path issues when cwd changes)
+    vg_log = os.path.join(abs_log_folder, f'{model}.vg.log')
+    prog_out = os.path.join(abs_log_folder, f'{model}.log')
+    prog_err = os.path.join(abs_log_folder, f'{model}_err.log')
+    summary_file = os.path.join(abs_log_folder, f'{model}.summary.txt')
 
     # ensure nested model paths have a directory to write into
     os.makedirs(os.path.dirname(vg_log), exist_ok=True)
@@ -137,7 +143,7 @@ def run_valgrind_for_model(model, timeout=1800):
         'valgrind',
         '--trace-children=yes',
         '--error-exitcode=0',
-        f'--suppressions={suppression_file}',
+        f'--suppressions={abs_suppression_file}',
         '--gen-suppressions=all',
         f'--log-file={vg_log}',
         '--',

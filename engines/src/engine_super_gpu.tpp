@@ -521,7 +521,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
           rhs -= phase_volumetric_rate * c_flux_coef;
 
           // Add potential energy flux
-          if (THERMAL && c == NE - 1)
+          if (THERMAL && c == (NE - 1))
           {
               rhs -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
           }
@@ -534,7 +534,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
         jac_diag -= phase_vol_rate_der_i * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
         jac_offd -= phase_vol_rate_der_j * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
-        if (THERMAL && c == NE - 1)
+        if (THERMAL && c == (NE - 1))
         {
             jac_diag -= dt * (phase_vol_rate_der_i * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * cell_spe[i];
             jac_offd -= dt * phase_vol_rate_der_j * op_vals_arr[i * N_OPS + GRAV_OP + p] * cell_spe[i];
@@ -562,7 +562,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
           rhs -= phase_volumetric_rate * c_flux_coef;
 
           // Add potential energy flux
-          if (THERMAL && c == NE - 1)
+          if (THERMAL && c == (NE - 1))
           {
               rhs -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
           }
@@ -575,7 +575,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
         jac_diag -= phase_vol_rate_der_i * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
         jac_offd -= phase_vol_rate_der_j * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
 
-        if (THERMAL && c == NE - 1)
+        if (THERMAL && c == (NE - 1))
         {
             jac_diag -= dt * phase_vol_rate_der_i * op_vals_arr[j * N_OPS + GRAV_OP + p] * cell_spe[j];
             jac_offd -= dt * (phase_vol_rate_der_j * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * cell_spe[j];

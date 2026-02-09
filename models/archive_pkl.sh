@@ -1,4 +1,4 @@
-# create an archive with .pkl files 
+# create an archive with .pkl files
 odls=$1
 gpu=$2
 
@@ -24,4 +24,4 @@ if [[ "$UPLOAD_PKL" != 1 ]]; then
 	exit
 fi
 
-tar -czf $fname ./*/ref/"$pklname"*.pkl
+tar -czf $fname ./*/ref/"$pklname"*.pkl ./*/*/ref/"$pklname"*.pkl
