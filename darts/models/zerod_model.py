@@ -785,7 +785,7 @@ class ZerodModel(DartsModel):
         use_log_p=False,
     ):
         """
-        Plot pressure, compositions, enthalpy, and temperature vs time.
+        Plot pressure, compositions, phase saturations, enthalpy, and temperature vs time.
 
         :param output_path: File path for saving the plot (None to skip saving).
         :type output_path: str or None
@@ -863,8 +863,16 @@ class ZerodModel(DartsModel):
         if not comp_names or len(comp_names) != nc:
             comp_names = [f"comp{i + 1}" for i in range(nc)]
 
+        nph = getattr(props, "nph", 0)
+        if nph <= 0:
+            raise RuntimeError("Property container is missing phase count.")
+        phase_names = getattr(props, "phases_name", None)
+        if not phase_names or len(phase_names) != nph:
+            phase_names = [f"phase{i + 1}" for i in range(nph)]
+
         enthalpy = np.full(n_steps, np.nan)
         temperature = np.full(n_steps, np.nan)
+        sat_history = np.full((n_steps, nph), np.nan)
         spec = getattr(props, "state_spec", None)
         spec_str = spec.name if hasattr(spec, "name") else str(spec)
         if self.mode == "analytical":
@@ -874,6 +882,14 @@ class ZerodModel(DartsModel):
         else:
             raise ValueError(f"Invalid mode: {self.mode}")
 
+        etor = None
+        itor = None
+        ops_cpp = None
+        if self.mode == "obl":
+            etor = self.physics.reservoir_operators[0]
+            itor = self.physics.acc_flux_itor[0]
+            ops_cpp = value_vector(np.zeros(self.physics.n_ops))
+
         if state_arr.shape[1] > nc:
             if is_ph:
                 enthalpy[:] = state_arr[:, nc]
@@ -882,25 +898,24 @@ class ZerodModel(DartsModel):
 
         for i in range(n_steps):
             try:
-                if is_ph:
-                    if self.mode == "analytical":
-                        props.evaluate(state_arr[i])
+                if self.mode == "analytical":
+                    props.evaluate(state_arr[i])
+                    sat_values = np.asarray(getattr(props, "sat", []), dtype=float)
+                    if sat_values.size >= nph:
+                        sat_history[i, :] = sat_values[:nph]
+                    if is_ph:
                         temperature[i] = getattr(props, "temperature", np.nan)
-                    elif self.mode == "obl":
-                        etor = self.physics.reservoir_operators[0]
-                        itor = self.physics.acc_flux_itor[0]
-                        ops_cpp = value_vector(np.zeros(self.physics.n_ops))
-                        itor.evaluate(value_vector(state_arr[i]), ops_cpp)
+                elif self.mode == "obl":
+                    itor.evaluate(value_vector(state_arr[i]), ops_cpp)
+                    for p in range(nph):
+                        sat_history[i, p] = ops_cpp[etor.SAT_OP + p]
+                    if is_ph:
                         temperature[i] = ops_cpp[etor.TEMP_OP]
-                else:
-                    raise ValueError(
-                        f"plot_state_history: Enthalpy evaluation is not supported for mode: {self.mode}"
-                    )
             except Exception:
                 continue
 
-        nplots = 1 + nc + 2
-        fig_height = 2.2 * nplots if figsize is None else None
+        nplots = 1 + nc + 3
+        fig_height = 2.5 * nplots if figsize is None else None
         fig, axes = plt.subplots(
             nrows=nplots,
             ncols=1,
@@ -949,6 +964,18 @@ class ZerodModel(DartsModel):
             axes[idx].set_ylabel(f"z_{name}", fontsize=label_fontsize)
             axes[idx].set_title(f"Composition {name}", fontsize=title_fontsize)
             idx += 1
+
+        for j, name in enumerate(phase_names):
+            axes[idx].plot(
+                time_arr,
+                sat_history[:, j],
+                linewidth=linewidth,
+                alpha=alpha,
+                label=f"S_{name}",
+            )
+        axes[idx].set_ylabel("Saturation", fontsize=label_fontsize)
+        axes[idx].set_title("Phase Saturations", fontsize=title_fontsize)
+        idx += 1
 
         axes[idx].plot(
             time_arr,
