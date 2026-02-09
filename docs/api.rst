@@ -125,6 +125,12 @@ Models
    :show-inheritance:
    :special-members: __init__
 
+.. autoclass:: darts.models.output.Output
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
 Reservoirs
 ##########
 
