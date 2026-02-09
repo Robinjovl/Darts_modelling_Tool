@@ -25,7 +25,27 @@ from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 class Output:
     """
-    Base class for all output related functionality
+    Handle simulation output: primary state variables, properties, well reporting, and visualization.
+
+    This class centralizes all I/O and post-processing related to a simulation run:
+    - **Primary variables** (state/unknowns) for reservoir blocks (and optionally well blocks)
+      are written to an HDF5 solution file.
+    - **Secondary variables** (“properties”; e.g., saturations, densities, etc.)
+      can be evaluated and either stored in a separate file or appended to the reservoir
+      solution file under a dedicated group (commonly ``/properties``).
+    - **Well output** (variables) is written to a separate HDF5 file. Well data is processed to evaluate rates and subsequently stored in a dictionary whereafter it is saved as an excel file or *.pkl file.
+
+    By default, outputs are written to:
+    - ``{output_folder}/reservoir_solution.h5`` for reservoir state history
+    - ``{output_folder}/well_data.h5`` for well time series
+
+    Notes
+    -----
+    - The storage precision, compression algorithm, and compression level are configurable.
+    - For large-scale runs, compression and precision have a significant impact on both
+      write performance and file size.
+    - You can find a tutorial on how to use the various ouput related functionalities [here](https://gitlab.com/open-darts/open-darts/-/blob/main/tutorials/output_and_restart.py?ref_type=heads). 
+    - The key naming formatsfor the rates stored in the time_data dictionary [here](https://open-darts.gitlab.io/open-darts/technical_reference/wells.html). 
     """
 
     def __init__(
@@ -42,12 +62,10 @@ class Output:
         all_phase_props: bool,
         precision: str,
         compression: str,
+        compression_level: int, 
         verbose: bool,
     ):
         """
-        Class constructor method for output related functionalities including saving primary variables (state variables),
-        evaluating secondary variables (properties) and creating visualizations.
-
         :param timer: timer object to measure time spent saving data, and evaluating properties
         :reservoir: reservoir object
         :param physics: physics object
@@ -57,8 +75,9 @@ class Output:
         :param sol_filename: hdf5 filename for saving reservoir solution
         :param well_filename: hdf5 filename for saving well solution
         :param save_initial: boolean flag to save initial conditions of reservoir
-        :param all_phase_props: boolean flag to define properties (secondary variables) according to a predefined list.
-        :param compression: boolean flag to enable compression of hdf5 data
+        :param all_phase_props: boolean flag to include phase properties (secondary variables) according to a predefined list.
+        :param precision: data precision of saved data ('s' single precision, 'd' double precision)
+        :param compression: default 'gzip'
         :param verbose: boolean flag to enable verbose output
         """
         super().__init__()
@@ -87,6 +106,7 @@ class Output:
 
         self.precision = precision
         self.compression = compression
+        self.compression_level = compression_level 
         self.precision_map = {"d": np.float64, "s": np.float32}
 
         self.properties = list(self.physics.property_containers[0].output_props.keys())
@@ -269,12 +289,11 @@ class Output:
 
         return
 
-    def filter_phase_props(self, new_prop_keys):
+    def filter_phase_props(self, new_prop_keys: list):
         """
         Filter default list of properties to only evaluate desired properties listed in new_prop_keys.
 
         :param new_prop_keys: list of properties to keep
-        :type new_prop_keys: list
 
         :raises ValueError: If any key in `new_prop_keys` is not an available property.
         """
@@ -322,16 +341,15 @@ class Output:
 
         return
 
-    def save_array(self, array, filename, compression_level=1):
+    def save_array(self, array: dict, filename: str, compression_level: int = 1):
         """
-        This function saved any dictionary as an h5 file with compression
+        This function saves any dictionary as an h5 file with compression. 
+        Each key in the input dictionary is written as a separate dataset at the root level of the HDF5 file. 
+        Existing files with the same name will be overwritten.
 
         : param array: data
-        : type array: dict
-        : param filename: filename in the format filename.h5
-        : type filename: str
-        : param compression_level : int value between 0 and 9
-        : type : int
+        : param filename: Name of the output file. The file will be created inside `self.output_folder`
+        : param compression_level : 0 (no compression) and 9 (maximum compression), default is 1
         """
         output_directory = os.path.join(self.output_folder, filename)
         with h5py.File(output_directory, "w") as h5f:
@@ -344,12 +362,14 @@ class Output:
                 )
         return 0
 
-    def load_array(self, file_directory):
+    def load_array(self, filename: str):
         """
-        This function loads any saved data in h5 file format
+        This function loads any saved data in h5 file format.
+        All datasets located at the root level of the HDF5 file are read and
+        returned as NumPy arrays. Dataset names are used as dictionary keys.
 
-        : param file_directory: filename in the format filename.h5
-        : type file_directory: str
+        :param file_directory : Path to the HDF5 file to load (typically ending in ``.h5``).
+        :return array: Dictionary mapping dataset names to NumPy arrays.
         """
 
         array = {}
@@ -358,12 +378,17 @@ class Output:
                 array[key] = np.array(h5f[key])
         return array
 
-    def append_properties_to_reservoir(self, time: float, property_array: dict):
+    def append_properties_to_reservoir(self, time: float, property_array: dict, compression_level: int = 1):
         """
-        Appends secondary properties to the existing 'reservoir.h5' file under the group 'properties'.
+        Append per-cell secondary properties into an existing HDF5 solution file.
+
+        Writes properties into the root-level HDF5 group ``/properties`` using a
+        time-indexed 2D layout: ``(n_timesteps, n_cells)``. The time index is
+        determined by matching the provided ``time`` value against ``/dynamic/time``.
 
         :param time: timestep index to write properties for.
         :param property_array: Dictionary with property names as keys and arrays (1D over cells) as values.
+        :param compression_level: 0 (no compression) and 9 (maximum compression), default is 1 
         """
 
         with h5py.File(self.sol_filepath, "a") as f:
@@ -393,7 +418,7 @@ class Output:
                             ),  # max shape none ensures that we can append as much data as possible
                             dtype=data.dtype,
                             compression="gzip",
-                            compression_opts=2,
+                            compression_opts=compression_level,
                         )
 
                     else:
@@ -412,13 +437,18 @@ class Output:
                     f"Timestamp {time} does not exist in the solution.h5 file."
                 )
 
-    def save_property_array(self, time_vector, property_array, filename=None):
+    def save_property_array(self, time_vector, property_array, filename=None, compression_level: int = 1):
         """
-        Saves property_array to an HDF5 file.
+        Append per-cell secondary properties into an existing HDF5 solution file.
+
+        Writes properties into the root-level HDF5 group ``/properties`` using a
+        time-indexed 2D layout: ``(n_timesteps, n_cells)``. The time index is
+        determined by matching the provided ``time`` value against ``/dynamic/time``.
 
         :param time_vector : Array of timesteps
         :param property_array : Dictionary where keys are property names and values are NumPy arrays.
         :param filename : Name of the HDF5 file to save to.
+        :param compression_level: 0 (no compression) and 9 (maximum compression), default is 1 .
         """
 
         self.timer.start()
@@ -427,7 +457,6 @@ class Output:
         if filename is None:
             self.append_properties_to_reservoir(time_vector, property_array)
         else:
-            compression_level = 2
             output_directory = os.path.join(self.output_folder, filename)
 
             with h5py.File(output_directory, "w") as h5f:
@@ -610,12 +639,29 @@ class Output:
         self, filename: str, cell_ids, description, add_static_data: bool = False
     ):
         """
-        Configuration of *.h5 output
+        Create and initialize an HDF5 output file for simulation results.
+        This method creates a new HDF5 file at ``filename`` (overwriting any existing file).
 
-        :param filename: *.h5 filename
-        :param cell_ids: np.array of cell indexes for output
-        :param description: description for *.h5
-        :param add_static_data: flag to add static output
+        HDF5 layout created
+        -------------------
+        /static (optional)
+            - cell_centers : (n_blocks, dim) float
+            Written only when ``cell_ids`` covers all reservoir blocks.
+            - block_m, block_p : arrays
+            Written when ``add_static_data=True``.
+        /dynamic
+            - time : (n_t,) float, extensible along time
+            - CFL_max : (n_t,) float, extensible along time
+            - cell_id : (n_selected,) int32 
+            - X : (n_t, n_selected, n_vars) float, extensible along time
+            - variable_names : (n_vars,) variable-length strings
+        File attributes
+            - description : string stored as a file attribute.
+
+        : param filename : Path/filename of the HDF5 file to create.
+        : param cell_ids : Cell/block indices to include in the dynamic output.
+        : param description : text description stored as the file attribute ``description``
+        : param add_static_data : If True, also write ``/static/block_m`` and ``/static/block_p``. Default is False.
         """
 
         with h5py.File(filename, "w") as f:
@@ -670,6 +716,7 @@ class Output:
                 maxshape=(None, nb, self.physics.n_vars),
                 dtype=self.precision_map[self.precision],
                 compression=self.compression,
+                compression_opts=self.compression_level, 
             )
 
             # add variable names
