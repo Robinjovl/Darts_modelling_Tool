@@ -836,7 +836,7 @@ class UnstructReservoirMech:
         for i, m in enumerate(matrix_tags):
             self.props[m] = dict()
             for k1 in idata.__dict__.keys():
-                if k1 not in ['rock', 'other']:
+                if k1 not in ['rock']:
                     continue
                 sub_obj = idata.__getattribute__(k1)
                 for prop in sub_obj.__dict__.keys():
@@ -844,6 +844,8 @@ class UnstructReservoirMech:
                     if val is not None:
                         if np.isscalar(val):
                             self.props[m][prop] = val
+                        elif len(val) == 1:
+                            self.props[m][prop] = val[0]
                         else:
                             self.props[m][prop] = val[i]
                     else:
