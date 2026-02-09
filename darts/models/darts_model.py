@@ -158,7 +158,7 @@ class DartsModel:
         assert self.reservoir is not None, "Reservoir object has not been defined"
         self.reservoir.init_reservoir(verbose)
         self.set_wells()
-        self.has_dfm_well = self.physics.has_dfm_well = any(
+        self.has_dfm_well = any(
             well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
         )
         if self.has_dfm_well:
@@ -227,9 +227,10 @@ class DartsModel:
         Loads data from a previous simulation and sets it for the current simulation.
         Beware that loading restart data resets the engine.
 
-        :param reservoir_filename (str): Path to the restart file containing reservoir block data.
-        :param well_filename (str): Path to the restart file containing well block data.
-        :param timestep (int): The timestep to load from the file (default: -1 for the last timestep).
+        :param reservoir_filename: Path to the restart file containing reservoir block data.
+        :type reservoir_filename: str
+        :param timestep: The timestep to load from the file (default: -1 for the last timestep)
+        :type timestep: int
         """
 
         # check if the files with data exist
@@ -725,13 +726,11 @@ class DartsModel:
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node["simulation"].start()
 
-        self.iter_counter = 0
-
         residual_history = []
         for i in range(max_newt + 1):
             # Update well phase velocities and derivatives if DFM wells are used
             if self.has_dfm_well:
-                self.update_dfm_well_vels_and_ders(dt, t, self.iter_counter)
+                self.update_dfm_well_vels_and_ders(dt, t, i)
 
             # assemble Jacobian and residual of reservoir and well blocks
             self.physics.engine.assemble_linear_system(dt)
@@ -793,9 +792,7 @@ class DartsModel:
                 < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult
             ) or self.physics.engine.n_newton_last_dt == max_newt:
                 if i > 0:  # min_i_newton
-                    self.iter_counter = 0
                     break
-            self.iter_counter += 1
 
             # line search
             if (

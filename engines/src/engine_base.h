@@ -18,6 +18,8 @@
 #include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_fs_cpr.hpp"
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
+#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
+#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
 using namespace opendarts::linear_solvers;
 #else
 #include "linsolv_bos_gmres.h"
@@ -25,6 +27,10 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_bos_cpr.h"
 #include "linsolv_bos_fs_cpr.h"
 #include "csr_matrix.h"
+#include "linsolv_bos_amg.h"
+#include "linsolv_amg1r5.h"
+#include "linsolv_superlu.h"
+#include "linsolv_hypre_amg.h"
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef WITH_GPU
@@ -34,20 +40,6 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_adgprs_nf.h"
 #include "linsolv_cusparse_ilu.h"
 #include "linsolv_cusolver.h"
-#endif
-
-#ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
-// #include "openDARTS/linear_solvers/linsolv_amg1r5.h"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
-#else
-#include "linsolv_bos_amg.h"
-#include "linsolv_amg1r5.h"
-#include "linsolv_superlu.h"
-#endif // OPENDARTS_LINEAR_SOLVERS
-
-#ifdef WITH_HYPRE
-#include "linsolv_hypre_amg.h"
 #endif
 
 #ifdef WITH_SAMG

@@ -136,7 +136,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			linear_solver->set_prec(new linsolv_bos_bilu0<N_VARS>);
 			break;
 		}
-#ifdef WITH_HYPRE
+#ifndef OPENDARTS_LINEAR_SOLVERS
 		case sim_params::CPU_GMRES_FS_CPR:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
