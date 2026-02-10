@@ -49,6 +49,9 @@ def run_json_tests(base_dir=None, days=None, timeout=None):
         timeout = timeout_env
 
     failed = []
+    label_width = max(len(f"JSON {p}:") for p in JSON_MODELS)
+    status_width = 4
+    time_width = 8
     for rel_path in JSON_MODELS:
         json_path = os.path.join(models_dir, rel_path)
         safe_name = rel_path.replace(os.sep, "__")
@@ -59,7 +62,12 @@ def run_json_tests(base_dir=None, days=None, timeout=None):
 
         if not os.path.exists(json_path):
             failed.append(rel_path + " (missing)")
-            print(f"JSON {rel_path}: FAIL (missing)")
+            label = f"JSON {rel_path}:"
+            print(
+                f"{label:<{label_width}} "
+                f"{'FAIL':<{status_width}} "
+                f"{'missing':>{time_width}}"
+            )
             continue
 
         cmd = ["darts", "--json", json_path]
@@ -84,10 +92,14 @@ def run_json_tests(base_dir=None, days=None, timeout=None):
             ok = False
 
         elapsed = time.time() - start
-        if ok:
-            print(f"JSON {rel_path}: OK, \t{elapsed:.2f} s")
-        else:
-            print(f"JSON {rel_path}: FAIL, \t{elapsed:.2f} s")
+        label = f"JSON {rel_path}:"
+        status = "OK" if ok else "FAIL"
+        print(
+            f"{label:<{label_width}} "
+            f"{status:<{status_width}} "
+            f"{elapsed:>{time_width}.2f} s"
+        )
+        if not ok:
             failed.append(rel_path)
 
     return len(JSON_MODELS), failed
