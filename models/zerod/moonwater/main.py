@@ -72,7 +72,8 @@ def run_model(mode: str = 'analytical',
             raise RuntimeError("Zerod run failed to reach the final time.")
 
         ph_path_file = os.path.join(output_folder, 'ph_diagram.png')
-        m.plot_ph_path(use_log_p=True, output_path=ph_path_file)
+        if mode == 'analytical':
+            m.plot_ph_path(use_log_p=True, output_path=ph_path_file)
         # PT flash is not initialized
         # pt_path_file = os.path.join(output_folder, 'pt_diagram.png')
         # m.plot_pt_path(use_log_p=True, output_path=pt_path_file)
@@ -81,7 +82,7 @@ def run_model(mode: str = 'analytical',
 
 if __name__ == "__main__":
     # analytical derivatives
-    run_model(mode='analytical', vapour_eos='cubic', p_init=1e-5, energy_source=1e5, sv_init=0.535, fixed_pressure=False)
+    run_model(mode='analytical', vapour_eos='ideal', p_init=1e-5, energy_source=1e5, sv_init=0.535, fixed_pressure=True, max_ts=2e-3)
 
     # OBL derivatives
     # run_model(mode='obl', p_init=1e-3, energy_source=1e5, sv_init=0.535, fixed_pressure=False,

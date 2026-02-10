@@ -89,6 +89,11 @@ class PropertyContainerDerivatives(PropertyContainer):
         pressure, enthalpy = state[0], state[1]
         zc_norm = [1. - self.eps_z]
         error_output = self.flash_ev.evaluate(pressure, enthalpy, zc_norm)
+        if error_output != 0:
+            raise RuntimeError(
+                f"Flash evaluation failed with error code {error_output} "
+                f"at pressure={pressure}, enthalpy={enthalpy}, z={zc_norm}"
+            )
         flash_results = self.flash_ev.get_flash_results(derivs=True)
 
         # flash results and derivatives

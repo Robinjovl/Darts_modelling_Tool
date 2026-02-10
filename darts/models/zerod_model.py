@@ -140,7 +140,7 @@ class ZerodModel(DartsModel):
                     temp_val = getattr(props, "temperature", None)
             except Exception:
                 temp_val = None
-        elif self.mode == "obl":
+        elif self.mode == "obl" and self.physics.n_vars > self.physics.nc:
             itor = self.physics.acc_flux_itor[0]
             etor = self.physics.reservoir_operators[0]
             ops_cpp = value_vector(np.zeros(self.physics.n_ops))
@@ -225,6 +225,52 @@ class ZerodModel(DartsModel):
         """
         pass
 
+    def get_obl_source_terms(self, t, state, ops, etor):
+        """
+        Return OBL right-hand-side source terms dA/dt for current state.
+
+        By default this reads kinetic/source operators (DELTA/KIN). Derived
+        models can override this method to add custom forcing terms.
+        """
+        del state
+        source = np.zeros(self.physics.n_vars)
+        kin_start = getattr(etor, "KIN_OP", None)
+        if kin_start is None:
+            ncopy = 0
+        else:
+            ncopy = min(source.size, max(0, ops.size - kin_start))
+            if ncopy > 0:
+                source[:ncopy] = ops[kin_start : kin_start + ncopy]
+
+        # Backward compatibility for OBL models that set self.energy_source
+        # but do not populate thermal KIN operator values.
+        if (
+            self.energy_source is not None
+            and source.size > self.physics.nc
+            and ncopy > 0
+            and np.allclose(source, 0.0)
+        ):
+            source[self.physics.nc] = self.energy_source.evaluate(t)
+        return source
+
+    def _apply_state_constraints(self, dAdx, b, n_vars, nc):
+        """
+        Enforce optional fixed-state constraints (pressure/temperature).
+        """
+        fixed_idx = []
+        if self.fixed_pressure and n_vars > 0:
+            fixed_idx.append(0)
+
+        if self.fixed_temperature and n_vars > nc:
+            state_spec = getattr(getattr(self, "physics", None), "state_spec", None)
+            if state_spec == PhysicsBase.StateSpecification.PT:
+                fixed_idx.append(nc)
+
+        for idx in fixed_idx:
+            dAdx[idx, :] = 0.0
+            dAdx[idx, idx] = 1.0
+            b[idx] = 0.0
+
     def step_radau(self, state_prev, dt, t0=0.0, rtol=None, atol=None):
         """
         Advance the state using the Radau integrator.
@@ -254,6 +300,9 @@ class ZerodModel(DartsModel):
             ph = props.ph
             n_vars = props.n_vars
             nc = props.nc
+            poro = float(self.poro)
+            dens_rock = float(self.dens_rock)
+            c_r = float(self.c_r)
 
             ## accumulation
             dAdx = np.zeros((n_vars, n_vars))
@@ -268,43 +317,45 @@ class ZerodModel(DartsModel):
             drho_t_dx = np.sum(
                 props.sat_ders[ph] * props.dens_m[ph, None], axis=0
             ) + np.sum(props.sat[ph, None] * props.dens_m_ders[ph], axis=0)
-            dAdx[:nc] = self.poro * (dz_dx * rho_t + zc * drho_t_dx)
+            dAdx[:nc] = poro * (dz_dx * rho_t + zc * drho_t_dx)
 
-            # solid energy accumulation: Es = phi * rho_r * c_r * (T - T0) [kJ/m3]
-            dEs_dx = np.zeros(n_vars)
-            dEs_dx[0] = (1 - self.poro) * self.dens_rock * self.c_r * props.dTdP
-            dEs_dx[1:nc] = (
-                (1 - self.poro) * self.dens_rock * self.c_r * props.dTdzk[: nc - 1]
-            )
-            dEs_dx[nc] = (1 - self.poro) * self.dens_rock * self.c_r * props.dTdX
-            dAdx[nc] += dEs_dx
+            if n_vars > nc:
+                # solid energy accumulation: Es = phi * rho_r * c_r * (T - T0) [kJ/m3]
+                dEs_dx = np.zeros(n_vars)
+                dEs_dx[0] = (1 - poro) * dens_rock * c_r * props.dTdP
+                dEs_dx[1:nc] = (1 - poro) * dens_rock * c_r * props.dTdzk[: nc - 1]
+                dEs_dx[nc] = (1 - poro) * dens_rock * c_r * props.dTdX
+                dAdx[nc] += dEs_dx
 
-            # fluid energy accumulation: Ef = phi * sum(sat * rho_m * h) [kJ/m3]
-            dEf_dx = (
-                np.sum(
-                    props.sat_ders[ph]
-                    * (props.dens_m[ph] * props.enthalpy[ph])[:, None],
-                    axis=0,
+                # fluid energy accumulation: Ef = phi * sum(sat * rho_m * h) [kJ/m3]
+                dEf_dx = (
+                    np.sum(
+                        props.sat_ders[ph]
+                        * (props.dens_m[ph] * props.enthalpy[ph])[:, None],
+                        axis=0,
+                    )
+                    + np.sum(
+                        (props.sat[ph] * props.enthalpy[ph])[:, None]
+                        * props.dens_m_ders[ph],
+                        axis=0,
+                    )
+                    + np.sum(
+                        (props.sat[ph] * props.dens_m[ph])[:, None]
+                        * props.enthalpy_ders[ph],
+                        axis=0,
+                    )
                 )
-                + np.sum(
-                    (props.sat[ph] * props.enthalpy[ph])[:, None]
-                    * props.dens_m_ders[ph],
-                    axis=0,
-                )
-                + np.sum(
-                    (props.sat[ph] * props.dens_m[ph])[:, None]
-                    * props.enthalpy_ders[ph],
-                    axis=0,
-                )
-            )
-            dEf_dx[0] -= 100
-            dEf_dx *= self.poro
-            dAdx[nc] += dEf_dx
+                dEf_dx[0] -= 100
+                dEf_dx *= poro
+                dAdx[nc] += dEf_dx
 
             ## rate -> right-hand side
             b = np.zeros(n_vars)
-            if self.energy_source is not None:
-                b[-1] = self.energy_source.evaluate(_t)
+            if self.energy_source is not None and n_vars > nc:
+                b[nc] = self.energy_source.evaluate(_t)
+
+            # enforce fixed pressure/temperature constraints
+            self._apply_state_constraints(dAdx, b, n_vars, nc)
 
             try:
                 dxdt = np.linalg.solve(dAdx, b)
@@ -322,21 +373,31 @@ class ZerodModel(DartsModel):
             itor.evaluate_with_derivatives(
                 value_vector(x), index_vector([0]), ops_cpp, ders_cpp
             )
+            ops = np.asarray(ops_cpp)
             ders = np.asarray(ders_cpp).reshape(self.physics.n_ops, n_vars)
+            poro = float(self.poro)
+            dens_rock = float(self.dens_rock)
+            c_r = float(self.c_r)
 
             dAdx = np.zeros((n_vars, n_vars))
 
             # mass accumulation
-            dAdx[:nc] = self.poro * ders[etor.ACC_OP : etor.ACC_OP + nc]
-            # energy accumulation
-            dAdx[nc] = (1 - self.poro) * self.dens_rock * self.c_r * ders[
-                etor.TEMP_OP
-            ] + self.poro * ders[etor.ACC_OP + nc]
+            dAdx[:nc] = poro * ders[etor.ACC_OP : etor.ACC_OP + nc]
+            if n_vars > nc:
+                # energy accumulation
+                dAdx[nc] = poro * ders[etor.ACC_OP + nc]
+                temp_op = getattr(etor, "TEMP_OP", None)
+                if temp_op is not None:
+                    dAdx[nc] += (1 - poro) * dens_rock * c_r * ders[temp_op]
 
             ## rate -> right-hand side
-            b = np.zeros(n_vars)
-            if self.energy_source is not None:
-                b[-1] = self.energy_source.evaluate(_t)
+            b = np.asarray(self.get_obl_source_terms(_t, x, ops, etor), dtype=float)
+            if b.size != n_vars:
+                raise ValueError(
+                    f"get_obl_source_terms must return {n_vars} values, got {b.size}."
+                )
+
+            self._apply_state_constraints(dAdx, b, n_vars, nc)
 
             try:
                 dxdt = np.linalg.solve(dAdx, b)

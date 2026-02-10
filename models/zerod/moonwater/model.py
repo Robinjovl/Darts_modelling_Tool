@@ -115,29 +115,35 @@ class Model(ZerodModel):
             steam_eos = IdealGas(comp_data)
         elif self.vapour_eos == 'cubic':
             steam_eos = CubicEoS(comp_data, CubicEoS.PR)
-            steam_eos.set_preferred_roots(0, 0.75, EoS.MAX)
+            # steam_eos.set_preferred_roots(0, 0.75, EoS.MAX)
+            phases.append("liquid")
+            liquid_eos = CubicEoS(comp_data, CubicEoS.PR)
         else:
             raise ValueError(f"Invalid vapour EOS: {self.vapour_eos}")
 
         flash_ph = DARTSFlash(comp_data=comp_data)
         flash_ph.add_eos("ice", ice_eos)
-        flash_ph.add_eos("steam", steam_eos)
+        flash_ph.add_eos("steam", steam_eos)#, root_order=[EoS.RootFlag.MAX, EoS.RootFlag.MIN])
+        if self.vapour_eos == 'cubic':
+            flash_ph.add_eos("liquid", liquid_eos)
+
         self.temp_min = 180.0
         self.temp_max = 650.0
         flash_ph.init_flash(
             flash_type=DARTSFlash.FlashType.PHFlash,
             eos_order=phases,
-            f_tol=1e-8,
-            t_tol=1e-1,
+            f_tol=1e-10,
+            t_tol=1e-2,
             t_min=self.temp_min,
             t_max=self.temp_max,
+            verbose=False,
         )
         self.flash_ph = flash_ph
 
         # property container
         if self.mode == "analytical":
             property_container = PropertyContainerDerivatives(
-                phases_name=phases,
+                phases_name=phases,# + ["liquid"],
                 components_name=components,
                 Mw=comp_data.Mw,
                 eps_z=zero / 10,
@@ -145,7 +151,7 @@ class Model(ZerodModel):
             )
         elif self.mode == "obl":
             property_container = PropertyContainer(
-                phases_name=phases,
+                phases_name=phases,# + ["liquid"],
                 components_name=components,
                 Mw=comp_data.Mw,
                 eps_z=zero,
@@ -153,11 +159,11 @@ class Model(ZerodModel):
         property_container.flash_ev = flash_ph
         property_container.density_ev = {
             "ice": EoSDensity(eos=ice_eos, Mw=comp_data.Mw),
-            "steam": EoSDensity(eos=steam_eos, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
+            "steam": EoSDensity(eos=steam_eos, Mw=comp_data.Mw)#, root_flag=EoS.RootFlag.MAX),
         }
         property_container.enthalpy_ev = {
             "ice": EoSEnthalpy(eos=ice_eos),
-            "steam": EoSEnthalpy(eos=steam_eos, root_flag=EoS.RootFlag.MAX),
+            "steam": EoSEnthalpy(eos=steam_eos)#, root_flag=EoS.RootFlag.MAX),
         }
         property_container.viscosity_ev = {
             "ice": ConstFunc(1.0),
@@ -171,6 +177,14 @@ class Model(ZerodModel):
             "ice": ConstFunc(2.0),
             "steam": ConstFunc(0.1),
         }
+
+        if self.vapour_eos == 'cubic':
+            property_container.density_ev["liquid"] = EoSDensity(eos=liquid_eos, Mw=comp_data.Mw)#, root_flag=EoS.RootFlag.MIN)
+            property_container.enthalpy_ev["liquid"] = EoSEnthalpy(eos=liquid_eos)#, root_flag=EoS.RootFlag.MIN)
+            property_container.viscosity_ev["liquid"] = ConstFunc(1.0)
+            property_container.rel_perm_ev["liquid"] = ConstFunc(1.0)
+            property_container.conductivity_ev["liquid"] = ConstFunc(2.0)
+
         property_container.energy_source_ev = self.energy_source
         property_container.n_vars = property_container.nc + property_container.thermal
 
