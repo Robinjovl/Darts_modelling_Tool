@@ -21,12 +21,13 @@ class JsonModel(DartsModel):
             self.reservoir.add_well(well.name)
             for perf in well.perforations:
                 i, j, k = perf.ijk
+                well_radius = (
+                    perf.well_radius if perf.well_radius is not None else 0.0762
+                )
                 self.reservoir.add_perforation(
                     well.name,
-                    cell_index=(i, j, k),
-                    well_radius=perf.well_radius
-                    if perf.well_radius is not None
-                    else 0.0762,
+                    res_cell_idx=(i, j, k),
+                    well_diameter=2.0 * well_radius,
                     skin=perf.skin if perf.skin is not None else 0.0,
                 )
 
@@ -79,6 +80,7 @@ class JsonModel(DartsModel):
         inj_bhp = getattr(wc_spec, 'inj_bhp', None) if wc_spec else None
         prod_bhp = getattr(wc_spec, 'prod_bhp', None) if wc_spec else None
         inj_comp = getattr(wc_spec, 'inj_composition', None) if wc_spec else None
+        inj_temp = getattr(wc_spec, 'inj_temp', None) if wc_spec else None
         inj_rate = getattr(wc_spec, 'inj_rate', None) if wc_spec else None
         rate_type_str = getattr(wc_spec, 'rate_type', None) if wc_spec else None
         inj_phase = getattr(wc_spec, 'phase_name', None) if wc_spec else None
@@ -112,6 +114,7 @@ class JsonModel(DartsModel):
             inj_comp_w = (
                 getattr(per_well, 'inj_composition', None) if per_well else None
             )
+            inj_temp_w = getattr(per_well, 'inj_temp', None) if per_well else None
             inj_rate_w = getattr(per_well, 'inj_rate', None) if per_well else None
             rate_type_w = getattr(per_well, 'rate_type', None) if per_well else None
             inj_phase_w = getattr(per_well, 'phase_name', None) if per_well else None
@@ -127,6 +130,7 @@ class JsonModel(DartsModel):
                         target=inj_rate_w,
                         phase_name=inj_phase_w,
                         inj_composition=inj_comp_w,
+                        inj_temp=inj_temp_w,
                     )
                 else:
                     self.physics.set_well_controls(
@@ -135,6 +139,7 @@ class JsonModel(DartsModel):
                         is_inj=True,
                         target=inj_bhp_w,
                         inj_composition=inj_comp_w,
+                        inj_temp=inj_temp_w,
                     )
                 continue
 
@@ -149,6 +154,7 @@ class JsonModel(DartsModel):
                         target=inj_rate,
                         phase_name=inj_phase,
                         inj_composition=inj_comp,
+                        inj_temp=inj_temp,
                     )
                 else:
                     self.physics.set_well_controls(
@@ -157,6 +163,7 @@ class JsonModel(DartsModel):
                         is_inj=True,
                         target=inj_bhp,
                         inj_composition=inj_comp,
+                        inj_temp=inj_temp,
                     )
                 continue
 

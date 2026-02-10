@@ -51,7 +51,7 @@ def get_lib_search_var():
 
 
 def get_darts_path():
-    return Path(darts.__file__).parent
+    return Path(darts.__path__[0])
 
 
 def main():
@@ -154,17 +154,26 @@ def main():
 
     # Helper: ensure runtime libs are set for child Python processes
     def _prepare_env_for_subprocess():
-        lib_var = get_lib_var()
-        if not lib_var:
-            return
-        if lib_var == 'LD_PRELOAD':
-            preload_lib = str(get_darts_path() / 'libstdc++.so.6')
-            existing = os.environ.get(lib_var, "")
-            os.environ[lib_var] = preload_lib + (":" + existing if existing else "")
-        else:
-            os.environ[lib_var] = (
-                str(get_darts_path()) + os.pathsep + os.environ.get(lib_var, "")
+        # Prefer search path over forced preload to avoid ABI conflicts
+        lib_search_var = get_lib_search_var()
+        if lib_search_var:
+            os.environ[lib_search_var] = (
+                os.environ.get(lib_search_var, "") + os.pathsep + str(get_darts_path())
             )
+
+        # Optional opt-in to force-preload libstdc++.so.6 if absolutely required
+        if os.environ.get("DARTS_FORCE_PRELOAD_LIBSTDCXX", "0") in (
+            "1",
+            "true",
+            "True",
+        ):
+            lib_var = get_lib_var()
+            if lib_var:
+                os.environ[lib_var] = str(get_darts_path() / "libstdc++.so.6") + (
+                    ":" + os.environ.get(lib_var, "")
+                    if os.environ.get(lib_var, "")
+                    else ""
+                )
 
     # JSON ModelSpec path handling via positional PATH
     if model_json_path or (

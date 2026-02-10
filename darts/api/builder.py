@@ -2,52 +2,206 @@ from __future__ import annotations
 
 from typing import Any
 
+from darts.api.data_refs import resolve_data_ref
 from darts.api.model_spec import (
     InitialConditionsSpec,
     ModelSpec,
     OutputSpec,
     PhysicsSpec,
+    PluginRegistrySpec,
     PluginSlots,
     ReservoirSpec,
     SimParamsSpec,
     WellsSpec,
 )
+from darts.api.schemas import DataRef
 from darts.api.type_registry import (
     TYPE_REGISTRY,
     PluginInstance,
     PropertyContainerConfig,
+    load_local_plugin_registry,
 )
 
 
 class ModelBuilder:
     @staticmethod
-    def apply(spec: ModelSpec, model: Any) -> None:
+    def apply(
+        spec: ModelSpec,
+        model: Any,
+        *,
+        base_path: str | None = None,
+        object_store: dict[str, Any] | None = None,
+    ) -> None:
+        if getattr(spec, "plugin_registry", None):
+            preg = ModelBuilder._resolve_section(
+                spec.plugin_registry, PluginRegistrySpec, base_path, object_store
+            )
+            ModelBuilder._apply_plugin_registry(preg, base_path=base_path)
+
         if spec.reservoir:
-            ModelBuilder._apply_reservoir(spec.reservoir, model)
+            res = ModelBuilder._resolve_section(
+                spec.reservoir, ReservoirSpec, base_path, object_store
+            )
+            ModelBuilder._apply_reservoir(
+                res, model, base_path=base_path, object_store=object_store
+            )
 
         if spec.physics:
-            ModelBuilder._apply_physics(spec.physics, model)
+            phy = ModelBuilder._resolve_section(
+                spec.physics, PhysicsSpec, base_path, object_store
+            )
+            ModelBuilder._apply_physics(phy, model)
 
         if spec.wells:
-            ModelBuilder._apply_wells(spec.wells, model)
+            wells = ModelBuilder._resolve_section(
+                spec.wells, WellsSpec, base_path, object_store
+            )
+            ModelBuilder._apply_wells(wells, model)
 
         if spec.initial_conditions:
-            ModelBuilder._apply_initial_conditions(spec.initial_conditions, model)
+            ics = ModelBuilder._resolve_section(
+                spec.initial_conditions, InitialConditionsSpec, base_path, object_store
+            )
+            ModelBuilder._apply_initial_conditions(ics, model)
 
         if spec.sim_params:
-            ModelBuilder._apply_sim_params(spec.sim_params, model)
+            sp = ModelBuilder._resolve_section(
+                spec.sim_params, SimParamsSpec, base_path, object_store
+            )
+            ModelBuilder._apply_sim_params(sp, model)
 
         if spec.output:
-            ModelBuilder._apply_output(spec.output, model)
+            out = ModelBuilder._resolve_section(
+                spec.output, OutputSpec, base_path, object_store
+            )
+            ModelBuilder._apply_output(out, model)
 
         if getattr(spec, 'well_controls', None):
-            ModelBuilder._apply_well_controls(spec.well_controls, model)
+            wc = ModelBuilder._resolve_section(
+                spec.well_controls, None, base_path, object_store
+            )
+            ModelBuilder._apply_well_controls(wc, model)
 
     @staticmethod
-    def _apply_reservoir(r: ReservoirSpec, model: Any) -> None:
+    def _apply_plugin_registry(
+        preg: PluginRegistrySpec, *, base_path: str | None = None
+    ) -> None:
+        load_local_plugin_registry(preg, base_path=base_path)
+
+    @staticmethod
+    def _resolve_section(
+        section: Any,
+        model_cls: type[Any] | None,
+        base_path: str | None,
+        object_store: dict[str, Any] | None,
+    ) -> Any:
+        if isinstance(section, DataRef):
+            section = resolve_data_ref(
+                section, base_path=base_path, object_store=object_store
+            )
+        elif isinstance(section, dict) and "kind" in section and "value" in section:
+            section = resolve_data_ref(
+                section, base_path=base_path, object_store=object_store
+            )
+        if model_cls is None:
+            return section
+        if isinstance(section, dict):
+            try:
+                return model_cls.model_validate(section)
+            except Exception:
+                return model_cls.parse_obj(section)
+        return section
+
+    @staticmethod
+    def _apply_reservoir(
+        r: ReservoirSpec,
+        model: Any,
+        *,
+        base_path: str | None = None,
+        object_store: dict[str, Any] | None = None,
+    ) -> None:
         # Only structured reservoir supported in v1
         assert r.type == "structured", "Only structured reservoir is supported in v1"
         from darts.reservoirs.struct_reservoir import StructReservoir
+
+        def _resolve_val(val: Any) -> Any:
+            if isinstance(val, DataRef) or (
+                isinstance(val, dict) and "kind" in val and "value" in val
+            ):
+                return resolve_data_ref(
+                    val, base_path=base_path, object_store=object_store
+                )
+            return val
+
+        def _maybe_array(val: Any) -> Any:
+            if isinstance(val, list | tuple):
+                try:
+                    import numpy as np  # type: ignore
+
+                    return np.asarray(val)
+                except Exception:
+                    return val
+            return val
+
+        layers = getattr(r, "layers", None)
+        layer_specs: list[dict[str, Any]] = []
+        if layers:
+            for layer in layers:
+                if hasattr(layer, "model_dump"):
+                    layer_specs.append(layer.model_dump(exclude_none=True))
+                elif isinstance(layer, dict):
+                    layer_specs.append(
+                        {k: v for k, v in layer.items() if v is not None}
+                    )
+                else:
+                    raise TypeError("Unsupported layer specification type")
+            total_cells = int(r.nx * r.ny * r.nz)
+
+            def _is_list_like(val: Any) -> bool:
+                if isinstance(val, list | tuple):
+                    return True
+                try:
+                    import numpy as np  # type: ignore
+
+                    return isinstance(val, np.ndarray)
+                except Exception:
+                    return False
+
+            def _layers_have_field(key: str) -> bool:
+                return any(layer.get(key) is not None for layer in layer_specs)
+
+            def _expand_layered_value(key: str, base_val: Any) -> Any:
+                if not _layers_have_field(key):
+                    return base_val
+                if _is_list_like(base_val):
+                    if any(layer.get(key) is None for layer in layer_specs):
+                        raise ValueError(
+                            f"Layered '{key}' requires a scalar default when some layers omit it."
+                        )
+                out: list[Any] = []
+                for layer in layer_specs:
+                    count = int(layer.get("count", 0))
+                    if count <= 0:
+                        raise ValueError("Layer count must be >= 1")
+                    val = layer.get(key, None)
+                    val = _resolve_val(val) if val is not None else base_val
+                    if val is None:
+                        raise ValueError(
+                            f"Layered '{key}' is missing for a layer and no base value was provided."
+                        )
+                    if _is_list_like(val):
+                        if len(val) != count:
+                            raise ValueError(
+                                f"Layered '{key}' list length must equal count ({count})."
+                            )
+                        out.extend(list(val))
+                    else:
+                        out.extend([val] * count)
+                if len(out) != total_cells:
+                    raise ValueError(
+                        f"Layered '{key}' produced {len(out)} values, expected {total_cells}."
+                    )
+                return out
 
         kwargs: dict[str, Any] = {}
         for key in [
@@ -62,10 +216,31 @@ class ModelBuilder:
             "permz",
             "poro",
             "depth",
+            "hcap",
+            "rcond",
         ]:
-            val = getattr(r, key)
+            val = _resolve_val(getattr(r, key))
+            if layer_specs:
+                val = _expand_layered_value(key, val)
             if val is not None:
-                kwargs[key] = val
+                kwargs[key] = _maybe_array(val)
+        required = [
+            "nx",
+            "ny",
+            "nz",
+            "dx",
+            "dy",
+            "dz",
+            "permx",
+            "permy",
+            "permz",
+            "poro",
+        ]
+        missing = [k for k in required if k not in kwargs]
+        if missing:
+            raise ValueError(
+                "Reservoir spec missing required fields: " + ", ".join(missing)
+            )
         model.reservoir = StructReservoir(model.timer, **kwargs)
 
     @staticmethod
@@ -109,7 +284,14 @@ class ModelBuilder:
                     # type guard
                     if not isinstance(plugins, PluginSlots):
                         # Pydantic will usually ensure this, but guard for dict input
-                        plugins = PluginSlots(**plugins)
+                        if hasattr(plugins, "model_dump"):
+                            plugins = PluginSlots(**plugins.model_dump())
+                        elif hasattr(plugins, "dict"):
+                            plugins = PluginSlots(**plugins.dict())
+                        elif isinstance(plugins, dict):
+                            plugins = PluginSlots(**plugins)
+                        else:
+                            raise TypeError("Unsupported plugin slots representation")
                     # flash_ev: single plugin
                     if getattr(plugins, "flash_ev", None) is not None:
                         fi = ModelBuilder._as_plugin_instance(plugins.flash_ev)
@@ -147,6 +329,24 @@ class ModelBuilder:
                             v_entry = TYPE_REGISTRY.get(vi.type_id)
                             v_cfg = v_entry.config_model(**vi.config)
                             pc.viscosity_ev[phase] = v_entry.constructor(v_cfg)
+                    # enthalpy_ev: map per phase
+                    if getattr(plugins, "enthalpy_ev", None) is not None:
+                        pc.enthalpy_ev = {}
+                        for phase, inst in plugins.enthalpy_ev.items():
+                            ModelBuilder._validate_phase_key(phase, p.phases)
+                            ei = ModelBuilder._as_plugin_instance(inst)
+                            e_entry = TYPE_REGISTRY.get(ei.type_id)
+                            e_cfg = e_entry.config_model(**ei.config)
+                            pc.enthalpy_ev[phase] = e_entry.constructor(e_cfg)
+                    # conductivity_ev: map per phase
+                    if getattr(plugins, "conductivity_ev", None) is not None:
+                        pc.conductivity_ev = {}
+                        for phase, inst in plugins.conductivity_ev.items():
+                            ModelBuilder._validate_phase_key(phase, p.phases)
+                            ci = ModelBuilder._as_plugin_instance(inst)
+                            c_entry = TYPE_REGISTRY.get(ci.type_id)
+                            c_cfg = c_entry.config_model(**ci.config)
+                            pc.conductivity_ev[phase] = c_entry.constructor(c_cfg)
                     # rel_perm_ev: map per phase
                     if getattr(plugins, "rel_perm_ev", None) is not None:
                         pc.rel_perm_ev = {}

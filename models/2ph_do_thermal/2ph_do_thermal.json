@@ -1,0 +1,147 @@
+{
+  "apiVersion": "darts/v1alpha1",
+  "kind": "Model",
+  "plugin_registry": {
+    "entries": [
+      {
+        "type_id": "pc/ModelProperties@v1",
+        "kind": "pc",
+        "constructor": "model.py:ModelProperties",
+        "config_model": "darts.api.type_registry:PropertyContainerConfig",
+        "customizable": true,
+        "doc": "2ph_do_thermal ModelProperties property container"
+      }
+    ]
+  },
+  "reservoir": {
+    "type": "structured",
+    "nx": 1000,
+    "ny": 1,
+    "nz": 1,
+    "dx": 10.0,
+    "dy": 10.0,
+    "dz": 1,
+    "permx": 300,
+    "permy": 300,
+    "permz": 300,
+    "poro": 0.2,
+    "hcap": 2200,
+    "rcond": 181.44,
+    "depth": 100
+  },
+  "physics": {
+    "plugin": {
+      "type_id": "physics/Compositional@v1",
+      "config": {
+        "state_spec": "PT",
+        "n_points": 400,
+        "min_p": 0,
+        "max_p": 1000,
+        "min_t": 273.15,
+        "max_t": 473.15,
+        "min_z": 0.0,
+        "max_z": 1.0,
+        "epsilon_z": 1e-14
+      }
+    },
+    "components": ["w", "o"],
+    "phases": ["wat", "oil"],
+    "property_regions": [
+      {
+        "region": 0,
+        "property_container": {
+          "type_id": "pc/ModelProperties@v1",
+          "config": {
+            "components_name": ["w", "o"],
+            "phases_name": ["wat", "oil"],
+            "eps_z": 1e-14
+          }
+        },
+        "plugins": {
+          "density_ev": {
+            "wat": {
+              "type_id": "density/DensityBasic@v1",
+              "config": {"compr": 1e-5, "dens0": 1014}
+            },
+            "oil": {
+              "type_id": "density/DensityBasic@v1",
+              "config": {"compr": 5e-3, "dens0": 50}
+            }
+          },
+          "viscosity_ev": {
+            "wat": {
+              "type_id": "viscosity/ConstFunc@v1",
+              "config": {"value": 0.3}
+            },
+            "oil": {
+              "type_id": "viscosity/ConstFunc@v1",
+              "config": {"value": 0.03}
+            }
+          },
+          "enthalpy_ev": {
+            "wat": {
+              "type_id": "enthalpy/EnthalpyBasic@v1",
+              "config": {"hcap": 4.18}
+            },
+            "oil": {
+              "type_id": "enthalpy/EnthalpyBasic@v1",
+              "config": {"hcap": 0.035}
+            }
+          },
+          "conductivity_ev": {
+            "wat": {
+              "type_id": "conductivity/ConstFunc@v1",
+              "config": {"value": 1.0}
+            },
+            "oil": {
+              "type_id": "conductivity/ConstFunc@v1",
+              "config": {"value": 1.0}
+            }
+          },
+          "rel_perm_ev": {
+            "wat": {
+              "type_id": "relperm/PhaseRelPerm@v1",
+              "config": {"phase": "gas", "swc": 0.1, "sgr": 0.1}
+            },
+            "oil": {
+              "type_id": "relperm/PhaseRelPerm@v1",
+              "config": {"phase": "oil", "swc": 0.1, "sgr": 0.1}
+            }
+          }
+        }
+      }
+    ]
+  },
+  "wells": {
+    "wells": [
+      {
+        "name": "I1",
+        "perforations": [{"ijk": [1, 1, 1], "well_radius": 0.1524}],
+        "controls": {
+          "inj_rate": 5000.0,
+          "rate_type": "MOLAR_RATE",
+          "phase_name": "wat",
+          "inj_composition": [0.9999999999999],
+          "inj_temp": 300.0
+        }
+      },
+      {
+        "name": "P1",
+        "perforations": [{"ijk": [1000, 1, 1], "well_radius": 0.1524}],
+        "controls": {"prod_bhp": 180.0}
+      }
+    ]
+  },
+  "initial_conditions": {
+    "by_array": {"pressure": 200.0, "w": 1e-13, "temperature": 350.0}
+  },
+  "sim_params": {
+    "first_ts": 0.0001,
+    "mult_ts": 2.0,
+    "max_ts": 2.0,
+    "runtime": 1000,
+    "tol_newton": 0.001,
+    "tol_linear": 1e-6
+  },
+  "output": {"folder": "output", "precision": "d"}
+}

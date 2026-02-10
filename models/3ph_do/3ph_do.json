@@ -1,0 +1,150 @@
+{
+  "apiVersion": "darts/v1alpha1",
+  "kind": "Model",
+  "plugin_registry": {
+    "entries": [
+      {
+        "type_id": "pc/ModelProperties@v1",
+        "kind": "pc",
+        "constructor": "model.py:ModelProperties",
+        "config_model": "darts.api.type_registry:PropertyContainerConfig",
+        "customizable": true,
+        "doc": "3ph_do ModelProperties property container"
+      },
+      {
+        "type_id": "density/DensityBrineCO2@v1",
+        "kind": "density",
+        "constructor": "darts.physics.properties.density:DensityBrineCO2",
+        "customizable": true,
+        "doc": "Brine density with dissolved CO2 correction"
+      }
+    ]
+  },
+  "reservoir": {
+    "type": "structured",
+    "nx": 1000,
+    "ny": 1,
+    "nz": 1,
+    "dx": 1,
+    "dy": 10,
+    "dz": 10,
+    "permx": 100,
+    "permy": 100,
+    "permz": 10,
+    "poro": 0.3,
+    "depth": 1000
+  },
+  "physics": {
+    "plugin": {
+      "type_id": "physics/Compositional@v1",
+      "config": {
+        "state_spec": "P",
+        "n_points": 100,
+        "min_p": 1,
+        "max_p": 200,
+        "min_z": 0.0,
+        "max_z": 1.0,
+        "epsilon_z": 1e-9
+      }
+    },
+    "components": ["g", "o", "w"],
+    "phases": ["gas", "oil", "wat"],
+    "property_regions": [
+      {
+        "region": 0,
+        "property_container": {
+          "type_id": "pc/ModelProperties@v1",
+          "config": {
+            "components_name": ["g", "o", "w"],
+            "phases_name": ["gas", "oil", "wat"],
+            "Mw": [1, 1, 1],
+            "eps_z": 1e-9,
+            "rock_comp": 1e-6,
+            "temperature": 1.0
+          }
+        },
+        "plugins": {
+          "density_ev": {
+            "gas": {
+              "type_id": "density/DensityBasic@v1",
+              "config": {"compr": 1e-3, "dens0": 200}
+            },
+            "oil": {
+              "type_id": "density/DensityBasic@v1",
+              "config": {"compr": 1e-5, "dens0": 600}
+            },
+            "wat": {
+              "type_id": "density/DensityBrineCO2@v1",
+              "config": {
+                "components": ["g", "o", "w"],
+                "compr": 1e-5,
+                "dens0": 1000,
+                "co2_mult": 0
+              }
+            }
+          },
+          "viscosity_ev": {
+            "gas": {
+              "type_id": "viscosity/ConstFunc@v1",
+              "config": {"value": 0.05}
+            },
+            "oil": {
+              "type_id": "viscosity/ConstFunc@v1",
+              "config": {"value": 0.5}
+            },
+            "wat": {
+              "type_id": "viscosity/ConstFunc@v1",
+              "config": {"value": 0.5}
+            }
+          },
+          "rel_perm_ev": {
+            "gas": {
+              "type_id": "relperm/PhaseRelPerm@v1",
+              "config": {"phase": "gas"}
+            },
+            "oil": {
+              "type_id": "relperm/PhaseRelPerm@v1",
+              "config": {"phase": "oil"}
+            },
+            "wat": {
+              "type_id": "relperm/PhaseRelPerm@v1",
+              "config": {"phase": "wat"}
+            }
+          }
+        }
+      }
+    ]
+  },
+  "wells": {
+    "wells": [
+      {
+        "name": "I1",
+        "perforations": [{"ijk": [1, 1, 1], "well_radius": 0.1524}],
+        "controls": {
+          "inj_bhp": 120.0,
+          "inj_composition": [0.99999998, 1e-8]
+        }
+      },
+      {
+        "name": "P1",
+        "perforations": [{"ijk": [1000, 1, 1], "well_radius": 0.1524}],
+        "controls": {"prod_bhp": 60.0}
+      }
+    ]
+  },
+  "initial_conditions": {
+    "by_array": {"pressure": 100.0, "g": 0.05, "o": 0.19999999}
+  },
+  "sim_params": {
+    "first_ts": 0.01,
+    "mult_ts": 2.0,
+    "max_ts": 20.0,
+    "runtime": 1000,
+    "tol_newton": 0.01,
+    "tol_linear": 0.001,
+    "it_newton": 10,
+    "it_linear": 50,
+    "newton_type": "newton_local_chop"
+  },
+  "output": {"folder": "output", "precision": "d"}
+}

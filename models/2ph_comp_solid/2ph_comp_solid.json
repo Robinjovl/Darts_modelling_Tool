@@ -16,31 +16,31 @@
     "depth": 1000
   },
   "physics": {
-    "plugin": {"type_id": "physics/Compositional@v1", "config": {"state_spec": "P", "n_points": 101, "min_p": 1, "max_p": 1000, "min_z": 1e-12, "max_z": 0.999999}},
+    "plugin": {"import": "darts.api.plugin_factories:make_compositional", "config": {"state_spec": "P", "n_points": 101, "min_p": 1, "max_p": 1000, "min_z": 1e-12, "max_z": 0.999999}},
     "components": ["CO2", "Ions", "H2O", "CaCO3"],
     "phases": ["gas", "wat", "sol"],
     "property_regions": [
       {
         "region": 0,
-        "property_container": {"type_id": "pc/SuperPropertyContainer@v1", "config": {"components_name": ["CO2", "Ions", "H2O", "CaCO3"], "phases_name": ["gas", "wat", "sol"], "Mw": [44.01, 50.043, 18.015, 100.086], "min_z": 1e-12, "temperature": 1.0, "nc_sol": 1, "np_sol": 1, "rock_comp": 1e-7}},
+        "property_container": {"import": "darts.api.plugin_factories:make_property_container", "config": {"components_name": ["CO2", "Ions", "H2O", "CaCO3"], "phases_name": ["gas", "wat", "sol"], "Mw": [44.01, 50.043, 18.015, 100.086], "min_z": 1e-12, "temperature": 1.0, "nc_sol": 1, "np_sol": 1, "rock_comp": 1e-7}},
         "plugins": {
-          "flash_ev": {"type_id": "flash/ConstantK@v1", "config": {"K": [10.0, 1e-12, 0.1], "epsilon": 1e-12}},
+          "flash_ev": {"import": "darts.api.plugin_factories:make_constant_k", "config": {"K": [10.0, 1e-12, 0.1], "epsilon": 1e-12}},
           "density_ev": {
-            "gas": {"type_id": "density/DensityBasic@v1", "config": {"compr": 1e-4, "dens0": 100}},
-            "wat": {"type_id": "density/DensityBasic@v1", "config": {"compr": 1e-6, "dens0": 1000}},
-            "sol": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 2000.0}}
+            "gas": {"import": "darts.api.plugin_factories:make_density_basic", "config": {"compr": 1e-4, "dens0": 100}},
+            "wat": {"import": "darts.api.plugin_factories:make_density_basic", "config": {"compr": 1e-6, "dens0": 1000}},
+            "sol": {"import": "darts.api.plugin_factories:make_const_func", "config": {"value": 2000.0}}
           },
           "viscosity_ev": {
-            "gas": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 0.1}},
-            "wat": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1.0}}
+            "gas": {"import": "darts.api.plugin_factories:make_const_func", "config": {"value": 0.1}},
+            "wat": {"import": "darts.api.plugin_factories:make_const_func", "config": {"value": 1.0}}
           },
           "rel_perm_ev": {
-            "gas": {"type_id": "relperm/PhaseRelPerm@v1", "config": {"phase": "gas"}},
-            "wat": {"type_id": "relperm/PhaseRelPerm@v1", "config": {"phase": "wat"}}
+            "gas": {"import": "darts.api.plugin_factories:make_phase_relperm", "config": {"phase": "gas"}},
+            "wat": {"import": "darts.api.plugin_factories:make_phase_relperm", "config": {"phase": "wat"}}
           },
           "diffusion_ev": {
-            "gas": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1e-9}},
-            "wat": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1e-9}}
+            "gas": {"import": "darts.api.plugin_factories:make_const_func", "config": {"value": 1e-9}},
+            "wat": {"import": "darts.api.plugin_factories:make_const_func", "config": {"value": 1e-9}}
           }
         }
       }

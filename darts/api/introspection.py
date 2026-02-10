@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from darts.api.model_spec import (
+from darts.api.schemas import (
     InitialConditionsSpec,
     ModelSpec,
     OutputSpec,

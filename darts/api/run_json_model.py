@@ -5,21 +5,24 @@ import sys
 
 from darts.api import ModelBuilder, ModelSpec
 from darts.api.json_model import JsonModel
-from darts.tools.cli import get_darts_path, get_lib_var
+from darts.tools.cli import get_darts_path, get_lib_search_var, get_lib_var
 
 
 def _prepare_env():
-    lib_var = get_lib_var()
-    if not lib_var:
-        return
-    if lib_var == 'LD_PRELOAD':
-        preload_lib = str(get_darts_path() / 'libstdc++.so.6')
-        existing = os.environ.get(lib_var, "")
-        os.environ[lib_var] = preload_lib + (":" + existing if existing else "")
-    else:
-        os.environ[lib_var] = (
-            str(get_darts_path()) + os.pathsep + os.environ.get(lib_var, "")
+    # Prefer search path over forced preload to avoid ABI conflicts
+    lib_search_var = get_lib_search_var()
+    if lib_search_var:
+        os.environ[lib_search_var] = (
+            os.environ.get(lib_search_var, "") + os.pathsep + str(get_darts_path())
         )
+
+    # Optional opt-in to force-preload libstdc++.so.6 if absolutely required
+    if os.environ.get("DARTS_FORCE_PRELOAD_LIBSTDCXX", "0") in ("1", "true", "True"):
+        lib_var = get_lib_var()
+        if lib_var:
+            os.environ[lib_var] = str(get_darts_path() / "libstdc++.so.6") + (
+                ":" + os.environ.get(lib_var, "") if os.environ.get(lib_var, "") else ""
+            )
 
 
 def main():
@@ -46,7 +49,7 @@ def main():
         sys.exit(1)
 
     m = JsonModel()
-    ModelBuilder.apply(spec, m)
+    ModelBuilder.apply(spec, m, base_path=os.path.dirname(args.json))
     m.init(platform='cpu')
     # Configure output based on spec if provided, or fallback to defaults
     out_spec = getattr(m, '_output_spec', None)
