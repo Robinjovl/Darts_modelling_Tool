@@ -1189,7 +1189,7 @@ class UnstructReservoirMech:
         return 0
 
     def get_props_over_output(self, property_array, ith_step, engine):
-        if self.discretizer_name == 'mesh_discretizer':
+        if self.discretizer_name == 'mech_discretizer':
             return None
         elif self.discretizer_name == 'pm_discretizer':
             n_vars = 4
@@ -1250,7 +1250,7 @@ class UnstructReservoirMech:
             return frac_data
 
     def get_fault_props(self, property_array, ith_step, engine):
-        if self.discretizer_name == 'mesh_discretizer':
+        if self.discretizer_name == 'mech_discretizer':
             return None
         elif self.discretizer_name == 'pm_discretizer':
             n_vars = 4
