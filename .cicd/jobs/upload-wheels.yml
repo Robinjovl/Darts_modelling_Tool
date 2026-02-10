@@ -18,7 +18,7 @@ upload_wheels:
         - build-linux-3.10
         - build-windows-3.10
 
-.upload_wheels_oahu:
+upload_wheels_oahu:
     stage: deploy
     image: python:3.10
     rules:
