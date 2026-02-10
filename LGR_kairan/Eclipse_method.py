@@ -24,6 +24,7 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from dartsflash.libflash import NegativeFlash
 from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData
+from darts.physics.super.initialize import Initialize
 
 
 class Model(DartsModel):
@@ -38,7 +39,8 @@ class Model(DartsModel):
         self.zero = 1e-8
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-3, tol_linear=1e-3,
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=1000, 
+                            tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
         self.timer.node["initialization"].stop()
@@ -198,8 +200,8 @@ class Model(DartsModel):
         dz0_layers = np.concatenate([dz_over, np.full(nz_res, dz_res, dtype=float), dz_under])
         permx0, permy0, permz0 = 50, 50, 50
         poro0 = 0.1
-        poro_burden = 0.01
-        perm_burden = 0.001
+        poro_burden = 0.0001
+        perm_burden = 1e-6
 
         # thermal properties
         rcond_res = 181.44 # KJ/m/day/k
@@ -228,9 +230,33 @@ class Model(DartsModel):
         actnum0 = self.create_actnum_with_lgr(nx0, ny0, nz0, refined_cells_ijk)
 
 
+        k_index0 = np.arange(nx0 * ny0 * nz0, dtype=np.int32) // (nx0 * ny0)
+        kx0_full = np.full(nx0 * ny0 * nz0, perm_burden, dtype=float)
+        ky0_full = np.full(nx0 * ny0 * nz0, perm_burden, dtype=float)
+        kz0_full = np.full(nx0 * ny0 * nz0, perm_burden, dtype=float)
+
+        rcon0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
+        hcap0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
+        poro0_full = np.full(nx0 * ny0 * nz0, poro_burden, dtype=float)
+  
+        mask_over = k_index0 < nz_over
+        mask_res  = (k_index0 >= nz_over) & (k_index0 < nz_over + nz_res)
+        mask_under = k_index0 >= (nz_over + nz_res)
+        kx0_full [mask_res] = permx0
+        ky0_full [mask_res] = permy0
+        kz0_full [mask_res] = permz0
+
+        rcon0_full[mask_over] = rcond_over
+        rcon0_full[mask_res] = rcond_res
+        rcon0_full[mask_under] = rcond_under
+        hcap0_full[mask_over] = hcap_over
+        hcap0_full[mask_res] = hcap_res
+        hcap0_full[mask_under] =hcap_under
+        poro0_full[mask_res] = poro0
+
         self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
-                                      permx=permx0, permy=permy0, permz=permz0, poro=poro0,depth= None, 
-                                      start_z=0,actnum=actnum0, rcond=rcond_res, hcap=hcap_res,)
+                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
+                                      start_z=0,actnum=actnum0, rcond=rcon0_full, hcap=hcap0_full,)
         boundary_factor = 1e6
         base_vol = float(dx0 * dy0 * dz_res)
         v_big = base_vol * boundary_factor
@@ -276,10 +302,15 @@ class Model(DartsModel):
             permz_y [:,:,0] = perm_burden
             permz_z = np.full((rx, ry, 2), permz0, dtype=float)
             permz_z [:,:,0] = perm_burden
+            rcond_1 = np.full((rx, ry, 2), rcond_res, dtype=float)
+            rcond_1[:,:,0] = rcond_over
+            hcap_1 = np.full((rx, ry, 2), hcap_res, dtype=float)
+            hcap_1[:,:,0] = hcap_over
         
-
+            #current model is homogeneous, so i just construct one imaginary grid for burden connections,
+            #i assume the transmissibility and thermal_transmissibility are totally same for top and bottom connections
             self.level1_imag_z[name] = StructReservoir(self.timer, nx=rx, ny=ry,nz=2, dx =dx1, dy=dy1, dz= dz1,
-                                                  permx=permz_x, permy=permz_y, permz=permz_z, poro=poro0, depth= None, start_z=2000,rcond=rcond_res, hcap=hcap_res,)
+                                                  permx=permz_x, permy=permz_y, permz=permz_z, poro=poro0, depth= None, start_z=2000,rcond=rcond_1, hcap=hcap_1,)
             
         cm_all, cp_all, T_all, T_all_therm, meta = self.assemble_lgr_connections_eclipse()
 
@@ -293,33 +324,7 @@ class Model(DartsModel):
         dz0_arr = disc0.convert_to_flat_array(self.level0.global_data['dz'], 'dz')[l2g0]
         
         depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
-        volume0_arr = np.array(self.level0.volume, copy=False).astype(float)
-        # vol_g0 = (np.repeat(dz0_layers, nx0 * ny0) * dx0 * dy0).astype(float)
-        # volume0_arr = vol_g0[l2g0]
-        # thermal properties for level 0 varying with ob and res
-        k_index0 = np.arange(self.level0.n, dtype=np.int32) // (nx0 * ny0)
-
-        rcon0_full = np.empty(self.level0.n, dtype=float)
-        hcap0_full = np.empty(self.level0.n, dtype=float)
-        poro0_full = np.full(self.level0.n, poro_burden, dtype=float)
-        kx0_full = np.full(self.level0.n, perm_burden, dtype=float)
-        ky0_full = np.full(self.level0.n, perm_burden, dtype=float)
-        kz0_full = np.full(self.level0.n, perm_burden, dtype=float)
-  
-        mask_over = k_index0 < nz_over
-        mask_res  = (k_index0 >= nz_over) & (k_index0 < nz_over + nz_res)
-        mask_under = k_index0 >= (nz_over + nz_res)
-
-        rcon0_full[mask_over] = rcond_over
-        rcon0_full[mask_res] = rcond_res
-        rcon0_full[mask_under] = rcond_under
-        hcap0_full[mask_over] = hcap_over
-        hcap0_full[mask_res] = hcap_res
-        hcap0_full[mask_under] =hcap_under
-        poro0_full[mask_res] = poro0
-        kx0_full [mask_res] = permx0
-        ky0_full [mask_res] = permy0
-        kz0_full [mask_res] = permz0
+        volume0_arr = np.array(self.level0.volume, copy=False).astype(float) # self.level0.volume is already filtered
 
         rcon0_arr = rcon0_full[l2g0]
         hcap0_arr = hcap0_full[l2g0]
@@ -539,7 +544,7 @@ class Model(DartsModel):
 
             k_over  = k1 - 1
             k_under = k2 + 1
-
+            # the local index of the burden coarse cell in level0 (this local means of the level0 system after squeezing out inactive cells)
             over_coarse_local  = int(g2l0[self.convert_ijk_to_gindex_1based(ic, jc, k_over,  self.level0.nx, self.level0.ny)])
             under_coarse_local = int(g2l0[self.convert_ijk_to_gindex_1based(ic, jc, k_under, self.level0.nx, self.level0.ny)])
 
@@ -686,10 +691,10 @@ class Model(DartsModel):
                                                Mw=comp_data.Mw, min_z=self.zero / 10,)
 
         """ properties correlations """
-        # property_container.flash_ev = ConstantK(len(components), [4, 1e-1], self.zero)
-        property_container.flash_ev = NegativeFlash(flash_params, ["aqueous", "CEOS"], [InitialGuess.Henry_AV])
+        property_container.flash_ev = ConstantK(len(components), [4, 1e-1], self.zero)
+        # property_container.flash_ev = NegativeFlash(flash_params, ["aqueous", "CEOS"], [InitialGuess.Henry_AV])
         property_container.density_ev = dict([('CO2_rich', EoSDensity(ceos,comp_data.Mw)),
-                                              ('aqueous', Garcia2001(components))])
+                                              ('aqueous', DensityBasic(dens0=1020,compr= 4.5e-5,p0=31))])
         property_container.viscosity_ev = dict([('CO2_rich', Fenghour1998()),
                                                 ('aqueous', Islam2012(components))])
         property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas")),
@@ -698,6 +703,9 @@ class Model(DartsModel):
                                                 ('aqueous', EoSEnthalpy(aq))])
         property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)),
                                                    ('aqueous', ConstFunc(180.)), ])
+
+      
+
         """ Activate physics """
         thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
@@ -713,12 +721,17 @@ class Model(DartsModel):
             "rhoAq": lambda: property_container.dens[1],
             }
 
-        self.physics.add_property_region(property_container)
+        self.physics.add_property_region(property_container) 
 
         return
 
     def set_initial_conditions(self):
-        from darts.physics.super.initialize import Initialize
+        # input_distribution = {self.physics.vars[0]: 195, # pressure
+        #                       self.physics.vars[1]: self.zero, # z_CO2
+        #                       self.physics.vars[2]: 353.15 # temperature
+        #                       }
+        # return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, 
+        #                                                       input_distribution=input_distribution)
 
         depths = np.asarray(self.reservoir.mesh.depth)
         min_depth = np.min(depths)
@@ -732,14 +745,14 @@ class Model(DartsModel):
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = np.ones(nb) * self.zero
         
-        boundary_state = {"pressure" :195}
+        boundary_state = {"pressure" :195}  
         for comp in self.physics.components[:-1]:
             boundary_state[comp] = float(primary_specs[comp][0])
         boundary_state["temperature"] = 80 +273.15
 
         dTdh = 40/1000 #k/m
-
-        X = init.solve(depth_bottom=max_depth, depth_top= min_depth,depth_known=min_depth, nb=nb,
+        # need to be fixed, currently reference T/P was set at the top of the overburden, which is wrong
+        X = init.solve(depth_bottom=max_depth, depth_top= min_depth,depth_known=2000, nb=nb,
                        boundary_state=boundary_state,primary_specs=primary_specs,secondary_specs=None, dTdh=dTdh).reshape((nb, self.physics.n_vars))
         # input_distribution = {self.physics.vars[0]: 131, # pressure
         #                       self.physics.vars[1]: self.zero, # z_CO2
@@ -756,15 +769,15 @@ class Model(DartsModel):
         inj_composition = [1.0 - self.zero]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                               is_inj=True, target=5600000., inj_composition=inj_composition, inj_temp=296.15)
-                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                #                                is_inj=True, target=360., inj_composition=inj_composition, inj_temp=296.15)
+                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+                #                                is_inj=True, target=5600000., inj_composition=inj_composition, inj_temp=296.15)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=360., inj_composition=inj_composition, inj_temp=296.15)
             else:
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                               is_inj=False, target=1400000.)
-                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                #                                is_inj=False, target=102.)
+                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+                #                                is_inj=False, target=1400000.)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=102.)
 
 class LGRReservoir(ReservoirBase):
     """

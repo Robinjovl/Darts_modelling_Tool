@@ -199,8 +199,8 @@ class Model(DartsModel):
         dz0_layers = np.concatenate([dz_over, np.full(nz_res, dz_res, dtype=float), dz_under])
         permx0, permy0, permz0 = 50, 50, 50
         poro0 = 0.1
-        poro_burden = 0.01
-        perm_burden = 0.001
+        poro_burden = 0.0001
+        perm_burden = 1e-6
 
         # thermal properties
         rcond_res = 181.44 # KJ/m/day/k
@@ -228,10 +228,34 @@ class Model(DartsModel):
 
         actnum0 = self.create_actnum_with_lgr(nx0, ny0, nz0, refined_cells_ijk)
 
+        k_index0 = np.arange(self.level0.n, dtype=np.int32) // (nx0 * ny0)
+
+        rcon0_full = np.empty(self.level0.n, dtype=float)
+        hcap0_full = np.empty(self.level0.n, dtype=float)
+        poro0_full = np.full(self.level0.n, poro_burden, dtype=float)
+        kx0_full = np.full(self.level0.n, perm_burden, dtype=float)
+        ky0_full = np.full(self.level0.n, perm_burden, dtype=float)
+        kz0_full = np.full(self.level0.n, perm_burden, dtype=float)
+  
+        mask_over = k_index0 < nz_over
+        mask_res  = (k_index0 >= nz_over) & (k_index0 < nz_over + nz_res)
+        mask_under = k_index0 >= (nz_over + nz_res)
+
+        rcon0_full[mask_over] = rcond_over
+        rcon0_full[mask_res] = rcond_res
+        rcon0_full[mask_under] = rcond_under
+        hcap0_full[mask_over] = hcap_over
+        hcap0_full[mask_res] = hcap_res
+        hcap0_full[mask_under] =hcap_under
+        poro0_full[mask_res] = poro0
+        kx0_full [mask_res] = permx0
+        ky0_full [mask_res] = permy0
+        kz0_full [mask_res] = permz0
+
 
         self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
-                                      permx=permx0, permy=permy0, permz=permz0, poro=poro0,depth= None, 
-                                      start_z=0,actnum=actnum0, rcond=rcond_res, hcap=hcap_res,)
+                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
+                                      start_z=0,actnum=actnum0, rcond=rcon0_full, hcap=hcap0_full,)
 
         boundary_factor = 1e6
         base_vol = float(dx0 * dy0 * dz_res)
@@ -276,10 +300,14 @@ class Model(DartsModel):
             permz_y [:,:,0] = perm_burden
             permz_z = np.full((rx, ry, 2), permz0, dtype=float)
             permz_z [:,:,0] = perm_burden
+            rcond_1 = np.full((rx, ry, 2), rcond_res, dtype=float)
+            rcond_1[:,:,0] = rcond_over
+            hcap_1 = np.full((rx, ry, 2), hcap_res, dtype=float)
+            hcap_1[:,:,0] = hcap_over
         
 
-            self.level1_imag_z[name] = StructReservoir(self.timer, nx=rx, ny=ry,nz=2, dx =dx1, dy=dy1, dz= dz1,
-                                                  permx=permz_x, permy=permz_y, permz=permz_z, poro=poro0, depth= None, start_z=2000,rcond=rcond_res, hcap=hcap_res,)
+            self.level1_imag_z[name] = StructReservoir(self.timer, nx=rx, ny=ry,nz=2, dx =dx1, dy=dy1, dz= dz1
+                                                  permx=permz_x, permy=permz_y, permz=permz_z, poro=poro0, depth= None, start_z=2000,rcond=rcond_1, hcap=hcap_1,)
             
         cm_all, cp_all, T_all, T_all_therm, meta = self.assemble_lgr_connections_eclipse()
 
@@ -295,29 +323,7 @@ class Model(DartsModel):
         depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
         volume0_arr = np.array(self.level0.volume, copy=False).astype(float)
         # thermal properties for level 0 varying with ob and res
-        k_index0 = np.arange(self.level0.n, dtype=np.int32) // (nx0 * ny0)
-
-        rcon0_full = np.empty(self.level0.n, dtype=float)
-        hcap0_full = np.empty(self.level0.n, dtype=float)
-        poro0_full = np.full(self.level0.n, poro_burden, dtype=float)
-        kx0_full = np.full(self.level0.n, perm_burden, dtype=float)
-        ky0_full = np.full(self.level0.n, perm_burden, dtype=float)
-        kz0_full = np.full(self.level0.n, perm_burden, dtype=float)
-  
-        mask_over = k_index0 < nz_over
-        mask_res  = (k_index0 >= nz_over) & (k_index0 < nz_over + nz_res)
-        mask_under = k_index0 >= (nz_over + nz_res)
-
-        rcon0_full[mask_over] = rcond_over
-        rcon0_full[mask_res] = rcond_res
-        rcon0_full[mask_under] = rcond_under
-        hcap0_full[mask_over] = hcap_over
-        hcap0_full[mask_res] = hcap_res
-        hcap0_full[mask_under] =hcap_under
-        poro0_full[mask_res] = poro0
-        kx0_full [mask_res] = permx0
-        ky0_full [mask_res] = permy0
-        kz0_full [mask_res] = permz0
+        
 
         rcon0_arr = rcon0_full[l2g0]
         hcap0_arr = hcap0_full[l2g0]
@@ -660,30 +666,30 @@ class Model(DartsModel):
   
 
     def set_physics(self):
-            """Physical properties"""
-            # Create property containers:
-            components = ['CO2', 'H2O']
-            phases = ['CO2_rich', 'aqueous']
-            Mw = [44.01, 18.015]
+        """Physical properties"""
+        # Create property containers:
+        components = ['CO2', 'H2O']
+        phases = ['CO2_rich', 'aqueous']
+        Mw = [44.01, 18.015]
 
-            temperature = 80+273.15
-            property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                Mw=Mw, min_z=self.zero / 10, temperature=temperature)
+        temperature = 80+273.15
+        property_container = PropertyContainer(phases_name=phases, components_name=components,
+                                            Mw=Mw, min_z=self.zero / 10, temperature=temperature)
 
-            """ properties correlations """
-            property_container.flash_ev = ConstantK(len(components), [4, 1e-1], self.zero)
-            property_container.density_ev = dict([('CO2_rich', DensityBasic(compr=1e-3, dens0=200)),
+        """ properties correlations """
+        property_container.flash_ev = ConstantK(len(components), [4, 1e-1], self.zero)
+        property_container.density_ev = dict([('CO2_rich', DensityBasic(compr=1e-3, dens0=200)),
                                                 ('aqueous', DensityBasic(compr=1e-5, dens0=600))])
-            property_container.viscosity_ev = dict([('CO2_rich', ConstFunc(0.05)),
-                                                    ('aqueous', ConstFunc(0.5))])
-            property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas")),
+        property_container.viscosity_ev = dict([('CO2_rich', ConstFunc(0.05)),
+                                                ('aqueous', ConstFunc(0.5))])
+        property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas")),
                                                 ('aqueous', PhaseRelPerm("wat"))])
 
-            """ Activate physics """
-            thermal = False
-            state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-            self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                        n_points=200, min_p=1, max_p=300, min_z=self.zero/10, max_z=1-self.zero/10)
+        """ Activate physics """
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+                                    n_points=200, min_p=1, max_p=300, min_z=self.zero/10, max_z=1-self.zero/10)
             # property_container.output_props = {
             #     "sat0": lambda: property_container.sat[0],
             #     "dens0": lambda: property_container.dens[0],
@@ -691,9 +697,9 @@ class Model(DartsModel):
             #     "x00": lambda: property_container.x[0,0]
             #     }
 
-            self.physics.add_property_region(property_container)
+        self.physics.add_property_region(property_container)
 
-            return
+        return
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 195,
