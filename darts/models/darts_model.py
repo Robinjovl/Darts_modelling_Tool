@@ -850,7 +850,7 @@ class DartsModel:
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
-                # Plot properties vs time
+                # Plot properties vs time for every Newton-Raphson iteration
                 if self.plot_newton_iters_vs_time:
                     self.plot_props_vs_current_time()
         # End of newton loop
@@ -860,7 +860,7 @@ class DartsModel:
         self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
         self.time_step_size.append(dt)
 
-        # # Plot properties vs time
+        # # Plot properties vs time for every time step
         # if self.plot_newton_iters_vs_time:
         #     self.plot_props_vs_current_time()
 
@@ -873,23 +873,31 @@ class DartsModel:
         """
         plt.ion()
 
-        fig, axes = plt.subplots(2, 6, figsize=(22, 7), constrained_layout=True)
+        fig, axes = plt.subplots(2, 9, figsize=(22, 7), constrained_layout=True)
 
         self.figs.append(fig)
         self.axes.append(axes)
 
         ax0 = self.axes[0][0, 0]
         ax1 = self.axes[0][1, 0]
+        # Well props
         ax2 = self.axes[0][0, 1]
-        ax3 = self.axes[0][1, 1]
-        ax4 = self.axes[0][0, 2]
-        ax5 = self.axes[0][1, 2]
-        ax6 = self.axes[0][0, 3]
-        ax7 = self.axes[0][1, 3]
-        ax8 = self.axes[0][0, 4]
-        ax9 = self.axes[0][1, 4]
-        ax10 = self.axes[0][0, 5]
-        ax11 = self.axes[0][1, 5]
+        ax3 = self.axes[0][0, 2]
+        ax4 = self.axes[0][0, 3]
+        ax5 = self.axes[0][0, 4]
+        ax6 = self.axes[0][0, 5]
+        ax7 = self.axes[0][0, 6]
+        ax8 = self.axes[0][0, 7]
+        ax9 = self.axes[0][0, 8]
+        # Reservoir props
+        ax10 = self.axes[0][1, 1]
+        ax11 = self.axes[0][1, 2]
+        ax12 = self.axes[0][1, 3]
+        ax13 = self.axes[0][1, 4]
+        ax14 = self.axes[0][1, 5]
+        ax15 = self.axes[0][1, 6]
+        ax16 = self.axes[0][1, 7]
+        ax17 = self.axes[0][1, 8]
 
         # Axes for number of Newton iterations
         (line0,) = ax0.plot(
@@ -907,6 +915,7 @@ class DartsModel:
         # ax0.set_xscale("log")
         ax0.set_xlabel("Time [days]")
         ax0.set_ylabel("Number of Newton iterations [-]")
+        ax0.set_title("** Solver props **")
 
         # Axes for time step size
         (line1,) = ax1.plot(
@@ -940,10 +949,10 @@ class DartsModel:
 
         ax2.set_xlabel("Pressure [bar]")
         ax2.set_ylabel("Segment index [-]")
-        ax2.set_title("** Well prim. vars **")
+        ax2.set_title("** Pressure **")
         ax2.invert_yaxis()
 
-        # Axes for wellbore specific enthalpy
+        # Axes for wellbore temperature
         (line3,) = ax3.plot(
             [],
             [],
@@ -956,8 +965,9 @@ class DartsModel:
             markeredgecolor='red',
         )
 
-        ax3.set_xlabel("Specific enthalpy [kJ/kmol]")
+        ax3.set_xlabel(r"Temperature [$^\circ$C]")
         ax3.set_ylabel("Segment index [-]")
+        ax3.set_title("** Temperature **")
         ax3.invert_yaxis()
 
         # Axes for wellbore gas volume fraction
@@ -975,7 +985,7 @@ class DartsModel:
 
         ax4.set_xlabel("Gas volume fraction [-]")
         ax4.set_ylabel("Segment index [-]")
-        ax4.set_title("** Well vol. frac. **")
+        ax4.set_title("** Gas volume fraction **")
         ax4.invert_yaxis()
 
         # Axes for wellbore liquid volume fraction
@@ -993,6 +1003,7 @@ class DartsModel:
 
         ax5.set_xlabel("Liquid volume fraction [-]")
         ax5.set_ylabel("Segment index [-]")
+        ax5.set_title("** Liquid volume fraction **")
         ax5.invert_yaxis()
 
         # Axes for wellbore gas density
@@ -1010,7 +1021,7 @@ class DartsModel:
 
         ax6.set_xlabel(r"Gas density [kg/m$^3$]")
         ax6.set_ylabel("Segment index [-]")
-        ax6.set_title("** Well density **")
+        ax6.set_title("** Gas density **")
         ax6.invert_yaxis()
 
         # Axes for wellbore liquid density
@@ -1028,6 +1039,7 @@ class DartsModel:
 
         ax7.set_xlabel(r"Liquid density [kg/m$^3$]")
         ax7.set_ylabel("Segment index [-]")
+        ax7.set_title("** Liquid density **")
         ax7.invert_yaxis()
 
         # Axes for wellbore gas viscosity
@@ -1043,9 +1055,9 @@ class DartsModel:
             markeredgecolor='red',
         )
 
-        ax8.set_xlabel(r"Gas viscosity [cP]")
+        ax8.set_xlabel("Gas viscosity [cP]")
         ax8.set_ylabel("Segment index [-]")
-        ax8.set_title("** Well viscosity **")
+        ax8.set_title("** Gas viscosity **")
         ax8.invert_yaxis()
 
         # Axes for wellbore liquid viscosity
@@ -1061,8 +1073,9 @@ class DartsModel:
             markeredgecolor='red',
         )
 
-        ax9.set_xlabel(r"Liquid viscosity [cP]")
+        ax9.set_xlabel("Liquid viscosity [cP]")
         ax9.set_ylabel("Segment index [-]")
+        ax9.set_title("** Liquid viscosity **")
         ax9.invert_yaxis()
 
         # Axes for reservoir pressure
@@ -1081,9 +1094,8 @@ class DartsModel:
         ax10.set_xscale("log")
         ax10.set_xlabel("Reservoir radial distance [m]")
         ax10.set_ylabel("Pressure [bar]")
-        ax10.set_title("** Reservoir **")
 
-        # Axes for reservoir specific enthalpy
+        # Axes for reservoir temperature
         (line11,) = ax11.plot(
             [],
             [],
@@ -1098,7 +1110,109 @@ class DartsModel:
 
         ax11.set_xscale("log")
         ax11.set_xlabel("Reservoir radial distance [m]")
-        ax11.set_ylabel("Specific enthalpy [kJ/kmol]")
+        ax11.set_ylabel("Temperature [$^\circ$C]")
+
+        # Axes for reservoir gas volume fraction
+        (line12,) = ax12.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax12.set_xscale("log")
+        ax12.set_xlabel("Reservoir radial distance [m]")
+        ax12.set_ylabel("Gas volume fraction [-]")
+
+        # Axes for reservoir liquid volume fraction
+        (line13,) = ax13.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax13.set_xscale("log")
+        ax13.set_xlabel("Reservoir radial distance [m]")
+        ax13.set_ylabel("Liquid volume fraction [-]")
+
+        # Axes for reservoir gas density
+        (line14,) = ax14.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax14.set_xscale("log")
+        ax14.set_xlabel("Reservoir radial distance [m]")
+        ax14.set_ylabel(r"Gas density [kg/m$^3$]")
+
+        # Axes for reservoir liquid density
+        (line15,) = ax15.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax15.set_xscale("log")
+        ax15.set_xlabel("Reservoir radial distance [m]")
+        ax15.set_ylabel(r"Liquid density [kg/m$^3$]")
+
+        # Axes for reservoir gas viscosity
+        (line16,) = ax16.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax16.set_xscale("log")
+        ax16.set_xlabel("Reservoir radial distance [m]")
+        ax16.set_ylabel("Gas viscosity [cP]")
+
+        # Axes for reservoir liquid viscosity
+        (line17,) = ax17.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+
+        ax17.set_xscale("log")
+        ax17.set_xlabel("Reservoir radial distance [m]")
+        ax17.set_ylabel("Liquid viscosity [cP]")
 
         self.lines.append(
             [
@@ -1114,6 +1228,12 @@ class DartsModel:
                 line9,
                 line10,
                 line11,
+                line12,
+                line13,
+                line14,
+                line15,
+                line16,
+                line17,
             ]
         )
 
@@ -1138,13 +1258,53 @@ class DartsModel:
         i_start_well = self.reservoir.wells[0].well_head_idx
         i_end_well = self.reservoir.wells[0].well_bottom_idx
         p_idx = self.physics.vars.index('pressure')
-        h_idx = self.physics.vars.index('enthalpy')
         X_np = np.asarray(self.physics.engine.X).reshape(-1, self.physics.n_vars)
         p_well = X_np[i_start_well : i_end_well + 1, p_idx]
-        h_well = X_np[i_start_well : i_end_well + 1, h_idx]
-        p_res = X_np[:i_start_well, p_idx][:50]
-        h_res = X_np[:i_start_well, h_idx][:50]
-        x_res = self.reservoir.global_data['dx'].reshape(-1)[:50]
+        # Get the property container to evaluate phase props
+        pc = self.physics.property_containers[0]
+        n_segments = self.wells['I1'].geometry.num_segments
+        n_res_blocks = self.reservoir.mesh.n_res_blocks
+        n_vars = self.physics.n_vars
+        T_well = np.zeros(n_segments)
+        for i in range(n_res_blocks, n_res_blocks + n_segments):
+            state = np.asarray(self.physics.engine.X)[i * n_vars : (i + 1) * n_vars]
+            pc.evaluate(state)
+            if self.physics.thermal:
+                pc.evaluate_thermal(state)
+            T_well[i - n_res_blocks] = pc.temperature - 273.15
+
+        till_this_res_cell = 50  # Plot till this reservoir cell index
+        assert till_this_res_cell <= n_res_blocks
+        p_res = X_np[:i_start_well, p_idx][:till_this_res_cell]
+        x_res = self.reservoir.global_data['dx'].reshape(-1)[:till_this_res_cell]
+
+        # Calculate reservoir phase props
+        nc = self.physics.nc
+        # Preallocate phase props arrays
+        T_res = np.zeros(till_this_res_cell)
+        sG_res = np.zeros(till_this_res_cell)
+        rhoG_res = np.zeros(till_this_res_cell)
+        rhoL_res = np.zeros(till_this_res_cell)
+        miuG_res = np.zeros(till_this_res_cell)
+        miuL_res = np.zeros(till_this_res_cell)
+        xG_mass_res = np.zeros((till_this_res_cell, nc))
+        xL_mass_res = np.zeros((till_this_res_cell, nc))
+
+        for i in range(till_this_res_cell):
+            state = np.asarray(self.physics.engine.X)[i * n_vars : (i + 1) * n_vars]
+            pc.evaluate(state)
+            if self.physics.thermal:
+                pc.evaluate_thermal(state)
+            T_res[i] = pc.temperature - 273.15
+            sG_res[i] = pc.sat[0]
+            rhoG_res[i] = pc.dens[0]
+            rhoL_res[i] = pc.dens[1]
+            miuG_res[i] = pc.mu[0]
+            miuL_res[i] = pc.mu[1]
+            x_mass0 = np.zeros((pc.nph, nc))
+            for j in pc.ph:
+                x_mass0[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
+            xG_mass_res[i, :], xL_mass_res[i, :] = x_mass0[0, :], x_mass0[1, :]
 
         [
             xG_mass_well,
@@ -1155,47 +1315,72 @@ class DartsModel:
             miuG_well,
             miuL_well,
         ] = self.wells['I1'].iter_phases_props
-        n_segments = self.wells['I1'].geometry.num_segments
 
+        # Well props
         self.lines[0][2].set_data(p_well, np.arange(n_segments))
         self.axes[0][0, 1].relim()
         self.axes[0][0, 1].autoscale_view()
 
-        self.lines[0][3].set_data(h_well, np.arange(n_segments))
-        self.axes[0][1, 1].relim()
-        self.axes[0][1, 1].autoscale_view()
-
-        self.lines[0][4].set_data(sG_well, np.arange(n_segments))
+        self.lines[0][3].set_data(T_well, np.arange(n_segments))
         self.axes[0][0, 2].relim()
         self.axes[0][0, 2].autoscale_view()
 
-        self.lines[0][5].set_data(1 - sG_well, np.arange(n_segments))
-        self.axes[0][1, 2].relim()
-        self.axes[0][1, 2].autoscale_view()
-
-        self.lines[0][6].set_data(rhoG_well, np.arange(n_segments))
+        self.lines[0][4].set_data(sG_well, np.arange(n_segments))
         self.axes[0][0, 3].relim()
         self.axes[0][0, 3].autoscale_view()
 
-        self.lines[0][7].set_data(rhoL_well, np.arange(n_segments))
-        self.axes[0][1, 3].relim()
-        self.axes[0][1, 3].autoscale_view()
-
-        self.lines[0][8].set_data(miuG_well, np.arange(n_segments))
+        self.lines[0][5].set_data(1 - sG_well, np.arange(n_segments))
         self.axes[0][0, 4].relim()
         self.axes[0][0, 4].autoscale_view()
 
-        self.lines[0][9].set_data(miuL_well, np.arange(n_segments))
-        self.axes[0][1, 4].relim()
-        self.axes[0][1, 4].autoscale_view()
-
-        self.lines[0][10].set_data(x_res, p_res)
+        self.lines[0][6].set_data(rhoG_well, np.arange(n_segments))
         self.axes[0][0, 5].relim()
         self.axes[0][0, 5].autoscale_view()
 
-        self.lines[0][11].set_data(x_res, h_res)
+        self.lines[0][7].set_data(rhoL_well, np.arange(n_segments))
+        self.axes[0][0, 6].relim()
+        self.axes[0][0, 6].autoscale_view()
+
+        self.lines[0][8].set_data(miuG_well, np.arange(n_segments))
+        self.axes[0][0, 7].relim()
+        self.axes[0][0, 7].autoscale_view()
+
+        self.lines[0][9].set_data(miuL_well, np.arange(n_segments))
+        self.axes[0][0, 8].relim()
+        self.axes[0][0, 8].autoscale_view()
+
+        # Reservoir props
+        self.lines[0][10].set_data(x_res, p_res)
+        self.axes[0][1, 1].relim()
+        self.axes[0][1, 1].autoscale_view()
+
+        self.lines[0][11].set_data(x_res, T_res)
+        self.axes[0][1, 2].relim()
+        self.axes[0][1, 2].autoscale_view()
+
+        self.lines[0][12].set_data(x_res, sG_res)
+        self.axes[0][1, 3].relim()
+        self.axes[0][1, 3].autoscale_view()
+
+        self.lines[0][13].set_data(x_res, 1 - sG_res)
+        self.axes[0][1, 4].relim()
+        self.axes[0][1, 4].autoscale_view()
+
+        self.lines[0][14].set_data(x_res, rhoG_res)
         self.axes[0][1, 5].relim()
         self.axes[0][1, 5].autoscale_view()
+
+        self.lines[0][15].set_data(x_res, rhoL_res)
+        self.axes[0][1, 6].relim()
+        self.axes[0][1, 6].autoscale_view()
+
+        self.lines[0][16].set_data(x_res, miuG_res)
+        self.axes[0][1, 7].relim()
+        self.axes[0][1, 7].autoscale_view()
+
+        self.lines[0][17].set_data(x_res, miuL_res)
+        self.axes[0][1, 8].relim()
+        self.axes[0][1, 8].autoscale_view()
 
         self.figs[0].canvas.draw_idle()
         self.figs[0].canvas.flush_events()
