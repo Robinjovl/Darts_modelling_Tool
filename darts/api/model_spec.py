@@ -1,13 +1,20 @@
-from __future__ import annotations
-
 from copy import deepcopy
 from typing import Any
 
 from pydantic import ValidationError
 
 from darts.api.schemas import (
+    InitialConditionsSpec,
     ModelSpec,
+    OutputSpec,
     PatchModelSpec,
+    PhysicsSpec,
+    PluginRegistrySpec,
+    PluginSlots,
+    ReservoirSpec,
+    SimParamsSpec,
+    WellControlsSpec,
+    WellsSpec,
 )
 
 
@@ -140,3 +147,26 @@ def upsert_model_spec_dict(
 
     _CANONICAL[session_id] = merged
     return {"ok": True, "session_id": session_id, "spec": merged}
+
+
+__all__ = [
+    # Canonical schema aliases (single definitions live in schemas.py)
+    "ModelSpec",
+    "PatchModelSpec",
+    "ReservoirSpec",
+    "PhysicsSpec",
+    "WellsSpec",
+    "InitialConditionsSpec",
+    "WellControlsSpec",
+    "SimParamsSpec",
+    "OutputSpec",
+    "PluginSlots",
+    "PluginRegistrySpec",
+    # Utilities/state store
+    "json_merge_patch",
+    "normalize_keys",
+    "validate_model_spec_dict",
+    "validate_patch_model_spec_dict",
+    "upsert_model_spec_dict",
+    "get_model_spec_dict",
+]

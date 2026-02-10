@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover - v1 fallback
 
 class PluginInstance(BaseModel):
     type_id: str
-    config: dict[str, Any] = {}
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 @dataclass
@@ -109,6 +109,7 @@ class CompositionalConfig(BaseModel):
     epsilon_z: float = Field(1e-9, ge=0)
     min_t: float | None = Field(None, ge=0)
     max_t: float | None = Field(None, ge=0)
+    extrapolation_flag: bool = False
 
 
 class BlackOilConfig(BaseModel):
@@ -217,6 +218,7 @@ def make_compositional(
         epsilon_z=cfg.epsilon_z,
         min_t=min_t,
         max_t=max_t,
+        extrapolation_flag=cfg.extrapolation_flag,
     )
 
 
@@ -538,8 +540,12 @@ def load_local_plugin_registry(
 
     for entry in spec_dict.get("entries") or []:
         te = _entry_to_type_entry(entry, base_path)
-        registry.register(te)
-        added_set.add(te.type_id)
+        try:
+            registry.register(te)
+            added_set.add(te.type_id)
+        except RuntimeError:
+            # Keep local plugin registry loading idempotent across repeated apply() calls.
+            pass
 
     for type_id in sorted(added_set):
         added.append(type_id)

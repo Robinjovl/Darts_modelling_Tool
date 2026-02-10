@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -7,7 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from darts.api.type_registry import PluginInstance
 
 
-class DataRef(BaseModel):
+class SpecBaseModel(BaseModel):
+    """Strict base model used by all JSON schema specs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DataRef(SpecBaseModel):
     """Reference to external data or stored Python objects."""
 
     model_config = ConfigDict(
@@ -36,7 +40,7 @@ class DataRef(BaseModel):
 ReservoirValue = float | list[float] | DataRef
 
 
-class PluginRegistryEntrySpec(BaseModel):
+class PluginRegistryEntrySpec(SpecBaseModel):
     """Register a local plugin type."""
 
     model_config = ConfigDict(
@@ -71,7 +75,7 @@ class PluginRegistryEntrySpec(BaseModel):
     ] = None
 
 
-class PluginRegistrySpec(BaseModel):
+class PluginRegistrySpec(SpecBaseModel):
     """Local plugin registry entries loaded from JSON."""
 
     model_config = ConfigDict(
@@ -102,7 +106,7 @@ class PluginRegistrySpec(BaseModel):
     ] = None
 
 
-class StrictReservoirLayerSpec(BaseModel):
+class StrictReservoirLayerSpec(SpecBaseModel):
     """Layered overrides for structured reservoirs."""
 
     model_config = ConfigDict(
@@ -147,6 +151,7 @@ class StrictPluginInstance(PluginInstance):
     """Plugin reference with required configuration."""
 
     model_config = ConfigDict(
+        extra="forbid",
         title="StrictPluginInstance",
         json_schema_extra={
             "examples": [
@@ -164,7 +169,7 @@ class StrictPluginInstance(PluginInstance):
     config: Annotated[dict[str, Any], Field(description="Plugin configuration")]
 
 
-class StrictReservoirSpec(BaseModel):
+class StrictReservoirSpec(SpecBaseModel):
     """Reservoir geometry and rock properties."""
 
     model_config = ConfigDict(
@@ -242,7 +247,7 @@ class StrictReservoirSpec(BaseModel):
     ] = None
 
 
-class StrictPluginSlots(BaseModel):
+class StrictPluginSlots(SpecBaseModel):
     """Evaluator plugins attached to a property region."""
 
     model_config = ConfigDict(
@@ -298,7 +303,7 @@ class StrictPluginSlots(BaseModel):
     ] = None
 
 
-class StrictPropertyRegionSpec(BaseModel):
+class StrictPropertyRegionSpec(SpecBaseModel):
     """Property container and evaluators for a region."""
 
     model_config = ConfigDict(
@@ -331,7 +336,7 @@ class StrictPropertyRegionSpec(BaseModel):
     ] = None
 
 
-class StrictPhysicsSpec(BaseModel):
+class StrictPhysicsSpec(SpecBaseModel):
     """Physics configuration driven by plugins."""
 
     model_config = ConfigDict(
@@ -367,7 +372,7 @@ class StrictPhysicsSpec(BaseModel):
     ] = None
 
 
-class StrictWellControlsSpec(BaseModel):
+class StrictWellControlsSpec(SpecBaseModel):
     """Well controls configuration (per-well or top-level)."""
 
     model_config = ConfigDict(
@@ -412,7 +417,7 @@ class StrictWellControlsSpec(BaseModel):
     ] = None
 
 
-class StrictWellPerforation(BaseModel):
+class StrictWellPerforation(SpecBaseModel):
     """Perforation definition with optional well parameters."""
 
     model_config = ConfigDict(
@@ -428,7 +433,7 @@ class StrictWellPerforation(BaseModel):
     skin: Annotated[float | None, Field(description="Skin factor")] = None
 
 
-class StrictWellSpec(BaseModel):
+class StrictWellSpec(SpecBaseModel):
     """Well specification with perforations and optional controls."""
 
     model_config = ConfigDict(
@@ -454,7 +459,7 @@ class StrictWellSpec(BaseModel):
     ] = None
 
 
-class StrictWellsSpec(BaseModel):
+class StrictWellsSpec(SpecBaseModel):
     """List of wells."""
 
     model_config = ConfigDict(
@@ -477,7 +482,7 @@ class StrictWellsSpec(BaseModel):
     ]
 
 
-class StrictInitialConditionsSpec(BaseModel):
+class StrictInitialConditionsSpec(SpecBaseModel):
     """Initial conditions mapping for physics variables."""
 
     model_config = ConfigDict(
@@ -493,7 +498,7 @@ class StrictInitialConditionsSpec(BaseModel):
     ]
 
 
-class StrictSimParamsSpec(BaseModel):
+class StrictSimParamsSpec(SpecBaseModel):
     """Simulation parameters configuration."""
 
     model_config = ConfigDict(
@@ -553,7 +558,7 @@ class StrictSimParamsSpec(BaseModel):
     ] = None
 
 
-class StrictOutputSpec(BaseModel):
+class StrictOutputSpec(SpecBaseModel):
     """Output configuration."""
 
     model_config = ConfigDict(
@@ -573,7 +578,7 @@ class StrictOutputSpec(BaseModel):
     ] = None
 
 
-class StrictModelSpec(BaseModel):
+class StrictModelSpec(SpecBaseModel):
     """Full model specification."""
 
     model_config = ConfigDict(
@@ -647,7 +652,7 @@ class StrictModelSpec(BaseModel):
     ] = None
 
 
-class PatchPluginSlots(BaseModel):
+class PatchPluginSlots(SpecBaseModel):
     """Optional evaluator plugin overrides."""
 
     model_config = ConfigDict(
@@ -697,7 +702,7 @@ class PatchPluginSlots(BaseModel):
     ] = None
 
 
-class PatchPropertyRegionSpec(BaseModel):
+class PatchPropertyRegionSpec(SpecBaseModel):
     """Partial property region override."""
 
     model_config = ConfigDict(
@@ -729,7 +734,7 @@ class PatchPropertyRegionSpec(BaseModel):
     ] = None
 
 
-class PatchPhysicsSpec(BaseModel):
+class PatchPhysicsSpec(SpecBaseModel):
     """Partial physics override."""
 
     model_config = ConfigDict(
@@ -763,7 +768,7 @@ class PatchPhysicsSpec(BaseModel):
     ] = None
 
 
-class PatchReservoirSpec(BaseModel):
+class PatchReservoirSpec(SpecBaseModel):
     """Partial reservoir override."""
 
     model_config = ConfigDict(
@@ -828,7 +833,7 @@ class PatchReservoirSpec(BaseModel):
     ] = None
 
 
-class PatchWellControlsSpec(BaseModel):
+class PatchWellControlsSpec(SpecBaseModel):
     """Partial well controls override."""
 
     model_config = ConfigDict(
@@ -867,7 +872,7 @@ class PatchWellControlsSpec(BaseModel):
     ] = None
 
 
-class PatchWellPerforation(BaseModel):
+class PatchWellPerforation(SpecBaseModel):
     """Partial perforation override."""
 
     model_config = ConfigDict(
@@ -883,7 +888,7 @@ class PatchWellPerforation(BaseModel):
     skin: Annotated[float | None, Field(description="Skin factor")] = None
 
 
-class PatchWellSpec(BaseModel):
+class PatchWellSpec(SpecBaseModel):
     """Partial well override."""
 
     model_config = ConfigDict(
@@ -905,7 +910,7 @@ class PatchWellSpec(BaseModel):
     ] = None
 
 
-class PatchWellsSpec(BaseModel):
+class PatchWellsSpec(SpecBaseModel):
     """Partial wells override."""
 
     model_config = ConfigDict(
@@ -923,7 +928,7 @@ class PatchWellsSpec(BaseModel):
     ] = None
 
 
-class PatchInitialConditionsSpec(BaseModel):
+class PatchInitialConditionsSpec(SpecBaseModel):
     """Partial initial conditions override."""
 
     model_config = ConfigDict(
@@ -937,7 +942,7 @@ class PatchInitialConditionsSpec(BaseModel):
     ] = None
 
 
-class PatchSimParamsSpec(BaseModel):
+class PatchSimParamsSpec(SpecBaseModel):
     """Partial simulation parameters override."""
 
     model_config = ConfigDict(
@@ -986,7 +991,7 @@ class PatchSimParamsSpec(BaseModel):
     ] = None
 
 
-class PatchOutputSpec(BaseModel):
+class PatchOutputSpec(SpecBaseModel):
     """Partial output override."""
 
     model_config = ConfigDict(
@@ -1004,7 +1009,7 @@ class PatchOutputSpec(BaseModel):
     ] = None
 
 
-class PatchModelSpec(BaseModel):
+class PatchModelSpec(SpecBaseModel):
     """Partial model spec for merge-patch updates."""
 
     model_config = ConfigDict(

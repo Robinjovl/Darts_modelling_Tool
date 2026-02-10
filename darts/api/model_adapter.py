@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from darts.api.builder import ModelBuilder
@@ -77,7 +75,7 @@ class JsonModelAdapter(ModelAdapter):
         if hasattr(ModelSpec, "model_validate"):
             spec = ModelSpec.model_validate(spec_dict)
         else:
-            spec = ModelSpec.parse_obj(spec_dict)
+            spec = ModelSpec(**spec_dict)
         self.apply_spec(spec)
 
 
@@ -88,7 +86,7 @@ class MCPModelAdapter(ModelAdapter):
         if hasattr(ModelSpec, "model_validate"):
             spec = ModelSpec.model_validate(self._spec)
         else:
-            spec = ModelSpec.parse_obj(self._spec)
+            spec = ModelSpec(**self._spec)
         ModelBuilder.apply(
             spec,
             self.model,
@@ -100,5 +98,5 @@ class MCPModelAdapter(ModelAdapter):
         if hasattr(PatchModelSpec, "model_validate"):
             PatchModelSpec.model_validate(patch)
         else:
-            PatchModelSpec.parse_obj(patch)
+            PatchModelSpec(**patch)
         return {"ok": True}

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from darts.api.schemas import (

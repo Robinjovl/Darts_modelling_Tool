@@ -2,7 +2,8 @@
 Public API for schema-first configuration and plugin registry.
 
 Modules:
-- model_spec: Pydantic models for ModelSpec and subsections; utilities for merge and normalization.
+- schemas: Canonical Pydantic models for ModelSpec and subsections.
+- model_spec: compatibility aliases and utilities for merge and normalization.
 - type_registry: TypeRegistry and PluginInstance for custom Python types with JSON Schemas.
 - builder: ModelBuilder to apply a validated ModelSpec to a DartsModel instance.
 - introspection: Helpers to export JSON Schemas and capabilities.
@@ -17,14 +18,6 @@ from darts.api.introspection import (
 )
 from darts.api.model_adapter import JsonModelAdapter, MCPModelAdapter, ModelAdapter
 from darts.api.model_spec import (
-    InitialConditionsSpec,
-    ModelSpec,
-    OutputSpec,
-    PhysicsSpec,
-    ReservoirSpec,
-    SimParamsSpec,
-    WellControlsSpec,
-    WellsSpec,
     get_model_spec_dict,
     json_merge_patch,
     normalize_keys,
@@ -34,8 +27,16 @@ from darts.api.model_spec import (
 )
 from darts.api.schemas import (
     DataRef,
+    InitialConditionsSpec,
+    ModelSpec,
+    OutputSpec,
     PatchModelSpec,
+    PhysicsSpec,
+    ReservoirSpec,
+    SimParamsSpec,
     StrictModelSpec,
+    WellControlsSpec,
+    WellsSpec,
 )
 from darts.api.type_registry import (
     TYPE_REGISTRY,

@@ -1,9 +1,9 @@
-from __future__ import annotations
-
+import os
 from typing import Any
 
 from darts.api.data_refs import resolve_data_ref
-from darts.api.model_spec import (
+from darts.api.schemas import (
+    DataRef,
     InitialConditionsSpec,
     ModelSpec,
     OutputSpec,
@@ -12,9 +12,9 @@ from darts.api.model_spec import (
     PluginSlots,
     ReservoirSpec,
     SimParamsSpec,
+    WellControlsSpec,
     WellsSpec,
 )
-from darts.api.schemas import DataRef
 from darts.api.type_registry import (
     TYPE_REGISTRY,
     PluginInstance,
@@ -50,7 +50,7 @@ class ModelBuilder:
             phy = ModelBuilder._resolve_section(
                 spec.physics, PhysicsSpec, base_path, object_store
             )
-            ModelBuilder._apply_physics(phy, model)
+            ModelBuilder._apply_physics(phy, model, base_path=base_path)
 
         if spec.wells:
             wells = ModelBuilder._resolve_section(
@@ -76,9 +76,9 @@ class ModelBuilder:
             )
             ModelBuilder._apply_output(out, model)
 
-        if getattr(spec, 'well_controls', None):
+        if getattr(spec, "well_controls", None):
             wc = ModelBuilder._resolve_section(
-                spec.well_controls, None, base_path, object_store
+                spec.well_controls, WellControlsSpec, base_path, object_store
             )
             ModelBuilder._apply_well_controls(wc, model)
 
@@ -244,7 +244,9 @@ class ModelBuilder:
         model.reservoir = StructReservoir(model.timer, **kwargs)
 
     @staticmethod
-    def _apply_physics(p: PhysicsSpec, model: Any) -> None:
+    def _apply_physics(
+        p: PhysicsSpec, model: Any, *, base_path: str | None = None
+    ) -> None:
         assert p.plugin is not None, "physics.plugin is required"
         assert p.components is not None and p.phases is not None, (
             "physics.components and physics.phases are required"
@@ -254,6 +256,18 @@ class ModelBuilder:
         pinst = ModelBuilder._as_plugin_instance(p.plugin)
         entry = TYPE_REGISTRY.get(pinst.type_id)
         cfg = entry.config_model(**pinst.config)
+        # Resolve relative data files from ModelSpec location (e.g., BlackOil pvt_path).
+        if base_path and hasattr(cfg, "pvt_path"):
+            try:
+                pvt_path = cfg.pvt_path
+                if (
+                    isinstance(pvt_path, str)
+                    and pvt_path
+                    and not os.path.isabs(pvt_path)
+                ):
+                    cfg.pvt_path = os.path.join(base_path, pvt_path)
+            except Exception:
+                pass
         physics = entry.constructor(
             cfg, components=p.components, phases=p.phases, timer=model.timer
         )

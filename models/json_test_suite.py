@@ -7,6 +7,7 @@ from for_each_model import _ensure_parent_dir
 
 JSON_MODELS = [
     os.path.join("2ph_comp", "2ph_comp.json"),
+    os.path.join("2ph_comp_solid", "2ph_comp_solid.json"),
     os.path.join("2ph_do", "2ph_do.json"),
     os.path.join("2ph_do_thermal", "2ph_do_thermal.json"),
     os.path.join("3ph_bo", "3ph_bo.json"),
