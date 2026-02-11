@@ -80,14 +80,15 @@ class Model(ZerodModel):
         :param max_ts: float, maximum timestep
         :type max_ts: float
         """
-        super().__init__(fixed_pressure=fixed_pressure, fixed_temperature=fixed_temperature)
+        super().__init__(fixed_pressure=fixed_pressure,
+                        fixed_temperature=fixed_temperature,
+                        energy_source=EnergySource(energy_source))
 
         self.timer.node["initialization"].start()
         self.mode = mode
         self.vapour_eos = vapour_eos
         self.p_init = p_init
         self.sv_init = sv_init
-        self.energy_source = EnergySource(energy_source)
         self.poro = poro
         self.c_r = c_r
         self.dens_rock = dens_rock

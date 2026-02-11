@@ -30,6 +30,7 @@ class ZerodModel(DartsModel):
         self,
         fixed_pressure=False,
         fixed_temperature=False,
+        energy_source=None,
     ):
         """
         Initialize the model.
@@ -37,11 +38,14 @@ class ZerodModel(DartsModel):
         :type fixed_pressure: bool
         :param fixed_temperature: flag to fix temperature or not
         :type fixed_temperature: bool
+        :param energy_source: energy source, in kJ/day/m3
+        :type energy_source: float
         """
         super().__init__()
 
         self.fixed_pressure = fixed_pressure
         self.fixed_temperature = fixed_temperature
+        self.energy_source = energy_source
 
         self.state = None
         self.state_history = []
@@ -109,8 +113,8 @@ class ZerodModel(DartsModel):
             zc[: nc - 1] = state[1:nc]
             zc[-1] = 1.0 - np.sum(zc[: nc - 1])
 
-        comp_names = props.components_name
-        if not comp_names or len(comp_names) != nc:
+        comp_names = getattr(props, "components_name", None)
+        if comp_names is None or len(comp_names) != nc:
             comp_names = [f"comp{i + 1}" for i in range(nc)]
         z_parts = " ".join(
             f"z_{comp_names[i]}={zc[i]:>{num_width}.6g}" for i in range(nc)
@@ -921,14 +925,14 @@ class ZerodModel(DartsModel):
             zc[:, -1] = 1.0 - np.sum(zc[:, : nc - 1], axis=1)
 
         comp_names = getattr(props, "components_name", None)
-        if not comp_names or len(comp_names) != nc:
+        if comp_names is None or len(comp_names) != nc:
             comp_names = [f"comp{i + 1}" for i in range(nc)]
 
         nph = getattr(props, "nph", 0)
         if nph <= 0:
             raise RuntimeError("Property container is missing phase count.")
         phase_names = getattr(props, "phases_name", None)
-        if not phase_names or len(phase_names) != nph:
+        if phase_names is None or len(phase_names) != nph:
             phase_names = [f"phase{i + 1}" for i in range(nph)]
 
         enthalpy = np.full(n_steps, np.nan)
