@@ -99,6 +99,7 @@
           "inj_rate": 200.0,
           "rate_type": "MOLAR_RATE",
           "phase_name": "oil",
+          "inj_bhp": 450.0,
           "inj_composition": [1e-13]
         }
       },

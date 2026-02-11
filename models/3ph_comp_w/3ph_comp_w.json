@@ -134,7 +134,7 @@
     "wells": [
       {
         "name": "I1",
-        "perforations": [{"ijk": [1, 1, 1], "well_radius": 0.1524}],
+        "perforations": [{"ijk": [1, 1, 1]}],
         "controls": {
           "inj_rate": 20.0,
           "rate_type": "MOLAR_RATE",
@@ -144,7 +144,7 @@
       },
       {
         "name": "P1",
-        "perforations": [{"ijk": [1000, 1, 1], "well_radius": 0.1524}],
+        "perforations": [{"ijk": [1000, 1, 1]}],
         "controls": {"prod_bhp": 50.0}
       }
     ]

@@ -16,7 +16,7 @@
     "depth": 1000
   },
   "physics": {
-    "plugin": {"type_id": "physics/Compositional@v1", "config": {"state_spec": "P", "n_points": 200, "min_p": 1, "max_p": 300, "min_z": 1e-9, "max_z": 0.999999}},
+    "plugin": {"type_id": "physics/Compositional@v1", "config": {"state_spec": "P", "n_points": 200, "min_p": 1, "max_p": 300, "min_z": 0.0, "max_z": 1.0}},
     "components": ["CO2", "C1", "H2O"],
     "phases": ["gas", "oil"],
     "property_regions": [
@@ -44,7 +44,7 @@
   "wells": {
     "wells": [
       {"name": "I1", "perforations": [{"ijk": [1, 1, 1]}],
-       "controls": {"inj_bhp": 140, "inj_composition": [1.0, 0.0, 0.0]}},
+       "controls": {"inj_bhp": 140, "inj_composition": [0.99999998, 1e-8]}},
       {"name": "P1", "perforations": [{"ijk": [1000, 1, 1]}],
        "controls": {"prod_bhp": 50}}
     ]

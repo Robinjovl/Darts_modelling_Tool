@@ -119,7 +119,7 @@
     "wells": [
       {
         "name": "I1",
-        "perforations": [{"ijk": [1, 1, 1], "well_radius": 0.1524}],
+        "perforations": [{"ijk": [1, 1, 1]}],
         "controls": {
           "inj_bhp": 120.0,
           "inj_composition": [0.99999998, 1e-8]
@@ -127,7 +127,7 @@
       },
       {
         "name": "P1",
-        "perforations": [{"ijk": [1000, 1, 1], "well_radius": 0.1524}],
+        "perforations": [{"ijk": [1000, 1, 1]}],
         "controls": {"prod_bhp": 60.0}
       }
     ]
