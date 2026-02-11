@@ -151,7 +151,7 @@ class PropertyContainer(BasePropertyContainer):
         self.nu_solid = state[self.s_mask_state]
         # convert to overall molar fraction
         self.nu[idx_g] = nu_v * (1 - self.nu_solid.sum())
-        self.nu[idx_a] = 1 - nu_v - self.nu_solid.sum()
+        self.nu[idx_a] = 1 - self.nu[idx_g] - self.nu_solid.sum()
 
         pressure = state[0]
         # molar densities in kmol/m3
