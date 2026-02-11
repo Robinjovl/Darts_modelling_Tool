@@ -209,7 +209,7 @@ class Model(ZerodModel):
             )
             area_per_mol = area_per_volume / rho_m / 1000.0
             surface_area_ev = LinearReactionSurfaceArea(
-                initial_area_per_mol=area_per_mol * 10.0
+                initial_area_per_mol=area_per_mol
             )
             property_container.kinetic_rate_ev[mineral] = KineticRate(
                 min_z=self.obl_min,
