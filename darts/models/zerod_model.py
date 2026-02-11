@@ -1,23 +1,16 @@
 import os
-from dataclasses import dataclass
 
 import h5py
 import numpy as np
-from scipy.integrate import solve_ivp
 
 from darts.engines import index_vector, value_vector
 from darts.models.darts_model import DartsModel, DataTS
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.super.physics import Compositional
-
-
-@dataclass(frozen=True)
-class RadauStepResult:
-    success: bool
-    nfev: int = 0
-    njev: int = 0
-    nlu: int = 0
-    message: str = ""
+from darts.tools.radau_solver import (
+    make_default_stage_composition_correction,
+    solve_radau_step,
+)
 
 
 class ZerodModel(DartsModel):
@@ -62,6 +55,8 @@ class ZerodModel(DartsModel):
         # Radau defaults
         self.radau_rtol = 1e-8
         self.radau_atol = 1e-10
+        self.radau_use_composition_correction = True
+        self.radau_last_correction_stats = {"solid": 0, "fluid": 0}
 
         # HDF5 output defaults (single-cell 0D output)
         self.h5_output_enabled = True
@@ -360,7 +355,15 @@ class ZerodModel(DartsModel):
             dAdx[idx, idx] = 1.0
             b[idx] = 0.0
 
-    def step_radau(self, state_prev, dt, t0=0.0, rtol=None, atol=None):
+    def step_radau(
+        self,
+        state_prev,
+        dt,
+        t0=0.0,
+        rtol=None,
+        atol=None,
+        composition_correction=None,
+    ):
         """
         Advance the state using the Radau integrator.
 
@@ -374,11 +377,28 @@ class ZerodModel(DartsModel):
         :type rtol: float or None
         :param atol: Absolute tolerance for Radau.
         :type atol: float or None
+        :param composition_correction: Apply DARTS composition correction
+                                       between Radau nonlinear iterations.
+        :type composition_correction: bool or None
         :return: Result of the Radau step.
         :rtype: RadauStepResult
         """
         rtol = self.radau_rtol if rtol is None else rtol
         atol = self.radau_atol if atol is None else atol
+        if composition_correction is None:
+            composition_correction = self.radau_use_composition_correction
+        if composition_correction:
+            correction_stats = {"solid": 0, "fluid": 0}
+            correction_callback = make_default_stage_composition_correction(
+                property_container=getattr(self, "property_container", None),
+                physics=getattr(self, "physics", None),
+                stats=correction_stats,
+                z_var=1,
+            )
+            self.radau_last_correction_stats = correction_stats
+        else:
+            correction_callback = None
+            self.radau_last_correction_stats = {"solid": 0, "fluid": 0}
 
         # Radau solver considers system resolved w.r.t. unknowns,
         # thus transition from dA/dt = dA/dX * dX/dt = g(t, p, z, T/h) to dX/dt = f(t, p, z, T/h)
@@ -500,32 +520,16 @@ class ZerodModel(DartsModel):
         elif self.mode == "obl":
             rhs = rhs_obl
 
-        try:
-            sol = solve_ivp(
-                rhs,
-                (t0, t0 + dt),
-                state_prev,
-                method="Radau",
-                t_eval=[t0 + dt],
-                rtol=rtol,
-                atol=atol,
-            )
-            nlu = int(sol.nlu) if sol.nlu is not None else 0
-            njev = int(sol.njev) if sol.njev is not None else 0
-            success = bool(sol.success and sol.y.size)
-            result = RadauStepResult(
-                success=success,
-                nfev=int(sol.nfev),
-                njev=njev,
-                nlu=nlu,
-                message=str(sol.message),
-            )
-            if result.success:
-                self.state = sol.y[:, -1].copy()
-                return result
-        except Exception as exc:
-            result = RadauStepResult(success=False, message=str(exc))
-        self.state = np.asarray(state_prev, dtype=float).copy()
+        result, state_next = solve_radau_step(
+            rhs=rhs,
+            state_prev=state_prev,
+            dt=dt,
+            t0=t0,
+            rtol=rtol,
+            atol=atol,
+            composition_correction=correction_callback,
+        )
+        self.state = state_next
         return result
 
     def run_timestep(self, dt, t, method="radau", **kwargs):
