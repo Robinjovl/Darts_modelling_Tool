@@ -489,7 +489,7 @@ class Flash:
                 fluid_volume,
                 species_aq_molar_fractions,
                 species_gas_molar_fractions,
-            ) = self.interpret_results(self.backup_phreeqc)
+            ) = self.interpret_results(self.backup_phreeqc, water_mass)
 
         return (
             nu_v,
