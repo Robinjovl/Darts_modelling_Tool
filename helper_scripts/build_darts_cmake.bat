@@ -264,10 +264,20 @@ exit /b 0
 
 :reaktoro_install
 set "REAKTORO_LOG=%cd%\make_reaktoro.log"
+set "local_conda_pkgs="
+if not defined CONDA_PKGS_DIRS (
+  set "local_conda_pkgs=%cd%\.conda_pkgs"
+  if not exist "!local_conda_pkgs!" mkdir "!local_conda_pkgs!"
+  set "CONDA_PKGS_DIRS=!local_conda_pkgs!"
+)
 echo -- Install Reaktoro via conda (prefix "!conda_prefix!"). Full log: %REAKTORO_LOG%
 >> "%REAKTORO_LOG%" (
+  if defined local_conda_pkgs echo + set CONDA_PKGS_DIRS="!local_conda_pkgs!"
+  echo + conda clean --all --yes
   echo + conda install -y -c conda-forge -p "!conda_prefix!" reaktoro
 )
+call conda clean --all --yes >> "%REAKTORO_LOG%" 2>&1
+ver >NUL
 call conda install -y -c conda-forge -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
 echo -- Install Reaktoro: DONE!
 exit /b 0
