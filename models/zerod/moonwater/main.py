@@ -65,7 +65,7 @@ def run_model(mode: str = 'analytical',
             n_enth_points=n_enth_points,
             max_ts=max_ts,
         )
-        m.init()
+        m.init(output_folder=output_folder)
 
         ok = m.run(days=1.0, method="radau")
         if not ok:
@@ -82,7 +82,7 @@ def run_model(mode: str = 'analytical',
 
 if __name__ == "__main__":
     # analytical derivatives
-    run_model(mode='analytical', vapour_eos='ideal', p_init=1e-5, energy_source=1e5, sv_init=0.535, fixed_pressure=True, max_ts=2e-3)
+    run_model(mode='analytical', vapour_eos='ideal', p_init=1e-5, energy_source=1e5, sv_init=0.535, fixed_pressure=False, max_ts=2e-3)
 
     # OBL derivatives
     # run_model(mode='obl', p_init=1e-3, energy_source=1e5, sv_init=0.535, fixed_pressure=False,

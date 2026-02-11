@@ -1,5 +1,7 @@
+import os
 from dataclasses import dataclass
 
+import h5py
 import numpy as np
 from scipy.integrate import solve_ivp
 
@@ -50,6 +52,7 @@ class ZerodModel(DartsModel):
         self.state = None
         self.state_history = []
         self.time_history = []
+        self.property_history = {}
 
         # Nonlinear solver defaults
         self.nonlin_max_iter = 50
@@ -60,9 +63,24 @@ class ZerodModel(DartsModel):
         self.radau_rtol = 1e-8
         self.radau_atol = 1e-10
 
-    def init(self):
+        # HDF5 output defaults (single-cell 0D output)
+        self.h5_output_enabled = True
+        self.h5_compression_level = 2
+        self.output_folder = "output"
+        self.sol_filename = "zerod_solution.h5"
+        self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
+        self.precision = "d"
+        self.compression = "gzip"
+        self.precision_map = {"d": np.float64, "s": np.float32}
+        self._h5_ready = False
+
+    def init(self, output_folder='output', h5_output_enabled=True):
         """
         Initialize the model state and history.
+        :param output_folder: output folder
+        :type output_folder: str
+        :param h5_output_enabled: flag to enable HDF5 output
+        :type h5_output_enabled: bool
         """
         if self.mode == "obl":
             self.physics.init_physics(
@@ -78,7 +96,110 @@ class ZerodModel(DartsModel):
         self.state = self.initial_state
         self.state_history = []
         self.time_history = []
+        self.property_history = {}
+        self.h5_output_enabled = h5_output_enabled
+        # HDF5 structure is initialized in set_output.
+        if h5_output_enabled:
+            self.set_output(output_folder=output_folder)
         self.record_state(0.0, self.state)
+
+    def set_output(
+        self,
+        output_folder: str = "output",
+        sol_filename: str = "zerod_solution.h5",
+        precision: str = "d",
+        compression: str = "gzip",
+    ):
+        """
+        Configure one-cell HDF5 output.
+        """
+        if precision not in self.precision_map:
+            raise ValueError(
+                f"Unsupported precision '{precision}'. Use one of {list(self.precision_map.keys())}."
+            )
+
+        self.output_folder = output_folder
+        self.sol_filename = sol_filename
+        self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
+        self.precision = precision
+        self.compression = compression
+        self._h5_ready = False
+
+        # HDF5 file initialization is handled centrally here.
+        if self.h5_output_enabled:
+            n_vars = self._resolve_output_n_vars()
+            self._initialize_h5_output_file(n_vars=n_vars, overwrite=True)
+
+        # If states already exist (e.g. set_output() called after init/run),
+        # rewrite full history to the new file.
+        if self.time_history and self.state_history:
+            self.save_data_to_h5()
+
+    def set_sim_params(
+        self,
+        n_vars: int,
+        first_ts: float = None,
+        mult_ts: float = None,
+        min_ts=1e-15,
+        max_ts: float = None,
+        runtime: float = 1000,
+        tol_newton: float = None,
+        it_newton: int = None,
+        newton_type=None,
+    ):
+        """
+        Function to set simulation parameters.
+
+        :param n_vars: Number of variables
+        :type n_vars: int
+        :param first_ts: First timestep
+        :type first_ts: float
+        :param mult_ts: Timestep multiplier
+        :type mult_ts: float
+        :param min_ts: Minimum timestep
+        :type min_ts: float
+        :param max_ts: Maximum timestep
+        :type max_ts: float
+        :param runtime: Total runtime in days, default is 1000
+        :type runtime: float
+        :param tol_newton: Tolerance for Newton iterations
+        :type tol_newton: float
+        :param it_newton: Maximum number of Newton iterations
+        :type it_newton: int
+        :param newton_type:
+        :type newton_type: str
+        """
+        self.data_ts = DataTS(n_vars)
+
+        # Time stepping parameters. if None, default value will be used
+        self.data_ts.dt_first = (
+            first_ts if first_ts is not None else self.data_ts.dt_first
+        )
+        self.data_ts.dt_min = min_ts if min_ts is not None else self.data_ts.dt_min
+        self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
+        self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
+
+        # Non linear solver parameters. if None, default value will be used
+        self.data_ts.newton_max_iter = (
+            it_newton if it_newton is not None else self.data_ts.newton_max_iter
+        )
+        self.data_ts.newton_tol = (
+            tol_newton if tol_newton is not None else self.data_ts.newton_tol
+        )
+
+        self.params.newton_type = (
+            newton_type if newton_type is not None else self.params.newton_type
+        )
+
+        self.runtime = runtime
+
+    def set_initial_conditions(self):
+        """
+        Set initial conditions for the model.
+
+        This method should be implemented in derived classes.
+        """
+        pass
 
     def record_state(self, t, state):
         """
@@ -89,8 +210,38 @@ class ZerodModel(DartsModel):
         :param state: State vector to store.
         :type state: array-like
         """
+        # Keep state and property snapshots aligned (single source of truth).
+        state_np = np.asarray(state, dtype=float).copy()
+        props = self.evaluate_output_properties(state_np)
+        if not isinstance(props, dict):
+            raise TypeError("evaluate_output_properties() must return a dictionary.")
+
         self.time_history.append(float(t))
-        self.state_history.append(np.asarray(state, dtype=float).copy())
+        self.state_history.append(state_np)
+
+        # Start a new slot for this timestep for existing properties.
+        for name in self.property_history:
+            self.property_history[name].append(None)
+
+        # Store current timestep values.
+        props_snapshot = {}
+        for name, value in props.items():
+            if self._is_derivative_property_name(name):
+                continue
+            arr = self._to_numeric_property_array(value)
+            if arr is None:
+                continue
+
+            arr = arr.copy()
+            props_snapshot[name] = arr
+            if name not in self.property_history:
+                self.property_history[name] = [None] * (len(self.time_history) - 1)
+                self.property_history[name].append(arr)
+            else:
+                self.property_history[name][-1] = arr
+
+        if self.h5_output_enabled:
+            self._append_timestep_to_h5(float(t), state_np, props_snapshot)
 
     def _format_state_for_log(self, state):
         """
@@ -162,72 +313,6 @@ class ZerodModel(DartsModel):
         if temp_val is not None:
             state_str += f" temp={temp_val:>{num_width}.6g}"
         return state_str
-
-    def set_sim_params(
-        self,
-        n_vars: int,
-        first_ts: float = None,
-        mult_ts: float = None,
-        min_ts=1e-15,
-        max_ts: float = None,
-        runtime: float = 1000,
-        tol_newton: float = None,
-        it_newton: int = None,
-        newton_type=None,
-    ):
-        """
-        Function to set simulation parameters.
-
-        :param n_vars: Number of variables
-        :type n_vars: int
-        :param first_ts: First timestep
-        :type first_ts: float
-        :param mult_ts: Timestep multiplier
-        :type mult_ts: float
-        :param min_ts: Minimum timestep
-        :type min_ts: float
-        :param max_ts: Maximum timestep
-        :type max_ts: float
-        :param runtime: Total runtime in days, default is 1000
-        :type runtime: float
-        :param tol_newton: Tolerance for Newton iterations
-        :type tol_newton: float
-        :param it_newton: Maximum number of Newton iterations
-        :type it_newton: int
-        :param newton_type:
-        :type newton_type: str
-        """
-        self.data_ts = DataTS(n_vars)
-
-        # Time stepping parameters. if None, default value will be used
-        self.data_ts.dt_first = (
-            first_ts if first_ts is not None else self.data_ts.dt_first
-        )
-        self.data_ts.dt_min = min_ts if min_ts is not None else self.data_ts.dt_min
-        self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
-        self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
-
-        # Non linear solver parameters. if None, default value will be used
-        self.data_ts.newton_max_iter = (
-            it_newton if it_newton is not None else self.data_ts.newton_max_iter
-        )
-        self.data_ts.newton_tol = (
-            tol_newton if tol_newton is not None else self.data_ts.newton_tol
-        )
-
-        self.params.newton_type = (
-            newton_type if newton_type is not None else self.params.newton_type
-        )
-
-        self.runtime = runtime
-
-    def set_initial_conditions(self):
-        """
-        Set initial conditions for the model.
-
-        This method should be implemented in derived classes.
-        """
-        pass
 
     def get_obl_source_terms(self, t, state, ops, etor):
         """
@@ -571,6 +656,334 @@ class ZerodModel(DartsModel):
                     return False
 
         return True
+
+    def _resolve_output_n_vars(self) -> int:
+        """Resolve number of state variables for HDF5 dataset allocation."""
+        if self.state is not None:
+            return int(np.asarray(self.state, dtype=float).size)
+        if getattr(self, "initial_state", None) is not None:
+            return int(np.asarray(self.initial_state, dtype=float).size)
+        if hasattr(self, "property_container") and hasattr(
+            self.property_container, "n_vars"
+        ):
+            return int(self.property_container.n_vars)
+        if hasattr(self, "physics") and hasattr(self.physics, "n_vars"):
+            return int(self.physics.n_vars)
+        raise RuntimeError("Cannot determine state size for HDF5 output.")
+
+    def _dataset_write_kwargs(self):
+        """Return common dataset kwargs for HDF5 output."""
+        kwargs = {}
+        if self.compression:
+            kwargs["compression"] = self.compression
+            if self.compression == "gzip":
+                kwargs["compression_opts"] = self.h5_compression_level
+        return kwargs
+
+    def _initialize_h5_output_file(self, n_vars: int, overwrite: bool = True):
+        """Create an empty HDF5 file with dynamic/property groups."""
+        output_dir = os.path.dirname(self.sol_filepath)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        if overwrite and os.path.exists(self.sol_filepath):
+            os.remove(self.sol_filepath)
+
+        dtype = self.precision_map[self.precision]
+        ds_kwargs = self._dataset_write_kwargs()
+        var_names = self._state_variable_names(n_vars)
+
+        with h5py.File(self.sol_filepath, "w") as f:
+            dynamic_group = f.create_group("dynamic")
+            dynamic_group.create_dataset(
+                "time",
+                shape=(0,),
+                maxshape=(None,),
+                dtype=dtype,
+                **ds_kwargs,
+            )
+            dynamic_group.create_dataset(
+                "X",
+                shape=(0, 1, n_vars),
+                maxshape=(None, 1, n_vars),
+                dtype=dtype,
+                **ds_kwargs,
+            )
+            str_dtype = h5py.special_dtype(vlen=str)
+            dynamic_group.create_dataset(
+                "variable_names", data=np.array(var_names, dtype=str_dtype)
+            )
+            f.create_group("properties")
+            f.attrs["description"] = "0D model solution and evaluated properties"
+
+        self._h5_ready = True
+
+    def _append_timestep_to_h5(self, t: float, state: np.ndarray, props_snapshot: dict):
+        """Append one accepted timestep (state + properties) to HDF5."""
+        if not self._h5_ready:
+            raise RuntimeError(
+                "HDF5 output is not initialized. Call set_output(...) first."
+            )
+
+        dtype = self.precision_map[self.precision]
+        ds_kwargs = self._dataset_write_kwargs()
+
+        with h5py.File(self.sol_filepath, "a") as f:
+            dynamic_group = f["dynamic"]
+            time_ds = dynamic_group["time"]
+            x_ds = dynamic_group["X"]
+
+            idx = time_ds.shape[0]
+
+            time_ds.resize((idx + 1,))
+            time_ds[idx] = t
+
+            x_ds.resize((idx + 1, 1, x_ds.shape[2]))
+            x_ds[idx, 0, :] = np.asarray(state, dtype=dtype, copy=False)
+
+            prop_group = f["properties"]
+            for name, arr in props_snapshot.items():
+                arr_flat = np.asarray(arr, dtype=dtype, copy=False).reshape(-1)
+                nvals = arr_flat.size
+
+                if name not in prop_group:
+                    dset = prop_group.create_dataset(
+                        name,
+                        shape=(0, nvals),
+                        maxshape=(None, nvals),
+                        dtype=dtype,
+                        **ds_kwargs,
+                    )
+                else:
+                    dset = prop_group[name]
+                    if dset.shape[1] != nvals:
+                        raise ValueError(
+                            f"Property '{name}' size changed from {dset.shape[1]} to {nvals}."
+                        )
+
+                dset.resize((idx + 1, nvals))
+                dset[idx, :] = arr_flat
+
+    @staticmethod
+    def _is_derivative_property_name(name: str) -> bool:
+        lname = name.lower()
+        if "deriv" in lname:
+            return True
+        if lname.endswith("_der") or lname.endswith("_ders"):
+            return True
+        if lname == "props_derivatives":
+            return True
+        if lname.startswith(("dnud", "dxd", "dtd")):
+            return True
+        if lname == "dx":
+            return True
+        if name.startswith("d") and any(ch.isupper() for ch in name[1:]):
+            return True
+        return False
+
+    @staticmethod
+    def _to_numeric_property_array(value):
+        if value is None:
+            return None
+        if isinstance(value, bool | np.bool_):
+            return None
+
+        if np.isscalar(value):
+            if isinstance(value, str | bytes):
+                return None
+            return np.asarray(value, dtype=float)
+
+        try:
+            arr = np.asarray(value)
+        except Exception:
+            return None
+
+        if arr.dtype.kind in {"U", "S", "O", "V", "b"}:
+            return None
+
+        try:
+            return arr.astype(float, copy=False)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _stack_property_series(series: list):
+        """Stack one property time series into a single array."""
+        ref_shape = None
+        for item in series:
+            if item is None:
+                continue
+            if ref_shape is None:
+                ref_shape = item.shape
+            elif item.shape != ref_shape:
+                ref_shape = None
+                break
+
+        n_steps = len(series)
+        if ref_shape is not None:
+            data = np.full((n_steps,) + ref_shape, np.nan, dtype=float)
+            for i, item in enumerate(series):
+                if item is not None:
+                    data[i] = item
+            return data, False
+
+        max_size = max((item.size for item in series if item is not None), default=0)
+        if max_size == 0:
+            return None, False
+
+        data = np.full((n_steps, max_size), np.nan, dtype=float)
+        for i, item in enumerate(series):
+            if item is None:
+                continue
+            flat = item.reshape(-1)
+            data[i, : flat.size] = flat
+        return data, True
+
+    def _state_variable_names(self, n_vars: int) -> list[str]:
+        if self.mode == "obl" and hasattr(self, "physics"):
+            names = list(getattr(self.physics, "vars", []))
+            if len(names) == n_vars:
+                return names
+
+        props = getattr(self, "property_container", None)
+        nc = int(getattr(props, "nc", 0)) if props is not None else 0
+        names = ["pressure"]
+
+        if nc > 0:
+            comp_names = list(getattr(props, "components_name", []))
+            if len(comp_names) == nc:
+                names += [f"z_{comp}" for comp in comp_names[: max(0, nc - 1)]]
+            else:
+                names += [f"z{i}" for i in range(max(0, nc - 1))]
+            if n_vars > nc:
+                # 0D thermal state is usually enthalpy for PH, temperature otherwise.
+                state_spec = getattr(props, "state_spec", None)
+                state_spec = str(
+                    state_spec.name if hasattr(state_spec, "name") else state_spec
+                ).upper()
+                names.append(
+                    "enthalpy"
+                    if ("PH" in state_spec or "ENTHALPY" in state_spec)
+                    else "temperature"
+                )
+
+        if len(names) < n_vars:
+            names += [f"state_{i}" for i in range(len(names), n_vars)]
+        return names[:n_vars]
+
+    def evaluate_output_properties(self, state):
+        """
+        Evaluate phase properties from property_container.phase_props only.
+
+        Derived models can override this method to expose a custom property set.
+        """
+        container = getattr(self, "property_container", None)
+        if container is None:
+            raise RuntimeError("property_container is not defined.")
+
+        state_np = np.asarray(state, dtype=float)
+        container.evaluate(state_np)
+
+        evaluate_thermal = getattr(container, "evaluate_thermal", None)
+        if callable(evaluate_thermal):
+            try:
+                evaluate_thermal(state_np)
+            except Exception:
+                # Thermal part is optional in some property containers.
+                pass
+
+        phase_props = getattr(container, "phase_props", None)
+        if not phase_props:
+            return {}
+
+        name_map = {
+            id(value): name
+            for name, value in vars(container).items()
+            if not name.startswith("_")
+        }
+
+        props = {}
+        for prop in phase_props:
+            name = name_map.get(id(prop))
+            if not name:
+                continue
+            if self._is_derivative_property_name(name):
+                continue
+            arr = self._to_numeric_property_array(prop)
+            if arr is None:
+                continue
+            props[name] = arr.copy()
+
+        return props
+
+    def extract_property_history(self):
+        """
+        Return cached per-timestep properties (already evaluated during run).
+        """
+        if not self.time_history:
+            return np.array([], dtype=float), {}
+
+        property_array = {}
+        for name, series in self.property_history.items():
+            stacked, _flattened = self._stack_property_series(series)
+            if stacked is not None:
+                property_array[name] = stacked
+
+        return np.asarray(self.time_history, dtype=float), property_array
+
+    def save_data_to_h5(
+        self,
+        filepath: str = None,
+    ):
+        """
+        Save 0D state and property histories to HDF5.
+
+        Output layout:
+        - ``dynamic/time``
+        - ``dynamic/X`` (shape: [n_t, 1, n_vars])
+        - ``dynamic/variable_names``
+        - ``properties/<property_name>``
+        """
+        if not self.state_history or not self.time_history:
+            raise RuntimeError(
+                "State history is empty. Run the model before saving HDF5."
+            )
+
+        path = filepath if filepath is not None else self.sol_filepath
+        if path is None:
+            raise ValueError("Output filepath could not be determined.")
+
+        old_path = self.sol_filepath
+        old_ready = self._h5_ready
+        self.sol_filepath = path
+
+        dtype = self.precision_map[self.precision]
+        times = np.asarray(self.time_history, dtype=dtype)
+        states = np.asarray(self.state_history, dtype=dtype)
+        _, props = self.extract_property_history()
+        self._initialize_h5_output_file(n_vars=states.shape[1], overwrite=True)
+
+        with h5py.File(self.sol_filepath, "a") as f:
+            dynamic_group = f["dynamic"]
+            dynamic_group["time"].resize((times.shape[0],))
+            dynamic_group["time"][:] = times
+            dynamic_group["X"].resize((states.shape[0], 1, states.shape[1]))
+            dynamic_group["X"][:] = states[:, np.newaxis, :]
+
+            prop_group = f["properties"]
+            ds_kwargs = self._dataset_write_kwargs()
+            for name, arr in props.items():
+                data = np.asarray(arr, dtype=dtype, copy=False)
+                if data.ndim == 1:
+                    data = data.reshape(-1, 1)
+                elif data.ndim > 2:
+                    data = data.reshape(data.shape[0], -1)
+                prop_group.create_dataset(name, data=data, **ds_kwargs)
+
+        if filepath is not None:
+            self.sol_filepath = old_path
+            self._h5_ready = old_ready
+        else:
+            self._h5_ready = True
 
     def get_state_path(self):
         """
