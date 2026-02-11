@@ -369,7 +369,7 @@ class KineticRate:
         activity_by_mech = {
             'acidic': kin_state['Act(H+)'],
             'neutral': 1.0,
-            'carbonate': kin_state['Act(CO2)'],
+            'carbonate': kin_state['P(CO2)'],
         }
 
         # calculate rates by mechanism

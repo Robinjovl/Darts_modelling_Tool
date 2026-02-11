@@ -258,12 +258,30 @@ class Flash:
                 ]
             )
 
+        # CO2 gas partial pressure catalyst in bar.
+        co2_gas_idx = next(
+            (
+                i
+                for i, sp in enumerate(self.gas_species)
+                if sp == "CO2(g)" or sp == "CO2" or sp.startswith("CO2(")
+            ),
+            None,
+        )
+        if co2_gas_idx is not None and co2_gas_idx < len(species_gas_molar_fractions):
+            y_co2 = float(species_gas_molar_fractions[co2_gas_idx])
+            if not np.isfinite(y_co2):
+                y_co2 = 0.0
+            y_co2 = max(y_co2, 0.0)
+        else:
+            y_co2 = 0.0
+
         # Kinetic state: saturation ratios and activities
         aq_props = AqueousProps(state)
         kin_state = {
             'Act(H+)': props.speciesActivity("H+").val(),
             'Act(CO2)': props.speciesActivity("CO2" + self.aq_ending).val(),
             'Act(H2O)': props.speciesActivity("H2O" + self.aq_ending).val(),
+            'P(CO2)': y_co2 * pressure_bar,
             #'pH': aq_props.pH().val(),
         }
 
