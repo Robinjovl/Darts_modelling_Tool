@@ -324,7 +324,7 @@ class ZerodModel(DartsModel):
         else:
             ncopy = min(source.size, max(0, ops.size - kin_start))
             if ncopy > 0:
-                source[:ncopy] = ops[kin_start : kin_start + ncopy]
+                source[:ncopy] = -ops[kin_start : kin_start + ncopy]
 
         # Backward compatibility for OBL models that set self.energy_source
         # but do not populate thermal KIN operator values.
@@ -341,19 +341,18 @@ class ZerodModel(DartsModel):
         """
         Enforce optional fixed-state constraints (pressure/temperature).
         """
-        fixed_idx = []
         if self.fixed_pressure and n_vars > 0:
-            fixed_idx.append(0)
+            n_solid = self.property_container.n_solid
+            dAdx[n_solid, :] = 0.0
+            dAdx[n_solid, 0] = 1.0
+            b[n_solid] = 0.0
 
         if self.fixed_temperature and n_vars > nc:
             state_spec = getattr(getattr(self, "physics", None), "state_spec", None)
             if state_spec == PhysicsBase.StateSpecification.PT:
-                fixed_idx.append(nc)
-
-        for idx in fixed_idx:
-            dAdx[idx, :] = 0.0
-            dAdx[idx, idx] = 1.0
-            b[idx] = 0.0
+                dAdx[nc, :] = 0.0
+                dAdx[nc, nc] = 1.0
+                b[nc] = 0.0
 
     def step_radau(
         self,
