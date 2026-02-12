@@ -282,17 +282,10 @@ echo -- Install Reaktoro via conda (prefix "!conda_prefix!"). Full log: %REAKTOR
   echo + set TEMP="!conda_tmp_dir!"
   echo + set TMP="!conda_tmp_dir!"
   echo + conda clean --all --yes
-  echo + conda install -y --override-channels -c conda-forge --repodata-fn current_repodata.json -p "!conda_prefix!" reaktoro
+  echo + conda install -y -c conda-forge --repodata-fn current_repodata.json -p "!conda_prefix!" reaktoro
 )
 call conda clean --all --yes >> "%REAKTORO_LOG%" 2>&1
 ver >NUL
-call conda install -y --override-channels -c conda-forge --repodata-fn current_repodata.json -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1
-if errorlevel 1 (
-  >> "%REAKTORO_LOG%" (
-    echo -- Retry with full repodata.json
-    echo + conda install -y --override-channels -c conda-forge --repodata-fn repodata.json -p "!conda_prefix!" reaktoro
-  )
-  call conda install -y --override-channels -c conda-forge --repodata-fn repodata.json -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
-)
+call conda install -y -c conda-forge --repodata-fn current_repodata.json -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
 echo -- Install Reaktoro: DONE!
 exit /b 0

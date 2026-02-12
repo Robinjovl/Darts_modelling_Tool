@@ -183,35 +183,20 @@ exit /b 0
 
 :reaktoro_install
 set "REAKTORO_LOG=%cd%\make_reaktoro.log"
-set "conda_cache_root="
-if defined RUNNER_TEMP set "conda_cache_root=%RUNNER_TEMP%\conda_cache"
-if not defined conda_cache_root if defined TEMP set "conda_cache_root=%TEMP%\conda_cache"
-if not defined conda_cache_root set "conda_cache_root=%cd%\.conda_cache"
-if not exist "!conda_cache_root!" mkdir "!conda_cache_root!"
-set "conda_pkgs_dir=!conda_cache_root!\pkgs"
-set "conda_tmp_dir=!conda_cache_root!\tmp"
-if not exist "!conda_pkgs_dir!" mkdir "!conda_pkgs_dir!"
-if not exist "!conda_tmp_dir!" mkdir "!conda_tmp_dir!"
-set "CONDA_PKGS_DIRS=!conda_pkgs_dir!"
-set "TEMP=!conda_tmp_dir!"
-set "TMP=!conda_tmp_dir!"
+set "local_conda_pkgs="
+if not defined CONDA_PKGS_DIRS (
+  set "local_conda_pkgs=%cd%\.conda_pkgs"
+  if not exist "!local_conda_pkgs!" mkdir "!local_conda_pkgs!"
+  set "CONDA_PKGS_DIRS=!local_conda_pkgs!"
+)
 >> "%REAKTORO_LOG%" (
-  echo + set CONDA_PKGS_DIRS="!conda_pkgs_dir!"
-  echo + set TEMP="!conda_tmp_dir!"
-  echo + set TMP="!conda_tmp_dir!"
+  if defined local_conda_pkgs echo + set CONDA_PKGS_DIRS="!local_conda_pkgs!"
   echo + conda clean --all --yes
-  echo + conda install -y --override-channels -c conda-forge --repodata-fn current_repodata.json -p "!conda_prefix!" reaktoro
+  echo + conda install -y -c conda-forge -p "!conda_prefix!" reaktoro
 )
 call conda clean --all --yes >> "%REAKTORO_LOG%" 2>&1
 ver >NUL
-call conda install -y --override-channels -c conda-forge --repodata-fn current_repodata.json -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1
-if errorlevel 1 (
-  >> "%REAKTORO_LOG%" (
-    echo -- Retry with full repodata.json
-    echo + conda install -y --override-channels -c conda-forge --repodata-fn repodata.json -p "!conda_prefix!" reaktoro
-  )
-  call conda install -y --override-channels -c conda-forge --repodata-fn repodata.json -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
-)
+call conda install -y -c conda-forge -p "!conda_prefix!" reaktoro >> "%REAKTORO_LOG%" 2>&1 || exit /b 1
 echo -- Install Reaktoro: DONE!
 exit /b 0
 
