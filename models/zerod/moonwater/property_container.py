@@ -72,6 +72,35 @@ class PropertyContainerDerivatives(PropertyContainer):
         self.Qe = 0
         self.phi = 0
 
+        self.output_props = {
+            **{
+                'sat_' + phase: (lambda i=i: self.sat[i])
+                for i, phase in enumerate(self.phases_name)
+            },
+            **{
+                'dens_' + phase: (lambda i=i: self.dens[i])
+                for i, phase in enumerate(self.phases_name)
+            },
+            **{
+                'dens_m_' + phase: (lambda i=i: self.dens_m[i])
+                for i, phase in enumerate(self.phases_name)
+            },
+            **{
+                'nu_' + phase: (lambda i=i: self.nu[i])
+                for i, phase in enumerate(self.phases_name)
+            },
+            **{
+                'x_' + phase + '_' + species: (lambda i=i, j=j: self.x[i][j])
+                for i, phase in enumerate(self.phases_name)
+                for j, species in enumerate(self.components_name)
+            },
+            **{
+                'enthalpy_' + phase: (lambda i=i: self.enthalpy[i])
+                for i, phase in enumerate(self.phases_name)
+            },
+            'temperature': lambda: self.temperature,
+        }
+
     def clean_arrays(self):
         super().clean_arrays()
         for a in self.props_derivatives:

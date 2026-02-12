@@ -221,8 +221,6 @@ class ZerodModel(DartsModel):
         # Store current timestep values.
         props_snapshot = {}
         for name, value in props.items():
-            if self._is_derivative_property_name(name):
-                continue
             arr = self._to_numeric_property_array(value)
             if arr is None:
                 continue
@@ -767,23 +765,6 @@ class ZerodModel(DartsModel):
                 dset[idx, :] = arr_flat
 
     @staticmethod
-    def _is_derivative_property_name(name: str) -> bool:
-        lname = name.lower()
-        if "deriv" in lname:
-            return True
-        if lname.endswith("_der") or lname.endswith("_ders"):
-            return True
-        if lname == "props_derivatives":
-            return True
-        if lname.startswith(("dnud", "dxd", "dtd")):
-            return True
-        if lname == "dx":
-            return True
-        if name.startswith("d") and any(ch.isupper() for ch in name[1:]):
-            return True
-        return False
-
-    @staticmethod
     def _to_numeric_property_array(value):
         if value is None:
             return None
@@ -894,27 +875,13 @@ class ZerodModel(DartsModel):
                 # Thermal part is optional in some property containers.
                 pass
 
-        phase_props = getattr(container, "phase_props", None)
-        if not phase_props:
+        output_props = getattr(container, "output_props", None)
+        if not output_props:
             return {}
 
-        name_map = {
-            id(value): name
-            for name, value in vars(container).items()
-            if not name.startswith("_")
-        }
-
         props = {}
-        for prop in phase_props:
-            name = name_map.get(id(prop))
-            if not name:
-                continue
-            if self._is_derivative_property_name(name):
-                continue
-            arr = self._to_numeric_property_array(prop)
-            if arr is None:
-                continue
-            props[name] = arr.copy()
+        for name, prop in output_props.items():
+            props[name] = prop()
 
         return props
 
