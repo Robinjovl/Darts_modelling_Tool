@@ -14,9 +14,17 @@
         - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent
         - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
         - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
-        # Initialize conda environment
-        - conda create --name $env:CONDA_ENV python=$env:PY_VER --yes -q
-        - conda activate $env:CONDA_ENV
+        # Initialize conda environment (use temp paths to avoid low space on D:)
+        - $condaCacheRoot = if ($env:RUNNER_TEMP) { Join-Path $env:RUNNER_TEMP 'conda_cache' } else { Join-Path $env:TEMP 'conda_cache' }
+        - $condaEnvsRoot = if ($env:RUNNER_TEMP) { Join-Path $env:RUNNER_TEMP 'conda_envs' } else { Join-Path $env:TEMP 'conda_envs' }
+        - New-Item -ItemType Directory -Force $condaCacheRoot,$condaEnvsRoot | Out-Null
+        - $env:CONDA_PKGS_DIRS = Join-Path $condaCacheRoot 'pkgs'
+        - $env:TEMP = Join-Path $condaCacheRoot 'tmp'
+        - $env:TMP = $env:TEMP
+        - New-Item -ItemType Directory -Force @($env:CONDA_PKGS_DIRS,$env:TEMP) | Out-Null
+        - $env:CONDA_ENV_PREFIX = Join-Path $condaEnvsRoot $env:CONDA_ENV
+        - conda create -p $env:CONDA_ENV_PREFIX python=$env:PY_VER --yes -q
+        - conda activate $env:CONDA_ENV_PREFIX
         # Make sure wheel package could be installed
         - python -m pip install --upgrade pip setuptools wheel
         # Copy VS redist libraries
@@ -32,7 +40,7 @@
         - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
         - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
         - conda deactivate
-        - conda env remove --name $env:CONDA_ENV --yes
+        - if ($env:CONDA_ENV_PREFIX) { conda env remove -p $env:CONDA_ENV_PREFIX --yes } else { conda env remove --name $env:CONDA_ENV --yes }
     artifacts:
       paths:
         - '*.log'
