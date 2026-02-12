@@ -31,7 +31,7 @@ class Model(ZerodModel):
 
     def __init__(
         self,
-        n_obl_mult: int = 9,
+        n_obl_mult: int = 27,
         runtime: float = 1500.0,
         first_ts: float = 1e-5,
         max_ts: float = 10.0,
@@ -57,6 +57,7 @@ class Model(ZerodModel):
             max_ts=max_ts,
             runtime=runtime,
         )
+        self.data_ts.eta = np.array([1e20] + [1e-5] * 7)
         self.timer.node["initialization"].stop()
 
     def set_physics(self):
@@ -332,7 +333,6 @@ class MyOutputPropertyContainer(OutputPropertyContainer):
 
         self.dens_m = np.zeros(2)
         self.sat = np.zeros(2)
-        self.dens_m_solid = np.zeros(len(self.property.flash_ev.mineral_names))
         self.sat_minerals = np.zeros(len(self.property.flash_ev.mineral_names))
 
         for i, ph in enumerate(self.property.phases_name):
@@ -340,7 +340,6 @@ class MyOutputPropertyContainer(OutputPropertyContainer):
             self.output_props["sat_" + ph] = lambda i=i: self.sat[i]
 
         for i, mineral in enumerate(self.property.flash_ev.mineral_names):
-            self.output_props["dens_m_solid_" + mineral] = lambda i=i: self.dens_m_solid[i]
             self.output_props["sat_" + mineral] = lambda i=i: self.sat_minerals[i]
 
     def evaluate(self, state):
@@ -349,5 +348,4 @@ class MyOutputPropertyContainer(OutputPropertyContainer):
 
         self.dens_m = self.property.dens_m
         self.sat = self.property.sat
-        self.dens_m_solid = self.property.dens_m_solid
         self.sat_minerals = self.property.sat_minerals

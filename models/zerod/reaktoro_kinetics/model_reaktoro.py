@@ -1,5 +1,7 @@
-from reaktoro import *
 import os
+import numpy as np
+import h5py
+from reaktoro import *
 
 
 class Model:
@@ -26,8 +28,28 @@ class Model:
         # Important: when O2(aq) or H2(aq) are in the system, add an insignificant tiny amount of one of them to avoid numerical problems due to floating-point rounding errors!
         self.state.set("O2(aq)"   , 1.0, "umol")
 
-        self.output_folder = 'output'
-        self.output_filename = 'data.txt'
+        self.output_folder = "output_reaktoro"
+        self.output_filename = "data.txt"
+        self.output_h5_filename = "reaktoro_results.h5"
+        self.output_h5_group = "results"
+        self.output_file_path = ""
+        self.output_h5_file_path = ""
+
+        self.column_units = {
+            "Time": "day",
+            "Calcite": "mol",
+            "Magnesite": "mol",
+            "Dolomite": "mol",
+            "Ca+2": "mol",
+            "Mg+2": "mol",
+            "RateCalcite": "mol/s",
+            "RateMagnesite": "mol/s",
+            "RateDolomite": "mol/s",
+            "pH": "",
+            "OmegaCalcite": "",
+            "OmegaMagnesite": "",
+            "OmegaDolomite": "",
+        }
 
 
     def run(self):
@@ -68,7 +90,29 @@ class Model:
             self.table.column("OmegaDolomite")  << aprops.saturationRatio("Dolomite")
 
         # Once time steps have finished, you may want to save collected data to a file (e.g., to use in a spreadsheet software)
-        if not os.path.exists(self.output_folder): os.makedirs(self.output_folder)
-        output_file_path = os.path.join(self.output_folder, self.output_filename)
-        self.table.save(output_file_path)
-        return output_file_path
+        if not os.path.exists(self.output_folder):
+            os.makedirs(self.output_folder)
+
+        self.output_file_path = os.path.join(self.output_folder, self.output_filename)
+        self.output_h5_file_path = os.path.join(self.output_folder, self.output_h5_filename)
+
+        self.table.save(self.output_file_path)
+        self.save_results_h5()
+        return self.output_file_path
+
+    def save_results_h5(self, output_h5_file_path=None):
+        if output_h5_file_path is None:
+            output_h5_file_path = self.output_h5_file_path
+
+        if not output_h5_file_path:
+            output_h5_file_path = os.path.join(self.output_folder, self.output_h5_filename)
+
+        with h5py.File(output_h5_file_path, "w") as h5file:
+            group = h5file.create_group(self.output_h5_group)
+            for column_name, unit in self.column_units.items():
+                values = np.asarray(self.table[column_name], dtype=np.float64)
+                dataset = group.create_dataset(column_name, data=values)
+                dataset.attrs["unit"] = unit
+
+        self.output_h5_file_path = output_h5_file_path
+        return self.output_h5_file_path
