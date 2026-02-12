@@ -272,18 +272,21 @@ class DartsModel:
         all_phase_props: bool = False,
         precision: str = "d",
         compression: str = "gzip",
+        compression_level: int = 1,
         verbose: bool = False,
     ):
         """
         Function to initialize output class
 
-        : param output_folder: folder for h5 output files
-        : param sol_filename: filename of output file
-        : param save_inital:
-        : param all_phase_props: Boolean to output all phase properties
-        : param precision: data precision of saved data ('s' single precision, 'd' double precision)
-        : param compression: default 'gzip'
-        : param verbose:
+        : param output_folder: directory for all output files, images etc.
+        : param sol_filename: filename for saving reservoir blocks data.
+        : param well_filename: filename for saving well block data.
+        : param save_initial: boolean flag to save initial conditions to *.h5, default is True.
+        : param all_phase_props: Boolean flag to enable evaluation of all phase properties with property interpolators.
+        : param precision: data precision of saved data ('s' single precision, 'd' double precision).
+        : param compression: default 'gzip'.
+        : param compression_level: 0 (no compression, fast) and 9 (maximum compression, slow), default is 1.
+        : param verbose: boolean flag to enable verbose mode.
         """
 
         self.output_folder = output_folder
@@ -308,6 +311,7 @@ class DartsModel:
             all_phase_props,
             precision,
             compression,
+            compression_level,
             verbose,
         )
 

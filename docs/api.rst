@@ -50,7 +50,7 @@ Properties Black Oil
 .. automodule:: darts.physics.properties.black_oil
    :members:
    :undoc-members:
-   :show-inheritance: 
+   :show-inheritance:
    :special-members: __init__
 
 Basic Properties
@@ -125,6 +125,8 @@ Models
    :show-inheritance:
    :special-members: __init__
 
+Output
+######
 .. autoclass:: darts.models.output.Output
    :members:
    :undoc-members:
@@ -178,6 +180,3 @@ Unstructured Discretizer
 .. autoclass:: UnstructDiscretizer
    :members:
    :special-members: __init__
-
-
-
