@@ -109,7 +109,7 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 # Determine the type of compiler we have and set compiler flags and other compiler
 # specific flags
 
-if(DEFINED BOS_SOLVERS_DIR AND NOT GPU_CONFIG)
+if(DEFINED BOS_SOLVERS_DIR)
   add_compile_definitions(WITH_HYPRE)
 endif()
 

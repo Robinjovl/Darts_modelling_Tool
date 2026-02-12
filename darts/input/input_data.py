@@ -453,6 +453,7 @@ class OBLParams:
         self.max_t = None
         self.min_z = None
         self.max_z = None
+        self.epsilon_z = None
 
 
 class Simulation:

@@ -136,7 +136,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			linear_solver->set_prec(new linsolv_bos_bilu0<N_VARS>);
 			break;
 		}
-#ifdef WITH_HYPRE
+#ifndef OPENDARTS_LINEAR_SOLVERS
 		case sim_params::CPU_GMRES_FS_CPR:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
@@ -285,6 +285,21 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
 	z_var = get_z_var();
+	if (NC_ > 1)
+	{
+		if (params->log_transform == 0)
+		{
+			min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+			max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		}
+		else if (params->log_transform == 1)
+		{
+			min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
+			max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+		}
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_sim_z = max_axis_z - params->sim_eps;
+	}
 
 	X_init.resize(n_vars * mesh->n_blocks);
 	PV.resize(mesh->n_blocks);
@@ -331,6 +346,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND * i + d];
 	  }
 	}
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 
 	for (index_t i = 0; i < mesh->n_blocks; i++)
@@ -429,21 +446,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (NC_ > 1)
-	{
-	  if (params->log_transform == 0)
-	  {
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	  }
-	  else if (params->log_transform == 1)
-	  {
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
-	  }
-	}
 
 	return 0;
 }
@@ -1829,234 +1831,6 @@ template <uint8_t NC, uint8_t NP, bool THERMAL>
 void engine_super_elastic_cpu<NC, NP, THERMAL>::set_discretizer(DiscretizerType* _discr)
 {
   discr = _discr;
-}
-
-template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
-{
-	value_t sum_z, new_z;
-	index_t nb = mesh->n_blocks;
-	bool z_corrected;
-	index_t n_corrected = 0;
-
-	for (index_t i = 0; i < nb; i++)
-	{
-		sum_z = 0;
-		z_corrected = false;
-
-		// check all but one composition in grid block
-		for (char c = 0; c < nc - 1; c++)
-		{
-			new_z = X[i * N_VARS + Z_VAR + c] - dX[i * N_VARS + Z_VAR + c];
-			if (new_z < min_zc)
-			{
-				new_z = min_zc;
-				z_corrected = true;
-			}
-			else if (new_z > 1 - min_zc)
-			{
-				new_z = 1 - min_zc;
-				z_corrected = true;
-			}
-			sum_z += new_z;
-		}
-		// check the last composition
-		new_z = 1 - sum_z;
-		if (new_z < min_zc)
-		{
-			new_z = min_zc;
-			z_corrected = true;
-		}
-		sum_z += new_z;
-
-		if (z_corrected)
-		{
-			// normalize compositions and set appropriate update
-			for (char c = 0; c < nc - 1; c++)
-			{
-				new_z = X[i * N_VARS + Z_VAR + c] - dX[i * N_VARS + Z_VAR + c];
-
-				new_z = std::max(min_zc, new_z);
-				new_z = std::min(1 - min_zc, new_z);
-
-				new_z = new_z / sum_z;
-				dX[i * N_VARS + Z_VAR + c] = X[i * N_VARS + Z_VAR + c] - new_z;
-			}
-			n_corrected++;
-		}
-	}
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
-}
-
-template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
-{
-	/*double sum_z, new_z, temp_sum, min_count;
-	std::vector<value_t> check_vec;
-	index_t nb = mesh->n_blocks;
-	bool z_corrected;
-	index_t n_corrected = 0;
-
-	// Check if solving for the log-transform or regular composition:
-	if (params->log_transform == 0)
-	{
-		// No log-transform is applied to nonlinear unknowns (compositions only), proceed normally:
-		for (index_t i = 0; i < nb; i++)
-		{
-			sum_z = 0;
-			temp_sum = 0;		  // sum of any composition not set to z_min
-			min_count = 0;		  // number of times a composition is set to z_min
-			check_vec.resize(nc); // vector that holds 0 for z_c > z_min && 1 for z_c = z_min
-			z_corrected = false;
-
-			// check all but one composition in grid block
-			for (index_t c = 0; c < nc - 1; c++)
-			{
-				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-
-				if (new_z < min_zc)
-				{
-					//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-					new_z = min_zc; //TODO: check if this update is consistent!
-					z_corrected = true;
-					check_vec[c] = 1;
-					min_count += 1;
-				}
-				else if (new_z > max_zc)
-				{
-					new_z = max_zc;
-					z_corrected = true;
-					temp_sum += new_z;
-				}
-				else
-				{
-					temp_sum += new_z;
-				}
-				sum_z += new_z;
-			}
-
-			// check the last composition
-			new_z = 1 - sum_z;
-			if (new_z < min_zc)
-			{
-				//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-				new_z = min_zc;
-				z_corrected = true;
-				check_vec[nc - 1] = 1;
-				min_count += 1;
-			}
-			else
-			{
-				temp_sum += new_z;
-			}
-			sum_z += new_z;
-
-			if (z_corrected)
-			{
-				// normalize compositions and set appropriate update
-				for (index_t c = 0; c < nc - 1; c++)
-				{
-					new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-
-					//new_z = std::max(min_zc * (1 + min_zc), new_z);  //TODO: check if this update is consistent!
-					new_z = std::max(min_zc, new_z);
-					new_z = std::min(max_zc, new_z);
-
-					if (check_vec[c] != 1)
-					{
-						//new_z = new_z / temp_sum * (1 - min_count * min_zc * (1 + min_zc));
-						new_z = new_z / temp_sum * (1 - min_count * min_zc);
-					}
-
-					dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
-				}
-				n_corrected++;
-			}
-			check_vec.clear();
-		}
-	}
-	else if (params->log_transform == 1)
-	{
-		// Log-transform is applied to nonlinear unknowns (compositions only), transform back composition exp(log(zc)) to apply correction:
-		for (index_t i = 0; i < nb; i++)
-		{
-			sum_z = 0;
-			temp_sum = 0;		  // sum of any composition not set to z_min
-			min_count = 0;		  // number of times a composition is set to z_min
-			check_vec.resize(nc); // vector that holds 0 for z_c > z_min && 1 for z_c = z_min
-			z_corrected = false;
-
-			// check all but one composition in grid block
-			for (char c = 0; c < nc - 1; c++)
-			{
-				new_z = exp(X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c]); //log based composition
-
-				if (new_z < min_zc)
-				{
-					//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-					new_z = min_zc;
-					z_corrected = true;
-					check_vec[c] = 1;
-					min_count += 1;
-				}
-				else if (new_z > max_zc)
-				{
-					new_z = max_zc;
-					z_corrected = true;
-					temp_sum += new_z;
-				}
-				else
-				{
-					temp_sum += new_z;
-				}
-				sum_z += new_z;
-			}
-
-			// check the last composition
-			new_z = 1 - sum_z;
-			if (new_z < min_zc)
-			{
-				//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-				new_z = min_zc;
-				z_corrected = true;
-				check_vec[nc - 1] = 1;
-				min_count += 1;
-			}
-			else
-			{
-				temp_sum += new_z;
-			}
-			sum_z += new_z;
-
-			if (z_corrected)
-			{
-				// normalize compositions and set appropriate update
-				for (char c = 0; c < nc - 1; c++)
-				{
-					new_z = exp(X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c]); //log based composition
-
-					//new_z = std::max(min_zc * (1 + min_zc), new_z);  //TODO: check if this update is consistent!
-					new_z = std::max(min_zc, new_z);
-					new_z = std::min(max_zc, new_z);
-
-					if (check_vec[c] != 1)
-					{
-						//new_z = new_z / temp_sum * (1 - min_count * min_zc * (1 + min_zc));
-						new_z = new_z / temp_sum * (1 - min_count * min_zc);
-					}
-
-					dX[i * n_vars + z_var + c] = log(exp(X[i * n_vars + z_var + c]) / new_z); //log based composition
-				}
-				n_corrected++;
-			}
-			check_vec.clear();
-		}
-	}
-
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
-		*/
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>

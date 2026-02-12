@@ -18,6 +18,8 @@
 #include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_fs_cpr.hpp"
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
+#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
+#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
 using namespace opendarts::linear_solvers;
 #else
 #include "linsolv_bos_gmres.h"
@@ -25,6 +27,10 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_bos_cpr.h"
 #include "linsolv_bos_fs_cpr.h"
 #include "csr_matrix.h"
+#include "linsolv_bos_amg.h"
+#include "linsolv_amg1r5.h"
+#include "linsolv_superlu.h"
+#include "linsolv_hypre_amg.h"
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef WITH_GPU
@@ -34,20 +40,6 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_adgprs_nf.h"
 #include "linsolv_cusparse_ilu.h"
 #include "linsolv_cusolver.h"
-#endif
-
-#ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
-// #include "openDARTS/linear_solvers/linsolv_amg1r5.h"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
-#else
-#include "linsolv_bos_amg.h"
-#include "linsolv_amg1r5.h"
-#include "linsolv_superlu.h"
-#endif // OPENDARTS_LINEAR_SOLVERS
-
-#ifdef WITH_HYPRE
-#include "linsolv_hypre_amg.h"
 #endif
 
 #ifdef WITH_SAMG
@@ -147,7 +139,11 @@ public:
 
 	virtual void average_operator(std::vector<value_t> &av_op);
 
-	virtual void apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
+	// Apply composition correction on initial state: normalize to within [min_sim_z, max_sim_z]
+	virtual void apply_composition_correction(std::vector<value_t>& Xi);
+	// Apply composition correction on Newton update: normalize to within [min_sim_z, max_sim_z]
+	virtual void apply_composition_correction(std::vector<value_t>& X, std::vector<value_t> &dX);
+	// Alternative composition correction on Newton update: find intersection of Newton update with compositional domain (not used currently)
 	virtual void apply_composition_correction_(std::vector<value_t>& X, std::vector<value_t>& dX);
 
 	virtual void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
@@ -332,8 +328,10 @@ public:
 	uint8_t z_var;
 	// number of mineral/solid species
 	uint8_t n_solid;
-	double min_zc;
-	double max_zc;
+	double min_axis_z;  // OBL axis min
+	double max_axis_z;  // OBL axis max
+	double min_sim_z;   // Min composition to remain well above OBL min_axis_z and physical bounds (0): min_axis_z + params->sim_eps
+	double max_sim_z;   // Max composition to remain well below OBL max_axis_z and physical bounds (1): max_axis_z - params->sim_eps
 	std::vector<value_t> old_z, new_z; // [NC] array for local chop
 	std::vector<value_t> old_z_fl, new_z_fl; // [NC_FLUID] array for local chop
 
@@ -863,6 +861,18 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;
+	if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+	}
+	min_sim_z = min_axis_z + params->sim_eps;
+	max_sim_z = max_axis_z - params->sim_eps;
 
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
@@ -873,6 +883,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	new_z_fl.resize(nc - n_solid);
 
 	X_init = mesh->initial_state;  // initialize only reservoir blocks with mesh->initial_state array
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
@@ -963,24 +975,6 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (params->log_transform == 0)
-	{
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	}
-	else if (params->log_transform == 1)
-	{
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
-	}
-
-
-
-
-
-
 
 	// for adjoint method------------------------------------------
 

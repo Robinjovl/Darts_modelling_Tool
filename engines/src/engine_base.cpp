@@ -1969,6 +1969,100 @@ int engine_base::apply_newton_update(value_t dt)
 	return 0;
 }
 
+void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
+{
+	// Apply normalization of compositions X
+	double sum_z, last_z;
+	bool z_corrected;
+	index_t n_solid_corrected = 0, n_fluid_corrected = 0;
+
+	// Check all compositions, apply projection to have last_z = min_sim_z if last_z < min_sim_z
+	index_t n_compositions = Xi.size() / this->n_vars;
+	for (index_t i = 0; i < n_compositions; i++)
+	{
+		index_t index0 = i * n_vars + z_var;
+
+		/* ---- check solid compositions ---- */
+		sum_z = 0.;
+		z_corrected = false;
+		for (index_t c = 0; c < n_solid; c++)
+		{
+			if (Xi[index0 + c] < min_sim_z)
+			{
+				Xi[index0 + c] = min_sim_z;
+				z_corrected = true;
+			}
+			else if (Xi[index0 + c] > max_sim_z)
+			{
+				Xi[index0 + c] = max_sim_z;
+				z_corrected = true;
+			}
+			sum_z += Xi[index0 + c];
+		}
+		// check the "last composition" (minerals, 1 - sum(minerals))
+		last_z = 1. - sum_z;
+		if (last_z < min_sim_z)
+		{
+			last_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
+			z_corrected = true;
+		}
+		sum_z += last_z;
+		// correction
+		if (z_corrected)
+		{
+			// normalize compositions and set appropriate update
+			for (index_t c = 0; c < n_solid; c++)
+			{
+				Xi[index0 + c] = Xi[index0 + c] / sum_z;
+			}
+			n_solid_corrected++;
+		}
+		/* ---- end check solid compositions ---- */
+
+		/* ---- check fluid compositions ---- */
+		sum_z = 0.;
+		z_corrected = false;
+		for (index_t c = n_solid; c < nc - 1; c++)
+		{
+			if (Xi[index0 + c] < min_sim_z)
+			{
+				Xi[index0 + c] = min_sim_z;
+				z_corrected = true;
+			}
+			else if (Xi[index0 + c] > max_sim_z)
+			{
+				Xi[index0 + c] = max_sim_z;
+				z_corrected = true;
+			}
+			sum_z += Xi[index0 + c];
+		}
+		// check the last composition
+		last_z = 1. - sum_z;
+		if (last_z < min_sim_z)
+		{
+			last_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
+			z_corrected = true;
+		}
+		sum_z += last_z;
+		// correction
+		if (z_corrected)
+		{
+			// normalize compositions and set appropriate update
+			for (index_t c = n_solid; c < nc - 1; c++)
+			{
+				Xi[index0 + c] = Xi[index0 + c] / sum_z;
+			}
+			n_fluid_corrected++;
+		}
+		/* ---- end check fluid compositions ---- */
+	}
+	if (n_solid_corrected || n_fluid_corrected)
+	{
+		std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s)\n";
+	}
+}
+
 void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
 	double sum_z, new_z;
@@ -1979,73 +2073,73 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 	for (index_t i = 0; i < nb; i++)
 	{
 		/* ---- check solid compositions ---- */
-		sum_z = 0;
+		sum_z = 0.;
 		z_corrected = false;
-		for (char c = 0; c < n_solid; c++)
+		for (index_t c = 0; c < n_solid; c++)
 		{
 			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
-			if (new_z < min_zc)
+			if (new_z < min_sim_z)
 			{
-			  new_z = min_zc;
-			  z_corrected = true;
+			  	new_z = min_sim_z;
+			  	z_corrected = true;
 			}
-			else if (new_z > 1 - min_zc)
+			else if (new_z > max_sim_z)
 			{
-			  new_z = 1 - min_zc;
-			  z_corrected = true;
+			  	new_z = max_sim_z;
+			  	z_corrected = true;
 			}
 			sum_z += new_z;
 		}
-		// check the last composition
-		new_z = 1 - sum_z;
-		if (new_z < min_zc)
+		// check the "last composition" (minerals, 1 - sum(minerals))
+		new_z = 1. - sum_z;
+		if (new_z < min_sim_z)
 		{
-		  new_z = min_zc;
-		  z_corrected = true;
+			new_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
+		  	z_corrected = true;
 		}
 		sum_z += new_z;
 		// correction
 		if (z_corrected)
 		{
-		  // normalize compositions and set appropriate update
-		  for (char c = 0; c < n_solid; c++)
-		  {
-			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+		  	// normalize compositions and set appropriate update
+		  	for (index_t c = 0; c < n_solid; c++)
+		  	{
+				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
-			new_z = std::max(min_zc, new_z);
-			new_z = std::min(1 - min_zc, new_z);
+				new_z = std::max(min_sim_z, new_z);
+				new_z = std::min(max_sim_z, new_z);
 
-			new_z = new_z / sum_z;
-			dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
-		  }
-		  n_solid_corrected++;
+				new_z = new_z / sum_z;
+				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
+		  	}
+		  	n_solid_corrected++;
 		}
 		/* ---- end check solid compositions ---- */
 
 		/* ---- check fluid compositions ---- */
-		sum_z = 0;
+		sum_z = 0.;
 		z_corrected = false;
-		for (char c = n_solid; c < nc - 1; c++)
+		for (index_t c = n_solid; c < nc - 1; c++)
 		{
 			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-			if (new_z < min_zc)
+			if (new_z < min_sim_z)
 			{
-				new_z = min_zc;
+				new_z = min_sim_z;
 				z_corrected = true;
 			}
-			else if (new_z > 1 - min_zc)
+			else if (new_z > max_sim_z)
 			{
-				new_z = 1 - min_zc;
+				new_z = max_sim_z;
 				z_corrected = true;
 			}
 			sum_z += new_z;
 		}
 		// check the last composition
-		new_z = 1 - sum_z;
-		if (new_z < min_zc)
+		new_z = 1. - sum_z;
+		if (new_z < min_sim_z)
 		{
-			new_z = min_zc;
+			new_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
 			z_corrected = true;
 		}
 		sum_z += new_z;
@@ -2053,12 +2147,12 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		if (z_corrected)
 		{
 			// normalize compositions and set appropriate update
-			for (char c = n_solid; c < nc - 1; c++)
+			for (index_t c = n_solid; c < nc - 1; c++)
 			{
 				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
-				new_z = std::max(min_zc, new_z);
-				new_z = std::min(1 - min_zc, new_z);
+				new_z = std::max(min_sim_z, new_z);
+				new_z = std::min(max_sim_z, new_z);
 
 				new_z = new_z / sum_z;
 				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
@@ -2068,25 +2162,29 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		/* ---- end check fluid compositions ---- */
 	}
 	if (n_solid_corrected || n_fluid_corrected)
+	{
 		std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
-		  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s)\n";
+	}
 }
 
 void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
-	double sum_z, new_z, last_z, neg_z;
+	double sum_z, new_z, old_last_z, new_last_z, neg_z, frac;
 	index_t nb = mesh->n_blocks;
-	index_t n_corrected = 0, c_min;
+	index_t n_solid_corrected = 0, n_fluid_corrected = 0, c_min;
+	bool z_corrected = false;
 
 	for (index_t i = 0; i < nb; i++)
 	{
-		last_z = 1;
-		neg_z = min_zc;
+		/* ---- check solid compositions ---- */
+		new_last_z = 1.;
+		neg_z = min_sim_z;
 		c_min = -1;
-		for (char c = 0; c < nc - 1; c++)
+		for (index_t c = 0; c < n_solid; c++)
 		{
 			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-			last_z -= new_z; // keep track of last component
+			new_last_z -= new_z; // keep track of last component
 			// find smallest component < min_z
 			if (new_z < neg_z)
 			{
@@ -2095,38 +2193,136 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 			}
 		}
 
-		if (last_z < neg_z) // check if last component is the smallest < min_z
+		if (new_last_z < neg_z) // check if last component is the smallest < min_z
 		{
-			double last_dz = 0;
-			for (char c = 0; c < nc - 1; c++)
-				last_dz += dX[i * n_vars + z_var + c]; // find update for the last component
-			last_z -= last_dz; // find old_z = new_z - dX for last component
-
-			if (last_dz != 0)
+			old_last_z = 1.;
+			double last_dz = 0.;
+			for (index_t c = 0; c < n_solid; c++)
 			{
-			  // compute fraction of update to be at min_zc
-			  double frac = (min_zc - last_z) / (last_dz);
-			  for (char c = 0; c < nc - 1; c++)
-				dX[i * n_vars + z_var + c] *= frac;
-			  n_corrected++;
+				old_last_z -= X[i * n_vars + z_var + c];
+				last_dz += dX[i * n_vars + z_var + c]; // find update for the last component
+			}
+
+			if (std::fabs(last_dz) > 1e-16)
+			{
+			  	// compute fraction of update to be at min_sim_z
+			  	frac = (min_sim_z - old_last_z) / (last_dz);
+			  	for (index_t c = 0; c < n_solid; c++)
+			  	{
+					dX[i * n_vars + z_var + c] *= frac;
+				}
+				z_corrected = true;
+			  	n_solid_corrected++;
+			}
+			else
+			{
+				// Fraction would blow up dX; Project composition to have last_z = min_sim_z
+				std::vector<value_t> Xi(n_vars, 0.);
+				for (index_t c = 0; c < nc-1; c++)
+				{
+					Xi[z_var + c] = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+				}
+				this->apply_composition_correction(Xi);
+				for (index_t c = 0; c < nc-1; c++)
+				{
+					dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - Xi[z_var + c];
+				}
 			}
 		}
 		else if (c_min >= 0)
 		{
-			// compute fraction of update to be at min_zc
-			double frac = -(min_zc - X[i * n_vars + z_var + c_min]) / (dX[i * n_vars + z_var + c_min]);
-			if (dX[i * n_vars + z_var + c_min]  != 0)
+			if (std::fabs(dX[i * n_vars + z_var + c_min]) > 1e-16)
 			{
-			  // correct update to be at min_zc for the smallest component
-			  for (char c = 0; c < nc - 1; c++)
-				dX[i * n_vars + z_var + c] *= frac;
-			  n_corrected++;
+				// compute fraction of update to be at min_sim_z
+				frac = -(min_sim_z - X[i * n_vars + z_var + c_min]) / (dX[i * n_vars + z_var + c_min]);
+
+				// correct update to be at min_sim_z for the smallest component
+			  	for (index_t c = 0; c < n_solid; c++)
+				{
+					dX[i * n_vars + z_var + c] *= frac;
+				}
+				z_corrected = true;
+			  	n_solid_corrected++;
 			}
 		}
+		/* ---- end check solid compositions ---- */
+
+		/* ---- check fluid compositions ---- */
+		new_last_z = 1.;
+		neg_z = min_sim_z;
+		c_min = -1;
+		for (index_t c = n_solid; c < nc - 1; c++)
+		{
+			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+			new_last_z -= new_z; // keep track of last component
+			// find smallest component < min_z
+			if (new_z < neg_z)
+			{
+				neg_z = new_z;
+				c_min = c;
+			}
+		}
+
+		if (new_last_z < neg_z) // check if last component is the smallest < min_z
+		{
+			old_last_z = 1.;
+			double last_dz = 0.;
+			for (index_t c = n_solid; c < nc - 1; c++)
+			{
+				old_last_z -= X[i * n_vars + z_var + c];
+				last_dz += dX[i * n_vars + z_var + c]; // find update for the last component
+			}
+
+			if (std::fabs(last_dz) > 1e-16)
+			{
+			  	// compute fraction of update to be at min_sim_z
+			  	frac = (min_sim_z - old_last_z) / (last_dz);
+			  	for (index_t c = n_solid; c < nc - 1; c++)
+			  	{
+					dX[i * n_vars + z_var + c] *= frac;
+				}
+				z_corrected = true;
+			  	n_fluid_corrected++;
+			}
+			else
+			{
+				// Fraction would blow up dX; Project composition to have last_z = min_sim_z
+				std::vector<value_t> Xi(n_vars, 0.);
+				for (index_t c = 0; c < nc-1; c++)
+				{
+					Xi[z_var + c] = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+				}
+				this->apply_composition_correction(Xi);
+				for (index_t c = 0; c < nc-1; c++)
+				{
+					dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - Xi[z_var + c];
+				}
+			}
+		}
+		else if (c_min >= 0)
+		{
+			if (std::fabs(dX[i * n_vars + z_var + c_min]) > 1e-16)
+			{
+				// compute fraction of update to be at min_sim_z
+				frac = -(min_sim_z - X[i * n_vars + z_var + c_min]) / (dX[i * n_vars + z_var + c_min]);
+
+			  	// correct update to be at min_sim_z for the smallest component
+			  	for (index_t c = n_solid; c < nc - 1; c++)
+				{
+					dX[i * n_vars + z_var + c] *= frac;
+				}
+				z_corrected = true;
+			  	n_fluid_corrected++;
+			}
+		}
+		/* ---- end check fluid compositions ---- */
 	}
 
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_solid_corrected || n_fluid_corrected)
+	{
+		std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s)\n";
+	}
 }
 
 void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -2154,17 +2350,17 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 			{
 				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
-				if (new_z < min_zc)
+				if (new_z < min_sim_z)
 				{
-					//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-					new_z = min_zc; //TODO: check if this update is consistent!
+					//new_z = min_sim_z * (1 + min_sim_z);  //TODO: check if this update is consistent!
+					new_z = min_sim_z; //TODO: check if this update is consistent!
 					z_corrected = true;
 					check_vec[c] = 1;
 					min_count += 1;
 				}
-				else if (new_z > max_zc)
+				else if (new_z > max_sim_z)
 				{
-					new_z = max_zc;
+					new_z = max_sim_z;
 					z_corrected = true;
 					temp_sum += new_z;
 				}
@@ -2177,10 +2373,10 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 
 			// check the last composition
 			new_z = 1 - sum_z;
-			if (new_z < min_zc)
+			if (new_z < min_sim_z)
 			{
-				//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-				new_z = min_zc;
+				//new_z = min_sim_z * (1 + min_sim_z);  //TODO: check if this update is consistent!
+				new_z = min_sim_z;
 				z_corrected = true;
 				check_vec[nc - 1] = 1;
 				min_count += 1;
@@ -2198,14 +2394,14 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 				{
 					new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
-					//new_z = std::max(min_zc * (1 + min_zc), new_z);  //TODO: check if this update is consistent!
-					new_z = std::max(min_zc, new_z);
-					new_z = std::min(max_zc, new_z);
+					//new_z = std::max(min_sim_z * (1 + min_sim_z), new_z);  //TODO: check if this update is consistent!
+					new_z = std::max(min_sim_z, new_z);
+					new_z = std::min(max_sim_z, new_z);
 
 					if (check_vec[c] != 1)
 					{
-						//new_z = new_z / temp_sum * (1 - min_count * min_zc * (1 + min_zc));
-						new_z = new_z / temp_sum * (1 - min_count * min_zc);
+						//new_z = new_z / temp_sum * (1 - min_count * min_sim_z * (1 + min_sim_z));
+						new_z = new_z / temp_sum * (1 - min_count * min_sim_z);
 					}
 
 					dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
@@ -2231,17 +2427,17 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 			{
 				new_z = exp(X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c]); //log based composition
 
-				if (new_z < min_zc)
+				if (new_z < min_sim_z)
 				{
-					//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-					new_z = min_zc;
+					//new_z = min_sim_z * (1 + min_sim_z);  //TODO: check if this update is consistent!
+					new_z = min_sim_z;
 					z_corrected = true;
 					check_vec[c] = 1;
 					min_count += 1;
 				}
-				else if (new_z > max_zc)
+				else if (new_z > max_sim_z)
 				{
-					new_z = max_zc;
+					new_z = max_sim_z;
 					z_corrected = true;
 					temp_sum += new_z;
 				}
@@ -2254,10 +2450,10 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 
 			// check the last composition
 			new_z = 1 - sum_z;
-			if (new_z < min_zc)
+			if (new_z < min_sim_z)
 			{
-				//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-				new_z = min_zc;
+				//new_z = min_sim_z * (1 + min_sim_z);  //TODO: check if this update is consistent!
+				new_z = min_sim_z;
 				z_corrected = true;
 				check_vec[nc - 1] = 1;
 				min_count += 1;
@@ -2275,14 +2471,14 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 				{
 					new_z = exp(X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c]); //log based composition
 
-					//new_z = std::max(min_zc * (1 + min_zc), new_z);  //TODO: check if this update is consistent!
-					new_z = std::max(min_zc, new_z);
-					new_z = std::min(max_zc, new_z);
+					//new_z = std::max(min_sim_z * (1 + min_sim_z), new_z);  //TODO: check if this update is consistent!
+					new_z = std::max(min_sim_z, new_z);
+					new_z = std::min(max_sim_z, new_z);
 
 					if (check_vec[c] != 1)
 					{
-						//new_z = new_z / temp_sum * (1 - min_count * min_zc * (1 + min_zc));
-						new_z = new_z / temp_sum * (1 - min_count * min_zc);
+						//new_z = new_z / temp_sum * (1 - min_count * min_sim_z * (1 + min_sim_z));
+						new_z = new_z / temp_sum * (1 - min_count * min_sim_z);
 					}
 
 					dX[i * n_vars + z_var + c] = log(exp(X[i * n_vars + z_var + c]) / new_z); //log based composition

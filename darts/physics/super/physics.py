@@ -34,6 +34,9 @@ class Compositional(PhysicsBase):
         max_p: float,
         min_z: float,
         max_z: float,
+        epsilon_z: float,
+        sim_eps_multiplier: float = 10,
+        extrapolation_flag: bool = True,
         min_t: float = None,
         max_t: float = None,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
@@ -60,6 +63,13 @@ class Compositional(PhysicsBase):
         :type min_p, max_p: float
         :param min_z, max_z: Minimum, maximum composition
         :type min_z, max_z: float
+        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
+        :type epsilon_z: float
+        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
+                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
+        :type sim_eps_multiplier: float
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :type extrapolation_flag: bool
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
         :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
@@ -97,17 +107,27 @@ class Compositional(PhysicsBase):
 
         # axes_min
         if axes_min is None:
+            axz_min = (
+                [min_z + epsilon_z for i in range(nc - 1)]
+                if np.isscalar(min_z)
+                else [min_z[i] + epsilon_z for i in range(nc - 1)]
+            )
             if self.thermal:
-                axes_min = [min_p] + [min_z] * (nc - 1) + [min_t]
+                axes_min = [min_p] + axz_min + [min_t]
             else:
-                axes_min = [min_p] + [min_z] * (nc - 1)
+                axes_min = [min_p] + axz_min
 
         # axes_max
         if axes_max is None:
+            axz_max = (
+                [max_z - (nc - 1) * epsilon_z for i in range(nc - 1)]
+                if np.isscalar(min_z)
+                else [max_z[i] - (nc - 1) * epsilon_z for i in range(nc - 1)]
+            )
             if self.thermal:
-                axes_max = [max_p] + [max_z] * (nc - 1) + [max_t]
+                axes_max = [max_p] + axz_max + [max_t]
             else:
-                axes_max = [max_p] + [max_z] * (nc - 1)
+                axes_max = [max_p] + axz_max
 
         # n_axes_points
         if n_axes_points is None:
@@ -115,7 +135,27 @@ class Compositional(PhysicsBase):
         else:
             n_axes_points = index_vector(n_axes_points)
 
-        self.has_dfm_well = False
+        self.extrapolation_flag = extrapolation_flag
+        self.dz = (
+            (axes_max[1] - axes_min[1]) / (n_axes_points[1] - 1) if nc > 1 else None
+        )
+        if self.extrapolation_flag:
+            # ASSERT EQUAL DZ FOR EACH COMPOSITION AXIS
+            for i in range(nc - 1):
+                assert (
+                    np.abs(
+                        (axes_max[i + 1] - axes_min[i + 1]) / (n_axes_points[i + 1] - 1)
+                        - self.dz
+                    )
+                    < 1e-15
+                ), (
+                    "To use extrapolation logic, dz should be equal along all compositional axes"
+                )
+
+        assert sim_eps_multiplier > 1, (
+            "Multiplier for epsilon must be greater than 1 to have consistent "
+            "OBL axes/solution vector in engine"
+        )
 
         # Call PhysicsBase constructor
         super().__init__(
@@ -126,6 +166,7 @@ class Compositional(PhysicsBase):
             n_ops=n_ops,
             axes_min=axes_min,
             axes_max=axes_max,
+            sim_eps=epsilon_z * sim_eps_multiplier,
             n_axes_points=n_axes_points,
             timer=timer,
             cache=cache,
@@ -159,33 +200,37 @@ class Compositional(PhysicsBase):
         """
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
-                self.property_containers[region], self.thermal
+                self.property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
             self.property_operators[region] = PropertyOperators(
-                self.property_containers[region], self.thermal
+                self.property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
 
-        if not self.has_dfm_well:
-            if self.thermal:
-                self.well_operators = ReservoirOperators(
-                    self.property_containers[self.regions[0]], self.thermal
-                )
-            else:
-                self.well_operators = WellOperators(
-                    self.property_containers[self.regions[0]], self.thermal
-                )
-        elif self.has_dfm_well:
-            self.well_operators = WellOperators(
-                self.property_containers[self.regions[0]], self.thermal
-            )
+        self.well_operators = WellOperators(
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
+        )
 
         self.well_ctrl_operators = WellControlOperators(
-            self.property_containers[self.regions[0]], self.thermal
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
         self.well_init_operators = WellInitOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
 
         return
