@@ -1266,7 +1266,8 @@ class ZerodModel(DartsModel):
         use_log_p=False,
     ):
         """
-        Plot pressure, compositions, phase saturations, enthalpy, and temperature vs time.
+        Plot pressure, compositions, phase saturations, and optional
+        enthalpy/temperature vs time.
 
         :param output_path: File path for saving the plot (None to skip saving).
         :type output_path: str or None
@@ -1325,11 +1326,13 @@ class ZerodModel(DartsModel):
         n_steps = min(time_arr.size, state_arr.shape[0])
         time_arr = time_arr[:n_steps]
         state_arr = state_arr[:n_steps]
+        n_vars = state_arr.shape[1]
 
         props = self.property_container
         nc = getattr(props, "nc", 0)
         if nc <= 0:
             raise RuntimeError("Property container is missing component count.")
+        has_thermal_state = n_vars > nc
 
         pressure = state_arr[:, 0]
 
@@ -1351,8 +1354,8 @@ class ZerodModel(DartsModel):
         if phase_names is None or len(phase_names) != nph:
             phase_names = [f"phase{i + 1}" for i in range(nph)]
 
-        enthalpy = np.full(n_steps, np.nan)
-        temperature = np.full(n_steps, np.nan)
+        enthalpy = np.full(n_steps, np.nan) if has_thermal_state else None
+        temperature = np.full(n_steps, np.nan) if has_thermal_state else None
         sat_history = np.full((n_steps, nph), np.nan)
         spec = getattr(props, "state_spec", None)
         spec_str = spec.name if hasattr(spec, "name") else str(spec)
@@ -1371,7 +1374,7 @@ class ZerodModel(DartsModel):
             itor = self.physics.acc_flux_itor[0]
             ops_cpp = value_vector(np.zeros(self.physics.n_ops))
 
-        if state_arr.shape[1] > nc:
+        if has_thermal_state:
             if is_ph:
                 enthalpy[:] = state_arr[:, nc]
             else:
@@ -1384,18 +1387,18 @@ class ZerodModel(DartsModel):
                     sat_values = np.asarray(getattr(props, "sat", []), dtype=float)
                     if sat_values.size >= nph:
                         sat_history[i, :] = sat_values[:nph]
-                    if is_ph:
+                    if has_thermal_state and is_ph:
                         temperature[i] = getattr(props, "temperature", np.nan)
                 elif self.mode == "obl":
                     itor.evaluate(value_vector(state_arr[i]), ops_cpp)
                     for p in range(nph):
                         sat_history[i, p] = ops_cpp[etor.SAT_OP + p]
-                    if is_ph:
+                    if has_thermal_state and is_ph:
                         temperature[i] = ops_cpp[etor.TEMP_OP]
             except Exception:
                 continue
 
-        nplots = 1 + nc + 3
+        nplots = 1 + nc + 1 + (2 if has_thermal_state else 0)
         fig_height = 2.5 * nplots if figsize is None else None
         fig, axes = plt.subplots(
             nrows=nplots,
@@ -1458,28 +1461,29 @@ class ZerodModel(DartsModel):
         axes[idx].set_title("Phase Saturations", fontsize=title_fontsize)
         idx += 1
 
-        axes[idx].plot(
-            time_arr,
-            enthalpy,
-            color=enthalpy_color,
-            linewidth=linewidth,
-            alpha=alpha,
-            label=enthalpy_label,
-        )
-        axes[idx].set_ylabel(enthalpy_label, fontsize=label_fontsize)
-        axes[idx].set_title("Enthalpy", fontsize=title_fontsize)
-        idx += 1
+        if has_thermal_state:
+            axes[idx].plot(
+                time_arr,
+                enthalpy,
+                color=enthalpy_color,
+                linewidth=linewidth,
+                alpha=alpha,
+                label=enthalpy_label,
+            )
+            axes[idx].set_ylabel(enthalpy_label, fontsize=label_fontsize)
+            axes[idx].set_title("Enthalpy", fontsize=title_fontsize)
+            idx += 1
 
-        axes[idx].plot(
-            time_arr,
-            temperature,
-            color=temperature_color,
-            linewidth=linewidth,
-            alpha=alpha,
-            label=temperature_label,
-        )
-        axes[idx].set_ylabel(temperature_label, fontsize=label_fontsize)
-        axes[idx].set_title("Temperature", fontsize=title_fontsize)
+            axes[idx].plot(
+                time_arr,
+                temperature,
+                color=temperature_color,
+                linewidth=linewidth,
+                alpha=alpha,
+                label=temperature_label,
+            )
+            axes[idx].set_ylabel(temperature_label, fontsize=label_fontsize)
+            axes[idx].set_title("Temperature", fontsize=title_fontsize)
 
         for ax in axes:
             ax.tick_params(labelsize=tick_fontsize)
