@@ -15,8 +15,8 @@ from darts.engines import (
     well_control_iface,
 )
 from darts.physics.base.operators_base import PropertyOperators
-from darts.physics.blackoil import BlackOil
-from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH
+from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.geothermal.physics import Geothermal
 from darts.physics.super.physics import Compositional
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
@@ -111,6 +111,7 @@ class Output:
         self.compression_level = compression_level
         self.precision_map = {"d": np.float64, "s": np.float32}
 
+        self.thermal = self.physics.state_spec >= PhysicsBase.StateSpecification.PT
         self.properties = list(self.physics.property_containers[0].output_props.keys())
         if len(self.properties) < self.physics.n_ops:
             self.n_ops = self.physics.n_ops
@@ -169,7 +170,7 @@ class Output:
         * The declared interpolator is adaptive multilinear.
         """
 
-        if type(self.physics) is Compositional or type(self.physics) is BlackOil:
+        if isinstance(self.physics, Compositional):
             phase_props_labels = [
                 "dens",
                 "densm",
@@ -212,7 +213,7 @@ class Output:
 
                 self.physics.property_operators[region] = PropertyOperators(
                     property_container=pc,
-                    thermal=self.physics.thermal,
+                    thermal=self.thermal,
                     props=temp_dict,
                     extrapolation_flag=self.physics.extrapolation_flag,
                     dz=self.physics.dz,
@@ -236,7 +237,7 @@ class Output:
                 self.physics.property_containers[region].output_props = temp_dict
                 self.n_ops = n_ops
 
-        elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
+        elif isinstance(self.physics, Geothermal):
             phase_props_labels = [
                 "dens",
                 "densm",
@@ -325,7 +326,7 @@ class Output:
 
             self.physics.property_operators[region] = PropertyOperators(
                 property_container=self.physics.property_containers[region],
-                thermal=self.physics.thermal,
+                thermal=self.thermal,
                 props=output_dictionary,
                 extrapolation_flag=self.physics.extrapolation_flag,
                 dz=self.physics.dz,
@@ -586,7 +587,7 @@ class Output:
                 f.write(f"{self.physics.vars}\n")
 
                 f.write("-- Thermal:\n")
-                f.write(f"{self.physics.thermal}\n")
+                f.write(f"{self.thermal}\n")
 
                 f.write("-- State specification:\n")
                 f.write(f"{self.physics.state_spec}\n")
@@ -1614,7 +1615,6 @@ class Output:
         self.timer.node["output_well_time_data"].start()
 
         h5_well_data = load_hdf5_to_dict(self.well_filepath)
-        self.configure_physics()
 
         time = h5_well_data["dynamic"]["time"]
         time_data_dict = {"time": time}
@@ -1634,7 +1634,7 @@ class Output:
                 "component_molar_rates",
                 "component_mass_rates",
             ]
-            if self.physics.thermal:
+            if self.thermal:
                 types_of_well_rates.append("advective_heat_rates")
 
         # Store BHP and BHT
@@ -1644,16 +1644,14 @@ class Output:
             if (
                 rate_type == "component_molar_rates"
                 or rate_type == "component_mass_rates"
-            ) and self.physics.property_containers[
-                0
-            ].physics_type == "geothermal_engine":
+            ) and isinstance(self.physics, Geothermal):
                 continue
             # Compute perforation rates
             rates_perfs = self.calc_rates_at_conns(
                 h5_well_data,
                 perfs_conn_idxs,
                 geometric_WI,
-                self.physics.thermal,
+                self.thermal,
                 rate_type,
             )
             # Store perforation rates
@@ -1665,7 +1663,7 @@ class Output:
                 h5_well_data,
                 well_head_conn_idxs,
                 well_head_conn_trans,
-                self.physics.thermal,
+                self.thermal,
                 rate_type,
             )
             # Store wellhead rates
@@ -1684,21 +1682,6 @@ class Output:
         self.timer.node["output_well_time_data"].stop()
         self.timer.stop()
         return time_data_dict
-
-    def configure_physics(self):
-        """
-        Make the physics of the geothermal engine compatible with how the physics of the super engine
-        is defined. This function is used in the method store_well_time_data of the current class.
-        """
-        pc = self.physics.property_containers[0]
-        pc.physics_type = "super_engine"
-        physics_name = type(self.physics).__name__
-        if physics_name in ("Geothermal", "GeothermalPH"):
-            pc.physics_type = "geothermal_engine"
-            pc.phases_name = self.physics.phases[: pc.nph]
-            pc.nc_fl = 1
-            pc.components_name = ["H2O"]
-            self.physics.thermal = True
 
     def get_wellhead_perf_connection_info(self):
         """
@@ -1914,14 +1897,14 @@ class Output:
 
         for well in self.reservoir.wells:
             BHP = np.zeros(nt)
-            BHT = np.zeros(nt) if self.physics.thermal else np.full(nt, pc.temperature)
+            BHT = np.zeros(nt) if self.thermal else np.full(nt, pc.temperature)
             wellhead_cell_idx = self.find_values_in_an_array(
                 [well.well_head_idx], cell_id
             )
             p_idx = variable_names.index("pressure")
             for i in range(nt):
                 BHP[i] = X[i, wellhead_cell_idx, p_idx]
-                if self.physics.thermal:
+                if self.thermal:
                     if "temperature" in variable_names:
                         t_idx = variable_names.index("temperature")
                         BHT[i] = X[i, wellhead_cell_idx, t_idx]
@@ -2193,7 +2176,7 @@ class Output:
                 "component_molar_rates",
                 "component_mass_rates",
             ]
-            if self.physics.thermal:
+            if self.thermal:
                 types_of_well_rates.append("advective_heat_rates")
 
         self.unit_dict = {
