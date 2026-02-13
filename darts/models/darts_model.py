@@ -681,7 +681,7 @@ class DartsModel:
 
             if not self.has_dfm_well:
                 self.physics.engine.newton_residual_last_dt = (
-                    #self.physics.engine.calc_newton_residual() 
+                    #self.physics.engine.calc_newton_residual()
                     self.calc_residual_python()
                 )  # calc norm of residual
             # TODO Function line_search is not updated for the coupled model.
@@ -710,7 +710,8 @@ class DartsModel:
                 break
 
             self.physics.engine.well_residual_last_dt = (
-                self.physics.engine.calc_well_residual()
+                #self.physics.engine.calc_well_residual()
+                self.calc_residual_python(is_well=True)
             )
             residual_history.append(
                 (
@@ -1022,7 +1023,7 @@ class DartsModel:
         rhs += self.set_rhs_flux(t) * dt
         return
 
-    def calc_residual_python(self):
+    def calc_residual_python(self, ntype="L2", is_well=False):
         """
         Function to calculate norm of RHS vector.
 
@@ -1033,15 +1034,37 @@ class DartsModel:
         poro = np.array(self.reservoir.mesh.poro, copy=False)
         acc = np.array(self.physics.engine.op_vals_arr, copy=False)
         nb = self.reservoir.n
+        nt = len(volume)
         ne = self.physics.n_vars
         no = self.physics.n_ops
         res = 0
-        if 1:
-            for c in range(ne):
-                res = max(res, np.sqrt(np.sum(rhs[c:nb*ne:ne]**2) / np.sum((volume[:nb] * poro[:nb] * acc[c:nb*no:no])**2)))
-        else:
-            for c in range(ne):
-                res = max(res, np.max(np.abs(rhs[c:nb*ne:ne]) / volume[:nb] / poro[:nb] / acc[c:nb*no:no]))
+
+        for c in range(ne):
+            if is_well:
+                irhs = slice(nb * ne + c, nt * ne, ne)
+                iops = slice(nb * no + c, nt * no, no)
+                ires = slice(nb, nt)
+            else:
+                irhs = slice(c, nb * ne, ne)
+                iops = slice(c, nb * no, no)
+                ires = slice(0, nb)
+
+            match ntype:
+                case "L2":
+                    res = max(
+                        res, np.sqrt(np.sum(rhs[irhs]**2) / np.sum((volume[ires] * poro[ires] * acc[iops])**2)
+                                    )
+                    )
+                case "Linf":
+                    for c in range(ne):
+                        denom = volume[ires] * poro[ires] * acc[iops]
+                        denom[denom < 1e-4] = 1e4
+                        res = max(
+                            res, np.max(np.abs(rhs[irhs]) / denom)
+                        )
+                case _:
+                    print("Not recognized type of norm: ", ntype)
+                    res = 1e10
 
         return res
 
