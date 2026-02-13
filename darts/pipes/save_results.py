@@ -6,7 +6,7 @@ import pandas as pd
 
 def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     """
-    Stores the primary variables and phase properties of well segments in a pickle file
+    Store the primary variables and phase properties of well segments in a pickle file
 
     :param h5_well_data: Dictionary of well data loaded from the HDF5 file
     :type h5_well_data: dict
