@@ -590,6 +590,8 @@ class DartsModel:
             self.output.well_data = []
             self.output.well_cfl = []
 
+            save_well_data = False
+
         # get current engine time
         t = self.physics.engine.t
         stop_time = t + days
@@ -654,10 +656,12 @@ class DartsModel:
                 else:
                     self.prev_dt = dt
 
-                # save well data at every converged time step
-                if save_well_data and save_well_data_after_run is False:
+                if save_well_data:
+                    # save well data at every converged time step
                     self.output.save_data_to_h5(kind="well")
-                else:
+
+                if save_well_data_after_run:
+                    # store well data to save later
                     self.output.well_time_labels.append(self.physics.engine.t)
                     X = np.array(self.physics.engine.X, copy=False)
 
@@ -683,7 +687,7 @@ class DartsModel:
         self.physics.engine.t = stop_time
 
         # save well data after run
-        if save_well_data and save_well_data_after_run is True:
+        if save_well_data_after_run:
             path = os.path.join(self.output_folder, self.well_filename)
 
             self.output.timer.start()
