@@ -370,7 +370,12 @@ if __name__ == '__main__':
 
             if specs['RHS'] is False:
                 time_data = m.output.store_well_time_data(
-                    types_of_well_rates = ["component_mass_rates"],
+                    phase_molar_rates = False,
+                    phase_mass_rates = False,
+                    phase_volumetric_rates = False,
+                    component_molar_rates = False,
+                    component_mass_rates = True,
+                    advective_heat_rates = False,
                     save_output_files = True
                 )
                 m.output.plot_well_time_data()
