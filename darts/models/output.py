@@ -876,6 +876,10 @@ class Output:
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
         :raises ValueError: If ``kind`` is not ``'well'`` or ``'reservoir'``.
+
+        Notes
+        -----
+        * This function is called after DartsModel.run(save_reservoir_data = True) unless explicitly stated otherwise with the flag.
         """
 
         if not hasattr(self, "output_configured") or kind not in self.output_configured:
@@ -993,6 +997,10 @@ class Output:
             * **timesteps** (ndarray) - A NumPy array of the time labels
         :raises KeyError: If specified property in `output_properties` is not found in any property container
         :raises TypeError: If output_properties is not a list
+
+        Notes
+        -----
+        * ith_step indexes ``dynamic/time`` in the ``reservoir_solution.h5`` file.
         """
 
         if self.verbose:
@@ -1109,7 +1117,7 @@ class Output:
         output_data: list = None,
     ):
         """
-        Function to export results at timestamp t into `.vtk` format for viewing in Paraview.
+        Function to for creating `.vtk` files for viewing results in Paraview.
 
         :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
         :type sol_filepath: str, optional
@@ -1121,7 +1129,14 @@ class Output:
         :type output_properties: list
         :param output_data: List [array of timesteps, dictionary of property arrays]. Defaults to None, in which case properties are evaluated from the HDF5 file or engine
         :type output_data: list, optional
+
+        Notes
+        -----
+        * If no function inputs are specified .vtk files are created from all the available data in ``reservoir_solution.h5``.
+        * The input ``ith_step`` indexes ``dynamic/time`` in the ``reservoir_solution.h5`` file.
+        * If output_data = [timesteps, property_array] is passed directly as input, ``ith_step`` merely functions as a label in the created .vtk filename.
         """
+
         self.timer.start()
         self.timer.node["vtk_output"].start()
 
