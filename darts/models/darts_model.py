@@ -6,8 +6,6 @@ from math import fabs
 import numpy as np
 
 from darts.models.output import Output
-from darts.physics.base.physics_base import PhysicsBase
-from darts.reservoirs.reservoir_base import ReservoirBase
 
 try:
     from darts.engines import copy_data_to_device
@@ -68,20 +66,20 @@ class DartsModel:
     This is a base class for creating a model in DARTS.
     A model is composed of a :class:`Reservoir` object and a :class:`Physics` object.
     Initialization and communication between these two objects takes place through the Model object
+
+    :ivar reservoir: Reservoir object
+    :type reservoir: :class:`ReservoirBase`
+    :ivar physics: Physics object
+    :type physics: :class:`PhysicsBase`
+    :ivar timer: Timer object
+    :type timer: :class:`darts.engines.timer_node`
+    :ivar params: Object to set simulation parameters
+    :type params: :class:`darts.engines.sim_params`
     """
 
     def __init__(self):
         """
         Initialize DartsModel class.
-
-        :ivar reservoir: Reservoir object
-        :type reservoir: :class:`ReservoirBase`
-        :ivar physics: Physics object
-        :type physics: :class:`PhysicsBase`
-        :ivar timer: Timer object
-        :type timer: :class:`darts.engines.timer_node`
-        :ivar params: Object to set simulation parameters
-        :type params: :class:`darts.engines.sim_params`
         """
         # print out build information
         engines_pbi()
@@ -89,8 +87,8 @@ class DartsModel:
         package_pbi()
 
         # Create member variables reservoir and physics
-        self.reservoir: ReservoirBase = None
-        self.physics: PhysicsBase = None
+        self.reservoir = None
+        self.physics = None
 
         # Create time_node object for time record
         self.timer = timer_node()
@@ -278,15 +276,15 @@ class DartsModel:
         """
         Function to initialize output class
 
-        : param output_folder: directory for all output files, images etc.
-        : param sol_filename: filename for saving reservoir blocks data.
-        : param well_filename: filename for saving well block data.
-        : param save_initial: boolean flag to save initial conditions to *.h5, default is True.
-        : param all_phase_props: Boolean flag to enable evaluation of all phase properties with property interpolators.
-        : param precision: data precision of saved data ('s' single precision, 'd' double precision).
-        : param compression: default 'gzip'.
-        : param compression_level: 0 (no compression, fast) and 9 (maximum compression, slow), default is 1.
-        : param verbose: boolean flag to enable verbose mode.
+        :param output_folder: directory for all output files, images etc.
+        :param sol_filename: filename for saving reservoir blocks data.
+        :param well_filename: filename for saving well block data.
+        :param save_initial: boolean flag to save initial conditions to *.h5, default is True.
+        :param all_phase_props: Boolean flag to enable evaluation of all phase properties with property interpolators.
+        :param precision: data precision of saved data ('s' single precision, 'd' double precision).
+        :param compression: default 'gzip'.
+        :param compression_level: 0 (no compression, fast) and 9 (maximum compression, slow), default is 1.
+        :param verbose: boolean flag to enable verbose mode.
         """
 
         self.output_folder = output_folder
@@ -299,20 +297,20 @@ class DartsModel:
             save_initial = False
 
         self.output = Output(
-            self.timer,
-            self.reservoir,
-            self.physics,
-            self.op_list,
-            self.params,
-            self.output_folder,
-            self.sol_filename,
-            self.well_filename,
-            save_initial,
-            all_phase_props,
-            precision,
-            compression,
-            compression_level,
-            verbose,
+            timer=self.timer,
+            reservoir=self.reservoir,
+            physics=self.physics,
+            op_list=self.op_list,
+            params=self.params,
+            output_folder=self.output_folder,
+            sol_filename=self.sol_filename,
+            well_filename=self.well_filename,
+            save_initial=save_initial,
+            all_phase_props=all_phase_props,
+            precision=precision,
+            compression=compression,
+            compression_level=compression_level,
+            verbose=verbose,
         )
 
         return
@@ -479,6 +477,8 @@ class DartsModel:
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
+        :param physics:
+        :param data_ts:
         :param days: Time increment [days]
         :type days: float
         :param restart_dt: Restart value for timestep size [days, optional]
@@ -565,8 +565,9 @@ class DartsModel:
         :type verbose: bool
         :param save_well_data: if True save states of well blocks at every time step to 'well_data.h5', default is True
         :type save_well_data: bool
-        :param save_solution_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
-        :type save_solution_data: bool
+        :param save_well_data_after_run: Switch to save well data only after runtime of `days`
+        :param save_reservoir_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
+        :type save_reservoir_data: bool
         """
         assert hasattr(self, 'output'), (
             "self.output does not exist, please call m.set_output() after m.init()"
