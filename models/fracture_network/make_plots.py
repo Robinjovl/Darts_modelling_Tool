@@ -11,7 +11,6 @@ def plot_well_data_column(folder_name, axx, plot_cols, plot_cols_hist):
     time_data = pickle.load(open(pkl_fname, 'rb'))
 
     td = time_data
-    print(td.keys())
 
     for k in td.keys():
         if 'BHT' in k:
