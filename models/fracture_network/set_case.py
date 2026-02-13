@@ -3,6 +3,7 @@ from examples.case_1 import input_data_case_1
 from examples.case_1_burden import input_data_case_1_burden_O1, input_data_case_1_burden_O2
 from examples.case_1_burden import input_data_case_1_burden_U1, input_data_case_1_burden_U2
 from examples.case_1_burden import input_data_case_1_burden_O1_U1, input_data_case_1_burden_O2_U2
+from examples.case_1_well_rates import input_data_case_1_well_rates
 from examples.case_2 import input_data_case_2
 from examples.case_3 import input_data_case_3
 from examples.case_4 import input_data_case_4
@@ -12,6 +13,7 @@ from examples.case_5 import input_data_case_5
 from examples.whitby import input_data_case_whitby
 from examples.case_debug import input_data_case_debug
 from examples.case_simple_3d import input_data_case_3D_strike0_dip90, input_data_case_3D_strike0_dip45, input_data_case_3D_strike0_dip0, input_data_case_3D_no_fractures
+from examples.input_default import add_well_controls_idata
 
 def set_input_data(case: str):
     if case == 'case_1':
@@ -28,6 +30,8 @@ def set_input_data(case: str):
         input_data = input_data_case_1_burden_O1_U1()
     elif case == 'case_1_burden_O2_U2':
         input_data = input_data_case_1_burden_O2_U2()
+    elif case == 'case_1_well_rates':
+        input_data = input_data_case_1_well_rates()
     elif case == 'case_2':
         input_data = input_data_case_2()
     elif case == 'case_3':
@@ -54,4 +58,8 @@ def set_input_data(case: str):
         input_data = input_data_case_3D_strike0_dip0()
     else:
         assert False, f'Wrong case {case}'
+
+    # call this after as it contains common code for each case but requires pre-filled data, like wctrl.delta_temp which can be different for each case
+    add_well_controls_idata(input_data)
+
     return input_data

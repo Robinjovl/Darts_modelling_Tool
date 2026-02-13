@@ -94,6 +94,8 @@ if __name__ == "__main__":
     #cases_list += ['case_1_burden_O1_U1']
     #cases_list += ['case_1_burden_O2_U2']
 
+    #cases_list += ['case_1_well_rates']
+
     ##cases_list = ['case_2']
     #cases_list += ['case_3']
     #cases_list += ['case_4']

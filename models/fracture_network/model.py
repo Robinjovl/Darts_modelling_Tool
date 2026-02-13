@@ -9,6 +9,8 @@ import numpy as np
 import meshio
 from darts.input.input_data import InputData
 
+from examples.input_default import get_inj_well_coords, get_prod_well_coords
+
 def fmt(x):
     return '{:.3}'.format(x)
 
@@ -30,8 +32,8 @@ class Model(CICDModel):
         poro = idata.rock.porosity  # Matrix porosity [-]
         frac_aper = idata.geom['frac_aper']  # Aperture of fracture cells (but also takes a list of apertures for each segment) [m]
 
-        self.inj_well_coords = idata.geom['inj_well_coords']
-        self.prod_well_coords = idata.geom['prod_well_coords']
+        self.inj_well_coords = get_inj_well_coords(idata)
+        self.prod_well_coords = get_prod_well_coords(idata)
 
         if input_data['mesh_filename'] is None:
             fname = '_' + idata.geom['mesh_prefix'] + '_' + str(idata.geom['char_len']) + '.msh'
@@ -150,57 +152,8 @@ class Model(CICDModel):
             return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
                                                                   input_distribution=input_distribution)
 
-    def well_is_inj(self, wname : str):  # determine well control by its name
-        return "I" in wname
-
-    def set_well_controls(self):
-        wctrl = self.idata.well_data.controls
-        inj_rate = wctrl.inj_rate
-        prod_rate = wctrl.prod_rate
-
-        P = self.get_pressure('full')
-        T = self.get_temperature('full')
-
-        if P.size == 0:
-            inj_temp = 300.
-            inj_rate = 0.
-            prod_rate = 0.
-
-        for i, w in enumerate(self.reservoir.wells):
-            well_top_perf_idx = self.well_perf_loc[w.name][0]
-            if self.well_is_inj(w.name):
-                if inj_rate is None:  # BHP control
-                    inj_bhp = P[well_top_perf_idx] + wctrl.delta_p_prod  # rsv block pressure at the top perforation + delta_p
-                    inj_temp = T[well_top_perf_idx] - wctrl.delta_temp
-                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=inj_bhp, inj_composition=[], inj_temp=inj_temp)
-                else:
-                    # Rate Control
-                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
-                                                   is_inj=True, target=inj_rate, phase_name='water', inj_composition=[], inj_temp=inj_temp)
-                    # BHP Constraint
-                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=wctrl.inj_bhp_constraint, inj_composition=[],
-                                                   inj_temp=inj_temp)
-            else:
-                if prod_rate is None:  # BHP control
-                    prod_bhp = P[well_top_perf_idx] - wctrl.delta_p_prod  # rsv block pressure at the top perforation - delta_p
-                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                                   is_inj=False, target=prod_bhp)
-                else:
-                    # Rate Control
-                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
-                                                   is_inj=False, target=-np.abs(prod_rate), phase_name='water')
-                    # BHP Constraint
-                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                                   is_inj=False, target=wctrl.prod_bhp_constraint)
-
-            # print(w.name,
-            #       w.well_head_depth,
-            #       w.control.target_pressure if hasattr(w.control, 'target_pressure') else '',
-            #       w.control.target_temperature if hasattr(w.control, 'target_temperature') else '',
-            #       w.control.target_rate if hasattr(w.control, 'target_rate') else '')
-        return 0
+    def set_well_controls(self):  # dummy. just to pass through model.init()
+        self.set_well_controls_idata()
 
     def get_mat_frac_range(self, part):
         # order: fracture, matrix

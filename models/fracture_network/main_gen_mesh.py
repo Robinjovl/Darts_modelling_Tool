@@ -8,6 +8,8 @@ from darts.input.input_data import InputData
 from darts.tools.fracture_network.preprocessing_code import frac_preprocessing
 from darts.engines import redirect_darts_output
 
+from examples.input_default import get_inj_well_coords, get_prod_well_coords
+
 def rotate_input(input_data, frac_data_raw):
     rot_angle_degrees = 90 - input_data['SHmax_azimuth']
     rot_angle = np.radians(rot_angle_degrees)
@@ -75,12 +77,14 @@ def generate_mesh(idata : InputData):
     for i in range(frac_data_raw.shape[0]):
         plt.plot(np.append(frac_data_raw[i, 0], frac_data_raw[i, 2]),
                  np.append(frac_data_raw[i, 1], frac_data_raw[i, 3]))
-    wells_inj = idata.geom['inj_well_coords']
-    for i in range(len(wells_inj)):
-        plt.plot(wells_inj[i][0], wells_inj[i][1], 'o', color='b', label='inj well')
-    wells_prod = idata.geom['prod_well_coords']
-    for i in range(len(wells_prod)):
-        plt.plot(wells_prod[i][0], wells_prod[i][1], 'o', color='r', label='prod well')
+    wells_inj = get_inj_well_coords(idata)
+    for wname in wells_inj.keys():  # process each well
+        coord = wells_inj[wname]
+        plt.plot(coord[0], coord[1], 'o', color='b', label='inj well')
+    wells_prod = get_prod_well_coords(idata)
+    for wname in wells_prod.keys():
+        coord = wells_prod[wname]
+        plt.plot(coord[0], coord[1], 'o', color='r', label='prod well')
     plt.xlabel('X, m.')
     plt.ylabel('Y, m.')
     plt.legend()
