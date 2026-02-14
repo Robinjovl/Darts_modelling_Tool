@@ -16,7 +16,7 @@ def plot_heat_map_contourf(
     coupled_model: DartsModel,
     min_ts_idx: int = 0,
     max_ts_idx: int = None,
-    x_axis: str = "simulation_time",
+    x_axis: str = "simulated_time",
     y_axis: str = "segments_MD",
     cmap_color: str = "jet",
     save_as: str = 'pdf',
@@ -47,7 +47,7 @@ def plot_heat_map_contourf(
     :param max_ts_idx: If specified, the heat map will be shown until the specified maximum time step index. If not
     specified, the heat map will be shown till the last time step.
     :type max_ts_idx: int
-    :param x_axis: "simulation_time" or "time_step_index"
+    :param x_axis: "simulated_time" or "time_step_index"
     :type x_axis: str
     :param y_axis: "segments_MD" or "segments_TVD" or "segment_index"
     :param save_as: The extension of the image files that will be saved
@@ -118,12 +118,12 @@ def plot_heat_map_contourf(
         f"min_ts_idx is equal to or larger than max_ts_idx, which is {max_ts_idx}!"
     )
 
-    if x_axis == "simulation_time":
-        simulation_time = (
+    if x_axis == "simulated_time":
+        simulated_time = (
             h5_well_data["dynamic"]["time"] * 24 * 60 * 60
         )  # convert days to seconds
         # Apply the user-specified time-step index range
-        simulation_time = simulation_time[min_ts_idx:max_ts_idx]
+        simulated_time = simulated_time[min_ts_idx:max_ts_idx]
 
     time_step_idx_range = range(min_ts_idx, max_ts_idx)
     num_selected_ts = len(time_step_idx_range)
@@ -131,9 +131,9 @@ def plot_heat_map_contourf(
     if x_axis == "time_step_index":
         x = time_step_idx_range
         x_label = 'Time step [-]'
-    elif x_axis == "simulation_time":
-        x = simulation_time
-        x_label = 'Simulation time [second]'
+    elif x_axis == "simulated_time":
+        x = simulated_time
+        x_label = 'Simulated time [second]'
 
     if y_axis == "segment_index":
         y_segments = range(num_segments)

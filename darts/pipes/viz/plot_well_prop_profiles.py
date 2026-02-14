@@ -37,7 +37,7 @@ def plot_well_prop_profiles(
     # Load primary vars and phase props
     data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
 
-    simulation_time = h5_well_data["dynamic"]["time"]
+    simulated_time = h5_well_data["dynamic"]["time"]
 
     # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
     # and assigns it to well_geom.
@@ -104,7 +104,7 @@ def plot_well_prop_profiles(
 
     report_step_times = np.cumsum(report_step_times)
     report_indices = [
-        np.where(np.isclose(simulation_time, a))[0][0] for a in report_step_times
+        np.where(np.isclose(simulated_time, a))[0][0] for a in report_step_times
     ]
 
     # Generate a colormap for the report steps

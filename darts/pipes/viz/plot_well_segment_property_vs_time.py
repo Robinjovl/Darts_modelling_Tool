@@ -51,7 +51,7 @@ output_name = "BHP_time_series_obl_resolution_sens_ana"
 
 
 """ Main code """
-list_of_simulation_time = []
+list_of_simulated_time = []
 list_of_property_time_series = []
 
 for scenario in scenarios_labels:
@@ -59,7 +59,7 @@ for scenario in scenarios_labels:
 
     well_data_file_path = os.path.join(output_folder, "well_data.h5")
     h5_well_data = load_hdf5_to_dict(well_data_file_path)
-    simulation_time = h5_well_data["dynamic"]["time"] * 24 * 60 * 60
+    simulated_time = h5_well_data["dynamic"]["time"] * 24 * 60 * 60
 
     primary_vars_and_phase_props_file_address = os.path.join(
         output_folder, "well_primary_vars_and_phase_props.pkl"
@@ -69,7 +69,7 @@ for scenario in scenarios_labels:
     data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
     property_time_series = data_frame[property_key][desired_well_segment_idx]
 
-    list_of_simulation_time += [simulation_time]
+    list_of_simulated_time += [simulated_time]
     list_of_property_time_series += [property_time_series]
 
 
@@ -109,7 +109,7 @@ fig, ax = plt.subplots(figsize=(8, 5))
 
 for idx in range(len(scenarios_labels)):
     ax.semilogx(
-        list_of_simulation_time[idx][min_time_step_idx:],
+        list_of_simulated_time[idx][min_time_step_idx:],
         list_of_property_time_series[idx][min_time_step_idx:],
         linestyle='',
         # linestyle=linestyles[idx % len(linestyles)],
@@ -120,8 +120,8 @@ for idx in range(len(scenarios_labels)):
     )
 
 # X axis formatting
-x_min = list_of_simulation_time[0][min_time_step_idx]
-x_max = max(list_of_simulation_time[-1])
+x_min = list_of_simulated_time[0][min_time_step_idx]
+x_max = max(list_of_simulated_time[-1])
 ax.set_xlim(x_min, x_max)
 
 ax.set_ylim(y_min, y_max)
@@ -132,7 +132,7 @@ ax.grid(True, which="major", axis="x", linestyle="--", alpha=0.3)
 ax.grid(True, which="major", axis="y", linestyle="--", alpha=0.3)
 
 # Labels
-ax.set_xlabel("Simulation time [second]", labelpad=6)
+ax.set_xlabel("Simulated time [second]", labelpad=6)
 ax.set_ylabel(y_label, labelpad=6)
 
 # Legend: compact, outside or inside depending on space
@@ -150,7 +150,7 @@ if leg.get_title() is not None:
 #
 # # Plot same curves inside inset
 # for idx in range(len(scenarios_labels)):
-#     axins.plot(list_of_simulation_time[idx], list_of_property_time_series[idx], linestyle=linestyles[idx % len(linestyles)], marker=markers[idx % len(markers)], linewidth=2.0, markersize=4)
+#     axins.plot(list_of_simulated_time[idx], list_of_property_time_series[idx], linestyle=linestyles[idx % len(linestyles)], marker=markers[idx % len(markers)], linewidth=2.0, markersize=4)
 #
 # # Set zoomed-in region
 # axins.set_xlim(700, 900)

@@ -141,10 +141,10 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     #                      1 / 24 - 1 / 24 / 6 * 5,  # 1 hour
     #                      ]
 
-    simulation_time = h5_well_data["dynamic"]["time"]
+    simulated_time = h5_well_data["dynamic"]["time"]
 
     report_indices = [
-        np.where(np.isclose(simulation_time, a))[0][0] for a in reported_times
+        np.where(np.isclose(simulated_time, a))[0][0] for a in reported_times
     ]
 
     # Load primary vars and phase props for well
@@ -382,10 +382,10 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     #                      1 / 24 - 1 / 24 / 6 * 5,  # 1 hour
     #                      ]
 
-    simulation_time = h5_well_data["dynamic"]["time"]
+    simulated_time = h5_well_data["dynamic"]["time"]
 
     report_indices = [
-        np.where(np.isclose(simulation_time, a))[0][0] for a in reported_times
+        np.where(np.isclose(simulated_time, a))[0][0] for a in reported_times
     ]
 
     # Load primary vars and phase props for well

@@ -14,7 +14,7 @@ def plot_heat_map_pcolormesh(
     h5_well_data: dict,
     coupled_model: DartsModel,
     max_ts_idx: int = None,
-    x_axis: str = "simulation_time",
+    x_axis: str = "simulated_time",
     y_axis: str = "segments_MD",
     cmap_color: str = "jet",
     save_as: str = "pdf",
@@ -33,7 +33,7 @@ def plot_heat_map_pcolormesh(
     :param max_ts_idx: If specified, the heat map will be shown until the specified maximum time step index. If not
     specified, the heat map will be shown for all the time steps.
     :type max_ts_idx: int
-    :param x_axis: "simulation_time" or "time_step_index"
+    :param x_axis: "simulated_time" or "time_step_index"
     :type x_axis: str
     :param y_axis: "segments_MD" or "segments_TVD" or "segment_index"
     :type y_axis: str
@@ -82,12 +82,12 @@ def plot_heat_map_pcolormesh(
         f"max_ts_idx is larger than the total number of time steps, which is {num_ts}!"
     )
 
-    if x_axis == "simulation_time":
-        simulation_time = (
+    if x_axis == "simulated_time":
+        simulated_time = (
             h5_well_data["dynamic"]["time"] * 24 * 60 * 60
         )  # convert days to seconds
         # Apply the user-specified time-step index range
-        simulation_time = simulation_time[:max_ts_idx]
+        simulated_time = simulated_time[:max_ts_idx]
 
     time_step_idx_range = range(max_ts_idx)
     num_selected_ts = len(time_step_idx_range)
@@ -95,9 +95,9 @@ def plot_heat_map_pcolormesh(
     if x_axis == "time_step_index":
         x = time_step_idx_range
         x_label = "Time step [-]"
-    elif x_axis == "simulation_time":
-        x = simulation_time
-        x_label = "Simulation time [second]"
+    elif x_axis == "simulated_time":
+        x = simulated_time
+        x_label = "Simulated time [second]"
 
     if y_axis == "segment_index":
         y_segments = range(num_segments)

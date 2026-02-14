@@ -41,10 +41,10 @@ def plot_line_graphs(
     components_names = coupled_model.physics.property_containers[0].components_name
     num_components = len(components_names)
 
-    simulation_times = (
+    simulated_time = (
         h5_well_data["dynamic"]["time"] * 24 * 60 * 60
     )  # convert days to seconds
-    num_ts = len(simulation_times)
+    num_ts = len(simulated_time)
     list_of_time_steps = range(0, num_ts, time_step_increment)
 
     # Create a colormap
