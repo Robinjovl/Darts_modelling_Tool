@@ -1607,12 +1607,18 @@ class Output:
         2- calculating the rates directly at the wellhead connection
 
         :param phase_molar_rates: Compute phase molar rates, default is True
+        :type phase_molar_rates: bool
         :param phase_mass_rates: Compute phase mass rates, default is True
+        :type phase_mass_rates:bool
         :param phase_volumetric_rates: Compute phase volumetric rates, default is True
+        :type phase_volumetric_rates:bool
         :param component_molar_rates: Compute component molar rates, default is True
+        :type component_molar_rates: bool
         :param component_mass_rates: Compute component mass rates, default is True
-        :param advective_heat_rates: (for thermal scenarios)
-        :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default false
+        :type component_mass_rates: bool
+        :param advective_heat_rates: Compute advective heat rates for thermal scenarios, default is True
+        :type advective_heat_rates: bool
+        :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default is false
         :type save_output_files: bool
         """
         # Start timer for store_well_time_data
@@ -1631,6 +1637,9 @@ class Output:
             well_head_conn_trans,
         ) = self.get_wellhead_perf_connection_info()
 
+        # Store BHP and BHT
+        self.store_bhp_bht(h5_well_data, time_data_dict)
+
         types_of_well_rates = []
         types_of_well_rates += ["phase_molar_rates"] if phase_molar_rates else []
         types_of_well_rates += ["phase_mass_rates"] if phase_mass_rates else []
@@ -1644,9 +1653,6 @@ class Output:
         types_of_well_rates += (
             ["advective_heat_rates"] if advective_heat_rates and self.thermal else []
         )
-
-        # Store BHP and BHT
-        self.store_bhp_bht(h5_well_data, time_data_dict)
 
         for rate_type in types_of_well_rates:
             if (
