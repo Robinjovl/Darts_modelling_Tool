@@ -2198,23 +2198,18 @@ class Output:
 
         # Store types of well rates in a list to be plotted
         types_of_well_rates = []
-        if phase_molar_rates:
-            types_of_well_rates.append("phase_molar_rates")
-
-        if phase_mass_rates:
-            types_of_well_rates.append("phase_mass_rates")
-
-        if phase_volumetric_rates:
-            types_of_well_rates.append("phase_volumetric_rates")
-
-        if component_molar_rates:
-            types_of_well_rates.append("component_molar_rates")
-
-        if component_mass_rates:
-            types_of_well_rates.append("component_mass_rates")
-
-        if advective_heat_rates and self.thermal:
-            types_of_well_rates.append("advective_heat_rates")
+        types_of_well_rates += ["phase_molar_rates"] if phase_molar_rates else []
+        types_of_well_rates += ["phase_mass_rates"] if phase_mass_rates else []
+        types_of_well_rates += (
+            ["phase_volumetric_rates"] if phase_volumetric_rates else []
+        )
+        types_of_well_rates += (
+            ["component_molar_rates"] if component_molar_rates else []
+        )
+        types_of_well_rates += ["component_mass_rates"] if component_mass_rates else []
+        types_of_well_rates += (
+            ["advective_heat_rates"] if advective_heat_rates and self.thermal else []
+        )
 
         self.unit_dict = {
             "molar": "kmol/day",
