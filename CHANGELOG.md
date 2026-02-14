@@ -147,7 +147,7 @@
 			   {+ m.run(100)+}\
 			   {+ time_data_dict = m.output.store_well_time_data()+}\
                {+ time_data_df = pd.DataFrame.from_dict(time_data_dict)+}\
-			   {+ m.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])+}\
+			   {+ m.output.plot_well_time_data(phase_volumetric_rates=True)+}\
 
 		{- Before: m.save_data_to_h5('solution') -}\
 		{+ Now: m.output.save_data_to_h5('reservoir') +}
