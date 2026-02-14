@@ -1640,6 +1640,7 @@ class Output:
         # Store BHP and BHT
         self.store_bhp_bht(h5_well_data, time_data_dict)
 
+        # Store types of well rates in a list to be calculated
         types_of_well_rates = []
         types_of_well_rates += ["phase_molar_rates"] if phase_molar_rates else []
         types_of_well_rates += ["phase_mass_rates"] if phase_mass_rates else []
@@ -2154,20 +2155,34 @@ class Output:
 
         return rates
 
-    def plot_well_time_data(self, types_of_well_rates: list = None):
+    def plot_well_time_data(
+        self,
+        phase_molar_rates: bool = True,
+        phase_mass_rates: bool = True,
+        phase_volumetric_rates: bool = True,
+        component_molar_rates: bool = True,
+        component_mass_rates: bool = True,
+        advective_heat_rates: bool = True,
+    ):
         """
-        Plots well time data that are specified in the list types_of_well_time_data over time, including
-        phase_molar_rates, phase_mass_rates, phase_volumetric_rates, component_molar_rates, component_mass_rates,
-        advective_heat_rates, BHP (bottom-hole pressure), and BHT (bottom-hole temperature)
+        Plot well time data.
 
-        :param types_of_well_rates: List of types of well rates that can be computed:
-                                    "phase_molar_rates"
-                                    "phase_mass_rates"
-                                    "phase_volumetric_rates"
-                                    "component_molar_rates"
-                                    "component_mass_rates"
-                                    "advective_heat_rates" for thermal scenarios
-        :type types_of_well_rates: list
+        Bottom-hole pressure (BHP) and bottom-hole temperature (BHT) are
+        always included in the plots. Additional well rate categories can
+        be enabled or disabled using the corresponding boolean input arguments.
+
+        :param phase_molar_rates: Plot phase molar rates, default is True
+        :type phase_molar_rates: bool
+        :param phase_mass_rates: Plot phase mass rates, default is True
+        :type phase_mass_rates:bool
+        :param phase_volumetric_rates: Plot phase volumetric rates, default is True
+        :type phase_volumetric_rates:bool
+        :param component_molar_rates: Plot component molar rates, default is True
+        :type component_molar_rates: bool
+        :param component_mass_rates: Plot component mass rates, default is True
+        :type component_mass_rates: bool
+        :param advective_heat_rates: Plot advective heat rates for thermal scenarios, default is True
+        :type advective_heat_rates: bool
         """
         main_dir = os.path.join(self.output_folder, "figures/well_time_plots")
 
@@ -2181,17 +2196,18 @@ class Output:
         df = pd.read_pickle(os.path.join(self.output_folder, "well_time_data.pkl"))
         time = df["time"]
 
-        # Specify types of well rates that will be plotted if types_of_well_rates is not entered by the user
-        if types_of_well_rates is None:
-            types_of_well_rates = [
-                "phase_molar_rates",
-                "phase_mass_rates",
-                "phase_volumetric_rates",
-                "component_molar_rates",
-                "component_mass_rates",
-            ]
-            if self.thermal:
-                types_of_well_rates.append("advective_heat_rates")
+        # Store types of well rates in a list to be plotted
+        types_of_well_rates = []
+        types_of_well_rates += "phase_molar_rates" if phase_molar_rates else []
+        types_of_well_rates += "phase_mass_rates" if phase_mass_rates else []
+        types_of_well_rates += (
+            "phase_volumetric_rates" if phase_volumetric_rates else []
+        )
+        types_of_well_rates += "component_molar_rates" if component_molar_rates else []
+        types_of_well_rates += "component_mass_rates" if component_mass_rates else []
+        types_of_well_rates += (
+            "advective_heat_rates" if advective_heat_rates and self.thermal else []
+        )
 
         self.unit_dict = {
             "molar": "kmol/day",
