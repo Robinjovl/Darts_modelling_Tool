@@ -24,6 +24,7 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from dartsflash.libflash import NegativeFlash
 from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData
+from darts.physics.super.initialize import Initialize
 
 
 class Model(DartsModel):
@@ -38,7 +39,7 @@ class Model(DartsModel):
         self.zero = 1e-8
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=10, runtime=1000, tol_newton=1e-3, tol_linear=1e-3,
+        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
         self.timer.node["initialization"].stop()
@@ -53,9 +54,9 @@ class Model(DartsModel):
         # Define lgr0
         parent_grid_name = 'global'
         lgr_coords_in_parent_grid = {
-        "i_range": [20, 20],
-        "j_range": [40, 40],
-        "k_range": [1, 40],
+        "i_range": [4, 4],
+        "j_range": [2, 2],
+        "k_range": [1, 2],
         "refine": [3, 3, 1],
         "tag" : "inj"
         }
@@ -67,9 +68,9 @@ class Model(DartsModel):
         # Define lgr1
         parent_grid_name = 'global'
         lgr_coords_in_parent_grid = {
-        "i_range": [60, 60],
-        "j_range": [40, 40],
-        "k_range": [1, 40],
+        "i_range": [2, 2],
+        "j_range": [2, 2],
+        "k_range": [1, 2],
         "refine": [3, 3, 1],
         "tag" : "prd"
         }
@@ -77,54 +78,12 @@ class Model(DartsModel):
             'parent_grid_name': parent_grid_name,
             'lgr_coords_in_parent_grid': lgr_coords_in_parent_grid,
         }
-
-        # Define lgr2
-        parent_grid_name = 'global'
-        lgr_coords_in_parent_grid = {
-        "i_range": [37, 37],
-        "j_range": [44, 44],
-        "k_range": [1, 40],
-        "refine": [3, 3, 1],
-        "tag" : "prd"
-        }
-        lgrs['lgr2'] = {
-            'parent_grid_name': parent_grid_name,
-            'lgr_coords_in_parent_grid': lgr_coords_in_parent_grid,
-        }
-
-        #define lgr3
-        parent_grid_name = 'global'
-        lgr_coords_in_parent_grid = {
-        "i_range": [44, 44],
-        "j_range": [37, 37],
-        "k_range": [1, 40],
-        "refine": [3, 3, 1],
-        "tag" : "prd"
-        }
-        lgrs['lgr3'] = {
-            'parent_grid_name': parent_grid_name,
-            'lgr_coords_in_parent_grid': lgr_coords_in_parent_grid,
-        }
-
-        #define lgr4
-        parent_grid_name = 'global'
-        lgr_coords_in_parent_grid = {
-        "i_range": [44, 44],
-        "j_range": [44, 44],
-        "k_range": [1, 40],
-        "refine": [3, 3, 1],
-        "tag" : "prd"
-        }
-        lgrs['lgr4'] = {
-            'parent_grid_name': parent_grid_name,
-            'lgr_coords_in_parent_grid': lgr_coords_in_parent_grid,
-        }
         return lgrs
     
     def build_well_completion(self):
         return {
-            "I1": {"lgr": "lgr0", "k_from": 1, "k_to": 40},  # coarse k (1-based)
-            "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 40},
+            "I1": {"lgr": "lgr0", "k_from": 1, "k_to": 2},  # coarse k (1-based)
+            "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 2},
         }    
 
     def convert_ijk_to_gindex_1based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
@@ -218,19 +177,19 @@ class Model(DartsModel):
         self.reservoir.cell_center_y = y
         self.reservoir.cell_center_z = z
         return x,y,z
-                
+
     
     def set_reservoir(self):
         self.lgrs = self.build_lgr_definition()
 
         #Build Level0 with actnum + overburden and underburden
-        nx0, ny0 = 80, 80 # global grid size
+        nx0, ny0 = 5, 3 # global grid size
         dx0, dy0 = 100, 100
-        nz_res = 40
+        nz_res = 2
         dz_res = 5
 
-        over_thickness = 2000
-        under_thickness = 2000
+        over_thickness = 3000.0
+        under_thickness = 3000.0
         dz_over = self.build_dz(dz0=dz_res, total_thickness=over_thickness)
         dz_over = dz_over[::-1]  # reverse for overburden
 
@@ -241,7 +200,7 @@ class Model(DartsModel):
         dz0_layers = np.concatenate([dz_over, np.full(nz_res, dz_res, dtype=float), dz_under])
         permx0, permy0, permz0 = 50, 50, 50
         poro0 = 0.1
-        poro_burden = 0.0001
+        poro_burden = 0.001
         perm_burden = 1e-6
 
         # thermal properties
@@ -250,7 +209,7 @@ class Model(DartsModel):
         rcond_over, rcond_under = 149.54, 149.54
         hcap_over, hcap_under = 2347.29, 2347.29
 
-        reservoir_top = 2000
+        reservoir_top = 3000
         
        # update lgr k range after adding overburden layer
         for lname, _cfg in self.lgrs.items():
@@ -299,7 +258,7 @@ class Model(DartsModel):
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
                                       start_z=0,actnum=actnum0, rcond=rcon0_full, hcap=hcap0_full,)
 
-        boundary_factor = 1e6
+        boundary_factor = 2000
         base_vol = float(dx0 * dy0 * dz_res)
         v_big = base_vol * boundary_factor
         self.level0.boundary_volumes = {
@@ -327,13 +286,13 @@ class Model(DartsModel):
             dz1 = dz_res
 
             self.level1[name] = StructReservoir(self.timer, nx=nx1, ny=ny1, nz=nz1, dx=dx1, dy=dy1, dz=dz1,
-                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000, rcond=rcond_res, hcap=hcap_res)
+                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=3000, rcond=rcond_res, hcap=hcap_res)
 
             dx_imag, dy_imag = self.auto_image_grid_dx_dy(dx0, dy0, rx, ry)
 
             # 2D imaginary grid per layer
             self.level1_imag[name] = StructReservoir(self.timer, nx=rx+2, ny=ry+2, nz=1, dx=dx_imag, dy=dy_imag, dz=dz_res,
-                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000,rcond=rcond_res, hcap=hcap_res,)
+                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=3000,rcond=rcond_res, hcap=hcap_res,)
 
             #create a new imaginary grid for overburden and underburden connections
             permz_x = np.full((rx, ry, 2), permx0, dtype=float) 
@@ -342,14 +301,10 @@ class Model(DartsModel):
             permz_y [:,:,0] = perm_burden
             permz_z = np.full((rx, ry, 2), permz0, dtype=float)
             permz_z [:,:,0] = perm_burden
-            rcond_1 = np.full((rx, ry, 2), rcond_res, dtype=float)
-            rcond_1[:,:,0] = rcond_over
-            hcap_1 = np.full((rx, ry, 2), hcap_res, dtype=float)
-            hcap_1[:,:,0] = hcap_over
         
 
             self.level1_imag_z[name] = StructReservoir(self.timer, nx=rx, ny=ry,nz=2, dx =dx1, dy=dy1, dz= dz1,
-                                                  permx=permz_x, permy=permz_y, permz=permz_z, poro=poro0, depth= None, start_z=2000,rcond=rcond_1, hcap=hcap_1,)
+                                                  permx=permz_x, permy=permz_y, permz=permz_z, poro=poro0, depth= None, start_z=3000,rcond=rcond_res, hcap=hcap_res,)
             
         cm_all, cp_all, T_all, T_all_therm, meta = self.assemble_lgr_connections_eclipse()
 
@@ -365,8 +320,6 @@ class Model(DartsModel):
         depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
         volume0_arr = np.array(self.level0.volume, copy=False).astype(float)
         # thermal properties for level 0 varying with ob and res
-        
-
         rcon0_arr = rcon0_full[l2g0]
         hcap0_arr = hcap0_full[l2g0]
         kx0_arr = kx0_full[l2g0]
@@ -711,57 +664,115 @@ class Model(DartsModel):
         """Physical properties"""
         # Create property containers:
         components = ['CO2', 'H2O']
+        self.components = components
+        comp_data = CompData(components, setprops=True)
         phases = ['CO2_rich', 'aqueous']
-        Mw = [44.01, 18.015]
+        # Mw = [44.01, 18.015]
 
-        temperature = 80+273.15
+        ceos = CubicEoS(comp_data, CubicEoS.PR)
+        aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003,
+                                AQEoS.solute: AQEoS.Ziabakhsh2012,
+                                })
+        flash_params = FlashParams(comp_data)
+        # EoS-related parameters
+        flash_params.add_eos("CEOS", ceos)
+        flash_params.add_eos("aqueous", aq)
+        flash_params.eos_order = ["aqueous", "CEOS"]
+
+        # Flash-related parameters
+        flash_params.split_tol = 1e-12
+
         property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                            Mw=Mw, min_z=self.zero / 10, temperature=temperature)
+                                               Mw=comp_data.Mw, min_z=self.zero / 10,)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(len(components), [4, 1e-1], self.zero)
-        property_container.density_ev = dict([('CO2_rich', DensityBasic(compr=1e-3, dens0=200)),
-                                                ('aqueous', DensityBasic(compr=1e-5, dens0=600))])
-        property_container.viscosity_ev = dict([('CO2_rich', ConstFunc(0.05)),
-                                                ('aqueous', ConstFunc(0.5))])
+        # property_container.flash_ev = NegativeFlash(flash_params, ["aqueous", "CEOS"], [InitialGuess.Henry_AV])
+        property_container.density_ev = dict([('CO2_rich', EoSDensity(ceos,comp_data.Mw)),
+                                              ('aqueous', DensityBasic(dens0=1020,compr= 4.5e-5,p0=31))])
+        property_container.viscosity_ev = dict([('CO2_rich', Fenghour1998()),
+                                                ('aqueous', Islam2012(components))])
         property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas")),
-                                                ('aqueous', PhaseRelPerm("wat"))])
+                                               ('aqueous', PhaseRelPerm("wat"))])
+        property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(ceos)),
+                                                ('aqueous', EoSEnthalpy(aq))])
+        property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)),
+                                                   ('aqueous', ConstFunc(180.)), ])
+
+      
 
         """ Activate physics """
-        thermal = False
+        thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                    n_points=200, min_p=1, max_p=300, min_z=self.zero/10, max_z=1-self.zero/10)
-            # property_container.output_props = {
-            #     "sat0": lambda: property_container.sat[0],
-            #     "dens0": lambda: property_container.dens[0],
-            #     "nu0": lambda: property_container.nu[0],
-            #     "x00": lambda: property_container.x[0,0]
-            #     }
+                                     n_points=400, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
+                                     min_t=273.15, max_t=373.15+200)
 
-        self.physics.add_property_region(property_container)
+
+        property_container.output_props = {
+            "satG": lambda: property_container.sat[0],
+            "temp": lambda: property_container.temperature,
+            "rhoG": lambda: property_container.dens[0],
+            "rhoAq": lambda: property_container.dens[1],
+            }
+
+        self.physics.add_property_region(property_container) 
 
         return
 
     def set_initial_conditions(self):
-        input_distribution = {self.physics.vars[0]: 195,
-                                self.physics.vars[1]: self.zero,
-                                }
-        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
-                                                                input_distribution=input_distribution)
+        # input_distribution = {self.physics.vars[0]: 195, # pressure
+        #                       self.physics.vars[1]: self.zero, # z_CO2
+        #                       self.physics.vars[2]: 353.15 # temperature
+        #                       }
+        # return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, 
+        #                                                       input_distribution=input_distribution)
 
+        depths = np.asarray(self.reservoir.mesh.depth)
+        min_depth = np.min(depths)
+        max_depth = np.max(depths)
+        nb = int(self.level0.nz)
+        depths = np.linspace(min_depth,max_depth,nb)
+
+        init = Initialize(self.physics)
+   
+        primary_specs = {}
+        for comp in self.physics.components[:-1]:
+            primary_specs[comp] = np.ones(nb) * self.zero
+        
+        boundary_state = {"pressure" :195}  
+        for comp in self.physics.components[:-1]:
+            boundary_state[comp] = float(primary_specs[comp][0])
+        boundary_state["temperature"] = 80 +273.15
+
+        dTdh = 40/1000 #k/m
+        
+        X = init.solve(depth_bottom=max_depth, depth_top= min_depth,depth_known=2000, nb=nb,
+                       boundary_state=boundary_state,primary_specs=primary_specs,secondary_specs=None, dTdh=dTdh).reshape((nb, self.physics.n_vars))
+        # input_distribution = {self.physics.vars[0]: 131, # pressure
+        #                       self.physics.vars[1]: self.zero, # z_CO2
+        #                       self.physics.vars[2]: 353.15 # temperature
+        #                       }
+        self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
+                                                             input_depth= init.depths,
+                                                            input_distribution={v:X[:,i] for i, v in enumerate(self.physics.vars)})
+        return
     
         # self.reservoir.mesh.volume[0:3] = 1e20
 
     def set_well_controls(self):
-        inj_composition = [1.0 - self.zero]
+        inj_composition = [1.0 - self.zero]  # pure CO2 injection
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
+                    # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+                    #                                is_inj=True, target=5600000., inj_composition=inj_composition, inj_temp=296.15)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                                is_inj=True, target=250., inj_composition=inj_composition)
+                                            is_inj=True, target=360., inj_composition=inj_composition, inj_temp=296.15)
             else:
+                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+                #                                is_inj=False, target=1400000.)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                                is_inj=False, target=50.)
+                                            is_inj=False, target=102.)
 
 class LGRReservoir(ReservoirBase):
     """

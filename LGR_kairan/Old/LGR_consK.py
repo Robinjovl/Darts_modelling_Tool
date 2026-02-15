@@ -39,7 +39,7 @@ class Model(DartsModel):
         self.zero = 1e-8
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=1000, 
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=30, runtime=1000, 
                             tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
@@ -79,12 +79,57 @@ class Model(DartsModel):
             'parent_grid_name': parent_grid_name,
             'lgr_coords_in_parent_grid': lgr_coords_in_parent_grid,
         }
+        # # Define lgr2
+        # parent_grid_name = 'global'
+        # lgr_coords_in_parent_grid = {
+        # "i_range": [37, 37],
+        # "j_range": [44, 44],
+        # "k_range": [1, 40],
+        # "refine": [3, 3, 1],
+        # "tag" : "prd"
+        # }
+        # lgrs['lgr2'] = {
+        #     'parent_grid_name': parent_grid_name,
+        #     'lgr_coords_in_parent_grid': lgr_coords_in_parent_grid,
+        # }
+
+        # #define lgr3
+        # parent_grid_name = 'global'
+        # lgr_coords_in_parent_grid = {
+        # "i_range": [44, 44],
+        # "j_range": [37, 37],
+        # "k_range": [1, 40],
+        # "refine": [3, 3, 1],
+        # "tag" : "prd"
+        # }
+        # lgrs['lgr3'] = {
+        #     'parent_grid_name': parent_grid_name,
+        #     'lgr_coords_in_parent_grid': lgr_coords_in_parent_grid,
+        # }
+
+        # #define lgr4
+        # parent_grid_name = 'global'
+        # lgr_coords_in_parent_grid = {
+        # "i_range": [44, 44],
+        # "j_range": [44, 44],
+        # "k_range": [1, 40],
+        # "refine": [3, 3, 1],
+        # "tag" : "prd"
+        # }
+        # lgrs['lgr4'] = {
+        #     'parent_grid_name': parent_grid_name,
+        #     'lgr_coords_in_parent_grid': lgr_coords_in_parent_grid,
+        # }
+
         return lgrs
     
     def build_well_completion(self):
         return {
             "I1": {"lgr": "lgr0", "k_from": 1, "k_to": 40},  # coarse k (1-based)
             "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 40},
+            # "P2": {"lgr": "lgr2", "k_from": 1, "k_to": 20},
+            # "P3": {"lgr": "lgr3", "k_from": 1, "k_to": 20},
+            # "P4": {"lgr": "lgr4", "k_from": 1, "k_to": 20},
         }    
 
     def convert_ijk_to_gindex_1based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
@@ -257,7 +302,7 @@ class Model(DartsModel):
         self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
                                       start_z=0,actnum=actnum0, rcond=rcon0_full, hcap=hcap0_full,)
-        boundary_factor = 1e6
+        boundary_factor = 2000
         base_vol = float(dx0 * dy0 * dz_res)
         v_big = base_vol * boundary_factor
 
@@ -649,6 +694,9 @@ class Model(DartsModel):
     def set_wells(self):
         self.reservoir.add_well("I1")
         self.reservoir.add_well("P1")
+        # self.reservoir.add_well("P2")
+        # self.reservoir.add_well("P3")
+        # self.reservoir.add_well("P4")
 
         center_2d = self.lgr_meta['well_local_center']
 
@@ -766,18 +814,41 @@ class Model(DartsModel):
         # self.reservoir.mesh.volume[0:3] = 1e20
 
     def set_well_controls(self):
-        inj_composition = [1.0 - self.zero]
+        inj_composition = [1.0 - self.zero]  # pure CO2 injection
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                #                                is_inj=True, target=5600000., inj_composition=inj_composition, inj_temp=296.15)
+                    # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+                    #                                is_inj=True, target=5600000., inj_composition=inj_composition, inj_temp=296.15)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=360., inj_composition=inj_composition, inj_temp=296.15)
+                                            is_inj=True, target=360., inj_composition=inj_composition, inj_temp=296.15)
             else:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                 #                                is_inj=False, target=1400000.)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=102.)
+                                            is_inj=False, target=102.)
+
+        # t_switch = 3.5 * 365
+        # for i, w in enumerate(self.reservoir.wells):
+        #     if i == 0:
+        #         self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+        #                                        is_inj=True, target=3.3264e7, inj_composition=inj_composition, inj_temp=296.15)
+        #         self.physics.set_well_controls(wctrl=w.constraint, control_type=well_control_iface.BHP,
+        #                                        is_inj=True, target=306.90, inj_composition=inj_composition, inj_temp=296.15)
+        #     else:
+        #         self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+        #                                        is_inj=False, target=0.)
+        # while self.physics.engine.t > t_switch:
+        #     for i, w in enumerate(self.reservoir.wells):
+        #         if i == 0:
+        #             self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+        #                                         is_inj=True, target=3.3264e7, inj_composition=inj_composition, inj_temp=296.15)
+        #             self.physics.set_well_controls(wctrl=w.constraint, control_type=well_control_iface.BHP,
+        #                                         is_inj=True, target=306.90, inj_composition=inj_composition, inj_temp=296.15)
+        #         else:
+        #             self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+        #                                         is_inj=False, target=8.316e6)
+        #             self.physics.set_well_controls(wctrl=w.constraint, control_type=well_control_iface.BHP,
+        #                                         is_inj=False, target=102.30)
 
 class LGRReservoir(ReservoirBase):
     """
@@ -803,10 +874,12 @@ class LGRReservoir(ReservoirBase):
         self.hcap = np.asarray(hcap, dtype=float)
         self.depth = np.asarray(depth, dtype=float)
         self.volume = np.asarray(volume, dtype=float)
+        self.n = int(len(self.poro))
         if op_num is None:
             self.op_num = np.zeros_like(self.poro, dtype= int)
         else:
             self.op_num = np.asarray(op_num, dtype= int)
+
 
         self.n = self.poro.size
         self.ndims = 3 

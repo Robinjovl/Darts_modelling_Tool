@@ -1,18 +1,13 @@
 import numpy as np
-import pandas as pd
-import sys, os
-from Eclipse_method import Model
-from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
-from darts.physics.base.operators_base import PropertyOperators as props
-import matplotlib.tri as mtri
-
-import os
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm, Normalize
 import matplotlib.ticker as mticker
+from matplotlib.colors import LogNorm, Normalize
+import sys, os
+
+
 
 def plot_well_time_data_2(m, time_data_df,
+                                save_output_files=True,
                                 well_names=None,
                                 component="CO2",
                                 include_rates=("mass_rate",),
@@ -33,8 +28,7 @@ def plot_well_time_data_2(m, time_data_df,
         Whether to plot BHP/BHT combined
     """
 
-    out_root = getattr(m.output, "output_folder", getattr(m, "output_folder", "output"))
-    out_dir = os.path.join(out_root, "figures", "well_time_plots", "combined")
+    out_dir = os.path.join(save_output_files,"combined")
     os.makedirs(out_dir, exist_ok=True)
 
     wells_all = m.reservoir.wells
@@ -137,7 +131,7 @@ def plot_well_time_data_2(m, time_data_df,
 
 def get_physics_field(model):
     X = np.array(model.physics.engine.X, copy=False)
-    n = int(len(model.reservoir.poro))
+    n = int(model.reservoir.n)
     nb = len(model.physics.vars)
     X_res = X[:n*nb]
     Xc = X_res.reshape((n,nb), order="C")
@@ -150,10 +144,19 @@ def plot_xz_section(model, values, y0= None, tol= None, savepath="xz.png", title
     y = res.cell_center_y
     z = res.cell_center_z
     v = np.asarray(values, float)
+    x = np.asarray(res.cell_center_x)
+
+    y = np.asarray(res.cell_center_y)
+    z = np.asarray(res.cell_center_z)
+    v = np.asarray(values)
+
+    print("shapes:", x.shape, y.shape, z.shape, v.shape)
+
     if y0 is None:
         y0 = float(np.median(y))
     if tol is None:
-        tol = 0.5 * float(np.median(np.asarray(res.dy, float)))
+        # tol = 0.5 * float(np.median(np.asarray(res.dy, float)))
+        tol = 0.5 * float(100)
     
     m = np.abs(y-y0) <= tol
     xp, zp, vp = x[m], z[m], v[m]
@@ -200,76 +203,3 @@ def plot_xz_section(model, values, y0= None, tol= None, savepath="xz.png", title
 
     fig.savefig(savepath, bbox_inches="tight")
     plt.close(fig)
-
-
-if __name__ == '__main__':
-    darts_model = Model()
-    # darts_model.params.linear_type = n.params.linear_solver_t.cpu_superlu
-    darts_model.init()
-    darts_model.set_output()
-
-
-    if True:
-        darts_model.run(365)
-        # darts_model.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
-        # darts_model.run_python(300, restart_dt=1e-3)
-        darts_model.print_timers()
-        darts_model.print_stat()
-        save_dict = {
-            "X": np.array(darts_model.physics.engine.X, copy=True),
-            "vars": [str(v) for v in darts_model.physics.vars],
-            "n_cells": int(len(darts_model.reservoir.poro)),
-            "n_vars": len(darts_model.physics.vars),
-            }
-
-        np.save("solution_final.npy", save_dict)
-
-        prim = get_physics_field(darts_model)
-        print("vars:", list(prim.keys()))
-        for k in prim.keys():
-            if "pressure" in k.lower() or k.lower() == "p":
-                plot_xz_section(darts_model, prim[k],
-                                savepath="large_section_P.png",
-                                title=k,
-                                logscale=False)
-                break
-
-     
-        for k in prim.keys():
-            if "co2" in k.lower() :  
-                plot_xz_section(darts_model, prim[k] - 1e-8,
-                                savepath="large_section_CO2.png",
-                                title="CO2_delta",
-                                logscale=False,
-                                vmin=0, vmax=1)   
-                break
-
-
-        # compute well time data
-        time_data_dict = darts_model.output.store_well_time_data(save_output_files=True)
-        time_data_df = pd.DataFrame.from_dict(time_data_dict)
-
-        plot_well_time_data_2(darts_model, time_data_df)
-    else:
-        # darts_model.load_restart_data()
-        darts_model.load_restart_data('output/solution.h5')
-        time_data = pd.read_pickle("darts_time_data.pkl")
-
-    # if True:
-    #     Xn = np.array(darts_model.physics.engine.X, copy=False)
-    #     nc = darts_model.physics.nc + darts_model.physics.thermal
-    #     nb = darts_model.reservoir.mesh.n_res_blocks
-
-    #     plt.figure(num=1, figsize=(12, 8), dpi=100)
-    #     for i in range(nc if nc < 3 else 3):
-    #         plt.subplot(330 + (i + 1))
-    #         plt.plot(Xn[i:nb*nc:nc])
-    #     plt.savefig('out.png')
-    # else:
-    #     #plot_sol(n)
-    #     n.print_and_plot('sim_data')
-
-
-
-
-
