@@ -216,6 +216,7 @@ def plot_darts_reaktoro_comparison(darts_h5, reaktoro_h5, output_folder):
     reaktoro_data = _load_h5(reaktoro_h5, group_name="results")
     times_reaktoro = np.squeeze(reaktoro_data['Time'])
     times_darts, darts_amounts = np.squeeze(darts_data['dynamic']['time']), _compute_darts_amounts(darts_data)
+    darts_properties = darts_data.get("properties", {})
     darts_ref_amount = darts_amounts['Calcite'][0]
 
     fig, ax = plt.subplots(nrows=2, sharex=True, figsize=(8, 8))
@@ -225,6 +226,16 @@ def plot_darts_reaktoro_comparison(darts_h5, reaktoro_h5, output_folder):
         ("Calcite", "tab:green"),
         ("Dolomite", "tab:orange"),
         ("Magnesite", "tab:brown"),
+    ]
+    reaction_rate_specs = [
+        ("Calcite", "rate_CaCO3", "RateCalcite", "tab:green"),
+        ("Dolomite", "rate_CaMg(CO3)2", "RateDolomite", "tab:orange"),
+        ("Magnesite", "rate_MgCO3", "RateMagnesite", "tab:brown"),
+    ]
+    saturation_ratio_specs = [
+        ("Calcite", "SR_CaCO3", "OmegaCalcite", "tab:green"),
+        ("Dolomite", "SR_CaMg(CO3)2", "OmegaDolomite", "tab:orange"),
+        ("Magnesite", "SR_MgCO3", "OmegaMagnesite", "tab:brown"),
     ]
 
     for name, color in aqueous_specs:
@@ -242,6 +253,25 @@ def plot_darts_reaktoro_comparison(darts_h5, reaktoro_h5, output_folder):
             continue
         ax[1].plot(times_darts, darts_series / darts_ref_amount, color=color, linestyle="-", label=f"DARTS {name}")
         ax[1].plot(times_reaktoro, reaktoro_series, color=color, linestyle="--", label=f"Reaktoro {name}")
+
+    for name, darts_rate_key, reaktoro_rate_key, color in reaction_rate_specs:
+        darts_series = darts_properties.get(darts_rate_key)
+        reaktoro_series = reaktoro_data.get(reaktoro_rate_key)
+        if darts_series is None or reaktoro_series is None:
+            continue
+
+        conversion_mult = -1000 / 86400 # kmol/day to mol/s
+        s_id = 0
+        ax[2].plot(times_darts[s_id:], (np.squeeze(darts_series) * conversion_mult)[s_id:], color=color, linestyle="-", label=f"DARTS {name}")
+        ax[2].plot(times_reaktoro, np.squeeze(reaktoro_series), color=color, linestyle="--", label=f"Reaktoro {name}")
+
+    for name, darts_sr_key, reaktoro_omega_key, color in saturation_ratio_specs:
+        darts_series = darts_properties.get(darts_sr_key)
+        reaktoro_series = reaktoro_data.get(reaktoro_omega_key)
+        if darts_series is None or reaktoro_series is None:
+            continue
+        ax[3].plot(times_darts, np.squeeze(darts_series), color=color, linestyle="-", label=f"DARTS {name}")
+        ax[3].plot(times_reaktoro, np.squeeze(reaktoro_series), color=color, linestyle="--", label=f"Reaktoro {name}")
 
     ax[0].set_ylabel("Amount [mol]")
     ax[0].set_title("Aqueous Species: DARTS vs Reaktoro")

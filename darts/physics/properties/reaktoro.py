@@ -53,8 +53,9 @@ class Flash:
         components: list[str],
         temperature: float | None = None,
         gas_species: list[str] | tuple[str, ...] = ("CO2(g)", "H2O(g)"),
-        tolerance: float = 1e-10,
+        tolerance: float = 1e-12,
         database_filename: str = "phreeqc.dat",
+        mineral_saturation_names: dict[str, str] | None = None,
     ):
         """
         :param min_z: minimal composition value
@@ -107,6 +108,12 @@ class Flash:
 
         # Gas setup (names must match database species names)
         self.gas_species = list(gas_species)
+        # Optional mapping from DARTS mineral formula key (e.g., CaCO3)
+        # to thermodynamic mineral name used in saturation-ratio lookup
+        # (e.g., Calcite). This avoids formula collisions with polymorphs.
+        self.mineral_saturation_names = (
+            dict(mineral_saturation_names) if mineral_saturation_names else {}
+        )
 
         # Initialize Reaktoro system (PHREEQC database backend)
         self.database_filename = database_filename
@@ -187,7 +194,7 @@ class Flash:
 
         solver = EquilibriumSolver(self.system)
         op = EquilibriumOptions()
-        op.optima.convergence.tolerance = 1e-12
+        op.optima.convergence.tolerance = self.tolerance
         solver.setOptions(op)
         try:
             result = solver.solve(state, conds)
@@ -285,13 +292,26 @@ class Flash:
             #'pH': aq_props.pH().val(),
         }
 
-        n_saturation_species = aq_props.saturationSpecies().size()
+        # n_saturation_species = aq_props.saturationSpecies().size()
         for m in self.mineral_names:
-            id = aq_props.saturationSpecies().findWithFormula(m)
-            if id < n_saturation_species:
-                kin_state[f"SR_{m}"] = aq_props.saturationRatio(id).val()
-            else:
-                kin_state[f"SR_{m}"] = 0.0
+            sr_name = self.mineral_saturation_names.get(m, m)
+            sr_value = None
+
+            # Prefer explicit mineral name mapping when provided.
+            try:
+                sr_value = aq_props.saturationRatio(sr_name).val()
+            except Exception:
+                sr_value = None
+
+            # Fallback to formula-based lookup if no named match exists.
+            # if sr_value is None:
+            #     id = aq_props.saturationSpecies().findWithFormula(m)
+            #     if id < n_saturation_species:
+            #         sr_value = aq_props.saturationRatio(id).val()
+            #     else:
+            #         sr_value = 0.0
+
+            kin_state[f"SR_{m}"] = sr_value
 
         return (
             nu_v,

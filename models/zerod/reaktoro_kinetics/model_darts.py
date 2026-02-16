@@ -31,7 +31,7 @@ class Model(ZerodModel):
 
     def __init__(
         self,
-        n_obl_mult: int = 27,
+        n_obl_mult: int = 1,
         runtime: float = 1500.0,
         first_ts: float = 1e-5,
         max_ts: float = 10.0,
@@ -61,7 +61,7 @@ class Model(ZerodModel):
         self.timer.node["initialization"].stop()
 
     def set_physics(self):
-        self.min_z = 1e-11
+        self.min_z = 1e-15
 
         # Ambient conditions
         self.temperature = 298.15  # K
@@ -125,27 +125,27 @@ class Model(ZerodModel):
 
         self.n_points = list(
             self.n_obl_mult
-            * np.array([101, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp)
+            * np.array([11, 5001, 5001, 5001, 501, 501, 501, 501], dtype=np.intp)
         )
         self.fc_mask = np.array(
             [False, False, False, True, True, True, True, True], dtype=bool
         )
-        self.axes_min = [self.pressure_init - 0.1] + [
+        self.axes_min = [self.pressure_init - 0.01] + [
             self.obl_min,
             self.obl_min,
             self.obl_min,
             self.obl_min,
             self.obl_min,
             self.obl_min,
-            0.3,
+            0.35,
         ]
-        self.axes_max = [self.pressure_init + 0.1] + [
-            1.0 - self.obl_min,
-            0.4,
-            0.2,
+        self.axes_max = [self.pressure_init + 0.01] + [
             0.01,
             0.01,
-            0.1,
+            0.01,
+            0.0001,
+            0.0001,
+            0.05,
             0.37,
         ]
 
@@ -191,6 +191,11 @@ class Model(ZerodModel):
             components=property_container.components_name[property_container.fc_mask],
             temperature=property_container.temperature,
             database_filename="supcrtbl",
+            mineral_saturation_names={
+                "CaCO3": "Calcite",
+                "CaMg(CO3)2": "Dolomite",
+                "MgCO3": "Magnesite",
+            },
         )
 
         for mineral, props in rock_props.items():

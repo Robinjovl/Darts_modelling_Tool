@@ -278,30 +278,43 @@ def resolve_composition_correction_config(property_container, physics=None, z_va
         sim_eps = float(getattr(physics, "sim_eps", 0.0))
         axes_min = np.asarray(getattr(physics, "axes_min", []), dtype=float)
         axes_max = np.asarray(getattr(physics, "axes_max", []), dtype=float)
-        if axes_min.size > z_var and axes_max.size > z_var:
-            min_axis_z = float(axes_min[z_var])
-            max_axis_z = float(axes_max[z_var])
+        n_indep = nc - 1
+        if axes_min.size >= z_var + n_indep and axes_max.size >= z_var + n_indep:
+            min_axis_z = np.asarray(axes_min[z_var : z_var + n_indep], dtype=float)
+            max_axis_z = np.asarray(axes_max[z_var : z_var + n_indep], dtype=float)
         else:
             pt_axes_min = np.asarray(getattr(physics, "PT_axes_min", []), dtype=float)
             pt_axes_max = np.asarray(getattr(physics, "PT_axes_max", []), dtype=float)
-            if pt_axes_min.size > z_var and pt_axes_max.size > z_var:
-                min_axis_z = float(pt_axes_min[z_var])
-                max_axis_z = float(pt_axes_max[z_var])
+            if (
+                pt_axes_min.size >= z_var + n_indep
+                and pt_axes_max.size >= z_var + n_indep
+            ):
+                min_axis_z = np.asarray(
+                    pt_axes_min[z_var : z_var + n_indep], dtype=float
+                )
+                max_axis_z = np.asarray(
+                    pt_axes_max[z_var : z_var + n_indep], dtype=float
+                )
 
     if min_axis_z is None or max_axis_z is None:
         eps_z = float(getattr(property_container, "eps_z", 1e-12))
-        min_axis_z = eps_z
-        max_axis_z = 1.0 - eps_z
+        n_indep = nc - 1
+        min_axis_z = np.full(n_indep, eps_z, dtype=float)
+        max_axis_z = np.full(n_indep, 1.0 - eps_z, dtype=float)
         if sim_eps <= 0:
             sim_eps = eps_z
 
-    min_sim_z = float(min_axis_z + sim_eps)
-    max_sim_z = float(max_axis_z - sim_eps)
-    if max_sim_z <= min_sim_z:
+    min_axis_z = np.asarray(min_axis_z, dtype=float)
+    max_axis_z = np.asarray(max_axis_z, dtype=float)
+    min_sim_z = min_axis_z + sim_eps
+    max_sim_z = max_axis_z - sim_eps
+
+    invalid = max_sim_z <= min_sim_z
+    if np.any(invalid):
         eps = np.finfo(float).eps
-        min_sim_z = float(min_axis_z + eps)
-        max_sim_z = float(max_axis_z - eps)
-        if max_sim_z <= min_sim_z:
+        min_sim_z[invalid] = min_axis_z[invalid] + eps
+        max_sim_z[invalid] = max_axis_z[invalid] - eps
+        if np.any(max_sim_z <= min_sim_z):
             return None
 
     return {
@@ -326,19 +339,25 @@ def apply_composition_correction_group(
     z_corrected = False
     for c in range(c_start, c_end):
         idx = z_var + c
+        min_z = min_sim_z[c]
+        max_z = max_sim_z[c]
         new_z = state[idx]
-        if new_z < min_sim_z:
-            new_z = min_sim_z
+        if new_z < min_z:
+            new_z = min_z
             z_corrected = True
-        elif new_z > max_sim_z:
-            new_z = max_sim_z
+        elif new_z > max_z:
+            new_z = max_z
             z_corrected = True
         state[idx] = new_z
         sum_z += new_z
 
     last_z = 1.0 - sum_z
-    if last_z < min_sim_z:
-        last_z = sum_z * min_sim_z if sum_z > max_sim_z else min_sim_z
+    # last component has no explicit axis in state; enforce a conservative lower bound
+    # consistent with the active composition group.
+    min_last = float(np.min(min_sim_z[c_start:c_end]))
+    max_last = float(np.max(max_sim_z[c_start:c_end]))
+    if last_z < min_last:
+        last_z = sum_z * min_last if sum_z > max_last else min_last
         z_corrected = True
     sum_z += last_z
 
