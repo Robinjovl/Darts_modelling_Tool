@@ -856,7 +856,7 @@ class ZerodModel(DartsModel):
 
     def evaluate_output_properties(self, state):
         """
-        Evaluate phase properties from property_container.phase_props only.
+        Evaluate output properties for the current state.
 
         Derived models can override this method to expose a custom property set.
         """
@@ -865,6 +865,21 @@ class ZerodModel(DartsModel):
             raise RuntimeError("property_container is not defined.")
 
         state_np = np.asarray(state, dtype=float)
+        if self.mode == "obl":
+            prop_itor = self.physics.property_itor[0]
+            prop_names = self.physics.property_operators[0].props_name
+            n_ops = self.physics.n_property_itor_ops
+            values = value_vector(np.zeros(int(n_ops)))
+            prop_itor.evaluate(value_vector(state_np), values)
+            values_np = np.array(values, copy=False)
+
+            props = {}
+            for i, name in enumerate(prop_names):
+                if i >= values_np.size:
+                    break
+                props[name] = values_np[i]
+            return props
+
         container.evaluate(state_np)
 
         evaluate_thermal = getattr(container, "evaluate_thermal", None)

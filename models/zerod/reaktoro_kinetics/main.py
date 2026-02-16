@@ -219,7 +219,7 @@ def plot_darts_reaktoro_comparison(darts_h5, reaktoro_h5, output_folder):
     darts_properties = darts_data.get("properties", {})
     darts_ref_amount = darts_amounts['Calcite'][0]
 
-    fig, ax = plt.subplots(nrows=2, sharex=True, figsize=(8, 8))
+    fig, ax = plt.subplots(nrows=4, sharex=True, figsize=(8, 14))
 
     aqueous_specs = [("Ca+2", "tab:blue"), ("Mg+2", "tab:red")]
     mineral_specs = [
@@ -279,10 +279,21 @@ def plot_darts_reaktoro_comparison(darts_h5, reaktoro_h5, output_folder):
         ax[0].legend()
 
     ax[1].set_ylabel("Amount [mol]")
-    ax[1].set_xlabel("Time [day]")
     ax[1].set_title("Minerals: DARTS vs Reaktoro")
     if ax[1].lines:
         ax[1].legend()
+
+    ax[2].set_ylabel("Reaction rate")
+    ax[2].set_title("Mineral Reaction Rates: DARTS vs Reaktoro")
+    if ax[2].lines:
+        ax[2].legend()
+    ax[2].set_ylim(-4e-7, 4e-7)
+
+    ax[3].set_ylabel("Saturation ratio [-]")
+    ax[3].set_xlabel("Time [day]")
+    ax[3].set_title("Mineral Saturation Ratios: DARTS vs Reaktoro")
+    if ax[3].lines:
+        ax[3].legend()
 
     fig.tight_layout()
     comparison_plot_path = os.path.join(output_folder, "darts_vs_reaktoro_comparison.png")

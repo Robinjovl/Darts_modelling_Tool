@@ -283,7 +283,7 @@ class Flash:
             y_co2 = 0.0
 
         # Kinetic state: saturation ratios and activities
-        aq_props = AqueousProps(state)
+        aq_props = AqueousProps.compute(props)
         kin_state = {
             'Act(H+)': props.speciesActivity("H+").val(),
             'Act(CO2)': props.speciesActivity("CO2" + self.aq_ending).val(),

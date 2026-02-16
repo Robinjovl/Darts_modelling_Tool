@@ -255,11 +255,6 @@ class Model(ZerodModel):
             dtype=float,
         )
 
-    def evaluate_output_properties(self, state):
-        output_container = self.physics.output_property_containers[0]
-        output_container.evaluate(np.asarray(state, dtype=float))
-        return {name: ev() for name, ev in output_container.output_props.items()}
-
     def extract_property_history(self, prop_names=None):
         if not self.state_history:
             return np.array([]), {}
