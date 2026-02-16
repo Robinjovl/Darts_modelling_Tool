@@ -39,7 +39,7 @@ class Pipe:
     Cku = 142
     Cw = 0.008
 
-    adjustment_func_params = AdjustmentFuncParams
+    adjustment_func_params = AdjustmentFuncParams()
 
     def __init__(
         self,
