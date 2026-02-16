@@ -1,5 +1,8 @@
 # 1.3.3 [Future]
+- Extrapolation of operators at supporting points with negative last compositions for consistent interpolation in hypercubes at the edge of the compositional domain - current logic works only for equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
+- Consistent composition bounds using min_z/max_z (e.g., 0 to 1), epsilon (for min_axis_z/max_axis_z: eps_z, 1-(nc-1)*eps_z) and sim_eps (min_axis_z + sim_eps, max_axis_z - sim_eps) - current logic only fully verified with equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
 - Cell centroids are now included under static variables in the output file `reservoir_solution.h5`. ([!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282))
+- Change operators by splitting density out of `GRAD_OP` and introducing new `DENS_OP`. ([!237](https://gitlab.com/open-darts/open-darts/-/merge_requests/237))
 - Change operators by splitting `FLUX_OP` operator into two operators and introducing `SAT_OP`. ([!234](https://gitlab.com/open-darts/open-darts/-/merge_requests/234))
 - Add potential energy to the energy conservation equation. This feature is off by default ([!246](https://gitlab.com/open-darts/open-darts/-/merge_requests/246), [!263](https://gitlab.com/open-darts/open-darts/-/merge_requests/263))
 - Always use `WellOperators` for wells (in the past, `ReservoirOperators` was used for wells for thermal scenarios) ([!284](https://gitlab.com/open-darts/open-darts/-/merge_requests/284)).
@@ -13,6 +16,13 @@
 - More robust OBL cache saving using atomic writes. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
 - Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
 - Breaking changes:
+  - Input arguments to facilitate consistent compositional axes and extrapolation:
+  {- Before: Compositional(..., min_z=zero/10, max_z=1-zero/10) -}\
+  {+ Now:    Compositional(..., min_z=0, max_z=1, epsilon_z=zero/10, sim_eps_multiplier=10, extrapolation_flag=True) +}
+  {- Before: PropertyContainer(..., min_z=zero) -}\
+  {+ Now:    PropertyContainer(..., eps_z=epsilon) +}
+  {- Before: OperatorsBase(...) -}\
+  {+ Now:    OperatorsBase(..., extrapolation_flag=True, dz: float) +}
   - Rename an input argument of the method `add_well`:\
   {- Before: self.reservoir.add_well(..., wellbore_diameter) -}\
   {+ Now:    self.reservoir.add_well(..., well_diameter) +}
@@ -137,7 +147,7 @@
 			   {+ m.run(100)+}\
 			   {+ time_data_dict = m.output.store_well_time_data()+}\
                {+ time_data_df = pd.DataFrame.from_dict(time_data_dict)+}\
-			   {+ m.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])+}\
+			   {+ m.output.plot_well_time_data(phase_volumetric_rates=True)+}\
 
 		{- Before: m.save_data_to_h5('solution') -}\
 		{+ Now: m.output.save_data_to_h5('reservoir') +}
