@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from scipy.optimize import fsolve
 
+from darts.engines import index_vector, value_vector
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.set_initial_conditions import (
@@ -51,6 +52,7 @@ class Pipe:
         source_sinks: dict = None,
         Cmax: float = 1.2,
         Fv: float = 1,
+        prop_eval_method: str = "OBL",
         diff_method: str = "OBL",
         eps_p: float = 1e-4,
         eps_temp: float = 0.1,
@@ -69,24 +71,27 @@ class Pipe:
         :param source_sinks: Dict containing sources or sinks for the momentum equation
         :type source_sinks: dict
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
-        could have a value between 1.0 and 1.5. It is set to:
-        --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
-        --> 1 in a wellbore simulator in Tonken et al. paper (A transient geothermal wellbore simulator)
+                     could have a value between 1.0 and 1.5. It is set to:
+                     --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
+                     --> 1 in a wellbore simulator in Tonken et al. paper (A transient geothermal wellbore simulator)
         :type Cmax: float
         :param Fv: A multiplier on the flooding velocity fraction, set to be 1 by default, and its value can be tuned
-        to fit the observations.
+                   to fit the observations.
         :type Fv: float
+        :param prop_eval_method: Method for evaluation of wellbore phase properties to calculate phase
+                                 "OBL" for OBL approach (default) and "direct" for direct usage of property evaluators
+        :type prop_eval_method: str
         :param diff_method: Method for differentiation of wellbore phase velocities with respect to the primary
-        variables. "OBL" for OBL diff (default) and "numerical" for numerical diff
+                            variables. "OBL" for OBL diff (default) and "numerical" for numerical diff
         :type diff_method: str
         :param eps_p: If diff_method is numerical, this variable will be used. It is a very small value used for
-        numerically differentiating pipe phase velocities with respect to pressure
+                      numerically differentiating pipe phase velocities with respect to pressure
         :type eps_p: float
         :param eps_temp: If diff_method is numerical, this variable will be used. It is a very small value used for
-        numerically differentiating pipe phase velocities with respect to temperature
+                         numerically differentiating pipe phase velocities with respect to temperature
         :type eps_temp: float
         :param eps_z: If diff_method is numerical, this variable will be used. It is a very small value used for
-        numerically differentiating pipe phase velocities with respect to composition
+                      numerically differentiating pipe phase velocities with respect to composition
         :type eps_z: float
         :param verbose: Whether to display extra info about PipeModel
         :type verbose: boolean
@@ -180,10 +185,20 @@ class Pipe:
         if isinstance(self.g_cos_theta, float):
             self.g_cos_theta = self.g_cos_theta * np.ones(pipe_geometry.num_interfaces)
 
+        assert isinstance(prop_eval_method, str), (
+            "prop_eval_method for pipe velocity calculation must be a string!"
+        )
+        if prop_eval_method in ("direct", "OBL"):
+            self.prop_eval_method = prop_eval_method
+        else:
+            raise ValueError(
+                "prop_eval_method for pipe velocity differentiation must be either 'OBL' or 'direct'!"
+            )
+
         assert isinstance(diff_method, str), (
             "diff_method for pipe velocity differentiation must be a string!"
         )
-        if diff_method in ["numerical", "OBL"]:
+        if diff_method in ("numerical", "OBL"):
             self.diff_method = diff_method
             if self.diff_method == "numerical":
                 # Epsilon values for numerical differentiation with respect to pressure, temperature, and overall composition
@@ -201,6 +216,15 @@ class Pipe:
             )
 
         self._build_phase_vel_dense_der_indexers()
+
+        # The following vars are used for the property interpolator if prop_eval_method is OBL
+        self.block_idx = index_vector(
+            np.arange(pipe_geometry.num_segments).astype(np.int32)
+        )
+        # This variable (derivatives of props) is not used in calculations. Derivatives of operators are used.
+        self.dvalues = value_vector(
+            np.zeros((pipe_geometry.num_segments * physics.n_ops) * physics.n_vars)
+        )
 
         self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
 
@@ -255,91 +279,170 @@ class Pipe:
 
         """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
-            sG0 = np.zeros(num_segments)
-            rhoG0 = np.zeros(num_segments)
-            rhoL0 = np.zeros(num_segments)
-            miuG0 = np.zeros(num_segments)
-            miuL0 = np.zeros(num_segments)
-            xG_mass0 = np.zeros((num_segments, nc))
-            xL_mass0 = np.zeros((num_segments, nc))
+            if self.prop_eval_method == "OBL":
+                state0 = value_vector(Xn_dfm_well)
+                # TODO: I'm not sure if self.physics.n_ops should be used here! It is also used in the constructor for dvalues
+                values0 = value_vector(np.zeros(num_segments * self.physics.n_ops))
+                prop_itor = self.physics.property_itor[0]
+                prop_itor.evaluate_with_derivatives(
+                    state0, self.block_idx, values0, self.dvalues
+                )
 
-            if pc.nph == 3:
-                sL_a_0 = np.zeros(num_segments)
-                sL_b_0 = np.zeros(num_segments)
-                rhoL_a_0 = np.zeros(num_segments)
-                rhoL_b_0 = np.zeros(num_segments)
-                miuL_a_0 = np.zeros(num_segments)
-                miuL_b_0 = np.zeros(num_segments)
-                xL_a_mass_0 = np.zeros((num_segments, nc))
-                xL_b_mass_0 = np.zeros((num_segments, nc))
+                # Define a property array dictionary
+                prop_arr0 = {
+                    prop: np.zeros(num_segments)
+                    for prop in self.physics.property_containers[0].output_props
+                }
 
-            for i in range(num_segments):
-                state0 = Xn_dfm_well[i * n_vars : (i + 1) * n_vars]
-                pc.evaluate(state0)
-                if self.physics.thermal:
-                    pc.evaluate_thermal(state0)
+                # Fill the prop dict
+                for prop_idx, prop_name in enumerate(
+                    self.physics.property_containers[0].output_props
+                ):
+                    prop_arr_temporary = np.asarray(values0)[
+                        prop_idx :: self.physics.n_ops
+                    ]
+                    prop_arr0[prop_name] = prop_arr_temporary
+
+                sG0 = prop_arr0['sG']
+                rhoG0 = prop_arr0['rhoG']
+                miuG0 = prop_arr0['miuG'] * 1e-3  # convert cP to Pa.s
+                xG_mass0 = np.zeros((num_segments, nc))
+                for c_idx, c_name in enumerate(pc.components_name):
+                    xG_mass0[:, c_idx] = prop_arr0[f'x{c_name}_in_G_mass']
 
                 if pc.nph == 2:
-                    sG0[i] = pc.sat[0]
-                    rhoG0[i], rhoL0[i] = pc.dens[0], pc.dens[1]
-                    miuG0[i], miuL0[i] = (
-                        pc.mu[0] * 1e-3,
-                        pc.mu[1] * 1e-3,
-                    )  # convert cP to Pa.s
-                    # Calculate mass fractions of components in each phase
-                    x_mass0 = np.zeros((pc.nph, nc))
-                    for j in pc.ph:
-                        x_mass0[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
-                    xG_mass0[i, :], xL_mass0[i, :] = x_mass0[0, :], x_mass0[1, :]
+                    rhoL0 = prop_arr0['rhoL']
+                    miuL0 = prop_arr0['miuL'] * 1e-3  # convert cP to Pa.s
+                    xL_mass0 = np.zeros((num_segments, nc))
+                    for c_idx, c_name in enumerate(pc.components_name):
+                        xL_mass0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_mass']
 
                 if pc.nph == 3:
-                    # sG0[i], sL_a_0[i], sL_b_0[i] = pc.sat[1], pc.sat[0], pc.sat[2]
-                    # rhoG0[i], rhoL_a_0[i], rhoL_b_0[i] = pc.dens[1], pc.dens[0], pc.dens[2]
-                    # miuG0[i], miuL_a_0[i], miuL_b_0[i] = pc.mu[1] * 1e-3, pc.mu[0] * 1e-3, pc.mu[2] * 1e-3
-                    sG0[i], sL_a_0[i], sL_b_0[i] = pc.sat[0], pc.sat[1], pc.sat[2]
-                    rhoG0[i], rhoL_a_0[i], rhoL_b_0[i] = (
-                        pc.dens[0],
-                        pc.dens[1],
-                        pc.dens[2],
-                    )
-                    miuG0[i], miuL_a_0[i], miuL_b_0[i] = (
-                        pc.mu[0] * 1e-3,
-                        pc.mu[1] * 1e-3,
-                        pc.mu[2] * 1e-3,
-                    )
-                    # Calculate mass fractions of components in each phase
-                    x_mass0 = np.zeros((pc.nph, nc))
-                    for j in pc.ph:
-                        x_mass0[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
-                    # xG_mass0[i, :], xL_a_mass_0[i, :], xL_b_mass_0[i, :] = x_mass0[1, :], x_mass0[0, :], x_mass0[2, :]
-                    xG_mass0[i, :], xL_a_mass_0[i, :], xL_b_mass_0[i, :] = (
-                        x_mass0[0, :],
-                        x_mass0[1, :],
-                        x_mass0[2, :],
-                    )
+                    sL_a_0 = prop_arr0['sL_a']
+                    sL_b_0 = prop_arr0['sL_b']
+                    rhoL_a_0 = prop_arr0['rhoL_a']
+                    rhoL_b_0 = prop_arr0['rhoL_b']
+                    miuL_a_0 = prop_arr0['miuL_a'] * 1e-3  # convert cP to Pa.s
+                    miuL_b_0 = prop_arr0['miuL_b'] * 1e-3  # convert cP to Pa.s
+                    xL_a_mass_0 = np.zeros((num_segments, nc))
+                    for c_idx, c_name in enumerate(pc.components_name):
+                        xL_a_mass_0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_a_mass']
+                    xL_b_mass_0 = np.zeros((num_segments, nc))
+                    for c_idx, c_name in enumerate(pc.components_name):
+                        xL_b_mass_0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_b_mass']
 
                     # Calculate averaged liquid props
-                    rhoL0[i] = (
-                        (rhoL_a_0[i] * sL_a_0[i] + rhoL_b_0[i] * sL_b_0[i])
-                        / (sL_a_0[i] + sL_b_0[i])
-                        if (sL_a_0[i] + sL_b_0[i]) > 0
-                        else 0
+                    # TODO: Check to see if they're multiplied as expected
+                    rhoL0 = np.where(
+                        (sL_a_0 + sL_b_0) > 0,
+                        (rhoL_a_0 * sL_a_0 + rhoL_b_0 * sL_b_0) / (sL_a_0 + sL_b_0),
+                        0.0,
                     )
-                    miuL0[i] = (
-                        (miuL_a_0[i] * sL_a_0[i] + miuL_b_0[i] * sL_b_0[i])
-                        / (sL_a_0[i] + sL_b_0[i])
-                        if (sL_a_0[i] + sL_b_0[i]) > 0
-                        else 0
+                    miuL0 = np.where(
+                        (sL_a_0 + sL_b_0) > 0,
+                        (miuL_a_0 * sL_a_0 + miuL_b_0 * sL_b_0) / (sL_a_0 + sL_b_0),
+                        0.0,
                     )
-                    xL_mass0[i, :] = (
+                    xL_mass0 = np.where(
+                        (sL_a_0 + sL_b_0) > 0,
                         (
-                            xL_a_mass_0[i, :] * rhoL_a_0[i] * sL_a_0[i]
-                            + xL_b_mass_0[i, :] * rhoL_b_0[i] * sL_b_0[i]
+                            xL_a_mass_0 * rhoL_a_0 * sL_a_0
+                            + xL_b_mass_0 * rhoL_b_0 * sL_b_0
                         )
-                        / (rhoL_a_0[i] * sL_a_0[i] + rhoL_b_0[i] * sL_b_0[i])
-                        if (sL_a_0[i] + sL_b_0[i]) > 0
-                        else 0
+                        / (rhoL_a_0 * sL_a_0 + rhoL_b_0 * sL_b_0),
+                        0.0,
                     )
+
+            elif self.prop_eval_method == "direct":
+                sG0 = np.zeros(num_segments)
+                rhoG0 = np.zeros(num_segments)
+                rhoL0 = np.zeros(num_segments)
+                miuG0 = np.zeros(num_segments)
+                miuL0 = np.zeros(num_segments)
+                xG_mass0 = np.zeros((num_segments, nc))
+                xL_mass0 = np.zeros((num_segments, nc))
+
+                if pc.nph == 3:
+                    sL_a_0 = np.zeros(num_segments)
+                    sL_b_0 = np.zeros(num_segments)
+                    rhoL_a_0 = np.zeros(num_segments)
+                    rhoL_b_0 = np.zeros(num_segments)
+                    miuL_a_0 = np.zeros(num_segments)
+                    miuL_b_0 = np.zeros(num_segments)
+                    xL_a_mass_0 = np.zeros((num_segments, nc))
+                    xL_b_mass_0 = np.zeros((num_segments, nc))
+
+                for i in range(num_segments):
+                    state0 = Xn_dfm_well[i * n_vars : (i + 1) * n_vars]
+                    pc.evaluate(state0)
+                    if self.physics.thermal:
+                        pc.evaluate_thermal(state0)
+
+                    if pc.nph == 2:
+                        sG0[i] = pc.sat[0]
+                        rhoG0[i], rhoL0[i] = pc.dens[0], pc.dens[1]
+                        miuG0[i], miuL0[i] = (
+                            pc.mu[0] * 1e-3,
+                            pc.mu[1] * 1e-3,
+                        )  # convert cP to Pa.s
+                        # Calculate mass fractions of components in each phase
+                        x_mass0 = np.zeros((pc.nph, nc))
+                        for j in pc.ph:
+                            x_mass0[j, :] = (pc.x[j, :] * pc.Mw) / sum(
+                                pc.x[j, :] * pc.Mw
+                            )
+                        xG_mass0[i, :], xL_mass0[i, :] = x_mass0[0, :], x_mass0[1, :]
+
+                    if pc.nph == 3:
+                        # sG0[i], sL_a_0[i], sL_b_0[i] = pc.sat[1], pc.sat[0], pc.sat[2]
+                        # rhoG0[i], rhoL_a_0[i], rhoL_b_0[i] = pc.dens[1], pc.dens[0], pc.dens[2]
+                        # miuG0[i], miuL_a_0[i], miuL_b_0[i] = pc.mu[1] * 1e-3, pc.mu[0] * 1e-3, pc.mu[2] * 1e-3
+                        sG0[i], sL_a_0[i], sL_b_0[i] = pc.sat[0], pc.sat[1], pc.sat[2]
+                        rhoG0[i], rhoL_a_0[i], rhoL_b_0[i] = (
+                            pc.dens[0],
+                            pc.dens[1],
+                            pc.dens[2],
+                        )
+                        miuG0[i], miuL_a_0[i], miuL_b_0[i] = (
+                            pc.mu[0] * 1e-3,
+                            pc.mu[1] * 1e-3,
+                            pc.mu[2] * 1e-3,
+                        )
+                        # Calculate mass fractions of components in each phase
+                        x_mass0 = np.zeros((pc.nph, nc))
+                        for j in pc.ph:
+                            x_mass0[j, :] = (pc.x[j, :] * pc.Mw) / sum(
+                                pc.x[j, :] * pc.Mw
+                            )
+                        # xG_mass0[i, :], xL_a_mass_0[i, :], xL_b_mass_0[i, :] = x_mass0[1, :], x_mass0[0, :], x_mass0[2, :]
+                        xG_mass0[i, :], xL_a_mass_0[i, :], xL_b_mass_0[i, :] = (
+                            x_mass0[0, :],
+                            x_mass0[1, :],
+                            x_mass0[2, :],
+                        )
+
+                        # Calculate averaged liquid props
+                        rhoL0[i] = (
+                            (rhoL_a_0[i] * sL_a_0[i] + rhoL_b_0[i] * sL_b_0[i])
+                            / (sL_a_0[i] + sL_b_0[i])
+                            if (sL_a_0[i] + sL_b_0[i]) > 0
+                            else 0
+                        )
+                        miuL0[i] = (
+                            (miuL_a_0[i] * sL_a_0[i] + miuL_b_0[i] * sL_b_0[i])
+                            / (sL_a_0[i] + sL_b_0[i])
+                            if (sL_a_0[i] + sL_b_0[i]) > 0
+                            else 0
+                        )
+                        xL_mass0[i, :] = (
+                            (
+                                xL_a_mass_0[i, :] * rhoL_a_0[i] * sL_a_0[i]
+                                + xL_b_mass_0[i, :] * rhoL_b_0[i] * sL_b_0[i]
+                            )
+                            / (rhoL_a_0[i] * sL_a_0[i] + rhoL_b_0[i] * sL_b_0[i])
+                            if (sL_a_0[i] + sL_b_0[i]) > 0
+                            else 0
+                        )
 
             self.iter_phases_props0 = [
                 xG_mass0,
@@ -357,85 +460,157 @@ class Pipe:
         xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, miuG0, miuL0 = self.iter_phases_props0
 
         """ Calculate phase props of current time step at centroids """
-        sG = np.zeros(num_segments)
-        rhoG = np.zeros(num_segments)
-        rhoL = np.zeros(num_segments)
-        miuG = np.zeros(num_segments)
-        miuL = np.zeros(num_segments)
-        xG_mass = np.zeros((num_segments, nc))
-        xL_mass = np.zeros((num_segments, nc))
+        if self.prop_eval_method == "OBL":
+            state = value_vector(X_dfm_well)
+            # TODO: I'm not sure if self.physics.n_ops should be used here!
+            values = value_vector(np.zeros(num_segments * self.physics.n_ops))
+            prop_itor = self.physics.property_itor[0]
+            prop_itor.evaluate_with_derivatives(
+                state, self.block_idx, values, self.dvalues
+            )
 
-        if pc.nph == 3:
-            sL_a = np.zeros(num_segments)
-            sL_b = np.zeros(num_segments)
-            rhoL_a = np.zeros(num_segments)
-            rhoL_b = np.zeros(num_segments)
-            miuL_a = np.zeros(num_segments)
-            miuL_b = np.zeros(num_segments)
-            xL_a_mass = np.zeros((num_segments, nc))
-            xL_b_mass = np.zeros((num_segments, nc))
+            # Define a property array dictionary
+            prop_arr = {
+                prop: np.zeros(num_segments)
+                for prop in self.physics.property_containers[0].output_props
+            }
 
-        for i in range(num_segments):
-            state = X_dfm_well[i * n_vars : (i + 1) * n_vars]
-            pc.evaluate(state)
-            if self.physics.thermal:
-                pc.evaluate_thermal(state)
+            # Fill the prop dict
+            for prop_idx, prop_name in enumerate(
+                self.physics.property_containers[0].output_props
+            ):
+                prop_arr_temporary = np.asarray(values)[prop_idx :: self.physics.n_ops]
+                prop_arr[prop_name] = prop_arr_temporary
+
+            sG = prop_arr['sG']
+            rhoG = prop_arr['rhoG']
+            miuG = prop_arr['miuG'] * 1e-3  # convert cP to Pa.s
+            xG_mass = np.zeros((num_segments, nc))
+            for c_idx, c_name in enumerate(pc.components_name):
+                xG_mass[:, c_idx] = prop_arr[f'x{c_name}_in_G_mass']
 
             if pc.nph == 2:
-                sG[i] = pc.sat[0]
-                rhoG[i], rhoL[i] = pc.dens[0], pc.dens[1]
-                miuG[i], miuL[i] = (
-                    pc.mu[0] * 1e-3,
-                    pc.mu[1] * 1e-3,
-                )  # convert cP to Pa.s
-                # Calculate mass fractions of components in each phase
-                x_mass = np.zeros((pc.nph, nc))
-                for j in pc.ph:
-                    x_mass[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
-                xG_mass[i, :], xL_mass[i, :] = x_mass[0, :], x_mass[1, :]
+                rhoL = prop_arr['rhoL']
+                miuL = prop_arr['miuL'] * 1e-3  # convert cP to Pa.s
+                xL_mass = np.zeros((num_segments, nc))
+                for c_idx, c_name in enumerate(pc.components_name):
+                    xL_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_mass']
 
             if pc.nph == 3:
-                # sG[i], sL_a[i], sL_b[i] = pc.sat[1], pc.sat[0], pc.sat[2]
-                # rhoG[i], rhoL_a[i], rhoL_b[i] = pc.dens[1], pc.dens[0], pc.dens[2]
-                # miuG[i], miuL_a[i], miuL_b[i] = pc.mu[1] * 1e-3, pc.mu[0] * 1e-3, pc.mu[2] * 1e-3
-                sG[i], sL_a[i], sL_b[i] = pc.sat[0], pc.sat[1], pc.sat[2]
-                rhoG[i], rhoL_a[i], rhoL_b[i] = pc.dens[0], pc.dens[1], pc.dens[2]
-                miuG[i], miuL_a[i], miuL_b[i] = (
-                    pc.mu[0] * 1e-3,
-                    pc.mu[1] * 1e-3,
-                    pc.mu[2] * 1e-3,
-                )
-                # Calculate mass fractions of components in each phase
-                x_mass = np.zeros((pc.nph, nc))
-                for j in pc.ph:
-                    x_mass[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
-                # xG_mass[i, :], xL_a_mass[i, :], xL_b_mass[i, :] = x_mass[1, :], x_mass[0, :], x_mass[2, :]
-                xG_mass[i, :], xL_a_mass[i, :], xL_b_mass[i, :] = (
-                    x_mass[0, :],
-                    x_mass[1, :],
-                    x_mass[2, :],
-                )
+                sL_a = prop_arr['sL_a']
+                sL_b = prop_arr['sL_b']
+                rhoL_a = prop_arr['rhoL_a']
+                rhoL_b = prop_arr['rhoL_b']
+                miuL_a = prop_arr['miuL_a'] * 1e-3  # convert cP to Pa.s
+                miuL_b = prop_arr['miuL_b'] * 1e-3  # convert cP to Pa.s
+                xL_a_mass = np.zeros((num_segments, nc))
+                for c_idx, c_name in enumerate(pc.components_name):
+                    xL_a_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_a_mass']
+                xL_b_mass = np.zeros((num_segments, nc))
+                for c_idx, c_name in enumerate(pc.components_name):
+                    xL_b_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_b_mass']
 
                 # Calculate averaged liquid props
-                rhoL[i] = (
-                    (rhoL_a[i] * sL_a[i] + rhoL_b[i] * sL_b[i]) / (sL_a[i] + sL_b[i])
-                    if (sL_a[i] + sL_b[i]) > 0
-                    else 0
+                # TODO: Check to see if they're multiplied as expected
+                rhoL = np.where(
+                    (sL_a + sL_b) > 0,
+                    (rhoL_a * sL_a + rhoL_b * sL_b) / (sL_a + sL_b),
+                    0.0,
                 )
-                miuL[i] = (
-                    (miuL_a[i] * sL_a[i] + miuL_b[i] * sL_b[i]) / (sL_a[i] + sL_b[i])
-                    if (sL_a[i] + sL_b[i]) > 0
-                    else 0
+                miuL = np.where(
+                    (sL_a + sL_b) > 0,
+                    (miuL_a * sL_a + miuL_b * sL_b) / (sL_a + sL_b),
+                    0.0,
                 )
-                xL_mass[i, :] = (
-                    (
-                        xL_a_mass[i, :] * rhoL_a[i] * sL_a[i]
-                        + xL_b_mass[i, :] * rhoL_b[i] * sL_b[i]
+                xL_mass = np.where(
+                    (sL_a + sL_b) > 0,
+                    (xL_a_mass * rhoL_a * sL_a + xL_b_mass * rhoL_b * sL_b)
+                    / (rhoL_a * sL_a + rhoL_b * sL_b),
+                    0.0,
+                )
+
+        elif self.prop_eval_method == "direct":
+            sG = np.zeros(num_segments)
+            rhoG = np.zeros(num_segments)
+            rhoL = np.zeros(num_segments)
+            miuG = np.zeros(num_segments)
+            miuL = np.zeros(num_segments)
+            xG_mass = np.zeros((num_segments, nc))
+            xL_mass = np.zeros((num_segments, nc))
+
+            if pc.nph == 3:
+                sL_a = np.zeros(num_segments)
+                sL_b = np.zeros(num_segments)
+                rhoL_a = np.zeros(num_segments)
+                rhoL_b = np.zeros(num_segments)
+                miuL_a = np.zeros(num_segments)
+                miuL_b = np.zeros(num_segments)
+                xL_a_mass = np.zeros((num_segments, nc))
+                xL_b_mass = np.zeros((num_segments, nc))
+
+            for i in range(num_segments):
+                state = X_dfm_well[i * n_vars : (i + 1) * n_vars]
+                pc.evaluate(state)
+                if self.physics.thermal:
+                    pc.evaluate_thermal(state)
+
+                if pc.nph == 2:
+                    sG[i] = pc.sat[0]
+                    rhoG[i], rhoL[i] = pc.dens[0], pc.dens[1]
+                    miuG[i], miuL[i] = (
+                        pc.mu[0] * 1e-3,
+                        pc.mu[1] * 1e-3,
+                    )  # convert cP to Pa.s
+                    # Calculate mass fractions of components in each phase
+                    x_mass = np.zeros((pc.nph, nc))
+                    for j in pc.ph:
+                        x_mass[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
+                    xG_mass[i, :], xL_mass[i, :] = x_mass[0, :], x_mass[1, :]
+
+                if pc.nph == 3:
+                    # sG[i], sL_a[i], sL_b[i] = pc.sat[1], pc.sat[0], pc.sat[2]
+                    # rhoG[i], rhoL_a[i], rhoL_b[i] = pc.dens[1], pc.dens[0], pc.dens[2]
+                    # miuG[i], miuL_a[i], miuL_b[i] = pc.mu[1] * 1e-3, pc.mu[0] * 1e-3, pc.mu[2] * 1e-3
+                    sG[i], sL_a[i], sL_b[i] = pc.sat[0], pc.sat[1], pc.sat[2]
+                    rhoG[i], rhoL_a[i], rhoL_b[i] = pc.dens[0], pc.dens[1], pc.dens[2]
+                    miuG[i], miuL_a[i], miuL_b[i] = (
+                        pc.mu[0] * 1e-3,
+                        pc.mu[1] * 1e-3,
+                        pc.mu[2] * 1e-3,
                     )
-                    / (rhoL_a[i] * sL_a[i] + rhoL_b[i] * sL_b[i])
-                    if (sL_a[i] + sL_b[i]) > 0
-                    else 0
-                )
+                    # Calculate mass fractions of components in each phase
+                    x_mass = np.zeros((pc.nph, nc))
+                    for j in pc.ph:
+                        x_mass[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
+                    # xG_mass[i, :], xL_a_mass[i, :], xL_b_mass[i, :] = x_mass[1, :], x_mass[0, :], x_mass[2, :]
+                    xG_mass[i, :], xL_a_mass[i, :], xL_b_mass[i, :] = (
+                        x_mass[0, :],
+                        x_mass[1, :],
+                        x_mass[2, :],
+                    )
+
+                    # Calculate averaged liquid props
+                    rhoL[i] = (
+                        (rhoL_a[i] * sL_a[i] + rhoL_b[i] * sL_b[i])
+                        / (sL_a[i] + sL_b[i])
+                        if (sL_a[i] + sL_b[i]) > 0
+                        else 0
+                    )
+                    miuL[i] = (
+                        (miuL_a[i] * sL_a[i] + miuL_b[i] * sL_b[i])
+                        / (sL_a[i] + sL_b[i])
+                        if (sL_a[i] + sL_b[i]) > 0
+                        else 0
+                    )
+                    xL_mass[i, :] = (
+                        (
+                            xL_a_mass[i, :] * rhoL_a[i] * sL_a[i]
+                            + xL_b_mass[i, :] * rhoL_b[i] * sL_b[i]
+                        )
+                        / (rhoL_a[i] * sL_a[i] + rhoL_b[i] * sL_b[i])
+                        if (sL_a[i] + sL_b[i]) > 0
+                        else 0
+                    )
 
         self.iter_phases_props = [xG_mass, xL_mass, sG, rhoG, rhoL, miuG, miuL]
 

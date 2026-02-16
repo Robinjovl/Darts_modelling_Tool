@@ -81,6 +81,7 @@ class PropertyContainer(PropertyBase):
 
         # passing arguments
         self.x = np.zeros((self.np_fl, self.nc_fl))
+        self.x_mass = np.zeros((self.np_fl, self.nc_fl))
         self.dens = np.zeros(self.nph)
         self.dens_m = np.zeros(self.nph)
         self.sat = np.zeros(self.nph)
@@ -292,6 +293,9 @@ class PropertyContainer(PropertyBase):
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
                 pressure, self.temperature, self.x[j, :], self.dens[j]
             )  # output in [cp]
+
+            self.x_mass[j, :] = (self.x[j, :] * self.Mw) / sum(self.x[j, :] * self.Mw)
+
         self.compute_saturation(self.ph)
 
         self.pc = self.capillary_pressure_ev.evaluate(self.sat)

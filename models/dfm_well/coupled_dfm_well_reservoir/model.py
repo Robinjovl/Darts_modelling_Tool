@@ -77,7 +77,7 @@ class Model(CICDModel):
         from dartsflash.components import CompData
         from dartsflash.mixtures import DARTSFlash, VL
         components_names = ['CO2']
-        phases_names = ['gas', 'LCO2']
+        phases_names = ['G', 'L']   # G is the gaseous-CO2 phase and L is the liquid-CO2 phase
         comp_data = CompData(components_names, setprops=True)
         epsilon = self.zero / 10
 
@@ -100,29 +100,29 @@ class Model(CICDModel):
 
         """ Define phase properties """
         pr = flash_ev.eos["VL"]
-        property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('LCO2', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
+        property_container.density_ev = dict([('G', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
+                                              ('L', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
                                               ])
-        property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MAX)),
-                                               ('LCO2', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MIN)),
+        property_container.enthalpy_ev = dict([('G', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MAX)),
+                                               ('L', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MIN)),
                                                ])
-        property_container.viscosity_ev = dict([('gas', Fenghour1998()),
-                                                ('LCO2', Fenghour1998()),
+        property_container.viscosity_ev = dict([('G', Fenghour1998()),
+                                                ('L', Fenghour1998()),
                                                 ])
 
         # diff = 8.64e-6
-        # property_container.diffusion_ev = dict([('gas', ConstFunc(np.ones(len(components_names)) * diff)),
-        #                                         ('LCO2', ConstFunc(np.ones(len(components_names)) * diff)),
+        # property_container.diffusion_ev = dict([('G', ConstFunc(np.ones(len(components_names)) * diff)),
+        #                                         ('L', ConstFunc(np.ones(len(components_names)) * diff)),
         #                                         ('aqueous', ConstFunc(np.ones(len(components_names)) * diff * 1e-3))])
 
-        property_container.conductivity_ev = dict([('gas', ConstFunc(3.5)),
-                                                   ('LCO2', ConstFunc(7.)),
+        property_container.conductivity_ev = dict([('G', ConstFunc(3.5)),
+                                                   ('L', ConstFunc(7.)),
                                                    ])
 
         self.sw_init_res = 0
         swc = self.sw_init_res
-        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas", swc=swc, sgr=swc, n=1.5)),
-                                               ('LCO2', PhaseRelPerm("oil", swc=swc, sgr=swc, n=1.5)),
+        property_container.rel_perm_ev = dict([('G', PhaseRelPerm("gas", swc=swc, sgr=swc, n=1.5)),
+                                               ('L', PhaseRelPerm("oil", swc=swc, sgr=swc, n=1.5)),
                                                ])
 
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
@@ -133,12 +133,11 @@ class Model(CICDModel):
         property_container.output_props = {}
         property_container.output_props['temperature'] = lambda: property_container.temperature
         for j, ph in enumerate(phases_names):
-            property_container.output_props['sat_' + ph] = lambda jj=j: property_container.sat[jj]
-            property_container.output_props['rho_' + ph] = lambda jj=j: property_container.dens[jj]
-            property_container.output_props['miu_' + ph] = lambda jj=j: property_container.mu[jj]
-            property_container.output_props['enth_' + ph] = lambda jj=j: property_container.enthalpy[jj]
+            property_container.output_props['s' + ph] = lambda jj=j: property_container.sat[jj]
+            property_container.output_props['rho' + ph] = lambda jj=j: property_container.dens[jj]
+            property_container.output_props['miu' + ph] = lambda jj=j: property_container.mu[jj]
             for i, comp in enumerate(components_names):
-                property_container.output_props[comp + '_in_' + ph] = lambda jj=j, ii=i: property_container.x[jj, ii]
+                property_container.output_props[f'x{comp}_in_{ph}_mass'] = lambda jj=j, ii=i: property_container.x_mass[jj, ii]
 
         return
 
@@ -162,7 +161,7 @@ class Model(CICDModel):
         temp_grad = 0.03  # deg C/meter
         pipe_head_segment_index = 0  # index starts from zero
 
-        initial_conditions_dict = {'phases_names': ['gas'], 'phases_compositions': [[1.]],
+        initial_conditions_dict = {'phases_names': ['G'], 'phases_compositions': [[1.]],
                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe and pipe_intervals are TVD
 
         well_1_initial_conditions = LinearAmbientTemperature(well_1_name, well_1_geometry, self.physics,
@@ -176,9 +175,9 @@ class Model(CICDModel):
         ramp_up_period = 3 / (24 * 60)  # in day
 
         inj_phase_comp = np.array([1.])
-        # There is no difference if the phase used in the following line for evaluating enthalpy is either gas
-        # or LCO2 because for both the same EoSs are used.
-        inj_phase_name = "gas"
+        # There is no difference if the phase used in the following line for evaluating enthalpy is either G
+        # or L because for both the same EoSs are used.
+        inj_phase_name = "G"
         injected_fluid_pressure = 60.
         injected_fluid_temperature = 10 + 273.15
         inj_fluid_props = {"composition": inj_phase_comp, "phase_name": inj_phase_name, "pressure": injected_fluid_pressure, "temperature": injected_fluid_temperature}
