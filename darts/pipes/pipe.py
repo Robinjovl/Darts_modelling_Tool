@@ -52,7 +52,7 @@ class Pipe:
         source_sinks: dict = None,
         Cmax: float = 1.2,
         Fv: float = 1,
-        prop_eval_method: str = "OBL",
+        prop_eval_method: str = "direct",
         diff_method: str = "OBL",
         eps_p: float = 1e-4,
         eps_temp: float = 0.1,
@@ -78,8 +78,19 @@ class Pipe:
         :param Fv: A multiplier on the flooding velocity fraction, set to be 1 by default, and its value can be tuned
                    to fit the observations.
         :type Fv: float
-        :param prop_eval_method: Method for evaluation of wellbore phase properties to calculate phase
-                                 "OBL" for OBL approach (default) and "direct" for direct usage of property evaluators
+        :param prop_eval_method: Method for evaluation of wellbore phase properties to calculate phase velocities
+                                 "OBL" for OBL approach and "direct" for direct usage of property evaluators (default)
+                                 Note that using the OBL approach may lead to non-zero phase saturation where saturation
+                                 is expected to be zero or non-one phase saturation where saturation is expected to be 1.
+                                 This leads to instability of evaluation of wellbore phase velocities. To avoid this
+                                 either use a larger OBL resolution or use the direct method as a safe approach.
+                                 If the OBL approach is used the following points need to be followed when creating
+                                 the model:
+                                 - Use 'G' as the name of the gaseous phase
+                                 - Use 'L' as the name of the liquid phase (for a single liquid phase)
+                                 - Use 'L_a' and 'L_b' as the names of the liquid phases (for two liquid phases)
+                                 - In output_props of the property container, specify phase saturation, density,
+                                   viscosity, and mass composition of each phase with appropriate names as keys.
         :type prop_eval_method: str
         :param diff_method: Method for differentiation of wellbore phase velocities with respect to the primary
                             variables. "OBL" for OBL diff (default) and "numerical" for numerical diff
