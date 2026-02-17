@@ -23,6 +23,7 @@
   - Added Output.output_to_plt() method for StructReservoir classes using xarray interface. ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
   - `CFL_max` is added to the H5 well output. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
   - Strain rate and additional output to vtk for poroelastic model: [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/274)
+  - Custom arrays output support for [fracture data](https://gitlab.com/open-darts/open-darts/-/merge_requests/241)
 
 - Solvers:
   - An option to use PARDISO linear solver is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/247)
@@ -35,7 +36,7 @@
 
 - Models:
   - Added a simple example of a thermal model with foam (models/3ph_comp_w_foam)
-  - fracture_network model: 3D meshes are added, perforation dpeth range is supported, supported meshes without fractures [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/271)
+  - fracture_network model: 3D meshes are added, perforation dpeth range is supported, supported meshes without fractures [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/271); related [fix](https://gitlab.com/open-darts/open-darts/-/merge_requests/243)
 
 - Tools:
   - added a [script](https://gitlab.com/open-darts/open-darts/-/merge_requests/271) to convert meshes from paraview format to gmsh format
