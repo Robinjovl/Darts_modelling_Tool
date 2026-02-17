@@ -29,17 +29,21 @@
   - An option to use PARDISO linear solver is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/247)
   - An optional use of PETSc linear solver for Geothermal and Poromechanical physics is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/235) 
 
-- Build system:
-  - Python 3.13 is [supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/261) and Python 3.9 support is [no longer supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/248)
-  - Switched to ubuntu2018 docker image and conda-forge in the pipelines: [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/267) 
-  - Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
-
 - Models:
   - Added a simple example of a thermal model with foam (models/3ph_comp_w_foam)
   - fracture_network model: 3D meshes are added, perforation dpeth range is supported, supported meshes without fractures [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/271); related [fix](https://gitlab.com/open-darts/open-darts/-/merge_requests/243)
 
 - Tools:
   - added a [script](https://gitlab.com/open-darts/open-darts/-/merge_requests/271) to convert meshes from paraview format to gmsh format
+
+- Build system and CI/CD:
+  - Python 3.13 is [supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/261) and Python 3.9 support is [no longer supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/248)
+  - Switched to ubuntu2018 docker image and conda environments in the [pipelines](https://gitlab.com/open-darts/open-darts/-/merge_requests/267) 
+  - Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+  - CI/CD jobs moved from `helper_scripts/ci_jobs` to `.cicd/jobs`, splitted for platforms, improved job rules
+  - Added pre-commit/linting in the pipelines, switched to ruff-based formatting [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/233) and added [gitingest](https://gitlab.com/open-darts/open-darts/-/merge_requests/239)
+  - Added [Valgrind](https://gitlab.com/open-darts/open-darts/-/merge_requests/201) checks in the pipelines
+  - Added an additional job for GPU Linux platform based on an apptainer [image](https://gitlab.com/open-darts/open-darts/-/merge_requests/232)
 
 - Breaking changes:
   - Input arguments to facilitate consistent compositional axes and extrapolation:
@@ -58,11 +62,6 @@
   - Plotting methods for structured data `plot_xarray()` has become `output_to_plt()` and has options to plot from solution file, xarray dataset or engine.X:\
   {- Before: self.output.plot_xarray(xarray_data, output_properties, timestep, ...) -}\
   {+ Now:    self.output.output_to_plt(sol_filepath, xarray_data, output_properties, timestep, ) +}
-
-- CI/CD and DevOps:
-  - Jobs moved from `helper_scripts/ci_jobs` to `.cicd/jobs`
-  - Added and expanded CI jobs and tooling, including pre-commit/linting, switch to ruff-based formatting, gitingest, Valgrind profiling: [commit](https://gitlab.com/open-darts/open-darts/-/commit/feb260153b36ce172e4958b02d79df8956e6caed)
-  - Improved CI stability and portability across platforms (Linux, GPU, Windows) by fixing conda environment handling, dependency issues, build scripts, and job rules.
 
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
