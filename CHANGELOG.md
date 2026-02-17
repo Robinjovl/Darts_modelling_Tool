@@ -14,6 +14,7 @@
 
 - Reservoirs:
   - Add StructRadialReservoir and UnstructRadialReservoir classes, derived from (Un/)StructuredReservoir classes. Implementation in darts/models/ccs and darts/models/dfm_well ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
+  - Easy setting of rock properties by regions is [implemented](https://gitlab.com/open-darts/open-darts/-/merge_requests/251) for CPG reservoir (ROCKNUM)
 
 - Output:
   - Cell centroids are now included under static variables in the output file `reservoir_solution.h5`. ([!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282))
@@ -21,12 +22,23 @@
   - Reduced well output evaluation time by using vectorized interpolators. In the past two for loops were used over time steps + over connection ids (wellheads and perforations). Now, they are removed. In addition, all operators now are evaluated using interpolators.
   - Added Output.output_to_plt() method for StructReservoir classes using xarray interface. ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
   - `CFL_max` is added to the H5 well output. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+  - Strain rate and additional output to vtk for poroelastic model: [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/274)
 
-- Other:
+- Solvers:
+  - An option to use PARDISO linear solver is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/247)
+  - An optional use of PETSc linear solver for Geothermal and Poromechanical physics is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/235) 
+
+- Build system:
+  - Python 3.13 is [supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/261) and Python 3.9 support is [no longer supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/248)
+  - Switched to ubuntu2018 docker image and conda-forge in the pipelines: [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/267) 
   - Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
 
 - Models:
   - Added a simple example of a thermal model with foam (models/3ph_comp_w_foam)
+  - fracture_network model: 3D meshes are added, perforation dpeth range is supported, supported meshes without fractures [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/271)
+
+- Tools:
+  - added a [script](https://gitlab.com/open-darts/open-darts/-/merge_requests/271) to convert meshes from paraview format to gmsh format
 
 - Breaking changes:
   - Input arguments to facilitate consistent compositional axes and extrapolation:
