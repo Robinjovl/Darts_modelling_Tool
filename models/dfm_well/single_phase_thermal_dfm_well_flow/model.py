@@ -214,36 +214,3 @@ class Model(CICDModel):
         rhs_flux[well_head_start_idx:well_head_start_idx + self.physics.n_vars:] = - inj_rates
 
         return rhs_flux
-
-    def populate_data_for_radial_vtk_output(self, data):
-        new_data = {}
-        n_cells = self.reservoir.mesh.n_res_blocks
-        for prop, val in data.items():
-            # populate r-z data to all angles
-            new_data[prop] = np.tile(val, self.reservoir.nphi)
-
-        return new_data
-
-    def output_to_vtk(self, ith_step: int = None, output_directory: str = None, output_properties: list = None):
-        if output_directory is None:
-            output_directory = self.output_folder
-
-        timestep, output_data = self.output.output_properties(output_properties=output_properties, timestep=ith_step)
-
-        data = self.populate_data_for_radial_vtk_output(output_data)
-        self.reservoir.output_to_vtk(output_directory=output_directory, data=data, ith_step=ith_step, t=timestep,
-                                     prop_names=list(output_data.keys()))
-
-    def get_unknowns_for_radial_vtk_output(self):
-        X = np.array(self.physics.engine.X, copy=False)
-
-        # prepare data
-        data = {}
-        n_cells = self.reservoir.mesh.n_res_blocks
-        for i, var in enumerate(self.physics.vars):
-            # write r-z data
-            data[var] = X[i:self.physics.n_vars * n_cells:self.physics.n_vars]
-            # populate r-z data to all angles
-            data[var] = np.tile(data[var], self.reservoir.nphi)
-
-        return data

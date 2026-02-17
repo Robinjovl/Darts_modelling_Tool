@@ -38,7 +38,6 @@ coupled_model.set_output()
 
 if 1:
     output_props = coupled_model.physics.vars + coupled_model.output.properties
-    coupled_model.output_to_vtk(ith_step=0, output_properties=output_props)   # saves initial conditions
 
     time_steps = [
         100 / 60 / 60 / 24,   # 100 seconds
@@ -46,8 +45,8 @@ if 1:
 
     for i, dt in enumerate(time_steps):
         coupled_model.run(dt)
-        coupled_model.output_to_vtk(ith_step=i+1, output_properties=output_props)
 
+    coupled_model.output.output_to_vtk(output_properties=output_props)
     coupled_model.print_timers()
 else:
     save_segments_primary_vars_and_phase_props(coupled_model)
