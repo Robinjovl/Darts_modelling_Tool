@@ -206,6 +206,21 @@ class Pipe:
             raise ValueError(
                 "prop_eval_method for pipe velocity differentiation must be either 'OBL' or 'direct'!"
             )
+        # The following vars are used for the property interpolator used if prop_eval_method is OBL
+        if self.prop_eval_method == "OBL":
+            if len(pc.output_props) < self.physics.n_ops:
+                self.n_prop_ops = self.physics.n_ops
+            else:
+                self.n_prop_ops = len(pc.output_props) + self.physics.n_vars
+            self.block_idx = index_vector(
+                np.arange(pipe_geometry.num_segments).astype(np.int32)
+            )
+            # This variable (derivatives of props) is not used in calculations. Derivatives of operators are used.
+            self.dvalues = value_vector(
+                np.zeros(
+                    (pipe_geometry.num_segments * self.n_prop_ops) * self.n_prop_ops
+                )
+            )
 
         assert isinstance(diff_method, str), (
             "diff_method for pipe velocity differentiation must be a string!"
@@ -228,22 +243,6 @@ class Pipe:
             )
 
         self._build_phase_vel_dense_der_indexers()
-
-        # The following vars are used for the property interpolator used if prop_eval_method is OBL
-        if self.prop_eval_method == "OBL":
-            if len(pc.output_props) < self.physics.n_ops:
-                self.n_prop_ops = self.physics.n_ops
-            else:
-                self.n_prop_ops = len(pc.output_props) + self.physics.n_vars
-            self.block_idx = index_vector(
-                np.arange(pipe_geometry.num_segments).astype(np.int32)
-            )
-            # This variable (derivatives of props) is not used in calculations. Derivatives of operators are used.
-            self.dvalues = value_vector(
-                np.zeros(
-                    (pipe_geometry.num_segments * self.n_prop_ops) * self.n_prop_ops
-                )
-            )
 
         self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
 
