@@ -8,22 +8,16 @@ import pandas as pd
 from matplotlib.ticker import FormatStrFormatter
 
 from darts.models.darts_model import DartsModel
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_well_prop_profiles(
-    primary_vars_and_phase_props_file_address: str,
-    h5_well_data: dict,
     coupled_model: DartsModel,
 ):
     """
-    This function is used to plot well property profiles at certain time steps. Please note that currently, the function
+    Plot well property profiles at certain time steps. Please note that currently, the function
     is limited to report_step_labels and report_step_times used below.
 
-    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of well segments are stored
-    :type primary_vars_and_phase_props_file_address: str
-    :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
-    :type h5_well_data: dict
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
     """
@@ -35,9 +29,15 @@ def plot_well_prop_profiles(
     os.makedirs(main_dir)
 
     # Load primary vars and phase props
-    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+    primary_vars_and_phase_props_file_path = os.path.join(
+        coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl"
+    )
+    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_path)
 
-    simulated_time = h5_well_data["dynamic"]["time"]
+    # Well HDF5 file is used here to get the time step sizes
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
+    simulated_time = h5_well_dict["dynamic"]["time"]
 
     # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
     # and assigns it to well_geom.

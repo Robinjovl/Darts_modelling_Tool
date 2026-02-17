@@ -7,19 +7,17 @@ import pandas as pd
 from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_line_graphs(
-    primary_vars_and_phase_props_file_address: str,
-    h5_well_data: dict,
     coupled_model: DartsModel,
     time_step_increment: int = 1,
     show_plot: bool = True,
 ):
     """
-    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of well segments are stored
-    :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
+    Plot well property profile over time using line graphs
+
     :param coupled_model: An instance of DartsModel
     :param show_plot: Whether or not to show the plot
     :type show_plot: bool
@@ -31,8 +29,15 @@ def plot_line_graphs(
         shutil.rmtree(main_dir)
     os.makedirs(main_dir)
 
+    # Well HDF5 file is used here to get the time step sizes
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
+
     # Load primary vars and phase props
-    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+    primary_vars_and_phase_props_file_path = os.path.join(
+        coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl"
+    )
+    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_path)
 
     # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary and assigns it to well_geom.
     well_geom = next(iter(coupled_model.wells.values())).geometry
@@ -41,9 +46,8 @@ def plot_line_graphs(
     components_names = coupled_model.physics.property_containers[0].components_name
     num_components = len(components_names)
 
-    simulated_time = (
-        h5_well_data["dynamic"]["time"] * 24 * 60 * 60
-    )  # convert days to seconds
+    # convert days to seconds
+    simulated_time = h5_well_dict["dynamic"]["time"] * 24 * 60 * 60
     num_ts = len(simulated_time)
     list_of_time_steps = range(0, num_ts, time_step_increment)
 

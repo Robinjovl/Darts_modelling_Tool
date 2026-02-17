@@ -3,20 +3,23 @@ import os
 import numpy as np
 import pandas as pd
 
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
-def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
+
+def save_segments_primary_vars_and_phase_props(coupled_model):
     """
-    Stores the primary variables and phase properties of well segments in a pickle file
+    Store the primary variables and phase properties of well segments in a pickle file in the output folder
 
-    :param h5_well_data: Dictionary of well data loaded from the HDF5 file
-    :type h5_well_data: dict
     :param coupled_model: The instance of the DartsModel
     :type coupled_model: DartsModel
     """
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
+
     pc = coupled_model.physics.property_containers[0]
 
     num_perfs = len(coupled_model.reservoir.wells[0].perforations)
-    num_segments = len(h5_well_data["dynamic"]["X"][0, :, 0]) - num_perfs
+    num_segments = len(h5_well_dict["dynamic"]["X"][0, :, 0]) - num_perfs
 
     p = np.zeros(num_segments)
     z = np.zeros((num_segments, pc.nc))
@@ -54,12 +57,12 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     iter_counter = 0
     flag = 1
 
-    time = h5_well_data["dynamic"]["time"]
+    time = h5_well_dict["dynamic"]["time"]
     time_from_zero = np.insert(time, 0, 0.0)
     time_step_sizes = np.diff(time_from_zero)
     for i, dt in enumerate(time_step_sizes):
         for j in range(num_segments):
-            state = h5_well_data["dynamic"]["X"][i, j + num_perfs, :]
+            state = h5_well_dict["dynamic"]["X"][i, j + num_perfs, :]
             p[j] = state[0]
 
             # Evaluate temperature for when the primary vars are PH and evaluate phase props
@@ -123,10 +126,10 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
                 iter(coupled_model.wells.values())
             ).initial_conditions.initial_conditions_vector
             Xn_ms_well = initial_conditions
-            X_ms_well = h5_well_data["dynamic"]["X"][i, num_perfs:, :].flatten()
+            X_ms_well = h5_well_dict["dynamic"]["X"][i, num_perfs:, :].flatten()
         else:
-            Xn_ms_well = h5_well_data["dynamic"]["X"][i - 1, num_perfs:, :].flatten()
-            X_ms_well = h5_well_data["dynamic"]["X"][i, num_perfs:, :].flatten()
+            Xn_ms_well = h5_well_dict["dynamic"]["X"][i - 1, num_perfs:, :].flatten()
+            X_ms_well = h5_well_dict["dynamic"]["X"][i, num_perfs:, :].flatten()
         phase_velocities = next(iter(coupled_model.wells.values())).eval_phase_vels(
             Xn_ms_well, X_ms_well, dt, time_from_zero[i], iter_counter, flag
         )

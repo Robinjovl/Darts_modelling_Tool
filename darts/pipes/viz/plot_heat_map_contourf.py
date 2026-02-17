@@ -8,11 +8,10 @@ from matplotlib.colors import BoundaryNorm
 from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_heat_map_contourf(
-    primary_vars_and_phase_props_file_address: str,
-    h5_well_data: dict,
     coupled_model: DartsModel,
     min_ts_idx: int = 0,
     max_ts_idx: int = None,
@@ -34,11 +33,8 @@ def plot_heat_map_contourf(
     with_logarithmic_x_axis: bool = False,
 ):
     """
-    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of well segments are stored
-    :type primary_vars_and_phase_props_file_address: str
-    :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
-    :type h5_well_data: dict
+    Plot well property profile over time using contourf
+
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
     :param min_ts_idx: If specified, the heat map will be shown from the specified minimum time step index. If not
@@ -84,6 +80,10 @@ def plot_heat_map_contourf(
         shutil.rmtree(main_dir)
     os.makedirs(main_dir)
 
+    # Well HDF5 file is used here to get the time step sizes
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
+
     # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
     # and assigns it to well_geom.
     well_geom = next(iter(coupled_model.wells.values())).geometry
@@ -102,7 +102,10 @@ def plot_heat_map_contourf(
     num_interfaces = num_segments - 1
 
     # Load primary vars and phase props
-    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+    primary_vars_and_phase_props_file_path = os.path.join(
+        coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl"
+    )
+    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_path)
     num_ts = int(
         len(data_frame["sG"]) / num_segments
     )  # Initial conditions of sG is not stored.
@@ -119,9 +122,8 @@ def plot_heat_map_contourf(
     )
 
     if x_axis == "simulated_time":
-        simulated_time = (
-            h5_well_data["dynamic"]["time"] * 24 * 60 * 60
-        )  # convert days to seconds
+        # convert days to seconds
+        simulated_time = h5_well_dict["dynamic"]["time"] * 24 * 60 * 60
         # Apply the user-specified time-step index range
         simulated_time = simulated_time[min_ts_idx:max_ts_idx]
 

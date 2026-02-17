@@ -24,7 +24,6 @@ import matplotlib.pyplot as plt
 import os
 
 from darts.engines import redirect_darts_output
-from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.pipes.save_results import save_segments_primary_vars_and_phase_props
 from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
 from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
@@ -51,10 +50,7 @@ if 1:
 
     coupled_model.print_timers()
 else:
-    well_data_file_path = os.path.join(coupled_model.output.output_folder, "well_data.h5")
-    h5_well_data = load_hdf5_to_dict(well_data_file_path)
-    save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model)
+    save_segments_primary_vars_and_phase_props(coupled_model)
 
-    primary_vars_and_phase_props_file_address = os.path.join(coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl")
-    plot_heat_map_pcolormesh(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
-    plot_heat_map_contourf(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
+    plot_heat_map_pcolormesh(coupled_model)
+    plot_heat_map_contourf(coupled_model)

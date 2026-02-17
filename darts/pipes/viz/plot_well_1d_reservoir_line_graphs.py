@@ -23,11 +23,10 @@ import numpy as np
 import pandas as pd
 
 from darts.models.darts_model import DartsModel
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_well_1d_reservoir_line_graphs_for_reported_times(
-    primary_vars_and_phase_props_file_address: str,
-    h5_well_data: dict,
     coupled_model: DartsModel,
     report_time_labels: list,
     reported_times: list,
@@ -36,14 +35,9 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     legend_loc: str = 'best',
 ):
     """
-    This function is used to plot well-reservoir property profiles at certain reported times for a scenario.
-    It can be used only for 1D reservoirs.
+    Plot well-reservoir property profiles at certain reported times for a scenario.
+    Note: It can be used only for 1D reservoirs.
 
-    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of well segments are stored
-    :type primary_vars_and_phase_props_file_address: str
-    :param h5_well_data: HDF5 file containing well solution
-    :type h5_well_data: dict
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
     :param report_time_labels: List of labels of reported times
@@ -141,14 +135,20 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     #                      1 / 24 - 1 / 24 / 6 * 5,  # 1 hour
     #                      ]
 
-    simulated_time = h5_well_data["dynamic"]["time"]
+    # Well HDF5 file is used here to get the time step sizes
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
+    simulated_time = h5_well_dict["dynamic"]["time"]
 
     report_indices = [
         np.where(np.isclose(simulated_time, a))[0][0] for a in reported_times
     ]
 
     # Load primary vars and phase props for well
-    well_data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+    primary_vars_and_phase_props_file_path = os.path.join(
+        coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl"
+    )
+    well_data_frame = pd.read_pickle(primary_vars_and_phase_props_file_path)
 
     # Fast load; infer low-memory dtypes
     all_solutions_csv_path = os.path.join(output_folder_path, "all_solutions.csv")

@@ -7,11 +7,10 @@ import pandas as pd
 from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_heat_map_pcolormesh(
-    primary_vars_and_phase_props_file_address: str,
-    h5_well_data: dict,
     coupled_model: DartsModel,
     max_ts_idx: int = None,
     x_axis: str = "simulated_time",
@@ -23,11 +22,8 @@ def plot_heat_map_pcolormesh(
     with_title: bool = True,
 ):
     """
-    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of well segments are stored
-    :type primary_vars_and_phase_props_file_address: str
-    :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
-    :type h5_well_data: dict
+    Plot well property profile over time using pcolormesh
+
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
     :param max_ts_idx: If specified, the heat map will be shown until the specified maximum time step index. If not
@@ -53,6 +49,10 @@ def plot_heat_map_pcolormesh(
         shutil.rmtree(main_dir)
     os.makedirs(main_dir)
 
+    # Well HDF5 file is used here to get the time step sizes
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
+
     # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
     # and assigns it to well_geom.
     well_geom = next(iter(coupled_model.wells.values())).geometry
@@ -71,7 +71,10 @@ def plot_heat_map_pcolormesh(
     num_interfaces = num_segments - 1
 
     # Load primary vars and phase props
-    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+    primary_vars_and_phase_props_file_path = os.path.join(
+        coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl"
+    )
+    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_path)
 
     num_ts = int(
         len(data_frame["sG"]) / num_segments
@@ -83,9 +86,8 @@ def plot_heat_map_pcolormesh(
     )
 
     if x_axis == "simulated_time":
-        simulated_time = (
-            h5_well_data["dynamic"]["time"] * 24 * 60 * 60
-        )  # convert days to seconds
+        # convert days to seconds
+        simulated_time = h5_well_dict["dynamic"]["time"] * 24 * 60 * 60
         # Apply the user-specified time-step index range
         simulated_time = simulated_time[:max_ts_idx]
 
