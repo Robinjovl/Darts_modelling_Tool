@@ -1,20 +1,33 @@
-# 1.3.3 [Future]
-- Extrapolation of operators at supporting points with negative last compositions for consistent interpolation in hypercubes at the edge of the compositional domain - current logic works only for equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
-- Consistent composition bounds using min_z/max_z (e.g., 0 to 1), epsilon (for min_axis_z/max_axis_z: eps_z, 1-(nc-1)*eps_z) and sim_eps (min_axis_z + sim_eps, max_axis_z - sim_eps) - current logic only fully verified with equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
-- Cell centroids are now included under static variables in the output file `reservoir_solution.h5`. ([!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282))
-- Change operators by splitting density out of `GRAD_OP` and introducing new `DENS_OP`. ([!237](https://gitlab.com/open-darts/open-darts/-/merge_requests/237))
-- Change operators by splitting `FLUX_OP` operator into two operators and introducing `SAT_OP`. ([!234](https://gitlab.com/open-darts/open-darts/-/merge_requests/234))
-- Add potential energy to the energy conservation equation. This feature is off by default ([!246](https://gitlab.com/open-darts/open-darts/-/merge_requests/246), [!263](https://gitlab.com/open-darts/open-darts/-/merge_requests/263))
-- Always use `WellOperators` for wells (in the past, `ReservoirOperators` was used for wells for thermal scenarios) ([!284](https://gitlab.com/open-darts/open-darts/-/merge_requests/284)).
-- Add the Drift-Flux Model (DFM) as a new multi-segment well model. ([!230](https://gitlab.com/open-darts/open-darts/-/merge_requests/230))
-- Add StructRadialReservoir and UnstructRadialReservoir classes, derived from (Un/)StructuredReservoir classes. Implementation in darts/models/ccs and darts/models/dfm_well ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
-- Reduce runtime by saving well output after DartsModel.run(). ([!228](https://gitlab.com/open-darts/open-darts/-/merge_requests/228))
-- Reduce well output evaluation time by using vectorized interpolators. In the past two for loops were used over time steps + over connection ids (wellheads and perforations). Now, they are removed. In addition, all operators now are evaluated using interpolators.
-- Add Output.output_to_plt() method for StructReservoir classes using xarray interface. ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
-- Chemistry: Built-in interfaces to third-party geochemical flashes (PHREEQC and Reaktoro), databases (`phreeqc.dat`, `pitzer.dat`, `supcrtbl.dat`) and reaction kinetics model (`KineticRate`) for carbonate minerals (`PalandriKharaka.json`). New Element-based physics for reactive flow and transport in `ElementBasedReactiveFlow` supporting built-in thirdparty solvers and databases. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
-- `CFL_max` is added to the H5 well output. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
-- More robust OBL cache saving using atomic writes. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
-- Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+# 1.4.0 [17-02-2026]
+- OBL and operators:
+  - Extrapolation of operators at supporting points with negative last compositions for consistent interpolation in hypercubes at the edge of the compositional domain - current logic works only for equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
+  - Consistent composition bounds using min_z/max_z (e.g., 0 to 1), epsilon (for min_axis_z/max_axis_z: eps_z, 1-(nc-1)*eps_z) and sim_eps (min_axis_z + sim_eps, max_axis_z - sim_eps) - current logic only fully verified with equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
+  - Change operators by splitting density out of `GRAD_OP` and introducing new `DENS_OP`. ([!237](https://gitlab.com/open-darts/open-darts/-/merge_requests/237))
+  - Change operators by splitting `FLUX_OP` operator into two operators and introducing `SAT_OP`. ([!234](https://gitlab.com/open-darts/open-darts/-/merge_requests/234))
+  - More robust OBL cache saving using atomic writes. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+  - Always use `WellOperators` for wells (in the past, `ReservoirOperators` was used for wells for thermal scenarios) ([!284](https://gitlab.com/open-darts/open-darts/-/merge_requests/284)).
+
+- Physics:
+  - Added the Drift-Flux Model (DFM) as a new multi-segment well model. ([!230](https://gitlab.com/open-darts/open-darts/-/merge_requests/230))
+  - Added potential energy to the energy conservation equation. This feature is off by default ([!246](https://gitlab.com/open-darts/open-darts/-/merge_requests/246), [!263](https://gitlab.com/open-darts/open-darts/-/merge_requests/263))
+  - Chemistry: Built-in interfaces to third-party geochemical flashes (PHREEQC and Reaktoro), databases (`phreeqc.dat`, `pitzer.dat`, `supcrtbl.dat`) and reaction kinetics model (`KineticRate`) for carbonate minerals (`PalandriKharaka.json`). New Element-based physics for reactive flow and transport in `ElementBasedReactiveFlow` supporting built-in thirdparty solvers and databases. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+
+- Reservoirs:
+  - Add StructRadialReservoir and UnstructRadialReservoir classes, derived from (Un/)StructuredReservoir classes. Implementation in darts/models/ccs and darts/models/dfm_well ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
+
+- Output:
+  - Cell centroids are now included under static variables in the output file `reservoir_solution.h5`. ([!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282))
+  - Reduced runtime by saving well output after DartsModel.run(). ([!228](https://gitlab.com/open-darts/open-darts/-/merge_requests/228))
+  - Reduced well output evaluation time by using vectorized interpolators. In the past two for loops were used over time steps + over connection ids (wellheads and perforations). Now, they are removed. In addition, all operators now are evaluated using interpolators.
+  - Added Output.output_to_plt() method for StructReservoir classes using xarray interface. ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
+  - `CFL_max` is added to the H5 well output. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+
+- Other:
+  - Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+
+- Models:
+  - Added a simple example of a thermal model with foam (models/3ph_comp_w_foam)
+
 - Breaking changes:
   - Input arguments to facilitate consistent compositional axes and extrapolation:
   {- Before: Compositional(..., min_z=zero/10, max_z=1-zero/10) -}\
