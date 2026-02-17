@@ -294,7 +294,9 @@ class PropertyContainer(PropertyBase):
                 pressure, self.temperature, self.x[j, :], self.dens[j]
             )  # output in [cp]
 
-            self.x_mass[j, :] = (self.x[j, :] * self.Mw) / sum(self.x[j, :] * self.Mw)
+            self.x_mass[j, :] = (self.x[j, : self.nc_fl] * self.Mw[: self.nc_fl]) / sum(
+                self.x[j, : self.nc_fl] * self.Mw[: self.nc_fl]
+            )
 
         self.compute_saturation(self.ph)
 
