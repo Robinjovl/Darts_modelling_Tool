@@ -130,15 +130,16 @@ class Pipe:
             )
         self.source_sinks = source_sinks
 
+        pc = self.physics.property_containers[0]
         if self.isothermal:
-            assert self.physics.property_containers[0].temperature is not None, (
+            assert pc.temperature is not None, (
                 "If model is isothermal, system_temperature must be specified!"
             )
         elif not self.isothermal:
-            assert self.physics.property_containers[0].temperature is None, (
+            assert pc.temperature is None, (
                 "If model is non-isothermal, system_temperature must not be specified!"
             )
-        self.system_temperature = self.physics.property_containers[0].temperature
+        self.system_temperature = pc.temperature
 
         self.Cmax = Cmax
         self.B = 2 / Cmax - 1.0667
@@ -228,14 +229,21 @@ class Pipe:
 
         self._build_phase_vel_dense_der_indexers()
 
-        # The following vars are used for the property interpolator if prop_eval_method is OBL
-        self.block_idx = index_vector(
-            np.arange(pipe_geometry.num_segments).astype(np.int32)
-        )
-        # This variable (derivatives of props) is not used in calculations. Derivatives of operators are used.
-        self.dvalues = value_vector(
-            np.zeros((pipe_geometry.num_segments * physics.n_ops) * physics.n_vars)
-        )
+        # The following vars are used for the property interpolator used if prop_eval_method is OBL
+        if self.prop_eval_method == "OBL":
+            if len(pc.output_props) < self.physics.n_ops:
+                self.n_prop_ops = self.physics.n_ops
+            else:
+                self.n_prop_ops = len(pc.output_props) + self.physics.n_vars
+            self.block_idx = index_vector(
+                np.arange(pipe_geometry.num_segments).astype(np.int32)
+            )
+            # This variable (derivatives of props) is not used in calculations. Derivatives of operators are used.
+            self.dvalues = value_vector(
+                np.zeros(
+                    (pipe_geometry.num_segments * self.n_prop_ops) * self.n_prop_ops
+                )
+            )
 
         self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
 
@@ -292,25 +300,19 @@ class Pipe:
         if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
             if self.prop_eval_method == "OBL":
                 state0 = value_vector(Xn_dfm_well)
-                # TODO: I'm not sure if self.physics.n_ops should be used here! It is also used in the constructor for dvalues
-                values0 = value_vector(np.zeros(num_segments * self.physics.n_ops))
+                values0 = value_vector(np.zeros(num_segments * self.n_prop_ops))
                 prop_itor = self.physics.property_itor[0]
                 prop_itor.evaluate_with_derivatives(
                     state0, self.block_idx, values0, self.dvalues
                 )
 
                 # Define a property array dictionary
-                prop_arr0 = {
-                    prop: np.zeros(num_segments)
-                    for prop in self.physics.property_containers[0].output_props
-                }
+                prop_arr0 = {prop: np.zeros(num_segments) for prop in pc.output_props}
 
                 # Fill the prop dict
-                for prop_idx, prop_name in enumerate(
-                    self.physics.property_containers[0].output_props
-                ):
+                for prop_idx, prop_name in enumerate(pc.output_props):
                     prop_arr_temporary = np.asarray(values0)[
-                        prop_idx :: self.physics.n_ops
+                        prop_idx :: self.n_prop_ops
                     ]
                     prop_arr0[prop_name] = prop_arr_temporary
 
@@ -473,24 +475,18 @@ class Pipe:
         """ Calculate phase props of current time step at centroids """
         if self.prop_eval_method == "OBL":
             state = value_vector(X_dfm_well)
-            # TODO: I'm not sure if self.physics.n_ops should be used here!
-            values = value_vector(np.zeros(num_segments * self.physics.n_ops))
+            values = value_vector(np.zeros(num_segments * self.n_prop_ops))
             prop_itor = self.physics.property_itor[0]
             prop_itor.evaluate_with_derivatives(
                 state, self.block_idx, values, self.dvalues
             )
 
             # Define a property array dictionary
-            prop_arr = {
-                prop: np.zeros(num_segments)
-                for prop in self.physics.property_containers[0].output_props
-            }
+            prop_arr = {prop: np.zeros(num_segments) for prop in pc.output_props}
 
             # Fill the prop dict
-            for prop_idx, prop_name in enumerate(
-                self.physics.property_containers[0].output_props
-            ):
-                prop_arr_temporary = np.asarray(values)[prop_idx :: self.physics.n_ops]
+            for prop_idx, prop_name in enumerate(pc.output_props):
+                prop_arr_temporary = np.asarray(values)[prop_idx :: self.n_prop_ops]
                 prop_arr[prop_name] = prop_arr_temporary
 
             sG = prop_arr['sG']
@@ -810,7 +806,7 @@ class Pipe:
                 if sink_source.inflow_or_outflow == "inflow":
                     # comp_source in kmol/kmol
                     comp_source = sink_source.inj_fluid_props["composition"]
-                    Mw = self.physics.property_containers[0].Mw
+                    Mw = pc.Mw
                     # mass_rate in kg/s
                     mass_rate = sum(
                         rate_source * np.array(comp_source) * np.array(Mw)
