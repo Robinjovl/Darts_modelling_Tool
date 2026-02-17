@@ -13,7 +13,6 @@ Or directly run a model.py model script:
 """
 
 import argparse
-import ctypes
 import os
 import subprocess
 import sys
@@ -22,7 +21,6 @@ from pathlib import Path
 import darts
 
 # Make sure all modules are imported successfully
-from .. import discretizer, engines
 
 
 def valid_path(string):
@@ -33,6 +31,17 @@ def valid_path(string):
 
 
 def get_lib_var():
+    if sys.platform == 'linux':
+        return 'LD_PRELOAD'
+    elif sys.platform == 'darwin':
+        return 'DYLD_LIBRARY_PATH'
+    elif sys.platform.startswith('win'):
+        return 'PATH'
+    else:
+        return None
+
+
+def get_lib_search_var():
     if sys.platform == 'linux':
         return 'LD_LIBRARY_PATH'
     elif sys.platform == 'darwin':
@@ -48,18 +57,20 @@ def get_darts_path():
 
 
 def main():
-    # --- Handle multiprocessing spawn / resource_tracker callbacks ---
-    # The spawn start method uses: python -c "...spawn_main(...)"
-    # We detect '-c' or '-m' as the first passthrough argument and forward directly.
-    if sys.argv[1] in ('-c', '-m'):
-        lib_var = get_lib_var()
-        if lib_var:
-            # Prepend our DARTS library path to existing
-            os.environ[lib_var] = (
-                str(get_darts_path()) + os.pathsep + os.environ.get(lib_var, "")
+    args_list = sys.argv.copy()
+    # Show help if no arguments are passed (same as 'darts -h')
+    if len(args_list) <= 1:
+        args_list.append('-h')
+
+    # Handle multiprocessing spawn / resource_tracker callbacks
+    if args_list[1] in ('-c', '-m'):
+        # Extend dynamic loader search path for inline Python execution
+        lib_search_var = get_lib_search_var()
+        if lib_search_var:
+            os.environ[lib_search_var] = (
+                os.environ.get(lib_search_var, "") + os.pathsep + str(get_darts_path())
             )
-        # Forward directly to the real Python executable
-        python_args = [sys.executable] + sys.argv[1:]
+        python_args = [sys.executable] + args_list[1:]
         res = subprocess.run(python_args)
         sys.exit(res.returncode)
 
@@ -94,7 +105,7 @@ def main():
         "args", nargs=argparse.REMAINDER, help="Arguments to pass to the script."
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(args_list[1:])
 
     def print_version():
         import pkg_resources
@@ -105,8 +116,8 @@ def main():
     if args.version:
         print_version()
         exit()
-    path = args.path
 
+    path = args.path
     python_args = [sys.executable]
 
     if not path:
@@ -114,7 +125,7 @@ def main():
         parser.print_usage()
         exit()
 
-    if path and os.path.isdir(path):
+    if os.path.isdir(path):
         file = "model.py" if args.model else "main.py"
         filepath = os.path.join(path, file)
 
@@ -126,16 +137,24 @@ def main():
             )
             exit(1)
 
-    if path:
-        python_args.append(path)
-
+    python_args.append(path)
     python_args += args.args
 
     # Update env vars for running DARTS
-    lib_var = get_lib_var()
+    # Prefer search path over forced preload to avoid ABI conflicts with other packages (e.g., Reaktoro)
+    lib_search_var = get_lib_search_var()
+    if lib_search_var:
+        os.environ[lib_search_var] = (
+            os.environ.get(lib_search_var, "") + os.pathsep + str(get_darts_path())
+        )
 
-    if lib_var:
-        os.environ[lib_var] = str(get_darts_path()) + ":" + os.environ.get(lib_var, "")
+    # Optional opt-in to force-preload libstdc++.so.6 if absolutely required
+    if os.environ.get("DARTS_FORCE_PRELOAD_LIBSTDCXX", "0") in ("1", "true", "True"):
+        lib_var = get_lib_var()
+        if lib_var:
+            os.environ[lib_var] = (
+                str(get_darts_path()) + "/libstdc++.so.6:" + os.environ.get(lib_var, "")
+            )
 
     res = subprocess.run(python_args)
     sys.exit(res.returncode)

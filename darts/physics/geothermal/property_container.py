@@ -12,14 +12,16 @@ class PropertyContainer(PropertyBase):
     Class responsible for collecting all needed properties in geothermal simulation
     """
 
-    nc: int = 1
-    nph: int = 2
-
     def __init__(self, property_evaluator='IAPWS'):
         """
         Constructor
         :param property_evaluator: determines what property evaluator is used, input is either 'IAPWS' or 'ADGPRS'
         """
+        self.components_name = ["H2O"]
+        self.phases_name = ["water", "steam"]
+        self.nc = 1
+        self.nc_fl = self.nc
+        self.nph = 2
         self.Mw = [18.015]
         self.rock = [value_vector([1, 0, 273.15])]
         self.rock_compaction_ev = custom_rock_compaction_evaluator(
@@ -144,18 +146,18 @@ class PropertyContainerPH(PropertyBase):
     """
 
     def __init__(self):
-        self.components = ["H2O"]
-        self.phases = ['water', 'steam']
-        self.nc = len(self.components)
+        self.components_name = ["H2O"]
+        self.phases_name = ['water', 'steam']
+        self.nc = len(self.components_name)
         self.nc_fl = self.nc
-        self.nph = len(self.phases)
-        self.np_fl = len(self.phases)
+        self.nph = len(self.phases_name)
+        self.np_fl = len(self.phases_name)
 
         # PH-flash from DARTS-flash
         from dartsflash.components import CompData
-        from dartsflash.libflash import AQEoS, CubicEoS, EoSParams, FlashParams, PHFlash
+        from dartsflash.libflash import AQEoS, CubicEoS, FlashParams, PHFlash
 
-        comp_data = CompData(components=self.components, setprops=True)
+        comp_data = CompData(components=self.components_name, setprops=True)
         self.Mw = comp_data.Mw
         pr = CubicEoS(comp_data, CubicEoS.PR)
         aq = AQEoS(comp_data, AQEoS.Jager2003)
@@ -180,11 +182,11 @@ class PropertyContainerPH(PropertyBase):
             'total': lambda: np.nansum(self.nu * self.enthalpy),
         }
         self.density_ev = {
-            'water': Spivey2004(self.components),
+            'water': Spivey2004(self.components_name),
             'steam': EoSDensity(pr, comp_data.Mw),
         }
         self.viscosity_ev = {
-            'water': MaoDuan2009(self.components),
+            'water': MaoDuan2009(self.components_name),
             'steam': ConstFunc(0.01),
         }
         self.conduction_ev = {'water': ConstFunc(172.8), 'steam': ConstFunc(0.0)}
@@ -233,7 +235,7 @@ class PropertyContainerPH(PropertyBase):
         self.output_props = {'temperature': lambda: self.temperature}
 
     def run_flash(self, pressure, enthalpy):
-        error_output = self.flash_ev.evaluate(pressure, enthalpy)
+        self.flash_ev.evaluate(pressure, enthalpy)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
@@ -253,7 +255,7 @@ class PropertyContainerPH(PropertyBase):
 
         enthalpy = 0.0
         for j in ph:
-            enthalpy += nu[j] * self.enthalpy_ev[self.phases[j]].evaluate(
+            enthalpy += nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(
                 state_pt[0], state_pt[-1], x[j, :]
             )
 
@@ -279,7 +281,7 @@ class PropertyContainerPH(PropertyBase):
 
         # Evaluate phase properties
         for j in self.ph:
-            phase = self.phases[j]
+            phase = self.phases_name[j]
             Mw = np.sum(self.Mw * self.x[j, :])
             self.dens[j] = self.density_ev[phase].evaluate(
                 state[0], self.temperature, self.x[j, :]
@@ -298,6 +300,8 @@ class PropertyContainerPH(PropertyBase):
 
         # self.pc = self.capillary_pressure_ev.evaluate(self.sat)
         for j in self.ph:
-            self.kr[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
+            self.kr[j] = self.relperm_ev[self.phases_name[j]].evaluate(
+                self.saturation[j]
+            )
 
         return

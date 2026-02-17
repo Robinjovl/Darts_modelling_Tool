@@ -45,12 +45,29 @@ void redirect_darts_output(std::string file_name) {
 #ifdef WITH_GPU
 void set_gpu_device(int device_idx)
 {
-  cudaError_t err = cudaSetDevice(device_idx);
-  device_num = device_idx;
-  if (err == cudaSuccess)
+  int device_count = 0;
+  cudaError_t cnt_err = cudaGetDeviceCount(&device_count);
+  if (cnt_err != cudaSuccess)
+  {
+    std::cerr << "CUDA get device count error: " << cudaGetErrorString(cnt_err) << "(" << cnt_err << ") " << std::endl;
     return;
-  
-  std::cerr << "CUDA set device error: " << cudaGetErrorString (err) << "(" << err << ") " << std::endl;
+  }
+
+  if (device_idx < 0 || device_idx >= device_count)
+  {
+    std::cerr << "CUDA set device error: invalid device index " << device_idx
+              << ", available indices: 0.." << (device_count - 1) << std::endl;
+    return;
+  }
+
+  cudaError_t err = cudaSetDevice(device_idx);
+  if (err == cudaSuccess)
+  {
+    device_num = device_idx;
+    return;
+  }
+
+  std::cerr << "CUDA set device error: " << cudaGetErrorString(err) << "(" << err << ") " << std::endl;
 };
 
 void cuda_device_reset()
@@ -162,6 +179,7 @@ void pybind_globals(py::module &m)
     .def_readwrite("log_transform", &sim_params::log_transform)
     .def_readwrite("enable_permporo", &sim_params::enable_permporo)
     .def_readwrite("obl_min_fac", &sim_params::obl_min_fac)
+    .def_readwrite("sim_eps", &sim_params::sim_eps)
     .def_readwrite("global_actnum", &sim_params::global_actnum)
     .def_readwrite("well_tolerance_coefficient", &sim_params::well_tolerance_coefficient)
     .def_readwrite("stationary_point_tolerance", &sim_params::stationary_point_tolerance)
@@ -252,9 +270,9 @@ void pybind_globals(py::module &m)
 #endif
 
 #ifdef WITH_GPU
-  m.def("set_gpu_device", &set_gpu_device, "Set the index of GPU device to be used", "num_threads"_a);
+  m.def("set_gpu_device", &set_gpu_device, "Set the index of GPU device to be used", "device_idx"_a);
   m.def("cuda_device_reset", &cuda_device_reset, "Reset gpu device for memory leak check");
 #endif
-  
+
 }
 #endif //PYBIND11_ENABLED

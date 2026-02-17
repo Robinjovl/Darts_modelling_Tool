@@ -61,6 +61,7 @@ class UnstructReservoir(UnstructReservoirMech):
         self.idata.rock.perm = 100.0
         self.idata.other.friction = 0.7
         self.idata.other.frac_apers = 1e-5
+        self.idata.other.perm_frac = 100.0
 
         self.reservoir_depletion(idata=self.idata)
 
@@ -298,6 +299,7 @@ class UnstructReservoir(UnstructReservoirMech):
         self.p_init0 = 350.0
         self.porosity = 0.16 #0.15
         self.permx, self.permy, self.permz = idata.rock.get_permxyz()
+        self.frac_apers = self.idata.other.frac_apers
         physical_tags = {}
         physical_tags['matrix'] = [99991, 99992, 99993]
         physical_tags['fracture_boundary'] = [1, 2]
@@ -446,5 +448,3 @@ class UnstructReservoir(UnstructReservoirMech):
             self.pm.bc.append(matrix(bc, len(bc), 1))
         self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
-
-

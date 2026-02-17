@@ -8,8 +8,6 @@ Author: Ole de Koning
 Last updated: 12/12/2020 by Ole de Koning
 """
 
-import time
-
 import numpy as np
 
 from .find_parametric_intersect import find_parametric_intersect
@@ -58,7 +56,6 @@ def calc_intersections_segm(
     glob_segm_count = 0
 
     for ii in range(0, n_fracs):
-
         # Obtaining the x and y coords of the start and end of the frac
         ith_old = ith_pt + 1
         ii_frac = act_frac_sys[ii, :]
@@ -82,7 +79,6 @@ def calc_intersections_segm(
                 or np.linalg.norm(ii_frac[2:] - jj_frac[:2]) < tolerance_intersect
                 or np.linalg.norm(ii_frac[2:] - jj_frac[2:]) < tolerance_intersect
             ):
-
                 t, s, int_coord = find_parametric_intersect(ii_frac, jj_frac)
 
                 if (
@@ -90,7 +86,6 @@ def calc_intersections_segm(
                 ) and (
                     s >= (0 - tolerance_intersect) and s <= (1 + tolerance_intersect)
                 ):
-
                     ith_pt = ith_pt + 1
                     new_points[ith_pt, :] = int_coord
                     ith_jj[ith_pt] = jj

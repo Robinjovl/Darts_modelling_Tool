@@ -15,7 +15,7 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
-    n.set_output()
+    n.set_output(verbose = True)
 
     prop_list = n.physics.vars + n.output.properties
     # output primary (state) and secondary variables to .vtk files from engine.X at the current engine.time
@@ -39,20 +39,14 @@ if __name__ == '__main__':
         n.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
 
-    # compute well rates
-    well_rates_dict = n.output.store_well_time_data()
+    # compute and save well time data
+    time_data_dict = n.output.store_well_time_data(save_output_files=True)
 
-    # save dataframe of well rates
-    time_data_df = pd.DataFrame.from_dict(well_rates_dict)
-    time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
-    writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
-    time_data_df.to_excel(writer, sheet_name='Sheet1')
-    writer.close()
-
-    # plot well data
-    # td.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])\
+    # plot well time data
+    # time_data_df = pd.DataFrame.from_dict(time_data_dict)
+    # time_data_df.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])\
     #     .get_figure().savefig(n.output_folder + '/bhp_plot.png', dpi=100, bbox_inches='tight')
-    # td.plot(x='time', y=['well_P1_volumetric_rate_oil_at_wh', 'well_P5_volumetric_rate_oil_at_wh'])\
+    # time_data_df.plot(x='time', y=['well_P1_volumetric_rate_oil_at_wh', 'well_P5_volumetric_rate_oil_at_wh'])\
     #     .get_figure().savefig(n.output_folder + '/phase_rate_plot.png', dpi=100, bbox_inches='tight')
 
     # output primary (state) and secondary variables to .vtk files from the solution.h5 file for all available data points
@@ -60,3 +54,5 @@ if __name__ == '__main__':
                            output_directory = n.output_folder + '/vtk_files_all_timesteps_from_h5',
                            output_properties = prop_list,
                            engine = False)
+
+    n.print_timers()

@@ -230,12 +230,10 @@ def plot_oil_rate_rate_vs_obsrate(
         y=abs(truth_df[[col for col in truth_df.columns if search_str in col]]),
         marker=marker,
     )
-    min_oil_rate_sim = min(abs(darts_df[search_str + ' (m3/day)'].values))
+    min(abs(darts_df[search_str + ' (m3/day)'].values))
     min_oil_rate_truth = min(abs(truth_df[search_str + ' (m3/day)'].values))
-    max_oil_rate_sim = max(abs(darts_df[search_str + ' (m3/day)'].values))
+    max(abs(darts_df[search_str + ' (m3/day)'].values))
     max_oil_rate_truth = max(abs(truth_df[search_str + ' (m3/day)'].values))
-    max_rate = max(max_oil_rate_sim, max_oil_rate_truth)
-    min_rate = min(min_oil_rate_sim, min_oil_rate_truth)
     plt.plot(
         [max_oil_rate_truth, min_oil_rate_truth],
         [max_oil_rate_truth, min_oil_rate_truth],
@@ -504,11 +502,11 @@ def tersurf(a, b, c, d, line=None, inf_p=None):
     :param d: values you want to plot ( e.g. operator values, derivative, hessian,...)
     :param line: in case want to draw trajectory on it
     :param inf_p: inflection point in a given trajectory
-    :return: 
+    :return:
     """
     z = np.array([[0, 0], [1, 0], [0, 1], [0, 0]])
     # transfer matrix
-    mt = np.transpose([[1 / 2, 1], [np.sqrt(3) / 2, 0]])
+    # mt = np.transpose([[1 / 2, 1], [np.sqrt(3) / 2, 0]])
     # plot triangle
     # p = np.matmul(z, mt)
     # plt.figure(figsize=(10, 8), dpi=100)

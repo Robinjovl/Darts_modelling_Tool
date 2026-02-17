@@ -10,15 +10,15 @@
 
 /**
  * @brief Get the index of interval, which containes specified point coordinate, for specified axis
- * 
+ *
  * @tparam service_value_t - floating point type used for axis parameters
  * @param axis_values - state values, coordinates of point to interpolate
- * @param i - index of axis 
+ * @param i - index of axis
  * @param axis_min - array of minimim values for axes (left parametrization limit)
  * @param axis_max - array of maximum values for axes (right parametrization limit)
  * @param axis_step_inv - array of inverted values of axes intervals lengths
  * @param axis_points - array of numbers of supporting points for axes
- * @return axis interval index 
+ * @return axis interval index
  */
 template <typename service_value_t>
 __forceinline__ __host__ __device__ unsigned int get_axis_idx(const value_t *axis_values, int i,

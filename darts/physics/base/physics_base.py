@@ -3,9 +3,10 @@ import atexit
 import hashlib
 import os
 import pickle
+import signal
+import tempfile
 from enum import Enum
 from functools import total_ordering
-from typing import Union
 
 import numpy as np
 
@@ -69,6 +70,7 @@ class PhysicsBase:
         axes_max: value_vector,
         n_axes_points: index_vector,
         timer: timer_node,
+        sim_eps: float = None,
         cache: bool = False,
     ):
         """
@@ -89,12 +91,16 @@ class PhysicsBase:
         :param n_axes_points: Number of OBL points along axes
         :type n_axes_points: index_vector
         :param timer: Timer object
+        :param sim_eps: Epsilon composition for simulation that solution should remain away from OBL bounds
+                        (in engine, min_sim_z = min_axis_z + sim_eps, max_sim_z = max_axis_z - sim_eps)
+        :type sim_eps: float
         :type cache: :class:`darts.engines.timer_node`
         :param cache: Switch to cache operator values
         :type cache: bool
         """
         # Define variables and number of operators
         self.state_spec = state_spec
+        self.is_ph = state_spec > PhysicsBase.StateSpecification.PT
         self.vars = variables
         self.n_vars = len(variables)
 
@@ -109,6 +115,7 @@ class PhysicsBase:
         self.PT_axes_min = axes_min
         self.PT_axes_max = axes_max
         self.n_axes_points = n_axes_points
+        self.sim_eps = sim_eps if sim_eps is not None else 1e-12
 
         # Initialize timer for simulation and caching
         self.timer = timer.node["simulation"]
@@ -237,7 +244,7 @@ class PhysicsBase:
         self.acc_flux_itor = {}
         self.property_itor = {}
         for region in self.regions:
-            self.acc_flux_itor[region] = self.create_interpolator(
+            self.acc_flux_itor[region], _ = self.create_interpolator(
                 self.reservoir_operators[region],
                 n_ops=self.n_ops,
                 axes_min=self.axes_min,
@@ -246,12 +253,12 @@ class PhysicsBase:
                 algorithm=itor_type,
                 mode=itor_mode,
                 precision=itor_precision,
-                timer_name='reservoir %d interpolation' % region,
+                timer_name=f'reservoir {region:d} interpolation',
                 region=str(region),
                 is_barycentric=is_barycentric,
             )
 
-            self.property_itor[region] = self.create_interpolator(
+            self.property_itor[region], _ = self.create_interpolator(
                 self.property_operators[region],
                 n_ops=self.n_ops,
                 axes_min=self.axes_min,
@@ -260,11 +267,12 @@ class PhysicsBase:
                 algorithm=itor_type,
                 mode=itor_mode,
                 precision=itor_precision,
-                timer_name='property %d interpolation' % region,
+                timer_name=f'property {region:d} interpolation',
                 region=str(region),
+                is_barycentric=is_barycentric,
             )
 
-        self.acc_flux_w_itor = self.create_interpolator(
+        self.acc_flux_w_itor, _ = self.create_interpolator(
             self.well_operators,
             n_ops=self.n_ops,
             axes_min=self.axes_min,
@@ -275,9 +283,10 @@ class PhysicsBase:
             mode=itor_mode,
             precision=itor_precision,
             region='-1',
+            is_barycentric=is_barycentric,
         )
 
-        self.well_ctrl_itor = self.create_interpolator(
+        self.well_ctrl_itor, _ = self.create_interpolator(
             self.well_ctrl_operators,
             n_ops=self.well_ctrl_operators.n_ops,
             axes_min=self.axes_min,
@@ -287,8 +296,9 @@ class PhysicsBase:
             algorithm=itor_type,
             mode=itor_mode,
             precision=itor_precision,
+            is_barycentric=is_barycentric,
         )
-        self.well_init_itor = self.create_interpolator(
+        self.well_init_itor, _ = self.create_interpolator(
             self.well_init_operators,
             n_ops=self.well_init_operators.n_ops,
             axes_min=value_vector(self.PT_axes_min),
@@ -298,6 +308,7 @@ class PhysicsBase:
             algorithm=itor_type,
             mode=itor_mode,
             precision=itor_precision,
+            is_barycentric=is_barycentric,
         )
         return
 
@@ -334,7 +345,7 @@ class PhysicsBase:
                 + str(i - etor.op_names[op_type_idx][0])
             )
             operator_array[op_name] = values_numpy[i :: self.n_ops]
-            operator_array[op_name][physical_points == False] = np.nan
+            operator_array[op_name][~physical_points] = np.nan
 
         return operator_array
 
@@ -349,10 +360,12 @@ class PhysicsBase:
         inj_temp: float = None,
     ):
         """
-        Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
+        Set well control/constraint. It will call set_bhp_control() or set_rate_control() on the control or constraint
         well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
 
-        :param wctrl: well_control_iface object responsible for control/constraint
+        :param wctrl: well_control_iface object responsible for control/constraint. It must be set to:
+                      - well_obj.control for well control
+                      - well_obj.constraint for well constraint
         :param control_type: Well control type -2) NONE (if constraint needs to be deactivated), -1) BHP,
                              0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
         :param is_inj: Is injection well (true) or production well (false)
@@ -409,16 +422,17 @@ class PhysicsBase:
         :param max_t: Maximum temperature [K]
         :param state_spec: StateSpecification, P, PT or PH
         """
-        assert (
-            np.isscalar(min_z) or len(min_z) == self.nc - 1
-        ), "min_z must be a scalar or a vector of length nc-1."
-        assert (
-            np.isscalar(max_z) or len(max_z) == self.nc - 1
-        ), "max_z must be a scalar or a vector of length nc-1."
+        assert np.isscalar(min_z) or len(min_z) == self.nc - 1, (
+            "min_z must be a scalar or a vector of length nc-1."
+        )
+        assert np.isscalar(max_z) or len(max_z) == self.nc - 1, (
+            "max_z must be a scalar or a vector of length nc-1."
+        )
 
         if state_spec <= PhysicsBase.StateSpecification.PT:
-            axes_min, axes_max = value_vector(self.PT_axes_min), value_vector(
-                self.PT_axes_max
+            axes_min, axes_max = (
+                value_vector(self.PT_axes_min),
+                value_vector(self.PT_axes_max),
             )
 
         elif state_spec == PhysicsBase.StateSpecification.PH:
@@ -433,23 +447,18 @@ class PhysicsBase:
                 else list(max_z)
             )
 
-            zi = np.append(np.zeros(self.nc - 1), np.array([1.0]))
-            min_h = self.property_containers[0].compute_total_enthalpy(
-                state_pt=np.array([max_p] + list(zi) + [min_t])
-            )
-            max_h = self.property_containers[0].compute_total_enthalpy(
-                state_pt=np.array([min_p] + list(zi) + [max_t])
-            )
-            for i in range(self.nc - 1):
-                zi = np.array([1.0 if i == ii else 0.0 for ii in range(self.nc)])
-                min_hi = self.property_containers[0].compute_total_enthalpy(
-                    state_pt=np.array([max_p] + list(zi) + [min_t])
-                )
-                min_h = min_hi if min_hi < min_h else min_h
-                max_hi = self.property_containers[0].compute_total_enthalpy(
-                    state_pt=np.array([min_p] + list(zi) + [max_t])
-                )
-                max_h = max_hi if max_hi > max_h else max_h
+            min_h, max_h = np.nan, np.nan
+            for i in range(self.nc):
+                for pres in [min_p, max_p]:
+                    for temp in [min_t, max_t]:
+                        zi = np.array(
+                            [1.0 if i == ii else 0.0 for ii in range(self.nc - 1)]
+                        )
+                        hi = self.property_containers[0].compute_total_enthalpy(
+                            state_pt=np.array([pres] + list(zi) + [temp])
+                        )
+                        min_h = hi if hi < min_h or np.isnan(min_h) else min_h
+                        max_h = hi if hi > max_h or np.isnan(max_h) else max_h
 
             axes_min = value_vector(pz_axes_min + [min_h])
             axes_max = value_vector(pz_axes_max + [max_h])
@@ -461,11 +470,7 @@ class PhysicsBase:
 
     @abc.abstractmethod
     def set_initial_conditions_from_depth_table(
-        self,
-        mesh: conn_mesh,
-        input_distribution: dict,
-        input_depth: Union[list, np.ndarray],
-        global_to_local=None,
+        self, mesh: conn_mesh, input_distribution: dict, input_depth: list | np.ndarray
     ):
         """
         Function to set initial conditions from given distribution of properties over depth.
@@ -556,6 +561,9 @@ class PhysicsBase:
         needed to make different filenames for cache as self.well_operators has the same type ReservoirOperators
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+
+        :returns: tuple (interpolator, effective_n_ops)
+        :rtype: tuple[operator_set_gradient_evaluator_iface, int]
         """
         # check input OBL props
         if axes_min is None:
@@ -572,17 +580,11 @@ class PhysicsBase:
 
         # calculate object name using 32 bit index type (i)
         n_dims = self.n_vars
-        itor_name = "%s_%s_%s_interpolator_i_%s_%d_%d" % (
-            algorithm,
-            mode,
-            platform,
-            precision,
-            n_dims,
-            n_ops,
-        )
+        itor_name = f"{algorithm}_{mode}_{platform}_interpolator_i_{precision}_{n_dims:d}_{n_ops:d}"
         itor = None
         general = False
         cache_loaded = 0
+        signature_n_ops = n_ops
         # try to create itor with 32-bit index type first (kinda a bit faster)
         try:
             if algorithm == 'linear':
@@ -616,35 +618,80 @@ class PhysicsBase:
                     itor = eval(itor_name)(
                         evaluator, self.n_axes_points, axes_min, axes_max
                     )
-            except (ValueError, NameError):
-                raise ValueError(
-                    "Number of operators is incorrect, no templatized interpolator exists"
-                )
-                # if 64-bit index also failed, probably the combination of required n_ops and n_dims
-                # was not instantiated/exposed. In this case substitute general implementation of interpolator
-                itor = eval("multilinear_adaptive_cpu_interpolator_general")(
-                    evaluator, self.n_axes_points, axes_min, axes_max, n_dims, n_ops
-                )
-                general = True
+            except (ValueError, NameError) as err:
+                # Try to find a templatized interpolator with the same name pattern
+                # but with the closest possible higher n_ops available in darts.engines.
+                try:
+                    import importlib
+                    import re
+
+                    engines_module = importlib.import_module("darts.engines")
+                    base_prefix = itor_name.rsplit('_', 1)[0]
+                    pattern = rf"^{re.escape(base_prefix)}_(\d+)$"
+                    # Find candidates with higher n_ops
+                    candidates = []
+                    for attr_name in dir(engines_module):
+                        match = re.match(pattern, attr_name)
+                        if match:
+                            available_n_ops = int(match.group(1))
+                            if available_n_ops > n_ops:
+                                candidates.append((available_n_ops, attr_name))
+
+                    if candidates:
+                        # Sort candidates by n_ops in ascending order
+                        candidates.sort(key=lambda x: x[0])
+                        selected_n_ops, selected_name = candidates[0]
+                        selected_cls = getattr(engines_module, selected_name)
+                        if algorithm == 'multilinear':
+                            itor = selected_cls(
+                                evaluator, self.n_axes_points, axes_min, axes_max
+                            )
+                        elif algorithm == 'linear':
+                            itor = selected_cls(
+                                evaluator,
+                                self.n_axes_points,
+                                axes_min,
+                                axes_max,
+                                is_barycentric,
+                            )
+                        else:
+                            raise ValueError("Invalid algorithm: " + algorithm)
+                        signature_n_ops = selected_n_ops
+                        print(
+                            "Falling back to interpolator with higher n_ops:",
+                            selected_name,
+                            f"(n_ops={selected_n_ops})",
+                        )
+                    else:
+                        raise RuntimeError(
+                            "No higher n_ops templatized interpolator found"
+                        )
+                except Exception:
+                    # As a last resort, try the general implementation if available
+                    try:
+                        itor = eval("multilinear_adaptive_cpu_interpolator_general")(
+                            evaluator,
+                            self.n_axes_points,
+                            axes_min,
+                            axes_max,
+                            n_dims,
+                            n_ops,
+                        )
+                        general = True
+                    except Exception:
+                        raise ValueError(
+                            "Number of operators is incorrect, no templatized interpolator exists"
+                        ) from err
 
         if self.cache:
             # create unique signature for interpolator
-            itor_cache_signature = "%s_%s_%s_%d_%d_%s" % (
-                type(evaluator).__name__,
-                mode,
-                precision,
-                n_dims,
-                n_ops,
-                region,
-            )
+            itor_cache_signature = f"{type(evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
             for dim in range(n_dims):
-                itor_cache_signature += "_%d_%e_%e" % (
-                    self.n_axes_points[dim],
-                    axes_min[dim],
-                    axes_max[dim],
+                itor_cache_signature += (
+                    f"_{self.n_axes_points[dim]:d}_{axes_min[dim]:e}_{axes_max[dim]:e}"
                 )
             # compute signature hash to uniquely identify itor parameters and load correct cache
             itor_cache_signature_hash = str(
@@ -654,18 +701,21 @@ class PhysicsBase:
 
             if hasattr(self, 'cache_dir'):
                 itor_cache_filename = os.path.join(self.cache_dir, itor_cache_filename)
-            # if cache file exists, read it
+            # if cache file exists, read it safely
             if os.path.exists(itor_cache_filename):
-                with open(itor_cache_filename, "rb") as fp:
-                    print(
-                        "Reading cached point data for ",
-                        type(itor).__name__,
-                        'from',
-                        itor_cache_filename,
-                    )
-                    itor.point_data = pickle.load(fp)
+                print(
+                    "Reading cached point data for ",
+                    type(itor).__name__,
+                    'from',
+                    itor_cache_filename,
+                )
+                loaded_point_data = self._safe_pickle_load(itor_cache_filename)
+                if loaded_point_data is not None:
+                    itor.point_data = loaded_point_data
                     print(len(itor.point_data.keys()), "points loaded")
                     cache_loaded = 1
+                else:
+                    print("Cached point data is invalid, ignoring.")
             if mode == 'adaptive':
                 # for adaptive itors, delay obl data save moment, because
                 # during simulations new points will be evaluated.
@@ -676,12 +726,11 @@ class PhysicsBase:
         # for static itors, save the cache immediately after init, if it has not been already loaded
         # otherwise, there is no point to save the same data over and over
         if self.cache and mode == 'static' and not cache_loaded:
-            with open(itor_cache_filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__)
-                pickle.dump(itor.point_data, fp, protocol=4)
+            print("Writing point data for ", type(itor).__name__)
+            self._atomic_pickle_dump(itor.point_data, itor_cache_filename)
 
         self.create_itor_timers(itor, timer_name)
-        return itor
+        return itor, signature_n_ops
 
     def create_itor_timers(
         self, itor: operator_set_gradient_evaluator_iface, timer_name: str
@@ -726,9 +775,92 @@ class PhysicsBase:
                     os.path.basename(fname) == fname
                 ):  # could already have a folder in fname
                     filename = os.path.join(self.cache_dir, fname)
-            with open(filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__, 'to', filename)
-                pickle.dump(itor.point_data, fp, protocol=4)
+            print("Writing point data for ", type(itor).__name__, 'to', filename)
+            # Temporarily ignore SIGINT/SIGTERM to avoid partial writes during sudden termination
+            prev_int = None
+            prev_term = None
+            try:
+                try:
+                    prev_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
+                except Exception:
+                    prev_int = None
+                try:
+                    prev_term = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                except Exception:
+                    prev_term = None
+                self._atomic_pickle_dump(itor.point_data, filename)
+            finally:
+                if prev_int is not None:
+                    try:
+                        signal.signal(signal.SIGINT, prev_int)
+                    except Exception:
+                        pass
+                if prev_term is not None:
+                    try:
+                        signal.signal(signal.SIGTERM, prev_term)
+                    except Exception:
+                        pass
+
+    def _atomic_pickle_dump(self, obj, final_path: str):
+        """
+        Atomically write pickle to final_path using a temporary file followed by os.replace.
+        Ensures data is flushed (fsync) to disk before the rename to avoid corruption.
+        """
+        directory = os.path.dirname(final_path) or "."
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception:
+            pass
+
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=os.path.basename(final_path) + ".tmp.", suffix=".pkl", dir=directory
+        )
+        try:
+            with os.fdopen(fd, "wb") as fp:
+                pickle.dump(obj, fp, protocol=4)
+                fp.flush()
+                try:
+                    os.fsync(fp.fileno())
+                except Exception:
+                    pass
+            os.replace(tmp_path, final_path)
+            # Best-effort directory fsync to persist the rename
+            try:
+                dir_fd = os.open(directory, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except Exception:
+                pass
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+
+    def _safe_pickle_load(self, path: str):
+        """
+        Safely load a pickle file. If the file is corrupted or truncated, delete it and return None.
+        """
+        try:
+            with open(path, "rb") as fp:
+                return pickle.load(fp)
+        except Exception as err:
+            print(
+                "Failed to read cached point data from",
+                path,
+                "-",
+                type(err).__name__,
+                str(err),
+            )
+            try:
+                os.remove(path)
+                print("Removed corrupted cache file", path)
+            except Exception:
+                pass
+            return None
 
     def body_path_start(self, output_folder):
         """
@@ -743,13 +875,7 @@ class PhysicsBase:
             self.processed_body_idxs = set()
             for id in range(self.n_vars):
                 fp.write(
-                    '%d %lf %lf %s\n'
-                    % (
-                        self.n_axes_points[id],
-                        self.axes_min[id],
-                        self.axes_max[id],
-                        self.vars[id],
-                    )
+                    f"{self.n_axes_points[id]:d} {self.axes_min[id]:f} {self.axes_max[id]:f} {self.vars[id]}\n"
                 )
             fp.write('Body Index Data\n')
 
@@ -761,12 +887,12 @@ class PhysicsBase:
         :param time: current time
         """
         with open(os.path.join(output_folder, 'body_path.txt'), "a") as fp:
-            fp.write('T=%lf\n' % time)
+            fp.write(f'T={time:f}\n')
             itor = self.acc_flux_itor[0]
             all_idxs = set(itor.get_hypercube_indexes())
             new_idxs = all_idxs - self.processed_body_idxs
             for i in new_idxs:
-                fp.write('%d\n' % i)
+                fp.write(f'{i:d}\n')
             self.processed_body_idxs = all_idxs
 
     def __del__(self):

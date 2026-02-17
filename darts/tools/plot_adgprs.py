@@ -1,12 +1,7 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-
 from .plot_darts import *
 
 
 def plot_bhp_adgprs(well_name, adgprs_df, style='-.', color="#C41E3A", ax=None):
-
     my_df = pd.DataFrame()
     my_df['Day'] = adgprs_df['Day']
     my_df[well_name] = 0
@@ -20,7 +15,6 @@ def plot_bhp_adgprs(well_name, adgprs_df, style='-.', color="#C41E3A", ax=None):
 
 
 def plot_water_rate_adgprs(well_name, adgprs_df, style='-.', color='#C41E3A', ax=None):
-
     my_df = pd.DataFrame()
     my_df['Day'] = adgprs_df['Day']
     my_df[well_name] = 0
@@ -39,7 +33,6 @@ def plot_water_rate_adgprs(well_name, adgprs_df, style='-.', color='#C41E3A', ax
 
 
 def plot_oil_rate_adgprs(well_name, adgprs_df, style='-.', color='#C41E3A', ax=None):
-
     my_df = pd.DataFrame()
     my_df['Day'] = adgprs_df['Day']
     my_df[well_name] = 0
@@ -58,7 +51,6 @@ def plot_oil_rate_adgprs(well_name, adgprs_df, style='-.', color='#C41E3A', ax=N
 
 
 def plot_gas_rate_adgprs(well_name, adgprs_df, style='-.', color='#C41E3A', ax=None):
-
     my_df = pd.DataFrame()
     my_df['Day'] = adgprs_df['Day']
     my_df[well_name] = 0

@@ -30,3 +30,151 @@
    fun:_dl_catch_exception
    fun:dl_open_worker
 }
+{
+   python-Init-wcscat-Cond
+   Memcheck:Cond
+   fun:__wcscat_avx2
+   ...
+   fun:config_init_pathconfig
+   fun:_PyConfig_InitPathConfig
+   fun:init_interp_main
+   fun:pyinit_main
+   fun:Py_InitializeFromConfig
+   fun:pymain_init
+   fun:pymain_main
+   fun:Py_BytesMain
+   fun:(below main)
+}
+{
+   python_getpath_wcscat_1
+   Memcheck:Addr32
+   fun:__wcscat_avx2
+   ...
+   fun:_PyConfig_InitPathConfig
+   ...
+   fun:Py_BytesMain
+}
+{
+   python_getpath_wcscat_2
+   Memcheck:Addr32
+   fun:__wcscat_avx2
+   ...
+   fun:config_init_pathconfig
+   ...
+   fun:Py_BytesMain
+}
+{
+   llvm_numba_1
+   Memcheck:Cond
+   fun:_ZN4llvm15ScalarEvolution10createSCEVEPNS_5ValueE.part.0
+   fun:_ZN4llvm15ScalarEvolution14createSCEVIterEPNS_5ValueE
+   fun:_ZN12_GLOBAL__N_114SimplifyIndvar30replaceIVUserWithLoopInvariantEPN4llvm11InstructionE
+   fun:_ZN12_GLOBAL__N_114SimplifyIndvar13simplifyUsersEPN4llvm7PHINodeEPNS1_9IVVisitorE.constprop.0
+   fun:_ZN4llvm17simplifyUsersOfIVEPNS_7PHINodeEPNS_15ScalarEvolutionEPNS_13DominatorTreeEPNS_8LoopInfoEPKNS_19TargetTransformInfoERNS_15SmallVectorImplINS_14WeakTrackingVHEEERNS_12SCEVExpanderEPNS_9IVVisitorE
+   fun:_ZN4llvm18IndVarSimplifyPass3runERNS_4LoopERNS_15AnalysisManagerIS1_JRNS_27LoopStandardAnalysisResultsEEEES5_RNS_10LPMUpdaterE
+   fun:_ZN4llvm6detail9PassModelINS_4LoopENS_18IndVarSimplifyPassENS_15AnalysisManagerIS2_JRNS_27LoopStandardAnalysisResultsEEEEJS6_RNS_10LPMUpdaterEEE3runERS2_RS7_S6_S9_
+   fun:_ZN4llvm11PassManagerINS_4LoopENS_15AnalysisManagerIS1_JRNS_27LoopStandardAnalysisResultsEEEEJS4_RNS_10LPMUpdaterEEE13runSinglePassIS1_St10unique_ptrINS_6detail11PassConceptIS1_S5_JS4_S7_EEESt14default_deleteISD_EEEESt8optionalINS_17PreservedAnalysesEERT_RT0_RS5_S4_S7_RNS_19PassInstrumentationE.isra.0
+   fun:_ZN4llvm11PassManagerINS_4LoopENS_15AnalysisManagerIS1_JRNS_27LoopStandardAnalysisResultsEEEEJS4_RNS_10LPMUpdaterEEE24runWithoutLoopNestPassesERS1_RS5_S4_S7_
+   fun:_ZN4llvm11PassManagerINS_4LoopENS_15AnalysisManagerIS1_JRNS_27LoopStandardAnalysisResultsEEEEJS4_RNS_10LPMUpdaterEEE3runERS1_RS5_S4_S7_
+   fun:_ZN4llvm25FunctionToLoopPassAdaptor3runERNS_8FunctionERNS_15AnalysisManagerIS1_JEEE
+   fun:_ZN4llvm6detail9PassModelINS_8FunctionENS_25FunctionToLoopPassAdaptorENS_15AnalysisManagerIS2_JEEEJEE3runERS2_RS5_
+}
+{
+   llvm_numba_2
+   Memcheck:Cond
+   fun:_ZN4llvm15ScalarEvolution10createSCEVEPNS_5ValueE.part.0
+   fun:_ZN4llvm15ScalarEvolution14createSCEVIterEPNS_5ValueE
+   fun:_ZN4llvm15ScalarEvolution19createAddRecFromPHIEPNS_7PHINodeE
+   fun:_ZN4llvm15ScalarEvolution16createNodeForPHIEPNS_7PHINodeE
+   fun:_ZN4llvm15ScalarEvolution14createSCEVIterEPNS_5ValueE
+   fun:_ZN12_GLOBAL__N_114SimplifyIndvar30replaceIVUserWithLoopInvariantEPN4llvm11InstructionE
+   fun:_ZN12_GLOBAL__N_114SimplifyIndvar13simplifyUsersEPN4llvm7PHINodeEPNS1_9IVVisitorE.constprop.0
+   fun:_ZN4llvm17simplifyUsersOfIVEPNS_7PHINodeEPNS_15ScalarEvolutionEPNS_13DominatorTreeEPNS_8LoopInfoEPKNS_19TargetTransformInfoERNS_15SmallVectorImplINS_14WeakTrackingVHEEERNS_12SCEVExpanderEPNS_9IVVisitorE
+   fun:_ZN4llvm18IndVarSimplifyPass3runERNS_4LoopERNS_15AnalysisManagerIS1_JRNS_27LoopStandardAnalysisResultsEEEES5_RNS_10LPMUpdaterE
+   fun:_ZN4llvm6detail9PassModelINS_4LoopENS_18IndVarSimplifyPassENS_15AnalysisManagerIS2_JRNS_27LoopStandardAnalysisResultsEEEEJS6_RNS_10LPMUpdaterEEE3runERS2_RS7_S6_S9_
+   fun:_ZN4llvm11PassManagerINS_4LoopENS_15AnalysisManagerIS1_JRNS_27LoopStandardAnalysisResultsEEEEJS4_RNS_10LPMUpdaterEEE13runSinglePassIS1_St10unique_ptrINS_6detail11PassConceptIS1_S5_JS4_S7_EEESt14default_deleteISD_EEEESt8optionalINS_17PreservedAnalysesEERT_RT0_RS5_S4_S7_RNS_19PassInstrumentationE.isra.0
+   fun:_ZN4llvm11PassManagerINS_4LoopENS_15AnalysisManagerIS1_JRNS_27LoopStandardAnalysisResultsEEEEJS4_RNS_10LPMUpdaterEEE24runWithoutLoopNestPassesERS1_RS5_S4_S7_
+}
+{
+   llvm_numba_3
+   Memcheck:Cond
+   fun:_ZN4llvm15ScalarEvolution10createSCEVEPNS_5ValueE.part.0
+   fun:_ZN4llvm15ScalarEvolution14createSCEVIterEPNS_5ValueE
+   fun:_ZN4llvm7IVUsers21AddUsersIfInterestingEPNS_11InstructionE
+   fun:_ZN4llvm7IVUsers21AddUsersIfInterestingEPNS_11InstructionE
+   fun:_ZN4llvm7IVUsersC1EPNS_4LoopEPNS_15AssumptionCacheEPNS_8LoopInfoEPNS_13DominatorTreeEPNS_15ScalarEvolutionE
+   fun:_ZN4llvm18IVUsersWrapperPass9runOnLoopEPNS_4LoopERNS_13LPPassManagerE
+   fun:_ZN4llvm13LPPassManager13runOnFunctionERNS_8FunctionE
+   fun:_ZN4llvm13FPPassManager13runOnFunctionERNS_8FunctionE
+   fun:_ZN4llvm13FPPassManager11runOnModuleERNS_6ModuleE
+   fun:_ZN4llvm6legacy15PassManagerImpl3runERNS_6ModuleE
+   fun:_ZN4llvm5MCJIT10emitObjectEPNS_6ModuleE
+   fun:_ZN4llvm5MCJIT21generateCodeForModuleEPNS_6ModuleE
+}
+{
+   llvm_numba_4
+   Memcheck:Cond
+   fun:_ZN4llvm15ScalarEvolution10createSCEVEPNS_5ValueE.part.0
+   fun:_ZN4llvm15ScalarEvolution14createSCEVIterEPNS_5ValueE
+   fun:_ZN4llvm15ScalarEvolution24createSimpleAffineAddRecEPNS_7PHINodeEPNS_5ValueES4_
+   fun:_ZN4llvm15ScalarEvolution19createAddRecFromPHIEPNS_7PHINodeE
+   fun:_ZN4llvm15ScalarEvolution16createNodeForPHIEPNS_7PHINodeE
+   fun:_ZN4llvm15ScalarEvolution14createSCEVIterEPNS_5ValueE
+   fun:_ZN4llvm12SCEVExpander25getAddRecExprPHILiterallyEPKNS_14SCEVAddRecExprEPKNS_4LoopERPNS_4TypeERb
+   fun:_ZN4llvm12SCEVExpander25expandAddRecExprLiterallyEPKNS_14SCEVAddRecExprE
+   fun:_ZN4llvm12SCEVExpander6expandEPKNS_4SCEVE
+   fun:_ZN4llvm12SCEVExpander13expandCodeForEPKNS_4SCEVEPNS_4TypeE
+   fun:_ZNK12_GLOBAL__N_111LSRInstance6ExpandERKNS_6LSRUseERKNS_8LSRFixupERKNS_7FormulaEN4llvm21ilist_iterator_w_bitsINSA_12ilist_detail12node_optionsINSA_11InstructionELb1ELb0EvLb1ENSA_10BasicBlockEEELb0ELb0EEERNSA_15SmallVectorImplINSA_14WeakTrackingVHEEE.constprop.0
+   fun:_ZN12_GLOBAL__N_111LSRInstanceC1EPN4llvm4LoopERNS1_7IVUsersERNS1_15ScalarEvolutionERNS1_13DominatorTreeERNS1_8LoopInfoERKNS1_19TargetTransformInfoERNS1_15AssumptionCacheERNS1_17TargetLibraryInfoEPNS1_16MemorySSAUpdaterE
+}
+{
+   h5py_pwrite64_chunk_flush_with_arch
+   Memcheck:Param
+   pwrite64(buf)
+   fun:__syscall_cancel_arch
+   fun:__internal_syscall_cancel
+   fun:__syscall_cancel
+   fun:pwrite
+   fun:H5FD__sec2_write
+   fun:H5FD_write
+   fun:H5F__accum_write
+   fun:H5PB_write
+   fun:H5F_shared_block_write
+   fun:H5D__chunk_flush_entry.constprop.0
+   fun:H5D__chunk_flush
+   fun:H5D__flush_real
+}
+{
+   h5py_pwrite_param_generic
+   Memcheck:Param
+   pwrite64(buf)
+   fun:__internal_syscall_cancel
+   fun:__syscall_cancel
+   fun:pwrite
+   fun:H5FD__sec2_write
+   fun:H5FD_write
+   fun:H5F__accum_write
+   fun:H5PB_write
+   fun:H5F_shared_block_write
+   fun:H5D__chunk_flush_entry.constprop.0
+   fun:H5D__chunk_flush
+   fun:H5D__flush_real
+   fun:H5D_close
+}
+{
+   h5py_pwrite_param_carbonated_water
+   Memcheck:Param
+   pwrite64(buf)
+   fun:pwrite
+   fun:H5FD__sec2_write
+   fun:H5FD_write
+   fun:H5F__accum_write
+   fun:H5PB_write
+   fun:H5F_shared_block_write
+   fun:H5D__chunk_flush_entry.constprop.0
+   fun:H5D__chunk_flush
+   fun:H5D__flush_real
+   fun:H5D_close
+   fun:H5VL__native_dataset_close
+   fun:H5VL_dataset_close
+}

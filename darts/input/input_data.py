@@ -1,6 +1,13 @@
-from typing import Dict, List, Union
+from enum import Enum
 
 import numpy as np
+
+
+# set PETSC solver types with negative values to easily distinguish c++ solvers and PETSC
+class linear_solver_types(Enum):
+    CPU_PETSC_CPR = -1  # CPR for flow
+    CPU_PETSC_FS = -2  # fixed stress for poromechanics
+    CPU_PARDISO = -10  # direct parallel solver
 
 
 class RockProps:
@@ -73,7 +80,7 @@ class InitialSolution:
             self.reference_depth_for_pressure = None  # [m]
             self.pressure_gradient = None  # [bar/km]
             self.pressure_at_ref_depth = None  # [bars]
-        self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
+        self.initial_displacements = None  # [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
 
@@ -146,7 +153,7 @@ class WellControl:
         self.inj_bht = temperature  # K
         # if Compositional
         self.phase_name = phase_name  # injected phase name, [str]
-        self.inj_composition = inj_composition  #  0 < injected composition < 1
+        self.inj_composition = inj_composition  # 0 < injected composition < 1
 
     def inj_bhp_control(
         self, bhp, temperature=None, phase_name=None, inj_composition=None
@@ -159,7 +166,7 @@ class WellControl:
         self.inj_bht = temperature  # K
         # if Compositional
         self.phase_name = phase_name  # injected phase name, [str]
-        self.inj_composition = inj_composition  #  0 < injected composition < 1
+        self.inj_composition = inj_composition  # 0 < injected composition < 1
 
 
 class WellLocIJK:
@@ -204,19 +211,19 @@ class Well:
 class WellPerforation:
     def __init__(
         self,
-        loc_ijk: Union[int, tuple],
+        loc_ijk: int | tuple,
         status: str,
         well_radius: float,
         well_index: float,
         well_indexD: float,
-        multi_segment: bool,
+        ms_epm: bool,
     ):
         self.loc_ijk = loc_ijk
         self.status = status
         self.well_radius = well_radius
         self.well_index = well_index
         self.well_indexD = well_indexD
-        self.multi_segment = multi_segment
+        self.ms_epm = ms_epm
 
 
 class WellData:
@@ -231,8 +238,8 @@ class WellData:
         self,
         name: str,
         loc_type: str,
-        loc_ijk: Union[int, tuple] = None,
-        loc_xyz: Union[float, tuple] = None,
+        loc_ijk: int | tuple = None,
+        loc_xyz: float | tuple = None,
     ):
         assert name not in self.wells, 'The well ' + name + ' has been already added!'
         w = Well(loc_type=loc_type)
@@ -249,12 +256,12 @@ class WellData:
         self,
         name: str,
         time: float,
-        loc_ijk: Union[int, tuple],
+        loc_ijk: int | tuple,
         status: str,
         well_radius: float,
         well_index: float,
         well_indexD: float,
-        multi_segment: bool,
+        ms_epm: bool,
     ):
         """
         :param name: well name
@@ -266,7 +273,7 @@ class WellData:
         if status == 'close':
             # well connections in DARTS cannot be changed during the simulation, so they can be only closed
             # and re-opened throughout timesteps. well_index and well_indexD can be changed as well.
-            # multi_segment option can't be changed and should be the same for all perforations
+            # ms_epm option can't be changed and should be the same for all perforations
             well_index_ = well_indexD_ = eps
         else:
             well_index_ = well_index
@@ -277,7 +284,7 @@ class WellData:
             well_radius=well_radius,
             well_index=well_index_,
             well_indexD=well_indexD_,
-            multi_segment=multi_segment,
+            ms_epm=ms_epm,
         )
         self.wells[name].perforations.append((time, perf))
 
@@ -294,7 +301,6 @@ class WellData:
         well_radius = well_diam / 2.0
 
         keep_reading = True
-        prev_well_name = ''
         with open(sch_fname) as f:
             while keep_reading:
                 buff = f.readline()
@@ -337,7 +343,7 @@ class WellData:
                                         well_radius=well_radius,
                                         well_index=well_index,
                                         well_indexD=0.0,
-                                        multi_segment=False,
+                                        ms_epm=False,
                                     )
                             if len(CompDat) != 0 and '/' == CompDat[0]:
                                 keep_reading = False
@@ -408,9 +414,11 @@ class WellData:
         bhp_constraint=None,
         temperature=None,
         phase_name=None,
-        inj_composition=[],
+        inj_composition=None,
         time=0,
     ):
+        if inj_composition is None:
+            inj_composition = []
         wctrl = WellControl()
         wctrl.inj_rate_control(
             rate=rate,
@@ -422,8 +430,10 @@ class WellData:
         self.wells[name].controls.append((time, wctrl))
 
     def add_inj_bhp_control(
-        self, name, bhp, temperature=None, phase_name=None, inj_composition=[], time=0
+        self, name, bhp, temperature=None, phase_name=None, inj_composition=None, time=0
     ):
+        if inj_composition is None:
+            inj_composition = []
         wctrl = WellControl()
         wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, phase_name=phase_name)
         self.wells[name].controls.append((time, wctrl))
@@ -443,6 +453,7 @@ class OBLParams:
         self.max_t = None
         self.min_z = None
         self.max_z = None
+        self.epsilon_z = None
 
 
 class Simulation:
@@ -489,11 +500,9 @@ class InputData:
             'thermoporoelasticity',
             'none',
         ], 'input_data: Unknown type_mech'
-        for (
-            k
-        ) in (
+        for k in (
             self.__dict__.keys()
-        ):  #  loop over the attributes (self.rock, self.fluid, ..)
+        ):  # loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
@@ -504,9 +513,7 @@ class InputData:
                 'other',
             ]:  # do not check initial currently #TODO
                 continue
-            for (
-                k2
-            ) in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
+            for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     # either perm or permx+permy+permx should be specified
@@ -530,7 +537,7 @@ class InputData:
                         k2,
                         'is not initialized!',
                     )
-                    assert False
+                    raise AssertionError()
 
     def make_prop_arrays(self):
         """
@@ -542,24 +549,20 @@ class InputData:
         array_obj = ['rock']  # list of items which can be defined by regons
         # count number of regions (one value per region)
         max_n_regions = 1
-        for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
+        for k in self.__dict__.keys():  # loop over the attributes (self.rock, ..)
             if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
-            for (
-                k2
-            ) in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
+            for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     continue
                 if not np.isscalar(value):  # if np.array
                     max_n_regions = value.size
         # make arrays from scalar fields
-        for (
-            k
-        ) in (
+        for k in (
             self.__dict__.keys()
         ):  # loop over the attributes (self.rock, self.fluid, ..)
             if k not in array_obj:

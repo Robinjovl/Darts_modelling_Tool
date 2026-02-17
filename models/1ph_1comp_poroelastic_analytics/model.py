@@ -6,14 +6,15 @@ from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus, bound_cond
-from darts.input.input_data import InputData
+from darts.input.input_data import InputData, linear_solver_types
+
 
 class Model(THMCModel):
-    def __init__(self, n_points=64, discretizer='mech_discretizer', case='mandel', mesh='rect'):
+    def __init__(self, discretizer='mech_discretizer', case='mandel', mesh='rect'):
         self.case = case
         self.mesh = mesh
         self.discretizer_name = discretizer
-        super().__init__(n_points=n_points, discretizer=discretizer)
+        super().__init__()
 
     def set_solver_params(self):
         super().set_solver_params()
@@ -27,6 +28,9 @@ class Model(THMCModel):
             self.params.linear_type = linear_type
         elif self.discretizer_name == 'pm_discretizer':
             self.physics.engine.ls_params[-1].linear_type = linear_type
+
+        # data_ts is used only for linear solver params for PETSc
+        self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -177,20 +181,20 @@ class Model(THMCModel):
             self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         elif case == 'bai':
             self.idata.rock.porosity = 0.2
-            self.idata.rock.perm = 4.e+6 / 0.9869
-            self.idata.rock.E = 0.06  # in bars
-            self.idata.rock.nu = 0.4
-            self.idata.rock.biot = 1.0
+            self.idata.rock.perm = 4.e+6 / 0.9869  # [mD]
+            self.idata.rock.E = 0.06  # Young modulus [bars]
+            self.idata.rock.nu = 0.4  # Poisson ratio
+            self.idata.rock.biot = 1.0 # Biot coefficient
             self.idata.rock.compressibility = get_rock_compressibility(
                 kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-            self.idata.rock.th_expn = 9.0 * 1.E-7
-            self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
-            self.idata.rock.conductivity = 0.836 * 86400.0 * 1000 # [kJ/m/day/K]
-            self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]
+            self.idata.rock.th_expn = 9.0 * 1.E-7  # [1/K]
+            self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu) # # Couchy book formula 4.19a, 4.21a
+            self.idata.rock.conductivity = 0.836 * 86400.0 # [kJ/m/day/K]
+            self.idata.rock.heat_capacity = 167.2 # [kJ/m3/K]
             self.idata.rock.th_expn_poro = 0.0   # mechanical term in porosity update
-            self.idata.fluid.compressibility = 0.0  #TODO why zero here
-            self.idata.fluid.viscosity = 1.0
+            self.idata.fluid.compressibility = 0.0
+            self.idata.fluid.viscosity = 1.0  # [cP]
 
             self.idata.other.F = -1.e-5
 
@@ -228,16 +232,23 @@ class Model(THMCModel):
             max_dt = 30  # timestep length, days
             self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
 
+        # optional: use PETSc linear solver
+        from darts.models.darts_model import DataTS
+        self.idata.sim.DataTS = DataTS(n_vars=0)
+        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
+        #self.idata.sim.DataTS.linear_print_level = 0
+
+        # optional: use PARDISO linear solver
+        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PARDISO
+
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
+        self.idata.obl.epsilon_z = 1e-10
         self.idata.obl.min_p = -5.
         self.idata.obl.max_p = 500.
         self.idata.obl.min_t = -10.
         self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
+        self.idata.obl.min_z = 0.
+        self.idata.obl.max_z = 1.
 
         super().set_input_data()  # check
-
-
-

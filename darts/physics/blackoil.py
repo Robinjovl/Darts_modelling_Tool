@@ -31,9 +31,11 @@ class BlackOil(Compositional):
             max_p=idata.obl.max_p,
             min_z=idata.obl.min_z,
             max_z=idata.obl.max_z,
+            epsilon_z=idata.obl.epsilon_z,
             min_t=idata.obl.min_t,
             max_t=idata.obl.max_t,
             state_spec=state_spec,
+            extrapolation_flag=True,
         )
 
         temperature = None if thermal else 1.0
@@ -41,7 +43,8 @@ class BlackOil(Compositional):
             phases_name=idata.fluid.phases,
             components_name=idata.fluid.components,
             Mw=idata.fluid.Mw,
-            min_z=idata.obl.min_z,
+            eps_z=idata.obl.epsilon_z,
+            # eps_z=idata.obl.min_z,
             temperature=temperature,
         )
 
@@ -93,11 +96,11 @@ class BlackOilProperties(PropertyContainer):
         phases_name,
         components_name,
         Mw,
-        min_z: float = 1e-11,
+        eps_z: float = 1e-11,
         temperature: float = None,
     ):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.0)
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=1.0)
         # self.surf_dens = get_table_keyword(idata.fluid.pvt, 'DENSITY')[0]
         # self.surf_oil_dens = self.surf_dens[0]
         # self.surf_wat_dens = self.surf_dens[1]
@@ -123,7 +126,7 @@ class BlackOilProperties(PropertyContainer):
 
         self.clean_arrays()
         # two-phase flash - assume water phase is always present and water component last
-        (xgo, V, pbub) = self.flash_ev.evaluate(pressure, zc)
+        xgo, V, pbub = self.flash_ev.evaluate(pressure, zc)
         for i in range(self.nph):
             self.x[i, i] = 1
 
@@ -171,7 +174,6 @@ class BlackOilProperties(PropertyContainer):
         return
 
     def evaluate_at_cond(self, pressure, zc):
-
         self.sat[:] = 0
 
         if zc[-1] < 0:
@@ -180,7 +182,7 @@ class BlackOilProperties(PropertyContainer):
 
         self.ph = []
         for j in range(self.nph):
-            if zc[j] > self.min_z:
+            if zc[j] > self.eps_z:
                 self.ph.append(j)
             self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
 

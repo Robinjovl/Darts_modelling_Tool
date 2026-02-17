@@ -1,5 +1,4 @@
 # For the class defintions here, only numpy is used:
-import numba as nb
 import numpy as np
 from numba import float64, int32, types
 from numba.experimental import jitclass
@@ -14,7 +13,7 @@ from numba.typed import Dict
         - Nodes:    Vertices or points
         - Cells:    Control volumes
         - Face:     Sides of the control volume
-        
+
     Most of the calculations regarding subdividing control volumes into tetrahedrons is taken from this paper:
     https://www.researchgate.net/publication/221561839_How_to_Subdivide_Pyramids_Prisms_and_Hexahedra_into_Tetrahedra
 """
@@ -167,7 +166,7 @@ class nbHexahedron:
         )
 
         # Loop over all tetrahedrons:
-        for jj, ith_tetra in enumerate(nodes_array_tetras):
+        for _jj, ith_tetra in enumerate(nodes_array_tetras):
             # Assign local coordinates:
             local_coord = np.zeros((4, 3), dtype=np.float64)
 
@@ -299,7 +298,7 @@ class nbWedge:
         self.volume = 0
 
         # Loop over all tetrahedrons:
-        for jj, ith_tetra in enumerate(nodes_array_tetras):
+        for _jj, ith_tetra in enumerate(nodes_array_tetras):
             # Assign local coordinates:
             local_coord = np.zeros((4, 3), dtype=np.float64)
 
@@ -422,7 +421,7 @@ class nbPyramid:
         nodes_array_tetras = np.array([[1, 2, 3, 4], [1, 3, 0, 4]])
 
         # Loop over all tetrahedrons:
-        for jj, ith_tetra in enumerate(nodes_array_tetras):
+        for _jj, ith_tetra in enumerate(nodes_array_tetras):
             # Assign local coordinates:
             local_coord = np.zeros((4, 3), dtype=np.float64)
 

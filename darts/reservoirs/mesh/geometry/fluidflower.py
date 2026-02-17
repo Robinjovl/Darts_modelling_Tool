@@ -552,7 +552,7 @@ class FluidFlower(Shape):
         """Define Physical Points, Curves, Surfaces, Volumes"""
         self.physical_points = {}
 
-        self.physical_curves = {}  #'top': [1],
+        self.physical_curves = {}  # 'top': [1],
 
         self.physical_surfaces = {}
 

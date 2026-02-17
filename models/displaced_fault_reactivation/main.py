@@ -62,7 +62,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
                 m.reservoir.write_to_vtk(m.output_directory, m.ith_step + 1, m.physics.engine, dt)
                 m.ith_step += 1
                 if m.ith_step > 1000:
-                    os._exit()
+                    exit(0)
 
             if m.physics.engine.n_newton_last_dt < 4:
                 dt *= 1.5
@@ -162,10 +162,9 @@ def run_timestep_python(m, dt, t):
     if not hasattr(m, 'slip_area'):
         m.slip_area = [0.0]
 
-    areas = calc_slip_area(m)
-    cur_area = sum(areas)
+    cur_area = m.reservoir.calc_slip_areas(engine=m.physics.engine)[0]  # only one fault here, so take 0-th index
     print('slip area = ' + str(cur_area))
-    # print(areas)
+
     if m.enable_dynamic_mode:
         if cur_area - m.slip_area[-1] > 4.2 * m.min_area:
             converged *= 0
@@ -177,15 +176,7 @@ def run_timestep_python(m, dt, t):
 
     self.timer.node['simulation'].stop()
     return converged
-def calc_slip_area(m):
-    areas = []
-    dz = np.max(m.reservoir.unstr_discr.mesh_data.points[:,2]) - np.min(m.reservoir.unstr_discr.mesh_data.points[:,2])
-    for contact in m.physics.engine.contacts:
-        cell_ids = np.array(contact.cell_ids, copy=True)
-        for i in range(cell_ids.size):
-            if contact.states[i] == contact_state.SLIP:
-                areas.append(m.reservoir.unstr_discr.faces[cell_ids[i]][4].area / dz)
-    return areas
+
 def get_output_folder(config={'mode': 'quasi_static', 'depletion': {'mode': 'uniform'}, 'friction_law': 'static'}):
     return 'sol_' + config['mode'] + '_' + config['depletion']['mode'] + '_' + config['friction_law']
 def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=False):
@@ -234,10 +225,12 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     m.physics.engine.find_equilibrium = False
 
     if m.depletion_mode == 'uniform':
-        # no fluid flow, no mechanics -> flow coupling, keeping pressure -> mechanics influencing
+        # no fluid flow
+        # no mechanics -> flow coupling, keeping pressure -> mechanics influencing
         m.reservoir.apply_geomechanics_mode(physics=m.physics, mode=2)
     else:
-        # eliminate mechanics -> flow coupling, keeping flow -> mechanics
+        # flud flow persists,
+        # no mechanics -> flow coupling, keeping flow -> mechanics
         m.reservoir.apply_geomechanics_mode(physics=m.physics, mode=0)
 
     ## timestepping
@@ -500,8 +493,9 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
             from matplotlib.animation import FuncAnimation
             from matplotlib import rcParams
             # substitute with your own path to FFMPEG installation
+            # download link https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z
             rcParams['animation.ffmpeg_path'] = r'c:\work\packages\ffmpeg-6.0\bin\ffmpeg.exe'
-
+            rcParams['animation.ffmpeg_path'] = r'C:\software\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe'
             times, files = read_pvd(os.path.join(data_folder, 'solution_fault.pvd'))
             max_nt = len(files)
             time_text = stress[0].text(0.07, 0.2, 'time = ' + str(24 * 60 * times[0]) + ' minutes', fontsize=12, rotation='horizontal', transform=fig.transFigure)
@@ -550,7 +544,7 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
                     days = int(times[i])
                     minutes = int(24 * 60 * times[i]) - 24 * 60 * days
                     msec = int(86400 * 1000 * times[i]) - 86400 * 1000 * days - 60000 * minutes
-                    time_text.set_text('time = ' + str(days) + ' day ' + str(minutes) + ' min ' + str(msec) + ' msec')
+                    time_text.set_text('step=' + str(i) + ' time = ' + str(days) + ' day ' + str(minutes) + ' min ' + str(msec) + ' msec')
 
                     for i in range(n_plots):
                         depth_lims = stress[i].get_ylim()

@@ -3,12 +3,12 @@ from darts.physics.properties.basic import RockCompactionEvaluator
 
 
 class PropertyContainer:
-    def __init__(self, phase_name, component_name, min_z, Mw, temperature=None, rock_comp=1e-5):
+    def __init__(self, phase_name, component_name, eps_z, Mw, temperature=None, rock_comp=1e-5):
         self.nph = len(phase_name)
         self.nc = len(component_name)
         self.components = component_name
         self.phases = phase_name
-        self.min_z = min_z
+        self.eps_z = eps_z
         self.Mw = Mw
 
         if temperature is not None:  # constant T specified
@@ -53,19 +53,19 @@ class PropertyContainer:
         check_vec = np.zeros((len(vec_composition),))
 
         for ith_comp in range(len(vec_composition)):
-            if vec_composition[ith_comp] < self.min_z:
-                vec_composition[ith_comp] = self.min_z
+            if vec_composition[ith_comp] < self.eps_z:
+                vec_composition[ith_comp] = self.eps_z
                 count_corr += 1
                 check_vec[ith_comp] = 1
-            elif vec_composition[ith_comp] > 1 - self.min_z:
-                vec_composition[ith_comp] = 1 - self.min_z
+            elif vec_composition[ith_comp] > 1 - self.eps_z:
+                vec_composition[ith_comp] = 1 - self.eps_z
                 temp_sum += vec_composition[ith_comp]
             else:
                 temp_sum += vec_composition[ith_comp]
 
         for ith_comp in range(len(vec_composition)):
             if check_vec[ith_comp] != 1:
-                vec_composition[ith_comp] = vec_composition[ith_comp] / temp_sum * (1 - count_corr * self.min_z)
+                vec_composition[ith_comp] = vec_composition[ith_comp] / temp_sum * (1 - count_corr * self.eps_z)
         return vec_composition
 
     def evaluate(self, state):

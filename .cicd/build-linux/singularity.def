@@ -1,0 +1,108 @@
+Bootstrap: docker
+From:      nvidia/cuda:12.8.1-devel-rockylinux8
+
+%labels
+    PROJECT     open-darts
+
+%arguments
+    ENABLE_AGENT_TOOLS=0
+    ENABLE_DLS=1
+    PY_VER=3.12
+    CUDA_ARCH=70
+
+%environment
+    source /opt/rh/gcc-toolset-13/enable
+    source /opt/conda/etc/profile.d/conda.sh
+    export GSELINSOLVERSPATH=/opt/darts-linear-solvers/build
+
+%post
+    # exiting pipeline with a non-zero exit code if any command in a pipeline fails
+    set -euo pipefail
+
+    # install base packages
+    dnf -y clean all
+    dnf -y upgrade
+    dnf -y install epel-release dnf-plugins-core
+    dnf -y install --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
+        jq patchelf wget git ca-certificates which tar xz bzip2 make cmake \
+        python3 python3-pip libjpeg-turbo-devel gcc-toolset-13-gcc-c++ mesa-libGLU \
+        libXrender libX11 libXext libXi libXfixes libXcursor libXrandr libXinerama \
+        libXmu libXt libXft fontconfig freetype
+    echo 'source /opt/rh/gcc-toolset-13/enable' >> /etc/profile.d/gcc13.sh
+
+    # miniconda installation (quiet; keep errors visible)
+    CONDA_DIR=/opt/conda
+    curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+    ( set +x; bash /tmp/miniconda.sh -b -p "$CONDA_DIR" >/dev/null )
+    rm -f /tmp/miniconda.sh
+    # do not run 'conda init' in containers; source only when needed
+    ( set +x; . /opt/conda/etc/profile.d/conda.sh >/dev/null 2>&1 || true )
+    "$CONDA_DIR/bin/conda" clean -a -y -q >/dev/null
+    "$CONDA_DIR/bin/conda" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main >/dev/null
+    "$CONDA_DIR/bin/conda" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r >/dev/null
+
+
+    # cleanup & size reduction
+    dnf -y remove gmp-devel mpfr-devel libmpc-devel isl-devel zlib-devel || true
+    dnf -y autoremove
+    dnf clean all
+
+    # capture actual GCC version, build date and CUDA version
+    source /opt/rh/gcc-toolset-13/enable
+    GCC_VERSION="$(gcc -dumpfullversion 2>/dev/null || gcc -dumpversion || echo unknown)"
+    BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    CUDA_VERSION="$(nvcc --version | awk -F',| ' '/release/{print $6}')"
+    # inject into labels.json - %labels section
+    LBL=/.singularity.d/labels.json
+    TMP=$(mktemp)
+    jq --arg gv "$GCC_VERSION" --arg bd "$BUILD_DATE" --arg cv "$CUDA_VERSION" \
+    '.GCC=$gv | .BUILT_AT=$bd | .CUDA=$cv' \
+    "$LBL" > "$TMP" && mv "$TMP" "$LBL"
+
+    # install darts-linear-solvers
+    if [ "{{ENABLE_DLS}}" == "1" ]; then
+        # Expect CI to pass:
+        #   DLS_TOKEN  – read-only personal/deploy token (protected variable)
+        DLS_URL="https://oauth2:{{DLS_TOKEN}}@gitlab.tudelft.nl/dvoskov/darts-linear-solvers.git"
+        mkdir -p /opt
+        git clone "${DLS_URL}" /opt/darts-linear-solvers
+        cd /opt/darts-linear-solvers
+        export CUDA_ARCH={{CUDA_ARCH}}
+        ./helper_scripts/build_gpu.sh
+
+        # Place library/include in standart folders and clean up rest
+        mkdir -p build/lib build/include
+        mv *.a ./lib/AMGX/build/*.so ./build/lib/
+        cp -r ./include/* ./lib/bos_linear_solver_lib/include/* ./build/include/ || true
+        find . -mindepth 1 -maxdepth 1 ! -name build -exec rm -rf {} +
+        cd build
+        find . -mindepth 1 -maxdepth 1 ! -name lib ! -name include -exec rm -rf {} +
+        cd ..
+
+        # Ensure path is exported at runtime
+        export GSELINSOLVERSPATH=/opt/darts-linear-solvers/build >> /environment
+    fi
+
+    # GitLab and agentic tools
+    if [ "{{ENABLE_AGENT_TOOLS}}" == "1" ]; then
+        source /opt/conda/etc/profile.d/conda.sh
+        conda create -n agents python={{PY_VER}} -q -y > /dev/null
+        conda activate agents > /dev/null
+
+        conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+        conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+        python3 -m pip install fastmcp
+        conda install datasets debugpy gitpython -q -y > /dev/null
+        conda install -c conda-forge python-gitlab openai-agents -q -y > /dev/null
+
+        curl -fsSL https://rpm.nodesource.com/setup_current.x | bash
+        dnf install nodejs -y
+
+        # install coding agents
+        npm install -g @openai/codex@native
+        npm install -g @anthropic-ai/claude-code
+    fi
+
+%runscript
+    exec /bin/bash "$@"

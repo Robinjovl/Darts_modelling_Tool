@@ -1,5 +1,3 @@
-import numpy as np
-
 from darts.engines import value_vector
 
 

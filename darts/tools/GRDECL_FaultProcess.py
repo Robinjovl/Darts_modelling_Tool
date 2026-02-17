@@ -12,7 +12,6 @@
 #########################################################################
 
 import collections
-import operator
 
 # Polygon
 import matplotlib
@@ -39,7 +38,7 @@ from shapely.ops import nearest_points, polygonize, split
 
 
 class FaultProcess:
-    def __init__(self, GRDECL=[]):
+    def __init__(self, GRDECL=None):
         """Fault Process module (2D fault lines detect and process)
         (assuming fault will penetrate all layers in Z direction)
 
@@ -67,6 +66,8 @@ class FaultProcess:
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2018
         """
+        if GRDECL is None:
+            GRDECL = []
         self.NumFaultLines = 0
         self.GRDECL_Data = GRDECL
         self.BoundaryLines = []
@@ -100,7 +101,7 @@ class FaultProcess:
         for line in self.FaultLines:
             self.IntersectPts.append(line[0])
             self.IntersectPts.append(line[-1])
-        print('[FaultProcess] Found %d faults.' % (self.NumFaultLines))
+        print(f"[FaultProcess] Found {self.NumFaultLines:d} faults.")
 
         # debug
         # self.plotLines(self.FaultLines)
@@ -160,8 +161,7 @@ class FaultProcess:
                 self.SplitPolygons[i][j] = (int(node[0]), int(node[1]))
 
         print(
-            '[FaultProcess] Domain is splitted as %d polygons.'
-            % (len(self.SplitPolygons))
+            f"[FaultProcess] Domain is splitted as {len(self.SplitPolygons):d} polygons."
         )
 
         # debug
@@ -184,7 +184,7 @@ class FaultProcess:
         Date: Sep. 2018
         """
         debug = 0
-        OldLines = MultiLineString(self.BoundaryLines + self.FaultLines)
+        MultiLineString(self.BoundaryLines + self.FaultLines)
         FaultLine_Extend = self.FaultLines[:]
         BoundaryLine_Splitted = self.BoundaryLines[:]
 
@@ -204,7 +204,7 @@ class FaultProcess:
             NewEndPoint = []
             if debug:
                 print('Before', NewLine, countSP, countEP)
-            if countSP == 1 and isBoundaryVert(self.GRDECL_Data, StartPoint) == False:
+            if countSP == 1 and not isBoundaryVert(self.GRDECL_Data, StartPoint):
                 # if(debug):print('SV ',StartPoint,'is a hanging vert')
                 NewEndPoint = extend_FaultLines(
                     self.GRDECL_Data, Line, FaultLine_Extend, 'StartPoint'
@@ -212,7 +212,7 @@ class FaultProcess:
                 NewLine = NewEndPoint + NewLine  # +NewLine[1:]
                 NewIntersectPts.append(NewEndPoint[0])
                 flag = 1
-            if countEP == 1 and isBoundaryVert(self.GRDECL_Data, EndPoint) == False:
+            if countEP == 1 and not isBoundaryVert(self.GRDECL_Data, EndPoint):
                 # if(debug): print('EV ',EndPoint,'is a hanging vert')
                 NewEndPoint = extend_FaultLines(
                     self.GRDECL_Data, Line, FaultLine_Extend, 'EndPoint'
@@ -255,7 +255,7 @@ class FaultProcess:
                             # print(result)
                             # print(i,j,line_i,line_j)
                             PossibileIntersectPts += result
-            print('Added %d new intersection pts' % (len(PossibileIntersectPts)))
+            print(f"Added {len(PossibileIntersectPts):d} new intersection pts")
             NewIntersectPts += PossibileIntersectPts
 
             # Step 3. Split the old line in terms of new intersection point
@@ -278,9 +278,14 @@ class FaultProcess:
             self.IntersectPts + NewIntersectPts,
         )
 
-    def plotLines(self, bdlines=[], faultlines=[], endpoints=[]):
-
+    def plotLines(self, bdlines=None, faultlines=None, endpoints=None):
         # Plot the fault line map
+        if endpoints is None:
+            endpoints = []
+        if faultlines is None:
+            faultlines = []
+        if bdlines is None:
+            bdlines = []
         if len(bdlines) + len(faultlines) == 0:
             BoundaryLabels = ['Edge' + str(i) for i in range(len(self.BoundaryLines))]
             FaultLabels = ['Fault' + str(i) for i in range(len(self.FaultLines))]
@@ -362,7 +367,7 @@ def computeInternalFaultLine(GRDECL_Data, RawFaultVerts):
         # Prefer to start at the boundary to avoid bug
         count = 0
         for id in StartIDs:
-            if isBoundaryVert(GRDECL_Data, Verts[id]) == True:
+            if isBoundaryVert(GRDECL_Data, Verts[id]):
                 count += 1
         return count
 
@@ -381,7 +386,7 @@ def computeInternalFaultLine(GRDECL_Data, RawFaultVerts):
         for StartID in StartIDs:
             if Verts[StartID] in StartEndVerts:
                 if (
-                    isBoundaryVert(GRDECL_Data, Verts[StartID]) == False
+                    not isBoundaryVert(GRDECL_Data, Verts[StartID])
                     and NumBoundaryVert > 0
                 ):  # Prefer to start on the boundary
                     continue
@@ -419,7 +424,7 @@ def computeInternalFaultLine(GRDECL_Data, RawFaultVerts):
                         dist == 1 and Verts[i] not in verts
                     ):  # One Line can not pass start node two times
                         # print(i,dist,Verts[i],verts[-1])
-                        if isFaultEdge(GRDECL_Data, (Verts[i], verts[-1])) == False:
+                        if not isFaultEdge(GRDECL_Data, (Verts[i], verts[-1])):
                             if debug:
                                 print(
                                     "!!!This is not a fault edge!!!",
@@ -450,7 +455,7 @@ def computeInternalFaultLine(GRDECL_Data, RawFaultVerts):
             FaultLines.append(verts)
         if debug:
             print(
-                "Line%d Start@" % (line_i),
+                f"Line{line_i:d} Start@",
                 StartID,
                 Verts[StartID],
                 ' - End@',
@@ -467,7 +472,7 @@ def computeInternalFaultLine(GRDECL_Data, RawFaultVerts):
         if NumVerts == Length + 1:
             FaultLines[i] = [FaultLines[i][0], FaultLines[i][-1]]
         if debug:
-            print("Line%d NumVerts=%d Length=%d" % (i, NumVerts, Length))
+            print(f"Line{i:d} NumVerts={NumVerts:d} Length={Length:d}")
     if debug:
         print(FaultLines)
 
@@ -492,22 +497,22 @@ def deriveFaultLoc(GRDECL_Data, i, j, CellFault, BdMarker, BDFaces):
         if 'Y+' in BDFaces:
             CellFault[3] = False
 
-    if CellFault[0] == True:
+    if CellFault[0]:
         # vert.add((i-1+1,j))
         # vert.add((i-1+1,j+1))
         vert.append((i - 1 + 1, j))
         vert.append((i - 1 + 1, j + 1))
-    if CellFault[1] == True:
+    if CellFault[1]:
         # vert.add((i+1,j))
         # vert.add((i+1,j+1))
         vert.append((i + 1, j))
         vert.append((i + 1, j + 1))
-    if CellFault[2] == True:
+    if CellFault[2]:
         # vert.add((i,j-1+1))
         # vert.add((i+1,j-1+1))
         vert.append((i, j - 1 + 1))
         vert.append((i + 1, j - 1 + 1))
-    if CellFault[3] == True:
+    if CellFault[3]:
         # vert.add((i,j+1))
         # vert.add((i+1,j+1))
         vert.append((i, j + 1))
@@ -517,7 +522,7 @@ def deriveFaultLoc(GRDECL_Data, i, j, CellFault, BdMarker, BDFaces):
     #   debug=1
 
     if debug:
-        print("ij(%d,%d)" % (i, j))
+        print(f"ij({i:d},{j:d})")
         print('Modified Fault Face Marker', CellFault)
         print('Fault Coord=', vert)
 
@@ -588,7 +593,7 @@ def extend_FaultLines(GRDECL_Data, line, OldFaults, startfrom='StartPoint or End
     OldFaults = MultiLineString(OldFaults)
     objects = ExtendedSegment.intersection(OldFaults)
 
-    if objects.is_empty == False:  # We have hit point
+    if not objects.is_empty:  # We have hit point
         # print('HitGeometry',objects,objects.geom_type)
         if objects.geom_type in ['LineString', 'Point']:
             pts = nearest_points(Point(p1), objects)
@@ -755,7 +760,7 @@ def isFaultOnBoundaryEdge(GRDECL_Data, fault):
     return BoundaryEdge
 
 
-##------------------Geometry--------------------
+# ------------------Geometry--------------------
 def Shapely2List_MultiLineString(lines):
     LinesList = []
     for line in lines:
@@ -856,15 +861,19 @@ def DrawPolygons(polygons):
 
     plt.axis('equal')
     plt.gca().invert_xaxis()
-    plt.title('Domain Decomposition Map (%d domains)' % (len(patches)), fontdict=font)
+    plt.title(f'Domain Decomposition Map ({len(patches):d} domains)', fontdict=font)
     plt.xlabel('X', fontdict=font)
     plt.ylabel('Y', fontdict=font)
     plt.show()
 
 
-def DrawPath(lines, labels=[], endpoints=[]):
+def DrawPath(lines, labels=None, endpoints=None):
     # https://matplotlib.org/users/path_tutorial.html
 
+    if endpoints is None:
+        endpoints = []
+    if labels is None:
+        labels = []
     plt.figure(num=None, figsize=(10, 10), dpi=80, facecolor='w', edgecolor='k')
     font = {
         'family': 'serif',
@@ -875,12 +884,16 @@ def DrawPath(lines, labels=[], endpoints=[]):
 
     for i, verts in enumerate(lines):
         # print(i,verts)
-        plt.plot(*zip(*verts), label=labels[i])
+        plt.plot(*zip(*verts, strict=False), label=labels[i])
         # plt.scatter(*zip(*verts),alpha=0.7,s=20)
 
     if len(endpoints) > 0:
         plt.scatter(
-            *zip(*endpoints), facecolors='none', edgecolors='r', alpha=0.7, s=20
+            *zip(*endpoints, strict=False),
+            facecolors='none',
+            edgecolors='r',
+            alpha=0.7,
+            s=20,
         )
 
     # ax.set_xlim(-2,2)

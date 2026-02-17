@@ -21,7 +21,6 @@ SOFTWARE.
 """
 
 import copy
-import os
 
 import igraph
 import matplotlib.cm as cm
@@ -143,9 +142,7 @@ class Graph:
         else:
             # Duplicate vertex...
             print(
-                'Duplicate vertex found in self.get_vertex_id with coordinates [x,y] = [{:}, {:}]'.format(
-                    x, y
-                )
+                f'Duplicate vertex found in self.get_vertex_id with coordinates [x,y] = [{x}, {y}]'
             )
             return np.NaN
 
@@ -272,9 +269,9 @@ class Graph:
         :param merge_threshold: h-factor which is recommended between [0.5, 0.86]
         :return:
         """
-        assert (
-            0.5 <= merge_threshold <= 0.86
-        ), "Choose threshold on closed interval [0.5, 0.86]"
+        assert 0.5 <= merge_threshold <= 0.86, (
+            "Choose threshold on closed interval [0.5, 0.86]"
+        )
         dist_vec = np.linalg.norm(
             self.vertices[new_vertex] - self.vertices[existing_vertices], axis=1
         )
@@ -297,9 +294,9 @@ class Graph:
         :param correct_aperture: boolean for applying aperture correction or not
         :return:
         """
-        assert (
-            0.5 <= merge_threshold <= 0.86
-        ), "Choose threshold on closed interval [0.5, 0.86]"
+        assert 0.5 <= merge_threshold <= 0.86, (
+            "Choose threshold on closed interval [0.5, 0.86]"
+        )
         count = 0
         for new_vertex in order_discr[1:]:
             count += 1
@@ -506,13 +503,13 @@ class Graph:
                 speed up succesive gridding
         :return:
         """
-        assert (
-            0.5 <= merge_treshold <= 0.86
-        ), "Choose threshold on closed interval [0.5, 0.86]"
+        assert 0.5 <= merge_treshold <= 0.86, (
+            "Choose threshold on closed interval [0.5, 0.86]"
+        )
         self.closest_point_method(
             order_discr, char_len, merge_treshold, correct_aperture
         )
-        for ii in range(small_angle_iter):
+        for _ii in range(small_angle_iter):
             self.remove_small_angles(tolerange_small_angle, char_len, correct_aperture)
         if straighten_edges:
             self.straighten_edges(tolerange_straight_angle, char_len, correct_aperture)
@@ -1114,7 +1111,7 @@ def create_geo_file(
     :return:
     """
     act_frac_sys = np.round(act_frac_sys * 10**decimals) * 10 ** (-decimals)
-    num_segm_tot = act_frac_sys.shape[0]
+    act_frac_sys.shape[0]
     unique_nodes = np.unique(
         np.vstack((act_frac_sys[:, :2], act_frac_sys[:, 2:])), axis=0
     )
@@ -1131,12 +1128,12 @@ def create_geo_file(
     # f.write('-algo meshadapt;\n\n')
 
     # Set some parameters in the model:
-    f.write('lc = {:1.3f};\n'.format(char_len))
-    f.write('lc_box = {:1.3f};\n'.format(char_len_boundary))
+    f.write(f'lc = {char_len:1.3f};\n')
+    f.write(f'lc_box = {char_len_boundary:1.3f};\n')
     if char_len_well is None:
         char_len_well = char_len
-    f.write('lc_well = {:1.3f};\n'.format(char_len_well))
-    f.write('height_res = {:4.3f};\n\n'.format(height_res))
+    f.write(f'lc_well = {char_len_well:1.3f};\n')
+    f.write(f'height_res = {height_res:4.3f};\n\n')
 
     ####
     f.write('rsv_layers = {:d};\n'.format(input_data['rsv_layers']))
@@ -1189,13 +1186,7 @@ def create_geo_file(
                 if dist < char_len:
                     cell_size_str = 'lc_well'
             f.write(
-                'Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, {:s}}};\n'.format(
-                    nodes[0] + 1,
-                    unique_nodes[nodes[0], 0],
-                    unique_nodes[nodes[0], 1],
-                    z_top,
-                    cell_size_str,
-                )
+                f'Point({nodes[0] + 1:d}) = {{{unique_nodes[nodes[0], 0]:8.5f}, {unique_nodes[nodes[0], 1]:8.5f}, {z_top:8.5f}, {cell_size_str:s}}};\n'
             )
 
         if not points_created[nodes[1]]:
@@ -1208,21 +1199,11 @@ def create_geo_file(
                 if dist < char_len:
                     cell_size_str = 'lc_well'
             f.write(
-                'Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, {:s}}};\n'.format(
-                    nodes[1] + 1,
-                    unique_nodes[nodes[1], 0],
-                    unique_nodes[nodes[1], 1],
-                    z_top,
-                    cell_size_str,
-                )
+                f'Point({nodes[1] + 1:d}) = {{{unique_nodes[nodes[1], 0]:8.5f}, {unique_nodes[nodes[1], 1]:8.5f}, {z_top:8.5f}, {cell_size_str:s}}};\n'
             )
 
         line_count += 1
-        f.write(
-            'Line({:d}) = {{{:d}, {:d}}};\n\n'.format(
-                line_count, nodes[0] + 1, nodes[1] + 1
-            )
-        )
+        f.write(f'Line({line_count:d}) = {{{nodes[0] + 1:d}, {nodes[1] + 1:d}}};\n\n')
 
     # Store some internal variables for gmsh (used later after extrude):
     f.write('num_points_frac = newp - 1;\n')
@@ -1234,47 +1215,27 @@ def create_geo_file(
         # For every corner of the box:
         point_count += 1
         f.write(
-            'Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc_box}};\n'.format(
-                point_count, box_data[ii, 0], box_data[ii, 1], z_top
-            )
+            f'Point({point_count:d}) = {{{box_data[ii, 0]:8.5f}, {box_data[ii, 1]:8.5f}, {z_top:8.5f}, lc_box}};\n'
         )
 
     # Add four lines for each side of the box:
     f.write('\n// Extra lines for boundary of domain:\n')
     line_count += 1
-    f.write(
-        'Line({:d}) = {{{:d}, {:d}}};\n'.format(
-            line_count, point_count - 3, point_count - 2
-        )
-    )
+    f.write(f'Line({line_count:d}) = {{{point_count - 3:d}, {point_count - 2:d}}};\n')
 
     line_count += 1
-    f.write(
-        'Line({:d}) = {{{:d}, {:d}}};\n'.format(
-            line_count, point_count - 2, point_count - 1
-        )
-    )
+    f.write(f'Line({line_count:d}) = {{{point_count - 2:d}, {point_count - 1:d}}};\n')
 
     line_count += 1
-    f.write(
-        'Line({:d}) = {{{:d}, {:d}}};\n'.format(
-            line_count, point_count - 1, point_count - 0
-        )
-    )
+    f.write(f'Line({line_count:d}) = {{{point_count - 1:d}, {point_count - 0:d}}};\n')
 
     line_count += 1
-    f.write(
-        'Line({:d}) = {{{:d}, {:d}}};\n'.format(
-            line_count, point_count - 0, point_count - 3
-        )
-    )
+    f.write(f'Line({line_count:d}) = {{{point_count - 0:d}, {point_count - 3:d}}};\n')
 
     # Make Curve loop for the boundary:
     f.write('\n// Create line loop for boundary surface:\n')
     f.write(
-        'Curve Loop(1) = {{{:d}, {:d}, {:d}, {:d}}};\n'.format(
-            line_count - 3, line_count - 2, line_count - 1, line_count
-        )
+        f'Curve Loop(1) = {{{line_count - 3:d}, {line_count - 2:d}, {line_count - 1:d}, {line_count:d}}};\n'
     )
     f.write('Plane Surface(1) = {1};\n\n')
     f.write('Curve{1:num_lines_frac} In Surface{1};\n')
@@ -1285,9 +1246,7 @@ def create_geo_file(
         for ii in range(len(wells)):
             point_count += 1
             f.write(
-                'Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc_well}};\n'.format(
-                    point_count, wells[ii][0], wells[ii][1], z_top
-                )
+                f'Point({point_count:d}) = {{{wells[ii][0]:8.5f}, {wells[ii][1]:8.5f}, {z_top:8.5f}, lc_well}};\n'
             )
             f.write('Point{' + str(point_count) + '} In Surface{1};\n')
 
@@ -1407,15 +1366,13 @@ def create_geo_file(
     f.write('\n// Extrude fractures\n')
     frac_idx = 0
     for ii in range(act_frac_sys.shape[0]):
-        f.write('\n// Fracture {{{:d}}}\n'.format(ii + 1))
+        f.write(f'\n// Fracture {{{ii + 1:d}}}\n')
         f.write('// Reservoir layers\n')
         f.write(
-            'fr[] = Extrude {{0, 0, height_res}}{{ Line {{{:d}}}; Layers{{rsv_layers}}; Recombine;}};\n'.format(
-                ii + 1
-            )
+            f'fr[] = Extrude {{0, 0, height_res}}{{ Line {{{ii + 1:d}}}; Layers{{rsv_layers}}; Recombine;}};\n'
         )
         if export_frac:
-            f.write('Physical Surface({:d}) = {{news - 1}};\n'.format(90000 + frac_idx))
+            f.write(f'Physical Surface({90000 + frac_idx:d}) = {{news - 1}};\n')
             frac_idx += 1
 
         if input_data['overburden_layers'] > 0:
@@ -1424,9 +1381,7 @@ def create_geo_file(
                 'fo[] = Extrude {0, 0, overburden_thickness}{ Line {fr[0]}; Layers{overburden_layers}; Recombine;};\n'
             )
             if export_frac:
-                f.write(
-                    'Physical Surface({:d}) = {{news - 1}};\n'.format(90000 + frac_idx)
-                )
+                f.write(f'Physical Surface({90000 + frac_idx:d}) = {{news - 1}};\n')
                 frac_idx += 1
 
         if input_data['underburden_layers'] > 0:
@@ -1438,9 +1393,7 @@ def create_geo_file(
                 + '}; Layers{underburden_layers}; Recombine;};\n'
             )
             if export_frac:
-                f.write(
-                    'Physical Surface({:d}) = {{news - 1}};\n'.format(90000 + frac_idx)
-                )
+                f.write(f'Physical Surface({90000 + frac_idx:d}) = {{news - 1}};\n')
                 frac_idx += 1
 
     f.write('\n')

@@ -1,6 +1,6 @@
 from darts.models.cicd_model import CICDModel
 from darts.models.darts_model import DartsModel
-from darts.engines import value_vector
+from darts.engines import value_vector, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -94,21 +94,23 @@ class Model(DartsModel, OptModuleSettings):
             y0 = 0.9 * Ly
             self.id2 = ((c[:,0] - x0) ** 2 + (c[:,1] - y0) ** 2 + c[:,2] ** 2).argmin()
 
-        self.reservoir.add_well("P1", depth=0)
+        well_type = ms_well.MS_Type.EPM
+        self.reservoir.add_well("P1", well_type, depth=0)
         self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id1), well_index=self.reservoir.well_index)
 
-        self.reservoir.add_well("I1", depth=0)
+        self.reservoir.add_well("I1", well_type, depth=0)
         self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id2), well_index=self.reservoir.well_index)
 
     def set_physics(self):
         """Physical properties"""
         zero = 1e-13
+        epsilon = 1e-14
         components = ['w', 'o']
         phases = ['wat', 'oil']
         self.cell_property = ['pressure'] + ['water']
         self.cell_property += ['temperature']
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=zero/10)
+        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
@@ -128,8 +130,8 @@ class Model(DartsModel, OptModuleSettings):
         thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
-                                     min_t=273.15 + 20, max_t=273.15 + 200)
+                                     n_points=400, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     min_t=273.15 + 20, max_t=273.15 + 200,  extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         self.runtime = 1000
@@ -174,7 +176,7 @@ class Model(DartsModel, OptModuleSettings):
             # customize your own operator, e.g. the Temperature
             temperature_etor = geothermal_customized_etor()
 
-            temperature_itor = self.physics.create_interpolator(temperature_etor, axes_min=self.physics.axes_min,
+            temperature_itor, _ = self.physics.create_interpolator(temperature_etor, axes_min=self.physics.axes_min,
                                                                 axes_max=self.physics.axes_max,
                                                                 timer_name="customized operator interpolation",
                                                                 n_ops=1, platform='cpu', algorithm='multilinear',
@@ -271,15 +273,15 @@ class Model(DartsModel, OptModuleSettings):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
+    def __init__(self, phases_name, components_name, eps_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
 
     def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
         # evaluate_PT argument is required in PropertyContainer but is not needed in this model
-        
+
         self.temperature = temperature
         self.nu = zc
         for i in range(self.nph):

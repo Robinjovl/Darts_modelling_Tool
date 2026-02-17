@@ -1,5 +1,6 @@
+import gzip
 import os.path as osp
-import re
+import shutil
 
 import numpy as np
 
@@ -7,20 +8,29 @@ from darts.engines import value_vector
 
 
 def get_table_keyword(file_name, keyword):
-    with open(file_name, 'r') as f:
+    with open(file_name) as f:
         for line in f:
             if line.strip() == keyword:
                 table = []
                 while True:
                     row = f.readline()
-                    if row[0] == '#':
+                    if row.startswith('#') or row.startswith('--'):  # skip comments
                         continue
-                    else:
-                        a = np.fromstring(row.strip(), dtype=float, sep=' ')
-                    if a.size > 0:
-                        table.append(value_vector(a))
-                    if row.find('/') != -1:
+                    elif row.find('/') != -1:  # end of the table
                         return table
+                    else:
+                        try:
+                            a = np.fromstring(row.strip(), dtype=float, sep=' ')
+                        except ValueError:
+                            print(
+                                "Error processing the file",
+                                file_name,
+                                "! Can't convert the row to float array:",
+                                row,
+                            )
+                            exit(1)
+                        if a.size > 0:
+                            table.append(value_vector(a))
                 break
 
 
@@ -34,16 +44,14 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
         import os
 
         if os.path.isfile(cache_filename):
-            print(
-                "Reading %s from %s..." % (keyword, cache_filename), end='', flush=True
-            )
+            print(f"Reading {keyword} from {cache_filename}...", end='', flush=True)
             a = np.fromfile(cache_filename)
-            print(" %d values have been read." % len(a))
+            print(f" {len(a):d} values have been read.")
             return a
 
     # start with specified (or default) array length
     a = np.zeros(def_len)
-    with open(file_name, 'r') as f:
+    with open(file_name) as f:
         for line in f:
             s_line = line.strip()
 
@@ -60,7 +68,7 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                     # requested keyword is now detected
                     read_data_mode = 1
                     print(
-                        "Reading %s from %s..." % (keyword, osp.abspath(file_name)),
+                        f"Reading {keyword} from {osp.abspath(file_name)}...",
                         end='',
                         flush=True,
                     )
@@ -74,7 +82,12 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                     else:
                         continue
             # requested keyword is not yet detected or comment found - skip the line
-            if not read_data_mode or len(s_line) == 0 or s_line[0] == '#':
+            if (
+                not read_data_mode
+                or len(s_line) == 0
+                or s_line.startswith('#')
+                or s_line.startswith('--')
+            ):
                 continue
             # collect all float values to numpy array
             # check for repeating values
@@ -88,7 +101,6 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                         s2_add.fill(s2[1])
                         b = np.append(b, s2_add)
                     else:
-
                         try:
                             value = float(s1[x])
                         except ValueError:
@@ -99,7 +111,18 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                             continue
                         b = np.append(b, value)
             else:
-                b = np.fromstring(s_line, dtype=float, sep=' ')
+                if s_line.find('/') != -1:  # end of the array
+                    break
+                try:
+                    b = np.fromstring(s_line, dtype=float, sep=' ')
+                except ValueError:
+                    print(
+                        "Error processing the file",
+                        file_name,
+                        "! Can't convert the row to float array:",
+                        s_line,
+                    )
+                    exit(1)
 
             # Check if there is still enough place in array
             # if not, enlarge array by a factor of 2
@@ -119,9 +142,9 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
     if cache:
         # if caching is enabled, save to cache file
         a.tofile(cache_filename)
-        print(" %d values have been read and cached." % pos)
+        print(f" {pos:d} values have been read and cached.")
     else:
-        print(" %d values have been read." % pos)
+        print(f" {pos:d} values have been read.")
 
     return a
 
@@ -133,10 +156,50 @@ def save_few_keywords(fname, keys, data):
         for i, val in enumerate(data[id]):
             if i % 6 == 0:
                 f.write('\n')
-            if type(val) != float:
+            if not isinstance(val, float):
                 f.write(str(val))
             else:
-                f.write("%12.10f" % val)
+                f.write(f"{val:12.10f}")
             f.write('\t')
         f.write('\n' + '/' + '\n')
     f.close()
+
+
+def compressed_file(fname, verbose=False):
+    '''
+    Creates a compressed file or uncompresses an archived file
+    '''
+    fname_gz = fname + '.gz'
+    if osp.exists(fname):
+        if not osp.exists(fname_gz):
+            compress_file(fname, fname_gz, verbose=verbose)
+    else:
+        if osp.exists(fname_gz):
+            decompress_file(fname, fname_gz, verbose=verbose)
+        else:
+            raise Exception(
+                'Cannot find either uncompressed or compressed file: '
+                + fname
+                + ' or '
+                + fname_gz
+            )
+
+
+def compress_file(fname, fname_gz, verbose=False, compresslevel=9):
+    if verbose:
+        print('Compressing', fname, 'to', fname_gz, '...')
+    with open(fname, 'rb') as f_in:
+        with gzip.open(fname_gz, 'wb', compresslevel=compresslevel) as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    if verbose:
+        print('Done')
+
+
+def decompress_file(fname, fname_gz, verbose=False):
+    if verbose:
+        print('Uncompressing', fname_gz, 'to', fname, '...')
+    with gzip.open(fname_gz, 'rb') as f_in:
+        with open(fname, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    if verbose:
+        print('Done')

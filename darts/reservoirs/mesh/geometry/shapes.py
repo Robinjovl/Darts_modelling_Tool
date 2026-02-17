@@ -725,7 +725,7 @@ class Cylinder(Shape):
                 c0 = len(self.curves)
                 c1, c2, c3, c4, c5, c6 = c0 + 1, c0 + 2, c0 + 3, c0 + 4, c0 + 5, c0 + 6
                 c7, c8, c9, c10, c11 = c0 + 7, c0 + 8, c0 + 9, c0 + 10, c0 + 11
-                c13, c14, c17, c18, c20, c21, c22 = (
+                c13, c14, c17, c18, c20, _c21, c22 = (
                     c0 + 13,
                     c0 + 14,
                     c0 + 17,

@@ -10,4 +10,4 @@
 
    There are 2 additional cells per well are internally added by open-DARTS for the non-multi-segment well case, so `n_blocks = n_res_blocks = 2 * n_wells`
 
-   For both multi_segment =True and False, DARTS adds one additional cell per well, and then one more for **all** well connections if multi_segment = False - in that case  the in/out flow from all well connections immediately come to the well rate. If multi_segment is True, DARTS adds one more extra block for **each** well connection to account for the flow friction in a well tube. 
+   For both ms_epm =True and False, DARTS adds one additional cell per well, and then one more for **all** well connections if ms_epm = False - in that case  the in/out flow from all well connections immediately come to the well rate. If ms_epm is True, DARTS adds one more extra block for **each** well connection to account for the flow friction in a well tube.

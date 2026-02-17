@@ -136,7 +136,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			linear_solver->set_prec(new linsolv_bos_bilu0<N_VARS>);
 			break;
 		}
-#ifdef WITH_HYPRE
+#ifndef OPENDARTS_LINEAR_SOLVERS
 		case sim_params::CPU_GMRES_FS_CPR:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
@@ -285,6 +285,21 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
 	z_var = get_z_var();
+	if (NC_ > 1)
+	{
+		if (params->log_transform == 0)
+		{
+			min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
+			max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		}
+		else if (params->log_transform == 1)
+		{
+			min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
+			max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+		}
+		min_sim_z = min_axis_z + params->sim_eps;
+		max_sim_z = max_axis_z - params->sim_eps;
+	}
 
 	X_init.resize(n_vars * mesh->n_blocks);
 	PV.resize(mesh->n_blocks);
@@ -321,7 +336,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	  // reference
 	  Xref[n_vars * i + P_VAR] = Xn_ref[n_vars * i + P_VAR] = mesh->ref_pressure[i];
 	  // initial
-	
+
 	  for (uint8_t ii = 0; ii < NE; ii++)
 	  {
 		  X_init[n_vars * i + P_VAR + ii] = mesh->initial_state[i * NE + ii];
@@ -331,6 +346,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND * i + d];
 	  }
 	}
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 
 	for (index_t i = 0; i < mesh->n_blocks; i++)
@@ -429,21 +446,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (NC_ > 1)
-	{
-	  if (params->log_transform == 0)
-	  {
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	  }
-	  else if (params->log_transform == 1)
-	  {
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
-	  }
-	}
 
 	return 0;
 }
@@ -602,9 +604,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 	fill(thermal_forces.begin(), thermal_forces.end(), 0.0);
   }
 
-  index_t j, upwd_jac_idx[NP], nebr_jac_idx, upwd_idx[NP], diag_idx, conn_id = 0, st_id = 0, conn_st_id = 0, 
+  index_t j, upwd_jac_idx[NP], nebr_jac_idx, upwd_idx[NP], diag_idx, conn_id = 0, st_id = 0, conn_st_id = 0,
 	  csr_idx_start, csr_idx_end;
-  index_t l_ind, r_ind, l_ind1, r_ind1, l_ind2, r_ind2, r_ind3, r_ind4, r_ind5;
+  index_t l_ind, r_ind, l_ind1, r_ind1, l_ind2, r_ind2, r_ind3, r_ind4, r_ind5, r_ind6, r_ind7;
   value_t *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, *buf, *buf_prev, *n;
   uint8_t d, v, c, p, density_cond;
   value_t gamma_p_diff, p_diff, phase_p_diff[NP], t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg;
@@ -689,7 +691,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 
 			  // upwind index in jacobian
 			  if (st_id < csr_idx_end && cols[st_id] == j) nebr_jac_idx = st_id;
-			  
+
 			  if (stencil[conn_st_id] < n_blocks)	// matrix, fault or well cells
 			  {
 				  r_ind = N_VARS * stencil[conn_st_id];
@@ -781,8 +783,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  upwd_jac_idx[p] = diag_ind[i];
 				  for (c = 0; c < NE; c++)
 				  {
-					  if (c < NC) CFL_out[c] += phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c];
-					  darcy_component_fluxes[c] += phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c];
+					  if (c < NC) CFL_out[c] += phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c] *
+					  												op_vals_arr[upwd_idx[p] * N_OPS + LAMBDA_OP + p];
+					  darcy_component_fluxes[c] += phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c] *
+					  													op_vals_arr[upwd_idx[p] * N_OPS + LAMBDA_OP + p];
 				  }
 			  }
 			  else
@@ -791,8 +795,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  upwd_jac_idx[p] = nebr_jac_idx;
 				  for (c = 0; c < NE; c++)
 				  {
-					  if (c < NC && j < n_res_blocks) CFL_in[c] += -phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c];
-					  darcy_component_fluxes[c] += phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c];
+					  if (c < NC && j < n_res_blocks) CFL_in[c] += -phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c] *
+					  																	op_vals_arr[upwd_idx[p] * N_OPS + LAMBDA_OP + p];
+					  darcy_component_fluxes[c] += phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c] *
+					  													op_vals_arr[upwd_idx[p] * N_OPS + LAMBDA_OP + p];
 				  }
 			  }
 		  }
@@ -812,7 +818,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					r_ind1 = conn_st_id * N_HOOKE + d * NT;
 					for (v = 0; v < NT; v++)
 					{
-					  // Hooke's forces 
+					  // Hooke's forces
 					  hooke_forces[l_ind + d] += hooke_tran[r_ind1 + v] * X[r_ind + T2U[v]];
 					  Jac[l_ind1 + T2U[v]] += hooke_tran[r_ind1 + v];
 					}
@@ -821,7 +827,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					biot_forces[l_ind + d] += biot_tran[conn_st_id * N_BIOT + d] * X[r_ind + P_VAR];
 					Jac[l_ind1 + P_VAR] += biot_tran[conn_st_id * N_BIOT + d];
 
-					// Thermal forces 					
+					// Thermal forces
 					if constexpr (THERMAL)
 					{
 					  thermal_forces[l_ind + d] += thermal_traction_tran[conn_st_id * N_BIOT + d] * X[r_ind + T_VAR];
@@ -836,7 +842,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  // NE equations
 					  for (c = 0; c < NE; c++)
 					  {
-						  Jac[st_id * N_VARS_SQ + (P_VAR + c) * N_VARS + P_VAR] += dt * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c] * darcy_tran[r_ind1];
+						  Jac[st_id * N_VARS_SQ + (P_VAR + c) * N_VARS + P_VAR] += dt * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c] *
+						  													op_vals_arr[upwd_idx[p] * N_OPS + LAMBDA_OP + p] * darcy_tran[r_ind1];
 					  }
 				  }
 				  // biot term in accumulation
@@ -896,7 +903,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  l_ind = ND * conn_id;
 				  for (d = 0; d < ND; d++)
 				  {
-					  // Hooke's forces 
+					  // Hooke's forces
 					  r_ind = conn_st_id * N_HOOKE + d * NT;
 					  for (v = 0; v < NT; v++)
 					  {
@@ -999,23 +1006,26 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  l_ind = diag_idx + (P_VAR + c) * N_VARS;
 				  l_ind1 = nebr_jac_idx * N_VARS_SQ + (P_VAR + c) * N_VARS;
 				  r_ind = upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c;
+				  r_ind6 = upwd_idx[p] * N_OPS + LAMBDA_OP + p;
 				  r_ind1 = (upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c) * N_STATE;
+				  r_ind7 = (upwd_idx[p] * N_OPS + LAMBDA_OP + p) * N_STATE;
 				  l_ind2 = i * N_VARS + P_VAR + c;
 				  r_ind2 = (i * N_OPS + GRAV_OP + p) * N_STATE;
 				  r_ind3 = (i * N_OPS + SAT_OP + p) * N_STATE;
 				  r_ind4 = (j * N_OPS + GRAV_OP + p) * N_STATE;
 				  r_ind5 = (j * N_OPS + SAT_OP + p) * N_STATE;
-				  
+
 				  RHS[l_ind2] += avg_weigthed_density * biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c];
 				  for (v = 0; v < NE; v++)
 				  {
 					  // 1. mobility derivative
 					  if (upwd_jac_idx[p] < csr_idx_end) // mobility derivatives
 					  {
-						  Jac[upwd_jac_idx[p] * N_VARS_SQ + (P_VAR + c) * N_VARS + v] += dt * phase_p_diff[p] * op_ders_arr[r_ind1 + v];
+						  Jac[upwd_jac_idx[p] * N_VARS_SQ + (P_VAR + c) * N_VARS + v] += dt * phase_p_diff[p] * (op_ders_arr[r_ind1 + v] * op_vals_arr[r_ind6] +
+																												op_vals_arr[r_ind] * op_ders_arr[r_ind7 + v]);
 					  }
 					  // 2. derivatives of 'avg_density' coming with (gravitational) free term
-					  Jac[l_ind + v] += dt * op_vals_arr[r_ind] * grav_pc_der_i[v];
+					  Jac[l_ind + v] += dt * op_vals_arr[r_ind] * op_vals_arr[r_ind6] * grav_pc_der_i[v];
 					  // 3. derivatives of 'avg_weigthed_density' coming with (gravitational) free term
 					  if (density_cond == 0)
 						Jac[l_ind + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
@@ -1026,7 +1036,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  if (nebr_jac_idx < csr_idx_end)
 					  {
 						// 2. .. with respect to neighbour j
-						Jac[l_ind1 + v] += dt * op_vals_arr[r_ind] * grav_pc_der_j[v]; // 1.
+						Jac[l_ind1 + v] += dt * op_vals_arr[r_ind] * op_vals_arr[r_ind6] * grav_pc_der_j[v]; // 1.
 						// 3. .. with respect to neighbour j
 						if (density_cond == 0)
 						  Jac[l_ind1 + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
@@ -1034,12 +1044,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 						else if (density_cond == 2)
 						  Jac[l_ind1 + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
 							(op_vals_arr[j * N_OPS + SAT_OP + p] * op_ders_arr[r_ind4 + v] + op_ders_arr[r_ind5 + v] * op_vals_arr[j * N_OPS + GRAV_OP + p]);
-					  } 
+					  }
 				  }
 			  }
 			  // 4. derivatives of density coming with (gravitational) free term to porosity in gravitational forces
 			  // note that gravitational free term is from Darcy fluxes, gravitational forces are in momentum balance
-			  // for clarity: 
+			  // for clarity:
 			  // biot * vol_strain * \rho_{fluid} + (1 - biot * vol_strain) * \rho_{sk} = (\sum_{stencil, vars} (biot_vol_strain_tran * X) + rho_{fluid} * biot_vol_strain_rhs) * eff_density +
 			  // + \rho_{sk}
 			  /*for (d = 0; d < ND; d++)
@@ -1218,12 +1228,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  for (v = 0; v < N_STATE; v++)
 				  {
 					  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR + v] -= poro[i] * V[i] * gravity[d] *
-						  (op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_STATE + v] + 
+						  (op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_STATE + v] +
 							  op_ders_arr[(i * N_OPS + SAT_OP + p) * N_STATE + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]);
 				  }
 			  }
 			  RHS[i * N_VARS + U_VAR + d] -= (1 - poro[i]) * V[i] * gravity[d] * rho_s;
-			  
+
 			  //Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += comp_mult * V[i] * gravity[d] * rho_s;
 			  //if constexpr (THERMAL)
 				// Jac[diag_idx + (U_VAR + d) * N_VARS + T_VAR] += th_poro[i] * V[i] * gravity[d] * rho_s;*/
@@ -1311,7 +1321,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities()
 		p_grad_vals[d] += (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p]) * p_grad.rhs(d, 0);
 	  }
 	}
-	// stencil assembly 
+	// stencil assembly
 	for (index_t k = 0; k < p_grad.stencil.size(); k++)
 	{
 	  for (uint8_t d = 0; d < ND; d++)
@@ -1821,234 +1831,6 @@ template <uint8_t NC, uint8_t NP, bool THERMAL>
 void engine_super_elastic_cpu<NC, NP, THERMAL>::set_discretizer(DiscretizerType* _discr)
 {
   discr = _discr;
-}
-
-template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
-{
-	value_t sum_z, new_z;
-	index_t nb = mesh->n_blocks;
-	bool z_corrected;
-	index_t n_corrected = 0;
-
-	for (index_t i = 0; i < nb; i++)
-	{
-		sum_z = 0;
-		z_corrected = false;
-
-		// check all but one composition in grid block
-		for (char c = 0; c < nc - 1; c++)
-		{
-			new_z = X[i * N_VARS + Z_VAR + c] - dX[i * N_VARS + Z_VAR + c];
-			if (new_z < min_zc)
-			{
-				new_z = min_zc;
-				z_corrected = true;
-			}
-			else if (new_z > 1 - min_zc)
-			{
-				new_z = 1 - min_zc;
-				z_corrected = true;
-			}
-			sum_z += new_z;
-		}
-		// check the last composition
-		new_z = 1 - sum_z;
-		if (new_z < min_zc)
-		{
-			new_z = min_zc;
-			z_corrected = true;
-		}
-		sum_z += new_z;
-
-		if (z_corrected)
-		{
-			// normalize compositions and set appropriate update
-			for (char c = 0; c < nc - 1; c++)
-			{
-				new_z = X[i * N_VARS + Z_VAR + c] - dX[i * N_VARS + Z_VAR + c];
-
-				new_z = std::max(min_zc, new_z);
-				new_z = std::min(1 - min_zc, new_z);
-
-				new_z = new_z / sum_z;
-				dX[i * N_VARS + Z_VAR + c] = X[i * N_VARS + Z_VAR + c] - new_z;
-			}
-			n_corrected++;
-		}
-	}
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
-}
-
-template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
-{
-	/*double sum_z, new_z, temp_sum, min_count;
-	std::vector<value_t> check_vec;
-	index_t nb = mesh->n_blocks;
-	bool z_corrected;
-	index_t n_corrected = 0;
-
-	// Check if solving for the log-transform or regular composition:
-	if (params->log_transform == 0)
-	{
-		// No log-transform is applied to nonlinear unknowns (compositions only), proceed normally:
-		for (index_t i = 0; i < nb; i++)
-		{
-			sum_z = 0;
-			temp_sum = 0;		  // sum of any composition not set to z_min
-			min_count = 0;		  // number of times a composition is set to z_min
-			check_vec.resize(nc); // vector that holds 0 for z_c > z_min && 1 for z_c = z_min
-			z_corrected = false;
-
-			// check all but one composition in grid block
-			for (index_t c = 0; c < nc - 1; c++)
-			{
-				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-
-				if (new_z < min_zc)
-				{
-					//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-					new_z = min_zc; //TODO: check if this update is consistent!
-					z_corrected = true;
-					check_vec[c] = 1;
-					min_count += 1;
-				}
-				else if (new_z > max_zc)
-				{
-					new_z = max_zc;
-					z_corrected = true;
-					temp_sum += new_z;
-				}
-				else
-				{
-					temp_sum += new_z;
-				}
-				sum_z += new_z;
-			}
-
-			// check the last composition
-			new_z = 1 - sum_z;
-			if (new_z < min_zc)
-			{
-				//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-				new_z = min_zc;
-				z_corrected = true;
-				check_vec[nc - 1] = 1;
-				min_count += 1;
-			}
-			else
-			{
-				temp_sum += new_z;
-			}
-			sum_z += new_z;
-
-			if (z_corrected)
-			{
-				// normalize compositions and set appropriate update
-				for (index_t c = 0; c < nc - 1; c++)
-				{
-					new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-
-					//new_z = std::max(min_zc * (1 + min_zc), new_z);  //TODO: check if this update is consistent!
-					new_z = std::max(min_zc, new_z);
-					new_z = std::min(max_zc, new_z);
-
-					if (check_vec[c] != 1)
-					{
-						//new_z = new_z / temp_sum * (1 - min_count * min_zc * (1 + min_zc));
-						new_z = new_z / temp_sum * (1 - min_count * min_zc);
-					}
-
-					dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
-				}
-				n_corrected++;
-			}
-			check_vec.clear();
-		}
-	}
-	else if (params->log_transform == 1)
-	{
-		// Log-transform is applied to nonlinear unknowns (compositions only), transform back composition exp(log(zc)) to apply correction:
-		for (index_t i = 0; i < nb; i++)
-		{
-			sum_z = 0;
-			temp_sum = 0;		  // sum of any composition not set to z_min
-			min_count = 0;		  // number of times a composition is set to z_min
-			check_vec.resize(nc); // vector that holds 0 for z_c > z_min && 1 for z_c = z_min
-			z_corrected = false;
-
-			// check all but one composition in grid block
-			for (char c = 0; c < nc - 1; c++)
-			{
-				new_z = exp(X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c]); //log based composition
-
-				if (new_z < min_zc)
-				{
-					//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-					new_z = min_zc;
-					z_corrected = true;
-					check_vec[c] = 1;
-					min_count += 1;
-				}
-				else if (new_z > max_zc)
-				{
-					new_z = max_zc;
-					z_corrected = true;
-					temp_sum += new_z;
-				}
-				else
-				{
-					temp_sum += new_z;
-				}
-				sum_z += new_z;
-			}
-
-			// check the last composition
-			new_z = 1 - sum_z;
-			if (new_z < min_zc)
-			{
-				//new_z = min_zc * (1 + min_zc);  //TODO: check if this update is consistent!
-				new_z = min_zc;
-				z_corrected = true;
-				check_vec[nc - 1] = 1;
-				min_count += 1;
-			}
-			else
-			{
-				temp_sum += new_z;
-			}
-			sum_z += new_z;
-
-			if (z_corrected)
-			{
-				// normalize compositions and set appropriate update
-				for (char c = 0; c < nc - 1; c++)
-				{
-					new_z = exp(X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c]); //log based composition
-
-					//new_z = std::max(min_zc * (1 + min_zc), new_z);  //TODO: check if this update is consistent!
-					new_z = std::max(min_zc, new_z);
-					new_z = std::min(max_zc, new_z);
-
-					if (check_vec[c] != 1)
-					{
-						//new_z = new_z / temp_sum * (1 - min_count * min_zc * (1 + min_zc));
-						new_z = new_z / temp_sum * (1 - min_count * min_zc);
-					}
-
-					dX[i * n_vars + z_var + c] = log(exp(X[i * n_vars + z_var + c]) / new_z); //log based composition
-				}
-				n_corrected++;
-			}
-			check_vec.clear();
-		}
-	}
-
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
-		*/
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>

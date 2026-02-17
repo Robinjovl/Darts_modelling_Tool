@@ -1,6 +1,4 @@
 import copy
-import os
-import sys
 
 import gmsh
 import meshio
@@ -197,7 +195,7 @@ def generate_box_3d(
                     y_minus.append(id)
                 elif j == len(y) - 1:
                     y_plus.append(id)
-    ## surface loops & volumes
+    # surface loops & volumes
     reservoir = []
     for k in range(0, len(z) - 1):
         for j in range(0, len(y) - 1):

@@ -1,10 +1,4 @@
-from iapws.iapws97 import _Backward1_T_Ph
-
 from darts.engines import property_evaluator_iface
-from darts.physics.properties.iapws.iapws_property import (
-    iapws_temperature_evaluator,
-    temperature_region1_evaluator,
-)
 
 
 class custom_rock_energy_evaluator(property_evaluator_iface):

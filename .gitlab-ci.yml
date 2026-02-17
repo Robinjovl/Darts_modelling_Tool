@@ -1,21 +1,29 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_MESSAGE =~ /(\[skip ci\]|\[ci skip\]|\[skip pipeline\]|\[skip-cicd\]|\[skip cicd\]|\[skip-cd\]|\[skip cd\])/i'
+      when: never
+    - when: always
+
 stages:
     - pre_commit
     - build_images
     - build
     - test
     - deploy
+    - ingest
 
 include:
-  - local: 'helper_scripts/ci_jobs/lint-python.yml'
-  - local: 'helper_scripts/ci_jobs/build-images.yml'
-  - local: 'helper_scripts/ci_jobs/build-linux.yml'
-  - local: 'helper_scripts/ci_jobs/build-windows.yml'
-  - local: 'helper_scripts/ci_jobs/build-linux-gpu.yml'
-  - local: 'helper_scripts/ci_jobs/build-linux-valgrind.yml'
-  - local: 'helper_scripts/ci_jobs/test-linux.yml'
-  - local: 'helper_scripts/ci_jobs/test-windows.yml'
-  - local: 'helper_scripts/ci_jobs/test-linux-gpu.yml'
-  - local: 'helper_scripts/ci_jobs/valgrind-check.yml'
-  # - local: 'helper_scripts/ci_jobs/vtune-profile.yml'
-  - local: 'helper_scripts/ci_jobs/upload-wheels.yml'
-  - local: 'helper_scripts/ci_jobs/deploy.yml'
+  - local: '.cicd/jobs/pre-commit.yml'
+  - local: '.cicd/jobs/build-images.yml'
+  - local: '.cicd/jobs/build-linux.yml'
+  - local: '.cicd/jobs/build-windows.yml'
+  - local: '.cicd/jobs/build-linux-gpu.yml'
+  - local: '.cicd/jobs/build-linux-valgrind.yml'
+  - local: '.cicd/jobs/test-linux.yml'
+  - local: '.cicd/jobs/test-windows.yml'
+  - local: '.cicd/jobs/test-linux-gpu.yml'
+  - local: '.cicd/jobs/valgrind-check.yml'
+  # - local: '.cicd/jobs/vtune-profile.yml'
+  - local: '.cicd/jobs/upload-wheels.yml'
+  - local: '.cicd/jobs/deploy.yml'
+  - local: '.cicd/jobs/gitingest.yml'

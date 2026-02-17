@@ -31,9 +31,13 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(ENABLE_VALGRIND)
-    message(STATUS ">>> Valgrind build: adding -g -O2")
-    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2")
-    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2")
+    message(STATUS ">>> Valgrind build: adding -g -O2 with Valgrind-compatible SIMD flags")
+    # Use -g -O2 for optimization with debug symbols
+    # Limit SIMD to SSE4.2 (supported by Valgrind 3.24) to avoid SIGILL on AVX-512
+    # -mno-avx512f disables AVX-512 foundation instructions
+    # -march=x86-64-v2 targets SSE4.2 level (compatible with Valgrind)
+    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
+    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
 endif()
 
 # Load cmake modules -----------------------------------------------------------
@@ -53,7 +57,7 @@ message(CHECK_START "Defining build settings")  # build settings
 # Get cmake source dir
 set(opendarts_SOURCE_DIR ${CMAKE_SOURCE_DIR})
 
-# Get hostname and username 
+# Get hostname and username
 cmake_host_system_information(RESULT opendarts_BUILD_HOSTNAME QUERY HOSTNAME)
 if(WIN32)
   set(opendarts_BUILD_USERNAME $ENV{USERNAME})
@@ -70,7 +74,7 @@ message(STATUS "  hostname: ${opendarts_BUILD_HOSTNAME}")
 get_git_head_revision(GIT_REFSPEC GIT_SHA1)
 git_local_changes(GIT_DIRTY)
 
-# Show git information 
+# Show git information
 message(STATUS "  git refspec: ${GITREFSPEC}")
 message(STATUS "  git hash: ${GIT_SHA1}")
 message(STATUS "  git dirtiness: ${GIT_DIRTY}")
@@ -88,7 +92,7 @@ if (${OPENDARTS_CONFIG} STREQUAL "GPU")
 endif()
 
 if(${OPENDARTS_CONFIG} STREQUAL "ST")
-  set(OPENDARTS_CONFIG "ST") 
+  set(OPENDARTS_CONFIG "ST")
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
   if(NOT DEFINED BOS_SOLVERS_DIR)
     message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
@@ -102,10 +106,10 @@ endif()
 
 message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 
-# Determine the type of compiler we have and set compiler flags and other compiler 
+# Determine the type of compiler we have and set compiler flags and other compiler
 # specific flags
 
-if(DEFINED BOS_SOLVERS_DIR AND NOT GPU_CONFIG)
+if(DEFINED BOS_SOLVERS_DIR)
   add_compile_definitions(WITH_HYPRE)
 endif()
 
@@ -113,22 +117,22 @@ endif()
 # Used for compiler flags and other cross compiler variables
 message(STATUS "  Setting compiler and linker flags for: ${CMAKE_CXX_COMPILER_ID}")
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-  # Compiler flags 
+  # Compiler flags
   #add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/MP>)
   #set(opendarts_cxx_compiler_flags, "-W3")
-  
+
   message(STATUS "  Setting MSVC compiler and linker flags")
-  # Compiler flags 
+  # Compiler flags
   set(opendarts_cxx_compiler_flags "/MP;/std:c++20")
-  
-  # for VS Sanitizer usage: 
+
+  # for VS Sanitizer usage:
   # 1. copy files clang_rt.asan*.dll from the VS folder, for example: C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\bin\Hostx64\x64
   # to the darts folder, for example: C:\anaconda3\envs\darts_debug\Lib\site-packages\darts
   # 2. uncomment lines below:
   #if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
   #  list(APPEND opendarts_cxx_compiler_flags "/fsanitize=address")
   #endif()
-  
+
   # Linker flags
   set(opendarts_cxx_linker_flags "")
 
@@ -138,20 +142,20 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 
   message("COMPILER FLAGS:" opendarts_cxx_compiler_flags)
 
-  # Compiler specific helper variables 
-   
+  # Compiler specific helper variables
+
   # Flags cmake to import external libraries as msvc like files: .lib and .dll instead of .a and .so
   set(import_externals_as_msvc TRUE)
-  
+
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   message(STATUS "  Setting GNU compiler and linker flags")
-  # Compiler flags 
+  # Compiler flags
   # We can also switch -fno-lto to -flto to compile everything with this flag.
   # Using LTO as it seems to reduce compile time
   # No need for manual optimization flag, CMake build types automatically handle it.
   # Debug: O0    Release: 03
   set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
-  
+
   # Linker flags
   set(opendarts_cxx_linker_flags "")
 
@@ -163,20 +167,20 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   if(SET_CXX11_ABI_0)
     list(APPEND opendarts_cxx_compiler_flags "-D_GLIBCXX_USE_CXX11_ABI=0")
   endif()
-  
+
   # Compiler specific helper variables (currently not needed)
 
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   message(STATUS "  Setting Clang compiler and linker flags")
-  # Compiler flags 
+  # Compiler flags
   set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC")
-  
+
   # Linker flags
   # Reasons:
   #   -Wl,-no_compact: used because in Clang compilers we get linker warning of
-  #                    being unable to create compact unwinding. This is relevant 
-  #                    for efficient exceptions, but this comes from SuperLU, so 
-  #                    we deactivate compact unwinding warnings.  
+  #                    being unable to create compact unwinding. This is relevant
+  #                    for efficient exceptions, but this comes from SuperLU, so
+  #                    we deactivate compact unwinding warnings.
   set(opendarts_cxx_linker_flags "-Wl,-no_compact_unwind")
 
   if(${OPENDARTS_CONFIG} STREQUAL "MT")
@@ -187,9 +191,9 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   if(SET_CXX11_ABI_0)
     list(APPEND opendarts_cxx_compiler_flags "-D_GLIBCXX_USE_CXX11_ABI=0")
   endif()
-  
+
   # Compiler specific helper variables (currently not needed)
-  
+
 endif()
 
 message(STATUS "   Compiler flags: ${opendarts_cxx_compiler_flags}")
@@ -221,15 +225,12 @@ endif()
 
 
 # Thirdparty libraries ---------------------------------------------------------
-# Reports we started looking for thirdparty libraries and initializes the flag 
-# that checks if all have been found 
+# Reports we started looking for thirdparty libraries and initializes the flag
+# that checks if all have been found
 message(CHECK_START "Importing thirdparty libraries")
 unset(thirdparty_missing_components)
 
 if(NOT ONLY_SOLVERS)
-  #   thirdparty/eigen ---------------------------------------------------------
-  include(thirdparty/thirdparty_eigen.cmake)
-
   #   thirdparty/pybind11 ------------------------------------------------------
   include(thirdparty/thirdparty_pybind11.cmake)
 endif()
@@ -254,14 +255,19 @@ message(CHECK_PASS "done!")
 # Configure GPU build
 if(CUDA)
     find_package(CUDAToolkit REQUIRED)
-    
+
     if(CUDAToolkit_FOUND)
         message(STATUS "CUDA found. Enabling CUDA support.")
         enable_language(CUDA)
         set(CMAKE_CUDA_STANDARD 20)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         cmake_minimum_required (VERSION 3.24)  # 3.24 is needed for architecture native
-        set(CMAKE_CUDA_ARCHITECTURES native)
+        if(DEFINED CUDA_ARCH)
+            message(STATUS "Using CUDA architecture(s): ${CUDA_ARCH}")
+            set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH})
+        else()
+            set(CMAKE_CUDA_ARCHITECTURES native)
+        endif()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --ptxas-options=-v -allow-unsupported-compiler")
         add_compile_definitions(WITH_GPU)
@@ -281,12 +287,12 @@ target_compile_features(opendarts_compiler_flags
   cxx_std_20
 )
 
-target_compile_options(opendarts_compiler_flags 
+target_compile_options(opendarts_compiler_flags
   INTERFACE
     ${opendarts_cxx_compiler_flags}
 )
 
-target_link_options(opendarts_compiler_flags 
+target_link_options(opendarts_compiler_flags
   INTERFACE
     ${opendarts_cxx_linker_flags}
 )
@@ -329,13 +335,22 @@ if(WITH_PHREEQC)
     set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/bin/IPhreeqc.dll")
     set(IPHREEQC_RENAME "IPhreeqc.dll")
   else()
-    set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/lib64/libIPhreeqc.so")
     set(IPHREEQC_RENAME "libIPhreeqc.so")
+    # Debian-based distros install to lib/, RHEL to lib64/. Search both.
+    find_library(
+      IPHREEQC_LINK
+      NAMES IPhreeqc iphreeqc
+      PATHS "${IPHREEQC_ROOT}"
+      PATH_SUFFIXES lib64 lib lib/x86_64-linux-gnu
+      NO_DEFAULT_PATH
+    )
   endif()
 
   # make sure the link exists
-  if(NOT EXISTS "${IPHREEQC_LINK}")
-    message(FATAL_ERROR "IPhreeqc shared library link not found: ${IPHREEQC_LINK}")
+  if(NOT IPHREEQC_LINK OR IPHREEQC_LINK STREQUAL "IPHREEQC_LINK-NOTFOUND")
+    message(FATAL_ERROR
+      "IPhreeqc shared library not found under ${IPHREEQC_ROOT} "
+      "(checked lib64, lib, lib/x86_64-linux-gnu)")
   endif()
 
   # resolve symlinks (on Windows this just canonicalizes the path)
@@ -348,7 +363,7 @@ if(WITH_PHREEQC)
 
   # Copy it at install time into the top of the install prefix
   install(FILES "${IPHREEQC_REAL_PATH}"
-          DESTINATION "."         
+          DESTINATION "."
           RENAME   "${IPHREEQC_RENAME}"
           COMPONENT Runtime)
 endif()
@@ -369,4 +384,3 @@ if(UNIX AND NOT APPLE)
     ")
 endif()
 # ------------------------------------------------------------------------------
-

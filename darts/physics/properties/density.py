@@ -92,7 +92,7 @@ class Spivey2004(Density):
 
         self.H2O_idx = components.index("H2O") if "H2O" in components else None
         if self.H2O_idx is None:
-            warnings.warn("H2O not present")
+            warnings.warn("H2O not present", stacklevel=2)
 
         self.ions = ions
         self.ni = len(ions) if ions is not None else 0

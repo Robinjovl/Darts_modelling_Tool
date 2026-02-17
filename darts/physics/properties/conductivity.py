@@ -41,7 +41,7 @@ class ConductivityAq(Conductivity):
 
         self.H2O_idx = components.index("H2O") if "H2O" in components else None
         if not self.H2O_idx:
-            warnings.warn("H2O not in list of components")
+            warnings.warn("H2O not in list of components", stacklevel=2)
 
     def evaluate(self, pressure, temperature, x, rho):
         # Mass of dissolved salt

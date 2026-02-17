@@ -1,10 +1,8 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 
 def plot_bhp_eclipse(well_name, eclipse_df, ax=None):
-
     my_df = pd.DataFrame()
     my_df['DAYS'] = eclipse_df['TIME']
     my_df[well_name] = 0
@@ -27,7 +25,6 @@ def plot_bhp_eclipse(well_name, eclipse_df, ax=None):
 
 
 def plot_block_pressure_eclipse(well_name, eclipse_df, ax=None):
-
     my_df = pd.DataFrame()
     my_df['DAYS'] = eclipse_df['TIME']
     my_df[well_name] = 0

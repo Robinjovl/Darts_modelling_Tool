@@ -1,23 +1,28 @@
+import importlib
 import os
-import sys
-import subprocess
 import re
 import shutil
-import importlib
+import subprocess
+import sys
 import time
 
-valgrind_models = [ '2ph_comp', '2ph_comp_solid', '2ph_do',
-                    '2ph_geothermal', 
-                    '2ph_geothermal_mass_flux',
-                    '3ph_comp_w', '3ph_do', '3ph_bo',
-                    'Uniform_Brugge',
-                    'Chem_benchmark_new',
-                    #'CO2_foam_CCS',
-                    'GeoRising',
-                    'CoaxWell',
-                    'phreeqc_dissolution',
-                    '2ph_do_thermal_mpfa'
-                ]       
+valgrind_models = [
+    '2ph_comp',
+    '2ph_comp_solid',
+    '2ph_do',
+    '2ph_geothermal',
+    '2ph_geothermal_mass_flux',
+    '2ph_do_thermal_mpfa',
+    '3ph_comp_w',
+    '3ph_do',
+    '3ph_bo',
+    'Uniform_Brugge',
+    'Chem_benchmark_new',
+    'CCS',
+    'GeoRising',
+    'CoaxWell',
+    'chemistry/carbonated_water',
+]
 
 # if the user passed extra models, append them (comma-separated):
 extra = os.environ.get('APPEND_VALGRIND_MODEL')
@@ -35,12 +40,13 @@ suppression_file = 'helper_scripts/valgrind-python.supp'
 
 # patterns to extract leak info and errors from Valgrind log
 MSG_PATTERNS = {
-    'definitely_lost':    r'definitely lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
-    'indirectly_lost':    r'indirectly lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
-    'possibly_lost':      r'possibly lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
-    'still_reachable':    r'still reachable:\s+([\d,]+) bytes in ([\d,]+) blocks',
-    'error_summary':      r'ERROR SUMMARY:\s+(\d+)'  # total errors
+    'definitely_lost': r'definitely lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
+    'indirectly_lost': r'indirectly lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
+    'possibly_lost': r'possibly lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
+    'still_reachable': r'still reachable:\s+([\d,]+) bytes in ([\d,]+) blocks',
+    'error_summary': r'ERROR SUMMARY:\s+(\d+)',  # total errors
 }
+
 
 def run_model(model):
     # add it also to system path to load modules
@@ -65,10 +71,11 @@ def run_model(model):
 
     return success
 
+
 def analyze_log(log_path):
     """Parse Valgrind log and return a list of summary dicts plus accumulated error count."""
     try:
-        content = open(log_path, 'r').read()
+        content = open(log_path).read()
     except FileNotFoundError:
         return [], 1
 
@@ -94,26 +101,33 @@ def analyze_log(log_path):
                     report[key] = err
                     total_errors += err
                 else:
-                    report[key] = {
-                        'bytes': match.group(1),
-                        'blocks': match.group(2)
-                    }
+                    report[key] = {'bytes': match.group(1), 'blocks': match.group(2)}
         summary_list.append(report)
 
     return summary_list, total_errors
+
 
 def run_valgrind_for_model(model, timeout=1800):
     # model path
     model_path = os.path.join('models', model)
     if not os.path.isdir(model_path):
         print(f"[SKIP] Model directory not found: {model_path}")
-        return True # failed
+        return True  # failed
 
-    # file paths
-    vg_log = os.path.join(log_folder, f'{model}.vg.log')
-    prog_out = os.path.join(log_folder, f'{model}.log')
-    prog_err = os.path.join(log_folder, f'{model}_err.log')
-    summary_file = os.path.join(log_folder, f'{model}.summary.txt')
+    # Use absolute paths for log files and suppression file since valgrind
+    # traces child processes that may run in different working directories
+    # (the Python snippet does os.chdir to the model directory)
+    abs_log_folder = os.path.abspath(log_folder)
+    abs_suppression_file = os.path.abspath(suppression_file)
+
+    # file paths (absolute to avoid path issues when cwd changes)
+    vg_log = os.path.join(abs_log_folder, f'{model}.vg.log')
+    prog_out = os.path.join(abs_log_folder, f'{model}.log')
+    prog_err = os.path.join(abs_log_folder, f'{model}_err.log')
+    summary_file = os.path.join(abs_log_folder, f'{model}.summary.txt')
+
+    # ensure nested model paths have a directory to write into
+    os.makedirs(os.path.dirname(vg_log), exist_ok=True)
 
     # Build the inline Python snippet to invoke run_model_direct
     py_snippet = (
@@ -129,11 +143,13 @@ def run_valgrind_for_model(model, timeout=1800):
         'valgrind',
         '--trace-children=yes',
         '--error-exitcode=0',
-        f'--suppressions={suppression_file}',
+        f'--suppressions={abs_suppression_file}',
         '--gen-suppressions=all',
         f'--log-file={vg_log}',
         '--',
-        'darts', '-c', py_snippet
+        'darts',
+        '-c',
+        py_snippet,
     ]
 
     print(f'Running Valgrind for model {model}...')
@@ -142,28 +158,37 @@ def run_valgrind_for_model(model, timeout=1800):
     # set environment: disable pymalloc so Valgrind sees everything
     env = os.environ.copy()
     env['PYTHONMALLOC'] = 'malloc'
-    
+
     # set single thread for mpfa models
     if 'mpfa' in model.split('_'):
         env['OMP_NUM_THREADS'] = '1'
 
     # set environment: disable pymalloc so Valgrind sees everything
     try:
-        darts_path = subprocess.check_output([
-            'python', '-c',
-            'import os, darts; print(os.path.dirname(darts.__file__))'
-        ]).decode().strip()
-        env['LD_LIBRARY_PATH'] = f"{darts_path}:{env.get('LD_LIBRARY_PATH','')}"
+        darts_path = (
+            subprocess.check_output(
+                [
+                    'python',
+                    '-c',
+                    'import os, darts; print(os.path.dirname(darts.__file__))',
+                ]
+            )
+            .decode()
+            .strip()
+        )
+        env['LD_LIBRARY_PATH'] = f"{darts_path}:{env.get('LD_LIBRARY_PATH', '')}"
     except subprocess.CalledProcessError as e:
         print(f'Failed to determine DARTS path: {e}')
-        return True # failed
-    
+        return True  # failed
+
     with open(prog_out, 'w') as out_f, open(prog_err, 'w') as err_f:
         try:
-            proc = subprocess.run(cmd, stdout=out_f, stderr=err_f, env=env, timeout=timeout)
+            proc = subprocess.run(
+                cmd, stdout=out_f, stderr=err_f, env=env, timeout=timeout
+            )
         except subprocess.TimeoutExpired:
             print(f'ERROR: timeout profiling model {model}')
-            return True # failed
+            return True  # failed
 
     # analyze and write summary
     summary_list, total_errors = analyze_log(vg_log)
@@ -185,14 +210,19 @@ def run_valgrind_for_model(model, timeout=1800):
     elapsed = ending_time - starting_time
 
     if proc.returncode != 0:
-        print(f'[FAIL] {model} returned exit code {proc.returncode},\t\t{elapsed:.2f} s')
-        return True  # failed, erros while model running 
+        print(
+            f'[FAIL] {model} returned exit code {proc.returncode},\t\t{elapsed:.2f} s'
+        )
+        return True  # failed, erros while model running
     elif total_errors != 0:
-        print(f'[FAIL] Valgrind detected {total_errors} errors for model {model},\t\t{elapsed:.2f} s')
-        return True # failed, found memory errors
+        print(
+            f'[FAIL] Valgrind detected {total_errors} errors for model {model},\t\t{elapsed:.2f} s'
+        )
+        return True  # failed, found memory errors
     else:
         print(f'[OK] profiling is finished for {model},\t\t{elapsed:.2f} s')
-        return False # success
+        return False  # success
+
 
 def main():
     # check for valgrind availability
@@ -209,8 +239,9 @@ def main():
         result = run_valgrind_for_model(model)
         if result:
             all_ok = False
-        
+
     sys.exit(0 if all_ok else 1)
+
 
 if __name__ == '__main__':
     main()

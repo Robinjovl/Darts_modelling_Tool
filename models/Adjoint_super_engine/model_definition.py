@@ -71,24 +71,26 @@ class Model(CICDModel, OptModuleSettings):
             WI = 200
 
         n_perf = self.reservoir.nz
+        well_type = ms_well.MS_Type.EPM
         for i, inj in enumerate(self.inj_list):
-            self.reservoir.add_well('I' + str(i + 1))
+            self.reservoir.add_well('I' + str(i + 1), well_type)
 
             for k in range(n_perf):
-                self.reservoir.add_perforation('I' + str(i + 1), cell_index=(inj[0], inj[1], k + 1),
-                                               well_radius=0.1, well_index=WI)
+                self.reservoir.add_perforation('I' + str(i + 1), res_cell_idx=(inj[0], inj[1], k + 1),
+                                               well_diameter=0.2, well_index=WI)
 
         for p, prod in enumerate(self.prod_list):
-            self.reservoir.add_well('P' + str(p + 1))
+            self.reservoir.add_well('P' + str(p + 1), well_type)
 
             for k in range(n_perf):
-                self.reservoir.add_perforation('P' + str(p + 1), cell_index=(prod[0], prod[1], k + 1),
-                                               well_radius=0.1, well_index=WI)
+                self.reservoir.add_perforation('P' + str(p + 1), res_cell_idx=(prod[0], prod[1], k + 1),
+                                               well_diameter=0.2, well_index=WI)
 
     def set_physics(self):
         """Physical properties"""
         # Create property containers:
         zero = 1e-8
+        epsilon = 1e-9
         components = ['CO2', 'C1', 'H2O']
         phases = ['gas', 'oil']
         Mw = [44.01, 16.04, 18.015]
@@ -99,7 +101,7 @@ class Model(CICDModel, OptModuleSettings):
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw,
-                                               min_z=zero / 10, temperature=1.)
+                                               eps_z=epsilon, temperature=1.)
         property_container.flash_ev = ConstantK(nc, [4, 2, 1e-1], zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
                                               ('oil', DensityBasic(compr=1e-5, dens0=600))])
@@ -112,7 +114,8 @@ class Model(CICDModel, OptModuleSettings):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=200, min_p=1, max_p=300, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -141,7 +144,7 @@ class Model(CICDModel, OptModuleSettings):
             customized_component_etor = customized_etor_specific_component()
             axes_min = self.physics.axes_min
             axes_max = self.physics.axes_max
-            customized_component_itor = self.physics.create_interpolator(customized_component_etor,
+            customized_component_itor, _ = self.physics.create_interpolator(customized_component_etor,
                                                                          axes_min=self.physics.axes_min,
                                                                          axes_max=self.physics.axes_max,
                                                                          n_ops=1,

@@ -24,7 +24,7 @@ class Model(THMCModel):
             self.cache_discretizer = config['cache_discretizer']
         else:
             self.cache_discretizer = True
-        super().__init__(n_points=256, discretizer=self.discretizer_name)
+        super().__init__()
     def set_physics(self):
         self.fluid_compressibility = 1.e-6
         self.rock_density0 = 2650.0
@@ -37,7 +37,7 @@ class Model(THMCModel):
         Mw = [18.015]
         components = ['H2O']
         phases = ['wat']
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, min_z=self.zero,
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, eps_z=self.zero,
                                                temperature=323.15)
         """ properties correlations """
         property_container.flash_ev = SinglePhase(nc=1)
@@ -53,7 +53,7 @@ class Model(THMCModel):
         property_container.rock_density_ev = ConstFunc(self.rock_density0)
         # create physics
         self.physics = Poroelasticity(components=components, phases=phases, timer=self.timer, n_points=n_points,
-                                      min_p=-10, max_p=1000, min_z=self.zero, max_z=1 - self.zero, discretizer=self.discretizer_name)
+                                      min_p=-10, max_p=1000, min_z=0., max_z=1, epsilon_z=self.zero/10, discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
         self.physics.init_physics(discr_type=self.discretizer_name, platform='cpu')
 
@@ -121,9 +121,10 @@ class Model(THMCModel):
             #                                well_index=well_index)
 
             pt_right = np.array([x, (-self.reservoir.a + self.reservoir.b) / 2, 0.0])
+            print('well perforation location prod:', pt_right)
             self.id_prod = np.linalg.norm(centroids - pt_right, axis=1).argmin()
 
-            self.reservoir.add_well("PROD001", depth=self.reservoir.depth[self.id_prod])
+            self.reservoir.add_well("PROD001", depth=self.reservoir.unstr_discr.depth_all_cells[self.id_prod])
             self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id_prod),
                                            well_index=well_index)
     def set_input_data(self):
@@ -152,7 +153,7 @@ class Model(THMCModel):
             # else:
             #     # Add controls for production well:
             #     # Specify bhp for particular production well:
-            self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+            self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                            is_inj=False, target=self.reservoir.p_init[self.id_prod] + self.depletion_value)
         return 0
     def setup_contact_friction(self, contact_algorithm: contact_solver):

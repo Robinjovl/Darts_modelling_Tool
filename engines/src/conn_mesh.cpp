@@ -9,25 +9,30 @@
 #include <assert.h>
 
 using namespace std;
-int 
+int
 conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, std::vector<value_t>& tran, std::vector<value_t>& tranD)
 {
   int diff_trans;
 
   diff_trans = tranD.size();
   n_conns = tran.size();
-  
+
   one_way_block_m = block_m;
   one_way_block_p = block_p;
   one_way_tran = tran;
   one_way_tranD = tranD;
-  
+
   n_res_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
   n_res_blocks = std::max(n_res_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
 
   n_blocks = n_res_blocks;
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
+
+  // All the connections in the connection list until now are reservoir connections, so
+  // one_way_is_dfm_conn is set to false for all reservoir connections in the following line.
+  // This list can be updated when using the method conn_mesh::add_conn.
+  one_way_is_dfm_conn.insert(one_way_is_dfm_conn.end(), n_one_way_conns_res, false);
 
   poro.resize(n_res_blocks);
   volume.resize(n_res_blocks);
@@ -187,7 +192,7 @@ conn_mesh::init_mpsa(std::vector<index_t>& block_m,
 	std::vector<index_t>& _sstencil,
 	std::vector<index_t>& _sst_offset,
 	std::vector<value_t>& _stran,
-	uint8_t _n_dim, 
+	uint8_t _n_dim,
 	index_t _n_matrix, index_t _n_bounds, index_t _n_fracs)
 {
 	n_vars = _n_dim;
@@ -425,13 +430,13 @@ conn_mesh::init_pm_mech_discretizer(
   one_way_stencil = _stencil;
   one_way_offset = _st_offset;
 
-  one_way_hooke = _hooke;			
+  one_way_hooke = _hooke;
   one_way_hooke_rhs = _hooke_rhs;
-  one_way_biot = _biot;			
+  one_way_biot = _biot;
   one_way_biot_rhs = _biot_rhs;
-  one_way_darcy = _darcy;			
+  one_way_darcy = _darcy;
   one_way_darcy_rhs = _darcy_rhs;
-  one_way_vol_strain = _vol_strain;			
+  one_way_vol_strain = _vol_strain;
   one_way_vol_strain_rhs = _vol_strain_rhs;
 
   n_matrix = _n_matrix;
@@ -525,13 +530,14 @@ conn_mesh::init_pme_mech_discretizer(
 }
 
 int
-conn_mesh::add_conn (index_t block_m, index_t block_p, value_t trans, value_t transD)
+conn_mesh::add_conn(index_t block_m, index_t block_p, value_t trans, value_t transD, bool is_dfm_conn)
 {
   one_way_block_m.push_back (block_m);
   one_way_block_p.push_back (block_p);
   one_way_tran.push_back (trans);
   if (one_way_tranD.size())
     one_way_tranD.push_back (transD);
+  one_way_is_dfm_conn.push_back(is_dfm_conn);
 
   n_conns++;
   return 0;
@@ -541,7 +547,7 @@ int
 conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value_t transD, const uint8_t P_VAR)
 {
   // for pm_discretizer output
-  vector<value_t> tblock_pos(n_vars * n_vars, 0.0), tblock_neg(n_vars * n_vars, 0.0), 
+  vector<value_t> tblock_pos(n_vars * n_vars, 0.0), tblock_neg(n_vars * n_vars, 0.0),
 				trhs(n_vars, 0.0), tblock_zero(n_vars * n_vars, 0.0);
   tblock_pos[P_VAR * n_vars + P_VAR] = trans;
   tblock_neg[P_VAR * n_vars + P_VAR] = -trans;
@@ -560,7 +566,7 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
 	one_way_tran.insert(one_way_tran.end(), tblock_neg.begin(), tblock_neg.end());
 	one_way_tran.insert(one_way_tran.end(), tblock_pos.begin(), tblock_pos.end());
 	one_way_rhs.insert(one_way_rhs.end(), trhs.begin(), trhs.end());
-  }	
+  }
   if (one_way_flux.size()) one_way_flux.insert(one_way_flux.end(), trhs.begin(), trhs.end());
   if (one_way_gravity_flux.size()) one_way_gravity_flux.insert(one_way_gravity_flux.end(), trhs.begin(), trhs.end());
 
@@ -747,7 +753,7 @@ conn_mesh::reverse_and_sort()
     }
 
     // reverse
-    
+
     idx = tmp_index[one_way_block_p[j]]++;
     block_m[idx] = one_way_block_p[j];
     block_p[idx] = one_way_block_m[j];
@@ -817,6 +823,7 @@ conn_mesh::reverse_and_sort()
 
   // with reversed connections
   n_conns *= 2;
+  n_res_conns *= 2;
 
   std::vector<value_t> test_t;
   std::vector<value_t> test_tD;
@@ -824,8 +831,52 @@ conn_mesh::reverse_and_sort()
   get_res_tran(test_t, test_tD);
   set_res_tran(test_t, test_tD);
 
+  reverse_and_sort_one_way(one_way_is_dfm_conn, is_dfm_conn);
+
   return 0;
 }
+
+template <typename T, bool IS_DERS>
+void
+conn_mesh::reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::vector<T>& two_way_values)
+{
+  if constexpr (IS_DERS) // if used to reverse and sort derivatives of phase velocities
+  {
+    const uint8_t vel_der_size = static_cast<uint8_t>(2 * n_vars);
+    const size_t expected_size = static_cast<size_t>(n_conns) * vel_der_size;
+    if (two_way_values.size() != expected_size)
+      two_way_values.resize(expected_size);
+
+    for (index_t j = 0; j < n_conns / 2; ++j)
+    {
+      const size_t src = static_cast<size_t>(j) * vel_der_size;
+      const size_t fwd = static_cast<size_t>(one_way_to_conn_index_forward[j]) * vel_der_size;
+      const size_t rev = static_cast<size_t>(one_way_to_conn_index_reverse[j]) * vel_der_size;
+
+      for (uint8_t v = 0; v < vel_der_size; ++v)
+      {
+        two_way_values[fwd + v] = -one_way_values[src + v]; // m->p
+        two_way_values[rev + v] = one_way_values[src + v];  // p->m
+      }
+    }
+  }
+  else // scalar/vector values
+  {
+    if (two_way_values.size() != static_cast<size_t>(n_conns))
+      two_way_values.resize(n_conns);
+
+    for (index_t j = 0; j < n_conns / 2; ++j)
+    {
+      two_way_values[one_way_to_conn_index_forward[j]] = -one_way_values[j]; // m->p
+      two_way_values[one_way_to_conn_index_reverse[j]] = one_way_values[j];  // p->m
+    }
+  }
+}
+
+// Explicit template instantiations to avoid code bloat in headers
+template void conn_mesh::reverse_and_sort_one_way<bool, false>(const std::vector<bool>&, std::vector<bool>&);
+template void conn_mesh::reverse_and_sort_one_way<value_t, false>(const std::vector<value_t>&, std::vector<value_t>&);
+template void conn_mesh::reverse_and_sort_one_way<value_t, true>(const std::vector<value_t>&, std::vector<value_t>&);
 
 int
 conn_mesh::reverse_and_sort_dvel()
@@ -965,7 +1016,7 @@ conn_mesh::reverse_and_sort_dvel()
 
 
 	// renumerate correct velocity mapper
-	// sorting one_way_block_m and one_way_block_p 
+	// sorting one_way_block_m and one_way_block_p
 	int ctr = 0;
 	for (index_t j = 0; j < n_conns; j++)
 	{
@@ -1070,7 +1121,7 @@ conn_mesh::reverse_and_sort_mpfa()
 	tran.resize(n_two_way_stencil);
 	if (diff_trans)
 		tranD.resize(n_two_way_stencil);
-	if (thermal_trans) 
+	if (thermal_trans)
 		tran_heat_cond.resize(n_two_way_stencil);
 	stencil.resize(n_two_way_stencil);
 	offset.resize(n_two_way_conns + 1);
@@ -1124,7 +1175,7 @@ conn_mesh::reverse_and_sort_mpsa()
     cout << "Processing mesh: " << n_blocks << " reservoir blocks including " << n_bounds << " boundary blocks, " << n_conns << " connections\n";
 
     cell_stencil.resize(n_blocks);
-    struct ClosestCmp { 
+    struct ClosestCmp {
         index_t second;
         index_t conn_id;
         bool operator()(const ClosestCmp& a, const ClosestCmp& b)
@@ -1199,7 +1250,7 @@ conn_mesh::reverse_and_sort_mpsa()
             offset[conn_counter] = s_acc;
 			if (one_way_flux.size()) copy_n(one_way_flux.begin() + n_vars * conn_id, n_vars, flux.begin() + n_vars * conn_counter);
 			conn_counter++;
- 
+
             //size = one_way_fst_offset[conn_id + 1] - one_way_fst_offset[conn_id];
             //ind.resize(size);
             //iota(ind.begin(), ind.end(), one_way_fst_offset[conn_id]);
@@ -1317,7 +1368,7 @@ conn_mesh::reverse_and_sort_pm()
 	rhs_biot.resize(n_two_way_conns * n_vars);
 	if (one_way_rhs_face.size())
 	  rhs_face.resize(n_two_way_conns * n_vars);
-	
+
 	for (index_t i = 0; i < n_blocks; i++)
 	{
 		const auto& cur_cell = t_idxs[i];
@@ -1352,10 +1403,10 @@ conn_mesh::reverse_and_sort_pm()
 
 			// store sorted conn ids
 			it = std::find(contact_cell_ids.begin(), contact_cell_ids.end(), std::make_pair(i, conn.second));
-			if ( it != contact_cell_ids.end() )	
+			if ( it != contact_cell_ids.end() )
 				fault_conn_id[std::distance(contact_cell_ids.begin(), it)].push_back(conn_counter);
 			it = std::find(contact_cell_ids.begin(), contact_cell_ids.end(), std::make_pair(conn.second, i));
-			if (it != contact_cell_ids.end())	
+			if (it != contact_cell_ids.end())
 				fault_conn_id[std::distance(contact_cell_ids.begin(), it)].push_back(conn_counter);
 
 			sorted_conn_ids[conn_counter] = conn_id;
@@ -1489,7 +1540,7 @@ conn_mesh::reverse_and_sort_pm_mech_discretizer()
 	  block_p[conn_counter] = conn.second;
 	  offset[conn_counter] = s_acc;
 	  conn_id = conn.conn_id;
-	  
+
 	  copy_n(one_way_hooke_rhs.begin() + conn_id * n_dim, n_dim, hooke_rhs.begin() + conn_counter * n_dim);
 	  copy_n(one_way_biot_rhs.begin() + conn_id * n_dim, n_dim, biot_rhs.begin() + conn_counter * n_dim);
 	  darcy_rhs[conn_counter] = one_way_darcy_rhs[conn_id];
@@ -1733,11 +1784,27 @@ conn_mesh::init_grav_coef(value_t grav_const)
   return 0;
 }
 
+int conn_mesh::init_spe(value_t grav_acceleration_for_spe)
+{
+	// Calculate and store specific potential energy (spe) at cell centroids
+	cell_spe.assign(n_blocks, 0);
+
+	for (size_t i = 0; i < depth.size(); i++)
+	{
+		// It is multiplied by -1 because for spe height needs to be used instead of depth
+		// It is multiplied by 1e-3 to convert Joule to kilo Joule
+		// Use depth[0] as the reference depth
+		cell_spe[i] = - (depth[i] - depth[0]) * grav_acceleration_for_spe * 1e-3;
+	}
+
+	return 0;
+}
+
 int conn_mesh::get_res_tran(std::vector<value_t>& res_tran, std::vector<value_t>& res_tranD)
 {
   res_tran.resize(n_one_way_conns_res);
-  
-  
+
+
   for (index_t j = 0; j < n_one_way_conns_res; ++j)
   {
     res_tran[j] = tran[one_way_to_conn_index_forward[j]];
@@ -1790,7 +1857,7 @@ int conn_mesh::get_wells_tran(std::vector<value_t>& well_tran)
       well_tran[i++] = tran[j];
     }
   }
-  
+
   return 0;
 }
 
@@ -1805,7 +1872,7 @@ int conn_mesh::set_wells_tran(std::vector<value_t>& well_tran)
       // update correspondent forward and reverse connections
       tran[one_way_to_conn_index_forward[conn_index_to_one_way[j]]] = well_tran[i];
       tran[one_way_to_conn_index_reverse[conn_index_to_one_way[j]]] = well_tran[i];
-      
+
       i++;
     }
   }
@@ -1815,88 +1882,221 @@ int conn_mesh::set_wells_tran(std::vector<value_t>& well_tran)
 
 int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 {
-  index_t well_head_idx = n_res_blocks;
-  n_perfs = 0;
-
-  // Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments, 
-  // which are connected to the reservoir. In addition, there is one more grid block (H-block)
+  // Wells are modeled as a 1D sequence of small grid blocks representing segments,
+  // which are connected to the reservoir. For EPM wells, however, there is one more grid block
   // per well, which is at the top, connected to the first well segment,
   // served as a container for well control equations.
+
+  index_t well_head_idx = n_res_blocks;
+  n_perfs = 0;
+  n_res_conns = n_conns;
 
   //  Add well connections
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
-    wells[iw]->well_head_idx = well_head_idx; // well head
-    wells[iw]->well_body_idx = well_head_idx + 1; // well body
-    
+    wells[iw]->well_head_idx = well_head_idx; // wellhead (topmost well segment)
+    wells[iw]->well_body_idx = well_head_idx + 1; // well body (segment right below the wellhead)
+
     index_t n_segments = 0;
-    // connections between well segments and reservoir
+    // Add connections between well segments and reservoir
     for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
     {
       index_t i_w, i_r;
       value_t wi, wid;
       std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
-      add_conn(i_w + well_head_idx + 1, i_r, wi, wid);
+      add_conn(i_w + well_head_idx + 1, i_r, wi, wid, false);
       n_perfs++;
       n_segments = max(n_segments, i_w + 1);
     }
-    // connections between segments
-    for (index_t p = 0; p < n_segments; p++)
-    {
-      add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, 0); // connection between them
-    }
+	// This if-block can affect the number of segments if the well is of the DFM type and there is or are unperforated segments below the lowermost perforated segment of the well.
+	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	{
+		n_segments = max(n_segments, wells[iw]->num_segments - 1);
+	}
+
+	// Add connection between well segments
+	bool is_dfm_well;
+	index_t n_seg_conns;
+	if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
+	{
+		is_dfm_well = false;
+		n_seg_conns = n_segments;
+	}
+	else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	{
+		is_dfm_well = true;
+		n_seg_conns = wells[iw]->num_segments - 1;
+	}
+	for (index_t seg = 0; seg < n_seg_conns; ++seg)
+	{
+		add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0, is_dfm_well);
+	}
+
+	// Add connection between DFM well segments and reservoir cells for lateral heat transfer (for heat conduction only)
+	if (wells[iw]->ms_type == ms_well::MS_Type::DFM && wells[iw]->with_lateral_heat_transfer)
+	{
+		add_connection_for_lateral_heat_exchange_for_dfm(wells[iw]);
+	}
+
     well_head_idx += n_segments + 1;
     wells[iw]->n_segments = n_segments;
   }
 
+  // Store index of connection between wellhead and the lower segment (i.e., wellhead connection)
+  store_wellhead_conn_idx(n_res_conns, wells);
+
+  // If the model has at least a DFM well, set has_dfm_well to true.
+  has_dfm_well = false;
+  for (ms_well* w : wells)
+  {
+	  if (w->ms_type == ms_well::MS_Type::DFM)
+	  {
+		  has_dfm_well = true;
+		  break;
+	  }
+  }
+
   // connect_segments(wells[0], wells[1], wells[0]->n_segments, wells[1]->n_segments);
 
-  // Resize mesh arrays by number of well blocks and head blocks (one per well)
-  n_blocks = well_head_idx;
-  volume.resize(n_blocks);
-  poro.resize(n_blocks);
-  initial_state.resize(n_blocks * n_vars);
-  op_num.resize(n_blocks);
-  depth.resize(n_blocks + n_bounds);
+  index_t total_num_segments = 0;
+  for (index_t iw = 0; iw < wells.size(); iw++)
+  {
+	  total_num_segments += wells[iw]->n_segments + 1;   // 1 is the wellhead segment
+  }
+  index_t total_num_cells = total_num_segments + n_blocks;
 
-  heat_capacity.resize(n_blocks);
-  rock_cond.resize(n_blocks + n_bounds);
-  mob_multiplier.resize(2 * n_blocks);
+  // Add properties of well segments
+  volume.resize(total_num_cells);
+  poro.resize(total_num_cells);
+  initial_state.resize(total_num_cells * n_vars);
+  op_num.resize(total_num_cells);
+  depth.resize(total_num_cells + n_bounds);
+
+  heat_capacity.resize(total_num_cells);
+  rock_cond.resize(total_num_cells + n_bounds);
+  mob_multiplier.resize(2 * total_num_cells);
 
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
-    // depth of the well head block - well controls work at this depth
-    depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
-    for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
-    {
-      volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
-      poro[wells[iw]->well_head_idx + p] = 1;
-      op_num[wells[iw]->well_head_idx + p] = 0;
-      heat_capacity[wells[iw]->well_head_idx + p] = 0;
-	  mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;
-	  mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2 + 1] = 1;
-      if (p > 0)// p==0 is a ghost cell for the well treatment
-      {
-        int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
-        int w_i = wells[iw]->well_head_idx + p;
-        // copy properties for the well blocks from the reservoir blocks
-        rock_cond[w_i] = rock_cond[r_i];
-        // depth of well segments
-        depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
-      }
-    }
+	  const index_t well_head_idx = wells[iw]->well_head_idx;
+
+	  if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
+	  {
+		  // depth of the wellhead segment - well controls work at this depth
+		  depth[well_head_idx] = wells[iw]->well_head_depth;
+		  for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
+		  {
+			  volume[well_head_idx + p] = wells[iw]->segment_volume;
+			  poro[well_head_idx + p] = 1;
+			  op_num[well_head_idx + p] = 0;
+			  heat_capacity[well_head_idx + p] = 0;
+			  mob_multiplier[well_head_idx * 2 + p * 2] = 1;
+			  mob_multiplier[well_head_idx * 2 + p * 2 + 1] = 1;
+			  if (p > 0)// p==0 is a ghost cell for the well treatment
+			  {
+				  int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
+				  int w_i = well_head_idx + p;
+				  // copy properties for the well blocks from the reservoir blocks
+				  rock_cond[w_i] = rock_cond[r_i];
+				  // depth of well segments
+				  depth[well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+			  }
+		  }
+	  }
+	  else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	  {
+		  std::copy(wells[iw]->segment_depths.begin(), wells[iw]->segment_depths.end(), depth.begin() + well_head_idx);
+		  std::copy(wells[iw]->segment_volumes.begin(), wells[iw]->segment_volumes.end(), volume.begin() + well_head_idx);
+		  std::fill(poro.begin() + well_head_idx, poro.begin() + well_head_idx + wells[iw]->num_segments, 1);
+		  std::fill(op_num.begin() + well_head_idx, op_num.begin() + well_head_idx + wells[iw]->num_segments, 0);
+		  std::fill(heat_capacity.begin() + well_head_idx, heat_capacity.begin() + well_head_idx + wells[iw]->num_segments, 0);
+		  // The following lines are not applied to DFM wells yet.
+		  //for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
+		  //{
+		  //	mob_multiplier[well_head_idx * 2 + p * 2] = 1;
+		  //	mob_multiplier[well_head_idx * 2 + p * 2 + 1] = 1;
+		  //}
+	  }
   }
+
+  n_blocks = total_num_cells;
 
   return 0;
 }
 
-// segment_transmissibility of the first well used
+/**
+* @brief Add connections for lateral heat exchange (solely heat conduction) between DFM wells and their surrounding reservoir
+*/
+void conn_mesh::add_connection_for_lateral_heat_exchange_for_dfm(ms_well* &well)
+{
+	for (index_t i = 0; i < well->connections_for_lateral_heat_transfer.size(); i++)
+	{
+		index_t i_w, i_r;
+		value_t wid;
+		std::tie(i_w, i_r, wid) = well->connections_for_lateral_heat_transfer[i];
+
+		bool i_w_in_perforations = false;
+		for (index_t p = 0; p < well->perforations.size(); p++)
+		{
+			index_t i_w_perf, i_r_perf;
+			value_t wi_perf, wid_perf;
+			std::tie(i_w_perf, i_r_perf, wi_perf, wid_perf) = well->perforations[p];
+			if (i_w + well->well_head_idx == i_w_perf + well->well_head_idx + 1)
+			{
+				i_w_in_perforations = true;
+				break;
+			}
+		}
+		if (i_w_in_perforations == false)
+		{
+			value_t wi = 0.0;
+			add_conn(i_w + well->well_head_idx, i_r, wi, wid, false);
+		}
+	}
+}
+
+/**
+* Store wellhead connection index of wells
+*/
+void conn_mesh::store_wellhead_conn_idx(index_t n_res_conns, std::vector<ms_well*> &wells)
+{
+	index_t num_conns;
+	// Reservoir connections
+	num_conns = n_res_conns;
+	for (ms_well* w : wells)
+	{
+		// Perforations of each well
+		num_conns += w->perforations.size();
+
+		// Store starting connection index (wellhead connection) of the well
+		w->well_head_conn_idx = num_conns;
+
+		if (w->ms_type == ms_well::MS_Type::EPM)
+		{
+			// Connections between EPM segments
+			num_conns += w->n_segments;
+		}
+		else if (w->ms_type == ms_well::MS_Type::DFM)
+		{
+			// Connections between DFM segments
+			num_conns += w->num_segments - 1;
+
+			if (w->with_lateral_heat_transfer)
+			{
+				// Connections of lateral heat transfer
+				num_conns += w->num_segments - w->perforations.size();
+			}
+		}
+	}
+}
+
+// well_transmissibility of the first well used
 int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose)
 {
 	if (verbose)
 		cout << "Added connection between well " << well1->name << " head idx=" << well1->well_head_idx << " segment idx="  << iseg1 << " and well " <<
 																								well2->name << " head idx=" << well2->well_head_idx << " segment idx="  << iseg2 << endl;
-	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->segment_transmissibility, 0);
+	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->well_transmissibility, 0, false);
 	return 0;
 }
 
@@ -1939,7 +2139,7 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 	heat_capacity.resize(heat_capacity.size() + dofs_num);
 	//rock_cond.resize(n_blocks + n_bounds);
 
-	// Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments, 
+	// Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments,
 	// which are connected to the reservoir. In addition, there is one more grid block (H-block)
 	// per well, which is at the top, connected to the first well segment,
 	// served as a container for well control equations.
@@ -1962,7 +2162,7 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 		// connections between segments
 		for (index_t p = 0; p < n_segments; p++)
 		{
-			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, 0, P_VAR); // connection between them
+			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, P_VAR);
 		}
 		well_head_idx += n_segments + 1;
 		wells[iw]->n_segments = n_segments;

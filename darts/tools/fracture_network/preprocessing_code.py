@@ -23,7 +23,7 @@ SOFTWARE.
 import os
 import subprocess
 import sys
-from multiprocessing import Process, freeze_support
+from multiprocessing import freeze_support
 
 import numpy as np
 
@@ -99,9 +99,9 @@ def frac_preprocessing(
     :param main_algo_iters: number of times the main cleaning algorithm is run
     :return:
     """
-    assert (
-        0.5 <= merge_threshold <= 0.86
-    ), "Choose threshold on closed interval [0.5, 0.86]"
+    assert 0.5 <= merge_threshold <= 0.86, (
+        "Choose threshold on closed interval [0.5, 0.86]"
+    )
     if apertures_raw is None:
         apertures_raw = np.ones((frac_data_raw.shape[0],)) * 1e-4
 
@@ -127,11 +127,11 @@ def frac_preprocessing(
         + (frac_data_raw[:, 1] - frac_data_raw[:, 3]) ** 2
     )
 
-    print('Number of fracture segments: {:}'.format(frac_data_raw.shape[0]))
-    print('Min fracture segment length: {:}'.format(np.min(len_raw_sys)))
-    print('Max fracture segment length: {:}'.format(np.max(len_raw_sys)))
-    print('Mean fracture segment length: {:}'.format(np.mean(len_raw_sys)))
-    print('Cleaning length(s): {:}\n'.format(char_len))
+    print(f'Number of fracture segments: {frac_data_raw.shape[0]}')
+    print(f'Min fracture segment length: {np.min(len_raw_sys)}')
+    print(f'Max fracture segment length: {np.max(len_raw_sys)}')
+    print(f'Mean fracture segment length: {np.mean(len_raw_sys)}')
+    print(f'Cleaning length(s): {char_len}\n')
     # --------------------------------------------------------------------------
 
     act_frac_sys = frac_data_raw
@@ -164,9 +164,7 @@ def frac_preprocessing(
                 (act_frac_sys.shape[0] - frac_data_raw.shape[0]) / 2
             )
             print(
-                '\tFound {:} intersections in raw input fracture network\n'.format(
-                    num_intersections
-                )
+                f'\tFound {num_intersections} intersections in raw input fracture network\n'
             )
         else:
             print('\tNo intersections found in raw input fracture network\n')
@@ -202,13 +200,13 @@ def frac_preprocessing(
     my_graph = Graph(matrix_perm=matrix_perm)
     my_graph.add_multiple_edges(act_frac_sys_cln)
     my_graph.apertures[
-        np.where(my_graph.active_edges[: my_graph.get_num_edges()] == True)[0]
+        np.where(my_graph.active_edges[: my_graph.get_num_edges()])[0]
     ] = apertures_cln
     print('DONE constructing graph\n')
 
-    print('START main cleaning loop for l_f={:}'.format(char_len))
+    print(f'START main cleaning loop for l_f={char_len}')
     # print('\tNOTE: unoptimized!, can take long for very large networks or very small l_f')
-    for ii in range(main_algo_iters):
+    for _ii in range(main_algo_iters):
         my_graph.simplify_graph(
             order_discr=order_cleaning_segms,
             char_len=char_len,
@@ -219,11 +217,9 @@ def frac_preprocessing(
             correct_aperture=correct_aperture,
             straighten_edges=straighten_after_cln,
         )
-    print('DONE main cleaning loop for l_f={:}\n'.format(char_len))
+    print(f'DONE main cleaning loop for l_f={char_len}\n')
 
-    active_edges = np.where(my_graph.active_edges[: my_graph.get_num_edges()] == True)[
-        0
-    ]
+    active_edges = np.where(my_graph.active_edges[: my_graph.get_num_edges()])[0]
     num_act_frac = len(active_edges)
     act_frac_sys_cln = np.zeros((num_act_frac, 4))
     act_frac_sys_cln[:, 0] = my_graph.vertices[
@@ -238,7 +234,7 @@ def frac_preprocessing(
     act_frac_sys_cln[:, 3] = my_graph.vertices[
         my_graph.edge_to_vertex[my_graph.active_edges, 1], 1
     ]
-    order_segms_after_cleaning = order_cleaning_segms[active_edges]
+    order_cleaning_segms[active_edges]
     apertures_cln = my_graph.apertures[active_edges]
 
     # --------------------------------------------------------------------------
@@ -321,11 +317,7 @@ def frac_preprocessing(
     )
     f = open(filename_clean, "w+")
     for frac in act_frac_sys_cln:
-        f.write(
-            '{:9.5f} {:9.5f} {:9.5f} {:9.5f}\n'.format(
-                frac[0], frac[1], frac[2], frac[3]
-            )
-        )
+        f.write(f'{frac[0]:9.5f} {frac[1]:9.5f} {frac[2]:9.5f} {frac[3]:9.5f}\n')
     f.close()
 
     filename_aper_clean = os.path.join(
@@ -339,7 +331,7 @@ def frac_preprocessing(
     )
     f = open(filename_aper_clean, "w+")
     for aper in apertures_cln:
-        f.write('{:16.15f} \n'.format(aper))
+        f.write(f'{aper:16.15f} \n')
     f.close()
     print('DONE writing clean fracture system to file\n')
 
@@ -368,7 +360,7 @@ def frac_preprocessing(
         print(
             '\t      Click File -> "Save options and default" in gmsh to save the setting.'
         )
-        cmd = "gmsh {:s} -o {:s} -save".format(filename_geo_cln, filename_out_cln)
+        cmd = f"gmsh {filename_geo_cln:s} -o {filename_out_cln:s} -save"
         if redirect_log:
             filename_log = os.path.join(output_dir, filename_base + '_clean.log')
             with open(filename_log, "w") as file:
@@ -384,9 +376,9 @@ def frac_preprocessing(
             r = subprocess.run(
                 cmd.split(), text=True, shell=shell_flag, capture_output=True
             )
-        assert (
-            r.returncode == 0
-        ), 'ERROR meshing cleaned network. Check gmsh in the PATH'
+        assert r.returncode == 0, (
+            'ERROR meshing cleaned network. Check gmsh in the PATH'
+        )
         print('DONE meshing cleaned network.\n')
 
     # --------------------------------------------------------------------------
@@ -396,11 +388,7 @@ def frac_preprocessing(
     )
     f = open(filename_raw, "w+")
     for frac in act_frac_sys_raw:
-        f.write(
-            '{:9.5f} {:9.5f} {:9.5f} {:9.5f}\n'.format(
-                frac[0], frac[1], frac[2], frac[3]
-            )
-        )
+        f.write(f'{frac[0]:9.5f} {frac[1]:9.5f} {frac[2]:9.5f} {frac[3]:9.5f}\n')
     f.close()
 
     filename_aper_raw = os.path.join(
@@ -408,7 +396,7 @@ def frac_preprocessing(
     )
     f = open(filename_aper_raw, "w+")
     for aper in apertures_raw:
-        f.write('{:16.15f} \n'.format(aper))
+        f.write(f'{aper:16.15f} \n')
     f.close()
     print('DONE writing raw fracture system to file\n')
 
@@ -436,7 +424,7 @@ def frac_preprocessing(
         print(
             '\t      Click File -> "Save options and default" in gmsh to save the setting.'
         )
-        cmd = "gmsh {:s} -o {:s} -save".format(filename_geo_raw, filename_out_raw)
+        cmd = f"gmsh {filename_geo_raw:s} -o {filename_out_raw:s} -save"
         if redirect_log:
             filename_log = os.path.join(output_dir, filename_base + '_raw.log')
             with open(filename_log, "w") as file:
