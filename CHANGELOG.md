@@ -59,6 +59,11 @@
   {- Before: self.output.plot_xarray(xarray_data, output_properties, timestep, ...) -}\
   {+ Now:    self.output.output_to_plt(sol_filepath, xarray_data, output_properties, timestep, ) +}
 
+- CI/CD and DevOps:
+  - Jobs moved from `helper_scripts/ci_jobs` to `.cicd/jobs`
+  - Added and expanded CI jobs and tooling, including pre-commit/linting, switch to ruff-based formatting, gitingest, Valgrind profiling: [commit](https://gitlab.com/open-darts/open-darts/-/commit/feb260153b36ce172e4958b02d79df8956e6caed)
+  - Improved CI stability and portability across platforms (Linux, GPU, Windows) by fixing conda environment handling, dependency issues, build scripts, and job rules.
+
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
 - EoSDensity and EoSEnthalpy API changes:
