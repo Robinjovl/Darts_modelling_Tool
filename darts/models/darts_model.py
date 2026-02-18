@@ -118,8 +118,8 @@ class DartsModel:
         self.n_newton_iters = []
         self.time_step_size = []
 
-        # For plotting during simulation
-        self.plot_newton_iters_vs_time = False
+        # For live plotting
+        self.live_plots = False
         self.figs = []
         self.axes = []
         self.lines = []
@@ -859,9 +859,9 @@ class DartsModel:
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
-                # Plot properties vs time for every Newton-Raphson iteration
-                if self.plot_newton_iters_vs_time:
-                    self.plot_props_vs_current_time()
+                # Plot live results for every Newton-Raphson iteration
+                # if self.live_plots:
+                #     self.update_live_plots()
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 
@@ -869,23 +869,24 @@ class DartsModel:
         self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
         self.time_step_size.append(dt)
 
-        # # Plot properties vs time for every time step
-        # if self.plot_newton_iters_vs_time:
-        #     self.plot_props_vs_current_time()
+        # # Plot live results for every time step
+        # if self.live_plots:
+        #     self.update_live_plots()
 
         self.timer.node["simulation"].stop()
         return converged
 
-    def init_plot_props_vs_time(self):
+    def init_live_plots(self):
         """
         Initialize figure/axes/artist
         """
         plt.ion()
 
-        fig, axes = plt.subplots(2, 9, figsize=(22, 7), constrained_layout=True)
+        """ Start initializing the figure containing axes for solver properties and profiles of wellbore properties """
+        fig0, axes0 = plt.subplots(2, 9, figsize=(22, 7), constrained_layout=True)
 
-        self.figs.append(fig)
-        self.axes.append(axes)
+        self.figs.append(fig0)
+        self.axes.append(axes0)
 
         ax0 = self.axes[0][0, 0]
         ax1 = self.axes[0][1, 0]
@@ -1248,14 +1249,97 @@ class DartsModel:
 
         self.figs[0].show()
 
-    def plot_props_vs_current_time(self):
+        """ Stop initializing the figure containing axes for solver properties and profiles of wellbore properties """
+
+        """ Start initializing the figure containing a pair of axes for the PH diagram of a property (e.g., temperature) """
+        fig1, axes1 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+
+        self.figs.append(fig1)
+        self.axes.append(axes1)
+
+        ax0 = self.axes[1]
+
+        p_bounds = (self.physics.PT_axes_min[0], self.physics.PT_axes_max[0])
+        # t_bounds = (self.physics.PT_axes_min[1], self.physics.PT_axes_max[1])
+        h_bounds = (self.physics.axes_min[1], self.physics.axes_max[1])
+
+        # Resolution of the PH diagram
+        n_p, n_h = self.physics.n_axes_points[0], self.physics.n_axes_points[1]
+
+        p_range = np.linspace(p_bounds[0], p_bounds[1], n_p)
+        h_range = np.linspace(h_bounds[0], h_bounds[1], n_h)
+
+        # Calculate the property matrix
+        prop_matrix = np.empty((n_p, n_h))
+        for idx_p, p in enumerate(p_range):
+            for idx_h, h in enumerate(h_range):
+                state_ph = [p, h]
+                self.physics.property_containers[0].evaluate(state_ph)
+                prop_matrix[idx_p, idx_h] = self.physics.property_containers[
+                    0
+                ].temperature
+
+        prop_matrix = np.where(
+            (prop_matrix == 100) | (prop_matrix == 1000), np.nan, prop_matrix
+        )  # for temperature
+        # prop_matrix = np.where(prop_matrix == 0, np.nan, prop_matrix)   # for density and gas viscosity
+        # prop_matrix = np.where((prop_matrix > 4.0) | (prop_matrix == 0), np.nan, prop_matrix)  # for liquid viscosity
+        n_cmap_bins = 50
+        levels = np.linspace(
+            np.nanmin(prop_matrix), np.nanmax(prop_matrix), n_cmap_bins
+        )
+
+        # Filled contour (colored areas)
+        cax = ax0.contourf(
+            h_range, p_range, prop_matrix, levels=levels, cmap='jet', shading='auto'
+        )
+
+        # Contour lines at the same levels
+        contours = ax0.contour(
+            h_range, p_range, prop_matrix, levels=levels, colors='black', linewidths=0.5
+        )
+
+        # Label each contour line with its property value
+        ax0.clabel(contours, fmt='%1.1f', inline=True, fontsize=7)
+
+        ax0.set_xlim(h_bounds[0], h_bounds[1])
+        ax0.set_ylim(p_bounds[0], p_bounds[1])
+        ax0.set_xlabel('Specific enthalpy [kJ/kmole]')
+        ax0.set_ylabel('Pressure [bar]')
+
+        # Add a colorbar
+        cbar = fig1.colorbar(cax, ax=ax0)
+        cbar.set_label("Temperature [K]")
+
+        # Create a plot for adding bottom-hole points (states) to the PH diagram
+        (line0,) = ax0.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+            label='Bottom-hole state',
+        )
+
+        self.lines.append(line0)
+
+        self.figs[1].show()
+
+        """ Stop initializing the figure containing a pair of axes for the PH diagram of a property (e.g., temperature) """
+
+    def update_live_plots(self):
         """
         Plot properties vs current time
         """
         # Initialize once (first call only)
         if not self.figs or not self.axes or not self.lines:
-            self.init_plot_props_vs_time()
+            self.init_live_plots()
 
+        """ Start updating the figure containing axes for solver properties and profiles of wellbore properties """
         self.lines[0][0].set_data(self.time, self.n_newton_iters)
         self.axes[0][0, 0].relim()
         self.axes[0][0, 0].autoscale_view()
@@ -1267,8 +1351,10 @@ class DartsModel:
         i_start_well = self.reservoir.wells[0].well_head_idx
         i_end_well = self.reservoir.wells[0].well_bottom_idx
         p_idx = self.physics.vars.index('pressure')
+        h_idx = self.physics.vars.index('enthalpy')
         X_np = np.asarray(self.physics.engine.X).reshape(-1, self.physics.n_vars)
         p_well = X_np[i_start_well : i_end_well + 1, p_idx]
+        h_well = X_np[i_start_well : i_end_well + 1, h_idx]
         # Get the property container to evaluate phase props
         pc = self.physics.property_containers[0]
         n_segments = self.wells['I1'].geometry.num_segments
@@ -1391,8 +1477,31 @@ class DartsModel:
         self.axes[0][1, 8].relim()
         self.axes[0][1, 8].autoscale_view()
 
+        # Refresh display
         self.figs[0].canvas.draw_idle()
         self.figs[0].canvas.flush_events()
+
+        """ Stop updating the figure containing axes for solver properties and profiles of wellbore properties """
+
+        """ Start updating the figure containing a pair of axes for the PH diagram of a property (e.g., temperature) """
+        # Plot bottom-hole state
+        # Get existing bottom-hole data and append them
+        x = list(self.lines[1].get_xdata())
+        y = list(self.lines[1].get_ydata())
+        p_bottom_hole = p_well[-1]
+        enthalpy_bottom_hole = h_well[-1]
+        x.append(enthalpy_bottom_hole)
+        y.append(p_bottom_hole)
+
+        self.lines[1].set_data(x, y)
+
+        self.axes[1].relim()
+        self.axes[1].autoscale_view()
+
+        self.figs[1].canvas.draw_idle()
+        self.figs[1].canvas.flush_events()
+        """ Stop updating the figure containing a pair of axes for the PH diagram of a property (e.g., temperature) """
+
         # plt.pause(0.5)
 
     def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):
