@@ -1290,9 +1290,7 @@ class DartsModel:
         )
 
         # Filled contour (colored areas)
-        cax = ax0.contourf(
-            h_range, p_range, prop_matrix, levels=levels, cmap='jet', shading='auto'
-        )
+        cax = ax0.contourf(h_range, p_range, prop_matrix, levels=levels, cmap='jet')
 
         # Contour lines at the same levels
         contours = ax0.contour(
