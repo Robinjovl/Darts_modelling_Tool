@@ -137,7 +137,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     #redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
     # Properties for writing to vtk format:
-    m.output_directory = 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder
+    m.output_directory = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
+
     if os.path.exists(m.output_directory):
         try:
             shutil.rmtree(m.output_directory)
@@ -252,8 +253,8 @@ if __name__ == '__main__':
     #decouple_geomech = False
 
     #mesh='16_16_15'
-    #mesh='34_34_57'
-    mesh='34_35_57'
+    mesh='34_34_57'
+    #mesh='34_35_57'  # perm_frac
     
     #generate_mesh=True
     generate_mesh=False

@@ -69,17 +69,25 @@ class Model(THMCModel):
         nx, ny, nz = int(dims[-3]), int(dims[-2]), int(dims[-1])
 
         # set properties
-        porosity = 1.0
-        permeability = 1e6 # [mD] # this matched thm and analytical solution
+        porosity = 0.1
+        permeability = 1000 # [mD] # this matched thm and analytical solution
         #permeability = 100 # [mD] # this matches proxy and thm
+        
         E = 12 # Young modulus [GPa]
         #E = 22  # GPa, Dinantian carbonate 
         #E = 12  # GPa, Indiana Limestone 
+        
         p_init = 300 * np.ones(nx * ny * nz)  # [bar]
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
 
         self.idata.other.nx, self.idata.other.ny, self.idata.other.nz = nx, ny, nz
+
+        self.idata.other.perm_frac = False
+        if self.idata.other.perm_frac:
+            # conductive fracture
+            porosity = 1.0
+            permeability = 1e6 # [mD]
 
         self.idata.rock.density = 2650. # kg/m63
         self.idata.rock.porosity = porosity
@@ -101,16 +109,20 @@ class Model(THMCModel):
         self.idata.other.rsv_x2 = self.idata.other.rsv_xy
         self.idata.other.rsv_y1 = -self.idata.other.rsv_xy
         self.idata.other.rsv_y2 = self.idata.other.rsv_xy
-        
+        if self.idata.other.perm_frac:
+            self.idata.other.frac_width = 10. # [m]
+            self.idata.other.rsv_y1 = -self.idata.other.frac_width/2.
+            self.idata.other.rsv_y2 = self.idata.other.frac_width/2.
+            
         # rock properties for outside reservoir boundaries part of the mesh
-        #self.idata.rock.poro_non_rsv = 0.001
-        #self.idata.rock.perm_non_rsv = 0.000001 # this matched thm and analytical solution
+        self.idata.rock.poro_non_rsv = 0.001
+        self.idata.rock.perm_non_rsv = 0.000001 # this matched thm and analytical solution
         #self.idata.rock.perm_non_rsv = 0.001   # this matches proxy and thm
         self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
         
-        # permeable fracture
-        self.idata.rock.poro_non_rsv = 0.1
-        self.idata.rock.perm_non_rsv = 1. # mD
+        if self.idata.other.perm_frac:
+            self.idata.rock.poro_non_rsv = 0.1
+            self.idata.rock.perm_non_rsv = 1. # mD
 
         self.idata.rock.compressibility = get_rock_compressibility(
             kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
@@ -148,11 +160,6 @@ class Model(THMCModel):
         if self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
             self.idata.initial.initial_composition = [0.67]
 
-        #perm frac
-        self.idata.other.frac_width = 10. # [m]
-        self.idata.other.rsv_y1 = -self.idata.other.frac_width/2.
-        self.idata.other.rsv_y2 = self.idata.other.frac_width/2.
-
         # vertical well locations
         shift = 0. # if a single well - place to the center
         if self.wells_type == 'doublet':
@@ -160,6 +167,7 @@ class Model(THMCModel):
         eps_perf = 1 # [m]
         perf_depth_start = self.idata.other.rsv_top + eps_perf
         perf_depth_end =  self.idata.other.rsv_bottom - eps_perf
+        
         self.idata.other.prod_well_coords = [0. - shift, 0., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
         self.idata.other.inj_well_coords = [0. + shift, 0., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
         self.well_init_depth = perf_depth_start
@@ -194,7 +202,7 @@ class Model(THMCModel):
             Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
         elif nx == 28: # -15..15 km XY, dx = 100 m in the reservoir, outside 1000-7000 m
             Xc = np.array([-15000, -8000, -4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000, 8000, 15000])
-        elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 1000-15000 m
+        elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 100-7000 m
             Xc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
         elif nx == 41: # 41x41
             pass
@@ -235,8 +243,8 @@ class Model(THMCModel):
             
         # no frac
         Yc = Xc.copy()
-        # perm frac
-        Yc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 0, 100).tolist() + [-self.idata.other.frac_width/2., self.idata.other.frac_width/2.] + np.arange(100, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
+        if self.idata.other.perm_frac:
+            Yc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 0, 100).tolist() + [-self.idata.other.frac_width/2., self.idata.other.frac_width/2.] + np.arange(100, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
         
         self.idata.other.Xc = Xc
         self.idata.other.Yc = Yc

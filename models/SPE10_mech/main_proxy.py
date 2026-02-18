@@ -59,7 +59,7 @@ def geomech_init_geometry(mesh_data):
     return prisms
 
 def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timestep=1, generate_mesh=True):
-    folder = 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case  # where vtk files are located
+    folder = os.path.join('results', 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case)  # where vtk files are located
 
     # init geomech proxy
     from geomechanics import geomech
@@ -90,6 +90,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     delta_Sxx_last = np.array(msh_last.cell_data['delta_eff_stress'])[0, :, 0] * bars2mpa #  XX
     delta_Syy_last = np.array(msh_last.cell_data['delta_eff_stress'])[0, :, 1] * bars2mpa #  YY
     delta_Szz_last = np.array(msh_last.cell_data['delta_eff_stress'])[0, :, 2] * bars2mpa # ZZ
+    delta_total_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] * bars2mpa #  XX
+    delta_total_Syy_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 1] * bars2mpa #  YY
+    delta_total_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] * bars2mpa # ZZ
     qx_last = np.array(msh_last.cell_data['strain'])[0, :, 0]  #  XX
     qy_last = np.array(msh_last.cell_data['strain'])[0, :, 1]  #  YY
     qz_last = np.array(msh_last.cell_data['strain'])[0, :, 2]  # ZZ
@@ -150,9 +153,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 arr, (points_x, points_y, points_z), method='linear')
         return array_dict_interp
 
-    def get_thm_dp_dt(point, verbose=False):
+    def get_thm_dp_dt(point, verbose=False): # pressure (in MPa) and temperature (in K) changes
         cell = find_cell_by_point(point)
-        dp = delta_pressure[cell] * bars2mpa
+        dp = delta_pressure[cell] 
         dt = delta_temperature[cell]
         return dp, dt
 
@@ -170,10 +173,13 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         qz_thm = qz_last[cell]
         return qx_thm, qy_thm, qz_thm
 
-    def get_thm_stress(point, verbose=False):
-        # in MPa
+    def get_thm_stress(point, verbose=False): # effective stress in MPa
         cell = find_cell_by_point(point)
         return delta_Sxx_last[cell],  delta_Syy_last[cell],  delta_Szz_last[cell]
+
+    def get_thm_total_stress(point, verbose=False): # total stress in MPa
+        cell = find_cell_by_point(point)
+        return delta_total_Sxx_last[cell],  delta_total_Syy_last[cell],  delta_total_Szz_last[cell]
 
     def get_thm_stress_by_deriv(point): 
         # compute strain and stress in python from THM displacements (ux_last, etc)
@@ -368,10 +374,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.axhline(y=m.idata.other.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
             plt.axhline(y=m.idata.other.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
             if prx is not None:
-                plt.plot(prx, z_range, label=mode + '_proxy', marker='.')
-            plt.plot(thm, z_range, label=mode + '_THM', marker='.')
+                plt.plot(prx, z_range, label=mode + '_proxy')#, marker='.')
+            plt.plot(thm, z_range, label=mode + '_THM')#, marker='.')
             if ('stress' in mode or 'strain' in mode) and plot_thm2:
-                plt.plot(thm2, z_range, label=mode + '_THM2', marker='.', color='black')
+                plt.plot(thm2, z_range, label=mode + '_THM2', color='black')#marker='.', 
                 
             plt.gca().invert_yaxis()
             plt.xlabel(s)
@@ -585,17 +591,22 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         print('\tTHM   ', 'ux=', fmt(ux_thm*m2mm), 'uy=', fmt(uy_thm*m2mm), 'uz=', fmt(uz_thm*m2mm), 'mm.')
         print('\tProxy ', 'ux=', fmt(ux_prx[0]*m2mm), 'uy=', fmt(uy_prx[0]*m2mm), 'uz=', fmt(uz_prx[0]*m2mm), 'mm.')
 
-        dsxx_thm = get_thm_stress(point)[0]*bars2mpa
+        dp = get_thm_dp_dt(point)[0]
+        #dsxx_thm = get_thm_stress(point)[0]
+        dsxx_thm = get_thm_total_stress(point)[0]
         #dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
-        dsxx_prx = get_proxy_strain_stress(point)[3][0]  # need to X<->Y
+        dsxx_prx = get_proxy_strain_stress(point)[3][0]  # need to X<->Y if non-symmetric
+        dsxx_prx += m.idata.rock.biot * dp # get total from effective stress
+
         print('Compare at the point=', point)
+        print('\tTHM   ', 'delta_P=', fmt(dp), 'MPa')
         print('\tTHM   ', 'delta_Sxx=', fmt(dsxx_thm), 'MPa')
         #print('\tTHM_by_deriv', 'delta_Sxx=', dsxx_thm2, 'MPa')
         print('\tProxy ', 'delta_Sxx=', fmt(dsxx_prx), 'MPa')
 
         # for uniform depletion with Biot=1 and poisson ratio=0.25 should be 2/3
         print('THM delta_Sxx_thm_max / delta_pressure_max=', fmt(np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max()))  # MAX
-        print('THM delta_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_thm / get_thm_dp_dt(point)[0]))
+        print('THM delta_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_thm / dp))
         
     if False: # check initial pressure and stress for THM
         max_depth = bounds[2][1]  # max z m
@@ -618,9 +629,9 @@ if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
-    ###############case = '34_34_57'  # z 0 - 5 km 
+    case = '34_34_57'  # z 0 - 5 km 
     #case = '34_34_65'  # z 0 - 10 km
-    case='34_35_57'
+    #case='34_35_57' # perm_frac
     
     #case = '34_34_15'
     #case = '16_16_65'
@@ -657,11 +668,11 @@ if __name__ == '__main__':
     timestep = 1
     #timestep = 4
     
-    run_thm = True
-    #run_thm = False
+    #run_thm = True
+    run_thm = False
     
-    #generate_mesh=False
-    generate_mesh=True
+    generate_mesh=False
+    #generate_mesh=True
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
