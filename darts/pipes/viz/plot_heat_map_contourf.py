@@ -227,7 +227,7 @@ def plot_heat_map_contourf(
         )
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Pressure." + save_as)
+    file_address = os.path.join(main_dir, f"{figure_counter}- Pressure.{save_as}")
     plt.savefig(file_address)
     if show_plot:
         plt.show()
@@ -328,8 +328,7 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- {components_names[comp_idx]} overall mole fraction."
-            + save_as,
+            f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -418,7 +417,8 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Temperature." + save_as
+            main_dir,
+            f"{figure_counter}- Temperature.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -502,7 +502,8 @@ def plot_heat_map_contourf(
 
     plt.tight_layout()
     file_address = os.path.join(
-        main_dir, f"{figure_counter}- Gas saturation." + save_as
+        main_dir,
+        f"{figure_counter}- Gas saturation.{save_as}",
     )
     plt.savefig(file_address)
     if show_plot:
@@ -590,7 +591,7 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             coupled_model.output_folder,
-            f"{figure_counter}- Liquid L_a saturation." + save_as,
+            f"{figure_counter}- Liquid L_a saturation.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -677,7 +678,8 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_b saturation." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_b saturation.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -775,8 +777,7 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- {comp_name} mole fraction in the gaseous phase."
-            + save_as,
+            f"{figure_counter}- {comp_name} mole fraction in the gaseous phase.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -882,8 +883,7 @@ def plot_heat_map_contourf(
             plt.tight_layout()
             file_address = os.path.join(
                 main_dir,
-                f"{figure_counter}- {comp_name} mole fraction in the liquid phase."
-                + save_as,
+                f"{figure_counter}- {comp_name} mole fraction in the liquid phase.{save_as}",
             )
             plt.savefig(file_address)
             if show_plot:
@@ -990,8 +990,7 @@ def plot_heat_map_contourf(
                 plt.tight_layout()
                 file_address = os.path.join(
                     main_dir,
-                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a."
-                    + save_as,
+                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a.{save_as}",
                 )
                 plt.savefig(file_address)
                 if show_plot:
@@ -1098,8 +1097,7 @@ def plot_heat_map_contourf(
                 plt.tight_layout()
                 file_address = os.path.join(
                     main_dir,
-                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b."
-                    + save_as,
+                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b.{save_as}",
                 )
                 plt.savefig(file_address)
                 if show_plot:
@@ -1185,7 +1183,7 @@ def plot_heat_map_contourf(
         )
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas density." + save_as)
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas density.{save_as}")
     plt.savefig(file_address)
     if show_plot:
         plt.show()
@@ -1274,7 +1272,8 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid density." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid density.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -1374,7 +1373,8 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_a density." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_a density.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -1474,7 +1474,8 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_b density." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_b density.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -1560,7 +1561,7 @@ def plot_heat_map_contourf(
         )
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity." + save_as)
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity.{save_as}")
     plt.savefig(file_address)
     if show_plot:
         plt.show()
@@ -1649,7 +1650,8 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid viscosity." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid viscosity.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -1749,7 +1751,8 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_a viscosity." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_a viscosity.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -1849,7 +1852,8 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_b viscosity." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_b viscosity.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -1931,7 +1935,7 @@ def plot_heat_map_contourf(
         )
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity." + save_as)
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity.{save_as}")
     plt.savefig(file_address)
     if show_plot:
         plt.show()
@@ -2013,7 +2017,8 @@ def plot_heat_map_contourf(
 
     plt.tight_layout()
     file_address = os.path.join(
-        main_dir, f"{figure_counter}- Liquid velocity." + save_as
+        main_dir,
+        f"{figure_counter}- Liquid velocity.{save_as}",
     )
     plt.savefig(file_address)
     if show_plot:
