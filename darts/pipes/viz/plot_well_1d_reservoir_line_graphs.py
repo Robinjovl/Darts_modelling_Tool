@@ -27,6 +27,7 @@ from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_well_1d_reservoir_line_graphs_for_reported_times(
+    well_name: str,
     coupled_model: DartsModel,
     report_time_labels: list,
     reported_times: list,
@@ -35,9 +36,11 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     legend_loc: str = 'best',
 ):
     """
-    Plot well-reservoir property profiles at certain reported times for a scenario.
+    Plot well-reservoir property profiles at certain reported times for a scenario for the specified well
     Note: It can be used only for 1D reservoirs.
 
+    :param well_name: Name of the well the properties of which will be considered for plotting
+    :type well_name: str
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
     :param report_time_labels: List of labels of reported times
@@ -96,11 +99,8 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         prop_name_in_reservoir_output = "miu_LCO2"
         xlabel = "Liquid viscosity [cP]"
 
-    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
-    # and assigns it to well_geom.
-    well_geom = next(iter(coupled_model.wells.values())).geometry
-
-    # Get well depth array and number of segments
+    # Get well geometry info
+    well_geom = coupled_model.wells[well_name].geometry
     segment_depths = well_geom.z
     num_segments = well_geom.num_segments
 
@@ -144,11 +144,11 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         np.where(np.isclose(simulated_time, a))[0][0] for a in reported_times
     ]
 
-    # Load primary vars and phase props for well
-    primary_vars_and_phase_props_file_path = os.path.join(
-        coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl"
+    # Load primary vars and phase props for the well
+    well_props_file_path = os.path.join(
+        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
-    well_data_frame = pd.read_pickle(primary_vars_and_phase_props_file_path)
+    well_data_frame = pd.read_pickle(well_props_file_path)
 
     # Fast load; infer low-memory dtypes
     all_solutions_csv_path = os.path.join(output_folder_path, "all_solutions.csv")
@@ -273,9 +273,12 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     )
     plt.show()
 
+    plt.close(fig)
+
 
 def plot_well_1d_reservoir_line_graphs_for_scenarios(
-    primary_vars_and_phase_props_file_address: str,
+    well_name: str,
+    dfm_well_props_file_address: str,
     h5_well_data: dict,
     coupled_model: DartsModel,
     report_time_labels: list,
@@ -294,9 +297,11 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     This function is used to plot well-reservoir property profiles at certain reported times for different scenarios.
     It can be used only for 1D reservoirs.
 
-    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of well segments are stored
-    :type primary_vars_and_phase_props_file_address: str
+    :param well_name: Name of the well the properties of which will be considered for plotting
+    :type well_name: str
+    :param dfm_well_props_file_address: Address of the pickle file in which primary variables and phase
+    properties of DFM well segments are stored
+    :type dfm_well_props_file_address: str
     :param h5_well_data: HDF5 file containing well solution
     :type h5_well_data: dict
     :param coupled_model: An instance of DartsModel
@@ -343,11 +348,8 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
         prop_name_in_reservoir_output = "sat_LCO2"
         xlabel = "Liquid volume fraction [-]"
 
-    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
-    # and assigns it to well_geom.
-    well_geom = next(iter(coupled_model.wells.values())).geometry
-
-    # Get well depth array and number of segments
+    # Get well geometry info
+    well_geom = coupled_model.wells[well_name].geometry
     segment_depths = well_geom.z
     num_segments = well_geom.num_segments
 
@@ -388,8 +390,8 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
         np.where(np.isclose(simulated_time, a))[0][0] for a in reported_times
     ]
 
-    # Load primary vars and phase props for well
-    well_data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+    # Load primary vars and phase props for the well
+    well_data_frame = pd.read_pickle(dfm_well_props_file_address)
 
     # Fast load; infer low-memory dtypes
     all_solutions_csv_path = os.path.join(output_folder, "all_solutions.csv")

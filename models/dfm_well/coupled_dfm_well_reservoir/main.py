@@ -11,7 +11,7 @@ import numpy as np
 import os
 
 from darts.engines import redirect_darts_output
-from darts.pipes.save_results import save_segments_primary_vars_and_phase_props
+from darts.pipes.save_results import save_dfm_well_props
 from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
 from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
 
@@ -78,7 +78,7 @@ if 1:
     coupled_model.output.output_to_vtk(output_properties=output_props)
     coupled_model.print_timers()
 else:
-    save_segments_primary_vars_and_phase_props(coupled_model)
+    save_dfm_well_props('I1', coupled_model)
 
-    plot_heat_map_pcolormesh(coupled_model)
-    plot_heat_map_contourf(coupled_model, y_axis_tick_interval=250)
+    plot_heat_map_pcolormesh('I1', coupled_model)
+    plot_heat_map_contourf('I1', coupled_model, y_axis_tick_interval=250)

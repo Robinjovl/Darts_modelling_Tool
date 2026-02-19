@@ -12,36 +12,39 @@ from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_well_prop_profiles(
+    well_name: str,
     coupled_model: DartsModel,
 ):
     """
-    Plot well property profiles at certain time steps. Please note that currently, the function
+    Plot property profiles at certain time steps for the specified well. Please note that currently, the function
     is limited to report_step_labels and report_step_times used below.
 
+    :param well_name: Name of the well the properties of which will be plotted
+    :type well_name: str
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
     """
-    main_dir = os.path.join(coupled_model.output_folder, 'well_prop_profiles')
+    output_folder_name = f'well_prop_profiles_{well_name}'
+    main_dir = os.path.join(coupled_model.output_folder, output_folder_name)
 
-    # Reset_directory
+    # Reset directory
     if os.path.exists(main_dir):
         shutil.rmtree(main_dir)
     os.makedirs(main_dir)
 
     # Load primary vars and phase props
-    primary_vars_and_phase_props_file_path = os.path.join(
-        coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl"
+    well_props_file_path = os.path.join(
+        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
-    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_path)
+    data_frame = pd.read_pickle(well_props_file_path)
 
     # Well HDF5 file is used here to get the time step sizes
     h5_well_file_path = coupled_model.well_filepath
     h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
     simulated_time = h5_well_dict["dynamic"]["time"]
 
-    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
-    # and assigns it to well_geom.
-    well_geom = next(iter(coupled_model.wells.values())).geometry
+    # Get well geometry info
+    well_geom = coupled_model.wells[well_name].geometry
 
     # Select the last num_segments cells (wellbore segments)
     num_segments = well_geom.num_segments
@@ -172,6 +175,8 @@ def plot_well_prop_profiles(
     plt.savefig(os.path.join(main_dir, "wellbore_pressure_profiles.svg"), format='svg')
     plt.show()
 
+    plt.close()
+
     # %% z_c
     # Create a figure and a single set of axes
     plt.figure(figsize=(10, 6))
@@ -237,6 +242,8 @@ def plot_well_prop_profiles(
     )
     plt.show()
 
+    plt.close()
+
     # %% Temperature
     # Create a figure and a single set of axes
     plt.figure(figsize=(10, 6))
@@ -292,6 +299,8 @@ def plot_well_prop_profiles(
     )
     plt.show()
 
+    plt.close()
+
     # %% Gas saturation
     # Create a figure and a single set of axes
     plt.figure(figsize=(10, 6))
@@ -342,3 +351,5 @@ def plot_well_prop_profiles(
     plt.savefig(os.path.join(main_dir, "wellbore_sG_profiles.pdf"), format='pdf')
     plt.savefig(os.path.join(main_dir, "wellbore_sG_profiles.svg"), format='svg')
     plt.show()
+
+    plt.close()

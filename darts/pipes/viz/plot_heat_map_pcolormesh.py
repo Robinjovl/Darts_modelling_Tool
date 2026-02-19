@@ -11,6 +11,7 @@ from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_heat_map_pcolormesh(
+    well_name: str,
     coupled_model: DartsModel,
     max_ts_idx: int = None,
     x_axis: str = "simulated_time",
@@ -22,8 +23,10 @@ def plot_heat_map_pcolormesh(
     with_title: bool = True,
 ):
     """
-    Plot well property profile over time using pcolormesh
+    Plot property profiles over time using pcolormesh for the specified well
 
+    :param well_name: Name of the well the properties of which will be plotted
+    :type well_name: str
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
     :param max_ts_idx: If specified, the heat map will be shown until the specified maximum time step index. If not
@@ -42,9 +45,10 @@ def plot_heat_map_pcolormesh(
     :param with_title: If you want the figure to have a title or not
     :type with_title: bool
     """
-    main_dir = os.path.join(coupled_model.output_folder, "heat_maps_pcolormesh")
+    output_folder_name = f'heat_maps_pcolormesh_{well_name}'
+    main_dir = os.path.join(coupled_model.output_folder, output_folder_name)
 
-    # Reset_directory
+    # Reset directory
     if os.path.exists(main_dir):
         shutil.rmtree(main_dir)
     os.makedirs(main_dir)
@@ -53,28 +57,26 @@ def plot_heat_map_pcolormesh(
     h5_well_file_path = coupled_model.well_filepath
     h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
 
-    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
-    # and assigns it to well_geom.
-    well_geom = next(iter(coupled_model.wells.values())).geometry
-
+    # Get well geometry info
+    well_geom = coupled_model.wells[well_name].geometry
     segments_MD = well_geom.z
     interfaces_MD = well_geom.z_interfaces
     if y_axis == "segments_TVD":
         segments_TVD = well_geom.TVD_segments
         interfaces_TVD = well_geom.TVD_interfaces
+    num_segments = well_geom.num_segments
+    num_interfaces = well_geom.num_interfaces
 
-    # Get components names
+    # Get physics info
     pc = coupled_model.physics.property_containers[0]
     components_names = pc.components_name
     num_components = len(components_names)
-    num_segments = well_geom.num_segments
-    num_interfaces = num_segments - 1
 
     # Load primary vars and phase props
-    primary_vars_and_phase_props_file_path = os.path.join(
-        coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl"
+    well_props_file_path = os.path.join(
+        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
-    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_path)
+    data_frame = pd.read_pickle(well_props_file_path)
 
     num_ts = int(
         len(data_frame["sG"]) / num_segments
@@ -86,7 +88,7 @@ def plot_heat_map_pcolormesh(
     )
 
     if x_axis == "simulated_time":
-        # convert days to seconds
+        # Convert days to seconds
         simulated_time = h5_well_dict["dynamic"]["time"] * 24 * 60 * 60
         # Apply the user-specified time-step index range
         simulated_time = simulated_time[:max_ts_idx]
@@ -169,6 +171,8 @@ def plot_heat_map_pcolormesh(
     if show_plot:
         plt.show()
 
+    plt.close(fig)
+
     # %% Overall mole fraction profiles
 
     for comp_idx in range(num_components):
@@ -236,6 +240,8 @@ def plot_heat_map_pcolormesh(
         if show_plot:
             plt.show()
 
+        plt.close(fig)
+
     # %% Temperature profile
 
     # Update figure counter for name of the saved figure
@@ -297,6 +303,8 @@ def plot_heat_map_pcolormesh(
         if show_plot:
             plt.show()
 
+        plt.close(fig)
+
     # %% Gas saturation profile
 
     # Update figure counter for name of the saved figure
@@ -353,6 +361,8 @@ def plot_heat_map_pcolormesh(
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)
 
     # %% Liquid L_a saturation profile
 
@@ -412,6 +422,8 @@ def plot_heat_map_pcolormesh(
         if show_plot:
             plt.show()
 
+        plt.close(fig)
+
     # %% Liquid L_b saturation profile
 
     if pc.nph == 3:
@@ -469,6 +481,8 @@ def plot_heat_map_pcolormesh(
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Profile/profiles of components mole fractions in the gaseous phase
 
@@ -540,6 +554,8 @@ def plot_heat_map_pcolormesh(
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Profile/profiles of components mole fractions in the liquid phase
 
@@ -614,6 +630,8 @@ def plot_heat_map_pcolormesh(
             plt.savefig(file_address)
             if show_plot:
                 plt.show()
+
+            plt.close(fig)
 
         # %% Profile/profiles of components mole fractions in the liquid phase L_a
 
@@ -690,6 +708,8 @@ def plot_heat_map_pcolormesh(
                 if show_plot:
                     plt.show()
 
+                plt.close(fig)
+
         # %% Profile/profiles of components mole fractions in the liquid phase L_b
 
         if pc.nph == 3:
@@ -765,6 +785,8 @@ def plot_heat_map_pcolormesh(
                 if show_plot:
                     plt.show()
 
+                plt.close(fig)
+
     # %% Gas density profile
 
     # Update figure counter for name of the saved figure
@@ -822,6 +844,8 @@ def plot_heat_map_pcolormesh(
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)
 
     # %% Liquid density profile
 
@@ -886,6 +910,8 @@ def plot_heat_map_pcolormesh(
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Liquid L_a density profile
 
@@ -953,6 +979,8 @@ def plot_heat_map_pcolormesh(
         if show_plot:
             plt.show()
 
+        plt.close(fig)
+
     # %% Liquid L_b density profile
 
     if pc.nph == 3:
@@ -1019,6 +1047,8 @@ def plot_heat_map_pcolormesh(
         if show_plot:
             plt.show()
 
+        plt.close(fig)
+
     # %% Gas viscosity profile
 
     # Update figure counter for name of the saved figure
@@ -1076,6 +1106,8 @@ def plot_heat_map_pcolormesh(
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)
 
     # %% Liquid viscosity profile
 
@@ -1140,6 +1172,8 @@ def plot_heat_map_pcolormesh(
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Liquid L_a viscosity profile
 
@@ -1207,6 +1241,8 @@ def plot_heat_map_pcolormesh(
         if show_plot:
             plt.show()
 
+        plt.close(fig)
+
     # %% Liquid L_b viscosity profile
 
     if pc.nph == 3:
@@ -1273,6 +1309,8 @@ def plot_heat_map_pcolormesh(
         if show_plot:
             plt.show()
 
+        plt.close(fig)
+
     # %% Gas velocity profile
 
     # Update figure counter for name of the saved figure
@@ -1330,6 +1368,8 @@ def plot_heat_map_pcolormesh(
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)
 
     # %% Liquid velocity profile
 
@@ -1391,3 +1431,5 @@ def plot_heat_map_pcolormesh(
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)

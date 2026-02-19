@@ -3,23 +3,49 @@ import os
 import numpy as np
 import pandas as pd
 
+from darts.models.darts_model import DartsModel
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
-def save_segments_primary_vars_and_phase_props(coupled_model):
+def save_dfm_well_props(
+    well_name: str,
+    coupled_model: DartsModel,
+):
     """
-    Store the primary variables and phase properties of well segments in a pickle file in the output folder
+    Store the primary variables and phase properties of the well segments of the specified DFM well in a pickle file
+    in the output folder
 
+    :param well_name: Name of the well the properties of which will be saved
+    :type well_name: str
     :param coupled_model: The instance of the DartsModel
     :type coupled_model: DartsModel
+
     """
+    # Find the index of the well in the cpp well list
+    iw = None
+    for idx, w in enumerate(coupled_model.reservoir.wells):
+        if w.name == well_name:
+            iw = idx
+            break
+    if iw is None:
+        raise ValueError("The specified well name is not found!")
+
+    # Get the time array, well primary variables, and other well info
     h5_well_file_path = coupled_model.well_filepath
     h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
 
-    pc = coupled_model.physics.property_containers[0]
+    # Get well geometry info
+    num_segments = coupled_model.reservoir.wells[iw].num_segments
+    cell_id = h5_well_dict["dynamic"]["cell_id"]
+    well_head_idx = coupled_model.reservoir.wells[iw].well_head_idx
+    well_bottom_idx = coupled_model.reservoir.wells[iw].well_bottom_idx
+    well_segments_idxs = np.arange(well_head_idx, well_bottom_idx + 1)
+    well_segments_idxs_in_well_h5 = coupled_model.output.find_values_in_an_array(
+        well_segments_idxs, cell_id
+    )
 
-    num_perfs = len(coupled_model.reservoir.wells[0].perforations)
-    num_segments = len(h5_well_dict["dynamic"]["X"][0, :, 0]) - num_perfs
+    # Preallocate primary vars and phase props
+    pc = coupled_model.physics.property_containers[0]
 
     p = np.zeros(num_segments)
     z = np.zeros((num_segments, pc.nc))
@@ -49,20 +75,22 @@ def save_segments_primary_vars_and_phase_props(coupled_model):
     elif pc.nph == 3:
         xL_a = np.zeros((num_segments, pc.nc))
         xL_b = np.zeros((num_segments, pc.nc))
+
     # Initialize an empty DataFrame to store the primary variables and phase props
     data_frame = pd.DataFrame()
 
     # For phase velocity calculations
-    next(iter(coupled_model.wells.values())).is_first_first_iter = True
+    coupled_model.wells[well_name].is_first_first_iter = True
     iter_counter = 0
     flag = 1
 
     time = h5_well_dict["dynamic"]["time"]
+    X_well_h5 = h5_well_dict["dynamic"]["X"]
     time_from_zero = np.insert(time, 0, 0.0)
     time_step_sizes = np.diff(time_from_zero)
     for i, dt in enumerate(time_step_sizes):
         for j in range(num_segments):
-            state = h5_well_dict["dynamic"]["X"][i, j + num_perfs, :]
+            state = X_well_h5[i, well_segments_idxs_in_well_h5[j], :]
             p[j] = state[0]
 
             # Evaluate temperature for when the primary vars are PH and evaluate phase props
@@ -122,15 +150,15 @@ def save_segments_primary_vars_and_phase_props(coupled_model):
 
         # Save phase velocities
         if i == 0:
-            initial_conditions = next(
-                iter(coupled_model.wells.values())
-            ).initial_conditions.initial_conditions_vector
+            initial_conditions = coupled_model.wells[
+                well_name
+            ].initial_conditions.initial_conditions_vector
             Xn_ms_well = initial_conditions
-            X_ms_well = h5_well_dict["dynamic"]["X"][i, num_perfs:, :].flatten()
+            X_ms_well = X_well_h5[i, well_segments_idxs_in_well_h5, :].flatten()
         else:
-            Xn_ms_well = h5_well_dict["dynamic"]["X"][i - 1, num_perfs:, :].flatten()
-            X_ms_well = h5_well_dict["dynamic"]["X"][i, num_perfs:, :].flatten()
-        phase_velocities = next(iter(coupled_model.wells.values())).eval_phase_vels(
+            Xn_ms_well = X_well_h5[i - 1, well_segments_idxs_in_well_h5, :].flatten()
+            X_ms_well = X_well_h5[i, well_segments_idxs_in_well_h5, :].flatten()
+        phase_velocities = coupled_model.wells[well_name].eval_phase_vels(
             Xn_ms_well, X_ms_well, dt, time_from_zero[i], iter_counter, flag
         )
         # phase_velocities = np.zeros((num_segments - 1) * 2)
@@ -228,9 +256,7 @@ def save_segments_primary_vars_and_phase_props(coupled_model):
                 ]
             )
 
-    data_frame.to_pickle(
-        os.path.join(
-            coupled_model.output.output_folder,
-            "well_primary_vars_and_phase_props.pkl",
-        )
-    )
+    # Save the data frame in a pickle file
+    file_name = f"dfm_well_props_{well_name}.pkl"
+    file_path = os.path.join(coupled_model.output.output_folder, file_name)
+    data_frame.to_pickle(file_path)
