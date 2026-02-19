@@ -102,8 +102,8 @@ class Model(THMCModel):
         self.idata.other.rsv_bottom = 2200# [m]
         
         # lateral reservoir boundaries
-        self.idata.other.rsv_xy = 1000   # laterally limited (rsv width will be self.rsv_xy*2)
-        #self.idata.other.rsv_xy = 100000  # "infinite" laterally
+        #self.idata.other.rsv_xy = 1000   # m, laterally limited (rsv width will be self.rsv_xy*2)
+        self.idata.other.rsv_xy = 1e5  # m, "infinite" laterally
         
         self.idata.other.rsv_x1 = -self.idata.other.rsv_xy
         self.idata.other.rsv_x2 = self.idata.other.rsv_xy
@@ -116,7 +116,7 @@ class Model(THMCModel):
             
         # rock properties for outside reservoir boundaries part of the mesh
         self.idata.rock.poro_non_rsv = 0.001
-        self.idata.rock.perm_non_rsv = 0.000001 # this matched thm and analytical solution
+        self.idata.rock.perm_non_rsv = 1e-9 # this matched thm and analytical solution
         #self.idata.rock.perm_non_rsv = 0.001   # this matches proxy and thm
         self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
         
@@ -168,8 +168,9 @@ class Model(THMCModel):
         perf_depth_start = self.idata.other.rsv_top + eps_perf
         perf_depth_end =  self.idata.other.rsv_bottom - eps_perf
         
-        self.idata.other.prod_well_coords = [0. - shift, 0., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
-        self.idata.other.inj_well_coords = [0. + shift, 0., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
+        # 50 - to put into the cell center as (0,0) is a boundary between two cells
+        self.idata.other.prod_well_coords = [50. - shift, 50., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
+        self.idata.other.inj_well_coords = [50. + shift, 50., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
         self.well_init_depth = perf_depth_start
 
         # well controls

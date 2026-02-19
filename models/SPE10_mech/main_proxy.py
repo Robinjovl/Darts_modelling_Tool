@@ -4,6 +4,7 @@ import meshio
 from datetime import datetime
 from matplotlib import pyplot as plt
 from scipy.interpolate import griddata as gd
+from functools import reduce
 
 from main import run
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus
@@ -145,12 +146,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         cell = find_cell_by_point(point)
         return centroids[cell, 0], centroids[cell, 1], centroids[cell, 2]
 
-    def get_thm_by_interp(array_dict, points_x, points_y, points_z):
+    def get_thm_by_interp(array_dict, points_x, points_y, points_z, method='linear'):
         array_dict_interp = dict()
         for arr_name, arr in array_dict.items():
             # interpolate the solution (arr) from cell centers to given set of points
             array_dict_interp[arr_name] = gd((centroids[:, 1], centroids[:, 0], centroids[:, 2]), \
-                arr, (points_x, points_y, points_z), method='linear')
+                arr, (points_x, points_y, points_z), method=method)
         return array_dict_interp
 
     def get_thm_dp_dt(point, verbose=False): # pressure (in MPa) and temperature (in K) changes
@@ -320,16 +321,21 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         z_range = points[2,:]
 
         array_dict = {'dp': delta_pressure, 'dt': delta_temperature}
-        array_dict_interp = get_thm_by_interp(array_dict, points[1,:], points[0,:], points[2,:]) # obtain thm solutiona at points using interpolation
+        array_dict_interp = get_thm_by_interp(array_dict, points[1,:], points[0,:], points[2,:], method='nearest') # obtain thm solutiona at points using interpolation
         dp = array_dict_interp['dp']
         dt = array_dict_interp['dt']
         
         ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
         qx_prx, qy_prx, qz_prx, sx_prx, sy_prx, sz_prx =  get_proxy_strain_stress(points)
+        
         # get total from effective stress 
-        sx_total_prx = sx_prx + m.idata.rock.biot * dp 
-        sy_total_prx = sy_prx + m.idata.rock.biot * dp 
-        sz_total_prx = sz_prx + m.idata.rock.biot * dp 
+        if False: # to avoid smoothing at the rsv boundaries
+            dp_z = np.zeros_like(z_range)
+            z_range_rsv = reduce(np.logical_and, [z_range > 2100, z_range < 2200])
+            dp_z[z_range_rsv] = dp.max() #m.idata.other.delta_p #MPa
+        sx_total_prx = sx_prx + m.idata.rock.biot * dp
+        sy_total_prx = sy_prx + m.idata.rock.biot * dp
+        sz_total_prx = sz_prx + m.idata.rock.biot * dp
         
         plot_thm2 = False
         
@@ -385,12 +391,14 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                         
             plt.axhline(y=m.idata.other.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
             plt.axhline(y=m.idata.other.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
-            if prx is not None:
-                plt.plot(prx, z_range, label=mode + '_proxy')#, marker='.')
             plt.plot(thm, z_range, label=mode + '_THM')#, marker='.')
+            if prx is not None:
+                plt.plot(prx, z_range, label=mode + '_proxy', linestyle='--')#, marker='.')
             if ('stress' in mode or 'strain' in mode) and plot_thm2:
                 plt.plot(thm2, z_range, label=mode + '_THM2', color='black')#marker='.', 
                 
+            if mode == 'delta_total_stress_z' and prx.max() < 0.05 and thm.max() < 0.05: # vertical stress is almost zero
+                plt.xlim(-0.25, 0.25)    
             plt.gca().invert_yaxis()
             plt.xlabel(s)
             plt.title(s)
@@ -422,9 +430,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    #points_xy['center'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
     #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
-    points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
+    #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
     #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
     
     if False:
@@ -507,9 +515,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         # compare U-Z at a line along z-axis
         z_min = 0.
         z_max = centroids[:, 2].max() #+ 1000.
-        z_step = 5.4  # m.  # add a random number to avoid cell center
+        z_step = 5.4345653  # m.  # add a random number to avoid cell centers/ not needed maybe
         
         z_range_all = np.arange(z_min, z_max+1., z_step)
+        z_interp_eps = 5. # m # remove points close to rsv boundary, as they create descrepancies even with 'nearest' interpolation
+        z_range_all_filter = reduce(np.logical_and, [np.fabs(z_range_all - m.idata.other.rsv_top) > z_interp_eps, np.fabs(z_range_all - m.idata.other.rsv_bottom) > z_interp_eps])
+        z_range_all = z_range_all[z_range_all_filter]
         n_points = z_range_all.size
         points_all = np.zeros((3, n_points))
         points_all[0, :] = point_xy[1]  # X<->Y
@@ -517,6 +528,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         points_all[2, :] = z_range_all
         
         z_range_rsv = np.arange(m.idata.other.rsv_top-100., m.idata.other.rsv_bottom+100., z_step)
+        # remove points close to rsv boundary, as they create descrepancies even with 'nearest' interpolation
+        z_range_rsv_filter = reduce(np.logical_and, [np.fabs(z_range_rsv - m.idata.other.rsv_top) > z_interp_eps, np.fabs(z_range_rsv - m.idata.other.rsv_bottom) > z_interp_eps])
+        z_range_rsv = z_range_rsv[z_range_rsv_filter]
         n_points = z_range_rsv.size
         points_rsv = np.zeros((3, n_points))
         points_rsv[0, :] = point_xy[1] # X<->Y
@@ -528,7 +542,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     # print vert displs and stresses change at a point
     if True:
-        point = np.array([0., 0., 2150.]) # middle
+        point = np.array([0., 0., 0.5*(m.idata.other.rsv_bottom + m.idata.other.rsv_top)]) # middle rsv depth
 
         ux_thm, uy_thm, uz_thm = get_thm_displs(point)
         ux_prx, uy_prx, uz_prx = get_proxy_displs(point)# need to X<->Y
@@ -550,8 +564,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         print('\tProxy ', 'delta_total_Sxx=', fmt(dsxx_total_prx), 'MPa')
 
         # for uniform pressure change in the reservoir with Biot=1 and poisson ratio=0.25 should be 2/3
-        print('THM delta_total_Sxx_thm_max / delta_pressure_max=', fmt(np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max()))  # MAX
-        print('THM delta_total_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_total_thm / dp))
+        print('THM delta_total_Sxx_thm_max =', fmt(np.fabs(delta_total_Sxx_last).max()))
+        print('THM delta_total_Szz_thm_max =', fmt(np.fabs(delta_total_Szz_last).max()))
+        print('THM delta_pressure_max=', np.fabs(delta_pressure).max())
+        print('THM delta_total_Sxx_thm_max / delta_pressure_max=', fmt(np.fabs(delta_total_Sxx_last).max() / np.fabs(delta_pressure).max()))  # MAX
+        print('THM delta_total_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_total_thm / dp)) # at point
         
     if False: # check initial pressure and stress for THM
         max_depth = bounds[2][1]  # max z m
@@ -605,12 +622,12 @@ if __name__ == '__main__':
     report_step = 365.25 / 4
 
     # short run
-    sim_time = 90 # days
-    report_step = sim_time  # days
+    #sim_time = 90 # days
+    #report_step = sim_time  # days
     
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    #timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
-    timestep = 1
+    timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    #timestep = 1
     #timestep = 4
     
     #run_thm = True

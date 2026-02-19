@@ -9,6 +9,8 @@ from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 from darts.input.input_data import InputData
 from darts.engines import timer_node, ms_well, ms_well_vector
 import copy
+from scipy.interpolate import griddata as gd
+from functools import reduce
 
 class UnstructReservoirCustom(UnstructReservoirMech):
     def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False):
@@ -334,8 +336,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         permeability_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.perm_non_rsv # mD
         E_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.E_non_rsv # [bars]
 
-        from scipy.interpolate import griddata as gd
-
         centers = np.array([np.array(c.values) for c in self.centroids[:self.n_matrix]])
         x = centers[:, 0]
         y = centers[:, 1]
@@ -349,7 +349,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         centers_struct_x, centers_struct_y, centers_struct_z = np.meshgrid(xs, ys, zs)
         centers_struct_x, centers_struct_y, centers_struct_z = centers_struct_x.flatten(), centers_struct_y.flatten(), centers_struct_z.flatten()
 
-        from functools import reduce
         rsv = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
                                       self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
                                       self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
