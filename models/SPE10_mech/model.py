@@ -204,11 +204,11 @@ class Model(THMCModel):
             Xc = np.array([-15000, -8000, -4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000, 8000, 15000])
         elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 100-7000 m
             Xc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
-        elif nx == 41: # 41x41
-            pass
-            #rsv = np.arange(-900, 1000, 200)
-            #side = np.arange(1000, 6500, 1000)
-            #self.Xc = np.hstack([-side, rsv, side])
+        #elif nx == 41: # 41x41
+        #    pass
+        #    #rsv = np.arange(-900, 1000, 200)
+        #    #side = np.arange(1000, 6500, 1000)
+        #    #self.Xc = np.hstack([-side, rsv, side])
         else:
             print('not found an option to mesh with nx = ', nx)
             exit(1)

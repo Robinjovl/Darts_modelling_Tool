@@ -320,12 +320,16 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         z_range = points[2,:]
 
         array_dict = {'dp': delta_pressure, 'dt': delta_temperature}
-        array_dict_interp = get_thm_by_interp(array_dict, points[1,:], points[0,:], points[2,:])
+        array_dict_interp = get_thm_by_interp(array_dict, points[1,:], points[0,:], points[2,:]) # obtain thm solutiona at points using interpolation
         dp = array_dict_interp['dp']
         dt = array_dict_interp['dt']
         
         ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
         qx_prx, qy_prx, qz_prx, sx_prx, sy_prx, sz_prx =  get_proxy_strain_stress(points)
+        # get total from effective stress 
+        sx_total_prx = sx_prx + m.idata.rock.biot * dp 
+        sy_total_prx = sy_prx + m.idata.rock.biot * dp 
+        sz_total_prx = sz_prx + m.idata.rock.biot * dp 
         
         plot_thm2 = False
         
@@ -333,6 +337,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         ux_thm = np.zeros(n_points); uy_thm = np.zeros(n_points); uz_thm = np.zeros(n_points);
         qx_thm = np.zeros(n_points); qy_thm = np.zeros(n_points); qz_thm = np.zeros(n_points);
         sx_thm = np.zeros(n_points); sy_thm = np.zeros(n_points); sz_thm = np.zeros(n_points);
+        sx_total_thm = np.zeros(n_points); sy_total_thm = np.zeros(n_points); sz_total_thm = np.zeros(n_points);
         qx_thm2 = np.zeros(n_points); qy_thm2 = np.zeros(n_points); qz_thm2 = np.zeros(n_points);
         sx_thm2 = np.zeros(n_points); sy_thm2 = np.zeros(n_points); sz_thm2 = np.zeros(n_points);
 
@@ -341,9 +346,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             ux_thm[i], uy_thm[i], uz_thm[i] = get_thm_displs(point)
             if 'strain' in modes:
                 qx_thm[i], qy_thm[i], qz_thm[i] = get_thm_strain(point)
-            if 'delta_stress_z' in modes:
+            if 'delta_eff_stress_z' in modes:
                 sx_thm[i], sy_thm[i], sz_thm[i] = get_thm_stress(point)
-            if ('strain_z' in modes or 'delta_stress_z' in modes) and plot_thm2:
+            if 'delta_total_stress_z' in modes:
+                sx_total_thm[i], sy_total_thm[i], sz_total_thm[i] = get_thm_total_stress(point)
+                
+            if ('strain' in modes or 'delta_eff_stress_z' in modes) and plot_thm2:
                 qx_thm2[i], qy_thm2[i], qz_thm2[i], \
                 sx_thm2[i], sy_thm2[i], sz_thm2[i] = get_thm_stress_by_deriv(point)
             
@@ -357,10 +365,14 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 case 'strain_y': prx = qy_prx; thm = qy_thm; thm2 = qy_thm2; s = 'Horizontal strain (YY)' + ' at ' + loc
                 case 'strain_x': prx = qx_prx; thm = qx_thm; thm2 = qx_thm2; s = 'Horizontal strain (XX)' + ' at ' + loc
                 
-                case 'delta_stress_z': prx = sz_prx; thm = sz_thm; thm2 = sz_thm2; s = 'Vertical stress change, MPa.' + ' at ' + loc
-                case 'delta_stress_y': prx = sy_prx; thm = sy_thm; thm2 = sy_thm2; s = 'Horizontal stress change (YY), MPa.' + ' at ' + loc
-                case 'delta_stress_x': prx = sx_prx; thm = sx_thm; thm2 = sx_thm2; s = 'Horizontal stress change (XX), MPa.' + ' at ' + loc
-            
+                case 'delta_eff_stress_z': prx = sz_prx; thm = sz_thm; thm2 = sz_thm2; s = 'Vertical effective stress change, MPa.' + ' at ' + loc
+                case 'delta_eff_stress_y': prx = sy_prx; thm = sy_thm; thm2 = sy_thm2; s = 'Horizontal effective stress change (YY), MPa.' + ' at ' + loc
+                case 'delta_eff_stress_x': prx = sx_prx; thm = sx_thm; thm2 = sx_thm2; s = 'Horizontal effective stress change (XX), MPa.' + ' at ' + loc
+
+                case 'delta_total_stress_z': prx = sz_total_prx; thm = sz_total_thm; thm2 = sz_thm2; s = 'Vertical total stress change, MPa.' + ' at ' + loc
+                case 'delta_total_stress_y': prx = sy_total_prx; thm = sy_total_thm; thm2 = sy_thm2; s = 'Horizontal total stress change (YY), MPa.' + ' at ' + loc
+                case 'delta_total_stress_x': prx = sx_total_prx; thm = sx_total_thm; thm2 = sx_thm2; s = 'Horizontal total stress change (XX), MPa.' + ' at ' + loc            
+
                 case 'delta_pressure': prx = None; thm = dp; s = 'Pressure change, MPa.' + ' at ' + loc
                 case 'delta_temperature': prx = None; thm = dt; s = 'Temperature change, K.' + ' at ' + loc
                 #delta_temperature
@@ -384,7 +396,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.title(s)
             plt.ylabel('Depth, m.')
             plt.legend()
-            plt.grid()
+            #plt.grid()
+            plt.minorticks_on()
+            plt.grid(which='major', linestyle='-', linewidth=0.8)
+            plt.grid(which='minor', linestyle=':', linewidth=0.5) 
+            plt.tight_layout()
             plt.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '.png'))
             plt.close()
 
@@ -403,79 +419,6 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.title(arr_name)
             plt.savefig(os.path.join(output_folder, arr_name + '.png'))
             plt.close()
-
-    def testing():
-        # checks
-        # the order in centroids is ZXY
-        # plot x-centers along X-axis
-        #plt.plot(centroids[:,0].reshape((15,16,16))[0,:,0])
-        # plt.imshow(delta_pressure.reshape((15,16,16))[6,:,:]) # 2D
-        #plt.plot(delta_pressure.reshape((15,16,16))[:,7,7]) # 1D
-        
-        eval_points_centers = get_eval_points(mode='centers')
-        eval_points_centers[:,:] += 1 # [m], to avoid r=0 for the integral in the geomech proxy 1/r
-        
-        eval_points_line_v = get_eval_points(mode='vertical', shift_x=50, shift_y=50)
-        eval_points_line_v[:,:] += 1 # [m], to avoid r=0 for the integral in the geomech proxy 1/r
-        
-        ux, uy, uz = get_proxy_displs(eval_points_centers)
-        # ux
-        plt.imshow(ux.reshape((15,16,16))[5,:,:])
-        # uz
-        #plt.imshow(uz.reshape((15,16,16))[0,:,:]) # 2D
-        #plt.contourf(uz.reshape((15,16,16))[0,:,:]) # 2D
-        
-        ux_1d, uy_1d, uz_1d = get_proxy_displs(eval_points_line_v)
-        #plt.plot(uz_1d) # 1D
-        
-        # check with python's version
-        if False:
-            eval_points = get_eval_points(mode='vertical')
-            from compaction import displacement_x_component, displacement_y_component, displacement_z_component
-            ux_1d_c = displacement_x_component(eval_points, prisms, delta_pressure, 
-                                            g.poisson, g.young, np.array([]), g.thermal_expansion)
-            uy_1d_c = displacement_y_component(eval_points, prisms, delta_pressure, 
-                                            g.poisson, g.young, np.array([]), g.thermal_expansion)
-            uz_1d_c = displacement_z_component(eval_points, prisms, delta_pressure, 
-                                            g.poisson, g.young, np.array([]), g.thermal_expansion)
-
-    ######################################
-    
-    # keep only one prism - for debugging
-    if False:
-        prisms_rsv = prisms_rsv[0,:] 
-        delta_pressure_rsv = delta_pressure_rsv[0:1]
-        
-        #prisms_rsv[:] = [-500., 500., -500., 500.,  2200.,  2100.]  # OK
-        prisms_rsv[:] = [-12000., 12000., -12000., 12000.,  2200.,  2100.] # not good Uz
-        
-        print(prisms_rsv)
-        
-        def f_my(z):
-            eval_points = np.array([450., 450., z])
-            ux_prx, uy_prx, uz_prx = get_proxy_displs(eval_points)
-            print('my:', z, uz_prx*1000)
-            
-        f_my(0.)
-        f_my(2000.)
-        f_my(4000.)
-        f_my(5000.)
-    
-        # check with python's version
-        if False:
-            from compaction import displacement_x_component, displacement_y_component, displacement_z_component
-            def f_compaction(z):
-                eval_points = np.array([450., 450., z])
-                uz_c = displacement_z_component(eval_points, prisms_rsv, delta_pressure_rsv, g.poisson, g.young, np.array([]), g.thermal_expansion)
-                print('f_compaction', z, uz_c)
-                
-            f_compaction(0.)
-            f_compaction(2000.)
-            f_compaction(4000.)
-            f_compaction(5000.)
-            
-        return
-    ######################################
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
@@ -491,20 +434,21 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             points_xy['inj well'] = m.inj_well_coords[:-1]
 
     # plot 2D THM displs (XY plane)
-    #points_x = np.arange(bounds[0][0], bounds[0][1], 250) # the whole mesh by XY
-    points_x = np.arange(-1000, 1000, 100)  # only internal XY part
-    points_y = points_x
-    points_z = np.array([2150])
-    #points_z = np.hstack([np.arange(0, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 4000, 200)])
-    #points_z = np.arange(1800, 2400, 25)
-    points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
-    array_dict = {'ux_thm_2d': ux_last, 'uy_thm_2d': uy_last, 'uz_thm_2d': uz_last}
-    array_dict.update({'delta_stress_XX_MPa': delta_Sxx_last, 'delta_stress_ZZ_MPa': delta_Szz_last})
-    #for arr_name in array_dict.keys():
-    #    array_dict[arr_name] = array_dict[arr_name][rsv]
-    array_dict.update({'delta_pressure_MPa': delta_pressure, 'delta_temperature': delta_temperature})
-    array_dict_interp = get_thm_by_interp(array_dict, points_x_3d, points_y_3d, points_z_3d)
-    plot_contour(array_dict_interp, points_x, points_y, output_folder=folder)
+    if False:
+        #points_x = np.arange(bounds[0][0], bounds[0][1], 250) # the whole mesh by XY
+        points_x = np.arange(-1000, 1000, 100)  # only internal XY part
+        points_y = points_x
+        points_z = np.array([2150])
+        #points_z = np.hstack([np.arange(0, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 4000, 200)])
+        #points_z = np.arange(1800, 2400, 25)
+        points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
+        array_dict = {'ux_thm_2d': ux_last, 'uy_thm_2d': uy_last, 'uz_thm_2d': uz_last}
+        array_dict.update({'delta_stress_XX_MPa': delta_Sxx_last, 'delta_stress_ZZ_MPa': delta_Szz_last})
+        #for arr_name in array_dict.keys():
+        #    array_dict[arr_name] = array_dict[arr_name][rsv]
+        array_dict.update({'delta_pressure_MPa': delta_pressure, 'delta_temperature': delta_temperature})
+        array_dict_interp = get_thm_by_interp(array_dict, points_x_3d, points_y_3d, points_z_3d)
+        plot_contour(array_dict_interp, points_x, points_y, output_folder=folder)
 
     # compute with proxy in 3D volume
     if False:
@@ -555,14 +499,15 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         print('1D plots for point', k, 'YX=', point_xy)
         modes = ['delta_pressure']
         modes += ['displ_z', 'displ_y', 'displ_x']
-        modes += ['strain_z', 'strain_y', 'strain_x']
-        modes += ['delta_stress_z', 'delta_stress_y', 'delta_stress_x']
+        modes += ['delta_eff_stress_z', 'delta_eff_stress_y', 'delta_eff_stress_x']
+        modes += ['delta_total_stress_z', 'delta_total_stress_y', 'delta_total_stress_x']
+        #modes += ['strain_z', 'strain_y', 'strain_x']
         #modes = ['strain_x']  # debug
 
         # compare U-Z at a line along z-axis
         z_min = 0.
         z_max = centroids[:, 2].max() #+ 1000.
-        z_step = 25.  # m.
+        z_step = 5.4  # m.  # add a random number to avoid cell center
         
         z_range_all = np.arange(z_min, z_max+1., z_step)
         n_points = z_range_all.size
@@ -593,20 +538,20 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
         dp = get_thm_dp_dt(point)[0]
         #dsxx_thm = get_thm_stress(point)[0]
-        dsxx_thm = get_thm_total_stress(point)[0]
+        dsxx_total_thm = get_thm_total_stress(point)[0]
         #dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
-        dsxx_prx = get_proxy_strain_stress(point)[3][0]  # need to X<->Y if non-symmetric
-        dsxx_prx += m.idata.rock.biot * dp # get total from effective stress
+        dsxx_total_prx = get_proxy_strain_stress(point)[3][0]  # need to X<->Y if non-symmetric
+        dsxx_total_prx += m.idata.rock.biot * dp # get total from effective stress
 
         print('Compare at the point=', point)
         print('\tTHM   ', 'delta_P=', fmt(dp), 'MPa')
-        print('\tTHM   ', 'delta_Sxx=', fmt(dsxx_thm), 'MPa')
+        print('\tTHM   ', 'delta_total_Sxx=', fmt(dsxx_total_thm), 'MPa')
         #print('\tTHM_by_deriv', 'delta_Sxx=', dsxx_thm2, 'MPa')
-        print('\tProxy ', 'delta_Sxx=', fmt(dsxx_prx), 'MPa')
+        print('\tProxy ', 'delta_total_Sxx=', fmt(dsxx_total_prx), 'MPa')
 
-        # for uniform depletion with Biot=1 and poisson ratio=0.25 should be 2/3
-        print('THM delta_Sxx_thm_max / delta_pressure_max=', fmt(np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max()))  # MAX
-        print('THM delta_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_thm / dp))
+        # for uniform pressure change in the reservoir with Biot=1 and poisson ratio=0.25 should be 2/3
+        print('THM delta_total_Sxx_thm_max / delta_pressure_max=', fmt(np.fabs(delta_Sxx_last).max() / np.fabs(delta_pressure).max()))  # MAX
+        print('THM delta_total_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_total_thm / dp))
         
     if False: # check initial pressure and stress for THM
         max_depth = bounds[2][1]  # max z m
@@ -671,8 +616,8 @@ if __name__ == '__main__':
     #run_thm = True
     run_thm = False
     
-    generate_mesh=False
-    #generate_mesh=True
+    #generate_mesh=False
+    generate_mesh=True
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
