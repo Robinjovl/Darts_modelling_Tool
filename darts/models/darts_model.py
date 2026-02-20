@@ -860,8 +860,8 @@ class DartsModel:
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
                 # Plot live results for every Newton-Raphson iteration
-                if self.live_plots:
-                    self.update_live_plots()
+                # if self.live_plots:
+                #     self.update_live_plots()
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 
