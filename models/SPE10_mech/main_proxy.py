@@ -99,7 +99,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     qy_last = np.array(msh_last.cell_data['strain'])[0, :, 1]  #  YY
     qz_last = np.array(msh_last.cell_data['strain'])[0, :, 2]  # ZZ
     
-    folder = os.path.join(folder, 'timestep_' + str(timestep))
+    folder = os.path.join(folder, 'plots_timestep_' + str(timestep))
     os.makedirs(folder, exist_ok=True)
     
     if 'delta_pressure' in msh_last.cell_data.keys():
@@ -117,9 +117,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     prisms = geomech_init_geometry(msh_initial)
     print('\tprisms all', prisms.shape[0])
 
-    #TODO do not use the whole mesh - use only the permeable part, assuming there is no p,T change in the impermeable part
-    rsv = poro > m.idata.rock.poro_non_rsv  # reservoir (permeable) cells only for use in the proxy
-    #rsv = poro > 0 # use all cells in the proxy
+    if m.idata.rock.perm_non_rsv <= 1e-6: #use only the permeable part, assuming there is no p,T change in the impermeable part
+        rsv = poro > m.idata.rock.poro_non_rsv  # reservoir (permeable) cells only will be used as input for proxy
+    else: # there will be pressure diffusion, so need to use all cells
+        rsv = poro > 0 # use all cells in the proxy
     delta_pressure_rsv = delta_pressure[rsv]
     delta_temperature_rsv = delta_temperature[rsv]
     prisms_rsv = prisms[rsv, :]
@@ -433,7 +434,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
     points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
     #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
-    #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
+    points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
     #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
     
     if False:
@@ -516,7 +517,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         # compare U-Z at a line along z-axis
         z_min = 0.
         z_max = centroids[:, 2].max() #+ 1000.
-        z_step = 5.4345653  # m.  # add a random number to avoid cell centers/ not needed maybe
+        z_step = 5.  # m.
         
         z_range_all = np.arange(z_min, z_max+1., z_step)
         z_interp_eps = 5. # m # remove points close to rsv boundary, as they create descrepancies even with 'nearest' interpolation
@@ -604,8 +605,8 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    physics_types_list += ['single_phase']
-    #physics_types_list += ['single_phase_thermal']
+    #physics_types_list += ['single_phase']
+    physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['none']
@@ -616,10 +617,10 @@ if __name__ == '__main__':
     # for THM solver run
     #n_years = 1
     #n_years = 2
-    n_years = 5
+    #n_years = 5
     #n_years = 10
     #n_years = 30
-    #n_years = 50
+    n_years = 50
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
 
@@ -660,6 +661,6 @@ if __name__ == '__main__':
             t2 = datetime.now()
             proxy_time = t2 - t1
 
-            print('case', case, 'done')
+            print('case', case, physics_type, 'done')
             print('THM   time', thm_time)
             print('proxy time', proxy_time)

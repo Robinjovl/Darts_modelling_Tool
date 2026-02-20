@@ -15,7 +15,8 @@ def plot_vtk_pyvista(output_dir, contour=False):
     #filename = os.path.join(output_dir, 'vtk', 'solution.pvd')
     #output_dir_plots = os.path.join(os.path.dirname(os.path.dirname(filename)), 'plots')
     filename = os.path.join(output_dir, 'solution.pvd')
-    output_dir_plots = os.path.join(os.path.dirname(filename), 'plots')
+    output_dir_plots = os.path.join(os.path.dirname(filename), 'plots_timestep_last')
+    os.makedirs(output_dir_plots, exist_ok=True)
 
     # Get reader and check available timesteps
     reader = pv.get_reader(filename)
@@ -51,7 +52,7 @@ def plot_vtk_pyvista(output_dir, contour=False):
     arr_name = "uz"; tensor = False; arr_name_plot = 'u_z,m';
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
     
-    arr_name = "delta_temperature"; tensor = False; arr_name_plot = 'temperature,K';
+    arr_name = "delta_temperature"; tensor = False; arr_name_plot = 'delta_temperature,K';
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
     
     arr_name = "delta_pressure"; tensor = False; arr_name_plot = 'delta_pressure,bars'; 
@@ -187,7 +188,7 @@ def plot_vtk_pyvista(output_dir, contour=False):
                     plt.plot(values[:, kk], z, "-o", markersize=2, label=label)
                 arr_name_plot = arr_name # without xx and ZZ as all components are plotted 
             else:
-                plt.plot(values, z, "-o", markersize=2)
+                plt.plot(values, z, "-o", markersize=2, label=arr_name_plot)
             #
             plt.xlabel(arr_name_plot)
             plt.ylabel("Height (z), m.")
@@ -206,5 +207,6 @@ def plot_vtk_pyvista(output_dir, contour=False):
 
 if __name__ == "__main__":
     contour = False
-    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
+    output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
     plot_vtk_pyvista(output_dir, contour=contour)

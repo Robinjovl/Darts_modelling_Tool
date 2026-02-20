@@ -70,8 +70,8 @@ class Model(THMCModel):
 
         # set properties
         porosity = 0.1
-        permeability = 1000 # [mD] # this matched thm and analytical solution
-        #permeability = 100 # [mD] # this matches proxy and thm
+        #permeability = 1000 # [mD] # this matched thm and analytical solution
+        permeability = 10 # [mD] # this matches proxy and thm
         
         E = 12 # Young modulus [GPa]
         #E = 22  # GPa, Dinantian carbonate 
@@ -102,8 +102,8 @@ class Model(THMCModel):
         self.idata.other.rsv_bottom = 2200# [m]
         
         # lateral reservoir boundaries
-        #self.idata.other.rsv_xy = 1000   # m, laterally limited (rsv width will be self.rsv_xy*2)
-        self.idata.other.rsv_xy = 1e5  # m, "infinite" laterally
+        self.idata.other.rsv_xy = 500   # m, laterally limited (rsv width will be self.rsv_xy*2)
+        #self.idata.other.rsv_xy = 1e5  # m, "infinite" laterally
         
         self.idata.other.rsv_x1 = -self.idata.other.rsv_xy
         self.idata.other.rsv_x2 = self.idata.other.rsv_xy
@@ -149,8 +149,8 @@ class Model(THMCModel):
 
         # initial conditions (p, T gradients)
         #self.idata.initial.reference_depth_for_temperature = 0.  # [m]
-        self.idata.initial.temperature_gradient = 0.03  # [K/m]
-        self.idata.initial.temperature_at_ref_depth = 273.15 + 10  # [K]
+        self.idata.initial.temperature_gradient = 0.#0.03  # [K/m]
+        self.idata.initial.temperature_at_ref_depth = 0.#273.15 + 10  # [K]
         #self.idata.initial.reference_depth_for_pressure = 0.  # [m]
         # doesn't affect the initial pressure since will be computed by equilibrium using fluid density
         # need to set well pressure controls as it is defined before the equilibrium state is evaluated
@@ -255,8 +255,8 @@ class Model(THMCModel):
         self.idata.obl.zero = 1e-9
         self.idata.obl.min_p = 0.0
         self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 273.15
-        self.idata.obl.max_t = 273.15 + 300
+        self.idata.obl.min_t = -50.#273.15
+        self.idata.obl.max_t = 50.#273.15 + 300
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
 
