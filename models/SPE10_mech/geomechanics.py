@@ -73,9 +73,9 @@ class geomech():
         import compaction as cpt
         #import compaction_obl as cpt
         # import compaction_par as cpt  #parallel version
-        ux = cpt.displacement_x_component(points, prisms, delta_pressure, self.poisson, self.young, delta_temperature, self.thermal_expansion)
-        uy = cpt.displacement_y_component(points, prisms, delta_pressure, self.poisson, self.young, delta_temperature, self.thermal_expansion)
-        uz = cpt.displacement_z_component(points, prisms, delta_pressure, self.poisson, self.young, delta_temperature, self.thermal_expansion)
+        ux = cpt.displacement_x_component(points, prisms, delta_pressure, self.poisson, self.young, delta_temperature, self.thermal_expansion) * self.biot
+        uy = cpt.displacement_y_component(points, prisms, delta_pressure, self.poisson, self.young, delta_temperature, self.thermal_expansion) * self.biot
+        uz = cpt.displacement_z_component(points, prisms, delta_pressure, self.poisson, self.young, delta_temperature, self.thermal_expansion) * self.biot
         return ux, uy, uz
 
     def calc_displacements_cpp(self, points, prisms, delta_pressure, delta_temperature, verbose=False):
@@ -97,12 +97,12 @@ class geomech():
         res = compute_geomech(v_points, v_prisms, v_delta_pressure, self.poisson, self.young, v_delta_temperature, self.thermal_expansion)
         if verbose:
             print('   compute_geomech done!')
-        ux_p = np.array(res['ux_p'], copy=True)
-        uy_p = np.array(res['uy_p'], copy=True)
-        uz_p = np.array(res['uz_p'], copy=True)
-        ux_t = np.array(res['ux_t'], copy=True)
-        uy_t = np.array(res['uy_t'], copy=True)
-        uz_t = np.array(res['uz_t'], copy=True)
+        ux_p = np.array(res['ux_p'], copy=True) * self.biot
+        uy_p = np.array(res['uy_p'], copy=True) * self.biot
+        uz_p = np.array(res['uz_p'], copy=True) * self.biot
+        ux_t = np.array(res['ux_t'], copy=True) * self.biot
+        uy_t = np.array(res['uy_t'], copy=True) * self.biot
+        uz_t = np.array(res['uz_t'], copy=True) * self.biot
         return ux_p, uy_p, uz_p, ux_t, uy_t, uz_t
 
 
