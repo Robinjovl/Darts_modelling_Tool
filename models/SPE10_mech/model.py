@@ -92,8 +92,8 @@ class Model(THMCModel):
         self.idata.rock.density = 2650. # kg/m63
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
-        self.idata.rock.biot = 1  # rock compressibility will be 0
-        #self.idata.rock.biot = 0.8  # 0.8 to match dp with geos
+        #self.idata.rock.biot = 1  # rock compressibility will be 0
+        self.idata.rock.biot = 0.7  # 0.8 to match dp with geos
         self.idata.rock.E = 1.e+4 * E  # convert units to bars
         self.idata.rock.nu = 0.25  # poisson ratio
 

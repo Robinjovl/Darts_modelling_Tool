@@ -76,6 +76,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     g.young = m.idata.rock.E if np.isscalar(m.idata.rock.E) else m.idata.rock.E.mean()
     g.young *= bars2mpa
     g.thermal_exp_coeff = m.idata.rock.th_expn / get_bulk_modulus(E=m.idata.rock.E, nu=m.idata.rock.nu)# 1/°C
+    g.biot = m.idata.rock.biot
 
     # read THM solution from vtk
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
@@ -569,6 +570,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         print('THM delta_pressure_max=', np.fabs(delta_pressure).max())
         print('THM delta_total_Sxx_thm_max / delta_pressure_max=', fmt(np.fabs(delta_total_Sxx_last).max() / np.fabs(delta_pressure).max()))  # MAX
         print('THM delta_total_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_total_thm / dp)) # at point
+        print('Analytical delta_total_Sxx/dp =', m.idata.rock.biot * (1 - 2 * m.idata.rock.nu)/(1 - m.idata.rock.nu))
         
     if False: # check initial pressure and stress for THM
         max_depth = bounds[2][1]  # max z m
@@ -630,8 +632,8 @@ if __name__ == '__main__':
     #timestep = 1
     #timestep = 4
     
-    #run_thm = True
-    run_thm = False
+    run_thm = True
+    #run_thm = False
     
     #generate_mesh=False
     generate_mesh=True

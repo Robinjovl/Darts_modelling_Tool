@@ -259,7 +259,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if 'eff_stress' not in cell_data: cell_data['eff_stress'] = []
                 cell_data['eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
                 for j in range(6):
-                    cell_data['eff_stress'][-1][:, j] = np.fabs(cell_data['tot_stress'][-1][:, j]) - pressure
+                    cell_data['eff_stress'][-1][:, j] = np.fabs(cell_data['tot_stress'][-1][:, j]) - self.idata.rock.biot * pressure
 
                 if 'delta_tot_stress' not in cell_data: cell_data['delta_tot_stress'] = []
                 cell_data['delta_tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
@@ -274,7 +274,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if 'delta_eff_stress' not in cell_data: cell_data['delta_eff_stress'] = []
                 cell_data['delta_eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
                 for j in range(6):
-                    cell_data['delta_eff_stress'][-1][:, j] = cell_data['delta_tot_stress'][-1][:, j] - delta_pressure
+                    cell_data['delta_eff_stress'][-1][:, j] = cell_data['delta_tot_stress'][-1][:, j] - self.idata.rock.biot * delta_pressure
 
                 if hasattr(self, 'temperature_initial'): # if thermal simulation
                     if 'delta_temperature' not in cell_data: cell_data['delta_temperature'] = []
