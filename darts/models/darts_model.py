@@ -860,8 +860,8 @@ class DartsModel:
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
                 # Plot live results for every Newton-Raphson iteration
-                # if self.live_plots:
-                #     self.update_live_plots()
+                if self.live_plots:
+                    self.update_live_plots()
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 
@@ -869,9 +869,9 @@ class DartsModel:
         self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
         self.time_step_size.append(dt)
 
-        # # Plot live results for every time step
-        # if self.live_plots:
-        #     self.update_live_plots()
+        # Plot live results for every time step
+        if self.live_plots:
+            self.update_live_plots()
 
         self.timer.node["simulation"].stop()
         return converged
@@ -1248,7 +1248,6 @@ class DartsModel:
         )
 
         self.figs[0].show()
-
         """ Stop initializing the figure containing axes for solver properties and profiles of wellbore properties """
 
         """ Start initializing the figure containing a pair of axes for the PH diagram of a property (e.g., temperature) """
@@ -1478,7 +1477,6 @@ class DartsModel:
         # Refresh display
         self.figs[0].canvas.draw_idle()
         self.figs[0].canvas.flush_events()
-
         """ Stop updating the figure containing axes for solver properties and profiles of wellbore properties """
 
         """ Start updating the figure containing a pair of axes for the PH diagram of a property (e.g., temperature) """
