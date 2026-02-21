@@ -221,7 +221,9 @@ class WellControlOperators(OperatorsBase):
                 * mobility
             )
 
-        # Store P, T and composition of current state
+        # Store pressure (P) and temperature (T) of the current state for a generic state specification.
+        # This is needed when pressure or temperature is not part of the state variables
+        # (e.g., volume instead of pressure, or enthalpy instead of temperature).
         idx += self.nph
         values_np[idx + 0] = state[0]
         values_np[idx + 1] = self.property.temperature
