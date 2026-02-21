@@ -30,23 +30,25 @@
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS  
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t ND>
 int engine_elasticity_cpu<ND>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 									std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                                operator_set_gradient_evaluator_iface* thermal_var_etor_,
 									sim_params *params_, timer_node *timer_)
 {
 	output_counter = 0;
 	newton_update_coefficient = 1.0;
 	USE_CALCULATED_FLUX = false;
-	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 	this->expose_jacobian();
 	return 0;
 }
 template <uint8_t ND>
 int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 										 std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                                     operator_set_gradient_evaluator_iface* thermal_var_etor_,
 										 sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
@@ -56,6 +58,7 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 

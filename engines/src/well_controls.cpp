@@ -4,11 +4,11 @@
 #include <cmath>
 #include <algorithm>
 
-int well_control_iface::set_bhp_control(bool is_inj, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_) 
+int well_control_iface::set_bhp_control(bool is_inj, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_)
 {
 	this->well_state_offset = (is_inj) ? 0 : 1; // If injection well, evaluates operators with state of well head; for production, it uses well body
 	this->control_type = well_control_iface::WellControlType::BHP;
-	
+
 	// Fill well control spec
 	this->target = target_;
 	this->inj_comp = inj_comp_;
@@ -16,12 +16,12 @@ int well_control_iface::set_bhp_control(bool is_inj, value_t target_, std::vecto
 	return 0;
 }
 
-int well_control_iface::set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, index_t phase_idx_, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_) 
-{ 
+int well_control_iface::set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, index_t phase_idx_, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_)
+{
 	this->well_state_offset = (is_inj) ? 0 : 1; // If injection well, evaluates operators with state of well head; for production, it uses well body
 	this->control_type = control_type_;
 	this->phase_idx = phase_idx_;
-	
+
 	this->target = target_;
 	this->inj_comp = inj_comp_;
 	this->inj_temp = inj_temp_;
@@ -93,7 +93,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
     // If BHP controlled - pressure constraint
 	state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
     well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
-  	
+
 	index_t pres_op_idx = WellControlType::NUMBER_OF_RATE_TYPES * n_phases;
 	RHS_well_head[0] = well_control_ops[pres_op_idx] - this->target;
 
@@ -167,7 +167,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
   return 0;
 }
 
-int well_control_iface::check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
+int well_control_iface::check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans,
  										     	   uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
 {
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
@@ -192,7 +192,7 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
   	well_controls_etor->evaluate(state, well_control_ops);
 	index_t rate_op_idx = this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
 
-  	return (this->target > 0.) ? 
+  	return (this->target > 0.) ?
 			well_control_ops[rate_op_idx] * p_diff * segment_trans > this->target : // injection well
 			well_control_ops[rate_op_idx] * p_diff * segment_trans < this->target;  // production well
   }
@@ -237,12 +237,12 @@ int well_control_iface::initialize_well_block(std::vector<value_t>& state_block,
 		// For temperature/enthalpy, use specified control
 		if (this->thermal)
 		{
-			// Evaluate WellInitOperators to initialize temperature/enthalpy of well head according to specified injection conditions
+			// Evaluate ThermalVarOperator to initialize temperature/enthalpy of well head according to specified injection conditions
 			target_state[n_vars - 1] = inj_temp;
-			std::vector<value_t> well_init_ops(1);
-			this->well_init_etor->evaluate(target_state, well_init_ops);
+			std::vector<value_t> thermal_var_op(1);
+			this->thermal_var_etor->evaluate(target_state, thermal_var_op);
 
-			target_state[n_vars - 1] = well_init_ops[0];
+			target_state[n_vars - 1] = thermal_var_op[0];
 		}
 	}
 

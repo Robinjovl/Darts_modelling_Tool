@@ -19,12 +19,12 @@
 #else
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
-#endif // OPENDARTS_LINEAR_SOLVERS                                                                                                                                        
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 
 template <uint8_t NC, uint8_t NP>
@@ -80,6 +80,7 @@ public:
 
   int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
            std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+           operator_set_gradient_evaluator_iface* thermal_var_etor_,
            sim_params *params_, timer_node *timer_);
 
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);

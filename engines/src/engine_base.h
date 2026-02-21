@@ -117,10 +117,10 @@ public:
 	virtual uint8_t get_n_solid() const { return n_solid; };
 
 	// initialization
-	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) = 0;
+	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_) = 0;
 
 	template <uint8_t N_VARS>
-	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_);
+	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_);
 
 	virtual int init_jacobian_structure(csr_matrix_base *jacobian);
 
@@ -154,6 +154,9 @@ public:
 	void apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_global_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_local_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
+
+	void apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
+	void apply_enthalpy_chop(std::vector<value_t>& X, std::vector<value_t>& dX);
 
 	virtual int apply_newton_update(value_t dt);
 
@@ -319,8 +322,9 @@ public:
 
 	linsolv_iface *linear_solver;
 
-	//operator_set_gradient_evaluator_iface* acc_flux_op_set;
-	std::vector<operator_set_gradient_evaluator_iface *> acc_flux_op_set_list;
+	// operator interfaces
+	std::vector<operator_set_gradient_evaluator_iface*> acc_flux_op_set_list;
+	operator_set_gradient_evaluator_iface* thermal_var_etor;
 
 	uint8_t n_vars;
 	uint8_t n_ops;
@@ -334,6 +338,11 @@ public:
 	double max_sim_z;   // Max composition to remain well below OBL max_axis_z and physical bounds (1): max_axis_z - params->sim_eps
 	std::vector<value_t> old_z, new_z; // [NC] array for local chop
 	std::vector<value_t> old_z_fl, new_z_fl; // [NC_FLUID] array for local chop
+	// for enthalpy correction
+	value_t min_axis_T;  // OBL axis min for temperature
+	value_t max_axis_T;  // OBL axis max for temperature
+	value_t min_axis_h;  // OBL axis min for enthalpy
+	value_t max_axis_h;  // OBL axis max for enthalpy
 
 	std::vector<value_t> X_init;				   // [N_VARS * n_blocks] array of initial solution
 	std::vector<value_t> PV;					   // [n_blocks]     array of initial pore volumes
@@ -611,6 +620,7 @@ public:
 template <uint8_t N_VARS>
 int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 						   std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+						   operator_set_gradient_evaluator_iface* thermal_var_etor_,
 						   sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
@@ -620,6 +630,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 

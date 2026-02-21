@@ -34,6 +34,7 @@ using namespace opendarts::linear_solvers;
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_mp_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                                        operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                             sim_params *params_, timer_node *timer_)
 {
 
@@ -53,14 +54,14 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_
 
 
 
-	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 
 	return 0;
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
-	std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params_, timer_node *timer_)
+	std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
 	struct tm *timeinfo;
@@ -69,6 +70,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 

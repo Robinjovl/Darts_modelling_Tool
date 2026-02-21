@@ -216,6 +216,7 @@ class DartsModel:
             self.reservoir.mesh,
             ms_well_vector(self.reservoir.wells),
             op_vector(self.op_list),
+            self.physics.thermal_var_itor,
             self.params,
             self.timer.node["simulation"],
         )

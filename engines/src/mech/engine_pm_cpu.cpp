@@ -28,6 +28,7 @@ engine_pm_cpu::~engine_pm_cpu()
 
 int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 						std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                    operator_set_gradient_evaluator_iface* thermal_var_etor_,
 						sim_params *params_, timer_node *timer_)
 {
 	newton_update_coefficient = 1.0;
@@ -44,12 +45,13 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	EXPLICIT_SCHEME = false;
 	active_linear_solver_id = 0;
 
-	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 	return 0;
 }
 
 int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_,
   std::vector<operator_set_gradient_evaluator_iface*>& acc_flux_op_set_list_,
+  operator_set_gradient_evaluator_iface* thermal_var_etor_,
   sim_params* params_, timer_node* timer_)
 {
   time_t rawtime;
@@ -59,6 +61,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   mesh = mesh_;
   wells = well_list_;
   acc_flux_op_set_list = acc_flux_op_set_list_;
+  thermal_var_etor = thermal_var_etor_;
   params = params_;
   timer = timer_;
 
