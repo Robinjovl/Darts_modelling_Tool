@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from model_consK import Model
+from uni_fine import Model
 from darts.engines import value_vector, redirect_darts_output
 from darts.physics.base.operators_base import PropertyOperators as props
 from output import get_physics_field, plot_xz_section, plot_well_time_data_2
@@ -62,13 +62,15 @@ def make_cfg_lgr():
     return cfg
 
 
-USE_LGR=True
-output_dir = r".\output"
+USE_LGR=False
+
+output_dir = r".\LGR_kairan\New structure of LGR\output"
 FIG_DIR = os.path.join(output_dir, "figures")
 SECTION_DIR = os.path.join(FIG_DIR, "sections")
 WELL_DIR = os.path.join(FIG_DIR, "well_time_plots")
 os.makedirs(SECTION_DIR, exist_ok=True)
 os.makedirs(WELL_DIR, exist_ok=True)
+
 if __name__ == '__main__':
     if USE_LGR:
         cfg = make_cfg_lgr()
@@ -83,7 +85,7 @@ if __name__ == '__main__':
 
 
     if True:
-        darts_model.run(50)
+        darts_model.run(365)
         # darts_model.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # darts_model.run_python(300, restart_dt=1e-3)
         darts_model.print_timers()
@@ -101,7 +103,7 @@ if __name__ == '__main__':
         print("vars:", list(prim.keys()))
         for k in prim.keys():
             if "pressure" in k.lower() or k.lower() == "p":
-                plot_xz_section(darts_model, prim[k],
+                plot_xz_section(darts_model, prim[k],use_lgr=USE_LGR ,zmin=2000, zmax=2200,
                                 savepath=os.path.join(SECTION_DIR, "coarse_section_P.png"),
                                 title=k,
                                 logscale=False)
@@ -110,7 +112,7 @@ if __name__ == '__main__':
      
         for k in prim.keys():
             if "co2" in k.lower() :  
-                plot_xz_section(darts_model, prim[k] - 1e-8,
+                plot_xz_section(darts_model, prim[k] - 1e-8, use_lgr=USE_LGR, zmin=2000, zmax=2200,
                                 savepath=os.path.join(SECTION_DIR, "coarse_section_CO2.png"),
                                 title="CO2_delta",
                                 logscale=False,
@@ -119,7 +121,7 @@ if __name__ == '__main__':
         
         for k in prim.keys():
             if "temp" in k.lower() or "temperature" in k.lower():
-                plot_xz_section(darts_model, prim[k],
+                plot_xz_section(darts_model, prim[k], use_lgr=USE_LGR, zmin=2000, zmax=2200,
                                 savepath=os.path.join(SECTION_DIR, "coarse_section_T.png"),
                                 title=k,
                                 logscale=False)

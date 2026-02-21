@@ -10,7 +10,7 @@ import sys, os
 def plot_well_time_data_2(m, time_data_df,
                                 save_output_files=True,
                                 well_names=None,
-                                component="CO2",
+                                component="CO2_rich",
                                 include_rates=("mass_rate",),
                                 include_bhp=True,
                                 include_bht=True):
@@ -143,6 +143,11 @@ def plot_xz_section(model, values, use_lgr=True,y0= None, tol= None, zmin=None, 
                     logscale=False, vmin=None, vmax=None, clip_floor=1e-20,
                     edgecolor="k", linewidth=0.15,cmap="coolwarm"):
     res = model.reservoir
+    x = res.cell_center_x
+    y = res.cell_center_y
+    z = res.cell_center_z
+    v = np.asarray(values, float)
+
     x = np.asarray(res.cell_center_x)
     y = np.asarray(res.cell_center_y)
     z = np.asarray(res.cell_center_z)
@@ -235,7 +240,6 @@ def plot_xz_section(model, values, use_lgr=True,y0= None, tol= None, zmin=None, 
 
     fig.savefig(savepath, bbox_inches="tight")
     plt.close(fig)
-
 def plot_xy_plane(model, values, depth, use_lgr=True, tol=None,
                   xmin=None, xmax=None, ymin=None, ymax=None,
                     savepath="xy.png", title="", 
@@ -333,5 +337,3 @@ def plot_xy_plane(model, values, depth, use_lgr=True, tol=None,
         ax.set_title(f"XY @ depth={depth:.2f} m")
     fig.savefig(savepath, bbox_inches="tight")
     plt.close(fig)
-
-    
