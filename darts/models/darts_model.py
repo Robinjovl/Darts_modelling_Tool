@@ -1484,6 +1484,8 @@ class DartsModel:
         # Get existing bottom-hole data and append them
         x = list(self.lines[1].get_xdata())
         y = list(self.lines[1].get_ydata())
+        # p_bottom_hole = X_np[3, 0]
+        # enthalpy_bottom_hole = X_np[3, 1]
         p_bottom_hole = p_well[-1]
         enthalpy_bottom_hole = h_well[-1]
         x.append(enthalpy_bottom_hole)
