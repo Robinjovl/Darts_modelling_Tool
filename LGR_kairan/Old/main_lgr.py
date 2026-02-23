@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize
 import matplotlib.ticker as mticker
 
+#TODO What is the reason you have multiple folders of the same implementation? Would you please unify them.
+
 def plot_well_time_data_2(m, time_data_df,
                                 well_names=None,
                                 component="CO2",
@@ -48,14 +50,14 @@ def plot_well_time_data_2(m, time_data_df,
 
 
     type_candidates = ["by_sum_perfs"]
-  
-     
+
+
 
     rate_unit = {
         "volumetric_rate": "[m3/day]",
         "mass_rate": "[kg/day]",
         "molar_rate": "[kmol/day]",
-        "advective_heat": "[kJ/day]",   
+        "advective_heat": "[kJ/day]",
     }
 
     def find_col(well_name, key_prefix):
@@ -75,7 +77,7 @@ def plot_well_time_data_2(m, time_data_df,
 
         found_any = False
         for w in wells:
-            
+
             key_prefix = f"well_{w.name}_{rate}_{component}_"
             col = find_col(w.name, key_prefix)
             if col is None:
@@ -106,7 +108,7 @@ def plot_well_time_data_2(m, time_data_df,
                 found_any = True
         if found_any:
             plt.xlabel("time [days]")
-            plt.ylabel("BHP [bar]") 
+            plt.ylabel("BHP [bar]")
             plt.title("BHP (combined wells)")
             plt.legend()
             fpath = os.path.join(out_dir, "combined_BHP.png")
@@ -141,7 +143,7 @@ def get_physics_field(model):
     Xc = X_res.reshape((n,nb), order="C")
     return {str(v): Xc[:,i] for i, v in enumerate(model.physics.vars)}
 
-def plot_xz_section(model, values, y0= None, tol= None, savepath="xz.png", title="", 
+def plot_xz_section(model, values, y0= None, tol= None, savepath="xz.png", title="",
                     logscale=False, vmin=None, vmax=None, clip_floor=1e-20):
     res = model.reservoir
     x = res.cell_center_x
@@ -161,7 +163,7 @@ def plot_xz_section(model, values, y0= None, tol= None, savepath="xz.png", title
     if tol is None:
         # tol = 0.5 * float(np.median(np.asarray(res.dy, float)))
         tol = 0.5 * float(100)
-    
+
     m = np.abs(y-y0) <= tol
     xp, zp, vp = x[m], z[m], v[m]
     # --- choose normalization ---
@@ -217,7 +219,7 @@ os.makedirs(WELL_DIR, exist_ok=True)
 if __name__ == '__main__':
     redirect_darts_output(os.path.join(output_dir, 'run.log'))
     darts_model = Model()
-   
+
     # darts_model.params.linear_type = darts_model.params.linear_solver_t.cpu_superlu
     darts_model.init()
     darts_model.set_output()
@@ -248,16 +250,16 @@ if __name__ == '__main__':
                                 logscale=False)
                 break
 
-     
+
         for k in prim.keys():
-            if "co2" in k.lower() :  
+            if "co2" in k.lower() :
                 plot_xz_section(darts_model, prim[k] - 1e-8,
                                 savepath=os.path.join(SECTION_DIR, "coarse_section_CO2.png"),
                                 title="CO2_delta",
                                 logscale=False,
-                                vmin=0, vmax=1)   
+                                vmin=0, vmax=1)
                 break
-        
+
         for k in prim.keys():
             if "temp" in k.lower() or "temperature" in k.lower():
                 plot_xz_section(darts_model, prim[k],
@@ -289,8 +291,3 @@ if __name__ == '__main__':
     # else:
     #     #plot_sol(n)
     #     n.print_and_plot('sim_data')
-
-
-
-
-

@@ -18,7 +18,7 @@ from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, Garcia2001
 from darts.reservoirs.reservoir_base import ReservoirBase
-from darts.physics.properties.viscosity import Fenghour1998, Islam2012  
+from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from dartsflash.libflash import NegativeFlash
@@ -39,13 +39,13 @@ class Model(DartsModel):
         self.zero = 1e-8
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=30, runtime=1000, 
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=30, runtime=1000,
                             tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
         self.timer.node["initialization"].stop()
 
-    def build_lgr_definition(self):
+    def define_lgr(self):
         """
         -parent name
         -i,j,k range in parent grid (1-based)
@@ -122,7 +122,7 @@ class Model(DartsModel):
         # }
 
         return lgrs
-    
+
     def build_well_completion(self):
         return {
             "I1": {"lgr": "lgr0", "k_from": 1, "k_to": 40},  # coarse k (1-based)
@@ -130,7 +130,7 @@ class Model(DartsModel):
             # "P2": {"lgr": "lgr2", "k_from": 1, "k_to": 20},
             # "P3": {"lgr": "lgr3", "k_from": 1, "k_to": 20},
             # "P4": {"lgr": "lgr4", "k_from": 1, "k_to": 20},
-        }    
+        }
 
     def convert_ijk_to_gindex_1based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
         """
@@ -138,7 +138,7 @@ class Model(DartsModel):
         """
         g_index_0based = (k_1based - 1) * nx * ny + (j_1based - 1) * nx + (i_1based - 1)
         return g_index_0based
-    
+
     def ijk0_to_lin(self, i0: int, j0: int, k0: int, nx: int, ny: int) -> int:
         """Convert 0-based (i,j,k) to linear index"""
         return k0 * nx * ny + j0 * nx + i0
@@ -151,23 +151,35 @@ class Model(DartsModel):
         return actnum0
 
     def auto_image_grid_dx_dy(self, dx_parent, dy_parent, rx, ry):
-       
+
         dx_image = np.r_[dx_parent, np.full(rx, dx_parent/rx), dx_parent]
         dy_image = np.r_[dy_parent, np.full(ry, dy_parent/ry), dy_parent]
 
         return dx_image, dy_image
-    
-    def build_dz (self, dz0:float, total_thickness: float, ratio: float = 2.0):
+
+    def build_dz (self, dz0: float, total_thickness: float, ratio: float = 2.0):
+        """
+        Build a non-uniform vertical grid spacing array (layer thicknesses) whose sizes grow geometrically until
+        they fill a given total thickness.
+
+        :param dz0: Initial layer thickness
+        :type dz0: float
+        :param total_thickness: Total height (or thickness) to be discretized
+        :type total_thickness: float
+        :param ratio: Growth factor between consecutive layers (default = 2.0)
+        :type ratio: float
+        """
+        #TODO Would you please provide a docstring for each function as above.
         layers = []
         s = 0
         dz = float(dz0)
         while dz + s < total_thickness:
             layers.append(dz)
             s += dz
-            dz*= ratio
+            dz *= ratio
         layers.append(total_thickness - s) # add last layer
         return np.asarray(layers, dtype=float)
-    
+
      # build cell center coordinates for visualization
     def build_cell_center(self):
         if not hasattr(self, 'reservoir') or self.reservoir is None:
@@ -176,15 +188,15 @@ class Model(DartsModel):
         x = np.empty(n, dtype=float)
         y = np.empty(n, dtype=float)
         z = np.asarray(self.reservoir.depth, dtype = float).copy()
-        # level 0 
+        # level 0
         self.level0.discretize()
         disc0 = self.level0.discretizer
         l2g0 = np.asarray(disc0.local_to_global, dtype=int)
-        
+
         n0 = len(l2g0)
-        nx0= int(self.level0.nx)
-        ny0= int(self.level0.ny)
-        nz0= int(self.level0.nz)
+        nx0 = int(self.level0.nx)
+        ny0 = int(self.level0.ny)
+        nz0 = int(self.level0.nz)
         dx0 =  float(np.asarray(self.level0.global_data["dx"]).flat[0])
         dy0 = float(np.asarray(self.level0.global_data["dy"]).flat[0])
         for local_id, global_id in enumerate(l2g0):
@@ -193,7 +205,7 @@ class Model(DartsModel):
             i = global_id % nx0
             x[local_id] = (i + 0.5) * dx0
             y[local_id] = (j + 0.5) * dy0
-            
+
         # lgr blocks
         meta = self.lgr_meta
         for name in meta['lgr_orders']:
@@ -223,39 +235,41 @@ class Model(DartsModel):
         self.reservoir.cell_center_y = y
         self.reservoir.cell_center_z = z
         return x,y,z
-    
-    def set_reservoir(self):
-        self.lgrs = self.build_lgr_definition()
 
-        #Build Level0 with actnum + overburden and underburden
+    def set_reservoir(self):
+        self.lgrs = self.define_lgr()
+
+        # Build Level0 with actnum + overburden and underburden
         nx0, ny0 = 80, 80 # global grid size
         dx0, dy0 = 100, 100
         nz_res = 40
         dz_res = 5
 
-        over_thickness = 2000.0
-        under_thickness = 2000.0
-        dz_over = self.build_dz(dz0=dz_res, total_thickness=over_thickness)
-        dz_over = dz_over[::-1]  # reverse for overburden
+        # ob: overburden, ub: underburden
+        ob_thickness = 2000.0
+        ub_thickness = 2000.0
+        dz_ob = self.build_dz(dz0=dz_res, total_thickness=ob_thickness)
+        dz_ob = dz_ob[::-1]  # reverse for overburden
 
-        dz_under = self.build_dz(dz0=dz_res,total_thickness=under_thickness)
-        nz_over = len(dz_over)
-        nz_under = len(dz_under)
+        dz_ub = self.build_dz(dz0=dz_res,total_thickness=ub_thickness)
+        nz_over = len(dz_ob)
+        nz_under = len(dz_ub)
         nz0 = nz_over + nz_res + nz_under
-        dz0_layers = np.concatenate([dz_over, np.full(nz_res, dz_res, dtype=float), dz_under])
+        dz0_layers = np.concatenate([dz_ob, np.full(nz_res, dz_res, dtype=float), dz_ub])
         permx0, permy0, permz0 = 50, 50, 50
         poro0 = 0.1
+        #TODO What do you mean by burden?
         poro_burden = 0.0001
         perm_burden = 1e-6
 
         # thermal properties
         rcond_res = 181.44 # KJ/m/day/k
         hcap_res = 2650 # kJ/m3/K assume reservoir density here
-        rcond_over, rcond_under = 149.54, 149.54
-        hcap_over, hcap_under = 2347.29, 2347.29
+        rcond_ob, rcond_ub = 149.54, 149.54
+        hcap_ob, hcap_ub = 2347.29, 2347.29
 
         reservoir_top = 2000
-        
+
        # update lgr k range after adding overburden layer
         for lname, _cfg in self.lgrs.items():
              _cfg['lgr_coords_in_parent_grid']['k_range'] = [nz_over + 1, nz_over + nz_res]
@@ -266,9 +280,9 @@ class Model(DartsModel):
             i1, i2 = cfg['lgr_coords_in_parent_grid']['i_range']
             j1, j2 = cfg['lgr_coords_in_parent_grid']['j_range']
             k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
-            assert i1 == i2 and j1 == j2, "This script only assume column LGR"  
+            assert i1 == i2 and j1 == j2, "This script only assume column LGR"
             for k in range(k1, k2 + 1):
-                refined_cells_ijk.append( (i1, j1, k) )  
+                refined_cells_ijk.append( (i1, j1, k) )
 
         self.refined_cells_ijk = refined_cells_ijk
 
@@ -283,7 +297,7 @@ class Model(DartsModel):
         rcon0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
         hcap0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
         poro0_full = np.full(nx0 * ny0 * nz0, poro_burden, dtype=float)
-  
+
         mask_over = k_index0 < nz_over
         mask_res  = (k_index0 >= nz_over) & (k_index0 < nz_over + nz_res)
         mask_under = k_index0 >= (nz_over + nz_res)
@@ -291,17 +305,17 @@ class Model(DartsModel):
         ky0_full [mask_res] = permy0
         kz0_full [mask_res] = permz0
 
-        rcon0_full[mask_over] = rcond_over
+        rcon0_full[mask_over] = rcond_ob
         rcon0_full[mask_res] = rcond_res
-        rcon0_full[mask_under] = rcond_under
-        hcap0_full[mask_over] = hcap_over
+        rcon0_full[mask_under] = rcond_ub
+        hcap0_full[mask_over] = hcap_ob
         hcap0_full[mask_res] = hcap_res
-        hcap0_full[mask_under] =hcap_under
+        hcap0_full[mask_under] =hcap_ub
         poro0_full[mask_res] = poro0
 
         self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
-                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
-                                      start_z=0,actnum=actnum0, rcond=rcon0_full, hcap=hcap0_full,)
+                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full, depth= None,
+                                      start_z=0, actnum=actnum0, rcond=rcon0_full, hcap=hcap0_full,)
         boundary_factor = 2000
         base_vol = float(dx0 * dy0 * dz_res)
         v_big = base_vol * boundary_factor
@@ -315,22 +329,23 @@ class Model(DartsModel):
             "xz_plus": v_big,
         }
 
-
         # Build Level1 grids and imaginary grids
         self.level1 = {}
         self.level1_imag = {}
         self.level1_imag_z = {}
-        
+
+        #TODO What is cfg?
         for name, cfg in self.lgrs.items():
             rx, ry, rz = cfg['lgr_coords_in_parent_grid']['refine']
             k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
             nk = k2 - k1 + 1
 
-            nx1,ny1,nz1 = rx, ry, nk
+            nx1, ny1, nz1 = rx, ry, nk
             dx1 = dx0 / rx
             dy1 = dy0 / ry
             dz1 = dz_res
 
+            #TODO Can we replace 2000 with ob_thickness or ub_thickness to avoid hard-coding?
             self.level1[name] = StructReservoir(self.timer, nx=nx1, ny=ny1, nz=nz1, dx=dx1, dy=dy1, dz=dz1,
                                         permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000, rcond=rcond_res, hcap=hcap_res)
 
@@ -341,22 +356,22 @@ class Model(DartsModel):
                                         permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=2000,rcond=rcond_res, hcap=hcap_res,)
 
             #create a new imaginary grid for overburden and underburden connections
-            permz_x = np.full((rx, ry, 2), permx0, dtype=float) 
+            permz_x = np.full((rx, ry, 2), permx0, dtype=float)
             permz_x [:,:,0] = perm_burden
             permz_y = np.full((rx, ry, 2), permy0, dtype=float)
             permz_y [:,:,0] = perm_burden
             permz_z = np.full((rx, ry, 2), permz0, dtype=float)
             permz_z [:,:,0] = perm_burden
             rcond_1 = np.full((rx, ry, 2), rcond_res, dtype=float)
-            rcond_1[:,:,0] = rcond_over
+            rcond_1[:,:,0] = rcond_ob
             hcap_1 = np.full((rx, ry, 2), hcap_res, dtype=float)
-            hcap_1[:,:,0] = hcap_over
-        
-            #current model is homogeneous, so i just construct one imaginary grid for burden connections,
-            #i assume the transmissibility and thermal_transmissibility are totally same for top and bottom connections
+            hcap_1[:,:,0] = hcap_ob
+
+            # current model is homogeneous, so I just construct one imaginary grid for burden connections,
+            # I assume the transmissibility and thermal_transmissibility are totally same for top and bottom connections
             self.level1_imag_z[name] = StructReservoir(self.timer, nx=rx, ny=ry,nz=2, dx =dx1, dy=dy1, dz= dz1,
                                                   permx=permz_x, permy=permz_y, permz=permz_z, poro=poro0, depth= None, start_z=2000,rcond=rcond_1, hcap=hcap_1,)
-            
+
         cm_all, cp_all, T_all, T_all_therm, meta = self.assemble_lgr_connections_eclipse()
 
        # assemble properties
@@ -367,7 +382,7 @@ class Model(DartsModel):
         dx0_arr = disc0.convert_to_flat_array(self.level0.global_data['dx'], 'dx')[l2g0]
         dy0_arr = disc0.convert_to_flat_array(self.level0.global_data['dy'], 'dy')[l2g0]
         dz0_arr = disc0.convert_to_flat_array(self.level0.global_data['dz'], 'dz')[l2g0]
-        
+
         depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
         volume0_arr = np.array(self.level0.volume, copy=False).astype(float) # self.level0.volume is already filtered
 
@@ -377,7 +392,7 @@ class Model(DartsModel):
         ky0_arr = ky0_full[l2g0]
         kz0_arr = kz0_full[l2g0]
         poro0_arr = poro0_full[l2g0]
-        
+
 
         dx_list = [dx0_arr]; dy_list = [dy0_arr]; dz_list = [dz0_arr]
         kx_list = [kx0_arr]; ky_list = [ky0_arr]; kz_list = [kz0_arr]
@@ -437,8 +452,12 @@ class Model(DartsModel):
         self.build_cell_center()
         return
 
-   
+
     def assemble_lgr_connections_eclipse(self):
+        #TODO Is there anything for the construction of the LGR grid dependent on the physics of the model? If
+        # there is anything dependent, we need to make them independent. In this way, we can create models with
+        # different physics without hard-coding.
+
         # STEP 1 discretize Level 0
         self.level0.discretize()
         disc0 = self.level0.discretizer
@@ -483,7 +502,7 @@ class Model(DartsModel):
             jc = cfg['lgr_coords_in_parent_grid']['j_range'][0]
             k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
             rx,ry,rz = cfg['lgr_coords_in_parent_grid']['refine']
-            
+
             self.level1_imag[name].discretize()
             disc_im = self.level1_imag[name].discretizer
             cmi, cpi, Ti, Ti_therm = disc_im.calc_structured_discr()
@@ -522,12 +541,12 @@ class Model(DartsModel):
             Ti_fc = Ti[is_fine_coarse]
             Ti_therm_fc = Ti_therm[is_fine_coarse]
 
-            # For each k layer in the column, 
+            # For each k layer in the column,
             # map halo to the corresponding coarse neighbor at that k
             nx0 = self.level0.nx
             ny0 = self.level0.ny
             fine_global_offset = lgr_offsets[name]
-            # compute 4 neighboring coarse cell global indices (including inactive cells) 
+            # compute 4 neighboring coarse cell global indices (including inactive cells)
             # at each k layer at level0
             for kk_local, k_layer in enumerate(range(k1, k2 +1)):
                 nbr_g = {
@@ -535,7 +554,7 @@ class Model(DartsModel):
                     "right" :self.convert_ijk_to_gindex_1based(ic+1, jc, k_layer, nx0, ny0),
                     "up" :self.convert_ijk_to_gindex_1based(ic, jc-1, k_layer, nx0, ny0),
                     "down" :self.convert_ijk_to_gindex_1based(ic, jc+1, k_layer, nx0, ny0),
-                    
+
                 }
 
 
@@ -612,12 +631,12 @@ class Model(DartsModel):
 
                     # map imag fine-local (k=1) -> real LGR fine global (top/bottom layer)
                     fine2d = j * nx_im + i
-                    top_fine_global = fine2d + lgr_offsets[name] 
+                    top_fine_global = fine2d + lgr_offsets[name]
                     bot_fine_global = top_fine_global + (self.level1[name].n - self.level1[name].nx * self.level1[name].ny)
                     top_map[fine_local] = top_fine_global
                     bot_map[fine_local] = bot_fine_global
 
-          
+
             def k_of(local_id: int) -> int:
                 return local_id // nxy_im
 
@@ -705,13 +724,13 @@ class Model(DartsModel):
             lgr_name = cfg["lgr"]
             per_from = cfg["k_from"]
             per_to = cfg["k_to"]
-            
-            for k in range(per_from -1, per_to):  
+
+            for k in range(per_from -1, per_to):
                 rx,ry,_ = self.lgrs[lgr_name]['lgr_coords_in_parent_grid']['refine']
                 inj_local = center_2d + k * (rx * ry)
                 inj_global = inj_local + self.lgr_meta['lgr_offsets'][comp[wname]["lgr"]]
                 self.reservoir.add_perforation(wname, cell_index=inj_global)
-  
+
 
     def set_physics(self):
         """Physical properties"""
@@ -752,7 +771,7 @@ class Model(DartsModel):
         property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)),
                                                    ('aqueous', ConstFunc(180.)), ])
 
-      
+
 
         """ Activate physics """
         thermal = True
@@ -769,7 +788,7 @@ class Model(DartsModel):
             "rhoAq": lambda: property_container.dens[1],
             }
 
-        self.physics.add_property_region(property_container) 
+        self.physics.add_property_region(property_container)
 
         return
 
@@ -778,7 +797,7 @@ class Model(DartsModel):
         #                       self.physics.vars[1]: self.zero, # z_CO2
         #                       self.physics.vars[2]: 353.15 # temperature
         #                       }
-        # return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, 
+        # return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
         #                                                       input_distribution=input_distribution)
 
         depths = np.asarray(self.reservoir.mesh.depth)
@@ -788,12 +807,12 @@ class Model(DartsModel):
         depths = np.linspace(min_depth,max_depth,nb)
 
         init = Initialize(self.physics)
-   
+
         primary_specs = {}
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = np.ones(nb) * self.zero
-        
-        boundary_state = {"pressure" :195}  
+
+        boundary_state = {"pressure" :195}
         for comp in self.physics.components[:-1]:
             boundary_state[comp] = float(primary_specs[comp][0])
         boundary_state["temperature"] = 80 +273.15
@@ -810,7 +829,7 @@ class Model(DartsModel):
                                                              input_depth= init.depths,
                                                             input_distribution={v:X[:,i] for i, v in enumerate(self.physics.vars)})
         return
-    
+
         # self.reservoir.mesh.volume[0:3] = 1e20
 
     def set_well_controls(self):
@@ -882,7 +901,7 @@ class LGRReservoir(ReservoirBase):
 
 
         self.n = self.poro.size
-        self.ndims = 3 
+        self.ndims = 3
         self.actnum = np.ones(self.n, dtype= bool)
         self.global_data = {}
 
