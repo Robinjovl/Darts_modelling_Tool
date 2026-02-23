@@ -1916,6 +1916,7 @@ class Output:
             wellhead_cell_idx = self.find_values_in_an_array(
                 [well.well_head_idx], cell_id
             )
+            wellhead_cell_idx = wellhead_cell_idx[0]  # convert it to an scalar
             p_idx = variable_names.index("pressure")
             for i in range(nt):
                 BHP[i] = X[i, wellhead_cell_idx, p_idx]
