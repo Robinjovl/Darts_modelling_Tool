@@ -10,9 +10,9 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix, --show-fixes]
-        files: ^(darts|tests|helper_scripts|\.cicd)/.*\.py$
+        files: ^(darts|tests|helper_scripts|\.cicd|\.agents)/.*\.py$
       - id: ruff-format
-        files: ^(darts|tests|helper_scripts|\.cicd)/.*\.py$
+        files: ^(darts|tests|helper_scripts|\.cicd|\.agents)/.*\.py$
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
