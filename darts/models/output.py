@@ -1709,24 +1709,17 @@ class Output:
         well_perf_conn_idxs = {}
         # Create a dictionary containing connection index of wellhead for each well (values are integers)
         well_head_conn_idx = {}
-        for iw, well in enumerate(self.reservoir.wells):
+        for well in self.reservoir.wells:
             res_cell_idxs = [perf[1] for perf in well.perforations]
 
             # Find indices of perforations in the connection list (those connections
             # which 1. block_m is in the desired well and 2. block_p is in res_cell_idxs)
-            if iw + 1 < len(self.reservoir.wells):  # If there is a next well
-                next_well = self.reservoir.wells[iw + 1]
-                mask = np.logical_and(
-                    np.logical_and(
-                        block_m >= well.well_head_idx, block_m < next_well.well_head_idx
-                    ),
-                    np.isin(block_p, res_cell_idxs),
-                )
-            else:  # If there is no next well
-                mask = np.logical_and(
-                    block_m >= well.well_head_idx,
-                    np.isin(block_p, res_cell_idxs),
-                )
+            mask = np.logical_and(
+                np.isin(block_p, res_cell_idxs),
+                np.logical_and(
+                    block_m >= well.well_head_idx, block_m <= well.well_bottom_idx
+                ),
+            )
 
             conn_idxs = np.nonzero(mask)
             well_perf_conn_idxs[well.name] = conn_idxs[0]
