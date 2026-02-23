@@ -8,6 +8,7 @@ gitingest-digest:
         PY_VER: "3.10"
         # Unique conda env name per job to avoid collisions on shared runners
         CONDA_ENV: "gitingest_${CI_JOB_ID}"
+        CONDAPATH: /data/gitlab-runner/miniconda3
         # Optional manifest file (one path per line; lines starting with # are comments)
         GITINGEST_MANIFEST: "helper_scripts/gitingest-include.txt"
         # Output directory and filename prefix for the digest
@@ -18,8 +19,7 @@ gitingest-digest:
         - set -euo pipefail
         # Prepare Python env on Tahiti runner (same pattern as GPU tests)
         - spack env activate open_darts_gcc134 || true
-        - CONDA_BASE="/data/gitlab-runner/miniconda3"
-        - . "${CONDA_BASE}/etc/profile.d/conda.sh"
+        - . "${CONDAPATH}/etc/profile.d/conda.sh"
         - conda env remove -n ${CONDA_ENV} -y || true
         - conda create -n ${CONDA_ENV} python=${PY_VER} -q -y
         - conda activate ${CONDA_ENV}
@@ -113,6 +113,8 @@ gitingest-digest:
           fi
     after_script:
         # Cleanup conda env and export metadata for the next job
+        - spack env activate open_darts_gcc134 || true
+        - . "${CONDAPATH}/etc/profile.d/conda.sh"
         - conda env remove -n ${CONDA_ENV} -y || true
         - echo "OPEN_DARTS_GITINGEST_JOB_ID=${CI_JOB_ID}" > gitingest.env
         - echo "OPEN_DARTS_REF=${CI_COMMIT_REF_NAME}" >> gitingest.env
