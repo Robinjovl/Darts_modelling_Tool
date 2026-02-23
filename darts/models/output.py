@@ -1925,10 +1925,8 @@ class Output:
                         t_idx = variable_names.index("temperature")
                         BHT[i] = X[i, wellhead_cell_idx, t_idx]
                     else:
-                        h_idx = variable_names.index("enthalpy")
-                        BHT[i] = pc.temperature_ev.evaluate(
-                            [BHP[i], X[i, wellhead_cell_idx, h_idx]]
-                        )
+                        pc.evaluate(X[i, wellhead_cell_idx, :])
+                        BHT[i] = pc.temperature
             time_data_dict[f"well_{well.name}_BHP"] = BHP
             time_data_dict[f"well_{well.name}_BHT"] = BHT
 
