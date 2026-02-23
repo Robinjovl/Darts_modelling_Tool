@@ -297,11 +297,11 @@ class ZerodModel(DartsModel):
 
         if thermal_val is not None:
             state_str = (
-                f"p={p_val:>{num_width}.6g} {z_parts} "
+                f"p={p_val:>{int(num_width / 2)}.6g} {z_parts} "
                 f"{thermal_label}={thermal_val:>{num_width}.6g}"
             )
         else:
-            state_str = f"p={p_val:>{num_width}.6g} {z_parts}"
+            state_str = f"p={p_val:>{int(num_width / 2)}.6g} {z_parts}"
 
         if temp_val is not None:
             state_str += f" temp={temp_val:>{num_width}.6g}"

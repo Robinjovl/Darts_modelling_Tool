@@ -36,7 +36,7 @@ class Model(ZerodModel):
         first_ts: float = 1e-5,
         max_ts: float = 10.0,
         fixed_pressure: bool = True,
-        poro: float = 0.2,
+        poro: float = 1.0,
     ):
         super().__init__(fixed_pressure=fixed_pressure, fixed_temperature=True)
 
