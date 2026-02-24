@@ -228,11 +228,13 @@ class OutputPropertyContainer:
     output properties:
     - molar fractions of aqueous fluid species in aqueous phase
     - molar fractions of vapourous fluid species in vapour phase
-    - molar densities of minerals
+    - species-based phase molar densities [kmol-species/m3]
     - vapour saturation in fluid only
     - porosity
     - activity of H+
     - activity of CO2
+    - partial pressure of CO2
+    - molar densities of minerals [kmol-mineral/m3]
     - saturation ratio of minerals
     - reaction rate of minerals
     """
@@ -244,6 +246,7 @@ class OutputPropertyContainer:
 
         self.x = np.zeros(len(self.property.flash_ev.aqueous_species))
         self.y = np.zeros(len(self.property.flash_ev.gas_species))
+        self.dens_m_species = np.zeros(self.nph)
         self.satV = 0.0
         self.porosity = 0.0
         self.ActH = 0.0
@@ -252,6 +255,8 @@ class OutputPropertyContainer:
         self.SR = np.zeros(len(self.property.flash_ev.mineral_names))
         self.kin_rates = np.zeros(len(self.property.rock_compr_ev.keys()))
         self.dens_m_solid = np.zeros(len(self.property.flash_ev.mineral_names))
+        self._aq_atoms_per_species = self._atoms_per_species('aq')
+        self._gas_atoms_per_species = self._atoms_per_species('gas')
 
         self.output_props = {
             **{
@@ -261,6 +266,10 @@ class OutputPropertyContainer:
             **{
                 'y_' + species: (lambda i=i: self.y[i])
                 for i, species in enumerate(self.property.flash_ev.gas_species)
+            },
+            **{
+                'species_dens_m_' + phase: (lambda i=i: self.dens_m_species[i])
+                for i, phase in enumerate(self.property.phase_idx.keys())
             },
             'satV': lambda: self.satV,
             'porosity': lambda: self.porosity,
@@ -281,7 +290,76 @@ class OutputPropertyContainer:
             },
         }
 
+    @staticmethod
+    def _species_density_from_element_density(
+        phase_element_density, species_molar_fractions, atoms_per_species
+    ):
+        """
+        Convert element-based phase molar density to species-based molar density.
+        """
+        if atoms_per_species is None:
+            return 0.0
+
+        phase_element_density = float(phase_element_density)
+        if (not np.isfinite(phase_element_density)) or phase_element_density <= 0.0:
+            return 0.0
+
+        fractions = np.asarray(species_molar_fractions, dtype=float)
+        atoms = np.asarray(atoms_per_species, dtype=float)
+        if fractions.size == 0 or atoms.size != fractions.size:
+            return 0.0
+
+        fractions_sum = fractions.sum()
+        if (not np.isfinite(fractions_sum)) or fractions_sum <= 0.0:
+            return 0.0
+        fractions = fractions / fractions_sum
+
+        atoms = np.clip(atoms, 0.0, None)
+        mean_atoms_per_species = float(np.dot(fractions, atoms))
+        if (not np.isfinite(mean_atoms_per_species)) or mean_atoms_per_species <= 0.0:
+            return 0.0
+
+        return phase_element_density / mean_atoms_per_species
+
+    def _atoms_per_species(self, phase: str):
+        """
+        Return number of tracked element atoms per species for a given phase.
+        """
+        flash = self.property.flash_ev
+        if phase == 'aq':
+            if hasattr(flash, "aqueous_element_to_species_matrix"):
+                return np.asarray(
+                    flash.aqueous_element_to_species_matrix, dtype=float
+                ).sum(axis=0)
+            if hasattr(flash, "species_2_element_moles"):
+                return np.asarray(flash.species_2_element_moles, dtype=float)
+            return None
+
+        if hasattr(flash, "gas_element_to_species_matrix"):
+            return np.asarray(flash.gas_element_to_species_matrix, dtype=float).sum(
+                axis=0
+            )
+        if hasattr(flash, "_gas_species_element_stoich"):
+            tracked_elements = set(getattr(flash, "fc_idx", {}).keys())
+            return np.array(
+                [
+                    sum(
+                        max(float(v), 0.0)
+                        for el, v in flash._gas_species_element_stoich.get(
+                            sp, {}
+                        ).items()
+                        if (not tracked_elements) or (el in tracked_elements)
+                    )
+                    for sp in flash.gas_species
+                ],
+                dtype=float,
+            )
+        return None
+
     def evaluate(self, state):
+        """
+        Evaluate output properties for a given thermodynamic state.
+        """
         (
             nu_v,
             _,
@@ -295,6 +373,20 @@ class OutputPropertyContainer:
 
         self.x[:] = molar_aq_fractions
         self.y[:] = molar_gas_fractions
+        self.dens_m_species[self.property.phase_idx['aq']] = (
+            self._species_density_from_element_density(
+                rho_phases['aq'],
+                molar_aq_fractions,
+                self._aq_atoms_per_species,
+            )
+        )
+        self.dens_m_species[self.property.phase_idx['gas']] = (
+            self._species_density_from_element_density(
+                rho_phases['gas'],
+                molar_gas_fractions,
+                self._gas_atoms_per_species,
+            )
+        )
 
         nu_s_minerals = state[self.property.s_mask_state]
         nu_s = nu_s_minerals.sum()

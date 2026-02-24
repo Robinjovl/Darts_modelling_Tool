@@ -57,7 +57,7 @@ class Model(ZerodModel):
             max_ts=max_ts,
             runtime=runtime,
         )
-        self.data_ts.eta = np.array([1e20] + [1e-5] * 7)
+        self.data_ts.eta = np.array([1e20] + [1e-4] * 7)
         self.timer.node["initialization"].stop()
 
     def set_physics(self):
@@ -137,15 +137,15 @@ class Model(ZerodModel):
             self.obl_min,
             self.obl_min,
             self.obl_min,
-            0.35,
+            0.34,
         ]
         self.axes_max = [self.pressure_init + 0.01] + [
-            0.01,
-            0.01,
-            0.01,
-            0.0001,
-            0.0001,
-            0.05,
+            0.02,
+            0.02,
+            0.02,
+            1e-4,
+            1e-4,
+            0.04,
             0.37,
         ]
 
@@ -326,6 +326,7 @@ class Flash(ReaktoroFlash):
         phase_idx = self.system.phases().find("GaseousPhase")
         self.gas_species = [sp.name() for sp in self.system.phases()[phase_idx].species()]
 
+        self._build_element_species_matrices()
 
 class MyOutputPropertyContainer(OutputPropertyContainer):
     def __init__(self, property_container, props_name: list[str] | None = None):
@@ -334,6 +335,7 @@ class MyOutputPropertyContainer(OutputPropertyContainer):
         self.dens_m = np.zeros(2)
         self.sat = np.zeros(2)
         self.sat_minerals = np.zeros(len(self.property.flash_ev.mineral_names))
+        self.volume = 3 * 55.6 / 1349
 
         for i, ph in enumerate(self.property.phases_name):
             self.output_props["dens_m_" + ph] = lambda i=i: self.dens_m[i]
@@ -341,6 +343,16 @@ class MyOutputPropertyContainer(OutputPropertyContainer):
 
         for i, mineral in enumerate(self.property.flash_ev.mineral_names):
             self.output_props["sat_" + mineral] = lambda i=i: self.sat_minerals[i]
+            self.output_props["n_" + mineral] = lambda i=i: self.dens_m_solid[i] * self.sat_minerals[i] * 1000.0 * self.volume
+        self.output_props["n_CO2(g)"] = lambda: self.dens_m_species[self.property.phase_idx['gas']] * \
+                                    self.property.sat_overall[self.property.phase_idx['gas']] * self.y[0] * 1000.0 * self.volume
+        self.output_props["n_H2O(a)"] = lambda: self.dens_m_species[self.property.phase_idx['aq']] * \
+                                    self.property.sat_overall[self.property.phase_idx['aq']] * self.x[9] * 1000.0 * self.volume
+        self.output_props["n_Ca+2"] = lambda: self.dens_m_species[self.property.phase_idx['aq']] * \
+                                    self.property.sat_overall[self.property.phase_idx['aq']] * self.x[4] * 1000.0 * self.volume
+        self.output_props["n_Mg+2"] = lambda: self.dens_m_species[self.property.phase_idx['aq']] * \
+                            self.property.sat_overall[self.property.phase_idx['aq']] * self.x[14] * 1000.0 * self.volume
+
 
     def evaluate(self, state):
         super().evaluate(state)

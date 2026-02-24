@@ -375,3 +375,50 @@ class Flash:
         self.gas_species = [
             sp.name() for sp in self.system.phases()[phase_idx].species()
         ]
+
+        self._build_element_species_matrices()
+
+    def _build_element_species_matrices(self):
+        """
+        Build element-species stoichiometric matrices for aqueous and gas phases.
+
+        Stored matrices:
+        - *_element_to_species_matrix: shape (n_elements, n_species_in_phase)
+        - *_species_to_element_matrix: shape (n_species_in_phase, n_elements)
+        """
+        element_symbols = [el.symbol() for el in self.system.elements()]
+        system_species = [sp.name() for sp in self.system.species()]
+        species_index = {name: i for i, name in enumerate(system_species)}
+
+        # Prefer element-only matrix (without charge row), fallback to slicing.
+        try:
+            formula_matrix_elements = np.asarray(
+                self.system.formulaMatrixElements(), dtype=float
+            )
+        except Exception:
+            formula_matrix_elements = np.asarray(
+                self.system.formulaMatrix(), dtype=float
+            )
+            formula_matrix_elements = formula_matrix_elements[: len(element_symbols), :]
+
+        def species_indices(species_names, phase_name):
+            missing = [name for name in species_names if name not in species_index]
+            if missing:
+                raise RuntimeError(
+                    f"Cannot build {phase_name} element-species mapping; missing species in system: {missing}"
+                )
+            return [species_index[name] for name in species_names]
+
+        aq_indices = species_indices(self.aqueous_species, "aqueous")
+        gas_indices = species_indices(self.gas_species, "gas")
+
+        self.system_elements = element_symbols
+        self.system_species = system_species
+
+        self.aqueous_element_to_species_matrix = formula_matrix_elements[:, aq_indices]
+        self.gas_element_to_species_matrix = formula_matrix_elements[:, gas_indices]
+
+        self.aqueous_species_to_element_matrix = (
+            self.aqueous_element_to_species_matrix.T
+        )
+        self.gas_species_to_element_matrix = self.gas_element_to_species_matrix.T

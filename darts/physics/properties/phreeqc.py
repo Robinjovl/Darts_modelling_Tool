@@ -210,6 +210,8 @@ class Flash:
                 [2, 1, 3, 5, 5, 3, 4, 6, 6, 5, 5, 6, 1, 3, 2, 1, 3, 2]
             )
 
+        self._build_element_species_matrices()
+
         # Unify PHREEQC template across specs; use high_precision=false and dynamic sections
         fluid_elements_order = [
             el for el, _ in sorted(self.fc_idx.items(), key=lambda kv: kv[1])
@@ -549,3 +551,98 @@ class Flash:
             count = int(count_str) if count_str else 1
             stoich[el] = stoich.get(el, 0) + count
         return stoich
+
+    def _parse_species_formula_to_elements(self, species_name):
+        """
+        Parse a PHREEQC species name into element stoichiometry.
+
+        Handles common PHREEQC notation:
+        - charge suffixes (e.g., H+, Ca+2, CO3-2)
+        - phase suffixes (e.g., CO2(g), H2O(aq))
+        - grouped formulas with multipliers (e.g., (CO2)2, CaMg(CO3)2)
+        """
+        import re
+
+        formula = species_name.strip()
+        # Remove trailing phase marker, e.g., "(g)" or "(aq)"
+        formula = re.sub(r"\([A-Za-z]+\)$", "", formula)
+        # Remove trailing charge notation, e.g., "+", "-2", "+2", "2+"
+        formula = re.sub(r"([+-]\d*|\d*[+-])$", "", formula)
+
+        stack = [{}]
+        i = 0
+        while i < len(formula):
+            ch = formula[i]
+
+            if ch == "(":
+                stack.append({})
+                i += 1
+                continue
+
+            if ch == ")":
+                i += 1
+                j = i
+                while j < len(formula) and formula[j].isdigit():
+                    j += 1
+                multiplier = int(formula[i:j] or "1")
+                group = stack.pop() if len(stack) > 1 else {}
+                for el, count in group.items():
+                    stack[-1][el] = stack[-1].get(el, 0) + count * multiplier
+                i = j
+                continue
+
+            if ch.isupper():
+                j = i + 1
+                if j < len(formula) and formula[j].islower():
+                    j += 1
+                element = formula[i:j]
+                k = j
+                while k < len(formula) and formula[k].isdigit():
+                    k += 1
+                count = int(formula[j:k] or "1")
+                stack[-1][element] = stack[-1].get(element, 0) + count
+                i = k
+                continue
+
+            # Skip any other symbols (charges, separators, etc.)
+            i += 1
+
+        return stack[0]
+
+    def _build_element_species_matrices(self):
+        """
+        Build element-species stoichiometric matrices for aqueous and gas phases.
+
+        Stored matrices:
+        - *_element_to_species_matrix: shape (n_elements, n_species_in_phase)
+        - *_species_to_element_matrix: shape (n_species_in_phase, n_elements)
+        """
+        element_symbols = [
+            el for el, _ in sorted(self.fc_idx.items(), key=lambda kv: kv[1])
+        ]
+
+        self.system_elements = element_symbols
+        self.system_species = list(self.aqueous_species) + list(self.gas_species)
+
+        n_elements = len(element_symbols)
+        self.aqueous_element_to_species_matrix = np.zeros(
+            (n_elements, len(self.aqueous_species)), dtype=float
+        )
+        self.gas_element_to_species_matrix = np.zeros(
+            (n_elements, len(self.gas_species)), dtype=float
+        )
+
+        for j, sp in enumerate(self.aqueous_species):
+            stoich = self._parse_species_formula_to_elements(sp)
+            for i, el in enumerate(element_symbols):
+                self.aqueous_element_to_species_matrix[i, j] = stoich.get(el, 0.0)
+
+        for j, sp in enumerate(self.gas_species):
+            stoich = self._gas_species_element_stoich.get(sp, {})
+            for i, el in enumerate(element_symbols):
+                self.gas_element_to_species_matrix[i, j] = stoich.get(el, 0.0)
+
+        self.aqueous_species_to_element_matrix = (
+            self.aqueous_element_to_species_matrix.T
+        )
+        self.gas_species_to_element_matrix = self.gas_element_to_species_matrix.T
