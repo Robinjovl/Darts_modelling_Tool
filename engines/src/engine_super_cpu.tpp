@@ -1274,25 +1274,6 @@ void engine_super_cpu<NC, NP, THERMAL>::update_two_way_phase_vels_and_ders()
     }
 }
 
-/**
- * @brief Apply enthalpy correction when the engine is used with enthalpy as the primary variable
- *
- * Correction procedure follows the following logic:
- *  Step 0:
- *      Apply Newton-Raphson increments to the solution
- *  Step 1:
-        Check if the enthalpy of the cell is out of OBL bounds.
- *      If it is below the h_min calculated initially, replace it with h_min
- *      If it is above the h_max calculated initially, replace it with h_max
- *  Step 2:
- *      Use the cell pressure and t_min/t_max specified by the user to calculate h_min/h_max
- *      If the enthalpy of the cell is below h_min, replace the enthalpy with h_min
- *      If the enthalpy of the cell is below h_max, replace the enthalpy with h_max
- *
- * This function is applicable if the engine is used with enthalpy as the primary variable.
- *
- * @return void.
- */
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
@@ -1370,14 +1351,6 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<va
     }
 }
 
-
-/**
- * @brief Chop enthalpy if temperature increment by the Newton solver is larger than a certain dT_max
- *
- * This function is applicable if the engine is used with enthalpy as the primary variable.
- *
- * @return void.
- */
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_chop(std::vector<value_t>& X, std::vector<value_t>& dX)
 {

@@ -1921,7 +1921,6 @@ int engine_base::apply_newton_update(value_t dt)
 		apply_obl_axis_local_correction(X, dX);
 
 	//apply_enthalpy_correction(X, dX);
-
 	//apply_enthalpy_chop(X, dX);
 
 	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
@@ -1976,6 +1975,42 @@ int engine_base::apply_newton_update(value_t dt)
 	this->newton_update_coefficient = 1.0;
 
 	return 0;
+}
+
+/**
+ * @brief Apply enthalpy correction when the engine is used with enthalpy as the primary variable
+ *
+ * Correction procedure follows the following logic:
+ *  Step 0:
+ *      Apply Newton-Raphson increments to the solution
+ *  Step 1:
+		Check if the enthalpy of the cell is out of OBL bounds.
+ *      If it is below the h_min calculated initially, replace it with h_min
+ *      If it is above the h_max calculated initially, replace it with h_max
+ *  Step 2:
+ *      Use the cell pressure and t_min/t_max specified by the user to calculate h_min/h_max
+ *      If the enthalpy of the cell is below h_min, replace the enthalpy with h_min
+ *      If the enthalpy of the cell is below h_max, replace the enthalpy with h_max
+ *
+ * This function is applicable if the engine is used with enthalpy as the primary variable.
+ *
+ * @return void.
+ */
+void engine_base::apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
+{
+	// Hook method: The classes that need this method will override it (e.g., engine_super_cpu)
+}
+
+/**
+ * @brief Chop enthalpy if temperature increment by the Newton solver is larger than a certain dT_max
+ *
+ * This function is applicable if the engine is used with enthalpy as the primary variable.
+ *
+ * @return void.
+ */
+void engine_base::apply_enthalpy_chop(std::vector<value_t>& X, std::vector<value_t>& dX)
+{
+	// Hook method: The classes that need this method will override it (e.g., engine_super_cpu)
 }
 
 void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
