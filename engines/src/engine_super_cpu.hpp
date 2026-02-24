@@ -40,9 +40,9 @@ public:
   // number of equations
   const static uint8_t NE = N_VARS;
   // order of primary variables:
-  const static uint8_t P_VAR = 0;
-  const static uint8_t Z_VAR = 1;
-  const static uint8_t T_VAR = NC;
+  const static uint8_t P_VAR = 0;    // Index for pressure
+  const static uint8_t Z_VAR = 1;    // Index for first component in composition
+  const static uint8_t T_VAR = NC;   // Index for thermal variable
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP density, NP up_constant, NE*NP gradient,
   //                      NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP phase mobility,
@@ -99,8 +99,8 @@ public:
   // for enthalpy correction
   value_t min_axis_T;  // OBL axis min for temperature
   value_t max_axis_T;  // OBL axis max for temperature
-  value_t min_axis_h;  // OBL axis min for enthalpy
-  value_t max_axis_h;  // OBL axis max for enthalpy
+  value_t min_axis_h = acc_flux_op_set_list[0]->get_axis_min(T_VAR);  // OBL axis min for enthalpy
+  value_t max_axis_h = acc_flux_op_set_list[0]->get_axis_max(T_VAR);  // OBL axis max for enthalpy
 
   engine_super_cpu()
   {

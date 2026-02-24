@@ -864,6 +864,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;
+
 	if (params->log_transform == 0)
 	{
 		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
