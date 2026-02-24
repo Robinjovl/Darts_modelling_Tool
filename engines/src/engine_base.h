@@ -332,8 +332,8 @@ public:
 	uint8_t z_var_idx;
 	// number of mineral/solid species
 	uint8_t n_solid;
-	double min_axis_z;  // OBL axis min
-	double max_axis_z;  // OBL axis max
+	double min_axis_z;  // OBL axis min for composition
+	double max_axis_z;  // OBL axis max for composition
 	double min_sim_z;   // Min composition to remain well above OBL min_axis_z and physical bounds (0): min_axis_z + params->sim_eps
 	double max_sim_z;   // Max composition to remain well below OBL max_axis_z and physical bounds (1): max_axis_z - params->sim_eps
 	std::vector<value_t> old_z, new_z; // [NC] array for local chop
