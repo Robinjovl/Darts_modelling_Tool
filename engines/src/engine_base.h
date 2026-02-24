@@ -155,9 +155,6 @@ public:
 	void apply_global_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_local_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 
-	void apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
-	void apply_enthalpy_chop(std::vector<value_t>& X, std::vector<value_t>& dX);
-
 	virtual int apply_newton_update(value_t dt);
 
 	// Here we make the same thing as inside interpolation, but during Newton update
@@ -338,11 +335,6 @@ public:
 	double max_sim_z;   // Max composition to remain well below OBL max_axis_z and physical bounds (1): max_axis_z - params->sim_eps
 	std::vector<value_t> old_z, new_z; // [NC] array for local chop
 	std::vector<value_t> old_z_fl, new_z_fl; // [NC_FLUID] array for local chop
-	// for enthalpy correction
-	value_t min_axis_T;  // OBL axis min for temperature
-	value_t max_axis_T;  // OBL axis max for temperature
-	value_t min_axis_h;  // OBL axis min for enthalpy
-	value_t max_axis_h;  // OBL axis max for enthalpy
 
 	std::vector<value_t> X_init;				   // [N_VARS * n_blocks] array of initial solution
 	std::vector<value_t> PV;					   // [n_blocks]     array of initial pore volumes

@@ -1274,6 +1274,148 @@ void engine_super_cpu<NC, NP, THERMAL>::update_two_way_phase_vels_and_ders()
     }
 }
 
+/**
+ * @brief Apply enthalpy correction when the engine is used with enthalpy as the primary variable
+ *
+ * Correction procedure follows the following logic:
+ *  Step 0:
+ *      Apply Newton-Raphson increments to the solution
+ *  Step 1:
+        Check if the enthalpy of the cell is out of OBL bounds.
+ *      If it is below the h_min calculated initially, replace it with h_min
+ *      If it is above the h_max calculated initially, replace it with h_max
+ *  Step 2:
+ *      Use the cell pressure and t_min/t_max specified by the user to calculate h_min/h_max
+ *      If the enthalpy of the cell is below h_min, replace the enthalpy with h_min
+ *      If the enthalpy of the cell is below h_max, replace the enthalpy with h_max
+ *
+ * This function is applicable if the engine is used with enthalpy as the primary variable.
+ *
+ * @return void.
+ */
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
+{
+    value_t T;
+    bool is_h_corrected; // Whether enthalpy of the cell is corrected or not
+    bool corrected_h;    // The corrected enthlapy of the cell
+
+    index_t nb = mesh->n_blocks;
+
+    std::vector<value_t> state(n_vars);
+
+    std::vector<value_t> X_new(nb * n_vars);
+    std::vector<value_t> op_vals_arr_new(n_ops * nb);
+    std::vector<value_t> op_ders_arr_new(n_ops * nb * n_vars);
+
+    for (index_t i = 0; i < dX.size(); i++)
+    {
+        X_new[i] = X[i] - dX[i];
+    }
+
+    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+    {
+        int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X_new, block_idxs[r], op_vals_arr_new, op_ders_arr_new);
+        //if (result < 0)
+        //	return 0;
+    }
+
+    for (index_t i = 0; i < nb; i++)
+    {
+        is_h_corrected = false;
+        // Clamp phase enthalpy to the OBL bounds
+        for (index_t j = 0; j < NP; j++)
+        {
+            if (op_vals_arr_new[i * n_ops + ENTH_OP + j] < min_axis_h)
+            {
+                corrected_h = min_axis_h;
+                is_h_corrected = true;
+            }
+            else if (op_vals_arr_new[i * n_ops + ENTH_OP + j] > max_axis_h)
+            {
+                corrected_h = max_axis_h;
+                is_h_corrected = true;
+            }
+        }
+
+        // Clamp temperature to T_min/T_max bounds specified by the user
+        T = op_vals_arr_new[i * n_ops + TEMP_OP];
+
+        if (T < min_axis_T)
+        {
+            T = min_axis_T;
+        }
+        else if (T > max_axis_T)
+        {
+            T = max_axis_T;
+        }
+
+        // Use thermal_var_etor to calculate enthlapy at p and clamped temperature
+        if (T < min_axis_T || T > max_axis_T)
+        {
+            state[P_VAR] = op_vals_arr_new[i * n_ops + PRES_OP];
+            state[T_VAR] = T;
+            std::vector<value_t> thermal_var_op(1);
+            this->thermal_var_etor->evaluate(state, thermal_var_op);
+
+            corrected_h = thermal_var_op[0];
+            is_h_corrected = true;
+        }
+
+        // Update dX if enthalpy is corrected
+        if (is_h_corrected)
+        {
+            dX[i * n_vars + T_VAR] = X[i * n_vars + T_VAR] - corrected_h;
+        }
+    }
+}
+
+
+/**
+ * @brief Chop enthalpy if temperature increment by the Newton solver is larger than a certain dT_max
+ *
+ * This function is applicable if the engine is used with enthalpy as the primary variable.
+ *
+ * @return void.
+ */
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_chop(std::vector<value_t>& X, std::vector<value_t>& dX)
+{
+    value_t dT;
+    value_t chopping_factor;
+
+    index_t nb = mesh->n_blocks;
+
+    value_t dT_max = 20;
+
+    std::vector<value_t> X_new(nb * n_vars);
+    std::vector<value_t> op_vals_arr_new(n_ops * nb);
+    std::vector<value_t> op_ders_arr_new(n_ops * nb * n_vars);
+
+    for (index_t i = 0; i < dX.size(); i++)
+    {
+        X_new[i] = X[i] - dX[i];
+    }
+
+    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+    {
+        int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X_new, block_idxs[r], op_vals_arr_new, op_ders_arr_new);
+        //if (result < 0)
+        //	return 0;
+    }
+
+    for (index_t i = 0; i < nb; i++)
+    {
+        dT = std::abs(op_vals_arr_new[i * n_ops + TEMP_OP] - op_vals_arr_n[i * n_ops + TEMP_OP]);
+        if (dT > dT_max)
+        {
+            chopping_factor = dT_max / dT;
+            //dX[i * n_vars + P_VAR] *= chopping_factor;
+            dX[i * n_vars + T_VAR] *= chopping_factor;
+        }
+    }
+}
+
 
 //template<uint8_t NC, uint8_t NP, , bool THERMAL>
 //double

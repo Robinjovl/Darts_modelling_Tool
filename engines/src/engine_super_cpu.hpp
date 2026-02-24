@@ -96,6 +96,12 @@ public:
   uint8_t get_n_comps() const override { return NC; };
   uint8_t get_z_var_idx() const override { return Z_VAR; };
 
+  // for enthalpy correction
+  value_t min_axis_T;  // OBL axis min for temperature
+  value_t max_axis_T;  // OBL axis max for temperature
+  value_t min_axis_h;  // OBL axis min for enthalpy
+  value_t max_axis_h;  // OBL axis max for enthalpy
+
   engine_super_cpu()
   {
     if (THERMAL)
@@ -120,6 +126,9 @@ public:
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
   void update_two_way_phase_vels_and_ders();
+
+  void apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
+  void apply_enthalpy_chop(std::vector<value_t>& X, std::vector<value_t>& dX);
 
   void enable_flux_output();
 };
