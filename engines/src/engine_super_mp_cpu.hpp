@@ -83,7 +83,7 @@ public:
   uint8_t get_n_vars() const override { return N_VARS; };
   uint8_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_comps() const override { return NC; };
-  uint8_t get_z_var() const override { return Z_VAR; };
+  uint8_t get_z_var_idx() const override { return Z_VAR; };
   uint8_t get_n_state() const { return N_STATE; };
 
   engine_super_mp_cpu()

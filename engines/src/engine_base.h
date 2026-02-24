@@ -111,7 +111,7 @@ public:
 	virtual uint8_t get_n_fl_var() const { return 0; };
 
 	// get the index of Z variable
-	virtual uint8_t get_z_var() const = 0;
+	virtual uint8_t get_z_var_idx() const = 0;
 
 	// get the number of solid/mineral species
 	virtual uint8_t get_n_solid() const { return n_solid; };
@@ -329,7 +329,7 @@ public:
 	uint8_t n_vars;
 	uint8_t n_ops;
 	uint8_t nc;
-	uint8_t z_var;
+	uint8_t z_var_idx;
 	// number of mineral/solid species
 	uint8_t n_solid;
 	double min_axis_z;  // OBL axis min
@@ -868,19 +868,19 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	n_vars = get_n_vars();
 	n_ops = get_n_ops();
 	nc = get_n_comps();
-	z_var = get_z_var();
+	z_var_idx = get_z_var_idx();
 
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;
 	if (params->log_transform == 0)
 	{
-		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
 	}
 	else if (params->log_transform == 1)
 	{
-		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
 	}
 	min_sim_z = min_axis_z + params->sim_eps;
 	max_sim_z = max_axis_z - params->sim_eps;

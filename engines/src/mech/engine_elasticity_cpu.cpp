@@ -248,7 +248,7 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 	n_vars = get_n_vars();
 	n_ops = get_n_ops();
 	nc = get_n_comps();
-	z_var = get_z_var();
+	z_var_idx = get_z_var_idx();
 
 	X_init.resize(n_vars * mesh->n_blocks);
 	fluxes.resize(N_VARS * mesh->n_conns);

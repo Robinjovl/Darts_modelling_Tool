@@ -59,7 +59,7 @@ public:
   uint8_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_dim() const { return ND_; };
   uint8_t get_n_comps() const override { return NC_; };
-  uint8_t get_z_var() const override { return Z_VAR; };
+  uint8_t get_z_var_idx() const override { return Z_VAR; };
 
   engine_pm_cpu();
   ~engine_pm_cpu();

@@ -50,7 +50,7 @@ public:
   uint8_t get_n_ops() const { return N_OPS; };
   uint8_t get_n_dim() const { return ND_; };
   uint8_t get_n_comps() const { return 0; };
-  uint8_t get_z_var() const { return -1; };
+  uint8_t get_z_var_idx() const { return -1; };
   bool USE_CALCULATED_FLUX;
 
   engine_elasticity_cpu() { engine_name = std::to_string(ND) + "D elastic mechanics CPU engine"; };
