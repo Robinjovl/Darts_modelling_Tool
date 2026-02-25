@@ -140,6 +140,7 @@ class PhysicsBase:
         itor_precision: str = 'd',
         verbose: bool = False,
         is_barycentric: bool = False,
+        n_solid: int = None,
     ):
         """
         Function to initialize all contained objects within the Physics object.
@@ -158,6 +159,8 @@ class PhysicsBase:
         :type verbose: bool
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param n_solid: Number of solid minerals for element-based reactive flow
+        :type n_solid: int
         """
         # Define OBL axes
         self.axes_min, self.axes_max = self.determine_obl_bounds(
@@ -172,6 +175,11 @@ class PhysicsBase:
 
         # set engine, operators and create interpolators
         self.engine = self.set_engine(discr_type, platform)
+
+        # for separate mineral fraction in reactive flow formulations
+        if n_solid is not None:
+            self.physics.engine.n_solid = n_solid
+
         self.set_operators()
         self.set_interpolators(
             platform, itor_type, itor_mode, itor_precision, is_barycentric

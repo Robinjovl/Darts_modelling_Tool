@@ -174,6 +174,7 @@ class DartsModel:
             itor_mode=itor_mode,
             itor_type=itor_type,
             is_barycentric=is_barycentric,
+            n_solid=n_solid,
         )
         if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
@@ -186,10 +187,6 @@ class DartsModel:
         self.set_op_list()
         self.set_boundary_conditions()
         self.set_well_controls()
-
-        # for separate mineral fraction in reactive flow formulations
-        if n_solid is not None:
-            self.physics.engine.n_solid = n_solid
 
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
