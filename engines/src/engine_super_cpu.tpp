@@ -67,8 +67,8 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
 
   if constexpr (THERMAL)
   {
-      min_axis_thermal_var = acc_flux_op_set_list[0]->get_axis_min(T_VAR);
-      max_axis_thermal_var = acc_flux_op_set_list[0]->get_axis_max(T_VAR);
+      min_axis_temp = thermal_var_etor->get_axis_min(T_VAR);
+      max_axis_temp = thermal_var_etor->get_axis_max(T_VAR);
   }
 
   return 0;
@@ -1283,9 +1283,7 @@ void engine_super_cpu<NC, NP, THERMAL>::update_two_way_phase_vels_and_ders()
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
-    value_t T;
-    bool is_h_corrected; // Whether enthalpy of the cell is corrected or not
-    bool corrected_h;    // The corrected enthlapy of the cell
+    index_t n_thermal_var_corr{ 0 };  // Number of states corrected for temperature under-/overshoot
 
     index_t nb = mesh->n_blocks;
 
@@ -1309,52 +1307,35 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<va
 
     for (index_t i = 0; i < nb; i++)
     {
-        is_h_corrected = false;
-        // Clamp phase enthalpy to the OBL bounds
-        for (index_t j = 0; j < NP; j++)
+        // If TEMP_OP out of [T_min, T_max] bounds, use thermal_var_etor to calculate enthalpy at p and T_bound
+        if (op_vals_arr_new[i * n_ops + TEMP_OP] < min_axis_temp || op_vals_arr_new[i * n_ops + TEMP_OP] > max_axis_temp)
         {
-            if (op_vals_arr_new[i * n_ops + ENTH_OP + j] < min_axis_thermal_var)
+            // Define PT-state
+            for (index_t c = 0; c < n_vars - 1; c++)
             {
-                corrected_h = min_axis_thermal_var;
-                is_h_corrected = true;
+                state[c] = X[i * n_vars + c] - dX[i * n_vars + c];
             }
-            else if (op_vals_arr_new[i * n_ops + ENTH_OP + j] > max_axis_thermal_var)
-            {
-                corrected_h = max_axis_thermal_var;
-                is_h_corrected = true;
-            }
-        }
+            state[T_VAR] = (op_vals_arr_new[i * n_ops + TEMP_OP] < min_axis_temp) ? min_axis_temp : max_axis_temp;
 
-        // Clamp temperature to T_min/T_max bounds specified by the user
-        T = op_vals_arr_new[i * n_ops + TEMP_OP];
-
-        if (T < min_axis_temp)
-        {
-            T = min_axis_temp;
-        }
-        else if (T > max_axis_temp)
-        {
-            T = max_axis_temp;
-        }
-
-        // Use thermal_var_etor to calculate enthlapy at p and clamped temperature
-        if (T < min_axis_temp || T > max_axis_temp)
-        {
-            state[P_VAR] = op_vals_arr_new[i * n_ops + PRES_OP];
-            state[T_VAR] = T;
+            // Evaluate thermal_var_etor
             std::vector<value_t> thermal_var_op(1);
             this->thermal_var_etor->evaluate(state, thermal_var_op);
 
-            corrected_h = thermal_var_op[0];
-            is_h_corrected = true;
-        }
+            dX[i * n_vars + T_VAR] = X[i * n_vars + T_VAR] - thermal_var_op[0];
 
-        // Update dX if enthalpy is corrected
-        if (is_h_corrected)
-        {
-            dX[i * n_vars + T_VAR] = X[i * n_vars + T_VAR] - corrected_h;
+            if (n_thermal_var_corr == 0)
+			{
+				std::cout << "Thermal variable correction: block " << i << " shoots over T axis limit of "
+                          << state[T_VAR] << " to " << op_vals_arr_new[i * n_ops + TEMP_OP] << "\n";
+			}
+            n_thermal_var_corr++;
         }
     }
+
+    if (n_thermal_var_corr)
+	{
+		std::cout << "Thermal variable correction applied " << n_thermal_var_corr << " time(s) \n";
+	}
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>

@@ -96,8 +96,6 @@ public:
   uint8_t get_n_comps() const override { return NC; };
   uint8_t get_z_var_idx() const override { return Z_VAR; };
 
-  value_t min_axis_thermal_var;
-  value_t max_axis_thermal_var;
   // If enthalpy is the primary var, the following axis bounds are also used
   value_t min_axis_temp;  // OBL axis min for temperature
   value_t max_axis_temp;  // OBL axis max for temperature
