@@ -178,7 +178,7 @@ class PhysicsBase:
 
         # for separate mineral fraction in reactive flow formulations
         if n_solid is not None:
-            self.physics.engine.n_solid = n_solid
+            self.engine.n_solid = n_solid
 
         self.set_operators()
         self.set_interpolators(
