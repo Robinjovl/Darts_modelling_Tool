@@ -162,7 +162,8 @@ void pybind_engine_base (py::module &m)
 	   py::enum_<engine_base::StateSpecification>(cls, "StateSpecification")
 		   .value("P", engine_base::StateSpecification::P)
 		   .value("PT", engine_base::StateSpecification::PT)
-		   .value("PH", engine_base::StateSpecification::PH);
+		   .value("PH", engine_base::StateSpecification::PH)
+		   .value("PS", engine_base::StateSpecification::PS);
 }
 
 #endif //PYBIND11_ENABLED

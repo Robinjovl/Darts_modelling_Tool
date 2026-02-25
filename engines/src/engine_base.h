@@ -62,9 +62,10 @@ class engine_base
 public:
 	enum class StateSpecification
 	{
-		P,
+		P = 0,
 		PT,
 		PH,
+		PS,
 	};
 
 	// methods

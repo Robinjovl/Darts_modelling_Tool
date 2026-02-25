@@ -53,6 +53,7 @@ class PhysicsBase:
         P = 0
         PT = 1
         PH = 2
+        PS = 3
 
         def __lt__(self, other):
             if self.__class__ is other.__class__:
@@ -202,6 +203,8 @@ class PhysicsBase:
             self.engine.state_spec = self.engine.StateSpecification.PT
         elif state_spec == self.StateSpecification.PH:
             self.engine.state_spec = self.engine.StateSpecification.PH
+        elif state_spec == self.StateSpecification.PS:
+            self.engine.state_spec = self.engine.StateSpecification.PS
         else:
             raise NotImplementedError()
 
