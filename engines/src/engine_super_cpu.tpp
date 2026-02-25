@@ -65,6 +65,12 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   phase_vels_ders.resize(mesh_->n_conns * vel_der_size);
   phases_vels_ders.resize(mesh_->n_conns * vel_der_size * NP);   // velocities derivatives are stored phase-wise
 
+  if constexpr (THERMAL)
+  {
+      min_axis_thermal_var = acc_flux_op_set_list[0]->get_axis_min(T_VAR);
+      max_axis_thermal_var = acc_flux_op_set_list[0]->get_axis_max(T_VAR);
+  }
+
   return 0;
 }
 
@@ -1307,14 +1313,14 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<va
         // Clamp phase enthalpy to the OBL bounds
         for (index_t j = 0; j < NP; j++)
         {
-            if (op_vals_arr_new[i * n_ops + ENTH_OP + j] < min_axis_h)
+            if (op_vals_arr_new[i * n_ops + ENTH_OP + j] < min_axis_thermal_var)
             {
-                corrected_h = min_axis_h;
+                corrected_h = min_axis_thermal_var;
                 is_h_corrected = true;
             }
-            else if (op_vals_arr_new[i * n_ops + ENTH_OP + j] > max_axis_h)
+            else if (op_vals_arr_new[i * n_ops + ENTH_OP + j] > max_axis_thermal_var)
             {
-                corrected_h = max_axis_h;
+                corrected_h = max_axis_thermal_var;
                 is_h_corrected = true;
             }
         }
@@ -1322,17 +1328,17 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<va
         // Clamp temperature to T_min/T_max bounds specified by the user
         T = op_vals_arr_new[i * n_ops + TEMP_OP];
 
-        if (T < min_axis_T)
+        if (T < min_axis_temp)
         {
-            T = min_axis_T;
+            T = min_axis_temp;
         }
-        else if (T > max_axis_T)
+        else if (T > max_axis_temp)
         {
-            T = max_axis_T;
+            T = max_axis_temp;
         }
 
         // Use thermal_var_etor to calculate enthlapy at p and clamped temperature
-        if (T < min_axis_T || T > max_axis_T)
+        if (T < min_axis_temp || T > max_axis_temp)
         {
             state[P_VAR] = op_vals_arr_new[i * n_ops + PRES_OP];
             state[T_VAR] = T;

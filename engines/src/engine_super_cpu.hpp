@@ -96,11 +96,11 @@ public:
   uint8_t get_n_comps() const override { return NC; };
   uint8_t get_z_var_idx() const override { return Z_VAR; };
 
-  // for enthalpy correction
-  value_t min_axis_T;  // OBL axis min for temperature
-  value_t max_axis_T;  // OBL axis max for temperature
-  value_t min_axis_h = acc_flux_op_set_list[0]->get_axis_min(T_VAR);  // OBL axis min for enthalpy
-  value_t max_axis_h = acc_flux_op_set_list[0]->get_axis_max(T_VAR);  // OBL axis max for enthalpy
+  value_t min_axis_thermal_var;
+  value_t max_axis_thermal_var;
+  // If enthalpy is the primary var, the following axis bounds are also used
+  value_t min_axis_temp;  // OBL axis min for temperature
+  value_t max_axis_temp;  // OBL axis max for temperature
 
   engine_super_cpu()
   {
