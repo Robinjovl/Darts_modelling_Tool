@@ -1367,7 +1367,7 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_chop(std::vector<value_t>
     for (index_t i = 0; i < nb; i++)
     {
         dT = std::abs(op_vals_arr_new[i * n_ops + TEMP_OP] - op_vals_arr_n[i * n_ops + TEMP_OP]);
-        if (dT > dT_max)
+        if (false && dT > dT_max)
         {
             chopping_factor = dT_max / dT;
             //dX[i * n_vars + P_VAR] *= chopping_factor;
