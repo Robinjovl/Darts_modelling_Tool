@@ -35,7 +35,6 @@ class geomech():
 
         # thermal expansion coefficient
         self.thermal_expansion = 1.3e-5  # 1/°C
-        #self.thermal_exp_coeff =   # 1/K
         # water 21.0e-5# 1/°C
 
         # Mohr-Coulomb
@@ -100,9 +99,9 @@ class geomech():
         ux_p = np.array(res['ux_p'], copy=True) * self.biot
         uy_p = np.array(res['uy_p'], copy=True) * self.biot
         uz_p = np.array(res['uz_p'], copy=True) * self.biot
-        ux_t = np.array(res['ux_t'], copy=True) * self.biot
-        uy_t = np.array(res['uy_t'], copy=True) * self.biot
-        uz_t = np.array(res['uz_t'], copy=True) * self.biot
+        ux_t = np.array(res['ux_t'], copy=True)
+        uy_t = np.array(res['uy_t'], copy=True)
+        uz_t = np.array(res['uz_t'], copy=True)
         return ux_p, uy_p, uz_p, ux_t, uy_t, uz_t
 
 

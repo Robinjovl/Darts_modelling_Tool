@@ -75,7 +75,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     g.poisson = m.idata.rock.nu
     g.young = m.idata.rock.E if np.isscalar(m.idata.rock.E) else m.idata.rock.E.mean()
     g.young *= bars2mpa
-    g.thermal_exp_coeff = m.idata.rock.th_expn / get_bulk_modulus(E=m.idata.rock.E, nu=m.idata.rock.nu)# 1/°C
+    g.thermal_expansion = m.idata.rock.th_expn / get_bulk_modulus(E=m.idata.rock.E, nu=m.idata.rock.nu)# 1/°C
     g.biot = m.idata.rock.biot
 
     # read THM solution from vtk
@@ -278,7 +278,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points_eps = eval_points + eps
         #eval_points_eps = eval_points_eps.transpose()
-        upy1, upx1, upz1, uty1, utx1, utz1 = g.calc_displacements_cpp(eval_points_eps, prisms_rsv, delta_pressure_rsv, delta_temperature_rsv)
+        upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points_eps, prisms_rsv, delta_pressure_rsv, delta_temperature_rsv)
         ux = upx1 + utx1
         uy = upy1 + uty1
         uz = upz1 + utz1
@@ -432,9 +432,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    #points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
     #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
-    points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
+    #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
+    points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
     #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
     
     if False:
@@ -508,6 +509,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         point_xy = points_xy[k]
         print('1D plots for point', k, 'YX=', point_xy)
         modes = ['delta_pressure']
+        modes += ['delta_temperature']
         modes += ['displ_z', 'displ_y', 'displ_x']
         modes += ['delta_eff_stress_z', 'delta_eff_stress_y', 'delta_eff_stress_x']
         modes += ['delta_total_stress_z', 'delta_total_stress_y', 'delta_total_stress_x']
@@ -540,7 +542,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         points_rsv[2, :] = z_range_rsv
         
         compare_vert_line(points_all, suffix='all', loc=k, output_folder=folder, modes=modes)
-        compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, modes=modes)
+        #compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, modes=modes)
 
     # print vert displs and stresses change at a point
     if True:
@@ -595,6 +597,7 @@ if __name__ == '__main__':
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
     case = '34_34_57'  # z 0 - 5 km 
+    case = '34_34_66'  # z 0 - 5 km 
     #case = '34_34_65'  # z 0 - 10 km
     #case='34_35_57' # perm_frac
     
@@ -605,8 +608,8 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    #physics_types_list += ['single_phase']
-    physics_types_list += ['single_phase_thermal']
+    physics_types_list += ['single_phase']
+    #physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['none']
@@ -615,12 +618,12 @@ if __name__ == '__main__':
     #wells_types_list += ['doublet']
     
     # for THM solver run
-    #n_years = 1
+    n_years = 1
     #n_years = 2
     #n_years = 5
     #n_years = 10
     #n_years = 30
-    n_years = 50
+    #n_years = 50
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
 
@@ -633,8 +636,8 @@ if __name__ == '__main__':
     #timestep = 1
     #timestep = 4
     
-    run_thm = True
-    #run_thm = False
+    #run_thm = True
+    run_thm = False
     
     #generate_mesh=False
     generate_mesh=True

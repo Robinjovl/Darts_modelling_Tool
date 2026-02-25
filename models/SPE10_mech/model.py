@@ -98,8 +98,8 @@ class Model(THMCModel):
         self.idata.rock.nu = 0.25  # poisson ratio
 
         # define permeable reservoir geometric boundaries
-        self.idata.other.rsv_top = 2100  # [m]
-        self.idata.other.rsv_bottom = 2200# [m]
+        self.idata.other.rsv_top = 2000  # [m]
+        self.idata.other.rsv_bottom = 2400# [m]
         
         # lateral reservoir boundaries
         self.idata.other.rsv_xy = 500   # m, laterally limited (rsv width will be self.rsv_xy*2)
@@ -116,8 +116,8 @@ class Model(THMCModel):
             
         # rock properties for outside reservoir boundaries part of the mesh
         self.idata.rock.poro_non_rsv = 0.001
-        self.idata.rock.perm_non_rsv = 1e-9 # this matched thm and analytical solution
-        #self.idata.rock.perm_non_rsv = 0.001   # this matches proxy and thm
+        #self.idata.rock.perm_non_rsv = 1e-9 # this matched thm and analytical solution
+        self.idata.rock.perm_non_rsv = 0.01   # this matches proxy and thm
         self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
         
         if self.idata.other.perm_frac:
@@ -227,6 +227,11 @@ class Model(THMCModel):
         elif nz == 53:  # dz = 100 m for over and underburden and 20m for the reservoir
             Zc = np.hstack([np.arange(0, rsv_top, 100), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 100)])
         elif nz == 57:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
+            Zc = np.hstack([np.arange(0, rsv_top - 100 + 1, 100),
+                                 np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
+                                 rsv_bottom + 100,
+                                 np.arange(rsv_bottom + 200, 5000 + 1, 100)])
+        elif nz == 66:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
             Zc = np.hstack([np.arange(0, rsv_top - 100 + 1, 100),
                                  np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
                                  rsv_bottom + 100,

@@ -207,6 +207,7 @@ def plot_vtk_pyvista(output_dir, contour=False):
 
 if __name__ == "__main__":
     contour = False
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
-    output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
+    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_57')
     plot_vtk_pyvista(output_dir, contour=contour)
