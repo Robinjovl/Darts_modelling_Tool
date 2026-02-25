@@ -1920,8 +1920,11 @@ int engine_base::apply_newton_update(value_t dt)
 	if (op_axis_min[0].size() > 0)
 		apply_obl_axis_local_correction(X, dX);
 
-	//apply_enthalpy_correction(X, dX);
-	//apply_enthalpy_chop(X, dX);
+	if (state_spec == StateSpecification::PH)
+	{
+		apply_enthalpy_correction(X, dX);
+		apply_enthalpy_chop(X, dX);
+	}
 
 	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
 	{

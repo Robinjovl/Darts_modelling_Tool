@@ -59,6 +59,14 @@ class operator_set_gradient_evaluator_iface;
 /// This class defines infrastructure for simulation
 class engine_base
 {
+public:
+	enum class StateSpecification
+	{
+		P,
+		PT,
+		PH,
+	};
+
 	// methods
 public:
 	engine_base()
@@ -332,6 +340,7 @@ public:
 	uint8_t z_var_idx;
 	// number of mineral/solid species
 	uint8_t n_solid;
+	StateSpecification state_spec;
 	double min_axis_z;  // OBL axis min for composition
 	double max_axis_z;  // OBL axis max for composition
 	double min_sim_z;   // Min composition to remain well above OBL min_axis_z and physical bounds (0): min_axis_z + params->sim_eps

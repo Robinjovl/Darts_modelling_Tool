@@ -180,11 +180,30 @@ class PhysicsBase:
         if n_solid is not None:
             self.engine.n_solid = n_solid
 
+        # Set state specification in the engine
+        self.set_state_spec(state_spec=self.state_spec)
+
         self.set_operators()
         self.set_interpolators(
             platform, itor_type, itor_mode, itor_precision, is_barycentric
         )
         return
+
+    def set_state_spec(self, state_spec: StateSpecification):
+        """
+        Set the state specification in the engine
+
+        :param state_spec: State specification
+        :type state_spec: StateSpecification
+        """
+        if state_spec == self.StateSpecification.P:
+            self.engine.state_spec = self.engine.StateSpecification.P
+        elif state_spec == self.StateSpecification.PT:
+            self.engine.state_spec = self.engine.StateSpecification.PT
+        elif state_spec == self.StateSpecification.PH:
+            self.engine.state_spec = self.engine.StateSpecification.PH
+        else:
+            raise NotImplementedError()
 
     def add_property_region(self, property_container, region: int = 0):
         """
