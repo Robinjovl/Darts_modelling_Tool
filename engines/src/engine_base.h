@@ -163,7 +163,7 @@ public:
 	void apply_global_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_local_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 
-	virtual void apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
+	virtual void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
 
 	virtual int apply_newton_update(value_t dt);
 

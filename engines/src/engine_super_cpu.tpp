@@ -1281,7 +1281,7 @@ void engine_super_cpu<NC, NP, THERMAL>::update_two_way_phase_vels_and_ders()
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
+void engine_super_cpu<NC, NP, THERMAL>::apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
     index_t n_thermal_var_corr{ 0 };  // Number of states corrected for temperature under-/overshoot
 
@@ -1307,7 +1307,7 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<va
 
     for (index_t i = 0; i < nb; i++)
     {
-        // If TEMP_OP out of [T_min, T_max] bounds, use thermal_var_etor to calculate enthalpy at p and T_bound
+        // If TEMP_OP out of [T_min, T_max] bounds, use thermal_var_etor to calculate thermal variable at p and T_bound
         value_t new_temperature = op_vals_arr_new[i * n_ops + TEMP_OP];
         if (new_temperature < min_axis_temp || new_temperature > max_axis_temp)
         {
@@ -1337,6 +1337,7 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<va
         if (false)
         {
             value_t dT = std::abs(new_temperature - op_vals_arr_n[i * n_ops + TEMP_OP]);
+            value_t dT_max = 20.;
             if (dT > dT_max)
             {
                 value_t chopping_factor = dT_max / dT;

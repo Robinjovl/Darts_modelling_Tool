@@ -1920,9 +1920,9 @@ int engine_base::apply_newton_update(value_t dt)
 	if (op_axis_min[0].size() > 0)
 		apply_obl_axis_local_correction(X, dX);
 
-	if (state_spec == StateSpecification::PH)
+	if (state_spec >= StateSpecification::PH)
 	{
-		apply_enthalpy_correction(X, dX);
+		apply_thermal_var_correction(X, dX);
 	}
 
 	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
@@ -1980,27 +1980,27 @@ int engine_base::apply_newton_update(value_t dt)
 }
 
 /**
- * @brief Apply enthalpy correction when the engine is used with enthalpy as the primary variable
+ * @brief Apply correction of thermal variable when the engine is used with enthalpy/entropy as the primary variable
  *
  * Correction procedure follows the following logic:
  *  Step 0:
  *      Apply Newton-Raphson increments to the solution
  *  Step 1:
-		Check if the enthalpy of the cell is out of OBL bounds.
- *      If it is below the h_min calculated initially, replace it with h_min
- *      If it is above the h_max calculated initially, replace it with h_max
+		Check if the thermal variable of the cell is out of OBL bounds.
+ *      If it is below the H_min/S_min bound, replace it with H_min/S_min
+ *      If it is above the H_max/S_max bound, replace it with H_max/S_max
  *  Step 2:
- *      Use the cell pressure and t_min/t_max specified by the user to calculate h_min/h_max
- *      If the enthalpy of the cell is below h_min, replace the enthalpy with h_min
- *      If the enthalpy of the cell is below h_max, replace the enthalpy with h_max
+ *      Use the cell pressure and T_min/T_max specified by the user to calculate H_min/S_min/H_max/S_max
+ *      If the state of the cell corresponds to a T < T_min, project thermal variable to T_min using ThermalVarOperator: H(P, T_min, z)/S(P, T_min, z)
+ *      If the state of the cell corresponds to a T > T_max, project thermal variable to T_max using ThermalVarOperator: H(P, T_max, z)/S(P, T_max, z)
  *  Step 3:
- * 		Chop enthalpy if temperature increment by the Newton solver is larger than a certain dT_max
+ * 		Chop Newton update if temperature increment by the Newton step is larger than a certain dT_max
  *
- * This function is applicable if the engine is used with enthalpy as the primary variable.
+ * This function is applicable if the engine is used with enthalpy/entropy as the primary variable.
  *
  * @return void.
  */
-void engine_base::apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
+void engine_base::apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
 	// Hook method: The classes that need this method will override it (e.g., engine_super_cpu)
 }

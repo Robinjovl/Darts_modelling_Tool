@@ -125,7 +125,7 @@ public:
 
   void update_two_way_phase_vels_and_ders();
 
-  void apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX) override;
+  void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX) override;
 
   void enable_flux_output();
 };
