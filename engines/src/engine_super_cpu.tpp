@@ -1308,14 +1308,15 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<va
     for (index_t i = 0; i < nb; i++)
     {
         // If TEMP_OP out of [T_min, T_max] bounds, use thermal_var_etor to calculate enthalpy at p and T_bound
-        if (op_vals_arr_new[i * n_ops + TEMP_OP] < min_axis_temp || op_vals_arr_new[i * n_ops + TEMP_OP] > max_axis_temp)
+        value_t new_temperature = op_vals_arr_new[i * n_ops + TEMP_OP];
+        if (new_temperature < min_axis_temp || new_temperature > max_axis_temp)
         {
             // Define PT-state
             for (index_t c = 0; c < n_vars - 1; c++)
             {
                 state[c] = X[i * n_vars + c] - dX[i * n_vars + c];
             }
-            state[T_VAR] = (op_vals_arr_new[i * n_ops + TEMP_OP] < min_axis_temp) ? min_axis_temp : max_axis_temp;
+            state[T_VAR] = (new_temperature < min_axis_temp) ? min_axis_temp : max_axis_temp;
 
             // Evaluate thermal_var_etor
             std::vector<value_t> thermal_var_op(1);
@@ -1326,9 +1327,22 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<va
             if (n_thermal_var_corr == 0)
 			{
 				std::cout << "Thermal variable correction: block " << i << " shoots over T axis limit of "
-                          << state[T_VAR] << " to " << op_vals_arr_new[i * n_ops + TEMP_OP] << "\n";
+                          << state[T_VAR] << " to " << new_temperature << "\n";
 			}
+            new_temperature = state[T_VAR];
             n_thermal_var_corr++;
+        }
+
+        // Cap maximum temperature change between updates
+        if (false)
+        {
+            value_t dT = std::abs(new_temperature - op_vals_arr_n[i * n_ops + TEMP_OP]);
+            if (dT > dT_max)
+            {
+                value_t chopping_factor = dT_max / dT;
+                //dX[i * n_vars + P_VAR] *= chopping_factor;
+                dX[i * n_vars + T_VAR] *= chopping_factor;
+            }
         }
     }
 
@@ -1337,45 +1351,6 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_correction(std::vector<va
 		std::cout << "Thermal variable correction applied " << n_thermal_var_corr << " time(s) \n";
 	}
 }
-
-template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_cpu<NC, NP, THERMAL>::apply_enthalpy_chop(std::vector<value_t>& X, std::vector<value_t>& dX)
-{
-    value_t dT;
-    value_t chopping_factor;
-
-    index_t nb = mesh->n_blocks;
-
-    value_t dT_max = 20;
-
-    std::vector<value_t> X_new(nb * n_vars);
-    std::vector<value_t> op_vals_arr_new(n_ops * nb);
-    std::vector<value_t> op_ders_arr_new(n_ops * nb * n_vars);
-
-    for (index_t i = 0; i < dX.size(); i++)
-    {
-        X_new[i] = X[i] - dX[i];
-    }
-
-    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-    {
-        int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X_new, block_idxs[r], op_vals_arr_new, op_ders_arr_new);
-        //if (result < 0)
-        //	return 0;
-    }
-
-    for (index_t i = 0; i < nb; i++)
-    {
-        dT = std::abs(op_vals_arr_new[i * n_ops + TEMP_OP] - op_vals_arr_n[i * n_ops + TEMP_OP]);
-        if (false && dT > dT_max)
-        {
-            chopping_factor = dT_max / dT;
-            //dX[i * n_vars + P_VAR] *= chopping_factor;
-            dX[i * n_vars + T_VAR] *= chopping_factor;
-        }
-    }
-}
-
 
 //template<uint8_t NC, uint8_t NP, , bool THERMAL>
 //double

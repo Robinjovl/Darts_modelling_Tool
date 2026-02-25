@@ -1923,7 +1923,6 @@ int engine_base::apply_newton_update(value_t dt)
 	if (state_spec == StateSpecification::PH)
 	{
 		apply_enthalpy_correction(X, dX);
-		apply_enthalpy_chop(X, dX);
 	}
 
 	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
@@ -1994,24 +1993,14 @@ int engine_base::apply_newton_update(value_t dt)
  *      Use the cell pressure and t_min/t_max specified by the user to calculate h_min/h_max
  *      If the enthalpy of the cell is below h_min, replace the enthalpy with h_min
  *      If the enthalpy of the cell is below h_max, replace the enthalpy with h_max
+ *  Step 3:
+ * 		Chop enthalpy if temperature increment by the Newton solver is larger than a certain dT_max
  *
  * This function is applicable if the engine is used with enthalpy as the primary variable.
  *
  * @return void.
  */
 void engine_base::apply_enthalpy_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
-{
-	// Hook method: The classes that need this method will override it (e.g., engine_super_cpu)
-}
-
-/**
- * @brief Chop enthalpy if temperature increment by the Newton solver is larger than a certain dT_max
- *
- * This function is applicable if the engine is used with enthalpy as the primary variable.
- *
- * @return void.
- */
-void engine_base::apply_enthalpy_chop(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
 	// Hook method: The classes that need this method will override it (e.g., engine_super_cpu)
 }
