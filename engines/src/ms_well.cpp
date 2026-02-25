@@ -20,7 +20,7 @@ int ms_well::check_constraints(double dt, std::vector<value_t> &X)
     {
       // constraint violation occured, switch control and constrain
       std::swap(control, constraint);
-      std::cout << "Well " << name << " switched to " << control.get_well_control_type_str() << std::endl;
+      std::cout << "Well " << name << " switched to " << control.get_well_control_type_str() << " (target: " << control.get_well_control_target_str() << ")\n";
       //initialize_control(X);
     }
 

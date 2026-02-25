@@ -72,6 +72,7 @@ public:
   index_t get_well_n_ops() { return this->n_ops; }
   index_t get_well_n_vars() { return this->n_vars; }
   std::string get_well_control_type_str();
+  std::string get_well_control_target_str();
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);

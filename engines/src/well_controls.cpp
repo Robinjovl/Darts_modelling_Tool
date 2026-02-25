@@ -74,6 +74,22 @@ std::string well_control_iface::get_well_control_type_str()
 	return out;
 }
 
+std::string well_control_iface::get_well_control_target_str()
+{
+	if (this->control_type == WellControlType::NONE)
+	{
+		return "";
+	}
+	else if (this->control_type >= WellControlType::BHP && this->control_type < WellControlType::NUMBER_OF_RATE_TYPES)
+	{
+		return std::to_string(this->target);
+	}
+	else
+	{
+		throw std::runtime_error("Undefined well control type");
+	}
+}
+
 int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
                                   	    uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
 {
