@@ -100,7 +100,6 @@ class DartsModel:
         self.timer.node["simulation"] = timer_node()
 
         self.timer.node["newton update"] = timer_node()
-        self.timer.node["vtk_output"] = timer_node()
         self.timer.node["output"] = timer_node()
 
         # Create timer.node called "initialization" to record initialization time
