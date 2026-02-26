@@ -81,8 +81,6 @@ test-windows:
             - PY_VER: '3.11'
             - PY_VER: '3.12'
             - PY_VER: '3.13'
-    needs:
-        - job: build-windows
 
 test-windows-ODLS:
     extends: .test-windows
@@ -95,5 +93,3 @@ test-windows-ODLS:
             - PY_VER: '3.11'
             - PY_VER: '3.12'
             - PY_VER: '3.13'
-    needs:
-        - job: build-windows-ODLS

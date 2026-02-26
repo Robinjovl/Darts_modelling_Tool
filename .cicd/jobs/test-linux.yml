@@ -68,8 +68,6 @@ test-linux:
             - PY_VER: '3.11'
             - PY_VER: '3.12'
             - PY_VER: '3.13'
-    needs:
-        - job: build-linux
 
 test-linux-ODLS:
     extends: .test-linux
@@ -82,5 +80,3 @@ test-linux-ODLS:
             - PY_VER: '3.11'
             - PY_VER: '3.12'
             - PY_VER: '3.13'
-    needs:
-        - job: build-linux-ODLS
