@@ -4,13 +4,14 @@ pre-commit:
         - linux_tahiti_gpu
     variables:
         PRE_COMMIT_HOME: ".cache/pre-commit"
+        CONDA_ENV: "precommit-${CI_JOB_ID}"
     before_script:
         - echo 'Setting up pre-commit on tahiti (conda env + cache)...'
         - spack env activate open_darts_gcc134
         - CONDA_BASE="/data/gitlab-runner/miniconda3"
         - . "${CONDA_BASE}/etc/profile.d/conda.sh"
-        - conda create -n precommit python=3.10 -q -y
-        - conda activate precommit
+        - conda create -n "${CONDA_ENV}" python=3.10 -q -y
+        - conda activate "${CONDA_ENV}"
         - python -m pip install --upgrade pip
         - pip install pre-commit
         - pre-commit clean || true
@@ -33,9 +34,15 @@ pre-commit:
           else
             echo "No files matched for pre-commit checks"; exit 0
           fi
+    after_script:
+        - CONDA_BASE="/data/gitlab-runner/miniconda3"
+        - . "${CONDA_BASE}/etc/profile.d/conda.sh"
+        - conda deactivate || true
+        - conda env remove -n "${CONDA_ENV}" -y || true
     artifacts:
         paths:
             - linting_output.log
+            - gitlab_ci_verify_report.json
         expire_in: 1 week
         when: always
     rules:

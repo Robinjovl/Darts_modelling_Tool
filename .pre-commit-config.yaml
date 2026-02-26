@@ -5,6 +5,16 @@ ci:
 default_install_hook_types: [pre-commit, pre-push]
 
 repos:
+  - repo: local
+    hooks:
+      - id: gitlab-ci-verify
+        name: gitlab-ci-verify
+        entry: gitlab-ci-verify --gitlab-ci-file .gitlab-ci.yml --no-lint-api --severity error --format json --output gitlab_ci_verify_report.json -E SC-1073,SC-1065,SC-1064,SC-1072
+        language: python
+        additional_dependencies: [gitlab-ci-verify==2.10.0]
+        pass_filenames: false
+        files: ^(\.gitlab-ci\.ya?ml|\.cicd/jobs/.*\.ya?ml)$
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.11
     hooks:
