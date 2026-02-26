@@ -6,7 +6,7 @@ valgrind-check:
     timeout: 2h
     parallel: &valgrind_python_matrix
         matrix:
-            - PY_VER: "$DEFAULT_PY_VER"
+            - PY_VER: !reference [.default-python-version, variables, DEFAULT_PY_VER]
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
