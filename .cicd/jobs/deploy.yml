@@ -41,14 +41,14 @@ deploy-testpypi:
         - twine upload -u $REPOUSER -p $REPOPWD --repository $REPO --verbose dist/*
     dependencies:
         # get the wheels from the build stage
-        - build-linux-3.10-ODLS
-        - build-linux-3.11-ODLS
-        - build-linux-3.12-ODLS
-        - build-linux-3.13-ODLS
-        - build-windows-3.10-ODLS
-        - build-windows-3.11-ODLS
-        - build-windows-3.12-ODLS
-        - build-windows-3.13-ODLS
+        - 'build-linux-ODLS: [3.10]'
+        - 'build-linux-ODLS: [3.11]'
+        - 'build-linux-ODLS: [3.12]'
+        - 'build-linux-ODLS: [3.13]'
+        - 'build-windows-ODLS: [3.10]'
+        - 'build-windows-ODLS: [3.11]'
+        - 'build-windows-ODLS: [3.12]'
+        - 'build-windows-ODLS: [3.13]'
 
 deploy-zenodo:
     stage: deploy
@@ -93,7 +93,7 @@ pages:
         paths:
         - public
     dependencies:
-        - build-linux-3.10-ODLS
+        - 'build-linux-ODLS: [3.10]'
 
 deploy-apptainer-image:
     stage: deploy

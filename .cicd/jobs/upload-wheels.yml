@@ -15,8 +15,8 @@ upload_wheels:
         - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter
     dependencies:
         # get the wheels from the build stage
-        - build-linux-3.10
-        - build-windows-3.10
+        - 'build-linux: [3.10]'
+        - 'build-windows: [3.10]'
 
 upload_wheels_oahu:
     stage: deploy
@@ -50,5 +50,5 @@ upload_wheels_odls:
         - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_odls
     dependencies:
         # get the wheels from the build stage
-        - build-linux-3.10-ODLS
-        - build-windows-3.10-ODLS
+        - 'build-linux-ODLS: [3.10]'
+        - 'build-windows-ODLS: [3.10]'
