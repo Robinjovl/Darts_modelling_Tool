@@ -10,7 +10,7 @@ pre-commit:
         - spack env activate open_darts_gcc134
         - CONDA_BASE="/data/gitlab-runner/miniconda3"
         - . "${CONDA_BASE}/etc/profile.d/conda.sh"
-        - conda create -n "${CONDA_ENV}" python=3.10 -q -y
+        - conda create -n "${CONDA_ENV}" python=$DEFAULT_PY_VER -q -y
         - conda activate "${CONDA_ENV}"
         - python -m pip install --upgrade pip
         - pip install pre-commit

@@ -43,7 +43,7 @@
 build-windows:
     extends: .build-windows
     rules: &python_version_rules
-        - if: '$PY_VER == "3.10" && ($CI_COMMIT_REF_PROTECTED == "true" || $CI_PIPELINE_SOURCE == "merge_request_event" || $TEST_CUSTOM_BRANCH == "1")'
+        - if: '$PY_VER == $DEFAULT_PY_VER && ($CI_COMMIT_REF_PROTECTED == "true" || $CI_PIPELINE_SOURCE == "merge_request_event" || $TEST_CUSTOM_BRANCH == "1")'
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
         - if: $TEST_ALL_PYTHONS == "1"
     variables:

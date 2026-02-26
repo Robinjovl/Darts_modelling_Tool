@@ -4,6 +4,10 @@ workflow:
       when: never
     - when: always
 
+variables:
+  # Default Python used by MR/protected/custom-branch pipelines and single-version jobs.
+  DEFAULT_PY_VER: "3.10"
+
 stages:
     - pre_commit
     - build_images
