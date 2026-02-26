@@ -19,7 +19,10 @@
         - $env:PYTHONUNBUFFERED = 1
         - $env:PYTHONLEGACYWINDOWSSTDIO = 1
         - $env:PYTHONPATH = "D:\Python$($env:PY_VER.Replace('.', ''))"
-        - $WHEEL_NAME=python -c "import os; print(os.listdir('dist')[0])"
+        - $PY_TAG = "cp$($env:PY_VER.Replace('.', ''))"
+        - $WHEEL = Get-ChildItem -Path .\dist\ -Filter "*$PY_TAG*win*.whl" | Select-Object -First 1
+        - if (-not $WHEEL) { throw "Wheel for python $env:PY_VER not found in .\\dist" }
+        - $WHEEL_NAME = $WHEEL.Name
         # upgrade pip package first
         - python -m pip install --upgrade pip
         # remove flash installed by its pipelines, and get one from pip
@@ -80,9 +83,6 @@ test-windows:
             - PY_VER: '3.13'
     needs:
         - job: build-windows
-          parallel:
-            matrix:
-                - PY_VER: ['$PY_VER']
 
 test-windows-ODLS:
     extends: .test-windows
@@ -97,6 +97,3 @@ test-windows-ODLS:
             - PY_VER: '3.13'
     needs:
         - job: build-windows-ODLS
-          parallel:
-            matrix:
-                - PY_VER: ['$PY_VER']

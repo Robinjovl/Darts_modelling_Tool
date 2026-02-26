@@ -14,11 +14,15 @@
         - python -m pip install --upgrade pip
         # remove flash installed by its pipelines, and get one from pip (not needed actually since Linux pipeline runs in a docker, but let's keep consistency with windows pipelines)
         - pip uninstall open-darts-flash  --yes
+        # Select wheel matching current matrix python version (e.g. cp310, cp311)
+        - export PY_TAG="cp${PY_VER/./}"
+        - export WHEEL_PATH="$(ls ./dist/*${PY_TAG}*linux*.whl | head -n 1)"
+        - test -n "$WHEEL_PATH"
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         # note: need to force here only for Windows actually, but lets be consistent and force for Linux too in case its behaviour will change
-        - pip install --force-reinstall --no-deps ./dist/*.whl
+        - pip install --force-reinstall --no-deps "$WHEEL_PATH"
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
-        - pip install --upgrade --upgrade-strategy eager ./dist/*.whl
+        - pip install --upgrade --upgrade-strategy eager "$WHEEL_PATH"
     script:
         # run simulation fot test models set
         - cd models
@@ -66,9 +70,6 @@ test-linux:
             - PY_VER: '3.13'
     needs:
         - job: build-linux
-          parallel:
-            matrix:
-                - PY_VER: ['$PY_VER']
 
 test-linux-ODLS:
     extends: .test-linux
@@ -83,6 +84,3 @@ test-linux-ODLS:
             - PY_VER: '3.13'
     needs:
         - job: build-linux-ODLS
-          parallel:
-            matrix:
-                - PY_VER: ['$PY_VER']
