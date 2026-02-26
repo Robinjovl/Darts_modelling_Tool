@@ -69,7 +69,7 @@ class Model(THMCModel):
         nx, ny, nz = int(dims[-3]), int(dims[-2]), int(dims[-1])
 
         # set properties
-        porosity = 0.1
+        porosity =  0.1
         #permeability = 1000 # [mD] # this matched thm and analytical solution
         permeability = 10 # [mD] # this matches proxy and thm
         
@@ -102,7 +102,7 @@ class Model(THMCModel):
         self.idata.other.rsv_bottom = 2400# [m]
         
         # lateral reservoir boundaries
-        self.idata.other.rsv_xy = 500   # m, laterally limited (rsv width will be self.rsv_xy*2)
+        self.idata.other.rsv_xy = 1000.   # m, laterally limited (rsv width will be self.rsv_xy*2)
         #self.idata.other.rsv_xy = 1e5  # m, "infinite" laterally
         
         self.idata.other.rsv_x1 = -self.idata.other.rsv_xy
@@ -133,19 +133,28 @@ class Model(THMCModel):
 
         self.idata.rock.th_expn = 1e-5  # [1/K]
         self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)  # Couchy book formula 4.19a, 4.21a
+        self.idata.rock.th_expn *= 3. # Couchy book formula 4.22; from linear to volumetric
+        
         self.idata.rock.conductivity = 260  # [kJ/m/day/K]
         self.idata.rock.heat_capacity = 2300  # [kJ/m3/K]
 
         self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
 
-        # TODO: Only for a single-phase physics
+        # Only for a single-phase physics
         self.idata.fluid.Mw = 18.015 # water molar weight, [g/mol]
         self.idata.fluid.compressibility = 4.4e-5  # [1/bar]
         self.idata.fluid.viscosity = 1.0  # [cP]
         self.idata.fluid.density = 1000. # [kg/m^3]
         
-        self.idata.fluid.heat_conductivity = 260  # [kJ/m/day/K]
-        self.idata.fluid.heat_capacity = 2300  # [kJ/m3/K]
+        # branch ilshat/fluid_heat_cond
+        self.idata.fluid.conductivity = 0. # It is not used in the engine # [kJ/m/day/K] 
+        #self.idata.fluid.heat_capacity = 2200. #[kJ/m3/K] - different unit than used for rock
+        #self.idata.fluid.heat_capacity *= self.idata.fluid.Mw / self.idata.fluid.density  # convert from [kJ/m3/K] to [kJ/kmol/K]
+        # water: 4170 [kJ/m3/K] or 75.37 [kJ/kmol/K]
+        self.idata.fluid.heat_capacity = 75. #[kJ/kmol/K]
+        # treat renamings
+        self.idata.fluid.heat_conductivity = self.idata.fluid.conductivity
+        self.idata.rock.heat_conductivity = self.idata.rock.conductivity
 
         # initial conditions (p, T gradients)
         #self.idata.initial.reference_depth_for_temperature = 0.  # [m]

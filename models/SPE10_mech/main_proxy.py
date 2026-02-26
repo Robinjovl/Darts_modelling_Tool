@@ -432,10 +432,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    #points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
     #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
     #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
-    points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
+    #points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
     #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
     
     if False:
@@ -596,7 +596,7 @@ if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
-    case = '34_34_57'  # z 0 - 5 km 
+    #case = '34_34_57'  # z 0 - 5 km 
     case = '34_34_66'  # z 0 - 5 km 
     #case = '34_34_65'  # z 0 - 10 km
     #case='34_35_57' # perm_frac
@@ -608,21 +608,21 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    physics_types_list += ['single_phase']
-    #physics_types_list += ['single_phase_thermal']
+    #physics_types_list += ['single_phase']
+    physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['none']
     #wells_types_list += ['prod']
-    wells_types_list += ['inj']
-    #wells_types_list += ['doublet']
+    #wells_types_list += ['inj']
+    wells_types_list += ['doublet']
     
     # for THM solver run
-    n_years = 1
+    #n_years = 1
     #n_years = 2
     #n_years = 5
     #n_years = 10
-    #n_years = 30
+    n_years = 30
     #n_years = 50
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
@@ -639,7 +639,7 @@ if __name__ == '__main__':
     #run_thm = True
     run_thm = False
     
-    #generate_mesh=False
+    #generate_mesh=False # this is not working now.. as self.Xc is not initializing
     generate_mesh=True
 
     for physics_type in physics_types_list:
