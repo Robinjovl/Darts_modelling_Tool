@@ -25,7 +25,6 @@
     variables:
         ODLS: '-a'
         TEST_GPU: '1'
-        PY_VER: '3.10'
         CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
     artifacts:
       paths:
@@ -37,11 +36,14 @@
       expire_in: 1 day
       when: always
 
-test-linux-oahu-3.10-gpu:
+test-linux-oahu-gpu:
     tags:
         - linux_gpu
     variables:
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
+    parallel: &gpu_python_matrix
+        matrix:
+            - PY_VER: '3.10'
     before_script:
         - module load cuda/23.5
         - source ${CONDAPATH}/bin/activate
@@ -56,14 +58,15 @@ test-linux-oahu-3.10-gpu:
         - conda env remove -n ${CONDA_ENV} -y || true
     extends: .test-linux-gpu
     needs:
-        - build-linux-oahu-3.10-gpu
+        - build-linux-oahu-gpu
 
-.test-linux-tahiti-3.10-gpu:
+.test-linux-tahiti-gpu:
     tags:
         - linux_tahiti_gpu
     extends: .test-linux-gpu
     variables:
         CONDAPATH: /data/gitlab-runner/miniconda3
+    parallel: *gpu_python_matrix
     before_script:
         - spack env activate open_darts_gcc134
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
@@ -78,12 +81,13 @@ test-linux-oahu-3.10-gpu:
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
         - conda env remove -n ${CONDA_ENV} -y || true
     needs:
-        - build-linux-tahiti-3.10-gpu
+        - build-linux-tahiti-gpu
 
-test-linux-tahiti-image-3.10-gpu:
+test-linux-tahiti-image-gpu:
     tags:
         - linux_tahiti_gpu
     extends: .test-linux-gpu
+    parallel: *gpu_python_matrix
     before_script:
         - |
           apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
@@ -128,4 +132,4 @@ test-linux-tahiti-image-3.10-gpu:
     variables:
         APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
     needs:
-        - build-linux-tahiti-image-3.10-gpu
+        - build-linux-tahiti-image-gpu

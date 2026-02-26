@@ -7,7 +7,6 @@
         - if: $TEST_CUSTOM_BRANCH == "1"
     variables:
         GIT_SUBMODULE_STRATEGY: recursive
-        PY_VER: '3.10'       # for python image selection in .build-linux
         ODLS: '-a'
         TEST_GPU: '1'
         CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
@@ -22,12 +21,15 @@
       when: always
     needs: []
 
-build-linux-oahu-3.10-gpu:
+build-linux-oahu-gpu:
     tags:
         - linux_gpu
     variables:
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
         GSELINSOLVERSPATH: /oahu/data/gitlabrunner/darts-gitlab-runner-data/darts-linear-solvers-gpu-hypre
+    parallel: &gpu_python_matrix
+        matrix:
+            - PY_VER: '3.10'
     before_script:
         - module load cuda/23.5
         - source ${CONDAPATH}/bin/activate
@@ -39,11 +41,12 @@ build-linux-oahu-3.10-gpu:
     extends: .build-linux-gpu
 
 
-build-linux-tahiti-3.10-gpu:
+build-linux-tahiti-gpu:
     tags:
         - linux_tahiti_gpu
     variables:
         CONDAPATH: /data/gitlab-runner/miniconda3
+    parallel: *gpu_python_matrix
     before_script:
         - spack env activate open_darts_gcc134
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
@@ -60,7 +63,7 @@ build-linux-tahiti-3.10-gpu:
         - when: never
     extends: .build-linux-gpu
 
-build-linux-tahiti-image-3.10-gpu:
+build-linux-tahiti-image-gpu:
     tags:
         - linux_tahiti_gpu
     image:
@@ -70,6 +73,7 @@ build-linux-tahiti-image-3.10-gpu:
         - job: apptainer-image-builder
     variables:
         APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
+    parallel: *gpu_python_matrix
     before_script:
         - echo "🔧 Creating Conda env '${CONDA_ENV}' inside the Apptainer image…"
         - |
