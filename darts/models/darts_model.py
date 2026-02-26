@@ -79,9 +79,12 @@ class DartsModel:
     :type params: :class:`darts.engines.sim_params`
     """
 
-    def __init__(self):
+    def __init__(self, with_live_plots: bool = False):
         """
         Initialize DartsModel class.
+
+        :param with_live_plots: Whether or not to plot live diagrams
+        :type with_live_plots: bool
         """
         # print out build information
         engines_pbi()
@@ -119,7 +122,7 @@ class DartsModel:
         self.time_step_size = []
 
         # For live plotting
-        self.live_plots = False
+        self.with_live_plots = with_live_plots
         self.figs = []
         self.axes = []
         self.lines = []
@@ -860,7 +863,7 @@ class DartsModel:
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
                 # Plot live results for every Newton-Raphson iteration
-                # if self.live_plots:
+                # if self.with_live_plots:
                 #     self.update_live_plots()
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
@@ -870,7 +873,7 @@ class DartsModel:
         self.time_step_size.append(dt)
 
         # Plot live results for every time step
-        if self.live_plots:
+        if self.with_live_plots:
             self.update_live_plots()
 
         self.timer.node["simulation"].stop()
