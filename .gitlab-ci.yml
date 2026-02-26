@@ -34,4 +34,5 @@ include:
   # - local: '.cicd/jobs/vtune-profile.yml'
   - local: '.cicd/jobs/upload-wheels.yml'
   - local: '.cicd/jobs/deploy.yml'
+  - local: '.cicd/jobs/darts-models.yml'
   - local: '.cicd/jobs/gitingest.yml'

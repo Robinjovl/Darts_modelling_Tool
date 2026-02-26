@@ -1,0 +1,23 @@
+trigger-darts-models:
+  stage: test
+  trigger:
+    project: open-darts/darts-models
+    branch: avnovikov/open_darts_trigger
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  variables:
+    OPEN_DARTS_PROJECT_ID: "$CI_PROJECT_ID"
+    OPEN_DARTS_PROJECT: "$CI_PROJECT_PATH"
+    OPEN_DARTS_PIPELINE_ID: "$CI_PIPELINE_ID"
+    OPEN_DARTS_COMMIT_SHA: "$CI_COMMIT_SHA"
+    OPEN_DARTS_REF: "$CI_COMMIT_REF_NAME"
+    DEFAULT_PY_VER: !reference [.default-python-version, variables, DEFAULT_PY_VER]
+    OPEN_DARTS_LINUX_JOB_BASE: "build-linux-oahu-gpu"
+    OPEN_DARTS_WINDOWS_JOB_BASE: "build-windows"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "development" && $ENABLE_DARTS_MODELS == "1" && ($CI_COMMIT_REF_PROTECTED == "true" || $TEST_CUSTOM_BRANCH == "1")
+      when: on_success
+    - when: never
