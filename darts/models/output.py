@@ -56,8 +56,6 @@ class Output:
         physics,
         op_list,
         params,
-        wells: dict,
-        has_dfm_well: bool,
         output_folder: str,
         sol_filename: str,
         well_filename: str,
@@ -67,6 +65,8 @@ class Output:
         compression: str,
         compression_level: int,
         verbose: bool,
+        wells: dict = None,
+        has_dfm_well: bool = False,
     ):
         """
         :param timer: timer object, measurs time spent saving data, and evaluating properties.

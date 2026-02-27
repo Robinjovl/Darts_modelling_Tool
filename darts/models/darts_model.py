@@ -324,8 +324,6 @@ class DartsModel:
             physics=self.physics,
             op_list=self.op_list,
             params=self.params,
-            wells=wells,
-            has_dfm_well=self.has_dfm_well,
             output_folder=self.output_folder,
             sol_filename=self.sol_filename,
             well_filename=self.well_filename,
@@ -335,6 +333,8 @@ class DartsModel:
             compression=compression,
             compression_level=compression_level,
             verbose=verbose,
+            wells=wells,
+            has_dfm_well=self.has_dfm_well,
         )
 
         return
