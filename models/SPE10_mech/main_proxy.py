@@ -399,7 +399,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             if ('stress' in mode or 'strain' in mode) and plot_thm2:
                 plt.plot(thm2, z_range, label=mode + '_THM2', color='black')#marker='.', 
                 
-            if mode == 'delta_total_stress_z' and prx.max() < 0.05 and thm.max() < 0.05: # vertical stress is almost zero
+            if mode == 'delta_total_stress_z' and np.fabs(prx.max()) < 0.05 and np.fabs(thm.max()) < 0.05: # vertical stress is almost zero
                 plt.xlim(-0.25, 0.25)    
             plt.gca().invert_yaxis()
             plt.xlabel(s)
@@ -438,11 +438,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     #points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
     #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
     
-    if False:
+    if True: # evaluate along the wells
         if wells_type in ['prod', 'doublet']:
-            points_xy['prod well'] = m.prod_well_coords[:-1] # -1 to skip z coord
+            points_xy['prod well'] = m.idata.other.prod_well_coords[:2] # -2 to skip z coord
         if wells_type in ['inj', 'doublet']:
-            points_xy['inj well'] = m.inj_well_coords[:-1]
+            points_xy['inj well'] = m.idata.other.inj_well_coords[:2]
 
     # plot 2D THM displs (XY plane)
     if False:
@@ -608,8 +608,8 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    #physics_types_list += ['single_phase']
-    physics_types_list += ['single_phase_thermal']
+    physics_types_list += ['single_phase']
+    #physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['none']
@@ -636,8 +636,8 @@ if __name__ == '__main__':
     #timestep = 1
     #timestep = 4
     
-    #run_thm = True
-    run_thm = False
+    run_thm = True
+    #run_thm = False
     
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
     generate_mesh=True

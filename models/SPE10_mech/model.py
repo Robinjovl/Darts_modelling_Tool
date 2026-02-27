@@ -183,14 +183,15 @@ class Model(THMCModel):
         self.well_init_depth = perf_depth_start
 
         # well controls
-        # BHP control
         self.idata.other.delta_temp_inj = 40 # [K] - delta for temperature control
-        self.idata.other.delta_p = 50 # [bar] - delta for BHP control
-        self.idata.other.wctrl_type = well_control_iface.BHP
-        self.idata.other.well_rate = None # [m3/day]
-        # RATE control
-        #self.idata.other.wctrl_type = well_control_iface.VOLUMETRIC_RATE # mass or molar rate can be choosen here
-        #self.idata.other.well_rate = 100 # [m3/day] unit depends on the type at the previous line
+        if False:         # BHP control
+            self.idata.other.delta_p = None #50 # [bar] - delta for BHP control
+            self.idata.other.wctrl_type = well_control_iface.BHP
+            self.idata.other.well_rate = None
+        else: # RATE control
+            self.idata.other.delta_p = None
+            self.idata.other.wctrl_type = well_control_iface.MASS_RATE # mass or molar rate can be choosen here
+            self.idata.other.well_rate = 7500. * self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
 
         self.idata.mesh.bnd_tags = {}
         tags = self.idata.mesh.bnd_tags  # short name

@@ -133,6 +133,9 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type,
               decouple_geomech=decouple_geomech, generate_mesh=generate_mesh)
     m.init()
+    
+    #m.restart = False
+    #m.set_output()
 
     #redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
@@ -186,6 +189,9 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     m.print_timers()
     m.print_stat()
     print(ith_step, 'timesteps', 't=', m.physics.engine.t)
+    
+    #time_data_dict = m.output.store_well_time_data(save_output_files=True)
+    #m.output.plot_well_time_data(phase_volumetric_rates=True)
 
     return m, data
 
@@ -252,16 +258,16 @@ if __name__ == '__main__':
     decouple_geomech = True
     #decouple_geomech = False
 
-    #mesh='16_16_15'
+    mesh='16_16_15'  # for debugging
     #mesh='34_34_57' # rsv 2100-2200
-    mesh='34_34_66' # rsv 2000-2400
+    #mesh='34_34_66' # rsv 2000-2400
     #mesh='34_35_57'  # perm_frac
     
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
 
-    #physics_type='single_phase'
-    physics_type='single_phase_thermal'
+    physics_type='single_phase'
+    #physics_type='single_phase_thermal'
     
     #wells_type='none'
     #wells_type='prod'
@@ -270,7 +276,7 @@ if __name__ == '__main__':
 
     n_years = 30
     sim_time = 365.25 * n_years
-    report_step = 365.25 / 12
+    report_step = 365.25 / 4
 
     # short run
     #sim_time = 90 # days

@@ -33,6 +33,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.wells = []
 
 
+    #def init_reservoir(self, verbose=False): # dummy, just to make run
+    #    pass
+    #    #super.init_reservoir()
+
     def get_reservoir_initial_pressure(self, depths):
         return self.idata.initial.pressure_at_ref_depth + self.idata.initial.pressure_gradient * depths
 
@@ -455,5 +459,3 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         writer.SetInputConnection(appendFilter.GetOutputPort())
         writer.Write()
         
-    #def init_reservoir(self, verbose):
-    #    pass
