@@ -10,7 +10,11 @@ from darts.models.darts_model import DartsModel
 
 
 class PlotLiveDiagrams(DartsModel):
-    def __init__(self, with_live_plots: bool = False):
+    def __init__(
+        self,
+        with_live_plots: bool = False,
+        live_plots_for_every_newton_iter: bool = False,
+    ):
         """
         Initialize the PlotLiveDiagrams class
 
@@ -20,11 +24,14 @@ class PlotLiveDiagrams(DartsModel):
 
         :param with_live_plots: Whether or not to plot live diagrams
         :type with_live_plots: bool
+        :param live_plots_for_every_newton_iter: If true, it plots live diagrams for every Newton-Raphson
+                                                 iteration. Otherwise, it plots only for every time step.
         """
         super().__init__()
 
         # For live plotting
         self.with_live_plots = with_live_plots
+        self.live_plots_for_every_newton_iter = live_plots_for_every_newton_iter
         self.figs = []
         self.axes = []
         self.lines = []
@@ -162,8 +169,8 @@ class PlotLiveDiagrams(DartsModel):
 
                 """ Start live plotting """
                 # Plot live results for every Newton-Raphson iteration
-                # if self.with_live_plots:
-                #     self.update_live_plots()
+                if self.with_live_plots and self.live_plots_for_every_newton_iter:
+                    self.update_live_plots()
                 """ End live plotting """
 
         # End of newton loop
@@ -175,7 +182,7 @@ class PlotLiveDiagrams(DartsModel):
 
         """ Start live plotting """
         # Plot live results for every time step
-        if self.with_live_plots:
+        if self.with_live_plots and not self.live_plots_for_every_newton_iter:
             self.update_live_plots()
         """ End live plotting """
 
