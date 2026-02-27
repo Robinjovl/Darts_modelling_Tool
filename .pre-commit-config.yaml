@@ -31,7 +31,6 @@ repos:
       - id: trailing-whitespace
       - id: check-yaml
         files: ^((.cicd|helper_scripts)/.*\.ya?ml|\.gitlab-ci\.ya?ml)$
-        exclude: ^(\.gitlab-ci\.ya?ml|\.cicd/jobs/.*\.ya?ml)$
       - id: check-toml
         files: ^[^/]+\.toml$
       - id: mixed-line-ending
