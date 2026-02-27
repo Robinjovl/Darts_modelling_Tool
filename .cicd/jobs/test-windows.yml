@@ -18,7 +18,6 @@
         # enable unbuffered output so that everything goes to log file in a correct order
         - $env:PYTHONUNBUFFERED = 1
         - $env:PYTHONLEGACYWINDOWSSTDIO = 1
-        - $env:PYTHONPATH = "D:\Python$($env:PY_VER.Replace('.', ''))"
         - $PY_TAG = "cp$($env:PY_VER.Replace('.', ''))"
         - $WHEEL = Get-ChildItem -Path .\dist\ -Filter "*$PY_TAG*win*.whl" | Select-Object -First 1
         - if (-not $WHEEL) { throw "Wheel for python $env:PY_VER not found in .\\dist" }

@@ -1,4 +1,4 @@
-valgrind-check:
+.linux-profiler-base:
     stage: test
     tags:
     - linux
@@ -21,14 +21,16 @@ valgrind-check:
         - apt-get update -qq && apt-get install -y -qq libglu1-mesa-dev
         - apt-get update -qq && apt-get install -y -qq libxcursor1
         - apt-get update -qq && apt-get install -y -qq libxinerama1
-        # install valgrind
-        - apt-get update -qq && apt-get install -y -qq valgrind
         - export PYTHONUNBUFFERED=1
         - python -m pip install --upgrade pip
         # remove flash installed by its pipelines, and get one from pip
         - pip uninstall open-darts-flash
         - pip install --upgrade --upgrade-strategy eager ./dist/*.whl
+
+valgrind-check:
+    extends: .linux-profiler-base
     script:
+        - apt-get update -qq && apt-get install -y -qq valgrind
         - echo ">>> Running Valgrind check script <<<"
         - python helper_scripts/valgrind_check.py
     artifacts:
