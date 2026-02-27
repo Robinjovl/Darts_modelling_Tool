@@ -2011,12 +2011,11 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 		  std::fill(poro.begin() + well_head_idx, poro.begin() + well_head_idx + wells[iw]->num_segments, 1);
 		  std::fill(op_num.begin() + well_head_idx, op_num.begin() + well_head_idx + wells[iw]->num_segments, 0);
 		  std::fill(heat_capacity.begin() + well_head_idx, heat_capacity.begin() + well_head_idx + wells[iw]->num_segments, 0);
-		  // The following lines are not applied to DFM wells yet.
-		  //for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
-		  //{
-		  //	mob_multiplier[well_head_idx * 2 + p * 2] = 1;
-		  //	mob_multiplier[well_head_idx * 2 + p * 2 + 1] = 1;
-		  //}
+		  for (index_t p = 0; p < wells[iw]->num_segments; p++)
+		  {
+			  mob_multiplier[well_head_idx * 2 + p * 2] = 1;
+			  mob_multiplier[well_head_idx * 2 + p * 2 + 1] = 1;
+		  }
 	  }
   }
 
