@@ -223,15 +223,15 @@ class DartsModel:
             self.timer.node["simulation"],
         )
 
-    def load_restart_data(self, reservoir_filename: str, timestep: int = -1):
+    def load_restart_data(self, reservoir_filename: str, ts_idx: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
         Beware that loading restart data resets the engine.
 
         :param reservoir_filename: Path to the restart file containing reservoir block data.
         :type reservoir_filename: str
-        :param timestep: The timestep to load from the file (default: -1 for the last timestep)
-        :type timestep: int
+        :param ts_idx: The timestep index to load from the file (default: -1 for the last timestep)
+        :type ts_idx: int
         """
 
         # check if the files with data exist
@@ -244,7 +244,7 @@ class DartsModel:
 
         # Read data from the file
         time_res, reservoir_cell_id, Xres, var_names = self.output.read_specific_data(
-            reservoir_filename, timestep
+            reservoir_filename, ts_idx
         )
 
         # load data as initial conditions
@@ -296,6 +296,8 @@ class DartsModel:
         self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
 
+        wells = self.wells if self.has_dfm_well else None
+
         if self.restart:
             save_initial = False
 
@@ -305,6 +307,8 @@ class DartsModel:
             physics=self.physics,
             op_list=self.op_list,
             params=self.params,
+            wells=wells,
+            has_dfm_well=self.has_dfm_well,
             output_folder=self.output_folder,
             sol_filename=self.sol_filename,
             well_filename=self.well_filename,

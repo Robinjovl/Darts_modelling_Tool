@@ -29,7 +29,7 @@ def output(m, ts, property_data : int = None):
     if property_data is None:
         time_vector, property_array = m.output.output_properties(
             output_properties=m.physics.vars + m.output.properties,
-            # timestep=-1
+            # ts_idx=-1
             engine = True
         )
     else:
@@ -102,7 +102,7 @@ def post_process(m, specs):
     time_vector, property_array = m.output.output_properties(
         filepath=os.path.join(specs['output_dir'], 'reservoir_solution.h5'),
         output_properties=output_props,
-        timestep=-1
+        ts_idx=-1
     )
 
     avg_rates = []

@@ -6,7 +6,9 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import vtk
 import xarray as xr
+from vtk.util.numpy_support import numpy_to_vtk
 
 from darts.engines import (
     index_vector,
@@ -19,8 +21,6 @@ from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.super.physics import Compositional
 from darts.tools.hdf5_tools import load_hdf5_to_dict
-
-# %%
 
 
 class Output:
@@ -56,6 +56,8 @@ class Output:
         physics,
         op_list,
         params,
+        wells: dict,
+        has_dfm_well: bool,
         output_folder: str,
         sol_filename: str,
         well_filename: str,
@@ -70,6 +72,7 @@ class Output:
         :param timer: timer object, measurs time spent saving data, and evaluating properties.
         :param reservoir: reservoir object.
         :param physics: physics object.
+        :param wells: dict of well objects if the DFM well is used
         :param op_list: list of operator interpolators.
         :param params: engine params.
         :param output_folder: output folder for saved data and figures.
@@ -88,6 +91,8 @@ class Output:
         self.physics = physics
         self.op_list = op_list
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
+        self.wells = wells
+        self.has_dfm_well = has_dfm_well
 
         self.params = params
         self.verbose = verbose
@@ -97,6 +102,7 @@ class Output:
         self.timer.node["saving_reservoir_data"] = timer_node()
         self.timer.node["saving_well_data"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
+        self.timer.node["vtp_output"] = timer_node()
         self.timer.node["output_well_time_data"] = timer_node()
         self.timer.node["exporting_property_array"] = timer_node()
 
@@ -400,7 +406,7 @@ class Output:
         """
         Append per-cell secondary properties into an existing HDF5 solution file.
 
-        :param time: timestep index to write properties for.
+        :param time: Simulation time to write properties for.
         :param property_array: Dictionary with property names as keys and arrays (1D over cells) as values.
         :param compression_level: 0 (no compression) and 9 (maximum compression), default is 1.
 
@@ -413,7 +419,7 @@ class Output:
         with h5py.File(self.sol_filepath, "a") as f:
             time_vector = f["dynamic/time"][:]
             if time in time_vector:
-                timestep = int(np.where(time_vector == time)[0][0])
+                ts_idx = int(np.where(time_vector == time)[0][0])
 
                 if "properties" not in f:
                     f.create_group("properties")
@@ -446,10 +452,10 @@ class Output:
                             raise ValueError(
                                 f"Shape mismatch for property '{key}': expected {dset.shape[1]}, got {len(data)}"
                             )
-                        if timestep >= dset.shape[0]:
-                            dset.resize((timestep + 1, dset.shape[1]))
+                        if ts_idx >= dset.shape[0]:
+                            dset.resize((ts_idx + 1, dset.shape[1]))
 
-                    dset[timestep, :] = data
+                    dset[ts_idx, :] = data
 
             else:
                 raise ValueError(
@@ -906,28 +912,27 @@ class Output:
             raise ValueError("kind must be either 'well' or 'reservoir'.")
 
     def read_specific_data(
-        self, filename: str, timestep: int = None
+        self, filename: str, ts_idx: int = None
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Extracts time and data (primary variables) from an HDF5 file for a given timestep
+        Extract time and data (primary variables) from an HDF5 file for a given timestep
 
         :param filename: Path to the HDF5 file.
         :type filename: str
-        :param timestep: The timestep to extract data for.
-        :type timestep: int
+        :param ts_idx: The timestep index to extract data for.
+        :type ts_idx: int
         :returns:
             * **time** – ndarray with extracted timesteps.
             * **cell_id** – ndarray with cell_id of each of the saved grid blocks.
             * **X** – ndarray with data ``(number_of_timesteps, number_of_cells, number_of_vars)``.
             * **var_names** – ndarray with variable names.
-        :raises TypeError: If timestep is not an integer value.
         :raises FileNotFoundError: If the file does not exist.
-        :raises IndexError: If `timestep` is out of range.
+        :raises IndexError: If `ts_idx` is out of range.
         """
 
         try:
             with h5py.File(filename, "r") as file:
-                if timestep is None:
+                if ts_idx is None:
                     cell_id = file["dynamic/cell_id"][:]
                     var_names = file["dynamic/variable_names"][:]
                     time = file["dynamic/time"][:]
@@ -948,23 +953,23 @@ class Output:
                     X = file["dynamic/X"][:]
 
                 else:
-                    if not isinstance(timestep, int):
+                    if not isinstance(ts_idx, int):
                         raise TypeError(
-                            f"Expected 'timestep' to be an int, but got {type(timestep).__name__}"
+                            f"Expected 'ts_idx' to be an int, but got {type(ts_idx).__name__}"
                         )
 
                     cell_id = file["dynamic/cell_id"][:]
                     var_names = file["dynamic/variable_names"][:]
 
                     try:
-                        time = file["dynamic/time"][timestep].reshape(1)
-                        X = file["dynamic/X"][timestep].reshape(
+                        time = file["dynamic/time"][ts_idx].reshape(1)
+                        X = file["dynamic/X"][ts_idx].reshape(
                             1, len(cell_id), len(var_names)
                         )
 
                     except IndexError as err:
                         raise IndexError(
-                            f"Timestep {timestep} does not exist in {filename}."
+                            f"Timestep {ts_idx} does not exist in {filename}."
                         ) from err
 
             for i, name in enumerate(var_names):
@@ -977,22 +982,22 @@ class Output:
 
     def output_properties(
         self,
-        filepath: str = None,
+        sol_filepath: str = None,
         output_properties: list = None,
-        timestep: int = None,
+        ts_idx: int = None,
         engine: bool = False,
     ) -> tuple[np.ndarray, dict]:
         """
-        Evaluates and returns reservoir properties from saved data (HDF5 file) or a simulation engine.
+        Evaluate reservoir properties from saved data (HDF5 file) or a simulation engine.
 
-        :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
-        :type filepath: str, optional
+        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
+        :type sol_filepath: str
         :param output_properties: List of properties to evaluate. Defaults to None, which returns an array containing only state variables.
-        :type output_properties: list, optional
-        :param timestep: Timestep at which to evaluate properties. Defaults to None, which will evaluate all saved timesteps.
-        :type timestep: int, optional
+        :type output_properties: list
+        :param ts_idx: Timestep index at which to evaluate properties. Defaults to None, which will evaluate all saved timesteps.
+        :type ts_idx: int
         :param engine: If true, state variables are evaluated directly from engine.X. Defaults to False, which reads properties from the HDF5 file.
-        :type engine: bool, optional
+        :type engine: bool
         :returns:
             * **property_array** (dict) - A dictionary where keys are primary/secondary variables and values are NumPy arrays of the requested properties for each grid block. The shape of each array is (number_of_timesteps, number_of_gridblocks).
             * **timesteps** (ndarray) - A NumPy array of the time labels
@@ -1005,7 +1010,9 @@ class Output:
         """
 
         if self.verbose:
-            print(f'Processing properties {output_properties} at timestep {timestep}')
+            print(
+                f'Processing properties {output_properties} at timestep index {ts_idx}'
+            )
 
         if output_properties is not None and not isinstance(output_properties, list):
             raise TypeError(
@@ -1014,29 +1021,28 @@ class Output:
 
         if not engine:
             # Evaluate properties from the HDF5 file
-            if filepath is None:  # Establish filepath/name to HDF5 file
+            if sol_filepath is None:  # Establish sol_filepath/name to HDF5 file
                 path = os.path.join(self.output_folder, self.sol_filename)
             else:
-                path = filepath
+                path = sol_filepath
             timesteps, cell_id, X, var_names = self.read_specific_data(
-                path, timestep
+                path, ts_idx
             )  # Read data from HDF5 file
         else:
             # Evaluate properties from the physics.engine.X
-            timesteps = np.array(self.physics.engine.t).reshape(
-                1,
-            )  # current time
-            cell_id = np.arange(self.reservoir.mesh.n_res_blocks)  # cell ids
+            # Get current time
+            timesteps = np.array(self.physics.engine.t).reshape(1)
+
             X = np.array(
                 self.physics.engine.X[
                     : self.physics.n_vars * self.reservoir.mesh.n_res_blocks
                 ],
                 copy=True,
-            )  # solution at current time
+            )  # reservoir solution at current time
             var_names = self.physics.vars  # primary variable names
 
         n_vars = len(var_names)  # number of primary variables
-        nb = len(cell_id)  # number of grid blocks
+        nb = self.reservoir.mesh.n_res_blocks  # number of reservoir blocks
         output_properties = (
             output_properties
             if output_properties is not None
@@ -1121,15 +1127,15 @@ class Output:
         Function to for creating `.vtk` files for viewing results in Paraview.
 
         :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
-        :type sol_filepath: str, optional
-        :param ith_step: i'th reporting step indicates which timestep to create a .vtk from. Defaults to None, in which case all saved data points are evaluated.
+        :type sol_filepath: str
+        :param ith_step: ith reporting step indicates which timestep to create a .vtk from. Defaults to None, in which case all saved data points are evaluated.
         :type ith_step: int
         :param output_directory: directory of where to save .vtk file. Defaults to none in which case the 'self.output_folder/vtk' is used.
         :type output_directory: str
         :param output_properties: List of properties to include in .vtk file. Defaults to None in which case only primary (state) variables are evaluated.
         :type output_properties: list
         :param output_data: List [array of timesteps, dictionary of property arrays]. Defaults to None, in which case properties are evaluated from the HDF5 file or engine
-        :type output_data: list, optional
+        :type output_data: list
 
         Notes
         -----
@@ -1223,7 +1229,7 @@ class Output:
         self,
         sol_filepath: str = None,
         output_properties: list = None,
-        timestep: int = None,
+        ts_idx: int = None,
         engine: bool = False,
         output_data: list = None,
     ) -> xr.Dataset:
@@ -1233,15 +1239,15 @@ class Output:
         Properties are interpolated by the property iterator.
 
         :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
-        :type sol_filepath: str, optional
+        :type sol_filepath: str
         :param output_properties: List of properties to include in the dataset. If None, all properties are included.
-        :type output_properties: list, optional
-        :param timestep: Specific timestep to output. If None, all timesteps are included.
-        :type timestep: int, optional
+        :type output_properties: list
+        :param ts_idx: Timestep index to output. If None, all timesteps are included.
+        :type ts_idx: int
         :param engine: import state variable from engine if True. Default is False.
-        :type engine: bool, optional
+        :type engine: bool
         :param output_data: List [array of timesteps, dictionary of property arrays]. Defaults to None, in which case properties are evaluated from the HDF5 file or engine
-        :type output_data: list, optional
+        :type output_data: list
         :returns: xarray Dataset containing the property data.
         :rtype: xarray.Dataset
         """
@@ -1251,7 +1257,7 @@ class Output:
             time, data = self.output_properties(
                 self.sol_filepath if sol_filepath is None else sol_filepath,
                 output_properties,
-                timestep,
+                ts_idx,
                 engine,
             )
         else:
@@ -1259,7 +1265,7 @@ class Output:
 
         # # Interpolate properties
         # time, data = self.output_properties(
-        #     sol_filepath, output_properties, timestep, engine
+        #     sol_filepath, output_properties, ts_idx, engine
         # )
         props = list(data.keys())
 
@@ -1321,7 +1327,7 @@ class Output:
         sol_filepath: str = None,
         xarray_data: xr.Dataset = None,
         output_properties: list = None,
-        timestep: int = None,
+        ts_idx: int = None,
         x_slice: int = None,
         y_slice: int = None,
         z_slice: int = None,
@@ -1338,13 +1344,13 @@ class Output:
         Method for plotting output using matplotlib library. !! Requires an xarray_data as an input !!
 
         :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
-        :type sol_filepath: str, optional
+        :type sol_filepath: str
         :param xarray_data: Data for output
         :type xarray_data: xr.Dataset
         :param output_properties: List of properties to plot
         :type output_properties: list
-        :param timestep: Timesteps to plot (int or list of int)
-        :type timestep: int
+        :param ts_idx: Timestep index to plot (int or list of int)
+        :type ts_idx: int
         :param x_slice: index for cross-section in x-dimension
         :param y_slice: index for cross-section in y-dimension
         :param z_slice: index for cross-section in z-dimension
@@ -1385,7 +1391,7 @@ class Output:
             xarray_data = self.output_to_xarray(
                 sol_filepath=sol_filepath,
                 output_properties=output_properties,
-                timestep=timestep,
+                ts_idx=ts_idx,
                 engine=(sol_filepath is None),  # get from engine if no file provided
             )
 
@@ -1587,6 +1593,246 @@ class Output:
 
         plt.close('all')
         return fig
+
+    def well_output_to_vtp(
+        self,
+        ith_step: int,
+        output_properties: list = None,
+        output_directory: str = None,
+    ):
+        """
+        Evaluate and store well primary and secondary variables of the ith step in vtp files
+
+        :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
+        :type output_properties: list
+        :param ith_step: ith reporting step for which you want to create vtp files for
+        :type ith_step: int
+        :param output_directory: Directory of where to save vtp files
+        :type: str
+        """
+        if not self.has_dfm_well:
+            return
+
+        self.timer.start()
+        self.timer.node["vtp_output"].start()
+
+        # Set default output directory
+        if output_directory is None:
+            output_directory = os.path.join(self.output_folder, "vtp_files")
+        os.makedirs(output_directory, exist_ok=True)
+
+        # Evaluate well secondary variables of the current time from engine.X
+        time, output_data = self.well_output_properties(
+            output_properties=output_properties, ith_step=ith_step
+        )
+
+        # Store well primary and seconday props in vtp files
+        for w_name in self.wells.keys():
+            # If the well has n segments, so n+1 nodes
+            z_nodes = np.concatenate(
+                (
+                    [0],
+                    self.wells[w_name].geometry.TVD_interfaces,
+                    [self.wells[w_name].geometry.pipe_length],
+                )
+            )
+            # Flip depth sign for VTP (positive z in DARTS is downward, while negative z in ParaView is downward)
+            z_nodes = -z_nodes
+            x_nodes = np.zeros_like(
+                z_nodes
+            )  # x is zero since the well is located at the center of the cylindrical grid
+            y_nodes = np.zeros_like(
+                z_nodes
+            )  # y is zero since the well is located at the center of the cylindrical grid
+            nodes_coords = np.column_stack((x_nodes, y_nodes, z_nodes))
+
+            self.write_well_output_properties_to_vtp(
+                well_name=w_name,
+                nodes_xyz=nodes_coords,
+                output_properties=output_data,
+                ith_step=ith_step,
+                time=time,
+                output_directory=output_directory,
+            )
+
+        self.timer.node["vtp_output"].stop()
+        self.timer.stop()
+
+    def well_output_properties(
+        self,
+        output_properties: list = None,
+        ith_step: int = None,
+    ):
+        """
+        Evaluate well secondary variables of the current time from engine.X
+
+        :param output_properties: List of properties to evaluate. Defaults to None, which returns an array containing only state variables.
+        :type output_properties: list
+        :param ith_step: ith reporting step for which you want to evaluate seconday variables
+        :type ith_step: int
+
+        :return timesteps: A NumPy array of the time labels
+        :type timesteps: np.ndarray
+        :return property_array: A dictionary where keys are primary/secondary variables and values are NumPy arrays of the requested properties for each grid block. The shape of each array is (number_of_timesteps, number_of_gridblocks).
+        :type property_array: dict
+        """
+        if self.verbose:
+            print(
+                f'Processing well properties {output_properties} at timestep index {ith_step}'
+            )
+
+        if output_properties is not None and not isinstance(output_properties, list):
+            raise TypeError(
+                f"Expected 'output_properties' to be a list, but got {type(output_properties).__name__}."
+            )
+
+        # Evaluate properties from the physics.engine.X
+        time = self.physics.engine.t
+        # Get well solution at current time
+        n_vars = self.physics.n_vars
+        X = np.array(
+            self.physics.engine.X[n_vars * self.reservoir.mesh.n_res_blocks :],
+            copy=True,
+        )
+        # number of well blocks
+        nb = self.reservoir.mesh.n_blocks - self.reservoir.mesh.n_res_blocks
+        output_properties = (
+            output_properties
+            if output_properties is not None
+            else list(self.physics.vars)
+        )  # complete list of properties
+
+        # List of primary variables
+        var_names = self.physics.vars  # primary variable names
+        primary_props = [prop for prop in output_properties if prop in var_names]
+        primary_prop_idxs = {
+            prop: list(var_names).index(prop) for prop in primary_props
+        }
+
+        # List of secondary properties
+        secondary_props = [prop for prop in output_properties if prop not in var_names]
+        secondary_prop_idxs = {}
+        for prop in secondary_props:
+            for container in self.physics.property_containers.values():
+                if prop in container.output_props:
+                    secondary_prop_idxs[prop] = list(
+                        container.output_props.keys()
+                    ).index(prop)
+                    break
+            else:
+                raise KeyError(
+                    f"Secondary property '{prop}' not found in any property container."
+                )
+
+        # Define property array dictionary
+        property_array = {
+            prop: np.zeros((1, nb)) for prop in (primary_props + secondary_props)
+        }
+
+        # Extract primary properties from X vector
+        for var_name, var_idx in primary_prop_idxs.items():
+            property_array[var_name][0] = X[var_idx::n_vars]
+
+        # Interpolate secondary properties
+        if secondary_props:  # if empty this part is skipped
+            state = value_vector(
+                np.stack([X[j::n_vars] for j in range(n_vars)]).T.flatten()
+            )
+
+            values = value_vector(np.zeros(self.n_ops * nb))
+            values_numpy = np.array(values, copy=False)
+            dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
+
+            for _region, prop_itor in self.physics.property_itor.items():
+                block_idx = index_vector(np.arange(nb).astype(np.int32))
+                prop_itor.evaluate_with_derivatives(
+                    state, index_vector(block_idx), values, dvalues
+                )
+
+                for prop_name, prop_idx in secondary_prop_idxs.items():
+                    temp = values_numpy[prop_idx :: self.n_ops]
+                    property_array[prop_name][0][block_idx] = temp[block_idx]
+
+        return time, property_array
+
+    def write_well_output_properties_to_vtp(
+        self,
+        well_name: str,
+        nodes_xyz: np.ndarray,
+        output_properties: dict,
+        ith_step: int,
+        time: float,
+        output_directory: str,
+        active: bool = None,
+    ):
+        """
+        Write well trajectory as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
+
+        :param well_name: Name of the well
+        :type well_name: str
+        :param nodes_xyz: XYZ coordinates of the nodes of the well (n_seg+1, 3)
+        :type nodes_xyz: np.ndarray
+        :param output_properties: Dict of properties to include in the vtp file
+        :type output_properties: dict
+        :param ith_step: i'th reporting step for which you want to create a .vtp file for
+        :type ith_step: int
+        :param time: Current simulation time
+        :type time: float
+        :param output_directory: Directory of where to save the vtp file
+        :type: str
+        :param active: Optional name of variable to set as active scalars
+        :type active: bool
+        """
+        coords = np.asarray(nodes_xyz, dtype=float)
+        npts = coords.shape[0]
+        nseg = npts - 1
+
+        # Points
+        vtk_points = vtk.vtkPoints()
+        vtk_points.SetNumberOfPoints(npts)
+        for i, (x, y, z) in enumerate(coords):
+            vtk_points.SetPoint(i, float(x), float(y), float(z))
+
+        # Lines
+        vtk_lines = vtk.vtkCellArray()
+        for i in range(nseg):
+            vtk_lines.InsertNextCell(2)
+            vtk_lines.InsertCellPoint(i)
+            vtk_lines.InsertCellPoint(i + 1)
+
+        poly = vtk.vtkPolyData()
+        poly.SetPoints(vtk_points)
+        poly.SetLines(vtk_lines)
+
+        # Add time
+        tarr = vtk.vtkDoubleArray()
+        tarr.SetName("TimeValue")
+        tarr.SetNumberOfTuples(1)
+        tarr.SetValue(0, float(time))
+        poly.GetFieldData().AddArray(tarr)
+
+        # Cell data (segment-based)
+        cd = poly.GetCellData()
+        for name, vals in output_properties.items():
+            arr = np.asarray(vals).reshape((-1, 1))
+            if arr.shape[0] != nseg:
+                raise ValueError(f"'{name}' length {arr.shape[0]} != Nseg {nseg}")
+            vtk_arr = numpy_to_vtk(arr.astype(float), deep=True)
+            vtk_arr.SetName(name)
+            cd.AddArray(vtk_arr)
+
+        if active is None and output_properties:
+            active = next(iter(output_properties.keys()))
+        if active is not None:
+            cd.SetActiveScalars(active)
+
+        # Write
+        writer = vtk.vtkXMLPolyDataWriter()
+        output_file_name = f"solution_well_{well_name}_ts{ith_step:d}.vtp"
+        output_file_path = os.path.join(output_directory, output_file_name)
+        writer.SetFileName(output_file_path)
+        writer.SetInputData(poly)
+        writer.Write()
 
     def store_well_time_data(
         self,

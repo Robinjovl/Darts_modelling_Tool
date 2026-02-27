@@ -24,6 +24,8 @@ coupled_model.set_output()
 
 if 1:
     output_props = coupled_model.physics.vars + coupled_model.output.properties + ["temperature"]
+    coupled_model.output.output_to_vtk(ith_step=0, output_properties=output_props)   # saves initial reservoir conditions
+    coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)   # saves initial well conditions
 
     report_steps = [
         0.5 / 24 / 60,  # 30 seconds
@@ -74,8 +76,9 @@ if 1:
         elif i == 21:
             coupled_model.data_ts.dt_max = 1
         coupled_model.run(dt)
+        coupled_model.output.output_to_vtk(ith_step=i+1, output_properties=output_props)
+        coupled_model.output.well_output_to_vtp(ith_step=i+1, output_properties=output_props)
 
-    coupled_model.output.output_to_vtk(output_properties=output_props)
     coupled_model.print_timers()
 else:
     save_dfm_well_props('I1', coupled_model)

@@ -18,16 +18,16 @@ from darts.print_build_info import *
 
 #%%
 
-def read_data(sol_filepath, well_filepath, timestep = None):
+def read_data(sol_filepath, well_filepath, ts_idx = None):
     # read reservoir data
-    time, cell_id, X, var_names = n.output.read_specific_data(sol_filepath, timestep = timestep)
+    time, cell_id, X, var_names = n.output.read_specific_data(sol_filepath, ts_idx=ts_idx)
     print('time', time)
     print('cell id:', cell_id)
     print('vars:', var_names)
     print('X[time, cell_id, variable], shape:', X.shape)
 
     # read well data
-    time, cell_id, X, var_names = n.output.read_specific_data(well_filepath, timestep = timestep)
+    time, cell_id, X, var_names = n.output.read_specific_data(well_filepath, ts_idx=ts_idx)
     print('time', time)
     print('cell id:', cell_id)
     print('vars:', var_names)
@@ -93,12 +93,12 @@ for mdir in accepted_dirs:
     # read_data(n.sol_filepath, n.well_filepath)
 
     """ --------------------- EVALUATING PROPERTIES --------------------- """
-    # when reading hdf5 files the timestep defaults to None. In which case all available timesteps are returned
+    # when reading hdf5 files the ts_idx defaults to None. In which case all available timesteps are returned
     sol_filepath = n.sol_filepath # in the 'resrvoir_solution_double.h5' the state in every reservoir/grid block is saved
-    time, cell_id, X, var_names = n.output.read_specific_data(sol_filepath, timestep = None)
+    time, cell_id, X, var_names = n.output.read_specific_data(sol_filepath, ts_idx=None)
 
     well_filpath = n.well_filepath  # in the well_data.h5 the state in the perforated reservoir block and well block is saved
-    time_well, cell_id_well, X_well, var_names_well = n.output.read_specific_data(sol_filepath, timestep=None)
+    time_well, cell_id_well, X_well, var_names_well = n.output.read_specific_data(sol_filepath, ts_idx=None)
 
     # collect all available primary and secondary variables in a list
     primary_variables = n.physics.vars # state variables
@@ -107,7 +107,7 @@ for mdir in accepted_dirs:
 
     # default behaviour for dartsmodel.output.output_properties() returns a dictionary of primary variables
     # for all timesteps saved in .../dartsmodel.output_folder/reservoir_solution.h5
-    time_vector, property_array = n.output.output_properties(filepath = None, output_properties = None, timestep = None, engine = False)
+    time_vector, property_array = n.output.output_properties(filepath = None, output_properties = None, ts_idx = None, engine = False)
     # save property array in the output folder
     n.output.save_property_array(time_vector, property_array)
     # load property array
@@ -122,9 +122,9 @@ for mdir in accepted_dirs:
         pass
 
     # evaluate a specific timestep
-    time_vector, property_array = n.output.output_properties(timestep = 0) # initial conditions
-    time_vector, property_array = n.output.output_properties(timestep = Nt) # final timestep
-    # time_vector, property_array = n.output.output_properties(timestep = -1) # alternatively, final timestep
+    time_vector, property_array = n.output.output_properties(ts_idx = 0) # initial conditions
+    time_vector, property_array = n.output.output_properties(ts_idx = Nt) # final timestep
+    # time_vector, property_array = n.output.output_properties(ts_idx = -1) # alternatively, final timestep
 
     # run model without saving anything
     n.run(1, verbose=True, save_well_data=False, save_reservoir_data=False, save_well_data_after_run=False)
