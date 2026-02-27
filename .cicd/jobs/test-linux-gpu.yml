@@ -43,7 +43,7 @@ test-linux-oahu-gpu:
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
     parallel: &gpu_python_matrix
         matrix:
-            - PY_VER: !reference [.default-python-version, variables, DEFAULT_PY_VER]
+            - PY_VER: $DEFAULT_PY_VER
     before_script:
         - module load cuda/23.5
         - source ${CONDAPATH}/bin/activate

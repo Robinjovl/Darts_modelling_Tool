@@ -29,7 +29,7 @@ build-linux-oahu-gpu:
         GSELINSOLVERSPATH: /oahu/data/gitlabrunner/darts-gitlab-runner-data/darts-linear-solvers-gpu-hypre
     parallel: &gpu_python_matrix
         matrix:
-            - PY_VER: !reference [.default-python-version, variables, DEFAULT_PY_VER]
+            - PY_VER: $DEFAULT_PY_VER
     before_script:
         - module load cuda/23.5
         - source ${CONDAPATH}/bin/activate

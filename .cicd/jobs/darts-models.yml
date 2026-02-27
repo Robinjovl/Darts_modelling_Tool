@@ -12,7 +12,6 @@ trigger-darts-models:
     OPEN_DARTS_PIPELINE_ID: "$CI_PIPELINE_ID"
     OPEN_DARTS_COMMIT_SHA: "$CI_COMMIT_SHA"
     OPEN_DARTS_REF: "$CI_COMMIT_REF_NAME"
-    DEFAULT_PY_VER: !reference [.default-python-version, variables, DEFAULT_PY_VER]
     OPEN_DARTS_LINUX_JOB_BASE: "build-linux-oahu-gpu"
     OPEN_DARTS_WINDOWS_JOB_BASE: "build-windows"
   rules:
