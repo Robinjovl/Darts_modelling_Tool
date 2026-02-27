@@ -45,10 +45,22 @@ docker-image-builder:
     - BUILD_KEY="$(printf '%s\n%s\n%s\n' "$DEF_SHA" "$BLD_FILES_SHA" "$DLS_SHA" | sha256sum | awk '{print $1}')"
     - echo "BUILD_KEY=$BUILD_KEY"
     - IMG="$IMG_DIR/${IMAGE_PREFIX}-${BUILD_KEY}.sif"
+    - printf 'APPTAINER_IMAGE=%s\nAPPTAINER_BUILD_KEY=%s\n' "$IMG" "$BUILD_KEY" > apptainer_image.env
     # build only if not already present (cache/artifacts from previous runs)
     - |
       if [ -f "$IMG" ]; then
-        echo "Reusing cached image $IMG";
+        if apptainer inspect "$IMG" >/dev/null 2>&1; then
+          echo "Reusing cached image $IMG";
+        else
+          echo "Cached image is corrupted, rebuilding: $IMG"
+          rm -f -- "$IMG"
+          apptainer build --fakeroot \
+            --build-arg ENABLE_DLS="${ENABLE_DLS:-1}" \
+            --build-arg DLS_TOKEN="${DLS_TOKEN}" \
+            --build-arg CUDA_ARCH="${CUDA_ARCH:-70}" \
+            --build-arg ENABLE_AGENT_TOOLS="${ENABLE_AGENT_TOOLS:-0}" \
+            "$IMG" .cicd/build-linux/singularity.def;
+        fi
       else
         apptainer build --fakeroot \
           --build-arg ENABLE_DLS="${ENABLE_DLS:-1}" \
@@ -68,6 +80,14 @@ docker-image-builder:
       set -euo pipefail
       PREFIX="${IMAGE_PREFIX:-open-darts}"
       echo "Checking for old ${PREFIX} images in ${IMG_DIR}..."
+      LATEST_LINK="$IMG_DIR/${PREFIX}-latest.sif"
+      LATEST_TARGET=""
+      if [ -L "$LATEST_LINK" ]; then
+        LATEST_TARGET="$(readlink -f "$LATEST_LINK" || true)"
+        if [ -n "$LATEST_TARGET" ]; then
+          echo "Will keep latest symlink target: $LATEST_TARGET"
+        fi
+      fi
       # Build a list of matching regular files (excluding the 'latest' symlink), oldest first
       TMP_LIST="$(mktemp)"
       find "$IMG_DIR" -maxdepth 1 -type f -name "${PREFIX}-*.sif" ! -name "${PREFIX}-latest.sif" -printf '%T@ %p\n' | sort -n | awk '{ $1=""; sub(/^ /,""); print }' > "$TMP_LIST"
@@ -78,13 +98,18 @@ docker-image-builder:
       else
         TO_DELETE="$(( TOTAL - MAX ))"
         echo "Pruning $TO_DELETE oldest image(s) with prefix ${PREFIX}"
-        i=0
+        DELETED=0
         while IFS= read -r IMG_PATH; do
-          i=$(( i + 1 ))
-          if [ "$i" -le "$TO_DELETE" ]; then
-            echo "Removing $IMG_PATH"
-            rm -f -- "$IMG_PATH" || true
+          if [ "$DELETED" -ge "$TO_DELETE" ]; then
+            break
           fi
+          if [ -n "$LATEST_TARGET" ] && [ "$IMG_PATH" = "$LATEST_TARGET" ]; then
+            echo "Keeping latest target $IMG_PATH"
+            continue
+          fi
+          echo "Removing $IMG_PATH"
+          rm -f -- "$IMG_PATH" || true
+          DELETED=$(( DELETED + 1 ))
         done < "$TMP_LIST"
       fi
       rm -f "$TMP_LIST" || true
@@ -92,6 +117,11 @@ docker-image-builder:
     key: "$BUILD_KEY"
     paths:
       - "$IMG"
+  artifacts:
+    reports:
+      dotenv: apptainer_image.env
+    paths:
+      - apptainer_image.env
 
 apptainer-image-builder:
   extends: .apptainer-image-builder-base

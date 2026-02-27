@@ -68,9 +68,20 @@ build-linux-tahiti-image-gpu:
         entrypoint: [""]
     needs:
         - job: apptainer-image-builder
-    variables:
-        APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
+          artifacts: true
     before_script:
+        - |
+          set -euo pipefail
+          if [ -z "${APPTAINER_IMAGE:-}" ]; then
+            echo "APPTAINER_IMAGE is not set (expected from apptainer-image-builder dotenv artifact)"
+            exit 1
+          fi
+          if [ ! -f "$APPTAINER_IMAGE" ]; then
+            echo "Apptainer image does not exist: $APPTAINER_IMAGE"
+            ls -la /data/open-darts-apptainer-images || true
+            exit 1
+          fi
+          echo "Using Apptainer image: $APPTAINER_IMAGE"
         - echo "🔧 Creating Conda env '${CONDA_ENV}' inside the Apptainer image…"
         - |
           apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "

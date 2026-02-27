@@ -86,6 +86,18 @@ test-linux-tahiti-image-gpu:
     extends: .test-linux-gpu
     before_script:
         - |
+          set -euo pipefail
+          if [ -z "${APPTAINER_IMAGE:-}" ]; then
+            echo "APPTAINER_IMAGE is not set (expected from apptainer-image-builder dotenv artifact)"
+            exit 1
+          fi
+          if [ ! -f "$APPTAINER_IMAGE" ]; then
+            echo "Apptainer image does not exist: $APPTAINER_IMAGE"
+            ls -la /data/open-darts-apptainer-images || true
+            exit 1
+          fi
+          echo "Using Apptainer image: $APPTAINER_IMAGE"
+        - |
           apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
             # exit on any error, print commands as you go
             set -euxo pipefail && \
@@ -125,7 +137,7 @@ test-linux-tahiti-image-gpu:
                 # remove conda env
                 conda env remove -n ${CONDA_ENV} -y || true
             "
-    variables:
-        APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
     needs:
-        - build-linux-tahiti-image-gpu
+        - job: build-linux-tahiti-image-gpu
+        - job: apptainer-image-builder
+          artifacts: true
