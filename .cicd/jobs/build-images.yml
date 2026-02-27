@@ -106,16 +106,16 @@ apptainer-image-builder:
       - if: $TEST_ALL_PYTHONS == "1"
 
 
-apptainer-image-builder-agents:
-  extends: .apptainer-image-builder-base
-  variables:
-    IMAGE_PREFIX: "open-darts-agents"
-    ENABLE_AGENT_TOOLS: "1"
-  rules:
-    - if: '$RUN_DEVTOOLS == "1"'
-      when: on_success
-    - if: $CI_PIPELINE_SOURCE == "web"
-      when: manual
-    - if: $CI_PIPELINE_SOURCE == "api"
-      when: manual
-    - when: never
+# apptainer-image-builder-agents:
+#   extends: .apptainer-image-builder-base
+#   variables:
+#     IMAGE_PREFIX: "open-darts-agents"
+#     ENABLE_AGENT_TOOLS: "1"
+#   rules:
+#     - if: '$RUN_DEVTOOLS == "1"'
+#       when: on_success
+#     - if: $CI_PIPELINE_SOURCE == "web"
+#       when: manual
+#     - if: $CI_PIPELINE_SOURCE == "api"
+#       when: manual
+#     - when: never
