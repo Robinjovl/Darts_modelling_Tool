@@ -1999,8 +1999,8 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 				  int w_i = well_head_idx + p;
 				  // copy properties for the well blocks from the reservoir blocks
 				  rock_cond[w_i] = rock_cond[r_i];
-				  // depth of well segments
-				  depth[well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+				  // Align depth of perforated well segment with reservoir block
+				  depth[w_i] = depth[r_i];
 			  }
 		  }
 	  }
@@ -2171,23 +2171,25 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 
 	for (index_t iw = 0; iw < wells.size(); iw++)
 	{
+		const index_t well_head_idx = wells[iw]->well_head_idx;
+
 		// depth of the well head block - well controls work at this depth
-		depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
+		depth[well_head_idx] = wells[iw]->well_head_depth;
 		for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
 		{
-			volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
-			poro[wells[iw]->well_head_idx + p] = 1;
+			volume[well_head_idx + p] = wells[iw]->segment_volume;
+			poro[well_head_idx + p] = 1;
 			if (th_poro.size())
-			  th_poro[wells[iw]->well_head_idx + p] = 0;
-			op_num[wells[iw]->well_head_idx + p] = 0;
-			heat_capacity[wells[iw]->well_head_idx + p] = 0;
-			rock_cond[wells[iw]->well_head_idx + p] = 0;
+			  th_poro[well_head_idx + p] = 0;
+			op_num[well_head_idx + p] = 0;
+			heat_capacity[well_head_idx + p] = 0;
+			rock_cond[well_head_idx + p] = 0;
 			if (p > 0)
 			{
 				int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
-				int w_i = wells[iw]->well_head_idx + p;
-				// depth of well segments
-				depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+				int w_i = well_head_idx + p;
+				// Align depth of perforated well segment with reservoir block
+				depth[w_i] = depth[r_i];
 			}
 		}
 	}
