@@ -1,6 +1,8 @@
 .build-linux-gpu:
     stage: build
     rules:
+        - if: $MCP_TRIGGER_TAHITI_GPU == "1"
+          when: never
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
