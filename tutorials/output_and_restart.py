@@ -117,7 +117,7 @@ for mdir in accepted_dirs:
         # save properties as an *.nc file
         # !! only for structured reservoir class !!
         xarray_dataset = n.output.output_to_xarray(output_properties = output_props)
-        n.output.output_to_plt(xarray_data=xarray_dataset, timestep=Nt, x_slice=None, y_slice=None, z_slice=0)
+        n.output.output_to_plt(xarray_data=xarray_dataset, ts_idx=Nt, x_slice=None, y_slice=None, z_slice=0)
     except:
         pass
 
@@ -145,8 +145,8 @@ for mdir in accepted_dirs:
 
     # different errors
     # time_vector, property_array = n.output.output_properties(output_properties='pressure')
-    # time_vector, property_array = n.output.output_properties(timestep = 6) # raises an IndexError
-    # time_vector, property_array = n.output.output_properties(timestep = 5.5) # raises a TypeError
+    # time_vector, property_array = n.output.output_properties(ts_idx = 6) # raises an IndexError
+    # time_vector, property_array = n.output.output_properties(ts_idx = 5.5) # raises a TypeError
     # time_vector, property_array = n.output.output_properties(filepath = output_folder + 'bublegum') # raises FileNotFoundError
 
     """ ----------------------------- WELL TIME DATA ----------------------------- """
@@ -173,7 +173,7 @@ for mdir in accepted_dirs:
 
     # export and save properties as an *.nc file
     xarray_dataset = m.output.output_to_xarray(output_properties = m.physics.vars + m.output.properties)
-    m.output.output_to_plt(xarray_data=xarray_dataset, timestep=Nt, x_slice=None, y_slice=None, z_slice=0)
+    m.output.output_to_plt(xarray_data=xarray_dataset, ts_idx=Nt, x_slice=None, y_slice=None, z_slice=0)
 
     # output_to_vtk
     try:
@@ -190,7 +190,7 @@ for mdir in accepted_dirs:
     # m.output.filter_phase_props(new_prop_keys=['somethimgsomething']) # raises a ValueError
     time_vector, property_array = m.output.output_properties(output_properties=m.output.properties)
     xarray_dataset = m.output.output_to_xarray(output_properties=m.output.properties)
-    m.output.output_to_plt(xarray_data=xarray_dataset, timestep=Nt, x_slice=None, y_slice=None, z_slice=0)
+    m.output.output_to_plt(xarray_data=xarray_dataset, ts_idx=Nt, x_slice=None, y_slice=None, z_slice=0)
 
     """ --------------------- RESTART MODEL --------------------- """
     if RESTART:
