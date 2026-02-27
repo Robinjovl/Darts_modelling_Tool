@@ -132,6 +132,7 @@ class Model(THMCModel):
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
         self.idata.rock.th_expn = 1e-5  # [1/K]
+        self.idata.rock.th_expn_orig = self.idata.rock.th_expn  # save this for proxy
         self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)  # Couchy book formula 4.19a, 4.21a
         self.idata.rock.th_expn *= 3. # Couchy book formula 4.22; from linear to volumetric
         
@@ -185,7 +186,7 @@ class Model(THMCModel):
         # well controls
         self.idata.other.delta_temp_inj = 40 # [K] - delta for temperature control
         if False:         # BHP control
-            self.idata.other.delta_p = None #50 # [bar] - delta for BHP control
+            self.idata.other.delta_p = 50 # [bar] - delta for BHP control
             self.idata.other.wctrl_type = well_control_iface.BHP
             self.idata.other.well_rate = None
         else: # RATE control

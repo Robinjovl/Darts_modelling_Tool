@@ -75,7 +75,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     g.poisson = m.idata.rock.nu
     g.young = m.idata.rock.E if np.isscalar(m.idata.rock.E) else m.idata.rock.E.mean()
     g.young *= bars2mpa
-    g.thermal_expansion = m.idata.rock.th_expn / get_bulk_modulus(E=m.idata.rock.E, nu=m.idata.rock.nu)# 1/°C
+    g.thermal_expansion = m.idata.rock.th_expn_orig
     g.biot = m.idata.rock.biot
 
     # read THM solution from vtk
@@ -131,6 +131,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     centroids[:, 0] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # Y
     centroids[:, 1] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # X
     centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
+    
+    g.centroids = centroids
 
     n_dim = 3  # X,Y,Z
     bounds = [0]*n_dim
@@ -612,7 +614,7 @@ if __name__ == '__main__':
 
     physics_types_list = []
     physics_types_list += ['single_phase']
-    #physics_types_list += ['single_phase_thermal']
+    physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['none']
@@ -667,6 +669,6 @@ if __name__ == '__main__':
             t2 = datetime.now()
             proxy_time = t2 - t1
 
-            print('case', case, physics_type, 'done')
+            print('case', case, physics_type, wells_type, 'done')
             print('THM   time', thm_time)
             print('proxy time', proxy_time)

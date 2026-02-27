@@ -3,6 +3,7 @@ from darts.engines import timer_node
 #from cpg_tools import make_full_cube
 from tools import print_range_array
 from datetime import datetime
+from scipy.interpolate import griddata as gd
 
 # arg: t - 1D array of 6 values in Voight notation
 # returns (3x3) tensor
@@ -287,8 +288,10 @@ class geomech():
             stress = self.young * (-strain + self.poisson / (1 - 2 * self.poisson) *
                                    volumetric_strain * kronecker) / (1 + self.poisson)
 
-            # for thermoelasticity: TODO get delta_temperature from the closest cell or interpolation
-            #stress += self.young * self.thermal_expansion * delta_temperature / (1 - 2 * self.poisson) * kronecker
+            # for thermoelasticity: 
+            delta_temperature_points = gd((self.centroids[:, 1], self.centroids[:, 0], self.centroids[:, 2]), \
+                delta_temperature, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='nearest')
+            stress += self.young * self.thermal_expansion * delta_temperature_points / (1 - 2 * self.poisson) * kronecker
 
             #print('dir=', ui, 'stress=\n', stress)
 
