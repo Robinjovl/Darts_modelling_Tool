@@ -4,9 +4,8 @@ vtune-profile:
     - linux
     image: "python:$PY_VER"
     timeout: 2h
-    parallel: &vtune_python_matrix
-        matrix:
-            - PY_VER: !reference [.default-python-version, variables, DEFAULT_PY_VER]
+    variables:
+        PY_VER: $DEFAULT_PY_VER
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"

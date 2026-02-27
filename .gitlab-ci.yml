@@ -4,14 +4,6 @@ workflow:
       when: never
     - when: always
 
-.default-python-version:
-  variables:
-    DEFAULT_PY_VER: $DEFAULT_PY_VER
-
-variables:
-  # Default Python used by MR/protected/custom-branch pipelines and single-version jobs.
-  DEFAULT_PY_VER: !reference [.default-python-version, variables, DEFAULT_PY_VER]
-
 stages:
     - pre_commit
     - build_images

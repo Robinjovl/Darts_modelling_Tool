@@ -9,6 +9,7 @@
         GIT_SUBMODULE_STRATEGY: recursive
         ODLS: '-a'
         TEST_GPU: '1'
+        PY_VER: $DEFAULT_PY_VER
         CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
@@ -27,9 +28,6 @@ build-linux-oahu-gpu:
     variables:
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
         GSELINSOLVERSPATH: /oahu/data/gitlabrunner/darts-gitlab-runner-data/darts-linear-solvers-gpu-hypre
-    parallel: &gpu_python_matrix
-        matrix:
-            - PY_VER: !reference [.default-python-version, variables, DEFAULT_PY_VER]
     before_script:
         - module load cuda/23.5
         - source ${CONDAPATH}/bin/activate
@@ -46,7 +44,6 @@ build-linux-tahiti-gpu:
         - linux_tahiti_gpu
     variables:
         CONDAPATH: /data/gitlab-runner/miniconda3
-    parallel: *gpu_python_matrix
     before_script:
         - spack env activate open_darts_gcc134
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
@@ -73,7 +70,6 @@ build-linux-tahiti-image-gpu:
         - job: apptainer-image-builder
     variables:
         APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
-    parallel: *gpu_python_matrix
     before_script:
         - echo "🔧 Creating Conda env '${CONDA_ENV}' inside the Apptainer image…"
         - |

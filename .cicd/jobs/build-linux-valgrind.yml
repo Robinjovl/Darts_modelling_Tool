@@ -14,9 +14,7 @@ build-linux-valgrind:
     extends: .build-linux
     variables:
         ODLS: '-a'
-    parallel: &valgrind_python_matrix
-        matrix:
-            - PY_VER: !reference [.default-python-version, variables, DEFAULT_PY_VER]
+        PY_VER: "$DEFAULT_PY_VER"
     script:
         - echo ">>> Starting debug build (valgrind instrumentation) <<<"
         - ./helper_scripts/build_darts_cmake.sh -c -w -m -j 8 -v $ODLS -p
