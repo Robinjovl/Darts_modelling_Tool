@@ -167,6 +167,9 @@ class geomech():
 
         stress = self.young * (-strain + self.poisson / (1 - 2 * self.poisson) *
                                volumetric_strain * kronecker) / (1 + self.poisson)
+        # for thermoelasticity TODO get delta_temperature from the closest cell or interpolation
+        #stress += self.young * self.thermal_expansion * delta_temperature / (1 - 2 * self.poisson) * kronecker
+
         return stress, strain
 
     def calc_strain_stress_cpp(self, fault_surface, prisms, delta_pressure, delta_temperature, verbose=False):
@@ -283,6 +286,9 @@ class geomech():
 
             stress = self.young * (-strain + self.poisson / (1 - 2 * self.poisson) *
                                    volumetric_strain * kronecker) / (1 + self.poisson)
+
+            # for thermoelasticity: TODO get delta_temperature from the closest cell or interpolation
+            #stress += self.young * self.thermal_expansion * delta_temperature / (1 - 2 * self.poisson) * kronecker
 
             #print('dir=', ui, 'stress=\n', stress)
 

@@ -61,7 +61,7 @@ def geomech_init_geometry(mesh_data):
 
 def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timestep=1, generate_mesh=True):
     folder = os.path.join('results', 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case)  # where vtk files are located
-
+    print('OMP_NUM_THREADS =', os.getenv('OMP_NUM_THREADS'))
     # init geomech proxy
     from geomechanics import geomech
     g = geomech()
@@ -128,8 +128,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     # centroids are only used for THM data plotting, they are not used in proxy
     centroids = np.zeros((prisms.shape[0], 3))
-    centroids[:, 0] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # Y
-    centroids[:, 1] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # X
+    centroids[:, 0] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # Y
+    centroids[:, 1] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # X
     centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
 
     n_dim = 3  # X,Y,Z
@@ -350,7 +350,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         sx_thm2 = np.zeros(n_points); sy_thm2 = np.zeros(n_points); sz_thm2 = np.zeros(n_points);
 
         for i in range(n_points):  # use XY from point and different Z
-            point = np.array([points[1, i], points[0, i], points[2, i]])  # YXZ - > XYZ
+            point = np.array([points[0, i], points[1, i], points[2, i]])  # YXZ - > XYZ
             ux_thm[i], uy_thm[i], uz_thm[i] = get_thm_displs(point)
             if 'strain' in modes:
                 qx_thm[i], qy_thm[i], qz_thm[i] = get_thm_strain(point)
@@ -432,7 +432,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    #points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
     #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
     #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
     #points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
@@ -440,7 +440,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     if True: # evaluate along the wells
         if wells_type in ['prod', 'doublet']:
-            points_xy['prod well'] = m.idata.other.prod_well_coords[:2] # -2 to skip z coord
+            points_xy['prod well'] = m.idata.other.prod_well_coords[:2]  # -2 to skip z coord
         if wells_type in ['inj', 'doublet']:
             points_xy['inj well'] = m.idata.other.inj_well_coords[:2]
 
@@ -521,28 +521,31 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         z_max = centroids[:, 2].max() #+ 1000.
         z_step = 5.  # m.
         
-        z_range_all = np.arange(z_min, z_max+1., z_step)
+        #z_range_all = np.arange(z_min, z_max+1., z_step)# more points
+        z_range_all = m.idata.other.Zc
+        
         z_interp_eps = 5. # m # remove points close to rsv boundary, as they create descrepancies even with 'nearest' interpolation
         z_range_all_filter = reduce(np.logical_and, [np.fabs(z_range_all - m.idata.other.rsv_top) > z_interp_eps, np.fabs(z_range_all - m.idata.other.rsv_bottom) > z_interp_eps])
         z_range_all = z_range_all[z_range_all_filter]
         n_points = z_range_all.size
         points_all = np.zeros((3, n_points))
-        points_all[0, :] = point_xy[1]  # X<->Y
-        points_all[1, :] = point_xy[0]
+        points_all[0, :] = point_xy[0]  # X<->Y
+        points_all[1, :] = point_xy[1]
         points_all[2, :] = z_range_all
         
-        z_range_rsv = np.arange(m.idata.other.rsv_top-100., m.idata.other.rsv_bottom+100., z_step)
-        # remove points close to rsv boundary, as they create descrepancies even with 'nearest' interpolation
-        z_range_rsv_filter = reduce(np.logical_and, [np.fabs(z_range_rsv - m.idata.other.rsv_top) > z_interp_eps, np.fabs(z_range_rsv - m.idata.other.rsv_bottom) > z_interp_eps])
-        z_range_rsv = z_range_rsv[z_range_rsv_filter]
-        n_points = z_range_rsv.size
-        points_rsv = np.zeros((3, n_points))
-        points_rsv[0, :] = point_xy[1] # X<->Y
-        points_rsv[1, :] = point_xy[0]            
-        points_rsv[2, :] = z_range_rsv
-        
         compare_vert_line(points_all, suffix='all', loc=k, output_folder=folder, modes=modes)
-        #compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, modes=modes)
+        
+        if False:
+            z_range_rsv = np.arange(m.idata.other.rsv_top-100., m.idata.other.rsv_bottom+100., z_step)
+            # remove points close to rsv boundary, as they create descrepancies even with 'nearest' interpolation
+            z_range_rsv_filter = reduce(np.logical_and, [np.fabs(z_range_rsv - m.idata.other.rsv_top) > z_interp_eps, np.fabs(z_range_rsv - m.idata.other.rsv_bottom) > z_interp_eps])
+            z_range_rsv = z_range_rsv[z_range_rsv_filter]
+            n_points = z_range_rsv.size
+            points_rsv = np.zeros((3, n_points))
+            points_rsv[0, :] = point_xy[1] # X<->Y
+            points_rsv[1, :] = point_xy[0]            
+            points_rsv[2, :] = z_range_rsv
+            compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, modes=modes)
 
     # print vert displs and stresses change at a point
     if True:
