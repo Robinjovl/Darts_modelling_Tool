@@ -1,6 +1,9 @@
 import os
 import warnings
+from dataclasses import dataclass
 from math import fabs
+
+import matplotlib.pyplot as plt
 
 # import h5py
 import numpy as np
@@ -25,6 +28,17 @@ from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
+
+
+@dataclass
+class LivePlottingConfig:
+    enabled: bool = False  # Flag to enable live plotting
+    every_newton_iter: bool = (
+        False  # Whether to plot for every Newton iteration or for every time step
+    )
+    tracked_block_idx: int = (
+        0  # Index of the block which will be tracked on the PH diagram
+    )
 
 
 class DataTS:
@@ -114,6 +128,10 @@ class DartsModel:
         self.time = []
         self.n_newton_iters = []
         self.time_step_size = []
+
+        # For live plotting
+        self.live_plt_config = LivePlottingConfig()
+        self.live_fig_store = {}
 
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
@@ -854,12 +872,26 @@ class DartsModel:
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
+
+                """ Start live plotting for every Newton-Raphson iteration """
+                if (
+                    self.live_plt_config.enabled
+                    and self.live_plt_config.every_newton_iter
+                ):
+                    self.update_live_plots()
+                """ End live plotting for every Newton-Raphson iteration """
+
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 
         self.time.append(t)
         self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
         self.time_step_size.append(dt)
+
+        """ Start live plotting for every time step """
+        if self.live_plt_config.enabled and not self.live_plt_config.every_newton_iter:
+            self.update_live_plots()
+        """ End live plotting for every time step """
 
         self.timer.node["simulation"].stop()
         return converged
@@ -1472,3 +1504,196 @@ class DartsModel:
 
         mat, rhs, sol = self.get_linear_system()
         sol[:] = pypardiso.spsolve(mat, rhs)
+
+    def init_live_plots(self):
+        """
+        Initialize live plots
+        """
+        plt.ion()
+
+        """ Start initializing the figure containing axes for the properties of the Newton solver """
+        fig, axes = plt.subplots(1, 2, figsize=(10, 6), constrained_layout=True)
+
+        ax0 = axes[0]
+        ax1 = axes[1]
+
+        # Axes for number of Newton iterations
+        (line0,) = ax0.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+        # ax0.set_xscale("log")
+        ax0.set_xlabel("Time [days]")
+        ax0.set_ylabel("Number of Newton iterations [-]")
+
+        # Axes for time step size
+        (line1,) = ax1.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+        )
+        # ax1.set_xscale("log")
+        ax1.set_xlabel("Time [days]")
+        ax1.set_ylabel("Time step size [days]")
+
+        fig.show()
+
+        self.live_fig_store["solver_fig"] = {
+            "fig": fig,
+            "axes": axes,
+            "lines": [line0, line1],
+        }
+        """ End initializing the figure containing axes for the properties of the Newton solver """
+
+        """ Start initializing the figure containing a pair of axes for the PH diagram """
+        fig, axes = plt.subplots(figsize=(10, 6), constrained_layout=True)
+
+        p_idx = self.physics.vars.index("pressure")
+        h_idx = self.physics.vars.index("enthalpy")
+
+        # Get the bounds of the OBL domain
+        p_bounds = (self.physics.PT_axes_min[p_idx], self.physics.PT_axes_max[p_idx])
+        h_bounds = (self.physics.axes_min[h_idx], self.physics.axes_max[h_idx])
+
+        # Resolution of the PH diagram
+        n_p, n_h = self.physics.n_axes_points[p_idx], self.physics.n_axes_points[h_idx]
+
+        p_range = np.linspace(p_bounds[0], p_bounds[1], n_p)
+        h_range = np.linspace(h_bounds[0], h_bounds[1], n_h)
+
+        # Calculate the property matrix
+        prop_matrix = np.empty((n_p, n_h))
+        for idx_p, p in enumerate(p_range):
+            for idx_h, h in enumerate(h_range):
+                state_ph = [p, h]
+                self.physics.property_containers[0].evaluate(state_ph)
+                prop_matrix[idx_p, idx_h] = self.physics.property_containers[
+                    0
+                ].temperature
+
+        n_cmap_bins = 50
+        levels = np.linspace(
+            np.nanmin(prop_matrix), np.nanmax(prop_matrix), n_cmap_bins
+        )
+
+        # Filled contour (colored areas)
+        cax = axes.contourf(h_range, p_range, prop_matrix, levels=levels, cmap='jet')
+
+        # Contour lines at the same levels
+        contours = axes.contour(
+            h_range, p_range, prop_matrix, levels=levels, colors='black', linewidths=0.5
+        )
+
+        # Label each contour line with its property value
+        axes.clabel(contours, fmt='%1.1f', inline=True, fontsize=7)
+
+        axes.set_xlim(h_bounds[0], h_bounds[1])
+        axes.set_ylim(p_bounds[0], p_bounds[1])
+        axes.set_xlabel('Specific enthalpy [kJ/kmole]')
+        axes.set_ylabel('Pressure [bar]')
+
+        # Add a colorbar
+        cbar = fig.colorbar(cax, ax=axes)
+        cbar.set_label("Temperature [K]")
+
+        # Create a plot for adding bottom-hole points (states) to the PH diagram
+        (line,) = axes.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+            label='Bottom-hole state',
+        )
+
+        fig.show()
+
+        # Update the figure store
+        self.live_fig_store["ph_fig"] = {
+            "fig": fig,
+            "axes": axes,
+            "lines": [line],
+        }
+        """ Stop initializing the figure containing a pair of axes for the PH diagram """
+
+    def update_live_plots(self):
+        """
+        Initialize (only for the first call) and update live plots
+        """
+        # Initialize once (first call only)
+        if not self.live_fig_store:
+            # At the moment, the function is supported for the PH formulation with a single component.
+            if (
+                not (self.physics.state_spec == self.physics.StateSpecification.PH)
+                or not self.physics.n_vars == 2
+            ):
+                raise Exception(
+                    "Plotting the live PH diagram is supported for the PH formulation and a single component!"
+                )
+            self.init_live_plots()
+
+        """ Start updating the figure containing axes for the properties of the Newton solver """
+        fig = self.live_fig_store["solver_fig"]["fig"]
+        axes = self.live_fig_store["solver_fig"]["axes"]
+        lines = self.live_fig_store["solver_fig"]["lines"]
+
+        lines[0].set_data(self.time, self.n_newton_iters)
+        axes[0].relim()
+        axes[0].autoscale_view()
+
+        lines[1].set_data(self.time, self.time_step_size)
+        axes[1].relim()
+        axes[1].autoscale_view()
+
+        # Refresh display
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
+        """ End updating the figure containing axes for the properties of the Newton solver """
+
+        """ Start updating the figure containing a pair of axes for the PH diagram """
+        fig = self.live_fig_store["ph_fig"]["fig"]
+        axes = self.live_fig_store["ph_fig"]["axes"]
+        lines = self.live_fig_store["ph_fig"]["lines"]
+
+        # Plot state of the desired block on the PH diagram
+        assert (
+            0 <= self.live_plt_config.tracked_block_idx < self.reservoir.mesh.n_blocks
+        ), "The specified tracked_block_idx is out of range!"
+        block_idx = self.live_plt_config.tracked_block_idx
+        X_np = np.asarray(self.physics.engine.X).reshape(-1, self.physics.n_vars)
+        p_idx = self.physics.vars.index("pressure")
+        h_idx = self.physics.vars.index("enthalpy")
+        p = X_np[block_idx, p_idx]
+        h = X_np[block_idx, h_idx]
+
+        x = list(lines[0].get_xdata())
+        y = list(lines[0].get_ydata())
+        x.append(h)
+        y.append(p)
+
+        lines[0].set_data(x, y)
+
+        axes.relim()
+        axes.autoscale_view()
+
+        # Refresh display
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
+        """ Stop updating the figure containing a pair of axes for the PH diagram """
