@@ -1,3 +1,17 @@
+# #.#.# [Future]
+- Support using the OBL method to calculate DFM well phase velocities. Direct method is still the default method since it is safer in terms of stability ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Add `x_mass` (mass composition of each phase) as a new property to `PropertyContainer` of the super engine because it is needed for evaluation of phase velocities in DFM wells using the OBL method ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Improve storage and visualization of properties of DFM wells ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
+  - Streamline storage and visualization of DFM well properties
+  - Support storage and visualization of multiple DFM wells
+  - Support storage of DFM well output in `.vtp` files to be visualized in ParaView
+- Support live plotting ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
+  - Live (real-time) plots for solver properties (time step size and number of Newton iterations) and tracking the state of a block on the PH diagram
+  - Live (real-time) plots for profiles of DFM well properties
+- Align depth of perforated well segments with reservoir blocks ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Fix BHT calculation for PH formulation in the method `store_bhp_bht` in `output.py` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Store the arrays `time`, `n_newton_iters`, and `time_step_size` in the class `DartsModel` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+
 # 1.4.0 [17-02-2026]
 - OBL and operators:
   - Extrapolation of operators at supporting points with negative last compositions for consistent interpolation in hypercubes at the edge of the compositional domain - current logic works only for equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
@@ -27,7 +41,7 @@
 
 - Solvers:
   - An option to use PARDISO linear solver is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/247)
-  - An optional use of PETSc linear solver for Geothermal and Poromechanical physics is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/235) 
+  - An optional use of PETSc linear solver for Geothermal and Poromechanical physics is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/235)
 
 - Models:
   - Added a simple example of a thermal model with foam (models/3ph_comp_w_foam)
@@ -38,7 +52,7 @@
 
 - Build system and CI/CD:
   - Python 3.13 is [supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/261) and Python 3.9 support is [no longer supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/248)
-  - Switched to ubuntu2018 docker image and conda environments in the [pipelines](https://gitlab.com/open-darts/open-darts/-/merge_requests/267) 
+  - Switched to ubuntu2018 docker image and conda environments in the [pipelines](https://gitlab.com/open-darts/open-darts/-/merge_requests/267)
   - Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
   - CI/CD jobs moved from `helper_scripts/ci_jobs` to `.cicd/jobs`, splitted for platforms, improved job rules
   - Added pre-commit/linting in the pipelines, switched to ruff-based formatting [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/233) and added [gitingest](https://gitlab.com/open-darts/open-darts/-/merge_requests/239)
