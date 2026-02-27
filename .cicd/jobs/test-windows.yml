@@ -75,6 +75,11 @@ test-windows:
         - if: $TEST_ALL_PYTHONS == "1"
     variables:
         ODLS: '-a'
+    needs:
+        - job: build-windows
+          parallel:
+              matrix:
+                  - PY_VER: ['$[[ matrix.PY_VER ]]']
     parallel:
         matrix:
             - PY_VER: '3.10'
@@ -87,6 +92,11 @@ test-windows-ODLS:
     rules: *python_version_rules
     variables:
         ODLS: ''
+    needs:
+        - job: build-windows-ODLS
+          parallel:
+              matrix:
+                  - PY_VER: ['$[[ matrix.PY_VER ]]']
     parallel:
         matrix:
             - PY_VER: '3.10'

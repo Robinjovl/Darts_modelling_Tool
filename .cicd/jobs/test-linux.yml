@@ -62,6 +62,11 @@ test-linux:
         - if: $TEST_ALL_PYTHONS == "1"
     variables:
         ODLS: '-a'
+    needs:
+        - job: build-linux
+          parallel:
+              matrix:
+                  - PY_VER: ['$[[ matrix.PY_VER ]]']
     parallel:
         matrix:
             - PY_VER: '3.10'
@@ -74,6 +79,11 @@ test-linux-ODLS:
     rules: *python_version_rules
     variables:
         ODLS: ''              # test with open-darts linear solvers
+    needs:
+        - job: build-linux-ODLS
+          parallel:
+              matrix:
+                  - PY_VER: ['$[[ matrix.PY_VER ]]']
     parallel:
         matrix:
             - PY_VER: '3.10'
