@@ -32,13 +32,12 @@ from darts.print_build_info import print_build_info as package_pbi
 
 @dataclass
 class LivePlottingConfig:
-    enabled: bool = False  # Flag to enable live plotting
-    every_newton_iter: bool = (
-        False  # Whether to plot for every Newton iteration or for every time step
-    )
-    tracked_block_idx: int = (
-        0  # Index of the block which will be tracked on the PH diagram
-    )
+    # Flag to enable live plotting
+    enabled: bool = False
+    # Whether to plot for every Newton iteration or for every time step
+    every_newton_iter: bool = False
+    # Index of the block which will be tracked on the PH diagram
+    tracked_block_idx: int = 0
 
 
 class DataTS:
