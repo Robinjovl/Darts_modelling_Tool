@@ -4,9 +4,9 @@ workflow:
       when: never
     - when: always
 
-# .default-python-version:
-#   variables:
-#     DEFAULT_PY_VER: $DEFAULT_PY_VER
+.default-python-version:
+  variables:
+    DEFAULT_PY_VER: $DEFAULT_PY_VER
 
 stages:
     - pre_commit
