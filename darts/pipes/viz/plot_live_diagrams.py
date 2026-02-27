@@ -9,14 +9,14 @@ from darts.input.input_data import linear_solver_types
 from darts.models.darts_model import DartsModel
 
 
-class PlotLiveDiagrams(DartsModel):
+class DartsModelWithLivePlots(DartsModel):
     def __init__(
         self,
         with_live_plots: bool = False,
         live_plots_for_every_newton_iter: bool = False,
     ):
         """
-        Initialize the PlotLiveDiagrams class
+        Initialize the class
 
         Use this class as the super class of your model to plot live diagrams for
         - solver properties (time step size and number of Newton iterations) and profiles of DFM well properties
