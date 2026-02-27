@@ -100,7 +100,7 @@ def post_process(m, specs):
     output_props = m.physics.vars + m.output.properties
 
     time_vector, property_array = m.output.output_properties(
-        filepath=os.path.join(specs['output_dir'], 'reservoir_solution.h5'),
+        sol_filepath=os.path.join(specs['output_dir'], 'reservoir_solution.h5'),
         output_properties=output_props,
         ts_idx=-1
     )
@@ -114,7 +114,7 @@ def post_process(m, specs):
         for ts, year in enumerate(vtk_array):
             try:
                 time_vector, property_array = m.output.output_properties(
-                    filepath = os.path.join(specs['output_dir'], 'reservoir_solution.h5'),
+                    sol_filepath = os.path.join(specs['output_dir'], 'reservoir_solution.h5'),
                     output_properties = props,
                     ts_idx = ts
                 )
@@ -128,13 +128,13 @@ def post_process(m, specs):
         # # if you do this it is quicker as all the data will be output to .vtk at once but the numbers in the solution_ts{year}.vts will not match the year
         # # instead check the pvd file for the corresponding timestamp.
         # time_vector, property_array = m.output.output_properties(
-        #     filepath=os.path.join(specs['output_dir'], 'reservoir_solution.h5'),
+        #     sol_filepath=os.path.join(specs['output_dir'], 'reservoir_solution.h5'),
         # )
-        # m.output.output_to_vtk(filepath=os.path.join(specs['output_dir'], 'reservoir_solution.h5'))
+        # m.output.output_to_vtk(sol_filepath=os.path.join(specs['output_dir'], 'reservoir_solution.h5'))
 
     if 1:
         restart_data_file_path = os.path.join(specs['output_dir'], 'reservoir_solution.h5')
-        m.load_restart_data(reservoir_filename = restart_data_file_path, timestep = -1)
+        m.load_restart_data(reservoir_filepath = restart_data_file_path, ts_idx=-1)
         m.output.verbose = False
 
         event1 = True

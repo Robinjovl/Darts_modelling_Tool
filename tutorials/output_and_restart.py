@@ -107,11 +107,11 @@ for mdir in accepted_dirs:
 
     # default behaviour for dartsmodel.output.output_properties() returns a dictionary of primary variables
     # for all timesteps saved in .../dartsmodel.output_folder/reservoir_solution.h5
-    time_vector, property_array = n.output.output_properties(filepath = None, output_properties = None, ts_idx = None, engine = False)
+    time_vector, property_array = n.output.output_properties(sol_filepath = None, output_properties = None, ts_idx = None, engine = False)
     # save property array in the output folder
     n.output.save_property_array(time_vector, property_array)
     # load property array
-    loaded_time_vector, loaded_property_array = n.output.load_property_array(file_directory=n.output_folder + '/property_array.h5')
+    loaded_time_vector, loaded_property_array = n.output.load_property_array(filepath=n.output_folder + '/property_array.h5')
 
     try:
         # save properties as an *.nc file
@@ -136,7 +136,7 @@ for mdir in accepted_dirs:
 
     # compare property_array evaluated from double and single precision saved data
     try:
-        time_vector, property_array_single = n.output.output_properties(filepath = n.output_folder + '/reservoir_solution_single.h5',
+        time_vector, property_array_single = n.output.output_properties(sol_filepath = n.output_folder + '/reservoir_solution_single.h5',
                                                                         output_properties = n.output.properties)
         norm = np.mean(np.abs(property_array_single[n.output.properties[0]] - property_array[n.output.properties[0]]))
         print(norm)
@@ -147,7 +147,7 @@ for mdir in accepted_dirs:
     # time_vector, property_array = n.output.output_properties(output_properties='pressure')
     # time_vector, property_array = n.output.output_properties(ts_idx = 6) # raises an IndexError
     # time_vector, property_array = n.output.output_properties(ts_idx = 5.5) # raises a TypeError
-    # time_vector, property_array = n.output.output_properties(filepath = output_folder + 'bublegum') # raises FileNotFoundError
+    # time_vector, property_array = n.output.output_properties(sol_filepath = output_folder + 'bublegum') # raises FileNotFoundError
 
     """ ----------------------------- WELL TIME DATA ----------------------------- """
 
@@ -201,8 +201,8 @@ for mdir in accepted_dirs:
                                all_phase_props=True
                                )
 
-        reservoir_filename = n.sol_filepath # path to the data you want to restart from
-        m_restarted.load_restart_data(reservoir_filename, timestep=1)
+        reservoir_filepath = n.sol_filepath # path to the data you want to restart from
+        m_restarted.load_restart_data(reservoir_filepath, ts_idx=1)
         m_restarted.run(1+365/10/2, restart_dt=1e-5) # use a smaller timestep than normal
 
         output_props = m_restarted.physics.vars + m_restarted.output.properties

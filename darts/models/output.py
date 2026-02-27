@@ -381,11 +381,11 @@ class Output:
                 )
         return 0
 
-    def load_array(self, filename: str):
+    def load_array(self, filepath: str):
         """
         This function loads any saved data in h5 file format.
 
-        :param filename: Path to the HDF5 file to load (typically ending in ``.h5``).
+        :param filepath: Path to the HDF5 file to load (typically ending in ``.h5``).
         :return array: Dictionary mapping dataset names to NumPy arrays.
 
         Notes
@@ -393,9 +393,8 @@ class Output:
         * All datasets located at the root level of the HDF5 file are read and returned as NumPy arrays.
         * Dataset names are used as dictionary keys.
         """
-
         array = {}
-        with h5py.File(filename, "r") as h5f:
+        with h5py.File(filepath, "r") as h5f:
             for key in h5f.keys():
                 array[key] = np.array(h5f[key])
         return array
@@ -515,11 +514,11 @@ class Output:
 
         return
 
-    def load_property_array(self, file_directory: str = "property_array.h5"):
+    def load_property_array(self, filepath: str = "property_array.h5"):
         """
         Load properties into a dictionary.
 
-        :param file_directory: Path to a standalone properties HDF5 file (default: ``property_array.h5``).
+        :param filepath: Path to a standalone properties HDF5 file (default: ``property_array.h5``).
         :returns: Tuple ``(time_vector, property_array)`` where:
             - ``time_vector`` is a 1D NumPy array of timesteps.
             - ``property_array`` is a dictionary mapping property names to NumPy arrays.
@@ -532,7 +531,7 @@ class Output:
         """
         try:
             property_array = {}
-            with h5py.File(file_directory, "r") as h5f:
+            with h5py.File(filepath, "r") as h5f:
                 # Load time vector
                 time_vector = np.array(h5f["time_vector"])
 
@@ -678,12 +677,12 @@ class Output:
         return centroids
 
     def configure_h5_output(
-        self, filename: str, cell_ids, description, add_static_data: bool = False
+        self, sol_filepath: str, cell_ids, description, add_static_data: bool = False
     ):
         """
         Create and initialize an HDF5 output file for simulation results.
 
-        :param filename: Path/filename of the HDF5 file to create.
+        :param sol_filepath: Path of the HDF5 file to create.
         :param cell_ids: Cell/block indices to include in the dynamic output.
         :param description: Text description stored as the file attribute ``description``.
         :param add_static_data: If True, also write ``/static/block_m`` and ``/static/block_p``. Default is False.
@@ -711,7 +710,7 @@ class Output:
         - Careful not to overwrite existing files in ``output_folder\\...``.
         """
 
-        with h5py.File(filename, "w") as f:
+        with h5py.File(sol_filepath, "w") as f:
             # add static data group
             need_static = add_static_data or (
                 cell_ids.size == self.reservoir.mesh.n_res_blocks
@@ -787,13 +786,13 @@ class Output:
         os.makedirs(self.output_folder, exist_ok=True)
         os.makedirs(os.path.join(self.output_folder, "figures"), exist_ok=True)
 
-        # solution ouput
+        # solution output
         if kind == "reservoir":
-            sol_output_path = os.path.join(self.output_folder, self.sol_filename)
-            if os.path.exists(sol_output_path):  # and not restart:
-                os.remove(sol_output_path)
+            sol_filepath = os.path.join(self.output_folder, self.sol_filename)
+            if os.path.exists(sol_filepath):  # and not restart:
+                os.remove(sol_filepath)
             self.configure_h5_output(
-                filename=sol_output_path,
+                sol_filepath=sol_filepath,
                 cell_ids=np.arange(self.reservoir.mesh.n_res_blocks),
                 add_static_data=False,
                 description="Reservoir data",
@@ -813,7 +812,7 @@ class Output:
             if os.path.exists(well_output_path):
                 os.remove(well_output_path)
             self.configure_h5_output(
-                filename=well_output_path,
+                sol_filepath=well_output_path,
                 cell_ids=self.id_well_data,
                 add_static_data=True,
                 description="Well data",
@@ -824,18 +823,18 @@ class Output:
         else:
             self.output_configured = [kind]
 
-    def save_specific_data(self, filename, X_data=None):
+    def save_specific_data(self, sol_filepath, X_data=None):
         """
         Save simulation data to an HDF5 file.
 
-        :param filename: Path to the HDF5 file.
-        :type filename: str
-        :param X_data: Optional tuple containing (time array, data array). If None, current engine state is saved.
-        :type X_data: tuple or None
+        :param sol_filepath: Path to the HDF5 file.
+        :type sol_filepath: str
+        :param X_data: Tuple containing (time array, data array). If None, current engine state is saved.
+        :type X_data: tuple or list or None
         """
         is_batch = X_data is not None
 
-        with h5py.File(filename, "a") as f:
+        with h5py.File(sol_filepath, "a") as f:
             time_dataset = f["dynamic/time"]
             x_dataset = f["dynamic/X"]
             cell_id = f["dynamic/cell_id"][:]
@@ -874,7 +873,7 @@ class Output:
 
         if self.verbose:
             mode = "batch" if is_batch else "single"
-            print(f"[{mode}] Saved {n_new} entry(ies) to {filename}")
+            print(f"[{mode}] Saved {n_new} entry(ies) to {sol_filepath}")
 
     def save_data_to_h5(self, kind):
         """
@@ -912,13 +911,15 @@ class Output:
             raise ValueError("kind must be either 'well' or 'reservoir'.")
 
     def read_specific_data(
-        self, filename: str, ts_idx: int = None
+        self,
+        sol_filepath: str,
+        ts_idx: int = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Extract time and data (primary variables) from an HDF5 file for a given timestep
 
-        :param filename: Path to the HDF5 file.
-        :type filename: str
+        :param sol_filepath: Path to the HDF5 file.
+        :type sol_filepath: str
         :param ts_idx: The timestep index to extract data for.
         :type ts_idx: int
         :returns:
@@ -929,22 +930,21 @@ class Output:
         :raises FileNotFoundError: If the file does not exist.
         :raises IndexError: If `ts_idx` is out of range.
         """
-
         try:
-            with h5py.File(filename, "r") as file:
+            with h5py.File(sol_filepath, "r") as file:
                 if ts_idx is None:
                     cell_id = file["dynamic/cell_id"][:]
                     var_names = file["dynamic/variable_names"][:]
                     time = file["dynamic/time"][:]
 
                     # memory check
-                    dataset = file[
-                        "dynamic/X"
-                    ]  # does not load data into memory since we are not slicing
+                    # does not load data into memory since we are not slicing
+                    dataset = file["dynamic/X"]
                     convert2MB = 1e6
+                    # number of bytes per element
                     estimated_size_mb = (
                         dataset.size * dataset.dtype.itemsize / convert2MB
-                    )  # number of bytes per element
+                    )
                     if estimated_size_mb > 1000:  # throw a warning if more than 1GB
                         print(
                             f"WARNING: Dataset 'X' is approximately {estimated_size_mb:.1f} MB. Loading it may impact memory performance."
@@ -969,14 +969,14 @@ class Output:
 
                     except IndexError as err:
                         raise IndexError(
-                            f"Timestep {ts_idx} does not exist in {filename}."
+                            f"Timestep {ts_idx} does not exist in {sol_filepath}."
                         ) from err
 
             for i, name in enumerate(var_names):
                 var_names[i] = name.decode()
 
         except FileNotFoundError as err:
-            raise FileNotFoundError(f"File not found: {filename}.") from err
+            raise FileNotFoundError(f"File not found: {sol_filepath}.") from err
 
         return time, cell_id, X, var_names
 

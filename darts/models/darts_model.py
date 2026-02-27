@@ -240,28 +240,27 @@ class DartsModel:
             self.timer.node["simulation"],
         )
 
-    def load_restart_data(self, reservoir_filename: str, ts_idx: int = -1):
+    def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
         Beware that loading restart data resets the engine.
 
-        :param reservoir_filename: Path to the restart file containing reservoir block data.
-        :type reservoir_filename: str
+        :param reservoir_filepath: Path to the restart file containing reservoir block data.
+        :type reservoir_filepath: str
         :param ts_idx: The timestep index to load from the file (default: -1 for the last timestep)
         :type ts_idx: int
         """
-
         # check if the files with data exist
         if not os.path.exists(
-            reservoir_filename
-        ):  # or not os.path.exists(well_filename):
+            reservoir_filepath
+        ):  # or not os.path.exists(well_filepath):
             raise FileNotFoundError(
-                f"The restart file does not exist: {reservoir_filename}"
+                f"The restart file does not exist: {reservoir_filepath}"
             )
 
         # Read data from the file
         time_res, reservoir_cell_id, Xres, var_names = self.output.read_specific_data(
-            reservoir_filename, ts_idx
+            reservoir_filepath, ts_idx
         )
 
         # load data as initial conditions
@@ -276,7 +275,7 @@ class DartsModel:
         self.physics.engine.t = time_res[0]
 
         # save initial conditions to *.h5 file
-        print(rf'Restarting model from {reservoir_filename} at day {time_res[0]}.')
+        print(rf'Restarting model from {reservoir_filepath} at day {time_res[0]}.')
         self.output.save_data_to_h5(kind='reservoir')
 
         return
