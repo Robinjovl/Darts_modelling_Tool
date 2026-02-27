@@ -652,7 +652,7 @@ class StrictModelSpec(SpecBaseModel):
     ] = None
 
 
-class PatchPluginSlots(SpecBaseModel):
+class PatchPluginSlots(StrictPluginSlots):
     """Optional evaluator plugin overrides."""
 
     model_config = ConfigDict(
@@ -669,40 +669,8 @@ class PatchPluginSlots(SpecBaseModel):
         },
     )
 
-    flash_ev: Annotated[
-        StrictPluginInstance | None, Field(description="Flash evaluator plugin")
-    ] = None
-    density_ev: Annotated[
-        dict[str, StrictPluginInstance] | None,
-        Field(description="Density evaluator plugins per phase"),
-    ] = None
-    viscosity_ev: Annotated[
-        dict[str, StrictPluginInstance] | None,
-        Field(description="Viscosity evaluator plugins per phase"),
-    ] = None
-    enthalpy_ev: Annotated[
-        dict[str, StrictPluginInstance] | None,
-        Field(description="Enthalpy evaluator plugins per phase"),
-    ] = None
-    conductivity_ev: Annotated[
-        dict[str, StrictPluginInstance] | None,
-        Field(description="Thermal conductivity plugins per phase"),
-    ] = None
-    rel_perm_ev: Annotated[
-        dict[str, StrictPluginInstance] | None,
-        Field(description="Relative permeability plugins per phase"),
-    ] = None
-    diffusion_ev: Annotated[
-        dict[str, StrictPluginInstance] | None,
-        Field(description="Diffusion evaluator plugins per phase"),
-    ] = None
-    kinetic_rate_ev: Annotated[
-        dict[str, StrictPluginInstance] | None,
-        Field(description="Kinetic rate plugins keyed by reaction index"),
-    ] = None
 
-
-class PatchPropertyRegionSpec(SpecBaseModel):
+class PatchPropertyRegionSpec(StrictPropertyRegionSpec):
     """Partial property region override."""
 
     model_config = ConfigDict(
@@ -734,7 +702,7 @@ class PatchPropertyRegionSpec(SpecBaseModel):
     ] = None
 
 
-class PatchPhysicsSpec(SpecBaseModel):
+class PatchPhysicsSpec(StrictPhysicsSpec):
     """Partial physics override."""
 
     model_config = ConfigDict(
@@ -768,7 +736,7 @@ class PatchPhysicsSpec(SpecBaseModel):
     ] = None
 
 
-class PatchReservoirSpec(SpecBaseModel):
+class PatchReservoirSpec(StrictReservoirSpec):
     """Partial reservoir override."""
 
     model_config = ConfigDict(
@@ -793,33 +761,6 @@ class PatchReservoirSpec(SpecBaseModel):
     nz: Annotated[
         int | None, Field(ge=1, description="Number of cells in z direction")
     ] = None
-    dx: Annotated[
-        ReservoirValue | None, Field(gt=0, description="Cell size in x direction [m]")
-    ] = None
-    dy: Annotated[
-        ReservoirValue | None, Field(gt=0, description="Cell size in y direction [m]")
-    ] = None
-    dz: Annotated[
-        ReservoirValue | None, Field(gt=0, description="Cell size in z direction [m]")
-    ] = None
-    permx: Annotated[
-        ReservoirValue | None,
-        Field(gt=0, description="Permeability in x direction [mD]"),
-    ] = None
-    permy: Annotated[
-        ReservoirValue | None,
-        Field(gt=0, description="Permeability in y direction [mD]"),
-    ] = None
-    permz: Annotated[
-        ReservoirValue | None,
-        Field(gt=0, description="Permeability in z direction [mD]"),
-    ] = None
-    poro: Annotated[
-        ReservoirValue | None, Field(ge=0, le=1, description="Porosity [fraction]")
-    ] = None
-    depth: Annotated[
-        ReservoirValue | None, Field(ge=0, description="Reference depth [m]")
-    ] = None
     hcap: Annotated[float | None, Field(ge=0, description="Heat capacity [J/kg-K]")] = (
         None
     )
@@ -827,13 +768,9 @@ class PatchReservoirSpec(SpecBaseModel):
         float | None,
         Field(ge=0, description="Rock thermal conductivity [W/m-K]"),
     ] = None
-    layers: Annotated[
-        list[StrictReservoirLayerSpec] | None,
-        Field(description="Layered overrides for per-cell properties"),
-    ] = None
 
 
-class PatchWellControlsSpec(SpecBaseModel):
+class PatchWellControlsSpec(StrictWellControlsSpec):
     """Partial well controls override."""
 
     model_config = ConfigDict(
@@ -841,38 +778,8 @@ class PatchWellControlsSpec(SpecBaseModel):
         json_schema_extra={"examples": [{"inj_bhp": 150.0, "rate_type": "MOLAR_RATE"}]},
     )
 
-    inj_bhp: Annotated[
-        float | None, Field(ge=0, description="Injector bottom-hole pressure [bar]")
-    ] = None
-    prod_bhp: Annotated[
-        float | None, Field(ge=0, description="Producer bottom-hole pressure [bar]")
-    ] = None
-    inj_composition: Annotated[
-        list[float] | None,
-        Field(description="Injector composition (length = nc or nc-1)"),
-    ] = None
-    inj_temp: Annotated[
-        float | None, Field(gt=0, description="Injector temperature [K]")
-    ] = None
-    inj_rate: Annotated[
-        float | None, Field(ge=0, description="Injector target rate")
-    ] = None
-    rate_type: Annotated[
-        Literal[
-            "MOLAR_RATE",
-            "MASS_RATE",
-            "VOLUMETRIC_RATE",
-            "ADVECTIVE_HEAT_RATE",
-        ]
-        | None,
-        Field(description="Rate control type for injector"),
-    ] = None
-    phase_name: Annotated[
-        str | None, Field(description="Phase name for rate-controlled injector")
-    ] = None
 
-
-class PatchWellPerforation(SpecBaseModel):
+class PatchWellPerforation(StrictWellPerforation):
     """Partial perforation override."""
 
     model_config = ConfigDict(
@@ -884,11 +791,9 @@ class PatchWellPerforation(SpecBaseModel):
         list[int] | None,
         Field(description="[i,j,k] indices (1-based)", min_length=3, max_length=3),
     ] = None
-    well_radius: Annotated[float | None, Field(gt=0, description="Well radius")] = None
-    skin: Annotated[float | None, Field(description="Skin factor")] = None
 
 
-class PatchWellSpec(SpecBaseModel):
+class PatchWellSpec(StrictWellSpec):
     """Partial well override."""
 
     model_config = ConfigDict(
@@ -910,7 +815,7 @@ class PatchWellSpec(SpecBaseModel):
     ] = None
 
 
-class PatchWellsSpec(SpecBaseModel):
+class PatchWellsSpec(StrictWellsSpec):
     """Partial wells override."""
 
     model_config = ConfigDict(
@@ -928,7 +833,7 @@ class PatchWellsSpec(SpecBaseModel):
     ] = None
 
 
-class PatchInitialConditionsSpec(SpecBaseModel):
+class PatchInitialConditionsSpec(StrictInitialConditionsSpec):
     """Partial initial conditions override."""
 
     model_config = ConfigDict(
@@ -942,7 +847,7 @@ class PatchInitialConditionsSpec(SpecBaseModel):
     ] = None
 
 
-class PatchSimParamsSpec(SpecBaseModel):
+class PatchSimParamsSpec(StrictSimParamsSpec):
     """Partial simulation parameters override."""
 
     model_config = ConfigDict(
@@ -952,46 +857,8 @@ class PatchSimParamsSpec(SpecBaseModel):
         },
     )
 
-    first_ts: Annotated[
-        float | None, Field(gt=0, description="First time step [d]")
-    ] = None
-    mult_ts: Annotated[
-        float | None, Field(gt=0, description="Time step multiplier")
-    ] = None
-    max_ts: Annotated[
-        float | None, Field(gt=0, description="Maximum time step [d]")
-    ] = None
-    runtime: Annotated[
-        float | None, Field(gt=0, description="Simulation runtime [d]")
-    ] = None
-    tol_newton: Annotated[float | None, Field(gt=0, description="Newton tolerance")] = (
-        None
-    )
-    tol_linear: Annotated[float | None, Field(gt=0, description="Linear tolerance")] = (
-        None
-    )
-    it_newton: Annotated[
-        int | None, Field(ge=1, description="Maximum number of Newton iterations")
-    ] = None
-    it_linear: Annotated[
-        int | None, Field(ge=1, description="Maximum number of linear iterations")
-    ] = None
-    line_search: Annotated[
-        bool | None, Field(description="Enable line search for Newton solver")
-    ] = None
-    newton_tol_stationary: Annotated[
-        float | None, Field(gt=0, description="Stationary Newton tolerance")
-    ] = None
-    newton_type: Annotated[
-        Literal["newton_local_chop", "default"] | None,
-        Field(description="Newton type identifier"),
-    ] = None
-    min_line_search_update: Annotated[
-        float | None, Field(gt=0, description="Minimum line search update")
-    ] = None
 
-
-class PatchOutputSpec(SpecBaseModel):
+class PatchOutputSpec(StrictOutputSpec):
     """Partial output override."""
 
     model_config = ConfigDict(
@@ -999,17 +866,8 @@ class PatchOutputSpec(SpecBaseModel):
         json_schema_extra={"examples": [{"folder": "output", "precision": "d"}]},
     )
 
-    folder: Annotated[str | None, Field(description="Output folder")] = None
-    precision: Annotated[
-        Literal["s", "d"] | None,
-        Field(description="Output precision (s=single, d=double)"),
-    ] = None
-    save_initial: Annotated[
-        bool | None, Field(description="Save initial state to output")
-    ] = None
 
-
-class PatchModelSpec(SpecBaseModel):
+class PatchModelSpec(StrictModelSpec):
     """Partial model spec for merge-patch updates."""
 
     model_config = ConfigDict(
@@ -1027,10 +885,6 @@ class PatchModelSpec(SpecBaseModel):
     ] = None
     kind: Annotated[
         Literal["Model"] | None, Field(description="Schema kind identifier")
-    ] = None
-    plugin_registry: Annotated[
-        PluginRegistrySpec | DataRef | None,
-        Field(description="Local plugin registry configuration"),
     ] = None
     reservoir: Annotated[
         PatchReservoirSpec | DataRef | None,
