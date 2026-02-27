@@ -3,6 +3,9 @@ trigger-darts-models:
   needs:
     - job: build-linux-oahu-gpu
     - job: build-windows
+      parallel:
+        matrix:
+          - PY_VER: $DEFAULT_PY_VER
   trigger:
     project: open-darts/darts-models
     branch: avnovikov/open_darts_trigger
