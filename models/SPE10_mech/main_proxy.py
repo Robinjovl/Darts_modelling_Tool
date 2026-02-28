@@ -284,7 +284,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         ux = upx1 + utx1
         uy = upy1 + uty1
         uz = upz1 + utz1
-        return ux, uy, uz # thermoporoelastic displacements [m]
+        return uy, ux, uz # thermoporoelastic displacements [m]
 
     def get_eval_points(mode, shift_x=0, shift_y=0):
         if mode == 'centers':
@@ -401,8 +401,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             if ('stress' in mode or 'strain' in mode) and plot_thm2:
                 plt.plot(thm2, z_range, label=mode + '_THM2', color='black')#marker='.', 
                 
-            if mode == 'delta_total_stress_z' and np.fabs(prx.max()) < 0.05 and np.fabs(thm.max()) < 0.05: # vertical stress is almost zero
-                plt.xlim(-0.25, 0.25)    
+            # for comparizon with analytical solution laterally infinite rsv
+            #if mode == 'delta_total_stress_z' and np.fabs(prx.max()) < 0.05 and np.fabs(thm.max()) < 0.05: # vertical stress is almost zero
+            #    plt.xlim(-0.25, 0.25)    
             plt.gca().invert_yaxis()
             plt.xlabel(s)
             plt.title(s)
@@ -434,7 +435,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    #points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift abit to make it at the cell centers by XY
+    points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift a bit to make it at the cell centers by XY
     #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
     #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
     #points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
@@ -641,8 +642,8 @@ if __name__ == '__main__':
     #timestep = 1
     #timestep = 4
     
-    run_thm = True
-    #run_thm = False
+    #run_thm = True
+    run_thm = False
     
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
     generate_mesh=True
