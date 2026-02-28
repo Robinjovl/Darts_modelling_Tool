@@ -190,7 +190,8 @@ class Model(CICDModel):
         self.reservoir.discretizer.len_cell_xdir[0, 0, 0] = 50.0
         self.reservoir.discretizer.len_cell_ydir[0, 0, 0] = 50.0
         self.reservoir.discretizer.len_cell_zdir[0, 0, 0] = 50.0
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
+                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]

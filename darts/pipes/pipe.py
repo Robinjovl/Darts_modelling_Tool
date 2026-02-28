@@ -7,6 +7,11 @@ Revert the density averaging method here (now it is similar to DWell):
 Notes:
     - The kinetic energy is not added to the energy conservation equation of the coupled model yet, while it was in the
     standalone wellbore model.
+
+    - When having a DFM pipe:
+        - Use 'G' as the name of the gaseous phase
+        - Use 'L' as the name of the liquid phase (for a single liquid phase)
+        - Use 'L_a' and 'L_b' as the names of the liquid phases (for two liquid phases)
 """
 
 import math
@@ -84,11 +89,8 @@ class Pipe:
                                  is expected to be zero or non-one phase saturation where saturation is expected to be 1.
                                  This leads to instability of evaluation of wellbore phase velocities. To avoid this
                                  either use a larger OBL resolution or use the direct method as a safe approach.
-                                 If the OBL approach is used the following points need to be followed when creating
+                                 If the OBL approach is used, the following point need to be followed when creating
                                  the model:
-                                 - Use 'G' as the name of the gaseous phase
-                                 - Use 'L' as the name of the liquid phase (for a single liquid phase)
-                                 - Use 'L_a' and 'L_b' as the names of the liquid phases (for two liquid phases)
                                  - In output_props of the property container, specify phase saturation, density,
                                    viscosity, and mass composition of each phase with appropriate names as keys.
         :type prop_eval_method: str
@@ -112,10 +114,47 @@ class Pipe:
         )
         self.name = pipe_name
         self.geometry = pipe_geometry
-        self.physics = physics
-        self.reservoir = reservoir
+
+        # Check if names and number of phases are as expected. Then, store phase indices.
+        phase_names = physics.phases
+        nph = physics.nph
+        assert "G" in phase_names, (
+            "Gaseous phase with the name 'G' is not found in the list of phases!"
+        )
+        self.g_idx = phase_names.index("G")
+        if nph == 2:
+            assert "L" in phase_names, (
+                "Liquid phase with the name 'L' is not found in the list of phases!"
+            )
+            self.l_idx = phase_names.index("L")
+        elif nph == 3:
+            assert "L_a" in phase_names, (
+                "Liquid phase with the name 'L_a' is not found in the list of phases!"
+            )
+            assert "L_b" in phase_names, (
+                "Liquid phase with the name 'L_b' is not found in the list of phases!"
+            )
+            self.la_idx = phase_names.index("L_a")
+            self.lb_idx = phase_names.index("L_b")
+        else:
+            raise Exception(f"{nph} phase(s) is not supported!")
 
         self.isothermal = not physics.thermal
+        pc = physics.property_containers[0]
+        if self.isothermal:
+            assert pc.temperature is not None, (
+                "If model is isothermal, system_temperature must be specified!"
+            )
+        elif not self.isothermal:
+            assert pc.temperature is None, (
+                "If model is non-isothermal, system_temperature must not be specified!"
+            )
+        self.system_temperature = pc.temperature
+        self.p_idx = physics.vars.index("pressure")
+
+        self.physics = physics
+
+        self.reservoir = reservoir
 
         self.initial_conditions = initial_conditions
 
@@ -129,17 +168,6 @@ class Pipe:
                 "Pipe names in pipe_name and source_sink are not identical!"
             )
         self.source_sinks = source_sinks
-
-        pc = self.physics.property_containers[0]
-        if self.isothermal:
-            assert pc.temperature is not None, (
-                "If model is isothermal, system_temperature must be specified!"
-            )
-        elif not self.isothermal:
-            assert pc.temperature is None, (
-                "If model is non-isothermal, system_temperature must not be specified!"
-            )
-        self.system_temperature = pc.temperature
 
         self.Cmax = Cmax
         self.B = 2 / Cmax - 1.0667
@@ -192,7 +220,6 @@ class Pipe:
         self.a1 = a1
         self.a2 = a2
 
-        # For phase velocity evaluation
         self.g_cos_theta = self.g * np.cos(pipe_geometry.inclination_angle_radian)
         if isinstance(self.g_cos_theta, float):
             self.g_cos_theta = self.g_cos_theta * np.ones(pipe_geometry.num_interfaces)
@@ -208,20 +235,20 @@ class Pipe:
             )
         # The following vars are used for the property interpolator used if prop_eval_method is OBL
         if self.prop_eval_method == "OBL":
-            if len(pc.output_props) < self.physics.n_ops:
+            n_output_props = len(pc.output_props)
+            n_vars = self.physics.n_vars
+            n_segments = pipe_geometry.num_segments
+            if n_output_props < self.physics.n_ops:
                 self.n_prop_ops = self.physics.n_ops
             else:
-                self.n_prop_ops = len(pc.output_props) + self.physics.n_vars
-            self.block_idx = index_vector(
-                np.arange(pipe_geometry.num_segments).astype(np.int32)
-            )
+                self.n_prop_ops = n_output_props + n_vars
+            self.block_idx = index_vector(np.arange(n_segments).astype(np.int32))
             # This variable (derivatives of props) is not used in calculations. Derivatives of operators are used.
             self.dvalues = value_vector(
-                np.zeros(
-                    (pipe_geometry.num_segments * self.n_prop_ops) * self.n_prop_ops
-                )
+                np.zeros((n_segments * self.n_prop_ops) * n_vars)
             )
 
+        # Set the properties required for the specified differentiation method
         assert isinstance(diff_method, str), (
             "diff_method for pipe velocity differentiation must be a string!"
         )
@@ -293,7 +320,24 @@ class Pipe:
         nc = self.physics.nc
         n_vars = self.physics.n_vars
 
+        Xn_dfm_well_2d = Xn_dfm_well.reshape(num_segments, n_vars)
+        X_dfm_well_2d = X_dfm_well.reshape(num_segments, n_vars)
+
         pc = self.physics.property_containers[0]
+
+        if self.diff_method == "OBL":
+            # Get operator indices
+            GRAV_OP = self.physics.reservoir_operators[0].GRAV_OP
+            SAT_OP = self.physics.reservoir_operators[0].SAT_OP
+            PRES_OP = self.physics.reservoir_operators[0].PRES_OP
+
+        # Get phase indices
+        g_idx = self.g_idx
+        if pc.nph == 2:
+            l_idx = self.l_idx
+        elif pc.nph == 3:
+            la_idx = self.la_idx
+            lb_idx = self.lb_idx
 
         """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
@@ -309,11 +353,9 @@ class Pipe:
                 prop_arr0 = {prop: np.zeros(num_segments) for prop in pc.output_props}
 
                 # Fill the prop dict
+                values0_reshaped = np.asarray(values0).reshape(-1, self.n_prop_ops)
                 for prop_idx, prop_name in enumerate(pc.output_props):
-                    prop_arr_temporary = np.asarray(values0)[
-                        prop_idx :: self.n_prop_ops
-                    ]
-                    prop_arr0[prop_name] = prop_arr_temporary
+                    prop_arr0[prop_name] = values0_reshaped[:, prop_idx]
 
                 sG0 = prop_arr0['sG']
                 rhoG0 = prop_arr0['rhoG']
@@ -385,40 +427,34 @@ class Pipe:
                     xL_b_mass_0 = np.zeros((num_segments, nc))
 
                 for i in range(num_segments):
-                    state0 = Xn_dfm_well[i * n_vars : (i + 1) * n_vars]
+                    state0 = Xn_dfm_well_2d[i, :]
                     pc.evaluate(state0)
                     if self.physics.thermal:
                         pc.evaluate_thermal(state0)
 
+                    sG0[i] = pc.sat[g_idx]
+                    rhoG0[i] = pc.dens[g_idx]
+                    miuG0[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
                     if pc.nph == 2:
-                        sG0[i] = pc.sat[0]
-                        rhoG0[i], rhoL0[i] = pc.dens[0], pc.dens[1]
-                        miuG0[i], miuL0[i] = (
-                            pc.mu[0] * 1e-3,
-                            pc.mu[1] * 1e-3,
-                        )  # convert cP to Pa.s
+                        rhoL0[i] = pc.dens[l_idx]
+                        miuL0[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                         # Calculate mass fractions of components in each phase
                         x_mass0 = np.zeros((pc.nph, nc))
                         for j in pc.ph:
                             x_mass0[j, :] = (pc.x[j, :] * pc.Mw) / sum(
                                 pc.x[j, :] * pc.Mw
                             )
-                        xG_mass0[i, :], xL_mass0[i, :] = x_mass0[0, :], x_mass0[1, :]
+                        xG_mass0[i, :], xL_mass0[i, :] = (
+                            x_mass0[g_idx, :],
+                            x_mass0[l_idx, :],
+                        )
 
                     if pc.nph == 3:
-                        # sG0[i], sL_a_0[i], sL_b_0[i] = pc.sat[1], pc.sat[0], pc.sat[2]
-                        # rhoG0[i], rhoL_a_0[i], rhoL_b_0[i] = pc.dens[1], pc.dens[0], pc.dens[2]
-                        # miuG0[i], miuL_a_0[i], miuL_b_0[i] = pc.mu[1] * 1e-3, pc.mu[0] * 1e-3, pc.mu[2] * 1e-3
-                        sG0[i], sL_a_0[i], sL_b_0[i] = pc.sat[0], pc.sat[1], pc.sat[2]
-                        rhoG0[i], rhoL_a_0[i], rhoL_b_0[i] = (
-                            pc.dens[0],
-                            pc.dens[1],
-                            pc.dens[2],
-                        )
-                        miuG0[i], miuL_a_0[i], miuL_b_0[i] = (
-                            pc.mu[0] * 1e-3,
-                            pc.mu[1] * 1e-3,
-                            pc.mu[2] * 1e-3,
+                        sL_a_0[i], sL_b_0[i] = pc.sat[la_idx], pc.sat[lb_idx]
+                        rhoL_a_0[i], rhoL_b_0[i] = pc.dens[la_idx], pc.dens[lb_idx]
+                        miuL_a_0[i], miuL_b_0[i] = (
+                            pc.mu[la_idx] * 1e-3,
+                            pc.mu[lb_idx] * 1e-3,
                         )
                         # Calculate mass fractions of components in each phase
                         x_mass0 = np.zeros((pc.nph, nc))
@@ -426,11 +462,10 @@ class Pipe:
                             x_mass0[j, :] = (pc.x[j, :] * pc.Mw) / sum(
                                 pc.x[j, :] * pc.Mw
                             )
-                        # xG_mass0[i, :], xL_a_mass_0[i, :], xL_b_mass_0[i, :] = x_mass0[1, :], x_mass0[0, :], x_mass0[2, :]
                         xG_mass0[i, :], xL_a_mass_0[i, :], xL_b_mass_0[i, :] = (
-                            x_mass0[0, :],
-                            x_mass0[1, :],
-                            x_mass0[2, :],
+                            x_mass0[g_idx, :],
+                            x_mass0[la_idx, :],
+                            x_mass0[lb_idx, :],
                         )
 
                         # Calculate averaged liquid props
@@ -484,9 +519,9 @@ class Pipe:
             prop_arr = {prop: np.zeros(num_segments) for prop in pc.output_props}
 
             # Fill the prop dict
+            values_reshaped = np.asarray(values).reshape(-1, self.n_prop_ops)
             for prop_idx, prop_name in enumerate(pc.output_props):
-                prop_arr_temporary = np.asarray(values)[prop_idx :: self.n_prop_ops]
-                prop_arr[prop_name] = prop_arr_temporary
+                prop_arr[prop_name] = values_reshaped[:, prop_idx]
 
             sG = prop_arr['sG']
             rhoG = prop_arr['rhoG']
@@ -555,44 +590,35 @@ class Pipe:
                 xL_b_mass = np.zeros((num_segments, nc))
 
             for i in range(num_segments):
-                state = X_dfm_well[i * n_vars : (i + 1) * n_vars]
+                state = X_dfm_well_2d[i, :]
                 pc.evaluate(state)
                 if self.physics.thermal:
                     pc.evaluate_thermal(state)
 
+                sG[i] = pc.sat[g_idx]
+                rhoG[i] = pc.dens[g_idx]
+                miuG[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
                 if pc.nph == 2:
-                    sG[i] = pc.sat[0]
-                    rhoG[i], rhoL[i] = pc.dens[0], pc.dens[1]
-                    miuG[i], miuL[i] = (
-                        pc.mu[0] * 1e-3,
-                        pc.mu[1] * 1e-3,
-                    )  # convert cP to Pa.s
+                    rhoL[i] = pc.dens[l_idx]
+                    miuL[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                     # Calculate mass fractions of components in each phase
                     x_mass = np.zeros((pc.nph, nc))
                     for j in pc.ph:
                         x_mass[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
-                    xG_mass[i, :], xL_mass[i, :] = x_mass[0, :], x_mass[1, :]
+                    xG_mass[i, :], xL_mass[i, :] = x_mass[g_idx, :], x_mass[l_idx, :]
 
                 if pc.nph == 3:
-                    # sG[i], sL_a[i], sL_b[i] = pc.sat[1], pc.sat[0], pc.sat[2]
-                    # rhoG[i], rhoL_a[i], rhoL_b[i] = pc.dens[1], pc.dens[0], pc.dens[2]
-                    # miuG[i], miuL_a[i], miuL_b[i] = pc.mu[1] * 1e-3, pc.mu[0] * 1e-3, pc.mu[2] * 1e-3
-                    sG[i], sL_a[i], sL_b[i] = pc.sat[0], pc.sat[1], pc.sat[2]
-                    rhoG[i], rhoL_a[i], rhoL_b[i] = pc.dens[0], pc.dens[1], pc.dens[2]
-                    miuG[i], miuL_a[i], miuL_b[i] = (
-                        pc.mu[0] * 1e-3,
-                        pc.mu[1] * 1e-3,
-                        pc.mu[2] * 1e-3,
-                    )
+                    sL_a[i], sL_b[i] = pc.sat[la_idx], pc.sat[lb_idx]
+                    rhoL_a[i], rhoL_b[i] = pc.dens[la_idx], pc.dens[lb_idx]
+                    miuL_a[i], miuL_b[i] = pc.mu[la_idx] * 1e-3, pc.mu[lb_idx] * 1e-3
                     # Calculate mass fractions of components in each phase
                     x_mass = np.zeros((pc.nph, nc))
                     for j in pc.ph:
                         x_mass[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
-                    # xG_mass[i, :], xL_a_mass[i, :], xL_b_mass[i, :] = x_mass[1, :], x_mass[0, :], x_mass[2, :]
                     xG_mass[i, :], xL_a_mass[i, :], xL_b_mass[i, :] = (
-                        x_mass[0, :],
-                        x_mass[1, :],
-                        x_mass[2, :],
+                        x_mass[g_idx, :],
+                        x_mass[la_idx, :],
+                        x_mass[lb_idx, :],
                     )
 
                     # Calculate averaged liquid props
@@ -622,20 +648,35 @@ class Pipe:
 
         # If the differentiation method is OBL, calculate phase property derivatives
         if self.diff_method == "OBL":
-            sG_der = self.get_operator_der_matrix_for_well(
-                op_idx=self.physics.reservoir_operators[0].SAT_OP + 0
-            )
-            rhoG_der = self.get_operator_der_matrix_for_well(
-                op_idx=self.physics.reservoir_operators[0].GRAV_OP + 0
-            )
-            rhoL_der = self.get_operator_der_matrix_for_well(
-                op_idx=self.physics.reservoir_operators[0].GRAV_OP + 1
-            )
-            self.iter_phases_props_der = [sG_der, rhoG_der, rhoL_der]
+            sG_der = self.get_op_der_matrix(op_idx=SAT_OP + g_idx)
+            rhoG_der = self.get_op_der_matrix(op_idx=GRAV_OP + g_idx)
+            if pc.nph == 2:
+                rhoL_der = self.get_op_der_matrix(op_idx=GRAV_OP + l_idx)
+            elif pc.nph == 3:
+                rhoL_a_der = self.get_op_der_matrix(op_idx=GRAV_OP + la_idx)
+                rhoL_b_der = self.get_op_der_matrix(op_idx=GRAV_OP + lb_idx)
+                sL_a_der = self.get_op_der_matrix(op_idx=SAT_OP + la_idx)
+                sL_b_der = self.get_op_der_matrix(op_idx=SAT_OP + lb_idx)
+                # TODO: I took the code above to write this derivative. The code above itself has TODO.
+                rhoL_der = np.where(
+                    (sL_a + sL_b) > 0,
+                    (
+                        (sL_a + sL_b)
+                        * (
+                            sL_a * rhoL_a_der
+                            + rhoL_a * sL_a_der
+                            + sL_b * rhoL_b_der
+                            + rhoL_b * sL_b_der
+                        )
+                        - (rhoL_a * sL_a + rhoL_b * sL_b) * (sL_a_der + sL_b_der)
+                    )
+                    / (sL_a + sL_b) ** 2,
+                    0.0,
+                )
 
         """ Calculate phase props of previous time step at interfaces """
         if iter_counter == 0 and flag == 1:
-            sG0_face = (sG0[0:-1] + sG0[1:]) / 2
+            sG0_face = (sG0[:-1] + sG0[1:]) / 2
 
             # Initialize arrays to store interface properties
             rhoG0_face = np.zeros(num_segments - 1)
@@ -699,9 +740,9 @@ class Pipe:
             ]
 
         """ Calculate phase props of current time step at interfaces """
-        sG_face = (sG[0:-1] + sG[1:]) / 2
+        sG_face = (sG[:-1] + sG[1:]) / 2
         if self.diff_method == "OBL":
-            sG_face_der = (sG_der[0:-1, :] + sG_der[1:, :]) / 2
+            sG_face_der = (sG_der[:-1, :] + sG_der[1:, :]) / 2
 
         # Initialize arrays to store interface properties
         rhoG_face = np.zeros(num_segments - 1)
@@ -770,16 +811,11 @@ class Pipe:
 
         [_, vM0, vG0, vL0] = self.velocities0
 
-        p = X_dfm_well[0::n_vars] * 1e5  # convert bar to Pa
-        p_m = p[0:-1:1]
-        p_p = p[1::1]
+        p = X_dfm_well_2d[:, self.p_idx] * 1e5  # convert bar to Pa
+        p_m = p[:-1]
+        p_p = p[1:]
         if self.diff_method == "OBL":
-            p_der = (
-                self.get_operator_der_matrix_for_well(
-                    op_idx=self.physics.reservoir_operators[0].PRES_OP
-                )
-                * 1e5
-            )
+            p_der = self.get_op_der_matrix(op_idx=PRES_OP) * 1e5
             p_m_der = p_der[0:-1:1, :]
             p_p_der = p_der[1::1, :]
 
@@ -1376,9 +1412,9 @@ class Pipe:
 
         return phase_vels, phase_vels_ders
 
-    def get_operator_der_matrix_for_well(self, op_idx):
+    def get_op_der_matrix(self, op_idx):
         """
-        Extract the derivative matrix of the specified operator for a well. This operator derivative
+        Extract the derivative matrix of the specified operator for the well. This operator derivative
         matrix is used for differentiating phase velocities using the OBL approach.
 
         :param op_idx: Index of the desired operator

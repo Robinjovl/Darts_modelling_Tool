@@ -180,7 +180,8 @@ class Model(CICDModel):
         inj_phase_name = "G"
         injected_fluid_pressure = 60.
         injected_fluid_temperature = 10 + 273.15
-        inj_fluid_props = {"composition": inj_phase_comp, "phase_name": inj_phase_name, "pressure": injected_fluid_pressure, "temperature": injected_fluid_temperature}
+        inj_fluid_props = {"composition": inj_phase_comp, "phase_name": inj_phase_name,
+                           "pressure": injected_fluid_pressure,"temperature": injected_fluid_temperature}
 
         ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
                                   inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
