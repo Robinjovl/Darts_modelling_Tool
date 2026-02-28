@@ -16,9 +16,6 @@ trigger-darts-models:
     OPEN_DARTS_PIPELINE_ID: $CI_PIPELINE_ID
     OPEN_DARTS_COMMIT_SHA: $CI_COMMIT_SHA
     OPEN_DARTS_REF: $CI_COMMIT_REF_NAME
-    # Forward stronger credentials for cross-project artifact download.
-    GITLAB_TOKEN: $GITLAB_TOKEN
-    OPEN_DARTS_JOB_TOKEN: $CI_JOB_TOKEN
     OPEN_DARTS_LINUX_JOB_BASE: "build-linux-oahu-gpu"
     OPEN_DARTS_WINDOWS_JOB_BASE: "build-windows"
   rules:
