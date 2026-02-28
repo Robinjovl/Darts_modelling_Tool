@@ -171,12 +171,15 @@ class Model(CICDModel):
         inj_phase_comp = np.array([0.99, 0.01])
         inj_fluid_props = {"composition": inj_phase_comp}
 
-        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx, inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props)
+        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
+                                  inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
+                                  verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
         source_sinks = {"RampUpRate1": ramp_up_rate}
 
         # %% Store well props
-        self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions, source_sinks=source_sinks)}
+        self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
+                                 source_sinks=source_sinks, verbose=verbose)}
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
