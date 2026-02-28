@@ -94,17 +94,16 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        well_type = ms_well.MS_Type.EPM
         if self.grid_1D:
             """well location"""
-            self.reservoir.add_well("INJ_GAS", well_type)
+            self.reservoir.add_well("INJ_GAS")
             self.reservoir.add_perforation("INJ_GAS", res_cell_idx=(1, 1, 1))
 
-            self.reservoir.add_well("PROD", well_type)
+            self.reservoir.add_well("PROD")
             self.reservoir.add_perforation("PROD", res_cell_idx=(self.reservoir.nx, 1, 1))
 
         else:
-            self.reservoir.add_well("PROD_" + str(1), well_type)
+            self.reservoir.add_well("PROD_" + str(1))
             for k in range(self.reservoir.ny):
                 self.reservoir.add_perforation("PROD_" + str(1), res_cell_idx=(self.reservoir.nx, 1, k + 1))
 
