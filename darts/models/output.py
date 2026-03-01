@@ -1845,29 +1845,29 @@ class Output:
         save_output_files: bool = False,
     ):
         """
-        Compute and store well time data including rates and bottom-hole conditions (BHT and BHP)
+        Compute and store well time data including rates and bottom-hole pressure and temperature (BHT and BHP)
 
         Rates are calculated for each perforation and also total rate of each well. Total rates are calculated using
         two different methods:
         1- summing up the rates of perforations
         2- calculating the rates directly at the wellhead connection
 
-        :param phase_molar_rates: Compute phase molar rates, default is True
+        :param phase_molar_rates: Compute phase molar rates
         :type phase_molar_rates: bool
-        :param phase_mass_rates: Compute phase mass rates, default is True
+        :param phase_mass_rates: Compute phase mass rates
         :type phase_mass_rates:bool
-        :param phase_volumetric_rates: Compute phase volumetric rates, default is True
+        :param phase_volumetric_rates: Compute phase volumetric rates
         :type phase_volumetric_rates:bool
-        :param component_molar_rates: Compute component molar rates, default is True
+        :param component_molar_rates: Compute component molar rates
         :type component_molar_rates: bool
-        :param component_mass_rates: Compute component mass rates, default is True
+        :param component_mass_rates: Compute component mass rates
         :type component_mass_rates: bool
-        :param advective_heat_rates: Compute advective heat rates for thermal scenarios, default is True
+        :param advective_heat_rates: Compute advective heat rates for thermal scenarios
         :type advective_heat_rates: bool
-        :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default is false
+        :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder
         :type save_output_files: bool
         """
-        # Start timer for store_well_time_data
+        # Start timer for storing well time data
         self.timer.start()
         self.timer.node["output_well_time_data"].start()
 
@@ -1887,26 +1887,24 @@ class Output:
         self.store_bhp_bht(h5_well_data, time_data_dict)
 
         # Store types of well rates in a list to be calculated
-        types_of_well_rates = []
-        types_of_well_rates += ["phase_molar_rates"] if phase_molar_rates else []
-        types_of_well_rates += ["phase_mass_rates"] if phase_mass_rates else []
-        types_of_well_rates += (
-            ["phase_volumetric_rates"] if phase_volumetric_rates else []
-        )
-        types_of_well_rates += (
-            ["component_molar_rates"] if component_molar_rates else []
-        )
-        types_of_well_rates += ["component_mass_rates"] if component_mass_rates else []
-        types_of_well_rates += (
+        rate_types = []
+        rate_types += ["phase_molar_rates"] if phase_molar_rates else []
+        rate_types += ["phase_mass_rates"] if phase_mass_rates else []
+        rate_types += ["phase_volumetric_rates"] if phase_volumetric_rates else []
+        rate_types += ["component_molar_rates"] if component_molar_rates else []
+        rate_types += ["component_mass_rates"] if component_mass_rates else []
+        rate_types += (
             ["advective_heat_rates"] if advective_heat_rates and self.thermal else []
         )
 
-        for rate_type in types_of_well_rates:
-            if (
-                rate_type == "component_molar_rates"
-                or rate_type == "component_mass_rates"
+        for rate_type in rate_types:
+            # Since the geothermal engine supports only a single component, components rates are not needed.
+            if rate_type in (
+                "component_molar_rates",
+                "component_mass_rates",
             ) and isinstance(self.physics, Geothermal):
                 continue
+
             # Compute perforation rates
             rates_perfs = self.calc_rates_at_conns(
                 h5_well_data,
@@ -1918,7 +1916,8 @@ class Output:
             # Store perforation rates
             self.store_perf_rates(time_data_dict, rates_perfs, rate_type)
             # Store well rates by summing perforation rates
-            self.store_well_rates_sums(time_data_dict, rates_perfs, rate_type)
+            self.store_perf_rate_sums(time_data_dict, rates_perfs, rate_type)
+
             # Compute wellhead rates
             rates_wellhead = self.calc_rates_at_conns(
                 h5_well_data,
@@ -1930,16 +1929,14 @@ class Output:
             # Store wellhead rates
             self.store_wellhead_rates(time_data_dict, rates_wellhead, rate_type)
 
-        # Export time_data_dict
+        # Export the dict
         if save_output_files:
             df = pd.DataFrame(time_data_dict)
-            df.to_pickle(os.path.join(self.output_folder, "well_time_data.pkl"))
-            with pd.ExcelWriter(
-                os.path.join(self.output_folder, "well_time_data.xlsx")
-            ) as w:
-                df.to_excel(w, sheet_name="Sheet1")
+            file_base = os.path.join(self.output_folder, "well_time_data")
+            df.to_pickle(f"{file_base}.pkl")
+            df.to_excel(f"{file_base}.xlsx", index=False)
 
-        # End timer for store_well_time_data
+        # End timer for storing well time data
         self.timer.node["output_well_time_data"].stop()
         self.timer.stop()
         return time_data_dict
@@ -2043,7 +2040,7 @@ class Output:
                         time_data_dict[f"{tag}_advective_heat_rate_{phase_name}"] = arr
                 total_perf_idx += 1
 
-    def store_well_rates_sums(
+    def store_perf_rate_sums(
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
     ):
         """
@@ -2435,17 +2432,13 @@ class Output:
         time = df["time"]
 
         # Store types of well rates in a list to be plotted
-        types_of_well_rates = []
-        types_of_well_rates += ["phase_molar_rates"] if phase_molar_rates else []
-        types_of_well_rates += ["phase_mass_rates"] if phase_mass_rates else []
-        types_of_well_rates += (
-            ["phase_volumetric_rates"] if phase_volumetric_rates else []
-        )
-        types_of_well_rates += (
-            ["component_molar_rates"] if component_molar_rates else []
-        )
-        types_of_well_rates += ["component_mass_rates"] if component_mass_rates else []
-        types_of_well_rates += (
+        rate_types = []
+        rate_types += ["phase_molar_rates"] if phase_molar_rates else []
+        rate_types += ["phase_mass_rates"] if phase_mass_rates else []
+        rate_types += ["phase_volumetric_rates"] if phase_volumetric_rates else []
+        rate_types += ["component_molar_rates"] if component_molar_rates else []
+        rate_types += ["component_mass_rates"] if component_mass_rates else []
+        rate_types += (
             ["advective_heat_rates"] if advective_heat_rates and self.thermal else []
         )
 
@@ -2456,9 +2449,10 @@ class Output:
             "heat": "kJ/day",
         }
 
-        for rtype in types_of_well_rates:
+        for rtype in rate_types:
             for well in self.reservoir.wells:
                 well_dir = os.path.join(main_dir, f"well_{well.name}")
+                # perforation rate plots
                 for perf_idx in range(len(well.perforations)):
                     subdir = os.path.join(well_dir, f"perf_{perf_idx}")
                     keys = self.create_perf_keys(rtype, well.name, perf_idx)
@@ -2473,7 +2467,7 @@ class Output:
                         plt.tight_layout()
                         plt.savefig(os.path.join(subdir, f"{key}.png"))
                         plt.close()
-                # total and wellhead plots
+                # total rate plots
                 total_keys = self.create_total_keys(rtype, well.name)
                 for key, ylabel in total_keys:
                     if key not in df.keys():
