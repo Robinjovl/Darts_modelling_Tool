@@ -2351,13 +2351,21 @@ class Output:
                 )
                 ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif physics.state_spec == physics.StateSpecification.PH:
-                # TODO This does not work properly if the super engine is of the PH type
-                # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
-                enthalpy_w, dens_m_w, kr_w, miu_w = -44582.2291, 55.4574, 1, 1.1328
-                ops_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
-                ops_dead = np.zeros(ops.shape)
-                # If value is zero, no need to subtract ops_dead_phase from it
-                ops_dead[ops != 0.0] = ops_dead_phase
+                if physics.nc == 1:
+                    # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
+                    enthalpy_w, dens_m_w, kr_w, miu_w = -44582.2291, 55.4574, 1, 1.1328
+                    ops_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
+                    ops_dead = np.zeros(ops.shape)
+                    # If value is zero, no need to subtract ops_dead_phase from it
+                    ops_dead[ops != 0.0] = ops_dead_phase
+                else:
+                    warnings.warn(
+                        "Advective heat rate is not supported for more than one component yet!",
+                        stacklevel=1,
+                    )
+
+                    # Since this is not supported yet, this makes the output heat rate equal to zero.
+                    ops_dead = ops
 
             ops = ops - ops_dead
 
