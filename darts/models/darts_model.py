@@ -601,8 +601,6 @@ class DartsModel:
 
         data_ts = self.data_ts
 
-        self.output.save_well_after_run = save_well_data_after_run
-
         if save_well_data_after_run:
             if not hasattr(self, "_well_output_configured"):
                 self.output.configure_output(kind="well")
@@ -630,8 +628,6 @@ class DartsModel:
 
         self.prev_dt = dt
 
-        ts_counter = 0
-
         nc = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
         max_dx = np.zeros(nc)
@@ -639,14 +635,14 @@ class DartsModel:
         if np.fabs(data_ts.dt_mult - 1) < 1e-10:
             omega = 0.0
         else:
-            omega = 1 / (
-                data_ts.dt_mult - 1
-            )  # inversion assuming mult = (1 + omega) / omega
+            # inversion assuming mult = (1 + omega) / omega
+            omega = 1 / (data_ts.dt_mult - 1)
+
+        ts_counter = 0
 
         while t < stop_time:
-            xn = np.array(self.physics.engine.Xn, copy=True)[
-                : nb * nc
-            ]  # need to copy since Xn will be updated Xn = X
+            # need to copy since Xn will be updated Xn = X
+            xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
             converged = self.run_timestep(dt, t, verbose)
 
             if converged:
