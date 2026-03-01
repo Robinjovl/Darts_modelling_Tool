@@ -81,11 +81,19 @@
 
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
+  - Introduce permporo_mult_ev, turn PORO_OP into MULT_OP, use harmonic mean for facial averaging of multiplier
 - EoSDensity and EoSEnthalpy API changes:
-	- Update darts-flash enthalpy call in EoSEnthalpy class: H_PT() to H()
-	- Add optional arguments to pass ions and lumped ions to EoSDensity and EoSEnthalpy constructors
+  - Update darts-flash enthalpy call in EoSEnthalpy class: eos.H_PT() to eos.H()
+  - Add optional arguments to pass ions and lumped ions to EoSDensity and EoSEnthalpy constructors
+- Contact mechanics generalization:
+  - Fixed logic in displaced_fault model: call self.reservoir_depletion() anyway since it is needed to check hash for objects for example porosity remove 'self.unstr_discr', 'self.pm' from checking hash as they are not available at check hash stage fix hash comparison (it was not comparing hash of the current data)
+  - added run_tests() to be able to run tests within a displaced_fault model, locally.
+  - Code refactoring (continues [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/188)):
+     1. get_normal_to_bound_face, get_parametrized_fault_props, write_fault_props are moved to the base class
+     2. code piece is put into a function 'init_fractures' of the base class
+- New feauture: pass property array dictionaries directly to output_to_vtk()
 
-# 1.3.1 [07-06-2025]
+# 1.3.1 [10-06-2025]
 - Add IPhreeqc to thirdparty dependencies, added phreeqc_dissolution model with CO2 injection and dissolution-precipitation kinetics [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
 - Apply_rhs_flux supported for GPU platform [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
 - Added .pvd file generation for unstructured meshes for Time in ParaView [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/216)
