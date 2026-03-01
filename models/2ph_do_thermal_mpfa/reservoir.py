@@ -279,7 +279,7 @@ class UnstructReservoir:
         """
         well = ms_well()
         well.name = name
-        well.ms_type = ms_well.MS_Type.EPM,
+        well.ms_type = ms_well.MS_Type.EPM
         well.segment_volume =  pi * wellbore_diameter ** 2 / 4
         well.well_head_depth = depth
         well.well_body_depth = depth
