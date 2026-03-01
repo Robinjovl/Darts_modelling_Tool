@@ -14,9 +14,6 @@ class DartsModelWithWellLivePlots(DartsModel):
         super().__init__()
 
     def init_live_plots(self):
-        """
-        Initialize live plots
-        """
         plt.ion()
 
         """ Start initializing the figure containing axes for profiles of wellbore properties """
@@ -349,10 +346,7 @@ class DartsModelWithWellLivePlots(DartsModel):
         }
         """ Stop initializing the figure containing axes for profiles of wellbore properties """
 
-    def update_live_plots(self):
-        """
-        Initialize (only for the first call) and update live plots
-        """
+    def update_live_plots(self, time: float, iter_counter: int):
         # Initialize once (first call only)
         if not self.live_fig_store:
             self.init_live_plots()
@@ -491,6 +485,13 @@ class DartsModelWithWellLivePlots(DartsModel):
         lines[15].set_data(x_res, miuL_res)
         axes[1, 7].relim()
         axes[1, 7].autoscale_view()
+
+        # Update the figure title
+        fig.suptitle(
+            self.live_plt_config.title_template.format(
+                time=time, iter_counter=iter_counter
+            )
+        )
 
         # Refresh display
         fig.canvas.draw_idle()

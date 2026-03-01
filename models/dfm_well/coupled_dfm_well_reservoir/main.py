@@ -2,11 +2,10 @@
 Single-component (CO2), 2-phase (gas and liquid) system
 Injection of liquid CO2 into a well and reservoir containing gaseous CO2
 
-Notes:
-    When using DFM wells:
-        for a 2-phase system, use G as the name of the gaseous phase and L as the name of the liquid phase.
-        for a 3-phase system, use G as the name of the gaseous phase, L_a, as the name of one of the liquid phases,
-        and L_b as the name of the other liquid phase.
+When using DFM wells:
+    for a 2-phase system, use G as the name of the gaseous phase and L as the name of the liquid phase.
+    for a 3-phase system, use G as the name of the gaseous phase, L_a, as the name of one liquid phase,
+    and L_b as the name of the other liquid phase.
 """
 
 import numpy as np
@@ -20,7 +19,7 @@ from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
 from model import Model
 
 
-redirect_darts_output('run_log.log')
+redirect_darts_output('run.log')
 coupled_model = Model()
 coupled_model.init()
 coupled_model.set_output()

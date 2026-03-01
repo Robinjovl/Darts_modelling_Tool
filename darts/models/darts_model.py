@@ -38,6 +38,8 @@ class LivePlottingConfig:
     every_newton_iter: bool = False
     # Index of the block which will be tracked on the PH diagram
     tracked_block_idx: int = 0
+    # Template of the figure title
+    title_template = "Time: {time:.4e} \nNR iteration counter: {iter_counter}"
 
 
 class DataTS:
@@ -778,7 +780,6 @@ class DartsModel:
                 self.physics.engine.newton_residual_last_dt = (
                     self.physics.engine.calc_newton_residual()
                 )  # calc norm of residual
-            # TODO Function line_search is not updated for the coupled model.
             elif self.has_dfm_well:
                 # Method is either 1 or 2
                 self.physics.engine.newton_residual_last_dt = (
@@ -847,9 +848,8 @@ class DartsModel:
                         print("Stationary point detected!")
                     break
             else:
-                if (
-                    type(self.data_ts.linear_type) is linear_solver_types
-                ):  # solvers via Python interface
+                if isinstance(self.data_ts.linear_type, linear_solver_types):
+                    # solvers via Python interface
                     if self.data_ts.linear_type in [
                         linear_solver_types.CPU_PETSC_CPR,
                         linear_solver_types.CPU_PETSC_FS,
@@ -861,19 +861,17 @@ class DartsModel:
                         raise Exception(
                             "Unknown linear solver type", self.data_ts.linear_type
                         )
-                else:  # compile-tyme C++ linear solvers
+                else:
+                    # compile-tyme C++ linear solvers
                     self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
 
-                """ Start live plotting for every Newton-Raphson iteration """
-                if (
-                    self.live_plt_config.enabled
-                    and self.live_plt_config.every_newton_iter
-                ):
-                    self.update_live_plots()
-                """ End live plotting for every Newton-Raphson iteration """
+            """ Start live plotting for every Newton-Raphson iteration """
+            if self.live_plt_config.enabled and self.live_plt_config.every_newton_iter:
+                self.update_live_plots(t, i)
+            """ End live plotting for every Newton-Raphson iteration """
 
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
@@ -884,7 +882,7 @@ class DartsModel:
 
         """ Start live plotting for every time step """
         if self.live_plt_config.enabled and not self.live_plt_config.every_newton_iter:
-            self.update_live_plots()
+            self.update_live_plots(t, i)
         """ End live plotting for every time step """
 
         self.timer.node["simulation"].stop()
@@ -1627,9 +1625,14 @@ class DartsModel:
         }
         """ Stop initializing the figure containing a pair of axes for the PH diagram """
 
-    def update_live_plots(self):
+    def update_live_plots(self, time: float, iter_counter: int):
         """
         Initialize (only for the first call) and update live plots
+
+        :param time: Current time [days]
+        :type time: float
+        :param iter_counter: Newton-Raphson iteration counter
+        :type iter_counter: int
         """
         # Initialize once (first call only)
         if not self.live_fig_store:
@@ -1686,6 +1689,13 @@ class DartsModel:
 
         axes.relim()
         axes.autoscale_view()
+
+        # Update the figure title
+        fig.suptitle(
+            self.live_plt_config.title_template.format(
+                time=time, iter_counter=iter_counter
+            )
+        )
 
         # Refresh display
         fig.canvas.draw_idle()
