@@ -86,7 +86,7 @@ class Model(CICDModel):
         state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
         self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
                                      n_points=10000, min_p=1, max_p=500, min_z=0, max_z=1, epsilon_z=epsilon,
-                                     min_t=200, max_t=500)
+                                     min_t=150, max_t=500)
 
         """ PropertyContainer object and correlations """
         property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, eps_z=epsilon,
