@@ -13,7 +13,7 @@ class ReservoirBase:
     Base class for generating a mesh
     """
 
-    mesh: conn_mesh | None
+    mesh: conn_mesh
     wells: list[ms_well]
 
     def __init__(self, timer: timer_node, cache: bool = False):
