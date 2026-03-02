@@ -2353,8 +2353,8 @@ class Output:
             elif physics.state_spec == physics.StateSpecification.PH:
                 if physics.nc == 1:
                     # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
-                    enthalpy_w, dens_m_w, kr_w, miu_w = -44582.2291, 55.4574, 1, 1.1328
-                    ops_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
+                    enthalpy_w, dens_m_w, kr_w, mu_w = -44582.2291, 55.4574, 1, 1.1328
+                    ops_dead_phase = enthalpy_w * dens_m_w * kr_w / mu_w
                     ops_dead = np.zeros(ops.shape)
                     # If value is zero, no need to subtract ops_dead_phase from it
                     ops_dead[ops != 0.0] = ops_dead_phase
