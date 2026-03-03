@@ -2212,7 +2212,7 @@ class Output:
             if physics.state_spec == physics.StateSpecification.PT:
                 t_idx = h5_well_data["dynamic"]["variable_names"].index("temperature")
             elif physics.state_spec == physics.StateSpecification.PH:
-                t_idx = h5_well_data["dynamic"]["variable_names"].index("enthalpy")
+                pass
             else:
                 raise Exception(
                     "Neither temperature nor enthalpy exists in the list of variables!"
@@ -2319,19 +2319,20 @@ class Output:
             ops = values_reshaped[:, op_start : op_start + pc.nph]
 
             # Calc heat operators for the dead state (1 atm and 15 deg C)
-            p_dead = 1.01325  # Dead pressure (1 atm)
-            T_dead = 273.15 + 15  # Dead temperature (15 deg C)
-            if not (physics.axes_min[p_idx] <= p_dead <= physics.axes_max[p_idx]):
-                warnings.warn(
-                    f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
-                    stacklevel=1,
-                )
-            if not (physics.axes_min[-1] <= T_dead <= physics.axes_max[-1]):
-                warnings.warn(
-                    f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
-                    stacklevel=1,
-                )
             if physics.state_spec == physics.StateSpecification.PT:
+                p_dead = 1.01325  # Dead pressure (1 atm)
+                T_dead = 273.15 + 15  # Dead temperature (15 deg C)
+                if not (physics.axes_min[p_idx] <= p_dead <= physics.axes_max[p_idx]):
+                    warnings.warn(
+                        f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
+                        stacklevel=1,
+                    )
+                if not (physics.axes_min[-1] <= T_dead <= physics.axes_max[-1]):
+                    warnings.warn(
+                        f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
+                        stacklevel=1,
+                    )
+
                 states_2d[:, p_idx] = p_dead
                 states_2d[:, t_idx] = T_dead
                 states_vec_dead = value_vector(states_2d.ravel())
@@ -2350,9 +2351,6 @@ class Output:
                 )
                 ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif physics.state_spec == physics.StateSpecification.PH:
-                # states_2d[:, p_idx] = p_dead
-                # states_2d[:, t_idx] = T_dead
-                # TODO: Need to calculate ops_dead similar to PT above, but here we have a PH formulation
                 if physics.nc == 1:
                     # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
                     enthalpy_w, dens_m_w, kr_w, mu_w = -44582.2291, 55.4574, 1, 1.1328
