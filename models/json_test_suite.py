@@ -13,6 +13,7 @@ JSON_MODELS = [
     os.path.join("3ph_bo", "3ph_bo.json"),
     os.path.join("3ph_comp_w", "3ph_comp_w.json"),
     os.path.join("3ph_do", "3ph_do.json"),
+    os.path.join("cpg_sloping_fault", "brugge_deadoil.json"),
 ]
 
 

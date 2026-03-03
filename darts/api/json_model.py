@@ -20,16 +20,22 @@ class JsonModel(DartsModel):
         for well in wells_spec.wells:
             self.reservoir.add_well(well.name)
             for perf in well.perforations:
-                i, j, k = perf.ijk
+                i, j, k0 = perf.ijk
+                k1 = perf.k_end if getattr(perf, 'k_end', None) is not None else k0
+                if k1 < k0:
+                    raise ValueError(
+                        f"Invalid perforation interval for well {well.name}: k_end({k1}) < k({k0})"
+                    )
                 well_radius = (
                     perf.well_radius if perf.well_radius is not None else 0.0762
                 )
-                self.reservoir.add_perforation(
-                    well.name,
-                    res_cell_idx=(i, j, k),
-                    well_diameter=2.0 * well_radius,
-                    skin=perf.skin if perf.skin is not None else 0.0,
-                )
+                for k in range(k0, k1 + 1):
+                    self.reservoir.add_perforation(
+                        well.name,
+                        res_cell_idx=(i, j, k),
+                        well_diameter=2.0 * well_radius,
+                        skin=perf.skin if perf.skin is not None else 0.0,
+                    )
 
     def set_initial_conditions(self):
         ic_spec = getattr(self, '_initial_conditions_spec', None)
@@ -76,15 +82,6 @@ class JsonModel(DartsModel):
 
     def set_well_controls(self):
         wc_spec = getattr(self, '_well_controls_spec', None)
-        # Top-level fallbacks (may be None if not provided in JSON)
-        inj_bhp = getattr(wc_spec, 'inj_bhp', None) if wc_spec else None
-        prod_bhp = getattr(wc_spec, 'prod_bhp', None) if wc_spec else None
-        inj_comp = getattr(wc_spec, 'inj_composition', None) if wc_spec else None
-        inj_temp = getattr(wc_spec, 'inj_temp', None) if wc_spec else None
-        inj_rate = getattr(wc_spec, 'inj_rate', None) if wc_spec else None
-        rate_type_str = getattr(wc_spec, 'rate_type', None) if wc_spec else None
-        inj_phase = getattr(wc_spec, 'phase_name', None) if wc_spec else None
-
         from darts.engines import well_control_iface
 
         def _map_rate_type(name: str):
@@ -99,63 +96,89 @@ class JsonModel(DartsModel):
             }
             return mapping.get(key, well_control_iface.MOLAR_RATE)
 
-        for _i, w in enumerate(self.reservoir.wells):
-            # Per-well overrides from spec if provided
-            well_spec = None
-            wells_spec = getattr(self, '_wells_spec', None)
-            if wells_spec and getattr(wells_spec, 'wells', None):
-                for ws in wells_spec.wells:
-                    if ws.name == w.name:
-                        well_spec = ws
-                        break
-            per_well = getattr(well_spec, 'controls', None)
-            inj_bhp_w = getattr(per_well, 'inj_bhp', None) if per_well else None
-            prod_bhp_w = getattr(per_well, 'prod_bhp', None) if per_well else None
-            inj_comp_w = (
-                getattr(per_well, 'inj_composition', None) if per_well else None
+        def _well_role(name: str, per_well: Any) -> bool | None:
+            if per_well:
+                if (
+                    getattr(per_well, 'inj_rate', None) is not None
+                    or getattr(per_well, 'inj_bhp', None) is not None
+                    or getattr(per_well, 'inj_composition', None) is not None
+                ):
+                    return True
+                if getattr(per_well, 'prod_bhp', None) is not None:
+                    return False
+            upper = name.upper()
+            if 'INJ' in upper:
+                return True
+            if 'PRD' in upper or 'PROD' in upper:
+                return False
+            return None
+
+        wells_spec = getattr(self, '_wells_spec', None)
+        well_cfg = {
+            ws.name: getattr(ws, 'controls', None)
+            for ws in getattr(wells_spec, 'wells', []) or []
+        }
+
+        for w in self.reservoir.wells:
+            per_well = well_cfg.get(w.name)
+            role = _well_role(w.name, per_well)
+
+            inj_rate = (
+                getattr(per_well, 'inj_rate', None)
+                if per_well and getattr(per_well, 'inj_rate', None) is not None
+                else getattr(wc_spec, 'inj_rate', None)
             )
-            inj_temp_w = getattr(per_well, 'inj_temp', None) if per_well else None
-            inj_rate_w = getattr(per_well, 'inj_rate', None) if per_well else None
-            rate_type_w = getattr(per_well, 'rate_type', None) if per_well else None
-            inj_phase_w = getattr(per_well, 'phase_name', None) if per_well else None
+            inj_bhp = (
+                getattr(per_well, 'inj_bhp', None)
+                if per_well and getattr(per_well, 'inj_bhp', None) is not None
+                else getattr(wc_spec, 'inj_bhp', None)
+            )
+            inj_comp = (
+                getattr(per_well, 'inj_composition', None)
+                if per_well and getattr(per_well, 'inj_composition', None) is not None
+                else getattr(wc_spec, 'inj_composition', None)
+            )
+            inj_temp = (
+                getattr(per_well, 'inj_temp', None)
+                if per_well and getattr(per_well, 'inj_temp', None) is not None
+                else getattr(wc_spec, 'inj_temp', None)
+            )
+            inj_phase = (
+                getattr(per_well, 'phase_name', None)
+                if per_well and getattr(per_well, 'phase_name', None) is not None
+                else getattr(wc_spec, 'phase_name', None)
+            )
+            rate_type = (
+                getattr(per_well, 'rate_type', None)
+                if per_well and getattr(per_well, 'rate_type', None) is not None
+                else getattr(wc_spec, 'rate_type', None)
+            )
+            prod_bhp = (
+                getattr(per_well, 'prod_bhp', None)
+                if per_well and getattr(per_well, 'prod_bhp', None) is not None
+                else getattr(wc_spec, 'prod_bhp', None)
+            )
 
-            # Prefer explicit per-well injection controls
-            if inj_rate_w is not None or inj_bhp_w is not None:
-                if inj_rate_w is not None:
-                    ctrl_type = _map_rate_type(rate_type_w)
-                    self.physics.set_well_controls(
-                        wctrl=w.control,
-                        control_type=ctrl_type,
-                        is_inj=True,
-                        target=inj_rate_w,
-                        phase_name=inj_phase_w,
-                        inj_composition=inj_comp_w,
-                        inj_temp=inj_temp_w,
-                    )
-                else:
-                    self.physics.set_well_controls(
-                        wctrl=w.control,
-                        control_type=well_control_iface.BHP,
-                        is_inj=True,
-                        target=inj_bhp_w,
-                        inj_composition=inj_comp_w,
-                        inj_temp=inj_temp_w,
-                    )
-                continue
-
-            # Next, allow top-level injection controls if per-well not provided
-            if inj_rate is not None or inj_bhp is not None:
+            if role is True and (inj_rate is not None or inj_bhp is not None):
                 if inj_rate is not None:
-                    ctrl_type = _map_rate_type(rate_type_str)
                     self.physics.set_well_controls(
                         wctrl=w.control,
-                        control_type=ctrl_type,
+                        control_type=_map_rate_type(rate_type),
                         is_inj=True,
                         target=inj_rate,
                         phase_name=inj_phase,
                         inj_composition=inj_comp,
                         inj_temp=inj_temp,
                     )
+                    if inj_bhp is not None:
+                        self.physics.set_well_controls(
+                            wctrl=w.constraint,
+                            control_type=well_control_iface.BHP,
+                            is_inj=True,
+                            target=inj_bhp,
+                            inj_composition=inj_comp,
+                            inj_temp=inj_temp,
+                        )
                 else:
                     self.physics.set_well_controls(
                         wctrl=w.control,
@@ -167,18 +190,7 @@ class JsonModel(DartsModel):
                     )
                 continue
 
-            # Producer controls per-well
-            if prod_bhp_w is not None:
-                self.physics.set_well_controls(
-                    wctrl=w.control,
-                    control_type=well_control_iface.BHP,
-                    is_inj=False,
-                    target=prod_bhp_w,
-                )
-                continue
-
-            # Producer controls from top-level if per-well not provided
-            if prod_bhp is not None:
+            if role is False and prod_bhp is not None:
                 self.physics.set_well_controls(
                     wctrl=w.control,
                     control_type=well_control_iface.BHP,

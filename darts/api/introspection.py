@@ -21,6 +21,15 @@ def _json_schema(cls: Any) -> dict[str, Any]:
 
 
 def get_schema_dict(kind: str | None = None) -> dict[str, Any]:
+    if kind == "reservoir":
+        # Return the reservoir property schema from ModelSpec so union members
+        # (e.g., structured and cpg variants) stay discoverable.
+        model_schema = _json_schema(ModelSpec)
+        reservoir_schema = model_schema.get("properties", {}).get(
+            "reservoir"
+        ) or _json_schema(ReservoirSpec)
+        return {"kind": "reservoir", "schema": reservoir_schema}
+
     mapping = {
         None: ModelSpec,
         "reservoir": ReservoirSpec,

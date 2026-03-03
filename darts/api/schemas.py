@@ -247,6 +247,57 @@ class StrictReservoirSpec(SpecBaseModel):
     ] = None
 
 
+class StrictCPGReservoirSpec(SpecBaseModel):
+    """Corner-point (CPG) reservoir loaded from GRDECL-like files."""
+
+    model_config = ConfigDict(
+        title="StrictCPGReservoirSpec",
+        json_schema_extra={
+            "examples": [
+                {
+                    "type": "cpg",
+                    "grid_file": "meshes/brugge/grid.grdecl",
+                    "prop_file": "meshes/brugge/reservoir.in",
+                    "minpv": 1e-5,
+                    "min_poro": 1e-5,
+                    "boundary_volume": 1e10,
+                }
+            ]
+        },
+    )
+
+    type: Annotated[
+        Literal["cpg"],
+        Field(description="Reservoir type (corner-point geometry)"),
+    ]
+    grid_file: Annotated[str, Field(description="Path to GRDECL grid file")]
+    prop_file: Annotated[
+        str, Field(description="Path to reservoir property file (GRDECL-like)")
+    ]
+    fault_file: Annotated[
+        str | None,
+        Field(description="Optional file with fault transmissibility multipliers"),
+    ] = None
+    minpv: Annotated[
+        float | None,
+        Field(ge=0, description="Minimum pore volume threshold for active cells [m3]"),
+    ] = None
+    min_poro: Annotated[
+        float | None,
+        Field(ge=0, le=1, description="Optional porosity cutoff for ACTNUM filtering"),
+    ] = None
+    min_perm: Annotated[
+        float | None,
+        Field(ge=0, description="Optional lower bound for PERMX/PERMY/PERMZ [mD]"),
+    ] = None
+    boundary_volume: Annotated[
+        float | None,
+        Field(
+            gt=0, description="Optional lateral boundary volume assigned to edge cells"
+        ),
+    ] = None
+
+
 class StrictPluginSlots(SpecBaseModel):
     """Evaluator plugins attached to a property region."""
 
@@ -429,6 +480,16 @@ class StrictWellPerforation(SpecBaseModel):
         list[int],
         Field(description="[i,j,k] indices (1-based)", min_length=3, max_length=3),
     ]
+    k_end: Annotated[
+        int | None,
+        Field(
+            ge=1,
+            description=(
+                "Optional inclusive K-end index for vertical completion interval; "
+                "when provided, expands ijk[2]..k_end into multiple perforations"
+            ),
+        ),
+    ] = None
     well_radius: Annotated[float | None, Field(gt=0, description="Well radius")] = None
     skin: Annotated[float | None, Field(description="Skin factor")] = None
 
@@ -624,7 +685,7 @@ class StrictModelSpec(SpecBaseModel):
         Field(description="Local plugin registry configuration"),
     ] = None
     reservoir: Annotated[
-        StrictReservoirSpec | DataRef | None,
+        StrictReservoirSpec | StrictCPGReservoirSpec | DataRef | None,
         Field(description="Reservoir configuration"),
     ] = None
     physics: Annotated[
@@ -770,6 +831,36 @@ class PatchReservoirSpec(StrictReservoirSpec):
     ] = None
 
 
+class PatchCPGReservoirSpec(StrictCPGReservoirSpec):
+    """Partial CPG reservoir override."""
+
+    model_config = ConfigDict(
+        title="PatchCPGReservoirSpec",
+        json_schema_extra={
+            "examples": [
+                {"type": "cpg", "grid_file": "meshes/brugge/grid.grdecl"},
+                {"boundary_volume": 1e10},
+            ]
+        },
+    )
+
+    type: Annotated[
+        Literal["cpg"] | None,
+        Field(description="Reservoir type (corner-point geometry)"),
+    ] = None
+    grid_file: Annotated[str | None, Field(description="Path to GRDECL grid file")] = (
+        None
+    )
+    prop_file: Annotated[
+        str | None,
+        Field(description="Path to reservoir property file (GRDECL-like)"),
+    ] = None
+    fault_file: Annotated[
+        str | None,
+        Field(description="Optional file with fault transmissibility multipliers"),
+    ] = None
+
+
 class PatchWellControlsSpec(StrictWellControlsSpec):
     """Partial well controls override."""
 
@@ -790,6 +881,16 @@ class PatchWellPerforation(StrictWellPerforation):
     ijk: Annotated[
         list[int] | None,
         Field(description="[i,j,k] indices (1-based)", min_length=3, max_length=3),
+    ] = None
+    k_end: Annotated[
+        int | None,
+        Field(
+            ge=1,
+            description=(
+                "Optional inclusive K-end index for vertical completion interval; "
+                "when provided, expands ijk[2]..k_end into multiple perforations"
+            ),
+        ),
     ] = None
 
 
@@ -887,7 +988,7 @@ class PatchModelSpec(StrictModelSpec):
         Literal["Model"] | None, Field(description="Schema kind identifier")
     ] = None
     reservoir: Annotated[
-        PatchReservoirSpec | DataRef | None,
+        PatchReservoirSpec | PatchCPGReservoirSpec | DataRef | None,
         Field(description="Reservoir configuration"),
     ] = None
     physics: Annotated[
@@ -913,6 +1014,7 @@ class PatchModelSpec(StrictModelSpec):
 
 ModelSpec = StrictModelSpec
 ReservoirSpec = StrictReservoirSpec
+CPGReservoirSpec = StrictCPGReservoirSpec
 PhysicsSpec = StrictPhysicsSpec
 WellsSpec = StrictWellsSpec
 InitialConditionsSpec = StrictInitialConditionsSpec

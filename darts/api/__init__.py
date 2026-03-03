@@ -26,6 +26,7 @@ from darts.api.model_spec import (
     validate_patch_model_spec_dict,
 )
 from darts.api.schemas import (
+    CPGReservoirSpec,
     DataRef,
     InitialConditionsSpec,
     ModelSpec,
@@ -48,6 +49,7 @@ from darts.api.type_registry import (
 __all__ = [
     "ModelSpec",
     "ReservoirSpec",
+    "CPGReservoirSpec",
     "PhysicsSpec",
     "WellsSpec",
     "InitialConditionsSpec",

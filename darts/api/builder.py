@@ -3,6 +3,7 @@ from typing import Any
 
 from darts.api.data_refs import resolve_data_ref
 from darts.api.schemas import (
+    CPGReservoirSpec,
     DataRef,
     InitialConditionsSpec,
     ModelSpec,
@@ -39,9 +40,10 @@ class ModelBuilder:
             ModelBuilder._apply_plugin_registry(preg, base_path=base_path)
 
         if spec.reservoir:
-            res = ModelBuilder._resolve_section(
-                spec.reservoir, ReservoirSpec, base_path, object_store
+            res_raw = ModelBuilder._resolve_section(
+                spec.reservoir, None, base_path, object_store
             )
+            res = ModelBuilder._validate_reservoir_spec(res_raw)
             ModelBuilder._apply_reservoir(
                 res, model, base_path=base_path, object_store=object_store
             )
@@ -114,14 +116,23 @@ class ModelBuilder:
 
     @staticmethod
     def _apply_reservoir(
-        r: ReservoirSpec,
+        r: Any,
         model: Any,
         *,
         base_path: str | None = None,
         object_store: dict[str, Any] | None = None,
     ) -> None:
-        # Only structured reservoir supported in v1
-        assert r.type == "structured", "Only structured reservoir is supported in v1"
+        if isinstance(r, dict):
+            r = ModelBuilder._validate_reservoir_spec(r)
+
+        if getattr(r, "type", None) == "cpg":
+            ModelBuilder._apply_cpg_reservoir(r, model, base_path=base_path)
+            return
+
+        # Default branch: structured reservoir
+        assert getattr(r, "type", None) == "structured", (
+            f"Unsupported reservoir type: {getattr(r, 'type', None)}"
+        )
         from darts.reservoirs.struct_reservoir import StructReservoir
 
         def _resolve_val(val: Any) -> Any:
@@ -242,6 +253,85 @@ class ModelBuilder:
                 "Reservoir spec missing required fields: " + ", ".join(missing)
             )
         model.reservoir = StructReservoir(model.timer, **kwargs)
+
+    @staticmethod
+    def _validate_reservoir_spec(section: Any) -> Any:
+        if hasattr(section, "type"):
+            return section
+        if not isinstance(section, dict):
+            raise TypeError("Unsupported reservoir section representation")
+
+        rtype = section.get("type")
+        target_cls: Any = CPGReservoirSpec if rtype == "cpg" else ReservoirSpec
+        try:
+            return target_cls.model_validate(section)
+        except Exception:
+            return target_cls.parse_obj(section)
+
+    @staticmethod
+    def _apply_cpg_reservoir(
+        r: CPGReservoirSpec,
+        model: Any,
+        *,
+        base_path: str | None = None,
+    ) -> None:
+        from darts.reservoirs.cpg_reservoir import (
+            CPG_Reservoir,
+            check_arrays,
+            read_arrays,
+        )
+        from darts.tools.keyword_file_tools import decompress_file
+
+        def _resolve_path(path: str) -> str:
+            if os.path.isabs(path):
+                return path
+            if base_path:
+                return os.path.join(base_path, path)
+            return path
+
+        def _ensure_uncompressed(path: str) -> None:
+            if os.path.exists(path):
+                return
+            gz_path = f"{path}.gz"
+            if os.path.exists(gz_path):
+                decompress_file(path, gz_path, verbose=False)
+                return
+            raise FileNotFoundError(f"Cannot find file: {path} (or {gz_path})")
+
+        grid_file = _resolve_path(r.grid_file)
+        prop_file = _resolve_path(r.prop_file)
+        fault_file = _resolve_path(r.fault_file) if r.fault_file else None
+
+        _ensure_uncompressed(grid_file)
+        _ensure_uncompressed(prop_file)
+
+        arrays = read_arrays(gridfile=grid_file, propfile=prop_file)
+        check_arrays(arrays)
+
+        if r.min_poro is not None and "PORO" in arrays and "ACTNUM" in arrays:
+            arrays["ACTNUM"][arrays["PORO"] < r.min_poro] = 0
+        if r.min_perm is not None:
+            for key in ("PERMX", "PERMY", "PERMZ"):
+                if key in arrays:
+                    arrays[key][arrays[key] < r.min_perm] = r.min_perm
+
+        reservoir = CPG_Reservoir(
+            model.timer,
+            arrays=arrays,
+            faultfile=fault_file,
+            minpv=r.minpv if r.minpv is not None else 0.0,
+        )
+        reservoir.discretize()
+        reservoir.input_arrays = arrays
+
+        if r.boundary_volume is not None:
+            bv = r.boundary_volume
+            reservoir.set_boundary_volume(
+                xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv
+            )
+            reservoir.apply_volume_depth()
+
+        model.reservoir = reservoir
 
     @staticmethod
     def _apply_physics(
