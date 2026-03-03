@@ -2138,7 +2138,7 @@ class Output:
                 )
 
                 # Update the dead state array (containing temperatures) with calculated enthalpies
-                states_vec_dead[t_idx::n_vars] = np.asarray(enthalpies_dead)
+                np.asarray(states_vec_dead)[t_idx::n_vars] = np.asarray(enthalpies_dead)
 
                 # Now pass the dead state array with enthalpies to the well control interpolator
                 values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
