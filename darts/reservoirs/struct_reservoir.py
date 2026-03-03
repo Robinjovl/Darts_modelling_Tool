@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import numpy as np
 from scipy.interpolate import griddata
@@ -184,6 +185,14 @@ class StructReservoir(ReservoirBase):
         self.set_boundary_volume(self.boundary_volumes)
         # copy the values of mesh.volume instead of using the pointer
         self.global_data["volume"] = np.array(mesh.volume, copy=True)
+
+        # Give a warning if there is more than one cell in the vertical direction and the depths of all the layers are the same.
+        if self.nz > 1 and np.all(depth == depth[0]):
+            warnings.warn(
+                "The reservoir contains more than one cell in the vertical direction (nz > 1), "
+                "but all layers have identical depth values!",
+                stacklevel=1,
+            )
 
         return mesh
 
