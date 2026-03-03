@@ -1976,7 +1976,7 @@ class Output:
                 # Line below does not work for geothermal engine
                 t_idx = h5_well_data["dynamic"]["variable_names"].index("temperature")
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
-                pass
+                t_idx = h5_well_data["dynamic"]["variable_names"].index("enthalpy")
             else:
                 raise Exception(
                     "Neither temperature nor enthalpy exists in the list of variables!"
@@ -2018,9 +2018,7 @@ class Output:
             "advective_heat_rates",
         ]:
             values = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
-            dvalues = value_vector(
-                np.zeros((batch_size * n_well_ctrl_ops) * self.physics.n_vars)
-            )
+            dvalues = value_vector(np.zeros((batch_size * n_well_ctrl_ops) * n_vars))
 
             self.physics.well_ctrl_itor.evaluate_with_derivatives(
                 states_vec, block_idx, values, dvalues
@@ -2032,9 +2030,7 @@ class Output:
 
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
             values = value_vector(np.zeros(batch_size * n_reservoir_ops))
-            dvalues = value_vector(
-                np.zeros((batch_size * n_reservoir_ops) * self.physics.n_vars)
-            )
+            dvalues = value_vector(np.zeros((batch_size * n_reservoir_ops) * n_vars))
 
             self.physics.acc_flux_itor[0].evaluate_with_derivatives(
                 states_vec, block_idx, values, dvalues
@@ -2088,34 +2084,37 @@ class Output:
             op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
             ops = values_reshaped[:, op_start : op_start + pc.nph]
 
-            # Calc heat operators for the dead state (1 atm and 15 deg C)
+            # Calculate dead operators
+            p_dead = 1.01325  # Dead pressure (1 atm)
+            T_dead = 273.15 + 15  # Dead temperature (15 deg C)
+            if not (
+                self.physics.PT_axes_min[p_idx]
+                <= p_dead
+                <= self.physics.PT_axes_max[p_idx]
+            ):
+                warnings.warn(
+                    f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
+                    stacklevel=1,
+                )
+            if not (
+                self.physics.PT_axes_min[t_idx]
+                <= T_dead
+                <= self.physics.PT_axes_max[t_idx]
+            ):
+                warnings.warn(
+                    f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
+                    stacklevel=1,
+                )
+
+            states_2d[:, p_idx] = p_dead
+            states_2d[:, t_idx] = T_dead
+            states_vec_dead = value_vector(states_2d.ravel())
+
+            # Calculate heat operators at the dead state (1 atm and 15 deg C)
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                p_dead = 1.01325  # Dead pressure (1 atm)
-                T_dead = 273.15 + 15  # Dead temperature (15 deg C)
-                if not (
-                    self.physics.axes_min[p_idx]
-                    <= p_dead
-                    <= self.physics.axes_max[p_idx]
-                ):
-                    warnings.warn(
-                        f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
-                        stacklevel=1,
-                    )
-                if not (
-                    self.physics.axes_min[-1] <= T_dead <= self.physics.axes_max[-1]
-                ):
-                    warnings.warn(
-                        f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
-                        stacklevel=1,
-                    )
-
-                states_2d[:, p_idx] = p_dead
-                states_2d[:, t_idx] = T_dead
-                states_vec_dead = value_vector(states_2d.ravel())
-
                 values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
                 dvalues_dead = value_vector(
-                    np.zeros((batch_size * n_well_ctrl_ops) * self.physics.n_vars)
+                    np.zeros((batch_size * n_well_ctrl_ops) * n_vars)
                 )
 
                 self.physics.well_ctrl_itor.evaluate_with_derivatives(
@@ -2127,13 +2126,34 @@ class Output:
                 )
                 ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
-                # TODO This does not work properly if the super engine is of the PH type
-                # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
-                enthalpy_w, dens_m_w, kr_w, miu_w = -44582.2291, 55.4574, 1, 1.1328
-                ops_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
-                ops_dead = np.zeros(ops.shape)
-                # If value is zero, no need to subtract ops_dead_phase from it
-                ops_dead[ops != 0.0] = ops_dead_phase
+                # Calculate enthalpy for the dead state with temperature as the thermal variable
+                n_thermal_var_op = self.physics.thermal_var_operator.n_ops
+                enthalpies_dead = value_vector(np.zeros(batch_size * n_thermal_var_op))
+                denthalpies_dead = value_vector(
+                    np.zeros((batch_size * n_thermal_var_op) * n_vars)
+                )
+
+                self.physics.well_ctrl_itor.evaluate_with_derivatives(
+                    states_vec_dead, block_idx, enthalpies_dead, denthalpies_dead
+                )
+
+                # Update the dead state array (containing temperatures) with calculated enthalpies
+                states_vec_dead[t_idx::n_vars] = np.asarray(enthalpies_dead)
+
+                # Now pass the dead state array with enthalpies to the well control interpolator
+                values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
+                dvalues_dead = value_vector(
+                    np.zeros((batch_size * n_well_ctrl_ops) * n_vars)
+                )
+
+                self.physics.well_ctrl_itor.evaluate_with_derivatives(
+                    states_vec_dead, block_idx, values_dead, dvalues_dead
+                )
+                op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
+                values_reshaped_dead = np.asarray(values_dead).reshape(
+                    batch_size, n_well_ctrl_ops
+                )
+                ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
 
             ops = ops - ops_dead
 
