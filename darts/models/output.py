@@ -2133,7 +2133,7 @@ class Output:
                     np.zeros((batch_size * n_thermal_var_op) * n_vars)
                 )
 
-                self.physics.well_ctrl_itor.evaluate_with_derivatives(
+                self.physics.thermal_var_itor.evaluate_with_derivatives(
                     states_vec_dead, block_idx, enthalpies_dead, denthalpies_dead
                 )
 
