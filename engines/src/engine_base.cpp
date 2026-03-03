@@ -1920,7 +1920,8 @@ int engine_base::apply_newton_update(value_t dt)
 	if (op_axis_min[0].size() > 0)
 		apply_obl_axis_local_correction(X, dX);
 
-	if (state_spec >= StateSpecification::PH)
+	// Apply thermal variable correction when the PH formulation with a multi-component fluid is used.
+	if (state_spec >= StateSpecification::PH && n_vars > 2)
 	{
 		apply_thermal_var_correction(X, dX);
 	}
