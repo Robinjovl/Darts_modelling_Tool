@@ -1327,7 +1327,9 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_thermal_var_correction(std::vector
             if (n_thermal_var_corr == 0)
 			{
 				std::cout << "Thermal variable correction: block " << i;
-                std::cout << (new_temperature < min_axis_temp) ? " shoots under T axis limit of " : " shoots over T axis limit of ";
+                std::cout << ((new_temperature < min_axis_temp)
+                    ? " shoots under T axis limit of "
+                    : " shoots over T axis limit of ");
                 std::cout << state[T_VAR] << " to " << new_temperature << "\n";
 			}
             new_temperature = state[T_VAR];
