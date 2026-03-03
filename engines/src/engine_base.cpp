@@ -1994,7 +1994,7 @@ int engine_base::apply_newton_update(value_t dt)
  *      If the state of the cell corresponds to a T < T_min, project thermal variable to T_min using ThermalVarOperator: H(P, T_min, z)/S(P, T_min, z)
  *      If the state of the cell corresponds to a T > T_max, project thermal variable to T_max using ThermalVarOperator: H(P, T_max, z)/S(P, T_max, z)
  *  Step 3:
- * 		Chop Newton update if temperature increment by the Newton step is larger than a certain dT_max
+ * 		(Needs further investigation) Chop Newton update if temperature increment by the Newton step is larger than a certain dT_max
  *
  * This function is applicable if the engine is used with enthalpy/entropy as the primary variable.
  *
