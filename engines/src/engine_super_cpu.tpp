@@ -1338,9 +1338,15 @@ void engine_super_cpu<NC, NP, THERMAL>::apply_thermal_var_correction(std::vector
         {
             value_t dT = std::abs(new_temperature - op_vals_arr_n[i * n_ops + TEMP_OP]);
             value_t dT_max = 20.;
+
+            //value_t ds = std::abs(op_vals_arr_new[i * n_ops + SAT_OP] - op_vals_arr_n[i * n_ops + SAT_OP]);
+            //value_t ds_max = 0.2;
+
             if (dT > dT_max)
+            //if (ds > ds_max)
             {
                 value_t chopping_factor = dT_max / dT;
+                //value_t chopping_factor = ds_max / ds;
                 //dX[i * n_vars + P_VAR] *= chopping_factor;
                 dX[i * n_vars + T_VAR] *= chopping_factor;
             }
