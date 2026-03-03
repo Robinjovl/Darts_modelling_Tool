@@ -1915,17 +1915,6 @@ int engine_base::apply_newton_update(value_t dt)
 	}
 	timer->node["newton update"].node["composition correction"].stop();
 
-	// apply only if interpolation is used for derivatives
-    // make decision based on only the first region
-	if (op_axis_min[0].size() > 0)
-		apply_obl_axis_local_correction(X, dX);
-
-	// Apply thermal variable correction when the PH formulation with a multi-component fluid is used.
-	if (state_spec >= StateSpecification::PH && n_vars > 2)
-	{
-		apply_thermal_var_correction(X, dX);
-	}
-
 	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
 	{
 	  if (n_solid > 0)
@@ -1964,10 +1953,16 @@ int engine_base::apply_newton_update(value_t dt)
 	  }
 	}
 
-	//// apply only if interpolation is used for derivatives
-	//// make decision based on only the first region
-	//if (op_axis_min[0].size() > 0)
-	//	apply_obl_axis_local_correction(X, dX);
+	// apply only if interpolation is used for derivatives
+	// make decision based on only the first region
+	if (op_axis_min[0].size() > 0)
+		apply_obl_axis_local_correction(X, dX);
+
+	// Apply thermal variable correction when the PH formulation with a multi-component fluid is used.
+	if (state_spec >= StateSpecification::PH && n_vars > 2)
+	{
+		apply_thermal_var_correction(X, dX);
+	}
 
 	// make newton update
 	auto newton_update_coefficient_copy = this->newton_update_coefficient;
