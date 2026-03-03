@@ -587,6 +587,146 @@ class StructReservoir(ReservoirBase):
             vtk_group.addFile(fname, t)
         vtk_group.save()
 
+    def create_vtk_wells(
+        self,
+        output_directory: str,
+        filename: str = "wells.vtk",
+        first_perforation_only: bool = True,
+        prolongation_up: float = 1000.0,
+        well_diameter: float = 70.0,
+        tube_sides: int = 50,
+        tube_capping: bool = True,
+        invert_z: bool = True,
+        write_binary: bool = True,
+    ) -> str | None:
+        """
+        Export well trajectories to a standalone VTK PolyData file.
+
+        A tubular segment is generated for each selected perforation. For each well,
+        the first exported segment can optionally be prolonged upwards to make
+        injectors/producers visible above the reservoir body.
+
+        :param output_directory: Directory where the well VTK file is written.
+        :type output_directory: str
+        :param filename: Output VTK filename (for example, ``wells.vtk``).
+        :type filename: str
+        :param first_perforation_only: If ``True``, export only the first perforation
+            of each well. If ``False``, export all perforations.
+        :type first_perforation_only: bool
+        :param prolongation_up: Upward extension (in model length units) applied to
+            the first exported perforation segment of each well.
+        :type prolongation_up: float
+        :param well_diameter: Tube diameter in model length units.
+        :type well_diameter: float
+        :param tube_sides: Number of circumferential sides used by ``vtkTubeFilter``.
+        :type tube_sides: int
+        :param tube_capping: If ``True``, cap tube ends.
+        :type tube_capping: bool
+        :param invert_z: If ``True``, convert reservoir depth convention to VTK
+            coordinates by negating ``z`` for well points.
+        :type invert_z: bool
+        :param write_binary: If ``True``, write VTK PolyData in binary format.
+            If ``False``, write ASCII.
+        :type write_binary: bool
+        :returns: Absolute path to the written VTK file, or ``None`` if no
+            exportable perforations are present.
+        :rtype: str or None
+        :raises RuntimeError: If discretizer data required for centroids is absent.
+        :raises ValueError: If geometry controls are invalid.
+        """
+        import vtk
+
+        if not hasattr(self, "discretizer"):
+            raise RuntimeError(
+                "StructReservoir discretizer is not initialized. Run discretize/init_reservoir first."
+            )
+        if well_diameter <= 0:
+            raise ValueError(f"well_diameter must be positive, got {well_diameter}.")
+        if tube_sides < 3:
+            raise ValueError(f"tube_sides must be >= 3, got {tube_sides}.")
+        if prolongation_up < 0:
+            raise ValueError(f"prolongation_up must be >= 0, got {prolongation_up}.")
+
+        os.makedirs(output_directory, exist_ok=True)
+        well_vtk_filename = os.path.abspath(os.path.join(output_directory, filename))
+
+        append_filter = vtk.vtkAppendPolyData()
+        tube_radius = float(well_diameter) * 0.5
+        local_to_global = np.asarray(self.discretizer.local_to_global, dtype=np.int64)
+        centroids = np.asarray(self.discretizer.centroids_all_cells)
+
+        if centroids.ndim != 2 or centroids.shape[1] < 3:
+            raise RuntimeError(
+                "StructReservoir discretizer centroids_all_cells has unexpected shape."
+            )
+
+        def _create_tube(center_xyz, prolongation: float):
+            x, y, z = center_xyz
+            z_vtk = -z if invert_z else z
+
+            points = vtk.vtkPoints()
+            points.InsertNextPoint(x, y, z_vtk + float(prolongation))
+            points.InsertNextPoint(x, y, z_vtk)
+
+            line = vtk.vtkPolyLine()
+            line.GetPointIds().SetNumberOfIds(2)
+            line.GetPointIds().SetId(0, 0)
+            line.GetPointIds().SetId(1, 1)
+
+            lines = vtk.vtkCellArray()
+            lines.InsertNextCell(line)
+
+            poly_data = vtk.vtkPolyData()
+            poly_data.SetPoints(points)
+            poly_data.SetLines(lines)
+
+            tube_filter = vtk.vtkTubeFilter()
+            tube_filter.SetInputData(poly_data)
+            tube_filter.SetRadius(tube_radius)
+            tube_filter.SetNumberOfSides(int(tube_sides))
+            tube_filter.SetCapping(bool(tube_capping))
+            tube_filter.Update()
+            return tube_filter.GetOutput()
+
+        segments_added = 0
+        for well in self.wells:
+            first_segment = True
+            for perforation in well.perforations:
+                _, res_block_local, _, _ = perforation
+                if res_block_local < 0 or res_block_local >= local_to_global.size:
+                    continue
+                global_idx = int(local_to_global[res_block_local])
+                if global_idx < 0 or global_idx >= centroids.shape[0]:
+                    continue
+                centroid_xyz = centroids[global_idx]
+                segment_prolongation = float(prolongation_up) if first_segment else 0.0
+                append_filter.AddInputData(
+                    _create_tube(centroid_xyz, prolongation=segment_prolongation)
+                )
+                segments_added += 1
+                first_segment = False
+                if first_perforation_only:
+                    break
+
+        if segments_added == 0:
+            return None
+
+        append_filter.Update()
+
+        writer = vtk.vtkPolyDataWriter()
+        writer.SetFileName(well_vtk_filename)
+        writer.SetInputConnection(append_filter.GetOutputPort())
+        if write_binary:
+            writer.SetFileTypeToBinary()
+        else:
+            writer.SetFileTypeToASCII()
+        write_result = writer.Write()
+        if write_result is not None and int(write_result) == 0:
+            return None
+        if not os.path.exists(well_vtk_filename):
+            return None
+        return well_vtk_filename
+
     def generate_vtk_grid(
         self, strict_vertical_layers=True, compute_depth_by_dz_sum=True
     ):

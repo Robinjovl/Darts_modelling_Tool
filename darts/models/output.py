@@ -139,6 +139,8 @@ class Output:
 
         # Disable repeated failed rendering attempts in long workflows.
         self._paraview_render_disabled = False
+        # Disable repeated failed well VTK export attempts in long workflows.
+        self._vtk_wells_export_disabled = False
 
         self.set_units()
 
@@ -1123,6 +1125,8 @@ class Output:
         paraview_timestep_mode: str = "all",
         paraview_output_dir: str = None,
         paraview_render_options: dict = None,
+        export_wells_vtk: bool = True,
+        wells_vtk_options: dict = None,
     ):
         """
         Function to for creating `.vtk` files for viewing results in Paraview.
@@ -1154,8 +1158,16 @@ class Output:
             ``video_length_sec``, ``video_quality``, ``video_format``, ``show_cell_edges``,
             ``edge_line_width``, ``edge_color``, ``show_orientation_axes``,
             ``orientation_axes_labels``, ``orientation_axes_position``, ``orientation_axes_size``,
-            ``orientation_axes_label_font_size``, ``orientation_axes_text_color``.
+            ``orientation_axes_label_font_size``, ``orientation_axes_text_color``,
+            ``wells_vtk_file``, ``show_wells``, ``wells_color``, ``wells_opacity``,
+            ``wells_line_width``.
         :type paraview_render_options: dict, optional
+        :param export_wells_vtk: Whether to export wells geometry to a standalone VTK
+            file via ``reservoir.create_vtk_wells(...)``. Enabled by default.
+        :type export_wells_vtk: bool, optional
+        :param wells_vtk_options: Optional keyword arguments forwarded to
+            ``reservoir.create_vtk_wells(...)``.
+        :type wells_vtk_options: dict, optional
 
         Notes
         -----
@@ -1245,6 +1257,45 @@ class Output:
                 data,  # this array only contains reservoir properties
             )
 
+        wells_vtk_file = None
+        if export_wells_vtk and not self._vtk_wells_export_disabled:
+            if hasattr(self.reservoir, "create_vtk_wells"):
+                try:
+                    export_opts = (
+                        dict(wells_vtk_options) if wells_vtk_options is not None else {}
+                    )
+                    if "output_directory" in export_opts:
+                        warnings.warn(
+                            "Ignoring wells_vtk_options['output_directory']; output directory is set by output_to_vtk().",
+                            stacklevel=2,
+                        )
+                        export_opts.pop("output_directory", None)
+
+                    wells_vtk_file = self.reservoir.create_vtk_wells(
+                        output_directory=output_directory,
+                        **export_opts,
+                    )
+                    if wells_vtk_file is not None:
+                        wells_vtk_file = os.path.abspath(str(wells_vtk_file))
+                        if not os.path.exists(wells_vtk_file):
+                            warnings.warn(
+                                f"Well VTK export returned missing file path: {wells_vtk_file}",
+                                stacklevel=2,
+                            )
+                            wells_vtk_file = None
+                except Exception as exc:
+                    self._vtk_wells_export_disabled = True
+                    warnings.warn(
+                        "Well VTK export failed and is now disabled for this Output "
+                        f"instance: {exc}",
+                        stacklevel=2,
+                    )
+            elif self.verbose:
+                print(
+                    "Reservoir object does not expose create_vtk_wells(); skipping "
+                    "well geometry VTK export."
+                )
+
         if render_with_paraview is None:
             render_with_paraview = _env_to_bool(
                 os.environ.get("DARTS_PARAVIEW_RENDER", "0")
@@ -1269,6 +1320,8 @@ class Output:
                         )
                     if "timestep_mode" not in render_opts:
                         render_opts["timestep_mode"] = paraview_timestep_mode
+                    if wells_vtk_file and "wells_vtk_file" not in render_opts:
+                        render_opts["wells_vtk_file"] = wells_vtk_file
 
                     renderer = ParaViewMultiViewRenderer(
                         pvd_file=pvd_file,

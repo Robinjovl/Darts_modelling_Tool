@@ -87,6 +87,11 @@ class ParaViewMultiViewRenderer:
         show_cell_edges: bool = True,
         edge_line_width: float = 0.5,
         edge_color: Sequence[float] = (0.15, 0.15, 0.15),
+        wells_vtk_file: str | None = None,
+        show_wells: bool = True,
+        wells_color: Sequence[float] = (0.15, 0.15, 0.15),
+        wells_opacity: float = 1.0,
+        wells_line_width: float = 1.0,
         show_orientation_axes: bool = True,
         orientation_axes_labels: Sequence[str] = ("X", "Y", "Z"),
         orientation_axes_position: Sequence[float] = (0.01, 0.01),
@@ -181,6 +186,18 @@ class ParaViewMultiViewRenderer:
         :type edge_line_width: float
         :param edge_color: Cell edge RGB color in ``[0, 1]``.
         :type edge_color: Sequence[float]
+        :param wells_vtk_file: Optional VTK/VTU/VTP file containing wells geometry
+            to overlay in every rendered view.
+        :type wells_vtk_file: str, optional
+        :param show_wells: Whether to render wells overlay when
+            ``wells_vtk_file`` is provided.
+        :type show_wells: bool
+        :param wells_color: Wells actor RGB color in ``[0, 1]``.
+        :type wells_color: Sequence[float]
+        :param wells_opacity: Wells actor opacity in ``[0, 1]``.
+        :type wells_opacity: float
+        :param wells_line_width: Wells line width for line-based well geometry.
+        :type wells_line_width: float
         :param show_orientation_axes: Whether to draw orientation axes in each view.
         :type show_orientation_axes: bool
         :param orientation_axes_labels: Axis labels for orientation marker in order
@@ -280,6 +297,25 @@ class ParaViewMultiViewRenderer:
         self.show_cell_edges = bool(show_cell_edges)
         self.edge_line_width = float(max(0.1, edge_line_width))
         self.edge_color = self._validate_rgb(edge_color)
+        wells_path_raw = (
+            str(wells_vtk_file).strip() if wells_vtk_file is not None else ""
+        )
+        self.wells_vtk_path = (
+            Path(wells_path_raw).expanduser().resolve() if wells_path_raw else None
+        )
+        self.show_wells = bool(show_wells)
+        self.wells_color = self._validate_rgb(wells_color)
+        self.wells_opacity = min(1.0, max(0.0, float(wells_opacity)))
+        self.wells_line_width = float(max(0.1, wells_line_width))
+        if self.wells_vtk_path is None:
+            self.show_wells = False
+        elif not self.wells_vtk_path.exists():
+            warnings.warn(
+                f"Wells VTK file does not exist and will be ignored: {self.wells_vtk_path}",
+                stacklevel=2,
+            )
+            self.wells_vtk_path = None
+            self.show_wells = False
         self.show_orientation_axes = bool(show_orientation_axes)
         if len(orientation_axes_labels) != 3:
             raise ValueError(
@@ -1187,6 +1223,28 @@ class ParaViewMultiViewRenderer:
         render_window.SetBorders(0)
 
         shared_camera = vtk.vtkCamera()
+        wells_reader = None
+        wells_rendered = False
+        if self.show_wells and self.wells_vtk_path is not None:
+            try:
+                wells_reader = self._create_vtk_reader(self.wells_vtk_path)
+                wells_dataset = self._data_object_from_reader(wells_reader)
+                has_points = (
+                    hasattr(wells_dataset, "GetNumberOfPoints")
+                    and wells_dataset.GetNumberOfPoints() > 0
+                )
+                if wells_dataset is None or not has_points:
+                    warnings.warn(
+                        f"Wells VTK dataset is empty and will be ignored: {self.wells_vtk_path}",
+                        stacklevel=2,
+                    )
+                    wells_reader = None
+            except Exception as exc:
+                warnings.warn(
+                    f"Failed to read wells VTK file '{self.wells_vtk_path}': {exc}",
+                    stacklevel=2,
+                )
+                wells_reader = None
 
         view_states = []
         for i, field in enumerate(field_specs):
@@ -1222,6 +1280,23 @@ class ParaViewMultiViewRenderer:
             else:
                 prop.EdgeVisibilityOff()
             renderer.AddActor(actor)
+
+            wells_actor = None
+            if wells_reader is not None:
+                wells_mapper = vtk.vtkDataSetMapper()
+                wells_mapper.SetInputConnection(wells_reader.GetOutputPort())
+                wells_mapper.SetScalarVisibility(False)
+
+                wells_actor = vtk.vtkActor()
+                wells_actor.SetMapper(wells_mapper)
+                wells_prop = wells_actor.GetProperty()
+                wells_prop.SetColor(*self.wells_color)
+                wells_prop.SetOpacity(self.wells_opacity)
+                wells_prop.SetLineWidth(self.wells_line_width)
+                if hasattr(wells_prop, "SetRenderLinesAsTubes"):
+                    wells_prop.SetRenderLinesAsTubes(1)
+                renderer.AddActor(wells_actor)
+                wells_rendered = True
 
             scalar_bar = None
             if self.show_scalar_bars:
@@ -1274,6 +1349,7 @@ class ParaViewMultiViewRenderer:
                     "renderer": renderer,
                     "scalar_bar": scalar_bar,
                     "title_actor": title_actor,
+                    "wells_actor": wells_actor,
                 }
             )
 
@@ -1457,6 +1533,10 @@ class ParaViewMultiViewRenderer:
             "ok": True,
             "backend": "vtk",
             "pvd_file": str(self.pvd_path),
+            "wells_vtk_file": str(self.wells_vtk_path)
+            if self.wells_vtk_path is not None
+            else None,
+            "wells_rendered": bool(wells_rendered),
             "output_dir": str(self.output_dir),
             "fields": [f"{f.association}:{f.name}" for f in field_specs],
             "timesteps": [s.timestep for s in snapshots],
