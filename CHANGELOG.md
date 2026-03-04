@@ -49,8 +49,10 @@
   - Input arguments to facilitate consistent compositional axes and extrapolation:
   {- Before: Compositional(..., min_z=zero/10, max_z=1-zero/10) -}\
   {+ Now:    Compositional(..., min_z=0, max_z=1, epsilon_z=zero/10, sim_eps_multiplier=10, extrapolation_flag=True) +}
+  \
   {- Before: PropertyContainer(..., min_z=zero) -}\
   {+ Now:    PropertyContainer(..., eps_z=epsilon) +}
+  \
   {- Before: OperatorsBase(...) -}\
   {+ Now:    OperatorsBase(..., extrapolation_flag=True, dz: float) +}
   - Rename an input argument of the method `add_well`:\
