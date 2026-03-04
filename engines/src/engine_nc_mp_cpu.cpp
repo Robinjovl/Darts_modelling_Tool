@@ -44,6 +44,7 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 

@@ -120,6 +120,7 @@ public:
 template <uint8_t N_VARS>
 int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                               operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                sim_params *params_, timer_node *timer_)
 {
   time_t rawtime;
@@ -129,6 +130,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   mesh = mesh_;
   wells = well_list_;
   acc_flux_op_set_list = acc_flux_op_set_list_;
+  thermal_var_etor = thermal_var_etor_;
   params = params_;
   timer = timer_;
 
