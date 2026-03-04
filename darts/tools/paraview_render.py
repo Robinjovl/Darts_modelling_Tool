@@ -96,7 +96,7 @@ class ParaViewMultiViewRenderer:
         orientation_axes_labels: Sequence[str] = ("X", "Y", "Z"),
         orientation_axes_position: Sequence[float] = (0.01, 0.01),
         orientation_axes_size: float = 0.30,
-        orientation_axes_label_font_size: int = 24,
+        orientation_axes_label_font_size: int | None = None,
         orientation_axes_text_color: Sequence[float] = (0.0, 0.0, 0.0),
         show_field_titles: bool = False,
         background_color: Sequence[float] = (1.0, 1.0, 1.0),
@@ -105,7 +105,7 @@ class ParaViewMultiViewRenderer:
         annotate_view_index: int = 0,
         annotate_template: str = "t = {time:.3f}",
         annotate_position: Sequence[float] = (0.02, 0.92),
-        annotate_font_size: int = 28,
+        annotate_font_size: int = 34,
         annotate_color: Sequence[float] = (0.0, 0.0, 0.0),
         video_enabled: bool = True,
         video_filename: str = "multiview",
@@ -209,7 +209,8 @@ class ParaViewMultiViewRenderer:
         :param orientation_axes_size: Marker size as fraction of per-view width/height.
         :type orientation_axes_size: float
         :param orientation_axes_label_font_size: Orientation axis label font size.
-        :type orientation_axes_label_font_size: int
+            If ``None``, ``annotate_font_size`` is used.
+        :type orientation_axes_label_font_size: int, optional
         :param orientation_axes_text_color: RGB color for orientation axis labels in
             ``[0, 1]``.
         :type orientation_axes_text_color: Sequence[float]
@@ -327,8 +328,13 @@ class ParaViewMultiViewRenderer:
             float(orientation_axes_position[1]),
         )
         self.orientation_axes_size = float(min(0.95, max(0.05, orientation_axes_size)))
+        default_orientation_font_size = (
+            annotate_font_size
+            if orientation_axes_label_font_size is None
+            else orientation_axes_label_font_size
+        )
         self.orientation_axes_label_font_size = int(
-            max(8, orientation_axes_label_font_size)
+            max(8, default_orientation_font_size)
         )
         self.orientation_axes_text_color = self._validate_rgb(
             orientation_axes_text_color
@@ -345,7 +351,7 @@ class ParaViewMultiViewRenderer:
             "parallel_projection": None,
             "parallel_scale": None,
             "view_angle": None,
-            "azimuth": -10.0,
+            "azimuth": -20.0,
             "elevation": -45.0,
             "roll": 0.0,
             "dolly": 1.0,
@@ -1367,6 +1373,20 @@ class ParaViewMultiViewRenderer:
                     axes_actor.GetYAxisCaptionActor2D(),
                     axes_actor.GetZAxisCaptionActor2D(),
                 ):
+                    text_actor = (
+                        caption_actor.GetTextActor()
+                        if hasattr(caption_actor, "GetTextActor")
+                        else None
+                    )
+                    if text_actor is not None:
+                        if hasattr(text_actor, "SetTextScaleModeToNone"):
+                            text_actor.SetTextScaleModeToNone()
+                        elif hasattr(text_actor, "SetTextScaleMode"):
+                            text_scale_mode_none = getattr(
+                                vtk.vtkTextActor, "TEXT_SCALE_MODE_NONE", 0
+                            )
+                            text_actor.SetTextScaleMode(text_scale_mode_none)
+
                     caption_prop = caption_actor.GetCaptionTextProperty()
                     caption_prop.SetColor(*self.orientation_axes_text_color)
                     caption_prop.SetFontSize(self.orientation_axes_label_font_size)
