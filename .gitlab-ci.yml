@@ -42,15 +42,17 @@ include:
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   # - local: '.cicd/jobs/vtune-profile.yml'
+    # rules:
+    # - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/upload-wheels.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/deploy.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
-  - local: '.cicd/jobs/darts-models.yml'
-    rules:
-      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  # - local: '.cicd/jobs/darts-models.yml'
+  #   rules:
+  #     - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/gitingest.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
