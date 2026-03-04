@@ -103,7 +103,7 @@ class ParaViewMultiViewRenderer:
         camera: dict | None = None,
         annotate_time: bool = True,
         annotate_view_index: int = 0,
-        annotate_template: str = "t = {time:.3f}",
+        annotate_template: str = "t = {time:.3f} days",
         annotate_position: Sequence[float] = (0.02, 0.92),
         annotate_font_size: int = 34,
         annotate_color: Sequence[float] = (0.0, 0.0, 0.0),
