@@ -105,6 +105,9 @@ class DartsModel:
         self.reservoir = None
         self.physics = None
 
+        # Create member variable wells (it is needed only for DFM wells)
+        self.wells = None
+
         # Create time_node object for time record
         self.timer = timer_node()
 
@@ -185,6 +188,9 @@ class DartsModel:
             self.timer.node["simulation"].node["dfm_well_velocity_calculation"] = (
                 timer_node()
             )
+        else:
+            # If there are no DFM wells, no Python well objects are needed.
+            self.wells = None
 
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
@@ -314,8 +320,6 @@ class DartsModel:
         self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
 
-        wells = self.wells if self.has_dfm_well else None
-
         if self.restart:
             save_initial = False
 
@@ -334,7 +338,7 @@ class DartsModel:
             compression=compression,
             compression_level=compression_level,
             verbose=verbose,
-            wells=wells,
+            wells=self.wells,
             has_dfm_well=self.has_dfm_well,
         )
 
