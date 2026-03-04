@@ -18,15 +18,6 @@ def init_live_plots(
     :param wells: List of well objects if DFM wells exist
     :type wells: list
     """
-    # At the moment, the function is supported for the PH formulation with a single component.
-    if (
-        not (physics.state_spec == physics.StateSpecification.PH)
-        or not physics.n_vars == 2
-    ):
-        raise Exception(
-            "Plotting the live PH diagram is supported for the PH formulation and a single component!"
-        )
-
     """
     Initialize live plots
     """
@@ -80,74 +71,83 @@ def init_live_plots(
     """ End initializing the figure containing axes for the properties of the Newton solver """
 
     """ Start initializing the figure containing a pair of axes for the PH diagram """
-    fig, axes = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    # PH diagram is only supported for the PH formulation (at the moment with a single component).
+    if physics.state_spec == physics.StateSpecification.PH:
+        if not physics.n_vars == 2:
+            raise Exception(
+                "Plotting the live PH diagram is supported for the PH formulation and a single component!"
+            )
 
-    p_idx = physics.vars.index("pressure")
-    h_idx = physics.vars.index("enthalpy")
+        fig, axes = plt.subplots(figsize=(10, 6), constrained_layout=True)
 
-    # Get the bounds of the OBL domain
-    p_bounds = (physics.PT_axes_min[p_idx], physics.PT_axes_max[p_idx])
-    h_bounds = (physics.axes_min[h_idx], physics.axes_max[h_idx])
+        p_idx = physics.vars.index("pressure")
+        h_idx = physics.vars.index("enthalpy")
 
-    # Resolution of the PH diagram
-    n_p, n_h = physics.n_axes_points[p_idx], physics.n_axes_points[h_idx]
+        # Get the bounds of the OBL domain
+        p_bounds = (physics.PT_axes_min[p_idx], physics.PT_axes_max[p_idx])
+        h_bounds = (physics.axes_min[h_idx], physics.axes_max[h_idx])
 
-    p_range = np.linspace(p_bounds[0], p_bounds[1], n_p)
-    h_range = np.linspace(h_bounds[0], h_bounds[1], n_h)
+        # Resolution of the PH diagram
+        n_p, n_h = physics.n_axes_points[p_idx], physics.n_axes_points[h_idx]
 
-    # Calculate the property matrix
-    prop_matrix = np.empty((n_p, n_h))
-    for idx_p, p in enumerate(p_range):
-        for idx_h, h in enumerate(h_range):
-            state_ph = [p, h]
-            physics.property_containers[0].evaluate(state_ph)
-            prop_matrix[idx_p, idx_h] = physics.property_containers[0].temperature
+        p_range = np.linspace(p_bounds[0], p_bounds[1], n_p)
+        h_range = np.linspace(h_bounds[0], h_bounds[1], n_h)
 
-    n_cmap_bins = 50
-    levels = np.linspace(np.nanmin(prop_matrix), np.nanmax(prop_matrix), n_cmap_bins)
+        # Calculate the property matrix
+        prop_matrix = np.empty((n_p, n_h))
+        for idx_p, p in enumerate(p_range):
+            for idx_h, h in enumerate(h_range):
+                state_ph = [p, h]
+                physics.property_containers[0].evaluate(state_ph)
+                prop_matrix[idx_p, idx_h] = physics.property_containers[0].temperature
 
-    # Filled contour (colored areas)
-    cax = axes.contourf(h_range, p_range, prop_matrix, levels=levels, cmap='jet')
+        n_cmap_bins = 50
+        levels = np.linspace(
+            np.nanmin(prop_matrix), np.nanmax(prop_matrix), n_cmap_bins
+        )
 
-    # Contour lines at the same levels
-    contours = axes.contour(
-        h_range, p_range, prop_matrix, levels=levels, colors='black', linewidths=0.5
-    )
+        # Filled contour (colored areas)
+        cax = axes.contourf(h_range, p_range, prop_matrix, levels=levels, cmap='jet')
 
-    # Label each contour line with its property value
-    axes.clabel(contours, fmt='%1.1f', inline=True, fontsize=7)
+        # Contour lines at the same levels
+        contours = axes.contour(
+            h_range, p_range, prop_matrix, levels=levels, colors='black', linewidths=0.5
+        )
 
-    axes.set_xlim(h_bounds[0], h_bounds[1])
-    axes.set_ylim(p_bounds[0], p_bounds[1])
-    axes.set_xlabel('Specific enthalpy [kJ/kmole]')
-    axes.set_ylabel('Pressure [bar]')
+        # Label each contour line with its property value
+        axes.clabel(contours, fmt='%1.1f', inline=True, fontsize=7)
 
-    # Add a colorbar
-    cbar = fig.colorbar(cax, ax=axes)
-    cbar.set_label("Temperature [K]")
+        axes.set_xlim(h_bounds[0], h_bounds[1])
+        axes.set_ylim(p_bounds[0], p_bounds[1])
+        axes.set_xlabel('Specific enthalpy [kJ/kmole]')
+        axes.set_ylabel('Pressure [bar]')
 
-    # Create a plot for adding bottom-hole points (states) to the PH diagram
-    (line,) = axes.plot(
-        [],
-        [],
-        linestyle='-',
-        linewidth=2,
-        marker='o',
-        markersize=6,
-        color='red',
-        markerfacecolor='red',
-        markeredgecolor='red',
-        label='Bottom-hole state',
-    )
+        # Add a colorbar
+        cbar = fig.colorbar(cax, ax=axes)
+        cbar.set_label("Temperature [K]")
 
-    fig.show()
+        # Create a plot for adding bottom-hole points (states) to the PH diagram
+        (line,) = axes.plot(
+            [],
+            [],
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=6,
+            color='red',
+            markerfacecolor='red',
+            markeredgecolor='red',
+            label='Bottom-hole state',
+        )
 
-    # Update the figure store
-    live_plot_store["ph_fig"] = {
-        "fig": fig,
-        "axes": axes,
-        "lines": [line],
-    }
+        fig.show()
+
+        # Update the figure store
+        live_plot_store["ph_fig"] = {
+            "fig": fig,
+            "axes": axes,
+            "lines": [line],
+        }
     """ Stop initializing the figure containing a pair of axes for the PH diagram """
 
     return live_plot_store
@@ -209,39 +209,42 @@ def update_live_plots(
     """ End updating the figure containing axes for the properties of the Newton solver """
 
     """ Start updating the figure containing a pair of axes for the PH diagram """
-    fig = live_plot_store["ph_fig"]["fig"]
-    axes = live_plot_store["ph_fig"]["axes"]
-    lines = live_plot_store["ph_fig"]["lines"]
+    if physics.state_spec == physics.StateSpecification.PH:
+        fig = live_plot_store["ph_fig"]["fig"]
+        axes = live_plot_store["ph_fig"]["axes"]
+        lines = live_plot_store["ph_fig"]["lines"]
 
-    # Update state of the desired block on the PH diagram
-    assert 0 <= live_plot_store["tracked_block_idx"] < reservoir.mesh.n_blocks, (
-        "The specified tracked_block_idx is out of range!"
-    )
-    block_idx = live_plot_store["tracked_block_idx"]
-    X_np = np.asarray(physics.engine.X).reshape(-1, physics.n_vars)
-    p_idx = physics.vars.index("pressure")
-    h_idx = physics.vars.index("enthalpy")
-    p = X_np[block_idx, p_idx]
-    h = X_np[block_idx, h_idx]
+        # Update state of the desired block on the PH diagram
+        assert 0 <= live_plot_store["tracked_block_idx"] < reservoir.mesh.n_blocks, (
+            "The specified tracked_block_idx is out of range!"
+        )
+        block_idx = live_plot_store["tracked_block_idx"]
+        X_np = np.asarray(physics.engine.X).reshape(-1, physics.n_vars)
+        p_idx = physics.vars.index("pressure")
+        h_idx = physics.vars.index("enthalpy")
+        p = X_np[block_idx, p_idx]
+        h = X_np[block_idx, h_idx]
 
-    x = list(lines[0].get_xdata())
-    y = list(lines[0].get_ydata())
-    x.append(h)
-    y.append(p)
+        x = list(lines[0].get_xdata())
+        y = list(lines[0].get_ydata())
+        x.append(h)
+        y.append(p)
 
-    lines[0].set_data(x, y)
+        lines[0].set_data(x, y)
 
-    axes.relim()
-    axes.autoscale_view()
+        axes.relim()
+        axes.autoscale_view()
 
-    # Update the figure title
-    fig.suptitle(
-        live_plot_store["title_template"].format(time=time, iter_counter=iter_counter)
-    )
+        # Update the figure title
+        fig.suptitle(
+            live_plot_store["title_template"].format(
+                time=time, iter_counter=iter_counter
+            )
+        )
 
-    # Refresh display
-    fig.canvas.draw_idle()
-    fig.canvas.flush_events()
+        # Refresh display
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
     """ Stop updating the figure containing a pair of axes for the PH diagram """
 
     return live_plot_store
