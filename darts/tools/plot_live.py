@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import MaxNLocator
 
 
 def init_live_plots(
@@ -47,6 +48,8 @@ def init_live_plots(
     # ax0.set_xscale("log")
     ax0.set_xlabel("Time [days]")
     ax0.set_ylabel("Number of Newton iterations [-]")
+    # Use integers for the labels of the y-axis
+    ax0.yaxis.set_major_locator(MaxNLocator(integer=True))
 
     # Axes for time step size
     (line1,) = ax1.plot(
