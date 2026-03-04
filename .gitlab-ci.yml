@@ -18,8 +18,6 @@ include:
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/build-images.yml'
-    rules:
-      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/build-linux.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
