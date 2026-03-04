@@ -6,8 +6,18 @@ def init_live_plots(
     live_plot_store: dict,
     physics,
     reservoir,
-    wells=None,
+    wells: list = None,
 ):
+    """
+    Initialize the live plot
+
+    :param live_plot_store: A store to save figures and parameters needed for live plotting
+    :type live_plot_store: dict
+    :param physics: Physics object
+    :param reservoir: Reservoir object
+    :param wells: List of well objects if DFM wells exist
+    :type wells: list
+    """
     # At the moment, the function is supported for the PH formulation with a single component.
     if (
         not (physics.state_spec == physics.StateSpecification.PH)
@@ -153,25 +163,25 @@ def update_live_plots(
     wells=None,
 ):
     """
-    Update live plots
+    Update the live plot
 
-    :param time: Current time [days]
+    :param live_plot_store: A store to save figures and parameters needed for live plotting
+    :type live_plot_store: dict
+    :param physics: Physics object
+    :param reservoir: Reservoir object
+    :param time: Current time [day]
     :type time: float
-    :param iter_counter: Newton-Raphson iteration counter
+    :param iter_counter: Newton-Raphson iteration counter [-]
     :type iter_counter: int
+    :param time_step_size: Size of the current time step [day]
+    :type time_step_size: float
+    :param wells: List of well objects if DFM wells exist
+    :type wells: list
     """
     """ Start updating the figure containing axes for the properties of the Newton solver """
     fig = live_plot_store["solver_fig"]["fig"]
     axes = live_plot_store["solver_fig"]["axes"]
     lines = live_plot_store["solver_fig"]["lines"]
-
-    # lines[0].set_data(self.time, self.n_newton_iters)
-    # axes[0].relim()
-    # axes[0].autoscale_view()
-
-    # lines[1].set_data(self.time, self.time_step_size)
-    # axes[1].relim()
-    # axes[1].autoscale_view()
 
     # Update iteration counter vs time
     x = list(lines[0].get_xdata())
