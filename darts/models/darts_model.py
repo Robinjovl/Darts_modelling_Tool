@@ -5,7 +5,7 @@ from math import fabs
 import numpy as np
 
 from darts.models.output import Output
-from darts.tools.live_plotting import init_live_plots, update_live_plots
+from darts.tools.plot_live import init_live_plots, update_live_plots
 
 try:
     from darts.engines import copy_data_to_device
