@@ -5,7 +5,7 @@ gitingest-digest:
     needs: []
     variables:
         # Python to use for the temporary environment
-        PY_VER: "3.10"
+        PY_VER: "$DEFAULT_PY_VER"
         # Unique conda env name per job to avoid collisions on shared runners
         CONDA_ENV: "gitingest_${CI_JOB_ID}"
         CONDAPATH: /data/gitlab-runner/miniconda3
