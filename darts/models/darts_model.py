@@ -127,6 +127,8 @@ class DartsModel:
             "tracked_block_idx": 0,
             # Template of the figure title
             "title_template": "Time: {time:.4e} \nNR iteration counter: {iter_counter}",
+            # For coupled well-(1D)reservoir, plot reservoir property profile until this reservoir cell
+            "plot_till_this_res_cell": 10,
         }
 
         # Stop recording "initialization" time
@@ -881,6 +883,7 @@ class DartsModel:
                     t,
                     i,
                     dt,
+                    self.has_dfm_well,
                     self.wells,
                 )
             """ End live plotting for every Newton-Raphson iteration """
@@ -898,7 +901,14 @@ class DartsModel:
             and not self.live_plot_store["every_newton_iter"]
         ):
             self.live_plot_store = update_live_plots(
-                self.live_plot_store, self.physics, self.reservoir, t, i, dt, self.wells
+                self.live_plot_store,
+                self.physics,
+                self.reservoir,
+                t,
+                i,
+                dt,
+                self.has_dfm_well,
+                self.wells,
             )
         """ End live plotting for every time step """
 
