@@ -73,15 +73,15 @@ build-linux-tahiti-image-3.10-gpu:
     before_script:
         - echo "🔧 Creating Conda env '${CONDA_ENV}' inside the Apptainer image…"
         - |
-          apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+          APPTAINERENV_CONDA_PKGS_DIRS="${CI_PROJECT_DIR}/.conda/pkgs-${CI_JOB_ID}" apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
             source /opt/conda/etc/profile.d/conda.sh \
-            && conda create -n ${CONDA_ENV} python=${PY_VER} -q -y \
-            && conda clean -afy
+            && mkdir -p \"\${CONDA_PKGS_DIRS}\" \
+            && conda create -n ${CONDA_ENV} python=${PY_VER} -q -y
           "
     script:
         - echo "🚀 Building DARTS GPU libs inside '${CONDA_ENV}'…"
         - |
-            apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+            APPTAINERENV_CONDA_PKGS_DIRS="${CI_PROJECT_DIR}/.conda/pkgs-${CI_JOB_ID}" apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
                 # exit on any error, print commands as you go
                 set -euxo pipefail && \
                 # enable Conda in this shell
@@ -93,7 +93,7 @@ build-linux-tahiti-image-3.10-gpu:
             "
     after_script:
         - |
-            apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+            APPTAINERENV_CONDA_PKGS_DIRS="${CI_PROJECT_DIR}/.conda/pkgs-${CI_JOB_ID}" apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
                 # exit on any error, print commands as you go
                 set -euxo pipefail && \
                 # enable Conda in this shell
