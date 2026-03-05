@@ -1,6 +1,7 @@
 import numpy as np
 
 from darts.models.cicd_model import CICDModel
+from darts.pipes.viz.plot_live import DartsModelWithLivePlots
 from darts.engines import sim_params, ms_well, value_vector
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
@@ -18,11 +19,20 @@ from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
-
+# class Model(DartsModelWithLivePlots):
 class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
+
+        # Use DartsModelWithLivePlots as the super class and enable plots below for live plotting
+        # self.live_plot_config.enable_solver_props = True
+        #
+        # self.live_plot_config.enable_ph_diagram = True
+        # self.live_plot_config.tracked_block_idx = 1000
+        #
+        # self.live_plot_config.enable_well_res_profiles = True
+        # self.live_plot_config.plot_till_this_res_cell = 50
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()

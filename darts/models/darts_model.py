@@ -5,7 +5,6 @@ from math import fabs
 import numpy as np
 
 from darts.models.output import Output
-from darts.tools.plot_live import init_live_plots, update_live_plots
 
 try:
     from darts.engines import copy_data_to_device
@@ -118,17 +117,6 @@ class DartsModel:
         self.n_newton_iters = []
         self.time_step_size = []
 
-        self.live_plot_store = {
-            # Flag to enable live plotting
-            "enable_live_plot": False,
-            # Whether to plot for every Newton iteration or not (only for every time step)
-            "every_newton_iter": False,
-            # Index of the block which will be tracked on the PH diagram
-            "tracked_block_idx": 0,
-            # For coupled well-(1D)reservoir, plot reservoir property profile until this reservoir cell
-            "plot_till_this_res_cell": 10,
-        }
-
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
 
@@ -226,11 +214,6 @@ class DartsModel:
                 + str(self.reservoir.mesh.n_res_blocks)
                 + ' > 30000',
                 stacklevel=2,
-            )
-
-        if self.live_plot_store["enable_live_plot"]:
-            self.live_plot_store = init_live_plots(
-                self.live_plot_store, self.physics, self.reservoir, self.wells
             )
 
     def reset(self):
@@ -869,46 +852,12 @@ class DartsModel:
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
 
-            """ Start live plotting for every Newton-Raphson iteration """
-            if (
-                self.live_plot_store["enable_live_plot"]
-                and self.live_plot_store["every_newton_iter"]
-            ):
-                self.live_plot_store = update_live_plots(
-                    self.live_plot_store,
-                    self.physics,
-                    self.reservoir,
-                    t,
-                    i,
-                    dt,
-                    self.has_dfm_well,
-                    self.wells,
-                )
-            """ End live plotting for every Newton-Raphson iteration """
-
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 
         self.time.append(t)
         self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
         self.time_step_size.append(dt)
-
-        """ Start live plotting for every time step """
-        if (
-            self.live_plot_store["enable_live_plot"]
-            and not self.live_plot_store["every_newton_iter"]
-        ):
-            self.live_plot_store = update_live_plots(
-                self.live_plot_store,
-                self.physics,
-                self.reservoir,
-                t,
-                i,
-                dt,
-                self.has_dfm_well,
-                self.wells,
-            )
-        """ End live plotting for every time step """
 
         self.timer.node["simulation"].stop()
         return converged
