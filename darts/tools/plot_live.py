@@ -158,29 +158,18 @@ def init_live_plots(
 
     """ Start initializing the figure containing axes for profiles of wellbore and 1D reservoir properties """
     if has_dfm_well and physics.state_spec == physics.StateSpecification.PH:
-        fig, axes = plt.subplots(2, 8, figsize=(22, 7), constrained_layout=True)
+        n_columns = 8
+        fig, axes = plt.subplots(2, n_columns, figsize=(22, 7), constrained_layout=True)
 
-        # Well props
-        ax0 = axes[0, 0]
-        ax1 = axes[0, 1]
-        ax2 = axes[0, 2]
-        ax3 = axes[0, 3]
-        ax4 = axes[0, 4]
-        ax5 = axes[0, 5]
-        ax6 = axes[0, 6]
-        ax7 = axes[0, 7]
-        # Reservoir props
-        ax8 = axes[1, 0]
-        ax9 = axes[1, 1]
-        ax10 = axes[1, 2]
-        ax11 = axes[1, 3]
-        ax12 = axes[1, 4]
-        ax13 = axes[1, 5]
-        ax14 = axes[1, 6]
-        ax15 = axes[1, 7]
+        # Well props (on 0th row)
+        well_axes = [axes[0, i] for i in range(n_columns)]
+        well_lines = []
+        # Reservoir props (on 1st row)
+        res_axes = [axes[1, i] for i in range(n_columns)]
+        res_lines = []
 
         # Axes for wellbore pressure
-        (line0,) = ax0.plot(
+        (line,) = well_axes[0].plot(
             [],
             [],
             linestyle='-',
@@ -191,14 +180,15 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        well_lines.append(line)
 
-        ax0.set_xlabel("Pressure [bar]")
-        ax0.set_ylabel("Segment index [-]")
-        ax0.set_title("** Pressure **")
-        ax0.invert_yaxis()
+        well_axes[0].set_xlabel("Pressure [bar]")
+        well_axes[0].set_ylabel("Segment index [-]")
+        well_axes[0].set_title("** Pressure **")
+        well_axes[0].invert_yaxis()
 
         # Axes for wellbore temperature
-        (line1,) = ax1.plot(
+        (line,) = well_axes[1].plot(
             [],
             [],
             linestyle='-',
@@ -209,14 +199,15 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        well_lines.append(line)
 
-        ax1.set_xlabel(r"Temperature [$^\circ$C]")
-        ax1.set_ylabel("Segment index [-]")
-        ax1.set_title("** Temperature **")
-        ax1.invert_yaxis()
+        well_axes[1].set_xlabel(r"Temperature [$^\circ$C]")
+        well_axes[1].set_ylabel("Segment index [-]")
+        well_axes[1].set_title("** Temperature **")
+        well_axes[1].invert_yaxis()
 
         # Axes for wellbore gas volume fraction
-        (line2,) = ax2.plot(
+        (line,) = well_axes[2].plot(
             [],
             [],
             linestyle='-',
@@ -227,14 +218,15 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        well_lines.append(line)
 
-        ax2.set_xlabel("Gas volume fraction [-]")
-        ax2.set_ylabel("Segment index [-]")
-        ax2.set_title("** Gas volume fraction **")
-        ax2.invert_yaxis()
+        well_axes[2].set_xlabel("Gas volume fraction [-]")
+        well_axes[2].set_ylabel("Segment index [-]")
+        well_axes[2].set_title("** Gas volume fraction **")
+        well_axes[2].invert_yaxis()
 
         # Axes for wellbore liquid volume fraction
-        (line3,) = ax3.plot(
+        (line,) = well_axes[3].plot(
             [],
             [],
             linestyle='-',
@@ -245,14 +237,15 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        well_lines.append(line)
 
-        ax3.set_xlabel("Liquid volume fraction [-]")
-        ax3.set_ylabel("Segment index [-]")
-        ax3.set_title("** Liquid volume fraction **")
-        ax3.invert_yaxis()
+        well_axes[3].set_xlabel("Liquid volume fraction [-]")
+        well_axes[3].set_ylabel("Segment index [-]")
+        well_axes[3].set_title("** Liquid volume fraction **")
+        well_axes[3].invert_yaxis()
 
         # Axes for wellbore gas density
-        (line4,) = ax4.plot(
+        (line,) = well_axes[4].plot(
             [],
             [],
             linestyle='-',
@@ -263,14 +256,15 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        well_lines.append(line)
 
-        ax4.set_xlabel(r"Gas density [kg/m$^3$]")
-        ax4.set_ylabel("Segment index [-]")
-        ax4.set_title("** Gas density **")
-        ax4.invert_yaxis()
+        well_axes[4].set_xlabel(r"Gas density [kg/m$^3$]")
+        well_axes[4].set_ylabel("Segment index [-]")
+        well_axes[4].set_title("** Gas density **")
+        well_axes[4].invert_yaxis()
 
         # Axes for wellbore liquid density
-        (line5,) = ax5.plot(
+        (line,) = well_axes[5].plot(
             [],
             [],
             linestyle='-',
@@ -281,14 +275,15 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        well_lines.append(line)
 
-        ax5.set_xlabel(r"Liquid density [kg/m$^3$]")
-        ax5.set_ylabel("Segment index [-]")
-        ax5.set_title("** Liquid density **")
-        ax5.invert_yaxis()
+        well_axes[5].set_xlabel(r"Liquid density [kg/m$^3$]")
+        well_axes[5].set_ylabel("Segment index [-]")
+        well_axes[5].set_title("** Liquid density **")
+        well_axes[5].invert_yaxis()
 
         # Axes for wellbore gas viscosity
-        (line6,) = ax6.plot(
+        (line,) = well_axes[6].plot(
             [],
             [],
             linestyle='-',
@@ -299,14 +294,15 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        well_lines.append(line)
 
-        ax6.set_xlabel("Gas viscosity [cP]")
-        ax6.set_ylabel("Segment index [-]")
-        ax6.set_title("** Gas viscosity **")
-        ax6.invert_yaxis()
+        well_axes[6].set_xlabel("Gas viscosity [cP]")
+        well_axes[6].set_ylabel("Segment index [-]")
+        well_axes[6].set_title("** Gas viscosity **")
+        well_axes[6].invert_yaxis()
 
         # Axes for wellbore liquid viscosity
-        (line7,) = ax7.plot(
+        (line,) = well_axes[7].plot(
             [],
             [],
             linestyle='-',
@@ -317,14 +313,15 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        well_lines.append(line)
 
-        ax7.set_xlabel("Liquid viscosity [cP]")
-        ax7.set_ylabel("Segment index [-]")
-        ax7.set_title("** Liquid viscosity **")
-        ax7.invert_yaxis()
+        well_axes[7].set_xlabel("Liquid viscosity [cP]")
+        well_axes[7].set_ylabel("Segment index [-]")
+        well_axes[7].set_title("** Liquid viscosity **")
+        well_axes[7].invert_yaxis()
 
         # Axes for reservoir pressure
-        (line8,) = ax8.plot(
+        (line,) = res_axes[0].plot(
             [],
             [],
             linestyle='-',
@@ -335,13 +332,14 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        res_lines.append(line)
 
-        ax8.set_xscale("log")
-        ax8.set_xlabel("Reservoir radial distance [m]")
-        ax8.set_ylabel("Pressure [bar]")
+        res_axes[0].set_xscale("log")
+        res_axes[0].set_xlabel("Reservoir radial distance [m]")
+        res_axes[0].set_ylabel("Pressure [bar]")
 
         # Axes for reservoir temperature
-        (line9,) = ax9.plot(
+        (line,) = res_axes[1].plot(
             [],
             [],
             linestyle='-',
@@ -352,13 +350,14 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        res_lines.append(line)
 
-        ax9.set_xscale("log")
-        ax9.set_xlabel("Reservoir radial distance [m]")
-        ax9.set_ylabel("Temperature [$^\circ$C]")
+        res_axes[1].set_xscale("log")
+        res_axes[1].set_xlabel("Reservoir radial distance [m]")
+        res_axes[1].set_ylabel("Temperature [$^\circ$C]")
 
         # Axes for reservoir gas volume fraction
-        (line10,) = ax10.plot(
+        (line,) = res_axes[2].plot(
             [],
             [],
             linestyle='-',
@@ -369,13 +368,14 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        res_lines.append(line)
 
-        ax10.set_xscale("log")
-        ax10.set_xlabel("Reservoir radial distance [m]")
-        ax10.set_ylabel("Gas volume fraction [-]")
+        res_axes[2].set_xscale("log")
+        res_axes[2].set_xlabel("Reservoir radial distance [m]")
+        res_axes[2].set_ylabel("Gas volume fraction [-]")
 
         # Axes for reservoir liquid volume fraction
-        (line11,) = ax11.plot(
+        (line,) = res_axes[3].plot(
             [],
             [],
             linestyle='-',
@@ -386,13 +386,14 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        res_lines.append(line)
 
-        ax11.set_xscale("log")
-        ax11.set_xlabel("Reservoir radial distance [m]")
-        ax11.set_ylabel("Liquid volume fraction [-]")
+        res_axes[3].set_xscale("log")
+        res_axes[3].set_xlabel("Reservoir radial distance [m]")
+        res_axes[3].set_ylabel("Liquid volume fraction [-]")
 
         # Axes for reservoir gas density
-        (line12,) = ax12.plot(
+        (line,) = res_axes[4].plot(
             [],
             [],
             linestyle='-',
@@ -403,13 +404,14 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        res_lines.append(line)
 
-        ax12.set_xscale("log")
-        ax12.set_xlabel("Reservoir radial distance [m]")
-        ax12.set_ylabel(r"Gas density [kg/m$^3$]")
+        res_axes[4].set_xscale("log")
+        res_axes[4].set_xlabel("Reservoir radial distance [m]")
+        res_axes[4].set_ylabel(r"Gas density [kg/m$^3$]")
 
         # Axes for reservoir liquid density
-        (line13,) = ax13.plot(
+        (line,) = res_axes[5].plot(
             [],
             [],
             linestyle='-',
@@ -420,13 +422,14 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        res_lines.append(line)
 
-        ax13.set_xscale("log")
-        ax13.set_xlabel("Reservoir radial distance [m]")
-        ax13.set_ylabel(r"Liquid density [kg/m$^3$]")
+        res_axes[5].set_xscale("log")
+        res_axes[5].set_xlabel("Reservoir radial distance [m]")
+        res_axes[5].set_ylabel(r"Liquid density [kg/m$^3$]")
 
         # Axes for reservoir gas viscosity
-        (line14,) = ax14.plot(
+        (line,) = res_axes[6].plot(
             [],
             [],
             linestyle='-',
@@ -437,13 +440,14 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        res_lines.append(line)
 
-        ax14.set_xscale("log")
-        ax14.set_xlabel("Reservoir radial distance [m]")
-        ax14.set_ylabel("Gas viscosity [cP]")
+        res_axes[6].set_xscale("log")
+        res_axes[6].set_xlabel("Reservoir radial distance [m]")
+        res_axes[6].set_ylabel("Gas viscosity [cP]")
 
         # Axes for reservoir liquid viscosity
-        (line15,) = ax15.plot(
+        (line,) = res_axes[7].plot(
             [],
             [],
             linestyle='-',
@@ -454,36 +458,18 @@ def init_live_plots(
             markerfacecolor='red',
             markeredgecolor='red',
         )
+        res_lines.append(line)
 
-        ax15.set_xscale("log")
-        ax15.set_xlabel("Reservoir radial distance [m]")
-        ax15.set_ylabel("Liquid viscosity [cP]")
+        res_axes[7].set_xscale("log")
+        res_axes[7].set_xlabel("Reservoir radial distance [m]")
+        res_axes[7].set_ylabel("Liquid viscosity [cP]")
 
         fig.show()
-
-        lines = [
-            line0,
-            line1,
-            line2,
-            line3,
-            line4,
-            line5,
-            line6,
-            line7,
-            line8,
-            line9,
-            line10,
-            line11,
-            line12,
-            line13,
-            line14,
-            line15,
-        ]
 
         live_plot_store["well_fig"] = {
             "fig": fig,
             "axes": axes,
-            "lines": lines,
+            "lines": well_lines + res_lines,
         }
     """ Stop initializing the figure containing axes for profiles of wellbore and 1D reservoir properties """
 
@@ -669,70 +655,37 @@ def update_live_plots(
         ] = wells['I1'].iter_phases_props
 
         # Well props
-        lines[0].set_data(p_well, np.arange(n_segments))
-        axes[0, 0].relim()
-        axes[0, 0].autoscale_view()
-
-        lines[1].set_data(T_well, np.arange(n_segments))
-        axes[0, 1].relim()
-        axes[0, 1].autoscale_view()
-
-        lines[2].set_data(sG_well, np.arange(n_segments))
-        axes[0, 2].relim()
-        axes[0, 2].autoscale_view()
-
-        lines[3].set_data(1 - sG_well, np.arange(n_segments))
-        axes[0, 3].relim()
-        axes[0, 3].autoscale_view()
-
-        lines[4].set_data(rhoG_well, np.arange(n_segments))
-        axes[0, 4].relim()
-        axes[0, 4].autoscale_view()
-
-        lines[5].set_data(rhoL_well, np.arange(n_segments))
-        axes[0, 5].relim()
-        axes[0, 5].autoscale_view()
-
-        lines[6].set_data(miuG_well, np.arange(n_segments))
-        axes[0, 6].relim()
-        axes[0, 6].autoscale_view()
-
-        lines[7].set_data(miuL_well, np.arange(n_segments))
-        axes[0, 7].relim()
-        axes[0, 7].autoscale_view()
+        n_columns = 8
+        well_profiles = [
+            p_well,
+            T_well,
+            sG_well,
+            1 - sG_well,
+            rhoG_well,
+            rhoL_well,
+            miuG_well,
+            miuL_well,
+        ]
+        for i in range(n_columns):
+            lines[i].set_data(well_profiles[i], np.arange(n_segments))
+            axes[0, i].relim()
+            axes[0, i].autoscale_view()
 
         # Reservoir props
-        lines[8].set_data(x_res, p_res)
-        axes[1, 0].relim()
-        axes[1, 0].autoscale_view()
-
-        lines[9].set_data(x_res, T_res)
-        axes[1, 1].relim()
-        axes[1, 1].autoscale_view()
-
-        lines[10].set_data(x_res, sG_res)
-        axes[1, 2].relim()
-        axes[1, 2].autoscale_view()
-
-        lines[11].set_data(x_res, 1 - sG_res)
-        axes[1, 3].relim()
-        axes[1, 3].autoscale_view()
-
-        lines[12].set_data(x_res, rhoG_res)
-        axes[1, 4].relim()
-        axes[1, 4].autoscale_view()
-
-        lines[13].set_data(x_res, rhoL_res)
-        axes[1, 5].relim()
-        axes[1, 5].autoscale_view()
-
-        lines[14].set_data(x_res, miuG_res)
-        axes[1, 6].relim()
-        axes[1, 6].autoscale_view()
-
-        lines[15].set_data(x_res, miuL_res)
-        axes[1, 7].relim()
-        axes[1, 7].autoscale_view()
+        res_profiles = [
+            p_res,
+            T_res,
+            sG_res,
+            1 - sG_res,
+            rhoG_res,
+            rhoL_res,
+            miuG_res,
+            miuL_res,
+        ]
+        for i in range(n_columns):
+            lines[i + n_columns].set_data(x_res, res_profiles[i])
+            axes[1, i].relim()
+            axes[1, i].autoscale_view()
 
         # Update the figure title
         fig.suptitle(
