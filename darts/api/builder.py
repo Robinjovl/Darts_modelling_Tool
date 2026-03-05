@@ -108,10 +108,7 @@ class ModelBuilder:
         if model_cls is None:
             return section
         if isinstance(section, dict):
-            try:
-                return model_cls.model_validate(section)
-            except Exception:
-                return model_cls.parse_obj(section)
+            return model_cls.model_validate(section)
         return section
 
     @staticmethod
@@ -263,10 +260,7 @@ class ModelBuilder:
 
         rtype = section.get("type")
         target_cls: Any = CPGReservoirSpec if rtype == "cpg" else ReservoirSpec
-        try:
-            return target_cls.model_validate(section)
-        except Exception:
-            return target_cls.parse_obj(section)
+        return target_cls.model_validate(section)
 
     @staticmethod
     def _apply_cpg_reservoir(

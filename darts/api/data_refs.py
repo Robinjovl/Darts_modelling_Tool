@@ -26,11 +26,7 @@ def resolve_data_ref(
 ) -> Any:
     """Resolve DataRef into in-memory data or objects."""
     if not isinstance(ref, DataRef):
-        ref = (
-            DataRef.model_validate(ref)
-            if hasattr(DataRef, "model_validate")
-            else DataRef.parse_obj(ref)
-        )
+        ref = DataRef.model_validate(ref)
 
     store = object_store if object_store is not None else _OBJECT_STORE
 

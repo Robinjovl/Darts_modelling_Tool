@@ -39,11 +39,7 @@ def main():
         spec_dict = json.load(fp)
 
     try:
-        # Pydantic v2
-        if hasattr(ModelSpec, 'model_validate'):
-            spec = ModelSpec.model_validate(spec_dict)
-        else:  # Pydantic v1 fallback
-            spec = ModelSpec.parse_obj(spec_dict)
+        spec = ModelSpec.model_validate(spec_dict)
     except Exception as e:
         print('Invalid ModelSpec:', e)
         sys.exit(1)

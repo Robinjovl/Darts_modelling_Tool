@@ -77,10 +77,7 @@ def _err(
 
 def _validate_with_model(model_cls: Any, spec: dict[str, Any]) -> dict[str, Any]:
     try:
-        try:
-            model_cls.model_validate(normalize_keys(spec))
-        except Exception:
-            model_cls.parse_obj(normalize_keys(spec))
+        model_cls.model_validate(normalize_keys(spec))
         return {"ok": True}
     except ValidationError as e:
         errs: list[dict[str, Any]] = []
