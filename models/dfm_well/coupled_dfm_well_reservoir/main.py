@@ -2,29 +2,32 @@
 Single-component (CO2), 2-phase (gas and liquid) system
 Injection of liquid CO2 into a well and reservoir containing gaseous CO2
 
-Notes:
-    When using a DFM well for a two-phase system, the order of phases is important: first the low density phase (gas),
-    second the high density phase (liquid)
+When using DFM wells:
+    for a 2-phase system, use G as the name of the gaseous phase and L as the name of the liquid phase.
+    for a 3-phase system, use G as the name of the gaseous phase, L_a, as the name of one liquid phase,
+    and L_b as the name of the other liquid phase.
 """
 
 import numpy as np
 import os
 
 from darts.engines import redirect_darts_output
-from darts.tools.hdf5_tools import load_hdf5_to_dict
-from darts.pipes.save_results import save_segments_primary_vars_and_phase_props
+from darts.pipes.save_results import save_dfm_well_props
 from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
 from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
 
 from model import Model
 
-redirect_darts_output('run_log.log')
+
+redirect_darts_output('run.log')
 coupled_model = Model()
 coupled_model.init()
 coupled_model.set_output()
 
 if 1:
     output_props = coupled_model.physics.vars + coupled_model.output.properties + ["temperature"]
+    coupled_model.output.output_to_vtk(ith_step=0, output_properties=output_props)   # saves initial reservoir conditions
+    coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)   # saves initial well conditions
 
     report_steps = [
         0.5 / 24 / 60,  # 30 seconds
@@ -75,14 +78,12 @@ if 1:
         elif i == 21:
             coupled_model.data_ts.dt_max = 1
         coupled_model.run(dt)
+        coupled_model.output.output_to_vtk(ith_step=i+1, output_properties=output_props)
+        coupled_model.output.well_output_to_vtp(ith_step=i+1, output_properties=output_props)
 
-    coupled_model.output.output_to_vtk(output_properties=output_props)
     coupled_model.print_timers()
 else:
-    well_data_file_path = os.path.join(coupled_model.output.output_folder, "well_data.h5")
-    h5_well_data = load_hdf5_to_dict(well_data_file_path)
-    save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model)
+    save_dfm_well_props('I1', coupled_model)
 
-    primary_vars_and_phase_props_file_address = os.path.join(coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl")
-    plot_heat_map_pcolormesh(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
-    plot_heat_map_contourf(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, y_axis_tick_interval=250)
+    plot_heat_map_pcolormesh('I1', coupled_model)
+    plot_heat_map_contourf('I1', coupled_model, y_axis_tick_interval=250)

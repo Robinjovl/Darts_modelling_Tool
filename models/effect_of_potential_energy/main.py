@@ -24,7 +24,7 @@ output_props = m.physics.vars + ['sat_CO2_rich_phase', 'xCO2', 'yH2O']
 
 m.run(simulation_time)
 
-_, output = m.output.output_properties(output_properties=output_props, timestep=1)
+_, output = m.output.output_properties(output_properties=output_props, ts_idx=1)
 linear_interval_num_cells = len(m.linear_inverval)   # Number of cells of the linear inverval considered as the reservoir
 temp_profile_without_pe = output['temperature'].T[:linear_interval_num_cells]
 pressure_profile_without_pe = output['pressure'].T[:linear_interval_num_cells]
@@ -42,7 +42,7 @@ m.set_output()
 
 m.run(simulation_time)
 
-_, output = m.output.output_properties(output_properties=output_props, timestep=1)
+_, output = m.output.output_properties(output_properties=output_props, ts_idx=1)
 temp_profile_with_pe = output['temperature'].T[:linear_interval_num_cells]
 pressure_profile_with_pe = output['pressure'].T[:linear_interval_num_cells]
 H2O_mole_frac_profile_with_pe = output['H2O'].T[:linear_interval_num_cells]

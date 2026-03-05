@@ -2,7 +2,6 @@ import os
 import warnings
 from math import fabs
 
-# import h5py
 import numpy as np
 
 from darts.models.output import Output
@@ -90,6 +89,9 @@ class DartsModel:
         self.reservoir = None
         self.physics = None
 
+        # Create member variable wells (it is needed only for DFM wells)
+        self.wells = None
+
         # Create time_node object for time record
         self.timer = timer_node()
 
@@ -100,7 +102,6 @@ class DartsModel:
         self.timer.node["simulation"] = timer_node()
 
         self.timer.node["newton update"] = timer_node()
-        self.timer.node["vtk_output"] = timer_node()
         self.timer.node["output"] = timer_node()
 
         # Create timer.node called "initialization" to record initialization time
@@ -111,6 +112,10 @@ class DartsModel:
 
         # Create sim_params object to set simulation parameters
         self.params = sim_params()
+
+        self.time = []
+        self.n_newton_iters = []
+        self.time_step_size = []
 
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
@@ -163,6 +168,9 @@ class DartsModel:
             self.timer.node["simulation"].node["dfm_well_velocity_calculation"] = (
                 timer_node()
             )
+        else:
+            # If there are no DFM wells, no Python well objects are needed.
+            self.wells = None
 
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
@@ -220,28 +228,27 @@ class DartsModel:
             self.timer.node["simulation"],
         )
 
-    def load_restart_data(self, reservoir_filename: str, timestep: int = -1):
+    def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
         Beware that loading restart data resets the engine.
 
-        :param reservoir_filename: Path to the restart file containing reservoir block data.
-        :type reservoir_filename: str
-        :param timestep: The timestep to load from the file (default: -1 for the last timestep)
-        :type timestep: int
+        :param reservoir_filepath: Path to the restart file containing reservoir block data.
+        :type reservoir_filepath: str
+        :param ts_idx: The timestep index to load from the file (default: -1 for the last timestep)
+        :type ts_idx: int
         """
-
         # check if the files with data exist
         if not os.path.exists(
-            reservoir_filename
-        ):  # or not os.path.exists(well_filename):
+            reservoir_filepath
+        ):  # or not os.path.exists(well_filepath):
             raise FileNotFoundError(
-                f"The restart file does not exist: {reservoir_filename}"
+                f"The restart file does not exist: {reservoir_filepath}"
             )
 
         # Read data from the file
         time_res, reservoir_cell_id, Xres, var_names = self.output.read_specific_data(
-            reservoir_filename, timestep
+            reservoir_filepath, ts_idx
         )
 
         # load data as initial conditions
@@ -256,7 +263,7 @@ class DartsModel:
         self.physics.engine.t = time_res[0]
 
         # save initial conditions to *.h5 file
-        print(rf'Restarting model from {reservoir_filename} at day {time_res[0]}.')
+        print(rf'Restarting model from {reservoir_filepath} at day {time_res[0]}.')
         self.output.save_data_to_h5(kind='reservoir')
 
         return
@@ -311,6 +318,8 @@ class DartsModel:
             compression=compression,
             compression_level=compression_level,
             verbose=verbose,
+            wells=self.wells,
+            has_dfm_well=self.has_dfm_well,
         )
 
         return
@@ -578,8 +587,6 @@ class DartsModel:
 
         data_ts = self.data_ts
 
-        self.output.save_well_after_run = save_well_data_after_run
-
         if save_well_data_after_run:
             if not hasattr(self, "_well_output_configured"):
                 self.output.configure_output(kind="well")
@@ -607,8 +614,6 @@ class DartsModel:
 
         self.prev_dt = dt
 
-        ts_counter = 0
-
         nc = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
         max_dx = np.zeros(nc)
@@ -616,14 +621,14 @@ class DartsModel:
         if np.fabs(data_ts.dt_mult - 1) < 1e-10:
             omega = 0.0
         else:
-            omega = 1 / (
-                data_ts.dt_mult - 1
-            )  # inversion assuming mult = (1 + omega) / omega
+            # inversion assuming mult = (1 + omega) / omega
+            omega = 1 / (data_ts.dt_mult - 1)
+
+        ts_counter = 0
 
         while t < stop_time:
-            xn = np.array(self.physics.engine.Xn, copy=True)[
-                : nb * nc
-            ]  # need to copy since Xn will be updated Xn = X
+            # need to copy since Xn will be updated Xn = X
+            xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
             converged = self.run_timestep(dt, t, verbose)
 
             if converged:
@@ -759,7 +764,6 @@ class DartsModel:
                 self.physics.engine.newton_residual_last_dt = (
                     self.physics.engine.calc_newton_residual()
                 )  # calc norm of residual
-            # TODO Function line_search is not updated for the coupled model.
             elif self.has_dfm_well:
                 # Method is either 1 or 2
                 self.physics.engine.newton_residual_last_dt = (
@@ -828,9 +832,8 @@ class DartsModel:
                         print("Stationary point detected!")
                     break
             else:
-                if (
-                    type(self.data_ts.linear_type) is linear_solver_types
-                ):  # solvers via Python interface
+                if isinstance(self.data_ts.linear_type, linear_solver_types):
+                    # solvers via Python interface
                     if self.data_ts.linear_type in [
                         linear_solver_types.CPU_PETSC_CPR,
                         linear_solver_types.CPU_PETSC_FS,
@@ -842,13 +845,19 @@ class DartsModel:
                         raise Exception(
                             "Unknown linear solver type", self.data_ts.linear_type
                         )
-                else:  # compile-tyme C++ linear solvers
+                else:
+                    # compile-tyme C++ linear solvers
                     self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
+
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
+
+        self.time.append(t)
+        self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
+        self.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
         return converged

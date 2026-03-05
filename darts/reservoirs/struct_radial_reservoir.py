@@ -348,4 +348,4 @@ class StructRadialReservoir(StructReservoir):
         mesh = meshio.Mesh(
             points=self.output_points, cells=self.output_cells, cell_data=cell_data
         )
-        meshio.write(f"{output_directory:s}/solution{ith_step:d}.vtk", mesh)
+        meshio.write(f"{output_directory:s}/solution_ts{ith_step:d}.vtk", mesh)

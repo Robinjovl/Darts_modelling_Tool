@@ -229,7 +229,7 @@ class Model(DartsModel):
                 # self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, k + 1), well_indexD=0, ms_epm=True)
 
         if 0:
-            self.reservoir.add_well("P1", well_type)
+            self.reservoir.add_well("P1")
             for k in range(4, 20):
                 self.reservoir.add_perforation("P1", res_cell_idx=(1, 1, k + 1), well_index=100, well_indexD=100)
 

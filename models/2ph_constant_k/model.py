@@ -119,8 +119,8 @@ class Model(DartsModel):
             self.reservoir.add_well("I1")
             self.reservoir.add_well("P1")
             for k in range(1, self.nz + 1):
-                self.reservoir.add_perforation("I1", cell_index=(self.well_cell_id[0][0], self.well_cell_id[0][1], k))
-                self.reservoir.add_perforation("P1", cell_index=(self.well_cell_id[1][0], self.well_cell_id[1][1], k))
+                self.reservoir.add_perforation("I1", res_cell_idx=(self.well_cell_id[0][0], self.well_cell_id[0][1], k))
+                self.reservoir.add_perforation("P1", res_cell_idx=(self.well_cell_id[1][0], self.well_cell_id[1][1], k))
         return
 
     def set_wells_spe10(self):

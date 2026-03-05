@@ -111,11 +111,10 @@ class Model_CPG(CICDModel):
             self.reservoir.global_data.update({'rocknum': arrays['ROCKNUM']})
     def set_wells(self):
         # add wells and perforations, 1-based IJK indices
-        well_type = ms_well.MS_Type.EPM
         if hasattr(self.idata, 'schfile'):
             # apply to the reservoir from idata filled before by idata.read_and_add_perforations()
             for wname, wdata in self.idata.well_data.wells.items():
-                self.reservoir.add_well(wname, well_type)
+                self.reservoir.add_well(wname)
                 for perf_tuple in wdata.perforations:
                     perf = perf_tuple[1]
                     # adjust to account for added overburden layers
@@ -129,7 +128,7 @@ class Model_CPG(CICDModel):
         else:
             # add wells and perforations, 1-based indices
             for wname, wdata in self.idata.well_data.wells.items():
-                self.reservoir.add_well(wname, well_type)
+                self.reservoir.add_well(wname)
                 for k in range(1 + self.idata.geom.burden_layers,  self.reservoir.nz+1-self.idata.geom.burden_layers):
                     self.reservoir.add_perforation(wname,
                                                    res_cell_idx=(wdata.location.I, wdata.location.J, k),

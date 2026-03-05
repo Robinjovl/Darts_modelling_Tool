@@ -7,50 +7,57 @@ import pandas as pd
 from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_line_graphs(
-    primary_vars_and_phase_props_file_address: str,
-    h5_well_data: dict,
+    well_name: str,
     coupled_model: DartsModel,
     time_step_increment: int = 1,
     show_plot: bool = True,
 ):
     """
-    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of well segments are stored
-    :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
+    Plot property profiles over time using line graphs for the specified well
+
+    :param well_name: Name of the well the properties of which will be plotted
+    :type well_name: str
     :param coupled_model: An instance of DartsModel
     :param show_plot: Whether or not to show the plot
     :type show_plot: bool
     """
-    main_dir = os.path.join(coupled_model.output_folder, "line_graphs")
+    output_folder_name = f'line_graphs_{well_name}'
+    main_dir = os.path.join(coupled_model.output_folder, output_folder_name)
 
-    # Reset_directory
+    # Reset directory
     if os.path.exists(main_dir):
         shutil.rmtree(main_dir)
     os.makedirs(main_dir)
 
-    # Load primary vars and phase props
-    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+    # Well HDF5 file is used here to get the time step sizes
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
 
-    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary and assigns it to well_geom.
-    well_geom = next(iter(coupled_model.wells.values())).geometry
+    # Load primary vars and phase props
+    well_props_file_path = os.path.join(
+        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
+    )
+    data_frame = pd.read_pickle(well_props_file_path)
+
+    # Get well geometry info
+    well_geom = coupled_model.wells[well_name].geometry
     num_segments = well_geom.num_segments
 
+    # Get physics info
     components_names = coupled_model.physics.property_containers[0].components_name
     num_components = len(components_names)
 
-    simulation_times = (
-        h5_well_data["dynamic"]["time"] * 24 * 60 * 60
-    )  # convert days to seconds
-    num_ts = len(simulation_times)
+    # Convert days to seconds
+    simulated_time = h5_well_dict["dynamic"]["time"] * 24 * 60 * 60
+    num_ts = len(simulated_time)
     list_of_time_steps = range(0, num_ts, time_step_increment)
 
-    # Create a colormap
-    cmap = plt.colormaps.get_cmap(
-        "jet"
-    )  # You can use other colormaps like 'plasma', 'inferno', etc.
+    # Create a colormap (other options: 'plasma', 'inferno', etc.)
+    cmap = plt.colormaps.get_cmap("jet")
     num_lines = num_ts  # Number of time steps you are plotting
     colors = cmap(np.linspace(0, 1, num_lines))  # Create a color gradient
 
@@ -96,6 +103,8 @@ def plot_line_graphs(
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close()
 
     # %% Component/components overall mole fraction profile
 
@@ -154,6 +163,8 @@ def plot_line_graphs(
         if show_plot:
             plt.show()
 
+        plt.close()
+
     # %% Temperature profile
 
     # Update figure counter for name of the saved figure
@@ -204,6 +215,8 @@ def plot_line_graphs(
         if show_plot:
             plt.show()
 
+        plt.close()
+
     # %% Gas saturation profile
 
     # Update figure counter for name of the saved figure
@@ -238,6 +251,8 @@ def plot_line_graphs(
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close()
 
     # %% Profile/profiles of components mole fractions in the gaseous phase
 
@@ -280,6 +295,8 @@ def plot_line_graphs(
         if show_plot:
             plt.show()
 
+        plt.close()
+
     # %% Profile/profiles of components mole fractions in the liquid phase
 
     for c, comp_name in enumerate(components_names):
@@ -320,6 +337,8 @@ def plot_line_graphs(
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close()
 
     # %% Gas density profile
 
@@ -365,6 +384,8 @@ def plot_line_graphs(
     if show_plot:
         plt.show()
 
+    plt.close()
+
     # %% Liquid density profile
 
     # Update figure counter for name of the saved figure
@@ -408,6 +429,8 @@ def plot_line_graphs(
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close()
 
     # %% Gas viscosity profile
 
@@ -453,6 +476,8 @@ def plot_line_graphs(
     if show_plot:
         plt.show()
 
+    plt.close()
+
     # %% Liquid viscosity profile
 
     # Update figure counter for name of the saved figure
@@ -496,3 +521,5 @@ def plot_line_graphs(
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close()
