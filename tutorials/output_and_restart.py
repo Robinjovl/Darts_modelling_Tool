@@ -18,16 +18,16 @@ from darts.print_build_info import *
 
 #%%
 
-def read_data(sol_filepath, well_filepath, timestep = None):
+def read_data(sol_filepath, well_filepath, ts_idx = None):
     # read reservoir data
-    time, cell_id, X, var_names = n.output.read_specific_data(sol_filepath, timestep = timestep)
+    time, cell_id, X, var_names = n.output.read_specific_data(sol_filepath, ts_idx=ts_idx)
     print('time', time)
     print('cell id:', cell_id)
     print('vars:', var_names)
     print('X[time, cell_id, variable], shape:', X.shape)
 
     # read well data
-    time, cell_id, X, var_names = n.output.read_specific_data(well_filepath, timestep = timestep)
+    time, cell_id, X, var_names = n.output.read_specific_data(well_filepath, ts_idx=ts_idx)
     print('time', time)
     print('cell id:', cell_id)
     print('vars:', var_names)
@@ -93,12 +93,12 @@ for mdir in accepted_dirs:
     # read_data(n.sol_filepath, n.well_filepath)
 
     """ --------------------- EVALUATING PROPERTIES --------------------- """
-    # when reading hdf5 files the timestep defaults to None. In which case all available timesteps are returned
+    # when reading hdf5 files the ts_idx defaults to None. In which case all available timesteps are returned
     sol_filepath = n.sol_filepath # in the 'resrvoir_solution_double.h5' the state in every reservoir/grid block is saved
-    time, cell_id, X, var_names = n.output.read_specific_data(sol_filepath, timestep = None)
+    time, cell_id, X, var_names = n.output.read_specific_data(sol_filepath, ts_idx=None)
 
     well_filpath = n.well_filepath  # in the well_data.h5 the state in the perforated reservoir block and well block is saved
-    time_well, cell_id_well, X_well, var_names_well = n.output.read_specific_data(sol_filepath, timestep=None)
+    time_well, cell_id_well, X_well, var_names_well = n.output.read_specific_data(sol_filepath, ts_idx=None)
 
     # collect all available primary and secondary variables in a list
     primary_variables = n.physics.vars # state variables
@@ -107,24 +107,24 @@ for mdir in accepted_dirs:
 
     # default behaviour for dartsmodel.output.output_properties() returns a dictionary of primary variables
     # for all timesteps saved in .../dartsmodel.output_folder/reservoir_solution.h5
-    time_vector, property_array = n.output.output_properties(filepath = None, output_properties = None, timestep = None, engine = False)
+    time_vector, property_array = n.output.output_properties(sol_filepath = None, output_properties = None, ts_idx = None, engine = False)
     # save property array in the output folder
     n.output.save_property_array(time_vector, property_array)
     # load property array
-    loaded_time_vector, loaded_property_array = n.output.load_property_array(file_directory=n.output_folder + '/property_array.h5')
+    loaded_time_vector, loaded_property_array = n.output.load_property_array(filepath=n.output_folder + '/property_array.h5')
 
     try:
         # save properties as an *.nc file
         # !! only for structured reservoir class !!
         xarray_dataset = n.output.output_to_xarray(output_properties = output_props)
-        n.output.output_to_plt(xarray_data=xarray_dataset, timestep=Nt, x_slice=None, y_slice=None, z_slice=0)
+        n.output.output_to_plt(xarray_data=xarray_dataset, ts_idx=Nt, x_slice=None, y_slice=None, z_slice=0)
     except:
         pass
 
     # evaluate a specific timestep
-    time_vector, property_array = n.output.output_properties(timestep = 0) # initial conditions
-    time_vector, property_array = n.output.output_properties(timestep = Nt) # final timestep
-    # time_vector, property_array = n.output.output_properties(timestep = -1) # alternatively, final timestep
+    time_vector, property_array = n.output.output_properties(ts_idx = 0) # initial conditions
+    time_vector, property_array = n.output.output_properties(ts_idx = Nt) # final timestep
+    # time_vector, property_array = n.output.output_properties(ts_idx = -1) # alternatively, final timestep
 
     # run model without saving anything
     n.run(1, verbose=True, save_well_data=False, save_reservoir_data=False, save_well_data_after_run=False)
@@ -136,7 +136,7 @@ for mdir in accepted_dirs:
 
     # compare property_array evaluated from double and single precision saved data
     try:
-        time_vector, property_array_single = n.output.output_properties(filepath = n.output_folder + '/reservoir_solution_single.h5',
+        time_vector, property_array_single = n.output.output_properties(sol_filepath = n.output_folder + '/reservoir_solution_single.h5',
                                                                         output_properties = n.output.properties)
         norm = np.mean(np.abs(property_array_single[n.output.properties[0]] - property_array[n.output.properties[0]]))
         print(norm)
@@ -145,9 +145,9 @@ for mdir in accepted_dirs:
 
     # different errors
     # time_vector, property_array = n.output.output_properties(output_properties='pressure')
-    # time_vector, property_array = n.output.output_properties(timestep = 6) # raises an IndexError
-    # time_vector, property_array = n.output.output_properties(timestep = 5.5) # raises a TypeError
-    # time_vector, property_array = n.output.output_properties(filepath = output_folder + 'bublegum') # raises FileNotFoundError
+    # time_vector, property_array = n.output.output_properties(ts_idx = 6) # raises an IndexError
+    # time_vector, property_array = n.output.output_properties(ts_idx = 5.5) # raises a TypeError
+    # time_vector, property_array = n.output.output_properties(sol_filepath = output_folder + 'bublegum') # raises FileNotFoundError
 
     """ ----------------------------- WELL TIME DATA ----------------------------- """
 
@@ -173,7 +173,7 @@ for mdir in accepted_dirs:
 
     # export and save properties as an *.nc file
     xarray_dataset = m.output.output_to_xarray(output_properties = m.physics.vars + m.output.properties)
-    m.output.output_to_plt(xarray_data=xarray_dataset, timestep=Nt, x_slice=None, y_slice=None, z_slice=0)
+    m.output.output_to_plt(xarray_data=xarray_dataset, ts_idx=Nt, x_slice=None, y_slice=None, z_slice=0)
 
     # output_to_vtk
     try:
@@ -190,7 +190,7 @@ for mdir in accepted_dirs:
     # m.output.filter_phase_props(new_prop_keys=['somethimgsomething']) # raises a ValueError
     time_vector, property_array = m.output.output_properties(output_properties=m.output.properties)
     xarray_dataset = m.output.output_to_xarray(output_properties=m.output.properties)
-    m.output.output_to_plt(xarray_data=xarray_dataset, timestep=Nt, x_slice=None, y_slice=None, z_slice=0)
+    m.output.output_to_plt(xarray_data=xarray_dataset, ts_idx=Nt, x_slice=None, y_slice=None, z_slice=0)
 
     """ --------------------- RESTART MODEL --------------------- """
     if RESTART:
@@ -201,8 +201,8 @@ for mdir in accepted_dirs:
                                all_phase_props=True
                                )
 
-        reservoir_filename = n.sol_filepath # path to the data you want to restart from
-        m_restarted.load_restart_data(reservoir_filename, timestep=1)
+        reservoir_filepath = n.sol_filepath # path to the data you want to restart from
+        m_restarted.load_restart_data(reservoir_filepath, ts_idx=1)
         m_restarted.run(1+365/10/2, restart_dt=1e-5) # use a smaller timestep than normal
 
         output_props = m_restarted.physics.vars + m_restarted.output.properties
