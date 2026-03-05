@@ -487,6 +487,11 @@ def init_live_plots(
         }
     """ Stop initializing the figure containing axes for profiles of wellbore and 1D reservoir properties """
 
+    # Template of the figure title
+    live_plot_store["title_template"] = (
+        "Time: {time:.4e} \nNR iteration counter: {iter_counter}"
+    )
+
     return live_plot_store
 
 

@@ -125,8 +125,6 @@ class DartsModel:
             "every_newton_iter": False,
             # Index of the block which will be tracked on the PH diagram
             "tracked_block_idx": 0,
-            # Template of the figure title
-            "title_template": "Time: {time:.4e} \nNR iteration counter: {iter_counter}",
             # For coupled well-(1D)reservoir, plot reservoir property profile until this reservoir cell
             "plot_till_this_res_cell": 10,
         }
