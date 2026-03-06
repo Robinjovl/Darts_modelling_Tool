@@ -11,7 +11,7 @@ from functools import total_ordering
 import numpy as np
 
 from darts.engines import *
-from darts.physics.base.operators_base import WellControlOperators, WellInitOperators
+from darts.physics.base.operators_base import ThermalVarOperator, WellControlOperators
 
 
 class PhysicsBase:
@@ -22,7 +22,7 @@ class PhysicsBase:
 
     The Physics object is composed of :class:`PropertyContainer` objects for each of the regions and a set of operators.
     The operators consist of :class:`ReservoirOperators` objects for each of the regions, a :class:`WellOperators`,
-    a :class:`WellControlOperators`, a :class:`WellInitOperators` and a :class:`PropertyOperators` object.
+    a :class:`WellControlOperators`, a :class:`ThermalVarOperator` and a :class:`PropertyOperators` object.
     For each set of operators (evaluators, etor), an interpolator (itor) object is created for use in the :class:`engine`.
 
     :ivar engine: Engine object
@@ -37,8 +37,8 @@ class PhysicsBase:
     :type well_operators: dict
     :ivar well_ctrl_operators: :class:`WellControlOperators` object for well control
     :type well_ctrl_operators: WellControlOperators
-    :ivar well_init_operators: :class:`WellInitOperators` object for generic state well initialization
-    :type well_init_operators: WellInitOperators
+    :ivar thermal_var_operator: :class:`ThermalVarOperator` object for generic state specification
+    :type thermal_var_operator: ThermalVarOperator
     :ivar regions: List of property regions
     :type regions: list
     """
@@ -46,13 +46,14 @@ class PhysicsBase:
     engine: engine_base
     well_operators: operator_set_evaluator_iface
     well_ctrl_operators: WellControlOperators
-    well_init_operators: WellInitOperators
+    thermal_var_operator: ThermalVarOperator
 
     @total_ordering
     class StateSpecification(Enum):
         P = 0
         PT = 1
         PH = 2
+        PS = 3
 
         def __lt__(self, other):
             if self.__class__ is other.__class__:
@@ -140,6 +141,7 @@ class PhysicsBase:
         itor_precision: str = 'd',
         verbose: bool = False,
         is_barycentric: bool = False,
+        n_solid: int = None,
     ):
         """
         Function to initialize all contained objects within the Physics object.
@@ -158,6 +160,8 @@ class PhysicsBase:
         :type verbose: bool
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param n_solid: Number of solid minerals for element-based reactive flow
+        :type n_solid: int
         """
         # Define OBL axes
         self.axes_min, self.axes_max = self.determine_obl_bounds(
@@ -172,11 +176,37 @@ class PhysicsBase:
 
         # set engine, operators and create interpolators
         self.engine = self.set_engine(discr_type, platform)
+
+        # for separate mineral fraction in reactive flow formulations
+        if n_solid is not None:
+            self.engine.n_solid = n_solid
+
+        # Set state specification in the engine
+        self.set_state_spec(state_spec=self.state_spec)
+
         self.set_operators()
         self.set_interpolators(
             platform, itor_type, itor_mode, itor_precision, is_barycentric
         )
         return
+
+    def set_state_spec(self, state_spec: StateSpecification):
+        """
+        Set the state specification in the engine
+
+        :param state_spec: State specification
+        :type state_spec: StateSpecification
+        """
+        if state_spec == self.StateSpecification.P:
+            self.engine.state_spec = self.engine.StateSpecification.P
+        elif state_spec == self.StateSpecification.PT:
+            self.engine.state_spec = self.engine.StateSpecification.PT
+        elif state_spec == self.StateSpecification.PH:
+            self.engine.state_spec = self.engine.StateSpecification.PH
+        elif state_spec == self.StateSpecification.PS:
+            self.engine.state_spec = self.engine.StateSpecification.PS
+        else:
+            raise NotImplementedError()
 
     def add_property_region(self, property_container, region: int = 0):
         """
@@ -298,9 +328,9 @@ class PhysicsBase:
             precision=itor_precision,
             is_barycentric=is_barycentric,
         )
-        self.well_init_itor, _ = self.create_interpolator(
-            self.well_init_operators,
-            n_ops=self.well_init_operators.n_ops,
+        self.thermal_var_itor, _ = self.create_interpolator(
+            self.thermal_var_operator,
+            n_ops=self.thermal_var_operator.n_ops,
             axes_min=value_vector(self.PT_axes_min),
             axes_max=value_vector(self.PT_axes_max),
             timer_name='well initialization',
@@ -509,7 +539,7 @@ class PhysicsBase:
                 self.n_ops,
                 self.phases,
                 self.well_ctrl_itor,
-                self.well_init_itor,
+                self.thermal_var_itor,
                 self.thermal,
             )
 

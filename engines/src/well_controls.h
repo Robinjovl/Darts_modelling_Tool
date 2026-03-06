@@ -27,11 +27,21 @@ class well_control_iface
 {
 public:
     // MOLAR_RATE is 0 because it is the first rate operator type in the WellControlOperators
-    enum WellControlType : int { NONE = -2, BHP, MOLAR_RATE, MASS_RATE, VOLUMETRIC_RATE, ADVECTIVE_HEAT_RATE, NUMBER_OF_RATE_TYPES };
+    enum WellControlType : int
+    {
+        NONE = -2,
+        BHP,
+        MOLAR_RATE,
+        MASS_RATE,
+        VOLUMETRIC_RATE,
+        ADVECTIVE_HEAT_RATE,
+        NUMBER_OF_RATE_TYPES
+    };
+
     static const int n_state_ctrls = 2;  // pressure (BHP) and temperature (BHT) operators
 
 protected:
-    WellControlType control_type = NONE;
+    WellControlType control_type = WellControlType::NONE;
     index_t phase_idx{ 0 }, n_phases, n_comps, thermal, n_vars, n_ops, well_state_offset;
     value_t target, inj_temp;
     std::vector<value_t> inj_comp;
@@ -39,12 +49,12 @@ protected:
     std::vector<value_t> state;
     std::vector<value_t> well_control_ops;
     std::vector<value_t> well_control_ops_derivs;
-    operator_set_gradient_evaluator_iface* well_controls_etor, * well_init_etor;
+    operator_set_gradient_evaluator_iface* well_controls_etor, * thermal_var_etor;
 
 public:
     well_control_iface() {}
-    well_control_iface(index_t n_phases_, index_t n_comps_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_, operator_set_gradient_evaluator_iface* well_init_etor_)
-        : n_phases(n_phases_), n_comps(n_comps_), thermal(thermal_), well_controls_etor(well_controls_etor_), well_init_etor(well_init_etor_)
+    well_control_iface(index_t n_phases_, index_t n_comps_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_)
+        : n_phases(n_phases_), n_comps(n_comps_), thermal(thermal_), well_controls_etor(well_controls_etor_), thermal_var_etor(thermal_var_etor_)
     {
         // Evaluate well control operators
       // WellControlOperators are defined as follows: P, composition, T, NP MOLAR_RATE, NP MASS_RATE, NP VOLUMETRIC_RATE, and NP ADVECTIVE_HEAT_RATE operators
@@ -62,6 +72,7 @@ public:
     index_t get_well_n_ops() { return this->n_ops; }
     index_t get_well_n_vars() { return this->n_vars; }
     std::string get_well_control_type_str();
+    std::string get_well_control_target_str();
 
     virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
         uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t* jacobian_row, std::vector<value_t>& RHS);

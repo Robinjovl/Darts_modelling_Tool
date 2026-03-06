@@ -18,7 +18,7 @@ ms_well::ms_well()
 }
 
 void ms_well::init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_)
+    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_)
 {
     n_block_size = n_vars_;
     P_VAR = 0;
@@ -28,8 +28,8 @@ void ms_well::init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::str
     phase_names = phase_names_;
     thermal = thermal_;
 
-    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
-    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
 
     rate_evaluator = well_controls_etor;
     state.resize(n_vars);
@@ -40,7 +40,7 @@ void ms_well::init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::str
 }
 
 void ms_well::init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_)
+    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_)
 {
     n_block_size = N_VARS_;
     P_VAR = P_VAR_;
@@ -50,8 +50,8 @@ void ms_well::init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_v
     phase_names = phase_names_;
     thermal = thermal_;
 
-    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
-    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
 
     rate_evaluator = well_controls_etor;
     state.resize(n_vars);
@@ -68,7 +68,7 @@ int ms_well::check_constraints(double dt, std::vector<value_t>& X)
         {
             // constraint violation occured, switch control and constrain
             std::swap(control, constraint);
-            std::cout << "Well " << name << " switched to " << control.get_well_control_type_str() << std::endl;
+            std::cout << "Well " << name << " switched to " << control.get_well_control_type_str() << " (target: " << control.get_well_control_target_str() << ")\n";
             //initialize_control(X);
         }
 

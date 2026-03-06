@@ -45,10 +45,10 @@ public:
     ms_well();
 
     void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-        operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_ = 0);
+        operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_ = 0);
 
     void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-        operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_ = 0);
+        operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_ = 0);
 
     // the function changes (overwrites) jacobian equations for well_head_idx block
     // since well_head_idx has exactly 1 connection, it is assumed that

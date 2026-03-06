@@ -74,6 +74,22 @@ std::string well_control_iface::get_well_control_type_str()
 	return out;
 }
 
+std::string well_control_iface::get_well_control_target_str()
+{
+	if (this->control_type == WellControlType::NONE)
+	{
+		return "";
+	}
+	else if (this->control_type >= WellControlType::BHP && this->control_type < WellControlType::NUMBER_OF_RATE_TYPES)
+	{
+		return std::to_string(this->target);
+	}
+	else
+	{
+		throw std::runtime_error("Undefined well control type");
+	}
+}
+
 int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t* jacobian_row, std::vector<value_t>& RHS)
 {
@@ -168,7 +184,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 }
 
 int well_control_iface::check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans,
-	uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
+ 										     	   uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
 {
 	value_t* X_well_head = &X[n_block_size * well_head_idx + P_VAR];
 	value_t* X_well_body = X_well_head + n_block_size;
@@ -237,12 +253,12 @@ int well_control_iface::initialize_well_block(std::vector<value_t>& state_block,
 		// For temperature/enthalpy, use specified control
 		if (this->thermal)
 		{
-			// Evaluate WellInitOperators to initialize temperature/enthalpy of well head according to specified injection conditions
+			// Evaluate ThermalVarOperator to initialize temperature/enthalpy of well head according to specified injection conditions
 			target_state[n_vars - 1] = inj_temp;
-			std::vector<value_t> well_init_ops(1);
-			this->well_init_etor->evaluate(target_state, well_init_ops);
+			std::vector<value_t> thermal_var_op(1);
+			this->thermal_var_etor->evaluate(target_state, thermal_var_op);
 
-			target_state[n_vars - 1] = well_init_ops[0];
+			target_state[n_vars - 1] = thermal_var_op[0];
 		}
 	}
 

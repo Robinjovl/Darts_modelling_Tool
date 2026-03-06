@@ -34,13 +34,15 @@ public:
   virtual uint8_t get_n_comps() const override = 0;
 
   // get the index of Z variable
-  virtual uint8_t get_z_var() const override = 0;
+  virtual uint8_t get_z_var_idx() const override = 0;
 
   // initialization
-  virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) override = 0;
+  virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                   operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_) override = 0;
 
   template <uint8_t N_VARS>
-  int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_);
+  int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_);
 
   // newton loop
   virtual int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override = 0;
@@ -118,6 +120,7 @@ public:
 template <uint8_t N_VARS>
 int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                               operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                sim_params *params_, timer_node *timer_)
 {
   time_t rawtime;
@@ -127,6 +130,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   mesh = mesh_;
   wells = well_list_;
   acc_flux_op_set_list = acc_flux_op_set_list_;
+  thermal_var_etor = thermal_var_etor_;
   params = params_;
   timer = timer_;
 
@@ -404,17 +408,17 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   n_vars = get_n_vars();
   n_ops = get_n_ops();
   nc = get_n_comps();
-  z_var = get_z_var();
+  z_var_idx = get_z_var_idx();
 
   if (params->log_transform == 0)
   {
-    min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+    min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
   }
   else if (params->log_transform == 1)
   {
-    min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+    min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
 
   }
   min_sim_z = min_axis_z + params->sim_eps;

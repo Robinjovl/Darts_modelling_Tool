@@ -6,8 +6,8 @@ from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
+    ThermalVarOperator,
     WellControlOperators,
-    WellInitOperators,
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.geothermal.operator_evaluator import *
@@ -97,7 +97,7 @@ class Geothermal(PhysicsBase):
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.PH,
     ):
         """
-        Overload determine_obl_bounds() method to hardcode OBL axes of pressure-enthalpy and PT-axes for WellInitOperators
+        Overload determine_obl_bounds() method to hardcode OBL axes of pressure-enthalpy and PT-axes for ThermalVarOperator
         """
         return self.axes_min, self.axes_max
 
@@ -126,7 +126,7 @@ class Geothermal(PhysicsBase):
             self.thermal,
             extrapolation_flag=False,
         )
-        self.well_init_operators = WellInitOperators(
+        self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
