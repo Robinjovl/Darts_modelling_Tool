@@ -1168,6 +1168,7 @@ class Pipe:
         :param Re: Reynolds number
         :param relative_roughness: Pipe relative roughness
         """
+        f = f[0]  # Make sure f passed to math.sqrt is a float
         # Ensure the friction factor doesn't go negative or zero
         # Return a large value to prevent sqrt of negative number
         if f <= 0:
