@@ -48,7 +48,7 @@ class DartsModelWithLivePlots(DartsModel):
         super().__init__()
 
         self.live_plot_config = LivePlotConfig()
-        self.live_plot_store = {}
+        self._live_plot_store = {}
 
     def init_live_plots(self):
         """
@@ -99,7 +99,7 @@ class DartsModelWithLivePlots(DartsModel):
 
             fig.show()
 
-            self.live_plot_store["solver_fig"] = {
+            self._live_plot_store["solver_fig"] = {
                 "fig": fig,
                 "axes": axes,
                 "lines": [line0, line1],
@@ -197,7 +197,7 @@ class DartsModelWithLivePlots(DartsModel):
             fig.show()
 
             # Update the figure store
-            self.live_plot_store["ph_fig"] = {
+            self._live_plot_store["ph_fig"] = {
                 "fig": fig,
                 "axes": axes,
                 "lines": [line],
@@ -532,7 +532,7 @@ class DartsModelWithLivePlots(DartsModel):
                 line15,
             ]
 
-            self.live_plot_store["well_fig"] = {
+            self._live_plot_store["well_fig"] = {
                 "fig": fig,
                 "axes": axes,
                 "lines": lines,
@@ -556,14 +556,14 @@ class DartsModelWithLivePlots(DartsModel):
         :type time_step_size: float
         """
         # Initialize once (first call only)
-        if not self.live_plot_store:
+        if not self._live_plot_store:
             self.init_live_plots()
 
         """ Start updating the figure containing axes for the properties of the Newton solver """
         if self.live_plot_config.enable_solver_props:
-            fig = self.live_plot_store["solver_fig"]["fig"]
-            axes = self.live_plot_store["solver_fig"]["axes"]
-            lines = self.live_plot_store["solver_fig"]["lines"]
+            fig = self._live_plot_store["solver_fig"]["fig"]
+            axes = self._live_plot_store["solver_fig"]["axes"]
+            lines = self._live_plot_store["solver_fig"]["lines"]
 
             # Update iteration counter vs time
             x = list(lines[0].get_xdata())
@@ -595,9 +595,9 @@ class DartsModelWithLivePlots(DartsModel):
             self.live_plot_config.enable_ph_diagram
             and self.physics.state_spec == self.physics.StateSpecification.PH
         ):
-            fig = self.live_plot_store["ph_fig"]["fig"]
-            axes = self.live_plot_store["ph_fig"]["axes"]
-            lines = self.live_plot_store["ph_fig"]["lines"]
+            fig = self._live_plot_store["ph_fig"]["fig"]
+            axes = self._live_plot_store["ph_fig"]["axes"]
+            lines = self._live_plot_store["ph_fig"]["lines"]
 
             # Update state of the desired block on the PH diagram
             assert (
@@ -640,9 +640,9 @@ class DartsModelWithLivePlots(DartsModel):
             and self.has_dfm_well
             and self.physics.state_spec == self.physics.StateSpecification.PH
         ):
-            fig = self.live_plot_store["well_fig"]["fig"]
-            axes = self.live_plot_store["well_fig"]["axes"]
-            lines = self.live_plot_store["well_fig"]["lines"]
+            fig = self._live_plot_store["well_fig"]["fig"]
+            axes = self._live_plot_store["well_fig"]["axes"]
+            lines = self._live_plot_store["well_fig"]["lines"]
 
             i_start_well = self.reservoir.wells[0].well_head_idx
             i_end_well = self.reservoir.wells[0].well_bottom_idx
