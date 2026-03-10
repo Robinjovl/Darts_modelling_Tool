@@ -1482,7 +1482,7 @@ class Output:
 
                 # Save figure
                 filename = (
-                    f'ts{t:d}'
+                    (f'ts{t:d}' if t is None else f'ts{t:d}')
                     + (f' x{x_slice:d}' if x_slice is not None else '')
                     + (f' y{y_slice:d}' if y_slice is not None else '')
                     + (f' z{x_slice:d}' if z_slice is not None else '')
