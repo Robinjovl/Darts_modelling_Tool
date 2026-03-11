@@ -1,3 +1,4 @@
+import os
 from lgr_assemble import assemble_lgr_connections_eclipse, LGRReservoir
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import DartsModel
@@ -11,13 +12,15 @@ from darts.engines import (
     value_vector,
 )
 import numpy as np
+import pandas as pd
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
+from darts.physics.properties.flash import Flash, RR2
 
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
-from darts.physics.properties.density import DensityBasic, Garcia2001
+from darts.physics.properties.density import DensityBasic, Spivey2004, Garcia2001
 
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012  
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
@@ -26,6 +29,167 @@ from dartsflash.libflash import NegativeFlash
 from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData
 from darts.physics.super.initialize import Initialize
+from darts.tools.interpolation import TableInterpolation
+from darts.tools.keyword_file_tools import *
+
+class WatRelPerm:
+    def __init__(self, pvt):
+        super().__init__()
+        self.pvt = pvt
+        self.SGAF = get_table_keyword(self.pvt, 'SGAF')
+    
+    def evaluate(self, wat_sat):
+        gas_index = 0
+        krwg_index = 2
+        gas_sat = 1 - wat_sat
+        Table = TableInterpolation()
+        if gas_sat < self.SGAF[0][0] or gas_sat > self.SGAF[len(self.SGAF) - 1][0]:
+            krwg = Table.SCALExtraP(self.SGAF, gas_sat, gas_index, krwg_index)
+        else:
+            krwg = Table.LinearInterP(self.SGAF, gas_sat, gas_index, krwg_index)
+        return krwg
+
+
+class GasRelPerm:
+    def __init__(self, pvt):
+        super().__init__()
+        self.pvt = pvt
+        self.SGAF = get_table_keyword(self.pvt, 'SGAF')
+
+    def evaluate(self, gas_sat):
+        gas_index = 0
+        krg_index = 1
+
+        Table = TableInterpolation()
+        if gas_sat < self.SGAF[0][0] or gas_sat > self.SGAF[len(self.SGAF) - 1][0]:
+            krg = Table.SCALExtraP(self.SGAF, gas_sat, gas_index, krg_index)
+        else:
+            krg = Table.LinearInterP(self.SGAF, gas_sat, gas_index, krg_index)
+
+        return krg
+    
+class Garcia2001(Spivey2004):
+    """
+    Correlation for brine density with dissolved CO2: Garcia (2001) - Density of aqueous solutions of CO2
+    """
+
+    def __init__(self, components: list, ions: list = None, combined_ions: list = None):
+        super().__init__(components, ions, combined_ions)
+
+        self.CO2_idx = components.index("CO2") if "CO2" in components else None
+
+    def evaluate(self, pressure, temperature, x):
+        """"""
+        # simplification: use basic density for water because there is no salt and then apply correction if CO2 is present
+        rho_b = DensityBasic(dens0=1020, compr=4.5e-5, p0=1.01325).evaluate(pressure, temperature, x)
+        # If CO2 is present, correct density
+        if self.CO2_idx is not None:
+            # Apparent molar volume of dissolved CO2
+            tc = temperature - 273.15  # Temp in [Celcius]
+            V_app = (
+                37.51 - 9.585e-2 * tc + 8.740e-4 * tc**2 - 5.044e-7 * tc**3
+            ) * 1e-6  # in [m3 / mol]
+
+            mCO2 = 55.509 * x[self.CO2_idx] / (x[self.H2O_idx])
+            MW = 44.01  # molecular weight of CO2
+            rho = (1.0 + mCO2 * MW * 1e-3) / (
+                mCO2 * V_app + 1.0 / rho_b
+            )  # in [kg / m3]
+        else:
+            rho = rho_b
+
+        return rho
+class TableKFlash(Flash):
+    def __init__(self, nc, table_path, p_axis=None, t_axis=None, eps=1e-11):
+        super().__init__(nph=2, nc=nc)
+
+        self.rr_eps = eps
+        df = pd.read_csv(table_path)
+        self.p_axis = np.sort(df["P_bar"].unique())
+        self.t_axis = np.sort(df["T_K"].unique())
+        n_p = len(self.p_axis)
+        n_t = len(self.t_axis)
+        self.K_co2_table = np.zeros((n_p, n_t), dtype=float)
+        self.K_h2o_table = np.zeros((n_p, n_t), dtype=float)
+        for i, p in enumerate(self.p_axis):
+            df_p = df[df["P_bar"] == p].sort_values("T_K")
+            self.K_co2_table[i, :] = df_p["K_CO2"].values
+            self.K_h2o_table[i, :] = df_p["K_H2O"].values
+        
+    def evaluate(self, pressure, temperature, zc):
+        self.K_values = self.get_k_values(pressure, temperature)
+        self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
+        self.temperature = temperature
+
+        return 0
+    
+    def get_k_values(self, pressure, temperature):
+        p = pressure
+        t = temperature
+        i1 = np.searchsorted(self.p_axis, p)
+        j1 = np.searchsorted(self.t_axis, t)
+        # find location in table and corner points for interpolation
+        if i1 == 0:
+            i0 = i1 = 0
+        elif i1 >= len(self.p_axis):
+            i0 = i1 = len(self.p_axis) - 1
+        else:
+            i0 = i1 - 1
+
+        if j1 == 0:
+            j0 = j1 = 0
+        elif j1 >= len(self.t_axis):
+            j0 = j1 = len(self.t_axis) - 1
+        else:
+            j0 = j1 - 1
+
+        p0, p1 = self.p_axis[i0], self.p_axis[i1]
+        t0, t1 = self.t_axis[j0], self.t_axis[j1]
+
+        # four corners for bilinear interpolation
+        kco2_00 = self.K_co2_table[i0, j0]
+        kco2_10 = self.K_co2_table[i1, j0]
+        kco2_01 = self.K_co2_table[i0, j1]
+        kco2_11 = self.K_co2_table[i1, j1]
+
+        kh2o_00 = self.K_h2o_table[i0, j0]
+        kh2o_10 = self.K_h2o_table[i1, j0]
+        kh2o_01 = self.K_h2o_table[i0, j1]
+        kh2o_11 = self.K_h2o_table[i1, j1]
+
+        # if PT is coincident with table point, return directly to avoid interpolation error
+        if i0 == i1 and j0 == j1:
+            return np.array([kco2_00, kh2o_00])
+        if i0 == i1:
+            wt = (t - t0) / (t1 - t0)
+            kco2 = kco2_00 * (1 - wt) + kco2_01 * wt
+            kh2o = kh2o_00 * (1 - wt) + kh2o_01 * wt
+            return np.array([kco2, kh2o])
+
+        if j0 == j1:
+            wp = (p - p0) / (p1 - p0)
+            kco2 = kco2_00 * (1 - wp) + kco2_10 * wp
+            kh2o = kh2o_00 * (1 - wp) + kh2o_10 * wp
+            return np.array([kco2, kh2o])
+        
+        wp = (p - p0) / (p1 - p0)
+        wt = (t - t0) / (t1 - t0)
+
+        kco2 = (
+            kco2_00 * (1 - wp) * (1 - wt) +
+            kco2_10 * wp * (1 - wt) +
+            kco2_01 * (1 - wp) * wt +
+            kco2_11 * wp * wt
+        )
+
+        kh2o = (
+            kh2o_00 * (1 - wp) * (1 - wt) +
+            kh2o_10 * wp * (1 - wt) +
+            kh2o_01 * (1 - wp) * wt +
+            kh2o_11 * wp * wt
+        )
+
+        return np.array([kco2, kh2o])
 
 
 class Model(DartsModel):
@@ -41,7 +205,7 @@ class Model(DartsModel):
         self.set_physics()
         
 
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=30, runtime=1000, 
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=2, runtime=1000, 
                             tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
@@ -344,7 +508,7 @@ class Model(DartsModel):
         rcon = np.concatenate(rcond_list)
         hcap = np.concatenate(hcap_list)
 
-        print(f'final volume list is {volume}')
+        # print(f'final volume list is {volume}')
 
         self.reservoir = LGRReservoir(self.timer,
                                         cell_m=cm_all,
@@ -371,15 +535,10 @@ class Model(DartsModel):
 
     def set_wells(self):
         wells= self.cfg["wells"]
-        # wat_wells = self.cfg["water_inj"]
+        
         for key, value in wells.items():
             self.reservoir.add_well(key)
-
-        # for key, value in wat_wells.items():
-        #     self.reservoir.add_well(key)
-
         center_2d = self.lgr_meta['well_local_center']
-
         comp = self.build_well_completion()
         for wname, cfg in comp.items():
             lgr_name = cfg["lgr"]
@@ -390,37 +549,41 @@ class Model(DartsModel):
                 rx,ry,_ = self.lgrs[lgr_name]['lgr_coords_in_parent_grid']['refine']
                 inj_local = center_2d + k * (rx * ry)
                 inj_global = inj_local + self.lgr_meta['lgr_offsets'][comp[wname]["lgr"]]
-                self.reservoir.add_perforation(wname, cell_index=inj_global, ms_epm=True)
+                self.reservoir.add_perforation(wname, cell_index=inj_global, ms_epm=False)
+       
+        wat_wells = self.cfg["water_inj"]
+        for key, value in wat_wells.items():
+            self.reservoir.add_well(key)
         # add four water injectors 
-        # for wname, cfg in wat_wells.items():
-        #     k_from = cfg["k_from"]
-        #     k_to = cfg["k_to"]
-        #     i0 = cfg["i0"]
-        #     j0 = cfg["j0"]
-        #     for k in range(self.nz_over + k_from , self.nz_over + k_to + 1):
-        #         id0 = self.convert_ijk_to_gindex_1based(i0, j0, k, self.level0.nx, self.level0.ny) 
-        #         idx_global = self.level0.discretizer.global_to_local[id0]
-        #         self.reservoir.add_perforation(wname, cell_index=idx_global)
+        for wname, cfg in wat_wells.items():
+            k_from = cfg["k_from"]
+            k_to = cfg["k_to"]
+            i0 = cfg["i0"]
+            j0 = cfg["j0"]
+            for k in range(self.nz_over + k_from , self.nz_over + k_to + 1):
+                id0 = self.convert_ijk_to_gindex_1based(i0, j0, k, self.level0.nx, self.level0.ny) 
+                idx_global = self.level0.discretizer.global_to_local[id0]
+                self.reservoir.add_perforation(wname, cell_index=idx_global, ms_epm=False)
   
 
     def set_physics(self):
-        """Physical properties"""
-        # Create property containers:
         components = ['CO2', 'H2O']
+        nc = len(components)
         self.components = components
         comp_data = CompData(components, setprops=True)
         phases = ['CO2_rich', 'aqueous']
-        # Mw = [44.01, 18.015]
-
-        ceos = CubicEoS(comp_data, CubicEoS.PR)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        pvt = os.path.join(base_dir, "physics.in")
+        # pvt = 'physics.in'
+        pr = CubicEoS(comp_data, CubicEoS.PR)
         aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003,
                                 AQEoS.solute: AQEoS.Ziabakhsh2012,
                                 })
-        flash_params = FlashParams(comp_data)
         # EoS-related parameters
-        flash_params.add_eos("CEOS", ceos)
-        flash_params.add_eos("aqueous", aq)
-        flash_params.eos_order = ["aqueous", "CEOS"]
+        flash_params = FlashParams(comp_data)
+        flash_params.add_eos("PR", pr)
+        flash_params.add_eos("AQ", aq)
+        flash_params.eos_order = ["PR", "AQ"]
 
         # Flash-related parameters
         flash_params.split_tol = 1e-12
@@ -429,21 +592,20 @@ class Model(DartsModel):
                                                Mw=comp_data.Mw, min_z=self.zero / 10,)
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(len(components), [4, 1e-1], self.zero)
-        # property_container.flash_ev = NegativeFlash(flash_params, ["aqueous", "CEOS"], [InitialGuess.Henry_AV])
-        property_container.density_ev = dict([('CO2_rich', EoSDensity(ceos,comp_data.Mw)),
-                                              ('aqueous', DensityBasic(dens0=1020,compr= 4.5e-5,p0=31))])
+        table_path = r"E:\repo_2\open-darts\LGR_kairan\Rep_CMG\K_values.csv"
+        property_container.flash_ev = TableKFlash(len(components), table_path, self.zero)
+        property_container.density_ev = dict([('CO2_rich', EoSDensity(eos=pr,Mw=comp_data.Mw)),
+                                              ('aqueous', Garcia2001(components))])
         property_container.viscosity_ev = dict([('CO2_rich', Fenghour1998()),
                                                 ('aqueous', Islam2012(components))])
-        property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas")),
-                                               ('aqueous', PhaseRelPerm("wat"))])
-        property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(ceos)),
-                                                ('aqueous', EoSEnthalpy(aq))])
-        property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)),
-                                                   ('aqueous', ConstFunc(180.)), ])
-
-      
-
+        property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas", swc=0.30, sgr=0.1, kre=1.0, n=4.2)),
+                                               ('aqueous', PhaseRelPerm("oil", swc=0.30, sgr=0.1, kre=1.0, n=1.9))])
+        # property_container.rel_perm_ev = dict([('CO2_rich', GasRelPerm(pvt)),
+        #                                        ('aqueous', WatRelPerm(pvt))])
+        property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(eos=pr)),
+                                                ('aqueous', EoSEnthalpy(eos=aq))])
+        property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(181.44)),
+                                                   ('aqueous', ConstFunc(181.44)), ])
         """ Activate physics """
         thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
@@ -454,9 +616,11 @@ class Model(DartsModel):
 
         property_container.output_props = {
             "satG": lambda: property_container.sat[0],
-            "temp": lambda: property_container.temperature,
+            "XCO2": lambda: property_container.x[1, 1],
             "rhoG": lambda: property_container.dens[0],
             "rhoAq": lambda: property_container.dens[1],
+            "muG": lambda: property_container.mu[0],
+            "muAq": lambda: property_container.mu[1],
             }
 
         self.physics.add_property_region(property_container) 
@@ -464,13 +628,6 @@ class Model(DartsModel):
         return
 
     def set_initial_conditions(self):
-        # input_distribution = {self.physics.vars[0]: 195, # pressure
-        #                       self.physics.vars[1]: self.zero, # z_CO2
-        #                       self.physics.vars[2]: 353.15 # temperature
-        #                       }
-        # return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, 
-        #                                                       input_distribution=input_distribution)
-
         depths = np.asarray(self.reservoir.mesh.depth)
         min_depth = np.min(depths)
         max_depth = np.max(depths)
@@ -492,16 +649,12 @@ class Model(DartsModel):
         
         X = init.solve(depth_bottom=max_depth, depth_top= min_depth,depth_known=2000, nb=nb,
                        boundary_state=boundary_state,primary_specs=primary_specs,secondary_specs=None, dTdh=dTdh).reshape((nb, self.physics.n_vars))
-        # input_distribution = {self.physics.vars[0]: 131, # pressure
-        #                       self.physics.vars[1]: self.zero, # z_CO2
-        #                       self.physics.vars[2]: 353.15 # temperature
-        #                       }
+
         self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
                                                              input_depth= init.depths,
                                                             input_distribution={v:X[:,i] for i, v in enumerate(self.physics.vars)})
         return
-    
-        # self.reservoir.mesh.volume[0:3] = 1e20
+
 
     def set_well_controls(self):
        
@@ -516,7 +669,7 @@ class Model(DartsModel):
                             target=3.3264e7,
                             inj_composition=[1.0 - self.zero],
                             phase_name="CO2_rich",
-                            inj_temp=296.15
+                            inj_temp=314.15
                         )
                         self.physics.set_well_controls(
                             wctrl=w.constraint,
@@ -524,14 +677,17 @@ class Model(DartsModel):
                             is_inj=True,
                             target=306.90,
                             inj_composition=[1.0 - self.zero],
-                            inj_temp=296.15
+                            inj_temp=314.15
                         )
-            # if "W" in w.name:
-            #     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-            #                                       is_inj=True, target=204.6, phase_name="aqueous", inj_temp=296.15)
-            else:
+            if "W" in w.name:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                               is_inj=False, target=0,phase_name="aqueous")
+                                                  is_inj=True, target=0, 
+                                                  inj_composition=[self.zero], phase_name="aqueous", inj_temp=288.15)
+            if "P" in w.name:
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+                                               is_inj=False, target=0
+                                               ,phase_name="aqueous"
+                                               )
 
 
 

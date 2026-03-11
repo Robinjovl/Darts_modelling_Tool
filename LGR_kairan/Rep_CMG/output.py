@@ -10,31 +10,22 @@ import sys, os
 def plot_well_time_data_2(m, time_data_df,
                                 save_output_files=True,
                                 well_names=None,
-                                component="CO2_rich",
+                                phase="CO2_rich",
                                 include_rates=("mass_rate",),
                                 include_bhp=True,
-                                include_bht=True):
-    """
-    Plot injector and producer on the same figure for selected metrics.
-
-    Parameters
-    ----------
-    well_names : list[str] or None
-        If None -> use first two wells in m.reservoir.wells
-    component : str
-        Component name for component-based rates (e.g., "CO2")
-    include_rates : tuple[str]
-        Any of ("mass_rate","molar_rate","volumetric_rate")
-    include_bhp/include_bht : bool
-        Whether to plot BHP/BHT combined
-    """
+                                include_bht=True,
+                                skip_first_n_steps = 5,
+                                bhp_ylim=(50,320),
+                                bht_ylim_C=(40,90),
+                                time_col="time",
+                                rate_suffix="at_wh"):
 
     out_dir = os.path.join(save_output_files,"combined")
     os.makedirs(out_dir, exist_ok=True)
 
     wells_all = m.reservoir.wells
     if well_names is None:
-        wells = wells_all[:2]
+        wells = wells_all
     else:
         name_set = set(well_names)
         wells = [w for w in wells_all if w.name in name_set]
@@ -42,90 +33,103 @@ def plot_well_time_data_2(m, time_data_df,
     if len(wells) < 2:
         raise RuntimeError("Need at least 2 wells to plot combined (injector + producer).")
 
+    # --- skip early unstable steps ---
+    df = time_data_df.copy()
+    if skip_first_n_steps and len(df) > skip_first_n_steps:
+        df = df.iloc[skip_first_n_steps:].copy()
 
+    if time_col not in df.columns:
+        raise KeyError(f"Time column '{time_col}' not found. Available: {list(df.columns)}")
 
-    type_candidates = ["by_sum_perfs"]
-  
-     
+    t = df[time_col].to_numpy() / 366  # convert days to years for better x-axis labeling
+    tmin, tmax = float(np.min(t)), float(np.max(t))
 
     rate_unit = {
         "volumetric_rate": "[m3/day]",
         "mass_rate": "[kg/day]",
         "molar_rate": "[kmol/day]",
-        "advective_heat": "[kJ/day]",   
+        "advective_heat": "[kJ/day]",
     }
 
-    def find_col(well_name, key_prefix):
-        """
-        Try to find a column with suffix type in preferred order.
-        key_prefix example: f"well_{name}_mass_rate_CO2_"
-        """
-        for tp in type_candidates:
-            col = f"{key_prefix}{tp}"
-            if col in time_data_df.columns:
-                return col
-        return None
-
-    # ---------- component rates (injector+producer together) ----------
+    # ---------- rates (injector+producer together) ----------
     for rate in include_rates:
-        plt.figure(figsize=(8, 4.8), dpi=150)
+        fig, ax = plt.subplots(figsize=(8, 4.8), dpi=150)
 
         found_any = False
         for w in wells:
             
-            key_prefix = f"well_{w.name}_{rate}_{component}_"
-            col = find_col(w.name, key_prefix)
-            if col is None:
+            col = f"well_{w.name}_{rate}_{phase}_{rate_suffix}"
+            if col not in df.columns:
                 continue
 
-            y = time_data_df[col].abs()
-            plt.plot(time_data_df["time"], y, label=f"{w.name}")
+            y = np.abs(df[col].to_numpy())  
+            ax.plot(t, y, label=f"{w.name}")
 
             found_any = True
 
         if found_any:
-            plt.xlabel("time [days]")
-            plt.ylabel(f"{rate} {rate_unit.get(rate, '')}")
-            plt.title(f"{component} {rate} (combined wells)")
-            plt.legend()
-            fpath = os.path.join(out_dir, f"combined_{component}_{rate}.png")
-            plt.savefig(fpath, bbox_inches="tight")
+            ax.set_xlabel("time [years]")
+            ax.set_ylabel(f"{rate} {rate_unit.get(rate, '')}")
+            ax.set_title(f"{phase} {rate} (combined wells)")
+            ax.legend()
+            ax.set_xlim(tmin, tmax)
+            ax.margins(x=0)
+            fpath = os.path.join(out_dir, f"combined_{phase}_{rate}.png")
+            fig.savefig(fpath, bbox_inches="tight")
         plt.close()
 
     # ---------- BHP combined ----------
     if include_bhp:
-        plt.figure(figsize=(8, 4.8), dpi=150)
+        fig, ax = plt.subplots(figsize=(8, 4.8), dpi=150)
         found_any = False
         for w in wells:
             col = f"well_{w.name}_BHP"
-            if col in time_data_df.columns:
-                plt.plot(time_data_df["time"], time_data_df[col], label=f"{w.name}")
-                found_any = True
+            if col not in df.columns:
+                continue
+            ax.plot(t, df[col].to_numpy(), label=w.name)
+            found_any = True
         if found_any:
-            plt.xlabel("time [days]")
-            plt.ylabel("BHP [bar]") 
-            plt.title("BHP (combined wells)")
-            plt.legend()
+            ax.set_xlabel("time [years]")
+            ax.set_ylabel("BHP [bar]") 
+            ax.set_title("BHP (combined wells)")
+            ax.legend()
+            if bhp_ylim is not None:
+                ax.set_ylim(*bhp_ylim)
+            # x-axis: no padding
+            ax.set_xlim(tmin, tmax)
+            ax.margins(x=0)
+
             fpath = os.path.join(out_dir, "combined_BHP.png")
-            plt.savefig(fpath, bbox_inches="tight")
+            fig.savefig(fpath, bbox_inches="tight")
         plt.close()
 
     # ---------- BHT combined ----------
     if include_bht:
-        plt.figure(figsize=(8, 4.8), dpi=150)
+        fig, ax = plt.subplots(figsize=(8, 4.8), dpi=150)
         found_any = False
         for w in wells:
             col = f"well_{w.name}_BHT"
-            if col in time_data_df.columns:
-                plt.plot(time_data_df["time"], time_data_df[col], label=f"{w.name}")
-                found_any = True
+            if col not in df.columns:
+                continue
+            y = df[col].to_numpy()
+            y = y - 273.15  # K -> C
+            ax.plot(t, y, label=w.name)
+            found_any = True
         if found_any:
-            plt.xlabel("time [days]")
-            plt.ylabel("BHT [K]")
-            plt.title("BHT (combined wells)")
-            plt.legend()
+            ax.set_xlabel("time [years]")
+            ax.set_ylabel("BHT [°C]")
+            ax.set_title("BHT (combined wells)")
+            ax.legend()
+
+            # fixed scale in C
+            ax.set_ylim(*bht_ylim_C)
+
+            # x-axis: no padding
+            ax.set_xlim(tmin, tmax)
+            ax.margins(x=0)
+
             fpath = os.path.join(out_dir, "combined_BHT.png")
-            plt.savefig(fpath, bbox_inches="tight")
+            fig.savefig(fpath, bbox_inches="tight")
         plt.close()
 
     print(f"Saved combined plots to: {out_dir}")

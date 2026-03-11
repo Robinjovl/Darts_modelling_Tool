@@ -1,3 +1,5 @@
+from darts.tools.interpolation import TableInterpolation
+from darts.tools.keyword_file_tools import *
 from lgr_assemble import assemble_lgr_connections_eclipse, LGRReservoir
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import DartsModel
@@ -11,13 +13,14 @@ from darts.engines import (
     value_vector,
 )
 import numpy as np
+import os
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
-from darts.physics.properties.density import DensityBasic, Garcia2001
+from darts.physics.properties.density import Garcia2001
 
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012  
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
@@ -26,6 +29,42 @@ from dartsflash.libflash import NegativeFlash
 from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData
 from darts.physics.super.initialize import Initialize
+
+class WatRelPerm:
+    def __init__(self, pvt):
+        super().__init__()
+        self.pvt = pvt
+        self.SGAF = get_table_keyword(self.pvt, 'SGAF')
+    
+    def evaluate(self, wat_sat):
+        gas_index = 0
+        krw_index = 2
+        gas_sat = 1 - wat_sat
+        Table = TableInterpolation()
+        if gas_sat < self.SGAF[0][0] or gas_sat > self.SGAF[len(self.SGAF) - 1][0]:
+            krw = Table.SCALExtraP(self.SGAF, gas_sat, gas_index, krw_index)
+        else:
+            krw = Table.LinearInterP(self.SGAF, gas_sat, gas_index, krw_index)
+        return krw
+
+
+class GasRelPerm:
+    def __init__(self, pvt):
+        super().__init__()
+        self.pvt = pvt
+        self.SGAF = get_table_keyword(self.pvt, 'SGAF')
+
+    def evaluate(self, gas_sat):
+        gas_index = 0
+        krg_index = 1
+
+        Table = TableInterpolation()
+        if gas_sat < self.SGAF[0][0] or gas_sat > self.SGAF[len(self.SGAF) - 1][0]:
+            krg = Table.SCALExtraP(self.SGAF, gas_sat, gas_index, krg_index)
+        else:
+            krg = Table.LinearInterP(self.SGAF, gas_sat, gas_index, krg_index)
+
+        return krg
 
 
 class Model(DartsModel):
@@ -41,7 +80,7 @@ class Model(DartsModel):
         self.set_physics()
         
 
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=1000, 
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=2, runtime=1000, 
                             tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
@@ -231,7 +270,7 @@ class Model(DartsModel):
         self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
                                       start_z=0,actnum=actnum0, rcond=rcon0_full, hcap=hcap0_full,)
-        boundary_factor = 2000
+        boundary_factor = 3250
         base_vol = float(dx0 * dy0 * dz_res)
         v_big = base_vol * boundary_factor
 
@@ -371,15 +410,10 @@ class Model(DartsModel):
 
     def set_wells(self):
         wells= self.cfg["wells"]
-        # wat_wells = self.cfg["water_inj"]
         for key, value in wells.items():
             self.reservoir.add_well(key)
 
-        # for key, value in wat_wells.items():
-        #     self.reservoir.add_well(key)
-
         center_2d = self.lgr_meta['well_local_center']
-
         comp = self.build_well_completion()
         for wname, cfg in comp.items():
             lgr_name = cfg["lgr"]
@@ -391,7 +425,11 @@ class Model(DartsModel):
                 inj_local = center_2d + k * (rx * ry)
                 inj_global = inj_local + self.lgr_meta['lgr_offsets'][comp[wname]["lgr"]]
                 self.reservoir.add_perforation(wname, cell_index=inj_global, ms_epm=False)
-        # add four water injectors 
+       
+        # wat_wells = self.cfg["water_inj"]
+        # for key, value in wat_wells.items():
+        #     self.reservoir.add_well(key)
+        # # add four water injectors 
         # for wname, cfg in wat_wells.items():
         #     k_from = cfg["k_from"]
         #     k_to = cfg["k_to"]
@@ -401,7 +439,6 @@ class Model(DartsModel):
         #         id0 = self.convert_ijk_to_gindex_1based(i0, j0, k, self.level0.nx, self.level0.ny) 
         #         idx_global = self.level0.discretizer.global_to_local[id0]
         #         self.reservoir.add_perforation(wname, cell_index=idx_global, ms_epm=False)
-  
 
     def set_physics(self):
         from dartsflash.libflash import CubicEoS, FlashParams, EoS, InitialGuess
@@ -415,6 +452,8 @@ class Model(DartsModel):
         self.components = components
         comp_data = CompData(components, setprops=True)
         phases = ['CO2_rich', 'aqueous']
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        pvt = os.path.join(base_dir, "physics.in")
         # Mw = [44.01, 18.015]
 
         property_container = PropertyContainer(phases_name=phases, components_name=components,
@@ -450,16 +489,16 @@ class Model(DartsModel):
         property_container.diffusion_ev = dict([('CO2_rich', ConstFunc(np.ones(nc) * diff)),
                                                  ('aqueous', ConstFunc(np.ones(nc) * diff * 1e-3))])
         
-        property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas")),
-                                               ('aqueous', PhaseRelPerm("oil"))])
+        property_container.rel_perm_ev = dict([('CO2_rich', GasRelPerm(pvt)),
+                                               ('aqueous', WatRelPerm(pvt))])
         
         # property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(ceos)),
         #                                         ('aqueous', EoSEnthalpy(aq))])
         property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(eos=pr)),
                                                 ('aqueous', EoSEnthalpy(eos=aq))])
         
-        property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)),
-                                                   ('aqueous', ConstFunc(180.)), ])
+        property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(181.44)),
+                                                   ('aqueous', ConstFunc(181.44)), ])
 
       
 
@@ -516,8 +555,6 @@ class Model(DartsModel):
         # self.reservoir.mesh.volume[0:3] = 1e20
 
     def set_well_controls(self):
-       
-        inj_composition = [1.0 - self.zero]  # pure CO2 injection
         for i, w in enumerate(self.reservoir.wells):
             if "I" in w.name:
                         # injector: MASS_RATE with BHP constraint
@@ -528,7 +565,7 @@ class Model(DartsModel):
                             target=3.3264e7,
                             inj_composition=[1.0 - self.zero],
                             phase_name="CO2_rich",
-                            inj_temp=296.15
+                            inj_temp=314.15
                         )
                         self.physics.set_well_controls(
                             wctrl=w.constraint,
@@ -536,7 +573,7 @@ class Model(DartsModel):
                             is_inj=True,
                             target=306.90,
                             inj_composition=[1.0 - self.zero],
-                            inj_temp=296.15
+                            inj_temp=314.15
                         )
             # if "W" in w.name:
             #     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,

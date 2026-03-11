@@ -10,8 +10,8 @@ from darts.engines import well_control_iface
 def make_cfg_lgr():
     cfg = {
         "grid":{
-            "nx" : 50,
-            "ny" : 50,
+            "nx" : 80,
+            "ny" : 80,
             "dx" :100,
             "dy" :100,
             "nz_res" : 10,
@@ -37,8 +37,8 @@ def make_cfg_lgr():
         "lgrs":{
             "lgr0":{
                 "parent_grid_name": "global",
-                "lgr_coords_in_parent_grid" :{"i_range": [26, 26],
-                                                "j_range": [26, 26],
+                "lgr_coords_in_parent_grid" :{"i_range": [41, 41],
+                                                "j_range": [41, 41],
                                                 "k_range": [1, 10],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "inj"
@@ -47,8 +47,8 @@ def make_cfg_lgr():
             },
             "lgr1":{
                 "parent_grid_name": "global",
-                "lgr_coords_in_parent_grid" :{"i_range": [21, 21],
-                                                "j_range": [31, 31],
+                "lgr_coords_in_parent_grid" :{"i_range": [36, 36],
+                                                "j_range": [46, 46],
                                                 "k_range": [1, 10],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "prod"
@@ -57,8 +57,8 @@ def make_cfg_lgr():
             },
             "lgr2":{
                 "parent_grid_name": "global",
-                "lgr_coords_in_parent_grid" :{"i_range": [31, 31],
-                                                "j_range": [31, 31],
+                "lgr_coords_in_parent_grid" :{"i_range": [46, 46],
+                                                "j_range": [46, 46],
                                                 "k_range": [1, 10],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "prod"
@@ -67,8 +67,8 @@ def make_cfg_lgr():
             },
             "lgr3":{
                 "parent_grid_name": "global",
-                "lgr_coords_in_parent_grid" :{"i_range": [21, 21],
-                                                "j_range": [21, 21],
+                "lgr_coords_in_parent_grid" :{"i_range": [36, 36],
+                                                "j_range": [36, 36],
                                                 "k_range": [1, 10],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "prod"
@@ -77,8 +77,8 @@ def make_cfg_lgr():
             },
             "lgr4":{
                 "parent_grid_name": "global",
-                "lgr_coords_in_parent_grid" :{"i_range": [31, 31],
-                                                "j_range": [21, 21],
+                "lgr_coords_in_parent_grid" :{"i_range": [46, 46],
+                                                "j_range": [36, 36],
                                                 "k_range": [1, 10],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "prod"
@@ -95,26 +95,26 @@ def make_cfg_lgr():
            "P4": {"lgr": "lgr4", "k_from": 1, "k_to": 5},
         },
 
-    #     "water_inj": {
-    #         "W1": {"k_from": 1, "k_to": 10, "i0": 14, "j0": 38},
-    #         "W2": {"k_from": 1, "k_to": 10, "i0": 38, "j0": 38},
-    #         "W3": {"k_from": 1, "k_to": 10, "i0": 14, "j0": 14},
-    #         "W4": {"k_from": 1, "k_to": 10, "i0": 38, "j0": 14}
-    #     }
+        "water_inj": {
+            "W1": {"k_from": 1, "k_to": 10, "i0": 29, "j0": 53},
+            "W2": {"k_from": 1, "k_to": 10, "i0": 53, "j0": 53},
+            "W3": {"k_from": 1, "k_to": 10, "i0": 29, "j0": 29},
+            "W4": {"k_from": 1, "k_to": 10, "i0": 53, "j0": 29}
+        }
     }
     return cfg
 
-# def cal_average_res_pre(m):
-#     n_res = m.reservoir.mesh.n_res_blocks
-#     n_vars = len(m.physics.vars)
-#     X = np.asarray(m.physics.engine.X, dtype=float)
-#     P = X.reshape((-1, n_vars))[:n_res, 0]
-#     return float(P.mean())
+def cal_average_res_pre(m):
+    n_res = m.reservoir.mesh.n_res_blocks
+    n_vars = len(m.physics.vars)
+    X = np.asarray(m.physics.engine.X, dtype=float)
+    P = X.reshape((-1, n_vars))[:n_res, 0]
+    return float(P.mean())
 
 USE_LGR=True
-Nt = 60
+Nt = 100
 Dt = 366/2
-output_dir = r".\consk_output"
+output_dir = r"output_9w"
 FIG_DIR = os.path.join(output_dir, "figures")
 SECTION_DIR = os.path.join(FIG_DIR, "sections")
 WELL_DIR = os.path.join(FIG_DIR, "well_time_plots") # lowercase is better
@@ -131,7 +131,7 @@ if __name__ == '__main__':
     # darts_model.params.linear_type = darts_model.params.linear_solver_t.cpu_superlu
     redirect_darts_output('run.log')
     darts_model.init(platform="cpu") # cpu or GPU, PLATFORM
-    darts_model.set_output(output_folder="consk_output")
+    darts_model.set_output(output_folder="output_9w")
 
     #plot initial condition
     prim0 = get_physics_field(darts_model)
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     for k in prim0.keys():
         if "co2" in k.lower():
             plot_xz_section(
-                darts_model, prim0[k] - 1e-8, use_lgr=USE_LGR, zmin=2000, zmax=2200,
+                darts_model, prim0[k] - 1e-8, use_lgr=USE_LGR, zmin=0, zmax=4200,
                 savepath=os.path.join(SECTION_DIR, f"section_CO2_step_{t0}.png"),
                 title="CO2_delta (initial)", logscale=False, vmin=0, vmax=1
             )
@@ -240,49 +240,50 @@ if __name__ == '__main__':
                             is_inj=False,
                             target=102.30
                         )
-
+            ave_pre = cal_average_res_pre(darts_model)
+            print(f"Time {darts_model.physics.engine.t:.2f} days, Average reservoir pressure: {ave_pre:.2f} bar")
             darts_model.run(Dt)
-
-            # X = np.asarray(darts_model.physics.engine.X, float).reshape((-1, len(darts_model.physics.vars)))
-            # zc = X[:darts_model.reservoir.mesh.n_res_blocks, 1] 
-            # print("z_CO2 min/max:", zc.min(), zc.max())
-            # ave_pre = cal_average_res_pre(darts_model)
-            # print(f"Time {darts_model.physics.engine.t:.2f} days, Average reservoir pressure: {ave_pre:.2f} bar")
-            # if ave_pre < 204.6:
-            #     for i, w in enumerate(darts_model.reservoir.wells):
-            #         if "W" in w.name:
-            #             darts_model.physics.set_well_controls(
-            #                 wctrl=w.control,
-            #                 control_type=well_control_iface.BHP,
-            #                 is_inj=True,
-            #                 target=204.6,
-            #                 inj_composition=[darts_model.zero],
-            #                 inj_temp=288.15
-            #             )
-            # else:
-            #     for i, w in enumerate(darts_model.reservoir.wells):
-            #         if "W" in w.name:
-            #             darts_model.physics.set_well_controls(
-            #                 wctrl=w.control,
-            #                 control_type=well_control_iface.MASS_RATE,
-            #                 is_inj=True,
-            #                 target=0,
-            #                 phase_name="aqueous",
-            #                 inj_composition=[darts_model.zero],
-            #                 inj_temp=288.15
-            #             )
+            pc = darts_model.physics.property_containers[0]
+    
+            if ave_pre < 205.18:
+                for i, w in enumerate(darts_model.reservoir.wells):
+                    if "W" in w.name:
+                        darts_model.physics.set_well_controls(
+                            wctrl=w.control,
+                            control_type=well_control_iface.BHP,
+                            is_inj=True,
+                            target=205.18,
+                            inj_composition=[darts_model.zero],
+                            inj_temp=288.15
+                        )
+            else:
+                for i, w in enumerate(darts_model.reservoir.wells):
+                    if "W" in w.name:
+                        darts_model.physics.set_well_controls(
+                            wctrl=w.control,
+                            control_type=well_control_iface.MASS_RATE,
+                            is_inj=True,
+                            target=0,
+                            phase_name="aqueous",
+                            inj_composition=[darts_model.zero],
+                            inj_temp=288.15
+                        )
 
             t_end = float(darts_model.physics.engine.t)
 
-            if t_end ==Dt*7 or t_end == Dt*10 or t_end == Dt*20 or t_end == Dt*40 or t_end == Dt*60 or t_end == Dt*80 or t_end == Dt*100:                
+            if t_end == Dt or t_end ==Dt*7 or t_end == Dt*10 or t_end == Dt*20 or t_end == Dt*40 or t_end == Dt*60 or t_end == Dt*80 or t_end == Dt*100:                
                 output_props = darts_model.physics.vars + darts_model.output.properties
-                timesteps, property_array = darts_model.output.output_properties(output_properties = ["satG", "XCO2", "rhoG", "rhoAq"],engine=True)
+                timesteps, property_array = darts_model.output.output_properties(
+                    output_properties = ["satG", "XCO2", "rhoG", "rhoAq", "muG", "muAq"],engine=True
+                    )
                 darts_model.output.save_property_array(timesteps, property_array)
 
                 satG = property_array["satG"][0,:]
+                muG = property_array["muG"][0,:]
+                muAQ = property_array["muAq"][0,:]
                 # XCO2 = property_array["XCO2"][0,:]
-                # rhoG = property_array["rhoG"][0,:]
-                # rhoAq = property_array["rhoAq"][0,:]
+                rhoG = property_array["rhoG"][0,:]
+                rhoAq = property_array["rhoAq"][0,:]
                 plot_xy_plane(
                     darts_model, satG, depth=2010, use_lgr=USE_LGR,
                     savepath=os.path.join(SECTION_DIR, f"section_satG_xy_step_{t_end}.png"),
@@ -293,7 +294,21 @@ if __name__ == '__main__':
                     savepath=os.path.join(SECTION_DIR, f"section_satG_xy_step_{t_end} at bottom of Pro.png"),
                     title=f"satG at step {t_end}", logscale=False, vmin=0, vmax=1
                 )
-                
+                plot_xy_plane(
+                    darts_model, muG, depth=2090, use_lgr=USE_LGR,
+                    savepath=os.path.join(SECTION_DIR, f"section_muG_xy_step_{t_end}.png"),
+                    title=f"muG at step {t_end}", logscale=False
+                )
+                plot_xy_plane(
+                    darts_model, muAQ, depth=2090, use_lgr=USE_LGR,
+                    savepath=os.path.join(SECTION_DIR, f"section_muAq_xy_step_{t_end}.png"),
+                    title=f"muAq at step {t_end}", logscale=False
+                )
+                plot_xy_plane(
+                    darts_model, rhoAq, depth=2010, use_lgr=USE_LGR,
+                    savepath=os.path.join(SECTION_DIR, f"section_rhoAq_xy_step_{t_end}.png"),
+                    title=f"rhoAq at step {t_end}", logscale=False
+                )
 
                 prim = get_physics_field(darts_model)
                 # pressure
