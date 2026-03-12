@@ -69,7 +69,7 @@ int ms_well::check_constraints(double dt, std::vector<value_t>& X)
             // constraint violation occured, switch control and constrain
             std::swap(control, constraint);
             std::cout << "Well " << name << " switched to " << control.get_well_control_type_str() << " (target: " << control.get_well_control_target_str() << ")\n";
-            //initialize_control(X);
+            //initialize_control_epm(X);
         }
 
     return 0;
@@ -77,8 +77,10 @@ int ms_well::check_constraints(double dt, std::vector<value_t>& X)
 
 int ms_well::add_to_jacobian(double dt, std::vector<value_t>& X, value_t* jac_well_head, std::vector<value_t>& RHS)
 {
-
-    control.add_to_jacobian(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
+    if (ms_type == ms_well::MS_Type::EPM)
+        control.add_to_jacobian_epm(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
+    else if (ms_type == ms_well::MS_Type::DFM)
+        control.add_to_jacobian_dfm(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS, phases_vels, phases_vels_ders);
 
     return 0;
 }
@@ -245,7 +247,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
     return 0;
 }
 
-int ms_well::initialize_control(std::vector<value_t>& X)
+int ms_well::initialize_control_epm(std::vector<value_t>& X)
 {
     if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
     {
@@ -267,7 +269,7 @@ int ms_well::initialize_control(std::vector<value_t>& X)
         // copy neighbour state
         std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
         // initialize
-        control.initialize_well_block(state, state_neighbour);
+        control.initialize_well_block_epm(state, state_neighbour);
         // move initialized state back to X
         std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
     }
@@ -277,7 +279,31 @@ int ms_well::initialize_control(std::vector<value_t>& X)
     // copy neighbour state
     std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
     // initialize
-    control.initialize_well_block(state, state_neighbour);
+    control.initialize_well_block_epm(state, state_neighbour);
+    // move initialized state back to X
+    std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
+    return 0;
+}
+
+int ms_well::initialize_control_dfm(std::vector<value_t>& X)
+{
+    if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
+    {
+        std::cout << "Well " << name << " has uninitialized well control\n";
+        exit(1);
+    }
+    std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
+
+    // Initialize all the well blocks. Wellhead state will be overwritten later.
+    std::copy(init_state.begin(), init_state.end(), X.begin() + well_head_idx * n_block_size);
+
+    // Initialize state in well head - state neighbour is well body, state is well head
+    // move the state from X
+    std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
+    // copy neighbour state
+    std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+    // initialize
+    control.initialize_well_block_dfm(state, state_neighbour);
     // move initialized state back to X
     std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
     return 0;

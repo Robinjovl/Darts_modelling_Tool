@@ -327,7 +327,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		w->initialize_control_epm(X_init);
 	}
 
 	Xn = X = X_init;

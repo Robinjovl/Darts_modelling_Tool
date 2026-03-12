@@ -2,7 +2,7 @@ import numpy as np
 
 from darts.models.cicd_model import CICDModel
 from darts.pipes.viz.plot_live import DartsModelWithLivePlots
-from darts.engines import sim_params, ms_well, value_vector
+from darts.engines import sim_params, ms_well, value_vector, well_control_iface
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 
@@ -19,20 +19,20 @@ from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
-# class Model(DartsModelWithLivePlots):
-class Model(CICDModel):
+class Model(DartsModelWithLivePlots):
+# class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
 
         # Use DartsModelWithLivePlots as the super class and enable plots below for live plotting
         # self.live_plot_config.enable_solver_props = True
-        #
+
         # self.live_plot_config.enable_ph_diagram = True
         # self.live_plot_config.tracked_block_idx = 1000
-        #
-        # self.live_plot_config.enable_well_res_profiles = True
-        # self.live_plot_config.plot_till_this_res_cell = 50
+
+        self.live_plot_config.enable_well_res_profiles = False
+        self.live_plot_config.plot_till_this_res_cell = 0
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -42,7 +42,7 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
                             it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
                             coupled_well_res_norm_method=2,
                             runtime=1/24/60, # This runtime will be used when CI test is conducted without the main file
@@ -64,7 +64,7 @@ class Model(CICDModel):
                                                permr=permr.flatten(order='F'), permz=permz.flatten(order='F'),
                                                R0=self.well_1_ID / 2, R1=1000, logspace=True, rcond=259.2, hcap=5250,
                                                depth=2025)  # depth is the depth of the centroid of the top reservoir cell
-        self.reservoir.boundary_volumes['yz_plus'] = 1e20
+        self.reservoir.boundary_volumes['yz_minus'] = 1e20
 
         return
 
@@ -197,11 +197,12 @@ class Model(CICDModel):
                                   inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
                                   verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
-        source_sinks = {"RampUpRate1": ramp_up_rate}
+        # source_sinks = {"RampUpRate1": ramp_up_rate}
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
-                                 source_sinks=source_sinks, verbose=verbose)}
+                                 # source_sinks=source_sinks,
+                                 verbose=verbose)}
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
@@ -209,28 +210,38 @@ class Model(CICDModel):
         well_1_perforated_segment = well_1_geometry.num_segments
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_diameter=well_1_geometry.pipe_ID)
 
-    def set_rhs_flux(self, t: float = None) -> np.ndarray:
-        inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
+    # def set_rhs_flux(self, t: float = None) -> np.ndarray:
+    #     inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
+    #
+    #     # Get updated ramp-up injection rate (rate is updated in pipe.py)
+    #     inj_rate = self.wells["I1"].source_sinks["RampUpRate1"].current_rate
+    #
+    #     component_rate = inj_rate * inj_comp
+    #
+    #     # Get inj_fluid_molar_enthalpy
+    #     inj_fluid_molar_enthalpy = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["molar_enthalpy"]
+    #     # Get inj_fluid_molar_potential_energy
+    #     inj_segment_idx = self.wells["I1"].source_sinks["RampUpRate1"].segment_idx
+    #     inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[self.reservoir.mesh.n_res_blocks + inj_segment_idx]
+    #     inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * self.physics.property_containers[0].Mw[0]
+    #     inj_fluid_energy = inj_fluid_molar_enthalpy + inj_fluid_molar_potential_energy
+    #
+    #     inj_energy_rate = inj_rate * inj_fluid_energy
+    #
+    #     inj_rates = np.append(component_rate, inj_energy_rate)
+    #
+    #     rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
+    #     well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
+    #     rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_rates
+    #
+    #     return rhs_flux
 
-        # Get updated ramp-up injection rate (rate is updated in pipe.py)
-        inj_rate = self.wells["I1"].source_sinks["RampUpRate1"].current_rate
+    def set_well_controls(self):
+        inj_composition = []
+        w = self.reservoir.wells[0]
+        # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+        #                                is_inj=True, target=20., inj_composition=inj_composition, inj_temp=320.0)
 
-        component_rate = inj_rate * inj_comp
-
-        # Get inj_fluid_molar_enthalpy
-        inj_fluid_molar_enthalpy = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["molar_enthalpy"]
-        # Get inj_fluid_molar_potential_energy
-        inj_segment_idx = self.wells["I1"].source_sinks["RampUpRate1"].segment_idx
-        inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[self.reservoir.mesh.n_res_blocks + inj_segment_idx]
-        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * self.physics.property_containers[0].Mw[0]
-        inj_fluid_energy = inj_fluid_molar_enthalpy + inj_fluid_molar_potential_energy
-
-        inj_energy_rate = inj_rate * inj_fluid_energy
-
-        inj_rates = np.append(component_rate, inj_energy_rate)
-
-        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
-        well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
-        rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_rates
-
-        return rhs_flux
+        target_inj_rate = 58895.98  # in kmol/day
+        self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, phase_name="L",
+                                       is_inj=True, target=60, inj_composition=inj_composition, inj_temp=283.15)

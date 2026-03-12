@@ -190,10 +190,14 @@ class WellControlOperators(OperatorsBase):
 
         self.property.evaluate(state_np)
 
+        ms_type = "DFM"
         # Store rate controls
-        mobility = (
-            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
-        )
+        if ms_type == "EPM":
+            mobility = (
+                self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+            )
+        elif ms_type == "DFM":
+            mobility = self.property.sat[self.property.ph]
 
         # Molar rate
         idx = 0
@@ -220,6 +224,10 @@ class WellControlOperators(OperatorsBase):
                 * self.property.dens_m[self.property.ph]
                 * mobility
             )
+
+        # TODO: I can add operators for DFM wells for each rate, but instead of mobility, saturation is used.
+        # In this way, derivative of the property can be used more easily in the cpp side since all the properties are
+        # altogether, and appropriate operators will be used by checking the well type in the cpp side.
 
         # Store pressure (P) and temperature (T) of the current state for a generic state specification.
         # This is needed when pressure or temperature is not part of the state variables

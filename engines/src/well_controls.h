@@ -74,13 +74,18 @@ public:
     std::string get_well_control_type_str();
     std::string get_well_control_target_str();
 
-    virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+    virtual int add_to_jacobian_epm(value_t dt, index_t well_head_idx, value_t well_transmissibility,
         uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t* jacobian_row, std::vector<value_t>& RHS);
 
-    virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans,
+    virtual int add_to_jacobian_dfm(value_t dt, index_t well_head_idx, value_t well_transmissibility,
+        uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t* jacobian_row, std::vector<value_t>& RHS,
+        std::vector<value_t>& phases_vels, std::vector<value_t>& phases_vels_ders);
+
+    virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t well_transmissibility,
         uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X);
 
-    virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
+    virtual int initialize_well_block_epm(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
+    virtual int initialize_well_block_dfm(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
 };
 
 #endif

@@ -83,7 +83,8 @@ public:
 
     int calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data, index_t n_blocks);
 
-    int initialize_control(std::vector<value_t>& X);
+    int initialize_control_epm(std::vector<value_t>& X);
+    int initialize_control_dfm(std::vector<value_t>& X);
 
     void addSegment();
 

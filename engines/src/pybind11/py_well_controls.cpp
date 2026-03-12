@@ -9,21 +9,21 @@ namespace py = pybind11;
 #if 1
 class py_well_control_iface : public well_control_iface {
 public:
- 
+
   /* Inherit the constructors */
   using well_control_iface::well_control_iface;
 
   /* Trampoline (need one for each virtual function) */
-  // int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+  // int add_to_jacobian_epm(value_t dt, index_t well_head_idx, value_t well_transmissibility,
   //                     index_t n_block_size, uint8_t N_VARS, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
   // {
   //   PYBIND11_OVERLOAD_PURE(
   //     int,                      /* Return type */
   //     well_control_iface,       /* Parent class */
-  //     add_to_jacobian,          /* Name of function in C++ (must match Python name) */
+  //     add_to_jacobian_epm,      /* Name of function in C++ (must match Python name) */
   //     dt,                       /* Argument(s) */
   //     well_head_idx,
-	//   segment_trans,
+	//   well_transmissibility,
   //     n_block_size,
 	//   N_VARS,
 	//   P_VAR,
@@ -33,7 +33,7 @@ public:
   //   );
   // }
 
-  // int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_block_size, uint8_t N_VARS, uint8_t P_VAR, std::vector<value_t>& X)
+  // int check_constraint_violation(value_t dt, index_t well_head_idx, value_t well_transmissibility, index_t n_block_size, uint8_t N_VARS, uint8_t P_VAR, std::vector<value_t>& X)
   // {
   //   PYBIND11_OVERLOAD_PURE(
   //     int,                          /* Return type */
@@ -42,7 +42,7 @@ public:
   //     dt,                           /* Argument(s) */
   //     well_head_idx,
   //     n_block_size,
-	//   N_VARS, 
+	//   N_VARS,
 	//   P_VAR,
   //     X
   //   );
@@ -53,7 +53,7 @@ public:
   //   PYBIND11_OVERLOAD_PURE(
   //     int,                          /* Return type */
   //     well_control_iface,           /* Parent class */
-  //     initialize_control,           /* Name of function in C++ (must match Python name) */
+  //     initialize_control_epm,       /* Name of function in C++ (must match Python name) */
   //     state_block,                  /* Argument(s) */
   //     state_neighbour
   //   );
@@ -77,7 +77,7 @@ public:
   //     set_rate_control,         /* Name of function in C++ (must match Python name) */
   //     control_type_,            /* Argument(s) */
   //     phase_idx_,
-  //     well_control_spec_,      
+  //     well_control_spec_,
   //   );
   // }
 
@@ -89,7 +89,8 @@ void pybind_well_controls(py::module &m)
   py::class_<well_control_iface, py_well_control_iface /* <--- trampoline*/> well_control_iface(m, "well_control_iface");
   well_control_iface
     .def(py::init<index_t, index_t, bool, operator_set_gradient_evaluator_iface*, operator_set_gradient_evaluator_iface*>())
-    .def("add_to_jacobian", &well_control_iface::add_to_jacobian)
+    .def("add_to_jacobian_epm", &well_control_iface::add_to_jacobian_epm)
+    .def("add_to_jacobian_dfm", &well_control_iface::add_to_jacobian_dfm)
     .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
     .def("set_bhp_control", &well_control_iface::set_bhp_control)
     .def("set_rate_control", &well_control_iface::set_rate_control)

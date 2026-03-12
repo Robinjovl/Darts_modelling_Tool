@@ -278,7 +278,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   // let wells initialize their state
   for (ms_well *w : wells)
   {
-	w->initialize_control(X_init);
+	w->initialize_control_epm(X_init);
   }
 
   Xn_ref = Xref = Xn = Xn1 = X = X_init;
