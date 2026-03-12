@@ -1263,7 +1263,7 @@ class UnstructDiscretizer:
                     self.faces[id[0]] = {}
                 if id[1] not in self.faces[id[0]]:
                     for id1, pts1 in cell_faces.items():
-                        if id != id1 and np.all(np.in1d(pts, pts1)):
+                        if id != id1 and np.all(np.isin(pts, pts1)):
                             self.faces[id[0]][id[1]] = Face(
                                 id[0],
                                 id[1],
@@ -1328,7 +1328,7 @@ class UnstructDiscretizer:
                     self.faces[id[0]] = {}
                 if id[1] not in self.faces[id[0]]:
                     for id1, pts1 in frac_cell_faces.items():
-                        if id != id1 and np.all(np.in1d(pts, pts1)):
+                        if id != id1 and np.all(np.isin(pts, pts1)):
                             fap_av = (
                                 fap[id[0] - self.mat_cells_tot]
                                 + fap[id1[0] - self.mat_cells_tot]
@@ -1408,7 +1408,7 @@ class UnstructDiscretizer:
             }
             counter = 4
             for id, pts in mat_cell_faces.items():
-                if np.all(np.in1d(pts, cell.nodes_to_cell)):
+                if np.all(np.isin(pts, cell.nodes_to_cell)):
                     # detached = self.faces[id[0]][id[1]]
                     # detached.cell_id2 = frac_id
                     # detached.face_id2 = counter
@@ -1528,7 +1528,7 @@ class UnstructDiscretizer:
             for id, item in cell_faces.items():
                 isFound = False
                 for id1, item1 in cell_faces.items():
-                    if id != id1 and np.all(np.in1d(item, item1)):
+                    if id != id1 and np.all(np.isin(item, item1)):
                         isFound = True
                         if (id1, id) not in faces.values():
                             faces[i] = (id, id1)
