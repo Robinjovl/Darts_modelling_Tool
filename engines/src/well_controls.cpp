@@ -215,38 +215,28 @@ int well_control_iface::add_to_jacobian_dfm(value_t dt, index_t well_head_idx, v
 	}
 	else
 	{
-		// If rate controlled, find the pressure difference and calculate rate
+		// If rate controlled, get the phase velocity and calculate rate
 		state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_vars);
 		well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
-		//value_t p_diff;
-		index_t n_conns;
-		index_t well_head_conn_idx_local = 0;
-		//if (ms_type == ms_well::MS_Type::EPM)
-		//	p_diff = X_well_head[0] - X_well_body[0];
-		//else if (ms_type == ms_well::MS_Type::DFM)
-		//{
-		n_conns = phases_vels.size() / n_phases;
-		value_t p_diff = phases_vels[n_conns * phase_idx + well_head_conn_idx_local];
-		//}
 
 		index_t rate_op_idx = this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
 
-		// RHS
-		RHS_well_head[0] = well_control_ops[rate_op_idx] * p_diff * well_transmissibility - this->target;
+		index_t n_conns = phases_vels.size() / n_phases;
+		index_t well_head_conn_idx_local = 0;
 
-		// Rate operator derivatives
+		value_t phase_vel = phases_vels[n_conns * phase_idx + well_head_conn_idx_local];
+
+		// RHS
+		RHS_well_head[0] = well_control_ops[rate_op_idx] * phase_vel * well_transmissibility - this->target;
+
+		index_t phase_stride = n_conns * 2 * n_vars;
+		index_t conn_stride = 2 * n_vars;
 		for (int jj = 0; jj < n_vars; jj++)
 		{
-			jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[rate_op_idx * n_vars + jj] * p_diff * well_transmissibility;
+			jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[rate_op_idx * n_vars + jj] * phase_vel * well_transmissibility;
 
-			//if (ms_type == ms_well::MS_Type::DFM)
-			//{
-			index_t phase_stride = n_conns * 2 * n_vars;
-			index_t conn_stride = 2 * n_vars;
-			value_t vel_der = phases_vels_ders[phase_idx * phase_stride + well_head_conn_idx_local * conn_stride + well_state_offset * n_vars + jj];
-
-			jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_control_ops[rate_op_idx] * vel_der * well_transmissibility;
-			//}
+			value_t vel_der_head = phases_vels_ders[phase_idx * phase_stride + well_head_conn_idx_local * conn_stride + 0 * n_vars + jj];
+			jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_control_ops[rate_op_idx] * vel_der_head * well_transmissibility;
 		}
 
 		//// if target phase does not exist, set a constant small value to pressure derivative
