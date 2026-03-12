@@ -239,9 +239,13 @@ class Model(DartsModelWithLivePlots):
     def set_well_controls(self):
         inj_composition = []
         w = self.reservoir.wells[0]
-        # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-        #                                is_inj=True, target=20., inj_composition=inj_composition, inj_temp=320.0)
 
-        target_inj_rate = 58895.98  # in kmol/day
-        self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, phase_name="L",
-                                       is_inj=True, target=60, inj_composition=inj_composition, inj_temp=283.15)
+        # # Constant WHP
+        # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+        #                                is_inj=True, target=60.0, inj_composition=inj_composition, inj_temp=283.15)
+
+        # Constant injection mass rate of gaseous phase
+        target_inj_rate = 0.1 * 24 * 3600  # in kg/day
+        #TODO: If a large rate is used, it may fail because ramp-up rate must be used at the beginning.
+        self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE, phase_name="G",
+                                       is_inj=True, target=target_inj_rate, inj_composition=inj_composition, inj_temp=283.15)
