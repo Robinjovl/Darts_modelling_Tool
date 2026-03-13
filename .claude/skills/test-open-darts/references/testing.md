@@ -71,7 +71,7 @@ The `LOG` argument enables verbose performance checking. Logs are written to
 ### Single Model
 
 ```bash
-darts /absolute/path/to/model-folder/main.py
+darts <script_path_name>
 ```
 
 ### Interpolator Tests
@@ -138,7 +138,7 @@ GPU tests run separately (`.cicd/jobs/test-linux-gpu.yml`) and require the
 ## Writing New Tests
 
 1. Create a new model directory under `models/` with a `main.py` entry point.
-2. The script should be runnable via `darts main.py`.
+2. The script should be runnable via `darts <script_path_name>` (typically `darts main.py` from the model directory).
 3. Add the model name to the test list in `run_test_suite2.py`.
 4. Generate reference PKL files on a verified run.
 5. The test framework will compare subsequent runs against the reference.

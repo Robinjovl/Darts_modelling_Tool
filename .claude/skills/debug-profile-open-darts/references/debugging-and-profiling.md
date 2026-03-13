@@ -56,7 +56,10 @@ stepping through C++ code with GDB/LLDB.
 
 ```bash
 # GDB
-gdb --args python /path/to/model/main.py
+gdb --args darts <script_path_name>
+
+# CUDA-GDB for GPU builds or CUDA kernels
+cuda-gdb --args darts <script_path_name>
 
 # Or attach to running process
 gdb -p <pid>
@@ -88,7 +91,7 @@ This sets:
 
 ```bash
 valgrind --leak-check=full --track-origins=yes \
-    python /path/to/model/main.py
+    darts <script_path_name>
 ```
 
 ### Run Valgrind Check Script (CI-compatible)
@@ -147,7 +150,7 @@ Logs go to `models/_vtune_logs/`:
 ```bash
 vtune -collect hotspots -data-limit=0 \
     -r models/_vtune_logs/vtune_result \
-    darts models/SPE11b/main.py
+    darts <script_path_name>
 
 # Generate reports
 vtune -report summary -format csv -r models/_vtune_logs/vtune_result \
@@ -198,14 +201,14 @@ For profiling the Python layer:
 
 ```bash
 # cProfile
-python -m cProfile -o profile.out /path/to/model/main.py
+python -m cProfile -o profile.out "$(command -v darts)" <script_path_name>
 python -c "import pstats; p = pstats.Stats('profile.out'); p.sort_stats('cumulative').print_stats(30)"
 
 # line_profiler (install separately)
-kernprof -l -v /path/to/model/main.py
+kernprof -l -v "$(command -v darts)" <script_path_name>
 
 # py-spy (sampling profiler, low overhead)
-py-spy record -o profile.svg -- python /path/to/model/main.py
+py-spy record -o profile.svg -- darts <script_path_name>
 ```
 
 ---

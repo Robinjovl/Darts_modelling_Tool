@@ -19,6 +19,8 @@ Use the session conda environment. If the prompt defines one, use it. Otherwise 
 
 - Debug build: `./helper_scripts/build_darts_cmake.sh -c -d Debug -j 8`
 - Valgrind build: `./helper_scripts/build_darts_cmake.sh -c -v -j 8`
+- GDB launch: `gdb --args darts <script_path_name>`
+- CUDA-GDB launch: `cuda-gdb --args darts <script_path_name>`
 - Valgrind run set: `python helper_scripts/valgrind_check.py`
 - VTune run set: `python helper_scripts/vtune_profiling.py`
 

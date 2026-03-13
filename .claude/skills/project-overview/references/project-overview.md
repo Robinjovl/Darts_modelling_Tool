@@ -91,7 +91,7 @@ Build configurations: `ST` (single-thread), `MT` (multi-thread with OpenMP),
 The package provides a `darts` CLI (defined in `darts/tools/cli.py`):
 
 ```bash
-darts <path-to-script>        # Run a model script
+darts <script_path_name>      # Run a model script
 darts run_test_suite2.py LOG  # Run test suite with logging
 ```
 

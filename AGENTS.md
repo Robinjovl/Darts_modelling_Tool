@@ -55,7 +55,14 @@ pre-commit run -v --files <absolute-path-to-file> --show-diff-on-failure
 ### Run a model
 
 ```bash
-darts <absolute-path-to-model-folder>/main.py
+darts <script_path_name>
+```
+
+### Debug a model
+
+```bash
+gdb --args darts <script_path_name>
+cuda-gdb --args darts <script_path_name>
 ```
 
 ### Build/install Python package locally (from repo root)
