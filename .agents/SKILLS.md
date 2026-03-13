@@ -1,47 +1,38 @@
-# open-DARTS Agent Skills
+# open-DARTS Skills Catalog
 
-This folder contains structured skill documents for AI agents (GPT, Claude,
-Gemini, Copilot, Codex, etc.) to automate common development workflows in the
-open-DARTS project.
+This repository stores project skills in `.agents/skills/` and mirrors them to
+`.claude/skills/` for Claude Code compatibility.
+
+## Skill Locations
+
+- Source of truth: `.agents/skills/`
+- Mirror for Claude Code: `.claude/skills/`
 
 ## Available Skills
 
-| Skill | File | Description |
+| Skill | Path | Purpose |
 |---|---|---|
-| **Project Overview** | [project-overview.md](project-overview.md) | Architecture, repository layout, key modules, conventions |
-| **Build & Compile** | [build-and-compile.md](build.md) | CMake builds, Python packaging, ST/MT/GPU configurations |
-| **Linting & Formatting** | [linting-and-formatting.md](linting-and-formatting.md) | Ruff, pre-commit hooks, code quality rules |
-| **Testing** | [testing.md](testing.md) | Test suite, model regression tests, interpolator/discretizer tests |
-| **Debugging & Profiling** | [debugging-and-profiling.md](debugging-and-profiling.md) | Debug builds, Valgrind, VTune, timers, sanitizers |
-| **Documentation** | [documentation.md](documentation.md) | Sphinx build, API docs, adding new pages |
-| **CI/CD Pipeline** | [ci-cd-pipeline.md](ci-cd-pipeline.md) | GitLab CI stages, trigger rules, deployment, local reproduction |
+| `project-overview` | `.agents/skills/project-overview` | Repository architecture and module mapping |
+| `build-open-darts` | `.agents/skills/build-open-darts` | CMake builds, wheel builds, editable installs, GPU/debug modes |
+| `lint-format-open-darts` | `.agents/skills/lint-format-open-darts` | Ruff and pre-commit workflows |
+| `test-open-darts` | `.agents/skills/test-open-darts` | Regression tests and component tests |
+| `debug-profile-open-darts` | `.agents/skills/debug-profile-open-darts` | Debug, Valgrind, VTune, timer diagnostics |
+| `docs-open-darts` | `.agents/skills/docs-open-darts` | Sphinx and API docs maintenance |
+| `gitlab-cicd-open-darts` | `.agents/skills/gitlab-cicd-open-darts` | GitLab CI/CD structure and troubleshooting |
 
-## How to Use
-
-Point your AI agent/assistant at the relevant skill file when you need help with
-a specific workflow. Each file is self-contained with commands, configuration
-details, and troubleshooting tips.
-
-For a quick overview of the project, start with `project-overview.md`.
-
-## Quick Reference
+## Maintenance Commands
 
 ```bash
-# Build everything from scratch
-./helper_scripts/build_darts_cmake.sh -c -w -m -j 8
+# Sync source skills to Claude mirror
+python helper_scripts/sync_agent_skills.py
 
-# Install in editable mode (fast, if build/ exists)
-./helper_scripts/install_darts.sh -e
-
-# Lint a file
-pre-commit run -v --files /absolute/path/to/file.py --show-diff-on-failure
-
-# Run a model
-darts /absolute/path/to/model-folder/main.py
-
-# Run test suite
-cd models && darts run_test_suite2.py LOG
-
-# Build documentation
-cd docs && make html
+# Validate skill structure + metadata + mirror consistency
+python helper_scripts/validate_skills.py
 ```
+
+## Notes
+
+- Each skill directory must include `SKILL.md` with YAML frontmatter containing
+  `name` and `description`.
+- Detailed workflow material belongs in `references/` files and is loaded only
+  when needed.

@@ -3,6 +3,14 @@
 - **Use absolute paths**
 - **Run non-interactively** and print the command before execution.
 - **Project-level commands** should be executed from the repo root.
+- **Skills source of truth:** `.agents/skills`
+- **Claude mirror:** `.claude/skills` (keep synchronized with `helper_scripts/sync_agent_skills.py`)
+
+### Validate skill trees
+
+```bash
+python helper_scripts/validate_skills.py
+```
 
 ### Lint Python files
 

@@ -148,8 +148,8 @@ Windows uses MSVC compiler with `/MP` and `/std:c++20` flags.
 ## Dependency Installation
 
 ```bash
-# Install Python dependencies
-./helper_scripts/install_darts_deps.sh   # Linux/macOS
+# Install Python tooling and optional dependency groups
+./helper_scripts/install_darts_dev.sh
 # or
 pip install -e .[dev,docs,solvers]
 
