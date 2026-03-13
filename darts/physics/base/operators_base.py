@@ -190,7 +190,7 @@ class WellControlOperators(OperatorsBase):
 
         self.property.evaluate(state_np)
 
-        ms_type = "DFM"
+        ms_type = "EPM"
         # Store rate controls
         if ms_type == "EPM":
             mobility = (
