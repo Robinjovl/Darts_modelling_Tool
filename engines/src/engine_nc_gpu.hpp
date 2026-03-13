@@ -38,7 +38,7 @@ public:
   const uint8_t get_n_vars() override { return N_VARS; };
   const uint8_t get_n_ops() { return N_OPS; };
   const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
+  const uint8_t get_z_var_idx() { return Z_VAR; };
 
   engine_nc_gpu() { engine_name = "Multiphase " + std::to_string(NC) + "-component isothermal flow GPU engine"; };
 
@@ -46,6 +46,7 @@ public:
 
   int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
            std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+           operator_set_gradient_evaluator_iface* thermal_var_etor_,
            sim_params *params_, timer_node *timer_);
 
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);

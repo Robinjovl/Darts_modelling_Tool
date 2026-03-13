@@ -394,7 +394,7 @@ class UnstructReservoir(ReservoirBase):
         data: dict,
     ):
         """
-        Function to export results of unstructured reservoir at timestamp t into `.vtk` format.
+        Function to export reservoir results of unstructured reservoir at timestamp t into `.vtk` format.
 
         :param ith_step: i'th reporting step
         :type ith_step: int

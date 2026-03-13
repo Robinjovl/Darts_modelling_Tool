@@ -6,8 +6,8 @@ from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
+    ThermalVarOperator,
     WellControlOperators,
-    WellInitOperators,
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators
@@ -225,7 +225,7 @@ class Compositional(PhysicsBase):
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
-        self.well_init_operators = WellInitOperators(
+        self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),

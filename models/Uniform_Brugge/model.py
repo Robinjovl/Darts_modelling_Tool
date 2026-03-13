@@ -85,8 +85,7 @@ class Model(CICDModel):
             else:
                 name = "P" + str(i + 1 - n_injector)
 
-            well_type = ms_well.MS_Type.EPM
-            self.reservoir.add_well(name, well_type)
+            self.reservoir.add_well(name)
             idx = self.reservoir.find_cell_index(wc)
             self.reservoir.add_perforation(name, res_cell_idx=idx, well_index=well_index_list[i], well_indexD=0)
 
