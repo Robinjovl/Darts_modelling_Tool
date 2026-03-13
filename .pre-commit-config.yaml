@@ -14,6 +14,12 @@ repos:
         additional_dependencies: [gitlab-ci-verify==2.10.0]
         pass_filenames: false
         files: ^(\.gitlab-ci\.ya?ml|\.cicd/jobs/.*\.ya?ml)$
+      - id: sync-agent-skills-check
+        name: sync-agent-skills-check
+        entry: python helper_scripts/sync_agent_skills.py --check
+        language: system
+        pass_filenames: false
+        always_run: true
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.11
