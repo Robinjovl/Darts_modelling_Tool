@@ -103,6 +103,7 @@ class ModelProperties(PropertyContainer):
         # evaluate_PT argument is required in PropertyContainer but is not needed in this model
 
         ph = np.array([0, 1, 2], dtype=np.intp)
+        self.temperature = temperature
 
         for i in range(self.nc):
             self.x[i][i] = 1
