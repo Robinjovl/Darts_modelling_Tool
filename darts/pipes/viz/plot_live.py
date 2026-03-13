@@ -205,11 +205,7 @@ class DartsModelWithLivePlots(DartsModel):
         """ Stop initializing the figure containing a pair of axes for the PH diagram """
 
         """ Start initializing the figure containing axes for profiles of wellbore and 1D reservoir properties """
-        if (
-            self.live_plot_config.enable_well_res_profiles
-            and self.has_dfm_well
-            and self.physics.state_spec == self.physics.StateSpecification.PH
-        ):
+        if self.live_plot_config.enable_well_res_profiles and self.has_dfm_well:
             fig, axes = plt.subplots(2, 8, figsize=(22, 7), constrained_layout=True)
 
             # Well props
@@ -635,11 +631,7 @@ class DartsModelWithLivePlots(DartsModel):
         """ Stop updating the figure containing a pair of axes for the PH diagram """
 
         """ Start updating the figure containing axes for profiles of wellbore and 1D reservoir properties """
-        if (
-            self.live_plot_config.enable_well_res_profiles
-            and self.has_dfm_well
-            and self.physics.state_spec == self.physics.StateSpecification.PH
-        ):
+        if self.live_plot_config.enable_well_res_profiles and self.has_dfm_well:
             fig = self._live_plot_store["well_fig"]["fig"]
             axes = self._live_plot_store["well_fig"]["axes"]
             lines = self._live_plot_store["well_fig"]["lines"]
@@ -647,10 +639,10 @@ class DartsModelWithLivePlots(DartsModel):
             i_start_well = self.reservoir.wells[0].well_head_idx
             i_end_well = self.reservoir.wells[0].well_bottom_idx
             p_idx = self.physics.vars.index('pressure')
-            h_idx = self.physics.vars.index('enthalpy')
+            # h_idx = self.physics.vars.index('enthalpy')
             X_np = np.asarray(self.physics.engine.X).reshape(-1, self.physics.n_vars)
             p_well = X_np[i_start_well : i_end_well + 1, p_idx]
-            _h_well = X_np[i_start_well : i_end_well + 1, h_idx]
+            # h_well = X_np[i_start_well : i_end_well + 1, h_idx]
 
             # Get the property container to evaluate phase props
             pc = self.physics.property_containers[0]
