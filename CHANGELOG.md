@@ -1,3 +1,20 @@
+# #.#.# [Future]
+- Support using the OBL method to calculate DFM well phase velocities. Direct method is still the default method since it is safer in terms of stability ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Add `x_mass` (mass composition of each phase) as a new property to `PropertyContainer` of the super engine because it is needed for evaluation of phase velocities in DFM wells using the OBL method ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Make DFM velocity calculation independent of the order of the phases specified by the user, so now the order of the phases does not affect the performance of DFM wells, but the user needs to specify `"G"` and `"L"` as names of gas and liquid phases for two-phase flow and `"G"`, `"L_a"`, and `"L_b"` as names of gas and two liquid phases for three-phase flow  ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)).
+- Correct derivative of averaged density of the liquid phase for three-phase flow of gas and two liquid phases ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Improve storage and visualization of properties of DFM wells ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
+  - Streamline storage and visualization of DFM well properties
+  - Support storage and visualization of multiple DFM wells
+  - Support storage of DFM well output in `.vtp` files to be visualized in ParaView
+- Support live plotting ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
+  - Live (real-time) plots for solver properties (time step size and number of Newton iterations) and tracking the state of a block on the PH diagram
+  - Live (real-time) plots for profiles of DFM well properties
+- Align depth of perforated well segments with reservoir blocks ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Fix BHT calculation for PH formulation in the method `store_bhp_bht` in `output.py` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Store the arrays `time`, `n_newton_iters`, and `time_step_size` in the class `DartsModel` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Implement `engine_base::apply_thermal_var_correction` to improve the issue related to sharp enthalpy updates from the Newton-Raphson solver for the pressure-enthalpy (PH) formulation ([!289](https://gitlab.com/open-darts/open-darts/-/merge_requests/289))
+
 # 1.4.0 [17-02-2026]
 - OBL and operators:
   - Extrapolation of operators at supporting points with negative last compositions for consistent interpolation in hypercubes at the edge of the compositional domain - current logic works only for equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
@@ -27,7 +44,7 @@
 
 - Solvers:
   - An option to use PARDISO linear solver is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/247)
-  - An optional use of PETSc linear solver for Geothermal and Poromechanical physics is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/235) 
+  - An optional use of PETSc linear solver for Geothermal and Poromechanical physics is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/235)
 
 - Models:
   - Added a simple example of a thermal model with foam (models/3ph_comp_w_foam)
@@ -38,7 +55,7 @@
 
 - Build system and CI/CD:
   - Python 3.13 is [supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/261) and Python 3.9 support is [no longer supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/248)
-  - Switched to ubuntu2018 docker image and conda environments in the [pipelines](https://gitlab.com/open-darts/open-darts/-/merge_requests/267) 
+  - Switched to ubuntu2018 docker image and conda environments in the [pipelines](https://gitlab.com/open-darts/open-darts/-/merge_requests/267)
   - Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
   - CI/CD jobs moved from `helper_scripts/ci_jobs` to `.cicd/jobs`, splitted for platforms, improved job rules
   - Added pre-commit/linting in the pipelines, switched to ruff-based formatting [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/233) and added [gitingest](https://gitlab.com/open-darts/open-darts/-/merge_requests/239)
@@ -47,10 +64,13 @@
 
 - Breaking changes:
   - Input arguments to facilitate consistent compositional axes and extrapolation:
+  \
   {- Before: Compositional(..., min_z=zero/10, max_z=1-zero/10) -}\
   {+ Now:    Compositional(..., min_z=0, max_z=1, epsilon_z=zero/10, sim_eps_multiplier=10, extrapolation_flag=True) +}
+  \
   {- Before: PropertyContainer(..., min_z=zero) -}\
   {+ Now:    PropertyContainer(..., eps_z=epsilon) +}
+  \
   {- Before: OperatorsBase(...) -}\
   {+ Now:    OperatorsBase(..., extrapolation_flag=True, dz: float) +}
   - Rename an input argument of the method `add_well`:\
@@ -65,11 +85,19 @@
 
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
+  - Introduce permporo_mult_ev, turn PORO_OP into MULT_OP, use harmonic mean for facial averaging of multiplier
 - EoSDensity and EoSEnthalpy API changes:
-	- Update darts-flash enthalpy call in EoSEnthalpy class: H_PT() to H()
-	- Add optional arguments to pass ions and lumped ions to EoSDensity and EoSEnthalpy constructors
+  - Update darts-flash enthalpy call in EoSEnthalpy class: eos.H_PT() to eos.H()
+  - Add optional arguments to pass ions and lumped ions to EoSDensity and EoSEnthalpy constructors
+- Contact mechanics generalization:
+  - Fixed logic in displaced_fault model: call self.reservoir_depletion() anyway since it is needed to check hash for objects for example porosity remove 'self.unstr_discr', 'self.pm' from checking hash as they are not available at check hash stage fix hash comparison (it was not comparing hash of the current data)
+  - added run_tests() to be able to run tests within a displaced_fault model, locally.
+  - Code refactoring (continues [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/188)):
+     1. get_normal_to_bound_face, get_parametrized_fault_props, write_fault_props are moved to the base class
+     2. code piece is put into a function 'init_fractures' of the base class
+- New feauture: pass property array dictionaries directly to output_to_vtk()
 
-# 1.3.1 [07-06-2025]
+# 1.3.1 [10-06-2025]
 - Add IPhreeqc to thirdparty dependencies, added phreeqc_dissolution model with CO2 injection and dissolution-precipitation kinetics [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
 - Apply_rhs_flux supported for GPU platform [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
 - Added .pvd file generation for unstructured meshes for Time in ParaView [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/216)

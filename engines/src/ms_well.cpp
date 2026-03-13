@@ -13,248 +13,311 @@ using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
-int ms_well::check_constraints(double dt, std::vector<value_t> &X)
+ms_well::ms_well()
 {
-  if (constraint.get_well_control_type() > well_control_iface::WellControlType::NONE)
-    if (constraint.check_constraint_violation(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X))
-    {
-      // constraint violation occured, switch control and constrain
-      std::swap(control, constraint);
-      std::cout << "Well " << name << " switched to " << control.get_well_control_type_str() << std::endl;
-      //initialize_control(X);
-    }
-
-  return 0;
 }
 
-int ms_well::add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS)
+void ms_well::init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_)
 {
+    n_block_size = n_vars_;
+    P_VAR = 0;
+    n_vars = n_vars_;
+    n_phases = int(phase_names_.size());
+    n_ops = n_ops_;
+    phase_names = phase_names_;
+    thermal = thermal_;
 
-  control.add_to_jacobian(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
 
-  return 0;
+    rate_evaluator = well_controls_etor;
+    state.resize(n_vars);
+    state_neighbour.resize(n_vars);
+    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
+
+    rate_etor_ad = well_controls_etor;  //adjoint method
 }
 
-int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data)
+void ms_well::init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_)
 {
-  index_t upstream_idx;
+    n_block_size = N_VARS_;
+    P_VAR = P_VAR_;
+    n_vars = n_vars_;
+    n_phases = int(phase_names_.size());
+    n_ops = n_ops_;
+    phase_names = phase_names_;
+    thermal = thermal_;
 
-  // find upstream state
-  value_t p_diff = X[well_head_idx * n_block_size + P_VAR] - X[well_body_idx * n_block_size + P_VAR];
-  if (p_diff > 0)
-    upstream_idx = well_head_idx; // injector
-  else
-    upstream_idx = well_body_idx; // producer
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
 
-  state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+    rate_evaluator = well_controls_etor;
+    state.resize(n_vars);
+    state_neighbour.resize(n_vars);
+    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
 
-  rate_evaluator->evaluate(state, rates);
+    rate_etor_ad = well_controls_etor;  //adjoint method
+}
 
-  // Energy and volumetric rates
-  value_t total_energy = 0.;
-  for (int i = 0; i < n_phases; i++)
-  {
-    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * p_diff * well_transmissibility);
-    total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
-  }
-  time_data[name + " : energy (kJ/day)"].push_back(total_energy);
+int ms_well::check_constraints(double dt, std::vector<value_t>& X)
+{
+    if (constraint.get_well_control_type() > well_control_iface::WellControlType::NONE)
+        if (constraint.check_constraint_violation(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X))
+        {
+            // constraint violation occured, switch control and constrain
+            std::swap(control, constraint);
+            std::cout << "Well " << name << " switched to " << control.get_well_control_type_str() << " (target: " << control.get_well_control_target_str() << ")\n";
+            //initialize_control(X);
+        }
 
-  // Component molar rates
-  index_t nc = n_vars - thermal;
-  for (index_t c = 0; c < nc; c++)
-  {
-      double c_rate_op = 0;
+    return 0;
+}
 
-      for (int j = 0; j < n_phases; j++)
-      {
-          int shift = n_block_size + n_block_size * j;
-          c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
-      }
+int ms_well::add_to_jacobian(double dt, std::vector<value_t>& X, value_t* jac_well_head, std::vector<value_t>& RHS)
+{
 
-    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
-  }
+    control.add_to_jacobian(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
 
-  int i_p = 0;
+    return 0;
+}
 
-  for (auto &p : perforations)
-  {
-    index_t i_w, i_r;
-    value_t wi, wid;
-    std::tie(i_w, i_r, wi, wid) = p;
-    i_w += well_body_idx;
+int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data)
+{
+    index_t upstream_idx;
 
-    // find upstream for the perforation
-    value_t p_diff = X[i_w * n_block_size + P_VAR] - X[i_r * n_block_size + P_VAR];
+    // find upstream state
+    value_t p_diff = X[well_head_idx * n_block_size + P_VAR] - X[well_body_idx * n_block_size + P_VAR];
     if (p_diff > 0)
-      upstream_idx = i_w; // injection perforation
+        upstream_idx = well_head_idx; // injector
     else
-      upstream_idx = i_r; // production perforation
+        upstream_idx = well_body_idx; // producer
 
+    state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+
+    rate_evaluator->evaluate(state, rates);
+
+    // Energy and volumetric rates
+    value_t total_energy = 0.;
+    for (int i = 0; i < n_phases; i++)
+    {
+        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * p_diff * well_transmissibility);
+        total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
+    }
+    time_data[name + " : energy (kJ/day)"].push_back(total_energy);
+
+    // Component molar rates
+    index_t nc = n_vars - thermal;
     for (index_t c = 0; c < nc; c++)
     {
         double c_rate_op = 0;
 
         for (int j = 0; j < n_phases; j++)
         {
-            int shift = nc + nc * j;
+            int shift = n_block_size + n_block_size * j;
             c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
         }
-        time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * wi);
+
+        time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
     }
-    time_data[name + " : p " + std::to_string(i_p) + " reservoir P (bar)"].push_back(X[i_r * n_block_size + P_VAR]);
 
-    i_p++;
-  }
+    int i_p = 0;
 
-  // BHP and temperature
-  time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_block_size + P_VAR]);
-  time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
+    for (auto& p : perforations)
+    {
+        index_t i_w, i_r;
+        value_t wi, wid;
+        std::tie(i_w, i_r, wi, wid) = p;
+        i_w += well_body_idx;
 
-  return 0;
+        // find upstream for the perforation
+        value_t p_diff = X[i_w * n_block_size + P_VAR] - X[i_r * n_block_size + P_VAR];
+        if (p_diff > 0)
+            upstream_idx = i_w; // injection perforation
+        else
+            upstream_idx = i_r; // production perforation
+
+        for (index_t c = 0; c < nc; c++)
+        {
+            double c_rate_op = 0;
+
+            for (int j = 0; j < n_phases; j++)
+            {
+                int shift = nc + nc * j;
+                c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+            }
+            time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * wi);
+        }
+        time_data[name + " : p " + std::to_string(i_p) + " reservoir P (bar)"].push_back(X[i_r * n_block_size + P_VAR]);
+
+        i_p++;
+    }
+
+    // BHP and temperature
+    time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_block_size + P_VAR]);
+    time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
+
+    return 0;
 }
 
-int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data, index_t n_blocks)
+int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data, index_t n_blocks)
 {
-  // calculate rate based on velocity unknown; use for decouple velocity engine.
+    // calculate rate based on velocity unknown; use for decouple velocity engine.
 
-  index_t upstream_idx;
+    index_t upstream_idx;
 
-  // find the wellhead connection
-  value_t velocity = X[n_block_size * n_blocks + well_head_conn_idx];
+    // find the wellhead connection
+    value_t velocity = X[n_block_size * n_blocks + well_head_conn_idx];
 
 
-  // find upstream state
-  value_t p_diff = X[well_head_idx * n_block_size + P_VAR] - X[well_body_idx * n_block_size + P_VAR];
-  if (velocity > 0)
-    upstream_idx = well_head_idx; // injector
-  else
-    upstream_idx = well_body_idx; // producer
-
-  state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
-
-  rate_evaluator->evaluate(state, rates);
-
-  // Energy and volumetric rates
-  value_t total_energy = 0.;
-  for (int i = 0; i < n_phases; i++)
-  {
-    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * velocity);
-    total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
-  }
-  time_data[name + " : energy (kJ/day)"].push_back(total_energy);
-
-  // Component molar rates
-  index_t nc = n_vars - thermal;
-  for (index_t c = 0; c < nc; c++)
-  {
-      double c_rate_op = 0;
-
-      for (int j = 0; j < n_phases; j++)
-      {
-          index_t shift = n_block_size + n_block_size * j;
-          c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
-      }
-
-    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
-  }
-
-  index_t i_p = 0;
-
-  for (auto &p : perforations)
-  {
-    index_t i_w, i_r;
-    value_t wi, wid;
-    std::tie(i_w, i_r, wi, wid) = p;
-    i_w += well_body_idx;
-
-    // find upstream for the perforation
-    value_t p_diff = X[i_w * n_vars] - X[i_r * n_vars];
-    if (p_diff > 0)
-      upstream_idx = i_w; // injection perforation
+    // find upstream state
+    value_t p_diff = X[well_head_idx * n_block_size + P_VAR] - X[well_body_idx * n_block_size + P_VAR];
+    if (velocity > 0)
+        upstream_idx = well_head_idx; // injector
     else
-      upstream_idx = i_r; // production perforation
+        upstream_idx = well_body_idx; // producer
 
+    state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+
+    rate_evaluator->evaluate(state, rates);
+
+    // Energy and volumetric rates
+    value_t total_energy = 0.;
+    for (int i = 0; i < n_phases; i++)
+    {
+        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * velocity);
+        total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
+    }
+    time_data[name + " : energy (kJ/day)"].push_back(total_energy);
+
+    // Component molar rates
+    index_t nc = n_vars - thermal;
     for (index_t c = 0; c < nc; c++)
     {
         double c_rate_op = 0;
 
         for (int j = 0; j < n_phases; j++)
         {
-            index_t shift = nc + nc * j;
+            index_t shift = n_block_size + n_block_size * j;
             c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
         }
-        time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * wi);
+
+        time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
     }
-    time_data[name + " : p " + std::to_string(i_p) + " reservoir P (bar)"].push_back(X[i_r * n_vars]);
 
-    i_p++;
-  }
+    index_t i_p = 0;
 
-  // BHP and temperature
-  time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_vars + P_VAR]);
-  time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
+    for (auto& p : perforations)
+    {
+        index_t i_w, i_r;
+        value_t wi, wid;
+        std::tie(i_w, i_r, wi, wid) = p;
+        i_w += well_body_idx;
 
-  return 0;
+        // find upstream for the perforation
+        value_t p_diff = X[i_w * n_vars] - X[i_r * n_vars];
+        if (p_diff > 0)
+            upstream_idx = i_w; // injection perforation
+        else
+            upstream_idx = i_r; // production perforation
+
+        for (index_t c = 0; c < nc; c++)
+        {
+            double c_rate_op = 0;
+
+            for (int j = 0; j < n_phases; j++)
+            {
+                index_t shift = nc + nc * j;
+                c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+            }
+            time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * wi);
+        }
+        time_data[name + " : p " + std::to_string(i_p) + " reservoir P (bar)"].push_back(X[i_r * n_vars]);
+
+        i_p++;
+    }
+
+    // BHP and temperature
+    time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_vars + P_VAR]);
+    time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
+
+    return 0;
 }
 
 int ms_well::initialize_control(std::vector<value_t>& X)
 {
-  if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
-  {
-    std::cout << "Well " << name << " has uninitialized well control\n";
-    exit(1);
-  }
-  std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
+    if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
+    {
+        std::cout << "Well " << name << " has uninitialized well control\n";
+        exit(1);
+    }
+    std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
 
-  // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
-  for (auto& p : perforations)
-  {
-      index_t i_w, i_r;
-      value_t wi, wid;
-      std::tie(i_w, i_r, wi, wid) = p;
-      i_w += well_body_idx;
+    // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
+    for (auto& p : perforations)
+    {
+        index_t i_w, i_r;
+        value_t wi, wid;
+        std::tie(i_w, i_r, wi, wid) = p;
+        i_w += well_body_idx;
 
-      // move the state from X
-      std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
-      // copy neighbour state
-      std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-      // initialize
-      control.initialize_well_block(state, state_neighbour);
-      // move initialized state back to X
-      std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
-  }
-  // Initialize state in well head - state neighbour is well body, state is well head
-  // move the state from X
-  std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
-  // copy neighbour state
-  std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-  // initialize
-  control.initialize_well_block(state, state_neighbour);
-  // move initialized state back to X
-  std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
-  return 0;
+        // move the state from X
+        std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
+        // copy neighbour state
+        std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+        // initialize
+        control.initialize_well_block(state, state_neighbour);
+        // move initialized state back to X
+        std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
+    }
+    // Initialize state in well head - state neighbour is well body, state is well head
+    // move the state from X
+    std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
+    // copy neighbour state
+    std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+    // initialize
+    control.initialize_well_block(state, state_neighbour);
+    // move initialized state back to X
+    std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
+    return 0;
+}
+
+void ms_well::addSegment()
+{
+    double PI = 3.141592;
+    for (index_t p = 0; p < n_segments + 1; p++)
+    {
+        //
+        segment s;
+        s.diameter = segment_diameter;
+        s.length = segment_depth_increment;
+        s.area = PI * (s.diameter * s.diameter) / 4;
+        s.volume = s.length * s.area;  // volume of the segment
+        segments.push_back(s);
+    }
 }
 
 int ms_well::cross_flow(std::vector<value_t>& X)
 {
-  /*
-  1. check if the well is producer or injector [ based on the name of the well ]
-  2. check whether cross-flow happens or not for the given peforation. if it happends  print it out .
-  */
-  bool is_producer = isProducer();
-  for (auto &p : perforations)
-  {
-    index_t i_w, i_r;
-    value_t wi, wid;
-    std::tie(i_w, i_r, wi, wid) = p;
-    value_t potential_diff = X[(i_w + well_head_idx + 1) * n_block_size + P_VAR] - X[i_r * n_block_size + P_VAR];
-    bool is_cross_flow = (is_producer && potential_diff > 0) || (!(is_producer) && potential_diff < 0);
-    if (is_cross_flow)
+    /*
+    1. check if the well is producer or injector [ based on the name of the well ]
+    2. check whether cross-flow happens or not for the given peforation. if it happends  print it out .
+    */
+    bool is_producer = isProducer();
+    for (auto& p : perforations)
     {
-      std::cout << "Cross-flow happens for the well " << name << " for this iteration \n";
+        index_t i_w, i_r;
+        value_t wi, wid;
+        std::tie(i_w, i_r, wi, wid) = p;
+        value_t potential_diff = X[(i_w + well_head_idx + 1) * n_block_size + P_VAR] - X[i_r * n_block_size + P_VAR];
+        bool is_cross_flow = (is_producer && potential_diff > 0) || (!(is_producer) && potential_diff < 0);
+        if (is_cross_flow)
+        {
+            std::cout << "Cross-flow happens for the well " << name << " for this iteration \n";
+        }
+
     }
 
-  }
-
-  return 0;
+    return 0;
 }

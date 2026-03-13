@@ -221,7 +221,9 @@ class WellControlOperators(OperatorsBase):
                 * mobility
             )
 
-        # Store P, T and composition of current state
+        # Store pressure (P) and temperature (T) of the current state for a generic state specification.
+        # This is needed when pressure or temperature is not part of the state variables
+        # (e.g., volume instead of pressure, or enthalpy instead of temperature).
         idx += self.nph
         values_np[idx + 0] = state[0]
         values_np[idx + 1] = self.property.temperature
@@ -229,9 +231,9 @@ class WellControlOperators(OperatorsBase):
         return 0
 
 
-class WellInitOperators(OperatorsBase):
+class ThermalVarOperator(OperatorsBase):
     """
-    WellInitOperators initialize the well BHP/BHT for generic state specification
+    ThermalVarOperator gives the thermal variable for generic state specification
     """
 
     def __init__(
@@ -243,11 +245,11 @@ class WellInitOperators(OperatorsBase):
         dz: float = None,
     ):
         """
-        Constructor of WellInitOperators class
+        Constructor of ThermalVarOperator class
 
         :param property_container: Property container of type PropertyBase
         :param thermal: Switch to indicate if energy conservation equation is there
-        :param is_pt: Switch to indicate if state specification is P/PT or PH
+        :param is_pt: Switch to indicate if state specification is P, PT, or PH
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
