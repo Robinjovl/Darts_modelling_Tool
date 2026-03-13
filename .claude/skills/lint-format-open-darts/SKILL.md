@@ -6,12 +6,14 @@ description: Lint and format open-DARTS code using Ruff and pre-commit, matching
 # Lint and Format
 
 Use this skill to apply the same checks used in CI.
+Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 
-1. Run pre-commit for changed files or the full tracked file set.
-2. Apply safe Ruff fixes and formatting.
-3. Re-run checks until clean.
+1. Confirm the session conda environment is active; create it once if needed.
+2. Run pre-commit for changed files or the full tracked file set.
+3. Apply safe Ruff fixes and formatting.
+4. Re-run checks until clean.
 
 ## Primary commands
 

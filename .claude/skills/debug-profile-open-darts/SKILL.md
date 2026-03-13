@@ -6,12 +6,14 @@ description: Debug and profile open-DARTS with Debug builds, Valgrind, VTune, an
 # Debug and Profile
 
 Use this skill for root-cause analysis and performance investigation.
+Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 
-1. Build with appropriate instrumentation (Debug or Valgrind mode).
-2. Reproduce the issue on a targeted model.
-3. Capture and summarize diagnostics (logs, leak reports, hotspot reports).
+1. Confirm the session conda environment is active; create it once if needed.
+2. Build with appropriate instrumentation (Debug or Valgrind mode).
+3. Reproduce the issue on a targeted model.
+4. Capture and summarize diagnostics (logs, leak reports, hotspot reports).
 
 ## Primary commands
 

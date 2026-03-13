@@ -6,12 +6,14 @@ description: Build and install open-DARTS C++ extensions and Python wheels acros
 # Build open-DARTS
 
 Use this skill for deterministic build and install workflows.
+Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 
-1. Select the target mode (local editable install, full wheel build, GPU build, debug build, valgrind build).
-2. Run the corresponding helper script from repo root.
-3. Verify build outputs (`dist/*.whl`, logs, installed extensions in `darts/`).
+1. Confirm the session conda environment is active; create it once if needed.
+2. Select the target mode (local editable install, full wheel build, GPU build, debug build, valgrind build).
+3. Run the corresponding helper script from repo root.
+4. Verify build outputs (`dist/*.whl`, logs, installed extensions in `darts/`).
 
 ## Primary commands
 

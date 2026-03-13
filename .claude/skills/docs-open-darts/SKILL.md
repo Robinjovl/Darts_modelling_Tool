@@ -6,12 +6,14 @@ description: Build and maintain open-DARTS documentation with Sphinx and MyST, i
 # Documentation
 
 Use this skill for docs authoring and publishing checks.
+Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 
-1. Install docs dependencies.
-2. Build docs locally and resolve warnings/errors.
-3. Update toctree or autosummary entries when adding new pages/modules.
+1. Confirm the session conda environment is active; create it once if needed.
+2. Install docs dependencies.
+3. Build docs locally and resolve warnings/errors.
+4. Update toctree or autosummary entries when adding new pages/modules.
 
 ## Primary commands
 

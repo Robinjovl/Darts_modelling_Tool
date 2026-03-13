@@ -23,6 +23,30 @@ Optional:
 
 ---
 
+## Conda Environment Policy
+
+Use a prompt-defined conda environment when the task or user already names one.
+Otherwise create and activate one session-level environment at the first build,
+install, test, debug, docs, or lint step, then reuse it across all skills for
+the rest of the session.
+
+Default session environment:
+
+```bash
+conda create -y -n open-darts-session python=3.10
+conda activate open-darts-session
+```
+
+Guidance:
+
+- Prefer Python 3.10 unless the task explicitly targets a different supported
+  version.
+- Keep build, install, test, lint, docs, and follow-up smoke tests in the same
+  session environment.
+- When using `-p` for Reaktoro, stay on Python 3.10-3.12.
+
+---
+
 ## Quick Start: Full Build + Install (Linux)
 
 From the repo root:

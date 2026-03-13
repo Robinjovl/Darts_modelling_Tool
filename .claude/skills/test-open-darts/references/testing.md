@@ -11,6 +11,25 @@ open-DARTS has a multi-layer testing strategy:
 
 ---
 
+## Conda Environment Policy
+
+Use a prompt-defined conda environment when one is provided. Otherwise create
+and activate one session-level environment at the first build, install, test,
+debug, docs, or lint step, then reuse it across all skills for the rest of the
+session.
+
+Default session environment:
+
+```bash
+conda create -y -n open-darts-session python=3.10
+conda activate open-darts-session
+```
+
+Keep the build or editable install and all follow-up test commands in the same
+session environment.
+
+---
+
 ## Running the Full Test Suite
 
 From the repo root (requires the package to be installed):

@@ -11,6 +11,26 @@ open-DARTS provides several mechanisms for debugging and profiling:
 
 ---
 
+## Conda Environment Policy
+
+Use a prompt-defined conda environment when one is provided. Otherwise create
+and activate one session-level environment at the first build, install, test,
+debug, docs, or lint step, then reuse it across all skills for the rest of the
+session.
+
+Default session environment:
+
+```bash
+conda create -y -n open-darts-session python=3.10
+conda activate open-darts-session
+```
+
+Keep the debug or Valgrind build, editable install, reproduced model runs, and
+any follow-up tests in the same session environment so symbols and Python
+bindings stay aligned.
+
+---
+
 ## Debug Build
 
 ### Linux/macOS
