@@ -384,8 +384,8 @@ int well_control_iface::initialize_well_block_dfm(std::vector<value_t>& state_bl
 	}
 	else
 	{
-		// Rate-controlled: initialize with pressure of neighbouring cell ensuring the correct flow direction
-		target_state[0] = (this->target > 0.) ? state_block[0] + 0.001 : state_block[0] * 0.99;
+		// Rate-controlled: No change is needed
+		target_state[0] = state_block[0];
 	}
 
 	// Other state specifications
