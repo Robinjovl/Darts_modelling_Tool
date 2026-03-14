@@ -96,3 +96,6 @@ class Model(CICDModel):
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=50.)
+                # Control total mass rate of the produced fluid
+                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+                #                                is_inj=False, target=4000)

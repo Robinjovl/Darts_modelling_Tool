@@ -2,6 +2,7 @@
 #define WELL_CONTROLS_H
 
 #include <vector>
+#include <optional>
 #include "globals.h"
 #include "evaluator_iface.h"
 
@@ -42,7 +43,8 @@ public:
 
 protected:
     WellControlType control_type = WellControlType::NONE;
-    index_t phase_idx{ 0 }, n_phases, n_comps, thermal, n_vars, n_ops, well_state_offset;
+    std::optional<index_t> phase_idx = std::nullopt;
+    index_t n_phases, n_comps, thermal, n_vars, n_ops, well_state_offset;
     value_t target, inj_temp;
     std::vector<value_t> inj_comp;
     std::vector<index_t> block_idx{ 0 };
@@ -67,6 +69,8 @@ public:
     virtual int set_bhp_control(bool is_inj, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_);
     virtual int set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, index_t phase_idx_,
         value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_);
+    virtual int set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, value_t target_,
+        std::vector<value_t>& inj_comp_, value_t inj_temp_);
 
     WellControlType get_well_control_type() { return this->control_type; }
     index_t get_well_n_ops() { return this->n_ops; }
