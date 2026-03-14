@@ -19,8 +19,8 @@ from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
-class Model(DartsModelWithLivePlots):
-# class Model(CICDModel):
+# class Model(DartsModelWithLivePlots):
+class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -31,8 +31,8 @@ class Model(DartsModelWithLivePlots):
         # self.live_plot_config.enable_ph_diagram = True
         # self.live_plot_config.tracked_block_idx = 1000
 
-        self.live_plot_config.enable_well_res_profiles = False
-        self.live_plot_config.plot_till_this_res_cell = 0
+        # self.live_plot_config.enable_well_res_profiles = False
+        # self.live_plot_config.plot_till_this_res_cell = 0
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
