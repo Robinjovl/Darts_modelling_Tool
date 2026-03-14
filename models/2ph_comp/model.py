@@ -45,7 +45,7 @@ class Model(CICDModel):
         epsilon = 1e-9
         # Create property containers:
         components = ['CO2', 'C1', 'H2O']
-        phases = ['gas', 'oil']
+        phases = ['gas', 'aqueous']
         thermal = 0
         Mw = [44.01, 16.04, 18.015]
 
@@ -55,11 +55,11 @@ class Model(CICDModel):
         """ properties correlations """
         property_container.flash_ev = ConstantK(len(components), [4, 2, 1e-1], zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
-                                              ('oil', DensityBasic(compr=1e-5, dens0=600))])
+                                              ('aqueous', DensityBasic(compr=1e-5, dens0=600))])
         property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
-                                                ('oil', ConstFunc(0.5))])
+                                                ('aqueous', ConstFunc(0.5))])
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                               ('oil', PhaseRelPerm("oil"))])
+                                               ('aqueous', PhaseRelPerm("oil"))])
 
         """ Activate physics """
         thermal = False
