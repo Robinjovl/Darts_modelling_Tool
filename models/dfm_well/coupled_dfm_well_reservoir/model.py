@@ -31,7 +31,7 @@ class Model(CICDModel):
         # self.live_plot_config.enable_ph_diagram = True
         # self.live_plot_config.tracked_block_idx = 1000
 
-        # self.live_plot_config.enable_well_res_profiles = False
+        # self.live_plot_config.enable_well_res_profiles = True
         # self.live_plot_config.plot_till_this_res_cell = 0
 
         # Measure time spend on reading/initialization
@@ -42,11 +42,26 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
+        # For isenthalpic injection
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
                             it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
                             coupled_well_res_norm_method=2,
                             runtime=1/24/60, # This runtime will be used when CI test is conducted without the main file
                             )
+
+        # # For injection at a constant gas mass rate and constant WHP
+        # self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
+        #                     it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
+        #                     coupled_well_res_norm_method=2,
+        #                     )
+
+        # # For injection at a constant total mass rate
+        # # Use 0.001 as the first time-step size because 0.0001 did not converge
+        # # Use 50 as the max number of Newton iterations because total rate control requires a large number of iterations to converge
+        # self.set_sim_params(first_ts=0.001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
+        #                     it_newton=50, it_linear=10, newton_type=sim_params.newton_local_chop,
+        #                     coupled_well_res_norm_method=2,
+        #                     )
 
         self.timer.node["initialization"].stop()
 
@@ -64,7 +79,7 @@ class Model(CICDModel):
                                                permr=permr.flatten(order='F'), permz=permz.flatten(order='F'),
                                                R0=self.well_1_ID / 2, R1=1000, logspace=True, rcond=259.2, hcap=5250,
                                                depth=2025)  # depth is the depth of the centroid of the top reservoir cell
-        self.reservoir.boundary_volumes['yz_minus'] = 1e20
+        self.reservoir.boundary_volumes['yz_plus'] = 1e20
 
         return
 
@@ -197,11 +212,11 @@ class Model(CICDModel):
                                   inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
                                   verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
-        # source_sinks = {"RampUpRate1": ramp_up_rate}
+        source_sinks = {"RampUpRate1": ramp_up_rate}
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
-                                 # source_sinks=source_sinks,
+                                 source_sinks=source_sinks,
                                  verbose=verbose)}
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
@@ -210,31 +225,31 @@ class Model(CICDModel):
         well_1_perforated_segment = well_1_geometry.num_segments
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_diameter=well_1_geometry.pipe_ID)
 
-    # def set_rhs_flux(self, t: float = None) -> np.ndarray:
-    #     inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
-    #
-    #     # Get updated ramp-up injection rate (rate is updated in pipe.py)
-    #     inj_rate = self.wells["I1"].source_sinks["RampUpRate1"].current_rate
-    #
-    #     component_rate = inj_rate * inj_comp
-    #
-    #     # Get inj_fluid_molar_enthalpy
-    #     inj_fluid_molar_enthalpy = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["molar_enthalpy"]
-    #     # Get inj_fluid_molar_potential_energy
-    #     inj_segment_idx = self.wells["I1"].source_sinks["RampUpRate1"].segment_idx
-    #     inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[self.reservoir.mesh.n_res_blocks + inj_segment_idx]
-    #     inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * self.physics.property_containers[0].Mw[0]
-    #     inj_fluid_energy = inj_fluid_molar_enthalpy + inj_fluid_molar_potential_energy
-    #
-    #     inj_energy_rate = inj_rate * inj_fluid_energy
-    #
-    #     inj_rates = np.append(component_rate, inj_energy_rate)
-    #
-    #     rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
-    #     well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
-    #     rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_rates
-    #
-    #     return rhs_flux
+    def set_rhs_flux(self, t: float = None) -> np.ndarray:
+        inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
+
+        # Get updated ramp-up injection rate (rate is updated in pipe.py)
+        inj_rate = self.wells["I1"].source_sinks["RampUpRate1"].current_rate
+
+        component_rate = inj_rate * inj_comp
+
+        # Get inj_fluid_molar_enthalpy
+        inj_fluid_molar_enthalpy = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["molar_enthalpy"]
+        # Get inj_fluid_molar_potential_energy
+        inj_segment_idx = self.wells["I1"].source_sinks["RampUpRate1"].segment_idx
+        inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[self.reservoir.mesh.n_res_blocks + inj_segment_idx]
+        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * self.physics.property_containers[0].Mw[0]
+        inj_fluid_energy = inj_fluid_molar_enthalpy + inj_fluid_molar_potential_energy
+
+        inj_energy_rate = inj_rate * inj_fluid_energy
+
+        inj_rates = np.append(component_rate, inj_energy_rate)
+
+        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
+        well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
+        rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_rates
+
+        return rhs_flux
 
     def set_well_controls(self):
         inj_composition = []
@@ -244,8 +259,16 @@ class Model(CICDModel):
         # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
         #                                is_inj=True, target=60.0, inj_composition=inj_composition, inj_temp=283.15)
 
-        # Constant injection mass rate of gaseous phase
-        target_inj_rate = 0.1 * 24 * 3600  # in kg/day
-        #TODO: If a large rate is used, it may fail because ramp-up rate must be used at the beginning.
-        self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE, phase_name="G",
-                                       is_inj=True, target=target_inj_rate, inj_composition=inj_composition, inj_temp=283.15)
+        # # Constant injection mass rate of gaseous phase
+        # # Don't use a very large rate because it may not converge. Ramp-up rate should be used at the beginning if rate is high
+        # # Don't inject at a constant liquid rate because it fails readily. The reason is that there is no liquid available in
+        # # the wellhead cell. There are methods to overcome this later, e.g., use a high initial pressure for the wellhead cell to
+        # # have liquid CO2 available in it from the beginning.
+        # target_inj_rate = 0.1 * 24 * 3600  # in kg/day
+        # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE, phase_name="G",
+        #                                is_inj=True, target=target_inj_rate, inj_composition=inj_composition, inj_temp=283.15)
+
+        # # Constant total injection mass rate
+        # target_inj_rate = 5 * 24 * 3600  # in kg/day
+        # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+        #                                is_inj=True, target=target_inj_rate, inj_composition=inj_composition, inj_temp=283.15)

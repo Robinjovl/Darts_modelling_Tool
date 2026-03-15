@@ -15,6 +15,7 @@ from darts.engines import redirect_darts_output
 from darts.pipes.save_results import save_dfm_well_props
 from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
 from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
+from darts.pipes.viz.plot_line_graphs import plot_line_graphs
 
 from model import Model
 
@@ -30,10 +31,10 @@ if 1:
     coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)   # saves initial well conditions
 
     report_steps = [
-        5 / 60 / 24 / 60,  # 5 seconds
-        55 / 60 / 24 / 60,  # 1 minute
-        1 / 24 / 60,  # 2 minute
-        1 / 24 / 60,  # 3 minute
+        0.5 / 24 / 60,  # 30 seconds
+        0.5 / 24 / 60,  # 1 minute
+        # 1 / 24 / 60,  # 2 minute
+        # 1 / 24 / 60,  # 3 minute
         # 2 / 24 / 60,  # 5 minute
         # 5 / 24 / 60,  # 10 minute
         # 10 / 24 / 60,  # 20 minute
@@ -59,24 +60,37 @@ if 1:
     ]
 
     for i, dt in enumerate(report_steps):
+
+        # For isenthalpic injection
         if i == 1:
-            coupled_model.data_ts.dt_max = 1 / (24 * 60 * 60)
-        elif i == 2:
             coupled_model.data_ts.dt_max = 5 / (24 * 60 * 60)
-        # elif i == 7:
-        #     coupled_model.data_ts.dt_max = 20 / (24 * 60 * 60)
-        # elif i == 8:
-        #     coupled_model.data_ts.dt_max = 30 / (24 * 60 * 60)
-        # elif i == 11:
-        #     coupled_model.data_ts.dt_max = 60 / (24 * 60 * 60)
-        # elif i == 12:
-        #     coupled_model.data_ts.dt_max = 10 / (24 * 60)
-        # elif i == 17:
-        #     coupled_model.data_ts.dt_max = 2 / 24
-        # elif i == 20:
-        #     coupled_model.data_ts.dt_max = 10 / 24
-        # elif i == 21:
-        #     coupled_model.data_ts.dt_max = 1
+        elif i == 4:
+            coupled_model.data_ts.dt_max = 10 / (24 * 60 * 60)
+        elif i == 7:
+            coupled_model.data_ts.dt_max = 20 / (24 * 60 * 60)
+        elif i == 8:
+            coupled_model.data_ts.dt_max = 30 / (24 * 60 * 60)
+        elif i == 11:
+            coupled_model.data_ts.dt_max = 60 / (24 * 60 * 60)
+        elif i == 12:
+            coupled_model.data_ts.dt_max = 10 / (24 * 60)
+        elif i == 17:
+            coupled_model.data_ts.dt_max = 2 / 24
+        elif i == 20:
+            coupled_model.data_ts.dt_max = 10 / 24
+        elif i == 21:
+            coupled_model.data_ts.dt_max = 1
+
+        # # For injection at a constant gas mass rate and constant WHP
+        # if i == 1:
+        #     coupled_model.data_ts.dt_max = 1 / (24 * 60 * 60)
+        # elif i == 2:
+        #     coupled_model.data_ts.dt_max = 5 / (24 * 60 * 60)
+
+        # # For injection at a constant total mass rate
+        # if i == 1:
+        #     coupled_model.data_ts.dt_max = 0.5 / (24 * 60 * 60)
+
         coupled_model.run(dt)
         coupled_model.output.output_to_vtk(ith_step=i+1, output_properties=output_props)
         coupled_model.output.well_output_to_vtp(ith_step=i+1, output_properties=output_props)
@@ -87,3 +101,7 @@ else:
 
     plot_heat_map_pcolormesh('I1', coupled_model)
     plot_heat_map_contourf('I1', coupled_model, y_axis_tick_interval=250)
+
+    # Use line graphs if injection rate is controlled because the wellhead state might change a lot (for numerical reasons)
+    # at the beginning of simulation and this may create confusion if plot_heat_map_pcolormesh or plot_heat_map_contourf is used.
+    plot_line_graphs('I1', coupled_model, 5)
