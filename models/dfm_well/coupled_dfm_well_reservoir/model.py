@@ -42,14 +42,14 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        # For isenthalpic injection
+        # For isenthalpic injection and injection at a constant gas rate
         self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
                             it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
                             coupled_well_res_norm_method=2,
                             runtime=1/24/60, # This runtime will be used when CI test is conducted without the main file
                             )
 
-        # # For injection at a constant gas mass rate and constant WHP
+        # # For injection at a constant WHP
         # self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
         #                     it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
         #                     coupled_well_res_norm_method=2,
@@ -57,9 +57,8 @@ class Model(CICDModel):
 
         # # For injection at a constant total mass rate
         # # Use 0.001 as the first time-step size because 0.0001 did not converge
-        # # Use 50 as the max number of Newton iterations because total rate control requires a large number of iterations to converge
-        # self.set_sim_params(first_ts=0.001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
-        #                     it_newton=50, it_linear=10, newton_type=sim_params.newton_local_chop,
+        # self.set_sim_params(first_ts=0.001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
+        #                     it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
         #                     coupled_well_res_norm_method=2,
         #                     )
 
@@ -260,11 +259,10 @@ class Model(CICDModel):
         #                                is_inj=True, target=60.0, inj_composition=inj_composition, inj_temp=283.15)
 
         # # Constant injection mass rate of gaseous phase
-        # # Don't use a very large rate because it may not converge. Ramp-up rate should be used at the beginning if rate is high
         # # Don't inject at a constant liquid rate because it fails readily. The reason is that there is no liquid available in
         # # the wellhead cell. There are methods to overcome this later, e.g., use a high initial pressure for the wellhead cell to
         # # have liquid CO2 available in it from the beginning.
-        # target_inj_rate = 0.1 * 24 * 3600  # in kg/day
+        # target_inj_rate = 1 * 24 * 3600  # in kg/day
         # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE, phase_name="G",
         #                                is_inj=True, target=target_inj_rate, inj_composition=inj_composition, inj_temp=283.15)
 

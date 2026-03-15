@@ -61,7 +61,6 @@ if 1:
 
     for i, dt in enumerate(report_steps):
 
-        # For isenthalpic injection
         if i == 1:
             coupled_model.data_ts.dt_max = 5 / (24 * 60 * 60)
         elif i == 4:
@@ -81,15 +80,11 @@ if 1:
         elif i == 21:
             coupled_model.data_ts.dt_max = 1
 
-        # # For injection at a constant gas mass rate and constant WHP
+        # # For injection at a constant WHP
         # if i == 1:
         #     coupled_model.data_ts.dt_max = 1 / (24 * 60 * 60)
         # elif i == 2:
         #     coupled_model.data_ts.dt_max = 5 / (24 * 60 * 60)
-
-        # # For injection at a constant total mass rate
-        # if i == 1:
-        #     coupled_model.data_ts.dt_max = 0.5 / (24 * 60 * 60)
 
         coupled_model.run(dt)
         coupled_model.output.output_to_vtk(ith_step=i+1, output_properties=output_props)
@@ -104,4 +99,4 @@ else:
 
     # Use line graphs if injection rate is controlled because the wellhead state might change a lot (for numerical reasons)
     # at the beginning of simulation and this may create confusion if plot_heat_map_pcolormesh or plot_heat_map_contourf is used.
-    plot_line_graphs('I1', coupled_model, 5)
+    plot_line_graphs('I1', coupled_model)
