@@ -8,7 +8,7 @@ int well_control_iface::set_bhp_control(bool is_inj, value_t target_, std::vecto
 {
 	this->well_state_offset = (is_inj) ? 0 : 1; // If injection well, evaluates operators with state of well head; for production, it uses well body
 	this->control_type = well_control_iface::WellControlType::BHP;
-	this->phase_idx = std::nullopt;
+	this->phase_idx = std::nullopt;  // phase_idx is not used for BHP control
 
 	// Fill well control spec
 	this->target = target_;
@@ -23,6 +23,7 @@ int well_control_iface::set_rate_control(bool is_inj, well_control_iface::WellCo
 	this->control_type = control_type_;
 	this->phase_idx = phase_idx_;  // If phase_idx is nullopt, total rate is controlled
 
+    // Fill well control spec
 	this->target = target_;
 	this->inj_comp = inj_comp_;
 	this->inj_temp = inj_temp_;
@@ -166,7 +167,7 @@ int well_control_iface::add_to_jacobian_epm(value_t dt, index_t well_head_idx, v
 			}
 			// Product rule for pressure variable
 			jacobian_row[n_block_size * P_VAR + P_VAR] += well_control_ops[rate_op_idx] * well_transmissibility;
-			jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq] = -well_control_ops[rate_op_idx] * well_transmissibility;
+			jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq] += -well_control_ops[rate_op_idx] * well_transmissibility;
 
 			// if target phase does not exist, set a constant small value to pressure derivative
 			// it will let the pressure drop and eventually pressure constraint might work
@@ -198,7 +199,7 @@ int well_control_iface::add_to_jacobian_epm(value_t dt, index_t well_head_idx, v
 				}
 				// Product rule for pressure variable
 				jacobian_row[n_block_size * P_VAR + P_VAR] += well_control_ops[rate_op_idx] * well_transmissibility;
-				jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq] = -well_control_ops[rate_op_idx] * well_transmissibility;
+				jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq] += -well_control_ops[rate_op_idx] * well_transmissibility;
 			}
 			// RHS
 			RHS_well_head[0] = total_rate - this->target;
