@@ -17,23 +17,11 @@ int well_control_iface::set_bhp_control(bool is_inj, value_t target_, std::vecto
 	return 0;
 }
 
-int well_control_iface::set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, index_t phase_idx_, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_)
+int well_control_iface::set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, std::optional<index_t> phase_idx_, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_)
 {
-	this->well_state_offset = (is_inj) ? 0 : 1; // If injection well, evaluates operators with state of well head; for production, it uses well body
+	this->well_state_offset = (is_inj) ? 0 : 1;  // If injection well, evaluates operators with state of well head; for production, it uses well body
 	this->control_type = control_type_;
-	this->phase_idx = phase_idx_;
-
-	this->target = target_;
-	this->inj_comp = inj_comp_;
-	this->inj_temp = inj_temp_;
-	return 0;
-}
-
-int well_control_iface::set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_)
-{
-	this->well_state_offset = (is_inj) ? 0 : 1; // If injection well, evaluates operators with state of well head; for production, it uses well body
-	this->control_type = control_type_;
-	this->phase_idx = std::nullopt;
+	this->phase_idx = phase_idx_;  // If phase_idx is nullopt, total rate is controlled
 
 	this->target = target_;
 	this->inj_comp = inj_comp_;

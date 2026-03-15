@@ -67,10 +67,8 @@ public:
     }
 
     virtual int set_bhp_control(bool is_inj, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_);
-    virtual int set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, index_t phase_idx_,
+    virtual int set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, std::optional<index_t> phase_idx_,
         value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_);
-    virtual int set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, value_t target_,
-        std::vector<value_t>& inj_comp_, value_t inj_temp_);
 
     WellControlType get_well_control_type() { return this->control_type; }
     index_t get_well_n_ops() { return this->n_ops; }

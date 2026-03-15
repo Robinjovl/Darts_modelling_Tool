@@ -432,15 +432,10 @@ class PhysicsBase:
             target = (
                 np.abs(target) if is_inj else -np.abs(target)
             )  # + for inj, - for prod
-            if phase_idx is not None:
-                wctrl.set_rate_control(
-                    is_inj, control_type, phase_idx, target, inj_composition, inj_temp
-                )
-            elif phase_idx is None:
-                # Total rate is controlled
-                wctrl.set_rate_control(
-                    is_inj, control_type, target, inj_composition, inj_temp
-                )
+            # If phase_idx is None, total rate is controlled
+            wctrl.set_rate_control(
+                is_inj, control_type, phase_idx, target, inj_composition, inj_temp
+            )
 
         return
 
