@@ -300,6 +300,9 @@ int well_control_iface::add_to_jacobian_dfm(value_t dt, index_t well_head_idx, v
 
 				value_t vel_der_head = phases_vels_ders[phase_idx.value() * phase_stride + well_head_conn_idx_local * conn_stride + 0 * n_vars + jj];
 				jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_control_ops[rate_op_idx] * vel_der_head * well_transmissibility;
+
+				value_t vel_der_body = phases_vels_ders[phase_idx.value() * phase_stride + well_head_conn_idx_local * conn_stride + 1 * n_vars + jj];
+				jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq + jj] += well_control_ops[rate_op_idx] * vel_der_body * well_transmissibility;
 			}
 		}
 		else
@@ -326,6 +329,9 @@ int well_control_iface::add_to_jacobian_dfm(value_t dt, index_t well_head_idx, v
 
 					value_t vel_der_head = phases_vels_ders[p * phase_stride + well_head_conn_idx_local * conn_stride + 0 * n_vars + jj];
 					jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_control_ops[rate_op_idx] * vel_der_head * well_transmissibility;
+
+					value_t vel_der_body = phases_vels_ders[p * phase_stride + well_head_conn_idx_local * conn_stride + 1 * n_vars + jj];
+					jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq + jj] += well_control_ops[rate_op_idx] * vel_der_body * well_transmissibility;
 				}
 			}
 			// RHS
