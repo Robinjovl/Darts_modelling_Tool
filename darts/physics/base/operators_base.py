@@ -190,6 +190,7 @@ class WellControlOperators(OperatorsBase):
 
         self.property.evaluate(state_np)
 
+        # TODO: This is now for EPM. DFM should be supported as well.
         ms_type = "EPM"
         # Store rate controls
         if ms_type == "EPM":

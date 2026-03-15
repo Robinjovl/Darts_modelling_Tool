@@ -161,6 +161,7 @@ int well_control_iface::add_to_jacobian_epm(value_t dt, index_t well_head_idx, v
 			RHS_well_head[0] = well_control_ops[rate_op_idx] * p_diff * well_transmissibility - this->target;
 
 			// Rate operator derivatives
+			// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we also have derivatives of well_control_ops with respect to primary vars of the body block which are not included here.
 			for (int jj = 0; jj < n_vars; jj++)
 			{
 				jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[rate_op_idx * n_vars + jj] * p_diff * well_transmissibility;
@@ -193,6 +194,7 @@ int well_control_iface::add_to_jacobian_epm(value_t dt, index_t well_head_idx, v
 				total_rate += well_control_ops[rate_op_idx] * p_diff * well_transmissibility;
 
 				// Rate operator derivatives
+				// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we also have derivatives of well_control_ops with respect to primary vars of the body block which are not included here.
 				for (int jj = 0; jj < n_vars; jj++)
 				{
 					jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_control_ops_derivs[rate_op_idx * n_vars + jj] * p_diff * well_transmissibility;
@@ -294,6 +296,7 @@ int well_control_iface::add_to_jacobian_dfm(value_t dt, index_t well_head_idx, v
 			// RHS
 			RHS_well_head[0] = well_control_ops[rate_op_idx] * phase_vel * well_transmissibility - this->target;
 
+			// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we also have derivatives of well_control_ops with respect to primary vars of the body block which are not included here.
 			for (int jj = 0; jj < n_vars; jj++)
 			{
 				jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[rate_op_idx * n_vars + jj] * phase_vel * well_transmissibility;
@@ -323,6 +326,7 @@ int well_control_iface::add_to_jacobian_dfm(value_t dt, index_t well_head_idx, v
 
 				total_rate += well_control_ops[rate_op_idx] * phase_vel * well_transmissibility;
 
+				// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we also have derivatives of well_control_ops with respect to primary vars of the body block which are not included here.
 				for (int jj = 0; jj < n_vars; jj++)
 				{
 					jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_control_ops_derivs[rate_op_idx * n_vars + jj] * phase_vel * well_transmissibility;
