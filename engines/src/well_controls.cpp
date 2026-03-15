@@ -277,6 +277,7 @@ int well_control_iface::add_to_jacobian_dfm(value_t dt, index_t well_head_idx, v
 	else
 	{
 		// If rate controlled, get the phase velocity and calculate rate
+		//TODO: This state must be chosen based on the sign of phase velocity for each phase not based on the type of the well because I have seen particularly at the beginning of simulation where there is a lot of instability, there is upward fluid flow for an injectoin well and using the upwind scheme there is important for stability.
 		state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_vars);
 		well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
 
