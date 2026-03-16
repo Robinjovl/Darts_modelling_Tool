@@ -1438,7 +1438,7 @@ class Output:
         # For 1D plot
         if dims_to_plot == 1:
             # Plot each timestep (plot over old fig object if provided)
-            for t, _ts in enumerate(data['time']):
+            for ith_timestep, _ts in enumerate(data['time']):
                 fig, axs = plt.subplots(
                     nrows=axs_shape[0],
                     ncols=axs_shape[1],
@@ -1464,7 +1464,7 @@ class Output:
                             else self.reservoir.discretizer.centroids_all_cells[:, 1]
                         )
 
-                        ax.plot(x, data[prop].isel(time=t).squeeze().values)
+                        ax.plot(x, data[prop].isel(time=ith_timestep).squeeze().values)
                         ax.set(ylim=lims[prop])
                         if logx:
                             ax.set_xscale("log")
@@ -1472,7 +1472,7 @@ class Output:
                     # Vertical slice
                     elif self.reservoir.nz > 1 and z_slice is None:
                         z = self.reservoir.discretizer.centroids_all_cells[:, 2]
-                        ax.plot(data[prop].isel(time=t), z)
+                        ax.plot(data[prop].isel(time=ith_timestep), z)
                         if prop in lims.keys():
                             ax.set(xlim=lims[prop])
                     else:
@@ -1482,7 +1482,12 @@ class Output:
 
                 # Save figure
                 filename = (
-                    (f'ts{t:d}' if t is None else f'ts{t:d}')
+                    # if ts_idx is not None and not 0, use ts_idx, else ith_timestep as idx
+                    (
+                        f'ts{ts_idx:d}'
+                        if ith_timestep == 0 and ts_idx
+                        else f'ts{ith_timestep:d}'
+                    )
                     + (f' x{x_slice:d}' if x_slice is not None else '')
                     + (f' y{y_slice:d}' if y_slice is not None else '')
                     + (f' z{x_slice:d}' if z_slice is not None else '')
@@ -1537,7 +1542,7 @@ class Output:
                 # transpose = True
 
             # Plot each timestep (plot over old fig object if provided)
-            for t, _ts in enumerate(data['time']):
+            for ith_timestep, _ts in enumerate(data['time']):
                 fig, axs = plt.subplots(
                     nrows=axs_shape[0],
                     ncols=axs_shape[1],
@@ -1556,7 +1561,10 @@ class Output:
                     im = ax.pcolormesh(
                         X,
                         Y,
-                        data[prop].isel(time=t).squeeze().values.reshape(shape),
+                        data[prop]
+                        .isel(time=ith_timestep)
+                        .squeeze()
+                        .values.reshape(shape),
                         cmap=cmap,
                         vmin=lims[prop][0],
                         vmax=lims[prop][1],
@@ -1583,7 +1591,12 @@ class Output:
 
                 # Save figure
                 filename = (
-                    f'ts{t:d}'
+                    # if ts_idx is not None and not 0, use ts_idx, else ith_timestep as idx
+                    (
+                        f'ts{ts_idx:d}'
+                        if ith_timestep == 0 and ts_idx
+                        else f'ts{ith_timestep:d}'
+                    )
                     + (f' x{x_slice:d}' if x_slice is not None else '')
                     + (f' y{y_slice:d}' if y_slice is not None else '')
                     + (f' z{x_slice:d}' if z_slice is not None else '')
