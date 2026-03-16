@@ -145,10 +145,7 @@ class Pipe:
             assert pc.temperature is not None, (
                 "If model is isothermal, system_temperature must be specified!"
             )
-        elif not self.isothermal:
-            assert pc.temperature is None, (
-                "If model is non-isothermal, system_temperature must not be specified!"
-            )
+
         self.system_temperature = pc.temperature
         self.p_idx = physics.vars.index("pressure")
 
