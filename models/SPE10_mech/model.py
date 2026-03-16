@@ -318,7 +318,7 @@ class ModelProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
         if self.thermal:
             self.temperature = vec_state_as_np[-1]
 
@@ -334,7 +334,7 @@ class ModelProperties(PropertyContainer):
         for j in self.ph:
             # molar weight of mixture
             M = np.sum(self.x[j, :] * self.Mw)
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure)  # output in [kg/m3]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure)  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 

@@ -126,8 +126,8 @@ class Model(DartsModel):
 
         flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash,
                             eos_order=["Aq", "VL"],
-                            t_min=270., t_max=500., t_init=300., t_tol=1e-3,
-                            verbose=False
+                            t_min=270., t_max=500., t_init=300.,
+                            # pxflash_switch_ttol=1e-3, near_zero_px=1e-2,
                             )
 
         """ properties correlations """
