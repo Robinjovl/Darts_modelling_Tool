@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag
 
 from darts.api.type_registry import PluginInstance
 
@@ -38,6 +38,17 @@ class DataRef(SpecBaseModel):
 
 
 ReservoirValue = float | list[float] | DataRef
+
+
+def _reservoir_discriminator(v: Any) -> str:
+    """Discriminate reservoir spec variants by the ``type`` field."""
+    if isinstance(v, dict):
+        if "kind" in v and "value" in v:
+            return "dataref"
+        return v.get("type", "structured")
+    if isinstance(v, DataRef):
+        return "dataref"
+    return getattr(v, "type", "structured")
 
 
 class PluginRegistryEntrySpec(SpecBaseModel):
@@ -639,6 +650,14 @@ class StrictOutputSpec(SpecBaseModel):
     ] = None
 
 
+ReservoirUnion = Annotated[
+    Annotated[StrictReservoirSpec, Tag("structured")]
+    | Annotated[StrictCPGReservoirSpec, Tag("cpg")]
+    | Annotated[DataRef, Tag("dataref")],
+    Discriminator(_reservoir_discriminator),
+]
+
+
 class StrictModelSpec(SpecBaseModel):
     """Full model specification."""
 
@@ -685,7 +704,7 @@ class StrictModelSpec(SpecBaseModel):
         Field(description="Local plugin registry configuration"),
     ] = None
     reservoir: Annotated[
-        StrictReservoirSpec | StrictCPGReservoirSpec | DataRef | None,
+        ReservoirUnion | None,
         Field(description="Reservoir configuration"),
     ] = None
     physics: Annotated[
@@ -861,6 +880,14 @@ class PatchCPGReservoirSpec(StrictCPGReservoirSpec):
     ] = None
 
 
+PatchReservoirUnion = Annotated[
+    Annotated[PatchReservoirSpec, Tag("structured")]
+    | Annotated[PatchCPGReservoirSpec, Tag("cpg")]
+    | Annotated[DataRef, Tag("dataref")],
+    Discriminator(_reservoir_discriminator),
+]
+
+
 class PatchWellControlsSpec(StrictWellControlsSpec):
     """Partial well controls override."""
 
@@ -988,7 +1015,7 @@ class PatchModelSpec(StrictModelSpec):
         Literal["Model"] | None, Field(description="Schema kind identifier")
     ] = None
     reservoir: Annotated[
-        PatchReservoirSpec | PatchCPGReservoirSpec | DataRef | None,
+        PatchReservoirUnion | None,
         Field(description="Reservoir configuration"),
     ] = None
     physics: Annotated[
