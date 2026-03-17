@@ -19,6 +19,7 @@
 ### Mandatory skill usage
 
 - Use `$project-overview` before non-trivial code changes, when touching multiple subsystems, or when the execution path is not obvious.
+- Use `$model-workflow-open-darts` when configuring, running, analyzing, troubleshooting, post-processing, or plotting model workflows under `models/`, `tutorials/`, or other model-script locations.
 - Use `$build-open-darts` when compilation, editable installs, wheel builds, GPU builds, or packaging changes are required, or when work touches `engines/`, `discretizer/`, `solvers/`, `thirdparty/`, `CMakeLists.txt`, `setup.py`, `pyproject.toml`, or build helper scripts.
 - Use `$verify-open-darts` when changes affect runtime code, numerical behavior, tests, packaging, or build/test behavior. Do not mark the task complete until the required checks for the touched area pass or a concrete blocker is recorded.
 - Use `$test-open-darts` when reproducing or validating simulation behavior, regression failures, interpolator behavior, discretizer behavior, or model changes.
