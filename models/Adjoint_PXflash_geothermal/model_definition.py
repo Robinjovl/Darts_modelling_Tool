@@ -101,7 +101,7 @@ class Model(CICDModel, OptModuleSettings):
             # Initialize flash object
             flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash,
                                 eos_order=["Aq", "VL"], t_min=250., t_max=575.,
-                                t_tol=1e-1, f_tol=1e-10)
+                                pxflash_switch_ttol=1e-1, pxflash_ftol=1e-10)
 
             # Define PropertyContainer
             from darts.physics.super.property_container import PropertyContainer

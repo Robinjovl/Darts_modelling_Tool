@@ -229,22 +229,30 @@ class Model(DartsModel):
         }
 
         # Fluid components, ions and solid
-        comp_data = CompData(self.components, setprops=True)
-        nc, ni = comp_data.nc, comp_data.ni
-        # len(components)
-        flash_params = FlashParams(comp_data)
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
-                               AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
-                               AQEoS.CompType.ion: AQEoS.Jager2003
-                               })
-        flash_params.add_eos("PR", pr)
-        flash_params.add_eos("AQ", aq)
-        flash_params.eos_order = ["PR", "AQ"]
+        from dartsflash.libflash import EoS
+        from dartsflash.components import CompData
+        from dartsflash.mixtures import DARTSFlash, VLAq
+        # Fluid components, ions and solid
+        components = ["H2O", "CO2"]
+        self.components = components
         phases = ["V", "Aq"]
+        comp_data = CompData(components, setprops=True)
+        nc = len(components)
 
-        # Flash-related parameters
-        # flash_params.split_switch_tol = 1e-3
+        """ Define flash """
+        flash_ev = VLAq(comp_data, hybrid=True)
+        flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE],
+                            trial_comps=[InitialGuess.Yi.Wilson],
+                            stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
+                            )
+        flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+        pr = flash_ev.eos["VL"]
+        aq = flash_ev.eos["Aq"]
+
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash, eos_order=["VL", "Aq"],
+                            t_min=270., t_max=500., t_init=300.,
+                            # pxflash_switch_ttol=1e-3, near_zero_px=1e-2,
+                            )
 
         if temperature is None:  # if None, then thermal=True
             thermal = True
@@ -273,7 +281,7 @@ class Model(DartsModel):
             property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
                                                    eps_z=self.zero / 10, temperature=temperature)
 
-            property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
+            property_container.flash_ev = flash_ev
             property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw)),
                                                   ('Aq', Garcia2001(self.components)), ])
             property_container.viscosity_ev = dict([('V', Fenghour1998()),
