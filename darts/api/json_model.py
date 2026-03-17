@@ -1,3 +1,12 @@
+"""
+DartsModel subclass with lifecycle overrides for JSON-driven execution.
+
+JsonModel extends the standard DartsModel so that reservoir, physics, and
+well setup steps are no-ops — ModelBuilder has already configured them
+before ``init()`` is called.  It also provides helpers for parsing simulation
+runtime from the spec and collecting output file paths after a run completes.
+"""
+
 import re
 from typing import Any
 

@@ -1,3 +1,13 @@
+"""
+Stateless model builder that applies a validated ModelSpec to a DARTS model.
+
+ModelBuilder translates each section of a ModelSpec (reservoir, physics,
+wells, initial conditions, simulation parameters, output) into the
+corresponding DARTS object graph.  It operates on any object satisfying
+DartsModelProtocol and does not hold state between calls, making it safe
+for reuse across multiple models or adapter instances.
+"""
+
 import logging
 import os
 from typing import Any, Protocol, runtime_checkable

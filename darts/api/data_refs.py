@@ -1,3 +1,14 @@
+"""
+DataRef resolution: file paths, URIs, and in-memory object references.
+
+Resolves DataRef schema objects into concrete Python values.  Supports
+three kinds: ``path`` (local file loaded as JSON/NumPy), ``uri`` (remote
+fetch), and ``object`` (keyed lookup in an in-process object store).
+The ``register_object`` / ``resolve_data_ref`` pair allows passing large
+arrays or pre-built objects into a JSON-configured model without
+serialization.
+"""
+
 import json
 import os
 from typing import Any

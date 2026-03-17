@@ -1,3 +1,12 @@
+"""
+CLI entry point for running a DARTS model from a JSON configuration file.
+
+Parses command-line arguments, loads and validates the JSON spec, builds
+the model via ModelBuilder, and executes the simulation.  Intended as the
+primary way to run a model non-interactively (e.g. ``python -m
+darts.api.run_json_model model.json``).
+"""
+
 import argparse
 import json
 import os

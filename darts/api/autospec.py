@@ -1,3 +1,13 @@
+"""
+Reverse-engineering tool that records a ModelSpec from a running Python model.
+
+Monkey-patches key DARTS classes (reservoir, physics, wells) so that
+constructor calls and property assignments are intercepted and translated
+into the equivalent JSON spec sections.  The captured spec can be dumped
+to a JSON file, enabling migration of existing Python-coded models to the
+schema-first JSON workflow.
+"""
+
 import atexit
 import json
 from collections.abc import Callable

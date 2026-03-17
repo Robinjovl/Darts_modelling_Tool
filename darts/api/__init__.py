@@ -1,12 +1,30 @@
 """
-Public API for schema-first configuration and plugin registry.
+Public API for schema-first model configuration from JSON.
 
-Modules:
-- schemas: Canonical Pydantic models for ModelSpec and subsections.
-- model_spec: compatibility aliases and utilities for merge and normalization.
-- type_registry: TypeRegistry and PluginInstance for custom Python types with JSON Schemas.
-- builder: ModelBuilder to apply a validated ModelSpec to a DartsModel instance.
-- introspection: Helpers to export JSON Schemas and capabilities.
+Provides the full pipeline for defining, validating, and applying DARTS
+simulation models from a single JSON configuration file.  Also exposes a
+plugin registry for user-defined physics evaluators and adapters for both
+batch (JSON file) and interactive (MCP tool-by-tool) workflows.
+
+Modules
+-------
+schemas        Pydantic v2 models for ModelSpec and every subsection (Strict
+               and Patch variants).
+type_registry  TypeRegistry singleton and built-in plugin entries for physics,
+               property containers, and evaluators.
+builder        Stateless ModelBuilder that applies a validated ModelSpec to any
+               DartsModelProtocol-compatible model.
+model_spec     Pure utility functions: JSON merge-patch, key normalization,
+               and spec validation helpers.
+model_adapter  Stateful adapters (JsonModelAdapter, MCPModelAdapter) that wrap
+               ModelBuilder with spec tracking and idempotency.
+json_model     DartsModel subclass with lifecycle overrides for JSON-driven
+               execution.
+data_refs      DataRef resolution: file paths, URIs, and in-memory objects.
+autospec       Reverse-engineering tool that records a ModelSpec by
+               monkey-patching DARTS classes during normal Python execution.
+introspection  JSON Schema and plugin capability export helpers.
+run_json_model CLI entry point for running a model from a JSON file.
 """
 
 from darts.api.builder import ModelBuilder

@@ -1,3 +1,13 @@
+"""
+Pure utility functions for JSON model specification handling.
+
+Provides RFC-7396 JSON merge-patch, key normalization (synonym mapping),
+and validation helpers that check a raw dict against the strict ModelSpec
+or the patch PatchModelSpec schema.  All functions are stateless and
+operate on plain dicts, making them usable from both batch and interactive
+workflows without side effects.
+"""
+
 from copy import deepcopy
 from typing import Any
 

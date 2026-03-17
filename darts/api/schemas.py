@@ -1,3 +1,14 @@
+"""
+Pydantic v2 data models for the DARTS JSON model specification.
+
+Defines every section of a model config (reservoir, physics, wells, initial
+conditions, simulation parameters, output) as strict Pydantic models with
+full JSON Schema export.  Provides two parallel hierarchies: Strict variants
+for complete validation and Patch variants for RFC-7396 merge-patch updates.
+Also includes the DataRef union for external data references and a
+discriminated union for reservoir type routing (structured / CPG / DataRef).
+"""
+
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag

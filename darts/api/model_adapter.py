@@ -1,3 +1,13 @@
+"""
+Stateful adapters that wrap ModelBuilder with spec tracking and idempotency.
+
+ModelAdapter is the abstract base providing cumulative spec state, merge-patch
+application, and a single ``apply`` entry point.  JsonModelAdapter handles
+batch workflows (full config from a JSON file), while MCPModelAdapter supports
+interactive tool-by-tool construction with section-level updates and the
+stepwise MCP server protocol.
+"""
+
 from typing import Any
 
 from darts.api.builder import ModelBuilder

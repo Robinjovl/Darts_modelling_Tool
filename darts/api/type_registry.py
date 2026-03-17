@@ -1,3 +1,14 @@
+"""
+Plugin registry for user-defined physics evaluators, property containers,
+and other extensible DARTS components.
+
+Provides the TypeRegistry singleton that maps ``kind/Name@version`` keys to
+constructor callables.  Built-in DARTS types are registered at import time;
+external plugins can be loaded from entry points or local Python files.
+The registry is used by ModelBuilder to instantiate physics and evaluator
+objects from JSON configuration.
+"""
+
 from __future__ import annotations
 
 import builtins

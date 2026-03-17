@@ -1,3 +1,13 @@
+"""
+JSON Schema and plugin capability export helpers.
+
+Generates the full JSON Schema (Draft 2020-12) for ModelSpec and its
+subsections, and lists available plugin types from the TypeRegistry.
+Used by the MCP server to expose ``get_model_config_schema`` and
+``list_capabilities`` tools, giving LLM agents programmatic access to
+the configuration grammar and available physics/evaluator plugins.
+"""
+
 from typing import Any
 
 from darts.api.schemas import (
