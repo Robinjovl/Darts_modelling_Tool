@@ -18,10 +18,8 @@ from darts.api.introspection import (
 )
 from darts.api.model_adapter import JsonModelAdapter, MCPModelAdapter, ModelAdapter
 from darts.api.model_spec import (
-    get_model_spec_dict,
     json_merge_patch,
     normalize_keys,
-    upsert_model_spec_dict,
     validate_model_spec_dict,
     validate_patch_model_spec_dict,
 )
@@ -75,7 +73,5 @@ __all__ = [
     "get_plugin_schema_dict",
     "validate_model_spec_dict",
     "validate_patch_model_spec_dict",
-    "upsert_model_spec_dict",
-    "get_model_spec_dict",
     "load_entry_point_plugins",
 ]
