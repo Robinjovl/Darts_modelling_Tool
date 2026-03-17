@@ -1691,7 +1691,7 @@ class UnstructReservoirMech:
                 if ith_geometry in available_fracture_geometries:
                     # fracture geometry
                     frac_ids = np.argwhere(
-                        np.in1d(
+                        np.isin(
                             self.unstr_discr.mesh_data.cell_data['gmsh:physical'][
                                 geom_id
                             ],
@@ -1721,7 +1721,7 @@ class UnstructReservoirMech:
 
                     # output geometry
                     out_ids = np.argwhere(
-                        np.in1d(
+                        np.isin(
                             self.unstr_discr.mesh_data.cell_data['gmsh:physical'][
                                 geom_id
                             ],
