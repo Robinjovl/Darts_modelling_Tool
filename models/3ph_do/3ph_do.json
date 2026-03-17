@@ -1,6 +1,4 @@
 {
-  "apiVersion": "darts/v1alpha1",
-  "kind": "Model",
   "plugin_registry": {
     "entries": [
       {
@@ -44,22 +42,42 @@
         "max_p": 200,
         "min_z": 0.0,
         "max_z": 1.0,
-        "epsilon_z": 1e-9
+        "epsilon_z": 1e-09
       }
     },
-    "components": ["g", "o", "w"],
-    "phases": ["gas", "oil", "wat"],
+    "components": [
+      "g",
+      "o",
+      "w"
+    ],
+    "phases": [
+      "gas",
+      "oil",
+      "wat"
+    ],
     "property_regions": [
       {
         "region": 0,
         "property_container": {
           "type_id": "pc/ModelProperties@v1",
           "config": {
-            "components_name": ["g", "o", "w"],
-            "phases_name": ["gas", "oil", "wat"],
-            "Mw": [1, 1, 1],
-            "eps_z": 1e-9,
-            "rock_comp": 1e-6,
+            "components_name": [
+              "g",
+              "o",
+              "w"
+            ],
+            "phases_name": [
+              "gas",
+              "oil",
+              "wat"
+            ],
+            "Mw": [
+              1,
+              1,
+              1
+            ],
+            "eps_z": 1e-09,
+            "rock_comp": 1e-06,
             "temperature": 1.0
           }
         },
@@ -67,17 +85,27 @@
           "density_ev": {
             "gas": {
               "type_id": "density/DensityBasic@v1",
-              "config": {"compr": 1e-3, "dens0": 200}
+              "config": {
+                "compr": 0.001,
+                "dens0": 200
+              }
             },
             "oil": {
               "type_id": "density/DensityBasic@v1",
-              "config": {"compr": 1e-5, "dens0": 600}
+              "config": {
+                "compr": 1e-05,
+                "dens0": 600
+              }
             },
             "wat": {
               "type_id": "density/DensityBrineCO2@v1",
               "config": {
-                "components": ["g", "o", "w"],
-                "compr": 1e-5,
+                "components": [
+                  "g",
+                  "o",
+                  "w"
+                ],
+                "compr": 1e-05,
                 "dens0": 1000,
                 "co2_mult": 0
               }
@@ -86,29 +114,41 @@
           "viscosity_ev": {
             "gas": {
               "type_id": "viscosity/ConstFunc@v1",
-              "config": {"value": 0.05}
+              "config": {
+                "value": 0.05
+              }
             },
             "oil": {
               "type_id": "viscosity/ConstFunc@v1",
-              "config": {"value": 0.5}
+              "config": {
+                "value": 0.5
+              }
             },
             "wat": {
               "type_id": "viscosity/ConstFunc@v1",
-              "config": {"value": 0.5}
+              "config": {
+                "value": 0.5
+              }
             }
           },
           "rel_perm_ev": {
             "gas": {
               "type_id": "relperm/PhaseRelPerm@v1",
-              "config": {"phase": "gas"}
+              "config": {
+                "phase": "gas"
+              }
             },
             "oil": {
               "type_id": "relperm/PhaseRelPerm@v1",
-              "config": {"phase": "oil"}
+              "config": {
+                "phase": "oil"
+              }
             },
             "wat": {
               "type_id": "relperm/PhaseRelPerm@v1",
-              "config": {"phase": "wat"}
+              "config": {
+                "phase": "wat"
+              }
             }
           }
         }
@@ -119,21 +159,46 @@
     "wells": [
       {
         "name": "I1",
-        "perforations": [{"ijk": [1, 1, 1]}],
+        "perforations": [
+          {
+            "ijk": [
+              1,
+              1,
+              1
+            ]
+          }
+        ],
         "controls": {
           "inj_bhp": 120.0,
-          "inj_composition": [0.99999998, 1e-8]
+          "inj_composition": [
+            0.99999998,
+            1e-08
+          ]
         }
       },
       {
         "name": "P1",
-        "perforations": [{"ijk": [1000, 1, 1]}],
-        "controls": {"prod_bhp": 60.0}
+        "perforations": [
+          {
+            "ijk": [
+              1000,
+              1,
+              1
+            ]
+          }
+        ],
+        "controls": {
+          "prod_bhp": 60.0
+        }
       }
     ]
   },
   "initial_conditions": {
-    "by_array": {"pressure": 100.0, "g": 0.05, "o": 0.19999999}
+    "by_array": {
+      "pressure": 100.0,
+      "g": 0.05,
+      "o": 0.19999999
+    }
   },
   "sim_params": {
     "first_ts": 0.01,
@@ -146,5 +211,8 @@
     "it_linear": 50,
     "newton_type": "newton_local_chop"
   },
-  "output": {"folder": "output", "precision": "d"}
+  "output": {
+    "folder": "output",
+    "precision": "d"
+  }
 }

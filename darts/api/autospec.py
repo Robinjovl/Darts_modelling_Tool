@@ -7,10 +7,7 @@ from typing import Any
 class _AutoSpecState:
     def __init__(self) -> None:
         # Incrementally built JSON dict following ModelSpec shape
-        self.spec: dict[str, Any] = {
-            "apiVersion": "darts/v1alpha1",
-            "kind": "Model",
-        }
+        self.spec: dict[str, Any] = {}
         # Map well control object id -> well name
         self.wctrl_to_well: dict[int, str] = {}
         # Map property container id -> recorded PC plugin dict

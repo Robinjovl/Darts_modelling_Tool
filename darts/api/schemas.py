@@ -671,8 +671,6 @@ class StrictModelSpec(SpecBaseModel):
         json_schema_extra={
             "examples": [
                 {
-                    "apiVersion": "darts/v1alpha1",
-                    "kind": "Model",
                     "reservoir": {
                         "type": "structured",
                         "nx": 10,
@@ -700,10 +698,6 @@ class StrictModelSpec(SpecBaseModel):
         },
     )
 
-    apiVersion: Annotated[
-        Literal["darts/v1alpha1"], Field(description="API version identifier")
-    ]
-    kind: Annotated[Literal["Model"], Field(description="Schema kind identifier")]
     plugin_registry: Annotated[
         PluginRegistrySpec | DataRef | None,
         Field(description="Local plugin registry configuration"),
@@ -1019,12 +1013,6 @@ class PatchModelSpec(StrictModelSpec):
         },
     )
 
-    apiVersion: Annotated[
-        Literal["darts/v1alpha1"] | None, Field(description="API version identifier")
-    ] = None
-    kind: Annotated[
-        Literal["Model"] | None, Field(description="Schema kind identifier")
-    ] = None
     reservoir: Annotated[
         PatchReservoirUnion | None,
         Field(description="Reservoir configuration"),

@@ -4,28 +4,20 @@
       {
         "type_id": "pc/ModelProperties@v1",
         "kind": "pc",
-        "constructor": "model.py:ModelProperties",
+        "constructor": "../2ph_do/model.py:ModelProperties",
         "config_model": "darts.api.type_registry:PropertyContainerConfig",
         "customizable": true,
-        "doc": "2ph_do ModelProperties property container"
+        "doc": "CPG Brugge dead-oil ModelProperties property container"
       }
     ]
   },
   "reservoir": {
-    "type": "structured",
-    "nx": 100,
-    "ny": 1,
-    "nz": 1,
-    "dx": 10.0,
-    "dy": 10.0,
-    "dz": 1,
-    "permx": 300,
-    "permy": 300,
-    "permz": 300,
-    "poro": 0.2,
-    "hcap": 0,
-    "rcond": 0,
-    "depth": 100
+    "type": "cpg",
+    "grid_file": "<user-provided path to grid.grdecl>",
+    "prop_file": "<user-provided path to reservoir.in>",
+    "minpv": 1e-05,
+    "min_poro": 1e-05,
+    "boundary_volume": 10000000000.0
   },
   "physics": {
     "plugin": {
@@ -121,56 +113,55 @@
   "wells": {
     "wells": [
       {
-        "name": "I1",
+        "name": "INJ_12",
         "perforations": [
           {
             "ijk": [
-              1,
-              1,
+              75,
+              20,
               1
-            ]
+            ],
+            "k_end": 9
           }
         ],
         "controls": {
-          "inj_rate": 200.0,
-          "rate_type": "MOLAR_RATE",
-          "phase_name": "oil",
-          "inj_bhp": 450.0,
+          "inj_bhp": 250.0,
           "inj_composition": [
-            1e-13
+            1e-11
           ]
         }
       },
       {
-        "name": "P1",
+        "name": "PRD_12",
         "perforations": [
           {
             "ijk": [
-              100,
-              1,
+              55,
+              25,
               1
-            ]
+            ],
+            "k_end": 9
           }
         ],
         "controls": {
-          "prod_bhp": 350.0
+          "prod_bhp": 100.0
         }
       }
     ]
   },
   "initial_conditions": {
     "by_array": {
-      "pressure": 400.0,
+      "pressure": 250.0,
       "w": 0.9999999999999
     }
   },
   "sim_params": {
     "first_ts": 0.01,
     "mult_ts": 2.0,
-    "max_ts": 5.0,
-    "runtime": 300,
-    "tol_newton": 0.001,
-    "tol_linear": 1e-06
+    "max_ts": 92.0,
+    "runtime": 7305.0,
+    "tol_newton": 0.01,
+    "tol_linear": 0.0001
   },
   "output": {
     "folder": "output",

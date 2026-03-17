@@ -1,6 +1,4 @@
 {
-  "apiVersion": "darts/v1alpha1",
-  "kind": "Model",
   "reservoir": {
     "type": "structured",
     "nx": 10,
@@ -10,9 +8,30 @@
     "dy": 300.0,
     "poro": 0.3,
     "layers": [
-      {"count": 100, "dz": 6, "permx": 500, "permy": 500, "permz": 80, "depth": 2540},
-      {"count": 100, "dz": 9, "permx": 50, "permy": 50, "permz": 42, "depth": 2548},
-      {"count": 100, "dz": 15, "permx": 200, "permy": 200, "permz": 20, "depth": 2560}
+      {
+        "count": 100,
+        "dz": 6,
+        "permx": 500,
+        "permy": 500,
+        "permz": 80,
+        "depth": 2540
+      },
+      {
+        "count": 100,
+        "dz": 9,
+        "permx": 50,
+        "permy": 50,
+        "permz": 42,
+        "depth": 2548
+      },
+      {
+        "count": 100,
+        "dz": 15,
+        "permx": 200,
+        "permy": 200,
+        "permz": 20,
+        "depth": 2560
+      }
     ]
   },
   "physics": {
@@ -35,38 +54,74 @@
         "max_z": 1.0
       }
     },
-    "components": ["g", "o", "w"],
-    "phases": ["gas", "oil", "water"]
+    "components": [
+      "g",
+      "o",
+      "w"
+    ],
+    "phases": [
+      "gas",
+      "oil",
+      "water"
+    ]
   },
   "wells": {
     "wells": [
       {
         "name": "I1",
-        "perforations": [{"ijk": [1, 1, 1]}],
+        "perforations": [
+          {
+            "ijk": [
+              1,
+              1,
+              1
+            ]
+          }
+        ],
         "controls": {
           "inj_bhp": 400.0,
-          "inj_composition": [0.999999999998, 1e-12]
+          "inj_composition": [
+            0.999999999998,
+            1e-12
+          ]
         }
       },
       {
         "name": "P1",
-        "perforations": [{"ijk": [10, 10, 3]}],
-        "controls": {"prod_bhp": 70.0}
+        "perforations": [
+          {
+            "ijk": [
+              10,
+              10,
+              3
+            ]
+          }
+        ],
+        "controls": {
+          "prod_bhp": 70.0
+        }
       }
     ]
   },
   "initial_conditions": {
-    "by_array": {"pressure": 330.0, "g": 0.001225901537, "o": 0.7711341309}
+    "by_array": {
+      "pressure": 330.0,
+      "g": 0.001225901537,
+      "o": 0.7711341309
+    }
   },
   "sim_params": {
-    "first_ts": 1e-6,
+    "first_ts": 1e-06,
     "mult_ts": 2.0,
     "max_ts": 10.0,
     "runtime": 100,
-    "tol_newton": 1e-3,
-    "tol_linear": 1e-7,
+    "tol_newton": 0.001,
+    "tol_linear": 1e-07,
     "it_newton": 10,
     "it_linear": 50
   },
-  "output": {"folder": "output", "precision": "d"}
+  "output": {
+    "folder": "output",
+    "precision": "d"
+  }
 }
