@@ -1,5 +1,6 @@
+import logging
 import os
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from darts.api.data_refs import resolve_data_ref
 from darts.api.schemas import (
@@ -23,12 +24,25 @@ from darts.api.type_registry import (
     load_local_plugin_registry,
 )
 
+logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class DartsModelProtocol(Protocol):
+    """Minimal interface expected by ModelBuilder on the *model* argument."""
+
+    timer: Any
+    reservoir: Any
+    physics: Any
+
+    def set_sim_params(self, **kwargs: Any) -> None: ...
+
 
 class ModelBuilder:
     @staticmethod
     def apply(
         spec: ModelSpec,
-        model: Any,
+        model: DartsModelProtocol,
         *,
         base_path: str | None = None,
         object_store: dict[str, Any] | None = None,
@@ -114,7 +128,7 @@ class ModelBuilder:
     @staticmethod
     def _apply_reservoir(
         r: Any,
-        model: Any,
+        model: DartsModelProtocol,
         *,
         base_path: str | None = None,
         object_store: dict[str, Any] | None = None,
@@ -127,9 +141,10 @@ class ModelBuilder:
             return
 
         # Default branch: structured reservoir
-        assert getattr(r, "type", None) == "structured", (
-            f"Unsupported reservoir type: {getattr(r, 'type', None)}"
-        )
+        rtype = getattr(r, "type", None)
+        if rtype != "structured":
+            raise ValueError(f"Unsupported reservoir type: {rtype!r}")
+
         from darts.reservoirs.struct_reservoir import StructReservoir
 
         def _resolve_val(val: Any) -> Any:
@@ -143,12 +158,9 @@ class ModelBuilder:
 
         def _maybe_array(val: Any) -> Any:
             if isinstance(val, list | tuple):
-                try:
-                    import numpy as np  # type: ignore
+                import numpy as np
 
-                    return np.asarray(val)
-                except Exception:
-                    return val
+                return np.asarray(val)
             return val
 
         layers = getattr(r, "layers", None)
@@ -169,7 +181,7 @@ class ModelBuilder:
                 if isinstance(val, list | tuple):
                     return True
                 try:
-                    import numpy as np  # type: ignore
+                    import numpy as np
 
                     return isinstance(val, np.ndarray)
                 except Exception:
@@ -265,7 +277,7 @@ class ModelBuilder:
     @staticmethod
     def _apply_cpg_reservoir(
         r: CPGReservoirSpec,
-        model: Any,
+        model: DartsModelProtocol,
         *,
         base_path: str | None = None,
     ) -> None:
@@ -329,12 +341,12 @@ class ModelBuilder:
 
     @staticmethod
     def _apply_physics(
-        p: PhysicsSpec, model: Any, *, base_path: str | None = None
+        p: PhysicsSpec, model: DartsModelProtocol, *, base_path: str | None = None
     ) -> None:
-        assert p.plugin is not None, "physics.plugin is required"
-        assert p.components is not None and p.phases is not None, (
-            "physics.components and physics.phases are required"
-        )
+        if p.plugin is None:
+            raise ValueError("physics.plugin is required")
+        if p.components is None or p.phases is None:
+            raise ValueError("physics.components and physics.phases are required")
 
         # Instantiate physics via registry
         pinst = ModelBuilder._as_plugin_instance(p.plugin)
@@ -342,16 +354,9 @@ class ModelBuilder:
         cfg = entry.config_model(**pinst.config)
         # Resolve relative data files from ModelSpec location (e.g., BlackOil pvt_path).
         if base_path and hasattr(cfg, "pvt_path"):
-            try:
-                pvt_path = cfg.pvt_path
-                if (
-                    isinstance(pvt_path, str)
-                    and pvt_path
-                    and not os.path.isabs(pvt_path)
-                ):
-                    cfg.pvt_path = os.path.join(base_path, pvt_path)
-            except Exception:
-                pass
+            pvt_path = cfg.pvt_path
+            if isinstance(pvt_path, str) and pvt_path and not os.path.isabs(pvt_path):
+                cfg.pvt_path = os.path.join(base_path, pvt_path)
         physics = entry.constructor(
             cfg, components=p.components, phases=p.phases, timer=model.timer
         )
@@ -360,10 +365,10 @@ class ModelBuilder:
         # Property regions
         if p.property_regions:
             for region in p.property_regions:
-                # property container
-                assert region.property_container is not None, (
-                    "property_container is required"
-                )
+                if region.property_container is None:
+                    raise ValueError(
+                        f"property_container is required for region {region.region}"
+                    )
                 pci = ModelBuilder._as_plugin_instance(region.property_container)
                 pc_entry = TYPE_REGISTRY.get(pci.type_id)
                 pc_cfg = pc_entry.config_model(**pci.config)
@@ -373,7 +378,6 @@ class ModelBuilder:
                         pc_cfg.components_name = p.components
                     if pc_cfg.phases_name is None:
                         pc_cfg.phases_name = p.phases
-                    # Mw optional; warn if missing length when provided
                 pc = pc_entry.constructor(pc_cfg)
 
                 # attach evaluator plugins (flash, density, viscosity, rel_perm)
@@ -381,7 +385,6 @@ class ModelBuilder:
                     plugins = region.plugins
                     # type guard
                     if not isinstance(plugins, PluginSlots):
-                        # Pydantic will usually ensure this, but guard for dict input
                         if hasattr(plugins, "model_dump"):
                             plugins = PluginSlots(**plugins.model_dump())
                         elif hasattr(plugins, "dict"):
@@ -395,14 +398,11 @@ class ModelBuilder:
                         fi = ModelBuilder._as_plugin_instance(plugins.flash_ev)
                         f_entry = TYPE_REGISTRY.get(fi.type_id)
                         f_cfg = f_entry.config_model(**fi.config)
-                        # pass fluid component count (exclude solids if specified in property container config)
+                        # pass fluid component count (exclude solids if specified)
                         fluid_nc = len(p.components)
-                        try:
-                            nc_sol = getattr(pc_cfg, "nc_sol", None)
-                            if nc_sol is not None:
-                                fluid_nc = max(1, fluid_nc - int(nc_sol))
-                        except Exception:
-                            pass
+                        nc_sol = getattr(pc_cfg, "nc_sol", None)
+                        if nc_sol is not None:
+                            fluid_nc = max(1, fluid_nc - int(nc_sol))
                         obj = f_entry.constructor(
                             f_cfg,
                             nc=fluid_nc,
@@ -462,40 +462,30 @@ class ModelBuilder:
                             di2 = ModelBuilder._as_plugin_instance(inst)
                             d2_entry = TYPE_REGISTRY.get(di2.type_id)
                             d2_cfg = d2_entry.config_model(**di2.config)
-                            # Expand scalar diffusion value to per-component vector to match engine expectations
-                            try:
-                                val = d2_cfg.value
-                                is_scalar = isinstance(val, int | float)
-                                if is_scalar:
-                                    ncomp = len(p.components)
-                                    d2_cfg.value = [float(val)] * ncomp
-                            except Exception:
-                                pass
+                            # Expand scalar diffusion value to per-component vector
+                            val = d2_cfg.value
+                            if isinstance(val, int | float):
+                                ncomp = len(p.components)
+                                d2_cfg.value = [float(val)] * ncomp
                             pc.diffusion_ev[phase] = d2_entry.constructor(d2_cfg)
                     # kinetic_rate_ev: map by integer key
                     if getattr(plugins, "kinetic_rate_ev", None) is not None:
-                        # ensure container exists
                         if (
                             not hasattr(pc, "kinetic_rate_ev")
                             or pc.kinetic_rate_ev is None
                         ):
-                            try:
-                                pc.kinetic_rate_ev = {}
-                            except Exception:
-                                pass
+                            pc.kinetic_rate_ev = {}
                         for idx_str, inst in plugins.kinetic_rate_ev.items():
                             try:
                                 idx = int(idx_str)
-                            except Exception:
-                                continue
+                            except ValueError as err:
+                                raise ValueError(
+                                    f"kinetic_rate_ev key must be an integer, got {idx_str!r}"
+                                ) from err
                             ki = ModelBuilder._as_plugin_instance(inst)
                             k_entry = TYPE_REGISTRY.get(ki.type_id)
                             k_cfg = k_entry.config_model(**ki.config)
-                            try:
-                                pc.kinetic_rate_ev[idx] = k_entry.constructor(k_cfg)
-                            except Exception:
-                                if isinstance(pc.kinetic_rate_ev, dict):
-                                    pc.kinetic_rate_ev[idx] = k_entry.constructor(k_cfg)
+                            pc.kinetic_rate_ev[idx] = k_entry.constructor(k_cfg)
 
                 model.physics.add_property_region(pc, region=region.region)
 
@@ -517,21 +507,23 @@ class ModelBuilder:
 
     @staticmethod
     def _validate_phase_key(phase: str, phases: list[str]) -> None:
-        assert phase in phases, f"Unknown phase key '{phase}', expected one of {phases}"
+        if phase not in phases:
+            raise ValueError(f"Unknown phase key '{phase}', expected one of {phases}")
 
     @staticmethod
-    def _apply_wells(w: WellsSpec, model: Any) -> None:
+    def _apply_wells(w: WellsSpec, model: DartsModelProtocol) -> None:
         # Defer well/perforation creation until DartsModel.init() calls set_wells().
-        # Store spec on the model instance for consumption by a custom set_wells() override.
-        model._wells_spec = w
+        model._wells_spec = w  # type: ignore[attr-defined]
 
     @staticmethod
-    def _apply_initial_conditions(ic: InitialConditionsSpec, model: Any) -> None:
+    def _apply_initial_conditions(
+        ic: InitialConditionsSpec, model: DartsModelProtocol
+    ) -> None:
         # Defer initial conditions until after reservoir mesh is created in init().
-        model._initial_conditions_spec = ic
+        model._initial_conditions_spec = ic  # type: ignore[attr-defined]
 
     @staticmethod
-    def _apply_sim_params(sp: SimParamsSpec, model: Any) -> None:
+    def _apply_sim_params(sp: SimParamsSpec, model: DartsModelProtocol) -> None:
         kwargs: dict[str, Any] = {}
         for k in [
             "first_ts",
@@ -550,13 +542,12 @@ class ModelBuilder:
         # Map optional newton_type
         newton_type = getattr(sp, "newton_type", None)
         if newton_type:
-            try:
-                from darts.engines import sim_params as spm
+            from darts.engines import sim_params as spm
 
-                if newton_type == "newton_local_chop":
-                    kwargs["newton_type"] = spm.newton_local_chop
-            except Exception:
-                pass
+            if newton_type == "newton_local_chop":
+                kwargs["newton_type"] = spm.newton_local_chop
+            else:
+                logger.warning("Unknown newton_type %r, ignoring", newton_type)
         model.set_sim_params(**kwargs)
         # Post DataTS tweaks
         if getattr(sp, "newton_tol_stationary", None) is not None:
@@ -565,12 +556,11 @@ class ModelBuilder:
             model.data_ts.min_line_search_update = sp.min_line_search_update  # type: ignore[attr-defined]
 
     @staticmethod
-    def _apply_output(out: OutputSpec, model: Any) -> None:
-        # Defer output configuration until after init(), so attributes like
-        # model.restart are available. Store spec for the runtime to consume.
-        model._output_spec = out
+    def _apply_output(out: OutputSpec, model: DartsModelProtocol) -> None:
+        # Defer output configuration until after init().
+        model._output_spec = out  # type: ignore[attr-defined]
 
     @staticmethod
-    def _apply_well_controls(wc: Any, model: Any) -> None:
+    def _apply_well_controls(wc: Any, model: DartsModelProtocol) -> None:
         # Defer well controls to runtime; store minimal spec
-        model._well_controls_spec = wc
+        model._well_controls_spec = wc  # type: ignore[attr-defined]
