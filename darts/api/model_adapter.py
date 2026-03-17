@@ -11,12 +11,12 @@ stepwise MCP server protocol.
 from typing import Any
 
 from darts.api.builder import ModelBuilder
-from darts.api.model_spec import (
+from darts.api.schemas import ModelSpec, PatchModelSpec
+from darts.api.spec_utils import (
     json_merge_patch,
     normalize_keys,
     validate_model_spec_dict,
 )
-from darts.api.schemas import ModelSpec, PatchModelSpec
 
 
 class ModelAdapter:

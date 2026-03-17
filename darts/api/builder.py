@@ -503,7 +503,7 @@ class ModelBuilder:
     def _as_plugin_instance(obj: Any) -> PluginInstance:
         if isinstance(obj, PluginInstance):
             return obj
-        # pydantic model from model_spec.PluginInstance
+        # pydantic model from type_registry.PluginInstance
         if hasattr(obj, "type_id") and hasattr(obj, "config"):
             cfg = obj.config
             if hasattr(cfg, "model_dump"):

@@ -14,7 +14,7 @@ type_registry  TypeRegistry singleton and built-in plugin entries for physics,
                property containers, and evaluators.
 builder        Stateless ModelBuilder that applies a validated ModelSpec to any
                DartsModelProtocol-compatible model.
-model_spec     Pure utility functions: JSON merge-patch, key normalization,
+spec_utils     Pure utility functions: JSON merge-patch, key normalization,
                and spec validation helpers.
 model_adapter  Stateful adapters (JsonModelAdapter, MCPModelAdapter) that wrap
                ModelBuilder with spec tracking and idempotency.
@@ -35,12 +35,6 @@ from darts.api.introspection import (
     list_capabilities_dict,
 )
 from darts.api.model_adapter import JsonModelAdapter, MCPModelAdapter, ModelAdapter
-from darts.api.model_spec import (
-    json_merge_patch,
-    normalize_keys,
-    validate_model_spec_dict,
-    validate_patch_model_spec_dict,
-)
 from darts.api.schemas import (
     CPGReservoirSpec,
     DataRef,
@@ -54,6 +48,12 @@ from darts.api.schemas import (
     StrictModelSpec,
     WellControlsSpec,
     WellsSpec,
+)
+from darts.api.spec_utils import (
+    json_merge_patch,
+    normalize_keys,
+    validate_model_spec_dict,
+    validate_patch_model_spec_dict,
 )
 from darts.api.type_registry import (
     TYPE_REGISTRY,
