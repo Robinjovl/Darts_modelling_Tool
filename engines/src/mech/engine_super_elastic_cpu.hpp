@@ -113,7 +113,7 @@ public:
   uint8_t get_n_vars() const { return N_VARS; };
   uint8_t get_n_ops() const  { return N_OPS; };
   uint8_t get_n_comps() const  { return NC; };
-  uint8_t get_z_var() const  { return Z_VAR; };
+  uint8_t get_z_var_idx() const  { return Z_VAR; };
   uint8_t get_n_state() const { return N_STATE; };
 
   engine_super_elastic_cpu()
@@ -130,10 +130,12 @@ public:
 
   int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
            std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+           operator_set_gradient_evaluator_iface* thermal_var_etor_,
            sim_params *params_, timer_node *timer_);
 
   int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	  std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+      operator_set_gradient_evaluator_iface* thermal_var_etor_,
 	  sim_params *params_, timer_node *timer_);
 
   int init_jacobian_structure_pme(csr_matrix_base *jacobian);

@@ -56,19 +56,17 @@ class Model(CICDModel, OptModuleSettings):
 
         WI = 200
 
-        well_type = ms_well.MS_Type.EPM
-
         n_perf = self.reservoir.nz
         for i, inj in enumerate(self.inj_list):
 
-            self.reservoir.add_well('I' + str(i + 1), well_type)
+            self.reservoir.add_well('I' + str(i + 1))
 
             for k in range(n_perf):
                 self.reservoir.add_perforation('I' + str(i + 1), res_cell_idx=(inj[0], inj[1], k + 1),
                                                well_diameter=0.2, well_index=WI)
 
         for p, prod in enumerate(self.prod_list):
-            self.reservoir.add_well('P' + str(p + 1), well_type)
+            self.reservoir.add_well('P' + str(p + 1))
 
             for k in range(n_perf):
                 self.reservoir.add_perforation('P' + str(p + 1), res_cell_idx=(prod[0], prod[1], k + 1),
@@ -103,7 +101,7 @@ class Model(CICDModel, OptModuleSettings):
             # Initialize flash object
             flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash,
                                 eos_order=["Aq", "VL"], t_min=250., t_max=575.,
-                                t_tol=1e-1, f_tol=1e-10)
+                                pxflash_switch_ttol=1e-1, pxflash_ftol=1e-10)
 
             # Define PropertyContainer
             from darts.physics.super.property_container import PropertyContainer

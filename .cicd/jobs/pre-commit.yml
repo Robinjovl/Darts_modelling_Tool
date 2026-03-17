@@ -24,7 +24,7 @@ pre-commit:
           set -eu
           FILES="$(
             {
-              git ls-files -- 'darts' 'tests' 'helper_scripts' '.cicd' '.gitlab-ci.yml' '.pre-commit-config.yaml' 'pyproject.toml' 2>/dev/null || true
+              git ls-files -- 'darts' 'tests' 'helper_scripts' '.cicd' '.agents' '.gitlab-ci.yml' '.pre-commit-config.yaml' 'pyproject.toml' 2>/dev/null || true
             } | grep -E '\.(py|ya?ml|toml)$' || true
           )"
           echo $FILES

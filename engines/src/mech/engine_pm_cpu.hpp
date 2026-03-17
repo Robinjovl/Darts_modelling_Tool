@@ -59,7 +59,7 @@ public:
   uint8_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_dim() const { return ND_; };
   uint8_t get_n_comps() const override { return NC_; };
-  uint8_t get_z_var() const override { return Z_VAR; };
+  uint8_t get_z_var_idx() const override { return Z_VAR; };
 
   engine_pm_cpu();
   ~engine_pm_cpu();
@@ -68,10 +68,12 @@ public:
 
   int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
            std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+           operator_set_gradient_evaluator_iface* thermal_var_etor_,
            sim_params *params_, timer_node *timer_);
 
   int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                 std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                operator_set_gradient_evaluator_iface* thermal_var_etor_,
                 sim_params *params_, timer_node *timer_);
 
   int init_jacobian_structure_pm(csr_matrix_base *jacobian);
@@ -112,7 +114,7 @@ public:
   std::vector<index_t> geomechanics_mode;
   std::array<value_t, 2 * N_VARS_SQ> explicit_scheme_dummy_well_jacobian;
   std::vector<value_t> jacobian_explicit_scheme;
-  
+
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
   std::vector<linsolv_iface*> linear_solvers;
@@ -122,7 +124,7 @@ public:
 public:
   bool FIND_EQUILIBRIUM, TIME_DEPENDENT_DISCRETIZATION, EXPLICIT_SCHEME, SCALE_ROWS, SCALE_DIMLESS;
   pm::ContactSolver contact_solver;
-  
+
   value_t t_dim, x_dim, p_dim, m_dim;
 protected:
   void scale_rows();

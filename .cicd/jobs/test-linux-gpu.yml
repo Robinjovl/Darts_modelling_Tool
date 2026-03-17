@@ -16,9 +16,10 @@
         #
         - echo "test finished"
     after_script:
-        - cd models
-        - ./archive_pkl.sh $ODLS $TEST_GPU
-        - cd ..
+        - &archive_logic
+            - cd models
+            - ./archive_pkl.sh $ODLS $TEST_GPU
+            - cd ..
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -54,6 +55,7 @@ test-linux-oahu-gpu:
         - pip uninstall open-darts-flash  --yes
         - pip install ./dist/*.whl
     after_script:
+        - *archive_logic  # parent's commands
         - source ${CONDAPATH}/bin/activate
         - conda env remove -n ${CONDA_ENV} -y || true
     extends: .test-linux-gpu

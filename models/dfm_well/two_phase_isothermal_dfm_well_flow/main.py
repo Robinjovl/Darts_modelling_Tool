@@ -24,14 +24,14 @@ import matplotlib.pyplot as plt
 import os
 
 from darts.engines import redirect_darts_output
-from darts.tools.hdf5_tools import load_hdf5_to_dict
-from darts.pipes.save_results import save_segments_primary_vars_and_phase_props
+from darts.pipes.save_results import save_dfm_well_props
 from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
 from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
 
 from model import Model
 
-redirect_darts_output('run_log.log')
+
+redirect_darts_output('run.log')
 coupled_model = Model()
 coupled_model.reservoir.grav_acceleration_for_spe = 9.80665
 coupled_model.init()
@@ -39,6 +39,7 @@ coupled_model.set_output()
 
 if 1:
     output_props = coupled_model.physics.vars + coupled_model.output.properties
+    coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)  # saves initial well conditions
 
     time_steps = [
         100 / 60 / 60 / 24,   # 100 seconds
@@ -46,14 +47,11 @@ if 1:
 
     for i, dt in enumerate(time_steps):
         coupled_model.run(dt)
+        coupled_model.output.well_output_to_vtp(ith_step=i + 1, output_properties=output_props)
 
-    coupled_model.output.output_to_vtk(output_properties=output_props)
     coupled_model.print_timers()
 else:
-    well_data_file_path = os.path.join(coupled_model.output.output_folder, "well_data.h5")
-    h5_well_data = load_hdf5_to_dict(well_data_file_path)
-    save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model)
+    save_dfm_well_props('I1', coupled_model)
 
-    primary_vars_and_phase_props_file_address = os.path.join(coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl")
-    plot_heat_map_pcolormesh(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
-    plot_heat_map_contourf(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
+    plot_heat_map_pcolormesh('I1', coupled_model)
+    plot_heat_map_contourf('I1', coupled_model)

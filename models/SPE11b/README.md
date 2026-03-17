@@ -56,7 +56,7 @@ with the DARTS interpolators and saved under the group ``/properties``. The insi
 
 Results can be processed and turned into ``solution_ts0.vtk`` files. For example, the initial conditions are visualized by calling,
 ```python
-    time_vector, property_array = m.output.output_properties(timestep=0)
+    time_vector, property_array = m.output.output_properties(ts_idx=0)
     m.output.output_to_vtk(ith_step = 0, output_data = [time_vector, property_array])
 ```
 , where the function ``output_properties()`` evaluates properties into a ``property_array`` dictionary that can be further

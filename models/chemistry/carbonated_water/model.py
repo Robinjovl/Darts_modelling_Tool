@@ -550,15 +550,13 @@ class Model(CICDModel):
         w_d = 1.5
         well_index = 5
 
-        well_type = ms_well.MS_Type.EPM
-
-        # self.reservoir.add_well("I1", well_type, well_diameter=w_d)
+        # self.reservoir.add_well("I1", well_diameter=w_d)
         # for idx in range(self.domain_cells[1]):
         #     self.reservoir.add_perforation(well_name='I1', res_cell_idx=(1, idx + 1, 1), ms_epm=False,
         #                                    verbose=True, well_diameter=w_d, well_index=well_index,
         #                                    well_indexD=well_index)
 
-        self.reservoir.add_well("P1", well_type, well_diameter=w_d)
+        self.reservoir.add_well("P1", well_diameter=w_d)
         if isinstance(self.reservoir, UnstructReservoir):
             for idx in self.prd_cells:
                 self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, ms_epm=False,

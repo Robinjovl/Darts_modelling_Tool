@@ -164,6 +164,15 @@ class CPG_Reservoir(ReservoirBase):
         # rock thermal properties
         self.hcap = np.array(self.mesh.heat_capacity, copy=False)
         self.conduction = np.array(self.mesh.rock_cond, copy=False)
+
+        # Give a warning if there is more than one cell in the vertical direction and the depths of all the layers are the same.
+        if self.nz > 1 and np.all(self.discr_mesh.depths == self.discr_mesh.depths[0]):
+            warnings.warn(
+                "The reservoir contains more than one cell in the vertical direction (nz > 1), "
+                "but all layers have identical depth values!",
+                stacklevel=1,
+            )
+
         return self.mesh
 
     def discretize_cpg(self):
