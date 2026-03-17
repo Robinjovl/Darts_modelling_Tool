@@ -527,7 +527,12 @@ class StrictWellSpec(SpecBaseModel):
         Field(min_length=1, description="List of perforations"),
     ]
     controls: Annotated[
-        StrictWellControlsSpec | None, Field(description="Optional well controls")
+        StrictWellControlsSpec | None,
+        Field(
+            description=(
+                "Per-well controls that override top-level well_controls defaults"
+            )
+        ),
     ] = None
 
 
@@ -720,7 +725,13 @@ class StrictModelSpec(SpecBaseModel):
     ] = None
     well_controls: Annotated[
         StrictWellControlsSpec | DataRef | None,
-        Field(description="Well controls"),
+        Field(
+            description=(
+                "Default well controls applied to all wells. "
+                "Per-well controls in wells[].controls take precedence "
+                "over these defaults for individual wells."
+            )
+        ),
     ] = None
     sim_params: Annotated[
         StrictSimParamsSpec | DataRef | None,
