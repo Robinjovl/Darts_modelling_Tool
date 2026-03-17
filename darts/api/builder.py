@@ -296,7 +296,7 @@ class ModelBuilder:
             check_arrays,
             read_arrays,
         )
-        from darts.tools.keyword_file_tools import decompress_file
+        from darts.tools.keyword_file_tools import compressed_file
 
         def _resolve_path(path: str) -> str:
             if os.path.isabs(path):
@@ -305,21 +305,12 @@ class ModelBuilder:
                 return os.path.join(base_path, path)
             return path
 
-        def _ensure_uncompressed(path: str) -> None:
-            if os.path.exists(path):
-                return
-            gz_path = f"{path}.gz"
-            if os.path.exists(gz_path):
-                decompress_file(path, gz_path, verbose=False)
-                return
-            raise FileNotFoundError(f"Cannot find file: {path} (or {gz_path})")
-
         grid_file = _resolve_path(r.grid_file)
         prop_file = _resolve_path(r.prop_file)
         fault_file = _resolve_path(r.fault_file) if r.fault_file else None
 
-        _ensure_uncompressed(grid_file)
-        _ensure_uncompressed(prop_file)
+        compressed_file(grid_file)
+        compressed_file(prop_file)
 
         arrays = read_arrays(gridfile=grid_file, propfile=prop_file)
         check_arrays(arrays)

@@ -122,6 +122,11 @@ class JsonModel(DartsModel):
                 return False
             return None
 
+        def _ctrl(per_well: Any, attr: str) -> Any:
+            """Resolve a well-control attribute: per-well value takes precedence over global."""
+            val = getattr(per_well, attr, None) if per_well else None
+            return val if val is not None else getattr(wc_spec, attr, None)
+
         wells_spec = getattr(self, '_wells_spec', None)
         well_cfg = {
             ws.name: getattr(ws, 'controls', None)
@@ -132,41 +137,13 @@ class JsonModel(DartsModel):
             per_well = well_cfg.get(w.name)
             role = _well_role(w.name, per_well)
 
-            inj_rate = (
-                getattr(per_well, 'inj_rate', None)
-                if per_well and getattr(per_well, 'inj_rate', None) is not None
-                else getattr(wc_spec, 'inj_rate', None)
-            )
-            inj_bhp = (
-                getattr(per_well, 'inj_bhp', None)
-                if per_well and getattr(per_well, 'inj_bhp', None) is not None
-                else getattr(wc_spec, 'inj_bhp', None)
-            )
-            inj_comp = (
-                getattr(per_well, 'inj_composition', None)
-                if per_well and getattr(per_well, 'inj_composition', None) is not None
-                else getattr(wc_spec, 'inj_composition', None)
-            )
-            inj_temp = (
-                getattr(per_well, 'inj_temp', None)
-                if per_well and getattr(per_well, 'inj_temp', None) is not None
-                else getattr(wc_spec, 'inj_temp', None)
-            )
-            inj_phase = (
-                getattr(per_well, 'phase_name', None)
-                if per_well and getattr(per_well, 'phase_name', None) is not None
-                else getattr(wc_spec, 'phase_name', None)
-            )
-            rate_type = (
-                getattr(per_well, 'rate_type', None)
-                if per_well and getattr(per_well, 'rate_type', None) is not None
-                else getattr(wc_spec, 'rate_type', None)
-            )
-            prod_bhp = (
-                getattr(per_well, 'prod_bhp', None)
-                if per_well and getattr(per_well, 'prod_bhp', None) is not None
-                else getattr(wc_spec, 'prod_bhp', None)
-            )
+            inj_rate = _ctrl(per_well, 'inj_rate')
+            inj_bhp = _ctrl(per_well, 'inj_bhp')
+            inj_comp = _ctrl(per_well, 'inj_composition')
+            inj_temp = _ctrl(per_well, 'inj_temp')
+            inj_phase = _ctrl(per_well, 'phase_name')
+            rate_type = _ctrl(per_well, 'rate_type')
+            prod_bhp = _ctrl(per_well, 'prod_bhp')
 
             if role is True and (inj_rate is not None or inj_bhp is not None):
                 if inj_rate is not None:
