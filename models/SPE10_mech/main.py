@@ -220,7 +220,7 @@ if __name__ == '__main__':
     except:
         pass
 
-    test_all = False
+    #test_all = False
     test_all = True
     physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
     meshes_list = ['data_10_10_10', 'data_20_40_40']
@@ -241,3 +241,8 @@ if __name__ == '__main__':
     #run(model_folder='data_20_40_40', physics_type='single_phase_thermal')
     #run(model_folder='data_20_40_40', physics_type='dead_oil')
     #run(model_folder='data_20_40_40', physics_type='dead_oil_thermal')
+
+    # runs and checks with the reference
+    #test(mesh_type='data_10_10_10', physics_type='single_phase')
+    #test(mesh_type='data_10_10_10', physics_type='single_phase_thermal')
+    #test(mesh_type='data_10_10_10', physics_type='dead_oil_thermal')

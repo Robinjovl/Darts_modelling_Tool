@@ -257,7 +257,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
         [self.m1_tag, self.m2_tag] = idata.mesh.matrix_tags
-        self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
+        self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags, prop_list=['rock', 'other'])
 
         physical_tags = {}
         physical_tags['matrix'] = [self.m1_tag, self.m2_tag]
@@ -305,7 +305,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
         [self.m1_tag, self.m2_tag] = idata.mesh.matrix_tags
-        self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
+        self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags, prop_list=['rock', 'other'])
 
         physical_tags = {}
         physical_tags['matrix'] = idata.mesh.matrix_tags
@@ -344,7 +344,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
         [self.m1_tag, self.m2_tag] = idata.mesh.matrix_tags
-        self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
+        self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags, prop_list=['rock', 'other'])
         self.set_uniform_initial_conditions(idata=idata)
         self.F = idata.other.F
         self.set_boundary_conditions(idata)
@@ -381,7 +381,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.init_uniform_properties(idata=idata)
         else:
             #[self.m1_tag, self.m2_tag] = idata.mesh.matrix_tags
-            self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
+            self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags, prop_list=['rock', 'other'])
 
         self.init_arrays_boundary_condition()
         self.init_bc_rhs()
