@@ -62,6 +62,8 @@ class geomech():
 
         self.compaction_cpp = True  # use c++ library to compute displacements
         #self.compaction_cpp = False
+        
+        self.deriv_step = 10. # m
 
     def calc_displacements(self, points, prisms, delta_pressure, delta_temperature):
         '''
@@ -109,7 +111,7 @@ class geomech():
     # calculate strain and stress tensors from displacements on fault_surface
     def calc_strain_stress(self, fault_surface, prisms, delta_pressure, delta_temperature):
         # compute displacement derivatives
-        step_x = step_y = step_z = 10  # step for derivatives, m.
+        step_x = step_y = step_z = self.deriv_step  # step for derivatives, m.
 
         fault_surface_y_plus = fault_surface.copy()
         fault_surface_y_plus[0, :] += step_y
@@ -290,7 +292,7 @@ class geomech():
 
             # for thermoelasticity: 
             delta_temperature_points = gd((self.centroids[:, 1], self.centroids[:, 0], self.centroids[:, 2]), \
-                delta_temperature, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='nearest')
+                delta_temperature, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='linear')
             stress += self.young * self.thermal_expansion * delta_temperature_points / (1 - 2 * self.poisson) * kronecker
 
             #print('dir=', ui, 'stress=\n', stress)

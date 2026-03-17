@@ -136,7 +136,7 @@ class Model(THMCModel):
         self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)  # Couchy book formula 4.19a, 4.21a
         self.idata.rock.th_expn *= 3. # Couchy book formula 4.22; from linear to volumetric
         
-        self.idata.rock.conductivity = 260  # [kJ/m/day/K]
+        self.idata.rock.thermal_conductivity = 260  # [kJ/m/day/K]
         self.idata.rock.heat_capacity = 2300  # [kJ/m3/K]
 
         self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
@@ -148,14 +148,11 @@ class Model(THMCModel):
         self.idata.fluid.density = 1000. # [kg/m^3]
         
         # branch ilshat/fluid_heat_cond
-        self.idata.fluid.conductivity = 0. # It is not used in the engine # [kJ/m/day/K] 
+        self.idata.fluid.thermal_conductivity = 0. # It is not used in the engine # [kJ/m/day/K] 
         #self.idata.fluid.heat_capacity = 2200. #[kJ/m3/K] - different unit than used for rock
         #self.idata.fluid.heat_capacity *= self.idata.fluid.Mw / self.idata.fluid.density  # convert from [kJ/m3/K] to [kJ/kmol/K]
         # water: 4170 [kJ/m3/K] or 75.37 [kJ/kmol/K]
         self.idata.fluid.heat_capacity = 75. #[kJ/kmol/K]
-        # treat renamings
-        self.idata.fluid.heat_conductivity = self.idata.fluid.conductivity
-        self.idata.rock.heat_conductivity = self.idata.rock.conductivity
 
         # initial conditions (p, T gradients)
         #self.idata.initial.reference_depth_for_temperature = 0.  # [m]
@@ -275,7 +272,8 @@ class Model(THMCModel):
         self.idata.obl.max_t = 50.#273.15 + 300
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
-
+        self.idata.obl.epsilon_z = 1e-10
+        
         super().set_input_data()
 
     def set_physics(self):

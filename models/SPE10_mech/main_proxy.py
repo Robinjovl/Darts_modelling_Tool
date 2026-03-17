@@ -325,7 +325,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         z_range = points[2,:]
 
         array_dict = {'dp': delta_pressure, 'dt': delta_temperature}
-        array_dict_interp = get_thm_by_interp(array_dict, points[1,:], points[0,:], points[2,:], method='nearest') # obtain thm solutiona at points using interpolation
+        array_dict_interp = get_thm_by_interp(array_dict, points[1,:], points[0,:], points[2,:], method='linear') # obtain thm solutiona at points using interpolation
         dp = array_dict_interp['dp']
         dt = array_dict_interp['dt']
         
@@ -443,9 +443,9 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     if True: # evaluate along the wells
         if wells_type in ['prod', 'doublet']:
-            points_xy['prod well'] = m.idata.other.prod_well_coords[:2]  # -2 to skip z coord
+            points_xy['prod_well'] = m.idata.other.prod_well_coords[:2]  # -2 to skip z coord
         if wells_type in ['inj', 'doublet']:
-            points_xy['inj well'] = m.idata.other.inj_well_coords[:2]
+            points_xy['inj_well'] = m.idata.other.inj_well_coords[:2]
 
     # plot 2D THM displs (XY plane)
     if False:
@@ -614,7 +614,7 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    physics_types_list += ['single_phase']
+    #physics_types_list += ['single_phase']
     physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
