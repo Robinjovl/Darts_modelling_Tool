@@ -7,6 +7,8 @@
         - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
+        # test API primitives and composable specs
+        - darts tests/python/test_primitives.py
         # test discretizer
         - cd discretizer/tests/compare_discretizers
         - python main.py

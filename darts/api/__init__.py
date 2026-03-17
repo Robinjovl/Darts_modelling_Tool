@@ -27,7 +27,7 @@ introspection  JSON Schema and plugin capability export helpers.
 run_json_model CLI entry point for running a model from a JSON file.
 """
 
-from darts.api.builder import ModelBuilder
+from darts.api.builder import DartsModelProtocol, ModelBuilder
 from darts.api.data_refs import register_object, resolve_data_ref
 from darts.api.introspection import (
     get_plugin_schema_dict,
@@ -78,6 +78,7 @@ __all__ = [
     "PluginInstance",
     "TYPE_REGISTRY",
     "list_customizable_types",
+    "DartsModelProtocol",
     "ModelBuilder",
     "ModelAdapter",
     "JsonModelAdapter",
