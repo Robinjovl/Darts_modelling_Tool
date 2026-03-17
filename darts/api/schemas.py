@@ -1049,3 +1049,56 @@ SimParamsSpec = StrictSimParamsSpec
 OutputSpec = StrictOutputSpec
 PluginSlots = StrictPluginSlots
 PropertyRegionSpec = StrictPropertyRegionSpec
+
+__all__ = [
+    # Strict (canonical) specs
+    "StrictModelSpec",
+    "StrictReservoirSpec",
+    "StrictCPGReservoirSpec",
+    "StrictPhysicsSpec",
+    "StrictWellsSpec",
+    "StrictWellControlsSpec",
+    "StrictInitialConditionsSpec",
+    "StrictSimParamsSpec",
+    "StrictOutputSpec",
+    "StrictPluginSlots",
+    "StrictPropertyRegionSpec",
+    "StrictPluginInstance",
+    "StrictWellSpec",
+    "StrictWellPerforation",
+    "StrictReservoirLayerSpec",
+    # Patch specs
+    "PatchModelSpec",
+    "PatchReservoirSpec",
+    "PatchCPGReservoirSpec",
+    "PatchPhysicsSpec",
+    "PatchWellsSpec",
+    "PatchWellControlsSpec",
+    "PatchInitialConditionsSpec",
+    "PatchSimParamsSpec",
+    "PatchOutputSpec",
+    "PatchPluginSlots",
+    "PatchPropertyRegionSpec",
+    "PatchWellSpec",
+    "PatchWellPerforation",
+    # Convenience aliases
+    "ModelSpec",
+    "ReservoirSpec",
+    "CPGReservoirSpec",
+    "PhysicsSpec",
+    "WellsSpec",
+    "WellControlsSpec",
+    "InitialConditionsSpec",
+    "SimParamsSpec",
+    "OutputSpec",
+    "PluginSlots",
+    "PropertyRegionSpec",
+    # Shared types
+    "DataRef",
+    "ReservoirValue",
+    "ReservoirUnion",
+    "PatchReservoirUnion",
+    "PluginRegistrySpec",
+    "PluginRegistryEntrySpec",
+    "SpecBaseModel",
+]
