@@ -44,11 +44,11 @@ public:
 
     ms_well();
 
-    void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+    void init_physics(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
         operator_set_gradient_evaluator_iface* epm_well_ctrl_etor_, operator_set_gradient_evaluator_iface* dfm_well_ctrl_etor_,
         operator_set_gradient_evaluator_iface* thermal_var_etor_, int thermal_ = 0);
 
-    void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+    void init_mech_physics(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
         operator_set_gradient_evaluator_iface* epm_well_ctrl_etor_, operator_set_gradient_evaluator_iface* dfm_well_ctrl_etor_,
         operator_set_gradient_evaluator_iface* thermal_var_etor_, int thermal_ = 0);
 

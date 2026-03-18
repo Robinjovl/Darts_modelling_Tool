@@ -17,13 +17,13 @@ void pybind_ms_well(py::module& m)
     ms_well_class
         .def(py::init<>())
         // methods
-        .def("init_rate_parameters", &ms_well::init_rate_parameters,
-            "Init by NC and rate operators",
+        .def("init_physics", &ms_well::init_physics,
+            "Initialize well physics",
             "n_vars"_a, "n_ops"_a, "phase_names"_a,
             "epm_well_ctrl_etor"_a, "dfm_well_ctrl_etor"_a, "thermal_var_etor"_a,
             "thermal"_a = 0, py::keep_alive<1, 7>())
-        .def("init_mech_rate_parameters", &ms_well::init_mech_rate_parameters,
-            "Init by NC and rate operators for poromechanics",
+        .def("init_mech_physics", &ms_well::init_mech_physics,
+            "Initialize well physics for poromechanics",
             "N_VARS"_a, "P_VAR"_a, "n_vars"_a, "n_ops"_a, "phase_names"_a,
             "epm_well_ctrl_etor"_a, "dfm_well_ctrl_etor"_a, "thermal_var_etor"_a,
             "thermal"_a = 0, py::keep_alive<1, 9>())

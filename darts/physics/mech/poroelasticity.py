@@ -214,13 +214,13 @@ class Poroelasticity(Compositional):
 
     def init_wells(self, wells):
         """ ""
-        Function to initialize the well rates for each well
+        Function to initialize physics of wells for poromechanics
 
         :param wells: List of :class:`ms_well` objects
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_mech_rate_parameters(
+            w.init_mech_physics(
                 self.engine.N_VARS,
                 self.engine.P_VAR,
                 self.n_vars,

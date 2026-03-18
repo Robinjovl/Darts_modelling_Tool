@@ -551,13 +551,13 @@ class PhysicsBase:
 
     def init_wells(self, wells):
         """
-        Function to initialize the well rates for each well
+        Function to initialize physics of wells
 
         :param wells: List of :class:`ms_well` objects
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_rate_parameters(
+            w.init_physics(
                 self.n_vars,
                 self.n_ops,
                 self.phases,
