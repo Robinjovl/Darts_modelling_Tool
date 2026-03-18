@@ -85,8 +85,8 @@ class Model(THMCModel):
 
         self.idata.rock.th_expn = 9.0 * 1.E-7
         self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
-        self.idata.rock.conductivity = 0.836 * 86400.0 / 1000  # [kJ/m/day/K]
-        self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]
+        self.idata.rock.thermal_conductivity = 0.836 * 86400.0  # [kJ/m/day/K]
+        self.idata.rock.heat_capacity = 167.2  # [kJ/m3/K]
         self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
 
         # TODO: Only for a single-phase physics
@@ -94,6 +94,8 @@ class Model(THMCModel):
         self.idata.fluid.compressibility = 1.45e-5
         self.idata.fluid.viscosity = 1.0
         self.idata.fluid.density = 666.854632
+        self.idata.fluid.heat_capacity = 75. #[kJ/kmol/K]
+        self.idata.fluid.thermal_conductivity = 0. # it is not used in the mech. engines
 
         self.idata.initial.initial_temperature = 273.15 + 50  # [K]
         self.idata.initial.initial_pressure = p_init  # [bar]
@@ -162,9 +164,8 @@ class Model(THMCModel):
             # rock compressibility is treated inside engine
             property_container.rock_compr_ev = ConstFunc(1.0)
 
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=t_ref))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=t_ref)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.fluid.heat_capacity, tref=t_ref))])
+            property_container.conductivity_ev = dict([('wat', ConstFunc(self.idata.fluid.thermal_conductivity))])
         elif self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
             components = ['w', 'o']
             phases = ['wat', 'oil']
@@ -183,7 +184,6 @@ class Model(THMCModel):
                                                    ('oil', EnthalpyBasic(hcap=0.035))])
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
                                                        ('oil', ConstFunc(1.))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
 
         property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
         # create physics
@@ -318,7 +318,7 @@ class ModelProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
         if self.thermal:
             self.temperature = vec_state_as_np[-1]
 
@@ -334,7 +334,7 @@ class ModelProperties(PropertyContainer):
         for j in self.ph:
             # molar weight of mixture
             M = np.sum(self.x[j, :] * self.Mw)
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure)  # output in [kg/m3]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure)  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 

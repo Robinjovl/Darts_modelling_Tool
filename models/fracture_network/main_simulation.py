@@ -35,7 +35,7 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
     output_properties_with_temperature = output_properties_main + ['temperature']
 
     timesteps, property_array = m.output.output_properties(output_properties=output_properties_with_temperature,
-                                                           timestep=0, engine=True)
+                                                           ts_idx=0, engine=True)
 
     # add custom arrays to property_array: fracture index and fracture aperture to be saved to vtk files
     n_fracs = m.reservoir.discretizer.frac_cells_tot
@@ -60,7 +60,7 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
 
         if ith_step % output_vtk_period == 0:
             timesteps, property_array = m.output.output_properties(output_properties=output_properties_with_temperature,
-                                                                   timestep=ith_step+1, engine=True)
+                                                                   ts_idx=ith_step+1, engine=True)
             m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step+1, output_directory=output_directory)
 
         sim_time += size_report_step

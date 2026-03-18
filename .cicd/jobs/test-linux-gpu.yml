@@ -14,19 +14,19 @@
         #
         - echo "test finished"
     after_script:
-        - cd models
-        - ./archive_pkl.sh $ODLS $TEST_GPU
-        - cd ..
+        - &archive_logic
+            - cd models
+            - ./archive_pkl.sh $ODLS $TEST_GPU
+            - cd ..
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
         - if: $TEST_CUSTOM_BRANCH == "1"
-        - if: $TEST_GPU_LINUX == "1"
     variables:
         ODLS: '-a'
         TEST_GPU: '1'
-        PY_VER: '3.10'
+        PY_VER: $DEFAULT_PY_VER
         CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
     artifacts:
       paths:
@@ -38,7 +38,7 @@
       expire_in: 1 day
       when: always
 
-test-linux-oahu-3.10-gpu:
+test-linux-oahu-gpu:
     tags:
         - linux_gpu
     variables:
@@ -53,13 +53,14 @@ test-linux-oahu-3.10-gpu:
         - pip uninstall open-darts-flash  --yes
         - pip install ./dist/*.whl
     after_script:
+        - *archive_logic  # parent's commands
         - source ${CONDAPATH}/bin/activate
         - conda env remove -n ${CONDA_ENV} -y || true
     extends: .test-linux-gpu
     needs:
-        - build-linux-oahu-3.10-gpu
+        - build-linux-oahu-gpu
 
-.test-linux-tahiti-3.10-gpu:
+.test-linux-tahiti-gpu:
     tags:
         - linux_tahiti_gpu
     extends: .test-linux-gpu
@@ -79,13 +80,25 @@ test-linux-oahu-3.10-gpu:
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
         - conda env remove -n ${CONDA_ENV} -y || true
     needs:
-        - build-linux-tahiti-3.10-gpu
+        - build-linux-tahiti-gpu
 
-test-linux-tahiti-image-3.10-gpu:
+test-linux-tahiti-image-gpu:
     tags:
         - linux_tahiti_gpu
     extends: .test-linux-gpu
     before_script:
+        - |
+          set -euo pipefail
+          if [ -z "${APPTAINER_IMAGE:-}" ]; then
+            echo "APPTAINER_IMAGE is not set (expected from apptainer-image-builder dotenv artifact)"
+            exit 1
+          fi
+          if [ ! -f "$APPTAINER_IMAGE" ]; then
+            echo "Apptainer image does not exist: $APPTAINER_IMAGE"
+            ls -la /data/open-darts-apptainer-images || true
+            exit 1
+          fi
+          echo "Using Apptainer image: $APPTAINER_IMAGE"
         - |
           apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
             # exit on any error, print commands as you go
@@ -126,7 +139,7 @@ test-linux-tahiti-image-3.10-gpu:
                 # remove conda env
                 conda env remove -n ${CONDA_ENV} -y || true
             "
-    variables:
-        APPTAINER_IMAGE: "/data/open-darts-apptainer-images/open-darts-latest.sif"
     needs:
-        - build-linux-tahiti-image-3.10-gpu
+        - job: build-linux-tahiti-image-gpu
+        - job: apptainer-image-builder
+          artifacts: true

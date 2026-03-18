@@ -44,6 +44,7 @@ logx = True
 m.output.output_to_plt(sol_filepath=m.output.sol_filepath,  # if not provided, it will plot last timestep from engine
                        output_properties=output_props, lims=lims, plot_zeros=False,
                        aspect_ratio=aspect, logx=logx, cmap=cmap)
+m.output.output_to_vtk(output_properties=output_props)
 
 # compute and save well time data in m.output.output_folder
 m.output.store_well_time_data(save_output_files=True)

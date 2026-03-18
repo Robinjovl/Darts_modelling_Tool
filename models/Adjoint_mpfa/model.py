@@ -94,11 +94,10 @@ class Model(DartsModel, OptModuleSettings):
             y0 = 0.9 * Ly
             self.id2 = ((c[:,0] - x0) ** 2 + (c[:,1] - y0) ** 2 + c[:,2] ** 2).argmin()
 
-        well_type = ms_well.MS_Type.EPM
-        self.reservoir.add_well("P1", well_type, depth=0)
+        self.reservoir.add_well("P1", depth=0)
         self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id1), well_index=self.reservoir.well_index)
 
-        self.reservoir.add_well("I1", well_type, depth=0)
+        self.reservoir.add_well("I1", depth=0)
         self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id2), well_index=self.reservoir.well_index)
 
     def set_physics(self):
