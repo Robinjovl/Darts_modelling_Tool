@@ -1025,7 +1025,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			rates_derivs.resize(n_ops_well * n_vars_well);
 
             state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars_well);
-            w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
+            w->epm_well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
 
 
 
@@ -1139,7 +1139,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			rates_derivs.resize(n_ops_well* n_vars_well);
 
 			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars_well);
-			w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
+			w->epm_well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
 
 
 
@@ -1285,7 +1285,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 				rates_derivs.resize(w->n_phases * n_vars);
 
 				state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
-				w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
+				w->epm_well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
 
 
 				double ders_term, vals_term;

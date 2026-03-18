@@ -219,12 +219,22 @@ class Compositional(PhysicsBase):
             dz=self.dz,
         )
 
-        self.well_ctrl_operators = WellControlOperators(
+        # Create well control operator evaluators for EPM and DFM wells
+        self.epm_well_ctrl_operators = WellControlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
+            is_dfm_well=False,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
+        self.dfm_well_ctrl_operators = WellControlOperators(
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            is_dfm_well=True,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
+        )
+
         self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,

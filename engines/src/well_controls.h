@@ -39,7 +39,7 @@ public:
         NUMBER_OF_RATE_TYPES
     };
 
-    static const int n_state_ctrls = 2;  // pressure (BHP) and temperature (BHT) operators
+    static const int n_state_ctrls = 2;  // pressure and temperature operators
 
 protected:
     WellControlType control_type = WellControlType::NONE;
@@ -49,21 +49,22 @@ protected:
     std::vector<value_t> inj_comp;
     std::vector<index_t> block_idx{ 0 };
     std::vector<value_t> state;
-    std::vector<value_t> well_control_ops;
-    std::vector<value_t> well_control_ops_derivs;
-    operator_set_gradient_evaluator_iface* well_controls_etor, * thermal_var_etor;
+    std::vector<value_t> well_ctrl_ops;
+    std::vector<value_t> well_ctrl_ops_derivs;
+    operator_set_gradient_evaluator_iface* epm_well_ctrl_etor, * dfm_well_ctrl_etor, * thermal_var_etor;
 
 public:
     well_control_iface() {}
-    well_control_iface(index_t n_phases_, index_t n_comps_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_)
-        : n_phases(n_phases_), n_comps(n_comps_), thermal(thermal_), well_controls_etor(well_controls_etor_), thermal_var_etor(thermal_var_etor_)
+    well_control_iface(index_t n_phases_, index_t n_comps_, bool thermal_, operator_set_gradient_evaluator_iface* epm_well_ctrl_etor_,
+        operator_set_gradient_evaluator_iface* dfm_well_ctrl_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_)
+        : n_phases(n_phases_), n_comps(n_comps_), thermal(thermal_), epm_well_ctrl_etor(epm_well_ctrl_etor_), dfm_well_ctrl_etor(dfm_well_ctrl_etor_), thermal_var_etor(thermal_var_etor_)
     {
         // Evaluate well control operators
-      // WellControlOperators are defined as follows: P, composition, T, NP MOLAR_RATE, NP MASS_RATE, NP VOLUMETRIC_RATE, and NP ADVECTIVE_HEAT_RATE operators
+        // WellControlOperators are defined as follows: NP MOLAR_RATE, NP MASS_RATE, NP VOLUMETRIC_RATE, NP ADVECTIVE_HEAT_RATE operators, P, and T
         n_vars = n_comps + thermal;
         n_ops = WellControlType::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls;
-        well_control_ops.resize(n_ops);
-        well_control_ops_derivs.resize(n_ops * n_vars);
+        well_ctrl_ops.resize(n_ops);
+        well_ctrl_ops_derivs.resize(n_ops * n_vars);
     }
 
     virtual int set_bhp_control(bool is_inj, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_);

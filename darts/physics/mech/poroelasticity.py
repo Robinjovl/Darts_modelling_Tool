@@ -186,12 +186,22 @@ class Poroelasticity(Compositional):
                 dz=self.dz,
             )
 
-        self.well_ctrl_operators = WellControlOperators(
+        # Create well control operator evaluators for EPM and DFM wells
+        self.epm_well_ctrl_operators = WellControlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
+            is_dfm_well=False,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
+        self.dfm_well_ctrl_operators = WellControlOperators(
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            is_dfm_well=True,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
+        )
+
         self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
@@ -205,8 +215,8 @@ class Poroelasticity(Compositional):
     def init_wells(self, wells):
         """ ""
         Function to initialize the well rates for each well
-        Arguments:
-            -wells: well_object array
+
+        :param wells: List of :class:`ms_well` objects
         """
         for w in wells:
             assert isinstance(w, ms_well)
@@ -216,7 +226,8 @@ class Poroelasticity(Compositional):
                 self.n_vars,
                 self.n_ops,
                 self.phases,
-                self.well_ctrl_itor,
+                self.epm_well_ctrl_itor,
+                self.dfm_well_ctrl_itor,
                 self.thermal_var_itor,
                 self.thermal,
             )

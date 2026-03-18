@@ -106,12 +106,22 @@ class ElementBasedReactiveFlow(Compositional):
                 dz=self.dz,
             )
 
-        self.well_ctrl_operators = WellControlOperators(
+        # Create well control operator evaluators for EPM and DFM wells
+        self.epm_well_ctrl_operators = WellControlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
+            is_dfm_well=False,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
+        self.dfm_well_ctrl_operators = WellControlOperators(
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            is_dfm_well=True,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
+        )
+
         self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
@@ -139,7 +149,8 @@ class ElementBasedReactiveFlow(Compositional):
         - :class:`acc_flux_itor` main interpolator
         - :class:`comp_itor` initialization and porosity interpolator
         - :class:`property_itor` output property interpolator
-        - :class:`well_ctrl_itor` well control interpolator
+        - :class:`epm_well_ctrl_itor` EPM well control interpolator
+        - :class:`dfm_well_ctrl_itor` DFM well control interpolator
         - :class:`thermal_var_itor` well initialization interpolator
         :param platform: Platform to run the simulation
         :type platform: str (cpu or gpu)
@@ -203,9 +214,20 @@ class ElementBasedReactiveFlow(Compositional):
             self.n_property_itor_ops = n_property_ops
         self.acc_flux_w_itor = self.acc_flux_itor[0]
 
-        self.well_ctrl_itor, n_well_ctrl_ops = self.create_interpolator(
-            self.well_ctrl_operators,
-            n_ops=self.well_ctrl_operators.n_ops,
+        self.epm_well_ctrl_itor, n_well_ctrl_ops = self.create_interpolator(
+            self.epm_well_ctrl_operators,
+            n_ops=self.epm_well_ctrl_operators.n_ops,
+            axes_min=self.axes_min,
+            axes_max=self.axes_max,
+            timer_name='well controls interpolation',
+            platform=platform,
+            algorithm=itor_type,
+            mode=itor_mode,
+            precision=itor_precision,
+        )
+        self.dfm_well_ctrl_itor, _ = self.create_interpolator(
+            self.dfm_well_ctrl_operators,
+            n_ops=self.dfm_well_ctrl_operators.n_ops,
             axes_min=self.axes_min,
             axes_max=self.axes_max,
             timer_name='well controls interpolation',

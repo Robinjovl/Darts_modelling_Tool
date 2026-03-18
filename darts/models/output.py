@@ -2239,7 +2239,7 @@ class Output:
             )
 
         batch_size = n_ts * n_conns
-        n_well_ctrl_ops = physics.well_ctrl_operators.n_ops
+        n_well_ctrl_ops = physics.epm_well_ctrl_operators.n_ops
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
         n_vars = physics.n_vars
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
@@ -2256,7 +2256,7 @@ class Output:
             values = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
             dvalues = value_vector(np.zeros((batch_size * n_well_ctrl_ops) * n_vars))
 
-            physics.well_ctrl_itor.evaluate_with_derivatives(
+            physics.epm_well_ctrl_itor.evaluate_with_derivatives(
                 states_vec, block_idx, values, dvalues
             )
 
@@ -2335,7 +2335,7 @@ class Output:
                     np.zeros((batch_size * n_well_ctrl_ops) * n_vars)
                 )
 
-                physics.well_ctrl_itor.evaluate_with_derivatives(
+                physics.epm_well_ctrl_itor.evaluate_with_derivatives(
                     states_vec_dead, block_idx, values_dead, dvalues_dead
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
@@ -2364,7 +2364,7 @@ class Output:
                     np.zeros((batch_size * n_well_ctrl_ops) * n_vars)
                 )
 
-                physics.well_ctrl_itor.evaluate_with_derivatives(
+                physics.epm_well_ctrl_itor.evaluate_with_derivatives(
                     states_vec_dead, block_idx, values_dead, dvalues_dead
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph

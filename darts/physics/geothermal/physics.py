@@ -120,12 +120,20 @@ class Geothermal(PhysicsBase):
             self.property_containers[self.regions[0]]
         )
 
-        # create well control operators evaluator
-        self.well_ctrl_operators = WellControlOperators(
+        # Create well control operator evaluators for EPM and DFM wells
+        self.epm_well_ctrl_operators = WellControlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
+            is_dfm_well=False,
             extrapolation_flag=False,
         )
+        self.dfm_well_ctrl_operators = WellControlOperators(
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            is_dfm_well=True,
+            extrapolation_flag=False,
+        )
+
         self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,

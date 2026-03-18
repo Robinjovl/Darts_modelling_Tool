@@ -152,15 +152,15 @@ class OperatorsBase(operator_set_evaluator_iface):
 
 class WellControlOperators(OperatorsBase):
     """
-    Set of operators for well controls. It contains the pressure, composition and temperature of the wellhead,
-    plus a set of rate-control operators for different types of rates: molar-, mass-, volumetric- or advective
-    heat rate controls
+    Set of operators for well controls of EPM and DFM wells. It contains a set of operators for different types of
+    rate controls: molar-, mass-, volumetric- or advective heat rate controls, plus pressure and temperature.
     """
 
     def __init__(
         self,
         property_container: PropertyBase,
         thermal: bool,
+        is_dfm_well: bool,
         extrapolation_flag: bool = True,
         dz: float = None,
     ):
@@ -179,6 +179,16 @@ class WellControlOperators(OperatorsBase):
 
         self.n_ops = 2 + self.nph * 4
 
+        if is_dfm_well:
+            # For the EPM well, the flow factor is phase saturation
+            self.get_rate_factor = lambda: self.property.sat[self.property.ph]
+        else:
+            # For the EPM well, the flow factor is phase mobility
+            self.get_rate_factor = (
+                lambda: self.property.kr[self.property.ph]
+                / self.property.mu[self.property.ph]
+            )
+
     def evaluate(self, state, values):
         # Check if extrapolation needs to be applied
         if super().apply_extrapolation(state, values):
@@ -190,45 +200,33 @@ class WellControlOperators(OperatorsBase):
 
         self.property.evaluate(state_np)
 
-        # TODO: This is now for EPM. DFM should be supported as well.
-        ms_type = "EPM"
-        # Store rate controls
-        if ms_type == "EPM":
-            mobility = (
-                self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
-            )
-        elif ms_type == "DFM":
-            mobility = self.property.sat[self.property.ph]
+        rate_factor = self.get_rate_factor()
 
-        # Molar rate
+        # Molar rate operator
         idx = 0
         values_np[idx + self.property.ph] = (
-            self.property.dens_m[self.property.ph] * mobility
+            self.property.dens_m[self.property.ph] * rate_factor
         )
 
-        # Mass rate
+        # Mass rate operator
         idx += self.nph
         values_np[idx + self.property.ph] = (
-            self.property.dens[self.property.ph] * mobility
+            self.property.dens[self.property.ph] * rate_factor
         )
 
-        # Volumetric rate
+        # Volumetric rate operator
         idx += self.nph
-        values_np[idx + self.property.ph] = mobility
+        values_np[idx + self.property.ph] = rate_factor
 
-        # Advective heat rate
+        # Advective heat rate operator
         idx += self.nph
         if self.thermal:
             self.property.evaluate_thermal(state_np)
             values_np[idx + self.property.ph] = (
                 self.property.enthalpy[self.property.ph]
                 * self.property.dens_m[self.property.ph]
-                * mobility
+                * rate_factor
             )
-
-        # TODO: I can add operators for DFM wells for each rate, but instead of mobility, saturation is used.
-        # In this way, derivative of the property can be used more easily in the cpp side since all the properties are
-        # altogether, and appropriate operators will be used by checking the well type in the cpp side.
 
         # Store pressure (P) and temperature (T) of the current state for a generic state specification.
         # This is needed when pressure or temperature is not part of the state variables
