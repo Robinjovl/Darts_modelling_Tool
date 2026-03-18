@@ -133,10 +133,11 @@ int ms_well::initialize_control_dfm(std::vector<value_t>& X)
 
 int ms_well::check_constraints(double dt, std::vector<value_t>& X)
 {
-    if (ms_type == ms_well::MS_Type::DFM)
-        throw std::runtime_error("DFM wells do not support well constraints yet!");
-
     if (constraint.get_well_control_type() > well_control_iface::WellControlType::NONE)
+    {
+        if (ms_type == ms_well::MS_Type::DFM)
+            throw std::runtime_error("DFM wells do not support well constraints yet!");
+
         if (constraint.check_constraint_violation(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X))
         {
             // constraint violation occured, switch control and constrain
@@ -144,6 +145,7 @@ int ms_well::check_constraints(double dt, std::vector<value_t>& X)
             std::cout << "Well " << name << " switched to " << control.get_well_control_type_str() << " (target: " << control.get_well_control_target_str() << ")\n";
             //initialize_control_epm(X);
         }
+    }
 
     return 0;
 }

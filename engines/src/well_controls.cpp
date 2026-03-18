@@ -6,7 +6,7 @@
 
 int well_control_iface::set_bhp_control(bool is_inj, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_)
 {
-	this->well_state_offset = (is_inj) ? 0 : 1; // If injection well, evaluates operators with state of well head; for production, it uses well body
+	this->well_state_offset = (is_inj) ? 0 : 1; // if injection well, evaluates operators with state of well head; for production, it uses well body
 	this->control_type = well_control_iface::WellControlType::BHP;
 	this->phase_idx = std::nullopt;  // phase_idx is not used for BHP control
 
@@ -19,9 +19,9 @@ int well_control_iface::set_bhp_control(bool is_inj, value_t target_, std::vecto
 
 int well_control_iface::set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, std::optional<index_t> phase_idx_, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_)
 {
-	this->well_state_offset = (is_inj) ? 0 : 1;  // If injection well, evaluates operators with state of well head; for production, it uses well body
+	this->well_state_offset = (is_inj) ? 0 : 1;  // if injection well, evaluates operators with state of well head; for production, it uses well body
 	this->control_type = control_type_;
-	this->phase_idx = phase_idx_;  // If phase_idx is nullopt, total rate is controlled
+	this->phase_idx = phase_idx_;  // if phase_idx is nullopt, total rate is controlled
 
     // Fill well control spec
 	this->target = target_;
@@ -332,7 +332,7 @@ int well_control_iface::add_to_jacobian_epm(value_t dt, index_t well_head_idx, v
 		}
 		else
 		{
-			value_t total_rate = 0.0;  // Accumulate total well rate over all phases
+			value_t total_rate = 0.0;  // accumulate total well rate over all phases
 
 			// Reset derivatives of the rate control equation
 			for (int jj = 0; jj < n_vars; jj++)
@@ -464,7 +464,7 @@ int well_control_iface::add_to_jacobian_dfm(value_t dt, index_t well_head_idx, v
 		}
 		else
 		{
-			value_t total_rate = 0.0;  // Accumulate total well rate over all phases
+			value_t total_rate = 0.0;  // accumulate total well rate over all phases
 
 			// Reset derivatives of the rate control equation
 			for (int jj = 0; jj < n_vars; jj++)
