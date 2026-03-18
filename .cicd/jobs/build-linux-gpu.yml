@@ -58,7 +58,7 @@ build-linux-tahiti-gpu:
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
         - conda env remove -n ${CONDA_ENV} -y || true
     rules:
-        - if: $MCP_TRIGGER_TAHITI_GPU == "1"
+        - if: $MCP_TRIGGER_TAHITI_GPU == "1" && $MCP_TAHITI_GPU_TARGET == "build"
         - when: never
     extends: .build-linux-gpu
 

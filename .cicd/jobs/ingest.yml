@@ -209,7 +209,7 @@ assemble-model-references-tahiti-gpu:
           test "${GPU_PKL_COUNT}" -gt 0
           test "${JSON_CONFIG_COUNT}" -gt 0
     rules:
-        - if: $MCP_TRIGGER_TAHITI_GPU == "1"
+        - if: $MCP_TRIGGER_TAHITI_GPU == "1" && $MCP_TAHITI_GPU_TARGET == "model_refs"
         - when: never
     artifacts:
         paths:
