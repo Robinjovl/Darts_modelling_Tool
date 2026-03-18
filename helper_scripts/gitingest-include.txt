@@ -3,6 +3,19 @@
 # Lines beginning with '#' are treated as comments.
 # Blank lines are ignored.
 
+# JSON / ModelSpec API
+darts/api/__init__.py
+darts/api/autospec.py
+darts/api/builder.py
+darts/api/data_refs.py
+darts/api/introspection.py
+darts/api/json_model.py
+darts/api/model_adapter.py
+darts/api/run_json_model.py
+darts/api/schemas.py
+darts/api/spec_utils.py
+darts/api/type_registry.py
+
 darts/input/input_data.py
 darts/models/darts_model.py
 darts/models/opt/opt_module_settings.py
