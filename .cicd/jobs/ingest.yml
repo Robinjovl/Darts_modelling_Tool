@@ -139,27 +139,80 @@ gitingest-digest:
         expire_in: 1 week
 
 trigger-mcp-ingest:
-  stage: ingest
-  needs: ["gitingest-digest"]
-  trigger:
-    project: open-darts/mcp-server
-    branch: main
-    strategy: depend
-    forward:
-      pipeline_variables: true
-  variables:
-    OPEN_DARTS_PROJECT_ID: "$CI_PROJECT_ID"
-    OPEN_DARTS_PIPELINE_ID: "$CI_PIPELINE_ID"
-    OPEN_DARTS_COMMIT_SHA: "$CI_COMMIT_SHA"
-    OPEN_DARTS_REF: "$CI_COMMIT_REF_NAME"
-    OPEN_DARTS_GITINGEST_JOB_NAME: "gitingest-digest"
-    # pulled from dotenv produced by previous job:
-    OPEN_DARTS_GITINGEST_JOB_ID: "$OPEN_DARTS_GITINGEST_JOB_ID"
-    # Instruct downstream to run only ingest job
-    MCP_INGEST_ONLY: "1"
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "pipeline"
-      when: never
-    - if: $CI_COMMIT_BRANCH == "development" && $ENABLE_GITINGEST == "1"
-      when: on_success
-    - when: never
+    stage: ingest
+    needs: ["gitingest-digest"]
+    trigger:
+        project: open-darts/mcp-server
+        branch: main
+        strategy: depend
+        forward:
+            pipeline_variables: true
+    variables:
+        OPEN_DARTS_PROJECT_ID: "$CI_PROJECT_ID"
+        OPEN_DARTS_PIPELINE_ID: "$CI_PIPELINE_ID"
+        OPEN_DARTS_COMMIT_SHA: "$CI_COMMIT_SHA"
+        OPEN_DARTS_REF: "$CI_COMMIT_REF_NAME"
+        OPEN_DARTS_GITINGEST_JOB_NAME: "gitingest-digest"
+        # pulled from dotenv produced by previous job:
+        OPEN_DARTS_GITINGEST_JOB_ID: "$OPEN_DARTS_GITINGEST_JOB_ID"
+        # Instruct downstream to run only ingest job
+        MCP_INGEST_ONLY: "1"
+    rules:
+        - if: $CI_PIPELINE_SOURCE == "pipeline"
+          when: never
+        - if: $CI_COMMIT_BRANCH == "development" && $ENABLE_GITINGEST == "1"
+          when: on_success
+        - when: never
+
+assemble-model-references-tahiti-gpu:
+    stage: ingest
+    tags:
+        - linux_tahiti_gpu
+    needs: []
+    variables:
+        MODEL_REFERENCES_OUT_DIR: "digest"
+        MODEL_REFERENCE_PKL_PATTERNS: |
+            */ref/*gpu*.pkl
+    script:
+        - set -euo pipefail
+        - mkdir -p "${MODEL_REFERENCES_OUT_DIR}/models"
+        - PKL_MATCHES_FILE="$(mktemp)"
+        - JSON_MATCHES_FILE="$(mktemp)"
+        - trap 'rm -f "${PKL_MATCHES_FILE}" "${JSON_MATCHES_FILE}"' EXIT
+        - |
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            [ "${pattern#\#}" != "$pattern" ] && continue
+            find models -type f -path "$pattern"
+          done <<EOF | sort -u > "${PKL_MATCHES_FILE}"
+          ${MODEL_REFERENCE_PKL_PATTERNS}
+          EOF
+        - find models -mindepth 2 -maxdepth 2 -type f -name "*.json" | sort -u > "${JSON_MATCHES_FILE}"
+        - GPU_PKL_COUNT="$(wc -l < "${PKL_MATCHES_FILE}")"
+        - JSON_CONFIG_COUNT="$(wc -l < "${JSON_MATCHES_FILE}")"
+        - |
+          while IFS= read -r relpath; do
+            [ -z "$relpath" ] && continue
+            mkdir -p "${MODEL_REFERENCES_OUT_DIR}/$(dirname "$relpath")"
+            cp --parents -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}" 2>/dev/null || cp -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}/$relpath"
+          done < "${PKL_MATCHES_FILE}"
+        - |
+          while IFS= read -r relpath; do
+            [ -z "$relpath" ] && continue
+            mkdir -p "${MODEL_REFERENCES_OUT_DIR}/$(dirname "$relpath")"
+            cp --parents -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}" 2>/dev/null || cp -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}/$relpath"
+          done < "${JSON_MATCHES_FILE}"
+        - |
+          cat "${PKL_MATCHES_FILE}" "${JSON_MATCHES_FILE}" | sort -u > "${MODEL_REFERENCES_OUT_DIR}/models/_collected-files.txt"
+          echo "Collected ${GPU_PKL_COUNT} GPU reference PKL files."
+          echo "Collected ${JSON_CONFIG_COUNT} JSON model configs."
+          test "${GPU_PKL_COUNT}" -gt 0
+          test "${JSON_CONFIG_COUNT}" -gt 0
+    rules:
+        - if: $MCP_TRIGGER_TAHITI_GPU == "1"
+        - when: never
+    artifacts:
+        paths:
+            - "digest/models/"
+        when: always
+        expire_in: 1 week
