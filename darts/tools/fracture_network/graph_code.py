@@ -1171,12 +1171,18 @@ def create_geo_file(
         # Take two points per segment and write to .geo file:
         # e.g. point: Point(1) = {.1, 0, 0, lc};
         nodes = np.zeros((2,), dtype=int)
-        nodes[0] = np.where(
+        node_0 = np.where(
             np.logical_and(ii[0] == unique_nodes[:, 0], ii[1] == unique_nodes[:, 1])
         )[0]
-        nodes[1] = np.where(
+        node_1 = np.where(
             np.logical_and(ii[2] == unique_nodes[:, 0], ii[3] == unique_nodes[:, 1])
         )[0]
+        if node_0.size == 0 or node_1.size == 0:
+            raise ValueError(
+                "Could not map fracture segment endpoints to unique node indices."
+            )
+        nodes[0] = int(node_0[0])
+        nodes[1] = int(node_1[0])
 
         # Check if first point is already created, if not, add it:
         if not points_created[nodes[0]]:

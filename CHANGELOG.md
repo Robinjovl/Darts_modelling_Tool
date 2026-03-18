@@ -1,18 +1,86 @@
-# 1.3.3 [Future]
-- Cell centroids are now included under static variables in the output file `reservoir_solution.h5`. ([!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282))
-- Faster well output with vectorized interpolators. In the past two for loops were used over time steps + over connection ids (wellheads and perforations). Now, they are removed.
-- Use operator interpolators instead of evaluating some operators explicitly for well rates calculations.
-- Time saving by saving well output states after DartsModel.run(). ([!228](https://gitlab.com/open-darts/open-darts/-/merge_requests/228))
-- Change operators by splitting `FLUX_OP` operator into two operators and introducing `SAT_OP`. ([!234](https://gitlab.com/open-darts/open-darts/-/merge_requests/234))
-- Add potential energy to the energy conservation equation ([!246](https://gitlab.com/open-darts/open-darts/-/merge_requests/246). [!263](https://gitlab.com/open-darts/open-darts/-/merge_requests/263))
-- Add the Drift-Flux Model (DFM) as a new well model. ([!230](https://gitlab.com/open-darts/open-darts/-/merge_requests/230))
-- Add StructRadialReservoir and UnstructRadialReservoir classes, derived from (Un/)StructuredReservoir classes. Implementation in darts/models/ccs and darts/models/dfm_well ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
-- Add Output.output_to_plt() method for StructReservoir classes using xarray interface. ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
-- Chemistry: Built-in interfaces to third-party geochemical flashes (PHREEQC and Reaktoro), databases (`phreeqc.dat`, `pitzer.dat`, `supcrtbl.dat`) and reaction kinetics model (`KineticRate`) for carbonate minerals (`PalandriKharaka.json`). New Element-based physics for reactive flow and transport in `ElementBasedReactiveFlow` supporting built-in thirdparty solvers and databases. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
-- `CFL_max` is added to the H5 well output. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
-- More robust OBL cache saving using atomic writes. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
-- Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+# #.#.# [Future]
+- Support using the OBL method to calculate DFM well phase velocities. Direct method is still the default method since it is safer in terms of stability ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Add `x_mass` (mass composition of each phase) as a new property to `PropertyContainer` of the super engine because it is needed for evaluation of phase velocities in DFM wells using the OBL method ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Make DFM velocity calculation independent of the order of the phases specified by the user, so now the order of the phases does not affect the performance of DFM wells, but the user needs to specify `"G"` and `"L"` as names of gas and liquid phases for two-phase flow and `"G"`, `"L_a"`, and `"L_b"` as names of gas and two liquid phases for three-phase flow  ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)).
+- Correct derivative of averaged density of the liquid phase for three-phase flow of gas and two liquid phases ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Improve storage and visualization of properties of DFM wells ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
+  - Streamline storage and visualization of DFM well properties
+  - Support storage and visualization of multiple DFM wells
+  - Support storage of DFM well output in `.vtp` files to be visualized in ParaView
+- Support live plotting ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
+  - Live (real-time) plots for solver properties (time step size and number of Newton iterations) and tracking the state of a block on the PH diagram
+  - Live (real-time) plots for profiles of DFM well properties
+- Align depth of perforated well segments with reservoir blocks ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Fix BHT calculation for PH formulation in the method `store_bhp_bht` in `output.py` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Store the arrays `time`, `n_newton_iters`, and `time_step_size` in the class `DartsModel` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Implement `engine_base::apply_thermal_var_correction` to improve the issue related to sharp enthalpy updates from the Newton-Raphson solver for the pressure-enthalpy (PH) formulation ([!289](https://gitlab.com/open-darts/open-darts/-/merge_requests/289))
+- Fluid heat capacity is added into the input data for THM models [!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270):
 - Breaking changes:
+  - Rock thermal conductivity was renamed in the input data for geomechanical models:
+  \
+  {- Before: idata.rock.conductivity -}\
+  {+ Now:    idata.rock.thermal_conductivity +}
+  \
+
+
+# 1.4.0 [17-02-2026]
+- OBL and operators:
+  - Extrapolation of operators at supporting points with negative last compositions for consistent interpolation in hypercubes at the edge of the compositional domain - current logic works only for equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
+  - Consistent composition bounds using min_z/max_z (e.g., 0 to 1), epsilon (for min_axis_z/max_axis_z: eps_z, 1-(nc-1)*eps_z) and sim_eps (min_axis_z + sim_eps, max_axis_z - sim_eps) - current logic only fully verified with equal compositional axes across all dimensions. ([!204](https://gitlab.com/open-darts/open-darts/-/merge_requests/204))
+  - Change operators by splitting density out of `GRAD_OP` and introducing new `DENS_OP`. ([!237](https://gitlab.com/open-darts/open-darts/-/merge_requests/237))
+  - Change operators by splitting `FLUX_OP` operator into two operators and introducing `SAT_OP`. ([!234](https://gitlab.com/open-darts/open-darts/-/merge_requests/234))
+  - More robust OBL cache saving using atomic writes. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+  - Always use `WellOperators` for wells (in the past, `ReservoirOperators` was used for wells for thermal scenarios) ([!284](https://gitlab.com/open-darts/open-darts/-/merge_requests/284)).
+
+- Physics:
+  - Added the Drift-Flux Model (DFM) as a new multi-segment well model. ([!230](https://gitlab.com/open-darts/open-darts/-/merge_requests/230))
+  - Added potential energy to the energy conservation equation. This feature is off by default ([!246](https://gitlab.com/open-darts/open-darts/-/merge_requests/246), [!263](https://gitlab.com/open-darts/open-darts/-/merge_requests/263))
+  - Chemistry: Built-in interfaces to third-party geochemical flashes (PHREEQC and Reaktoro), databases (`phreeqc.dat`, `pitzer.dat`, `supcrtbl.dat`) and reaction kinetics model (`KineticRate`) for carbonate minerals (`PalandriKharaka.json`). New Element-based physics for reactive flow and transport in `ElementBasedReactiveFlow` supporting built-in thirdparty solvers and databases. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+
+- Reservoirs:
+  - Add StructRadialReservoir and UnstructRadialReservoir classes, derived from (Un/)StructuredReservoir classes. Implementation in darts/models/ccs and darts/models/dfm_well ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
+  - Easy setting of rock properties by regions is [implemented](https://gitlab.com/open-darts/open-darts/-/merge_requests/251) for CPG reservoir (ROCKNUM)
+
+- Output:
+  - Cell centroids are now included under static variables in the output file `reservoir_solution.h5`. ([!282](https://gitlab.com/open-darts/open-darts/-/merge_requests/282))
+  - Reduced runtime by saving well output after DartsModel.run(). ([!228](https://gitlab.com/open-darts/open-darts/-/merge_requests/228))
+  - Reduced well output evaluation time by using vectorized interpolators. In the past two for loops were used over time steps + over connection ids (wellheads and perforations). Now, they are removed. In addition, all operators now are evaluated using interpolators.
+  - Added Output.output_to_plt() method for StructReservoir classes using xarray interface. ([!169](https://gitlab.com/open-darts/open-darts/-/merge_requests/169))
+  - `CFL_max` is added to the H5 well output. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+  - Strain rate and additional output to vtk for poroelastic model: [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/274)
+  - Custom arrays output support for [fracture data](https://gitlab.com/open-darts/open-darts/-/merge_requests/241)
+
+- Solvers:
+  - An option to use PARDISO linear solver is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/247)
+  - An optional use of PETSc linear solver for Geothermal and Poromechanical physics is [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/235)
+
+- Models:
+  - Added a simple example of a thermal model with foam (models/3ph_comp_w_foam)
+  - fracture_network model: 3D meshes are added, perforation dpeth range is supported, supported meshes without fractures [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/271); related [fix](https://gitlab.com/open-darts/open-darts/-/merge_requests/243)
+
+- Tools:
+  - added a [script](https://gitlab.com/open-darts/open-darts/-/merge_requests/271) to convert meshes from paraview format to gmsh format
+
+- Build system and CI/CD:
+  - Python 3.13 is [supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/261) and Python 3.9 support is [no longer supported](https://gitlab.com/open-darts/open-darts/-/merge_requests/248)
+  - Switched to ubuntu2018 docker image and conda environments in the [pipelines](https://gitlab.com/open-darts/open-darts/-/merge_requests/267)
+  - Support -e --with-deps -j arguments in installation scripts. [!238](https://gitlab.com/open-darts/open-darts/-/merge_requests/238)
+  - CI/CD jobs moved from `helper_scripts/ci_jobs` to `.cicd/jobs`, splitted for platforms, improved job rules
+  - Added pre-commit/linting in the pipelines, switched to ruff-based formatting [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/233) and added [gitingest](https://gitlab.com/open-darts/open-darts/-/merge_requests/239)
+  - Added [Valgrind](https://gitlab.com/open-darts/open-darts/-/merge_requests/201) checks in the pipelines
+  - Added an additional job for GPU Linux platform based on an apptainer [image](https://gitlab.com/open-darts/open-darts/-/merge_requests/232)
+
+- Breaking changes:
+  - Input arguments to facilitate consistent compositional axes and extrapolation:
+  \
+  {- Before: Compositional(..., min_z=zero/10, max_z=1-zero/10) -}\
+  {+ Now:    Compositional(..., min_z=0, max_z=1, epsilon_z=zero/10, sim_eps_multiplier=10, extrapolation_flag=True) +}
+  \
+  {- Before: PropertyContainer(..., min_z=zero) -}\
+  {+ Now:    PropertyContainer(..., eps_z=epsilon) +}
+  \
+  {- Before: OperatorsBase(...) -}\
+  {+ Now:    OperatorsBase(..., extrapolation_flag=True, dz: float) +}
   - Rename an input argument of the method `add_well`:\
   {- Before: self.reservoir.add_well(..., wellbore_diameter) -}\
   {+ Now:    self.reservoir.add_well(..., well_diameter) +}
@@ -25,11 +93,19 @@
 
 # 1.3.2 [03-07-2025]
 - Porosity-permeability relationship: permporo_mult_ev
+  - Introduce permporo_mult_ev, turn PORO_OP into MULT_OP, use harmonic mean for facial averaging of multiplier
 - EoSDensity and EoSEnthalpy API changes:
-	- Update darts-flash enthalpy call in EoSEnthalpy class: H_PT() to H()
-	- Add optional arguments to pass ions and lumped ions to EoSDensity and EoSEnthalpy constructors
+  - Update darts-flash enthalpy call in EoSEnthalpy class: eos.H_PT() to eos.H()
+  - Add optional arguments to pass ions and lumped ions to EoSDensity and EoSEnthalpy constructors
+- Contact mechanics generalization:
+  - Fixed logic in displaced_fault model: call self.reservoir_depletion() anyway since it is needed to check hash for objects for example porosity remove 'self.unstr_discr', 'self.pm' from checking hash as they are not available at check hash stage fix hash comparison (it was not comparing hash of the current data)
+  - added run_tests() to be able to run tests within a displaced_fault model, locally.
+  - Code refactoring (continues [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/188)):
+     1. get_normal_to_bound_face, get_parametrized_fault_props, write_fault_props are moved to the base class
+     2. code piece is put into a function 'init_fractures' of the base class
+- New feauture: pass property array dictionaries directly to output_to_vtk()
 
-# 1.3.1 [07-06-2025]
+# 1.3.1 [10-06-2025]
 - Add IPhreeqc to thirdparty dependencies, added phreeqc_dissolution model with CO2 injection and dissolution-precipitation kinetics [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
 - Apply_rhs_flux supported for GPU platform [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
 - Added .pvd file generation for unstructured meshes for Time in ParaView [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/216)
@@ -137,7 +213,7 @@
 			   {+ m.run(100)+}\
 			   {+ time_data_dict = m.output.store_well_time_data()+}\
                {+ time_data_df = pd.DataFrame.from_dict(time_data_dict)+}\
-			   {+ m.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])+}\
+			   {+ m.output.plot_well_time_data(phase_volumetric_rates=True)+}\
 
 		{- Before: m.save_data_to_h5('solution') -}\
 		{+ Now: m.output.save_data_to_h5('reservoir') +}

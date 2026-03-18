@@ -243,9 +243,10 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, value_t dt,
 template <uint8_t NC, uint8_t NP>
 int engine_nce_g_gpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                    std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                                   operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                    sim_params *params_, timer_node *timer_)
 {
-  engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+  engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 
   allocate_device_data(RV, &RV_d);
   allocate_device_data(mesh->heat_capacity, &mesh_hcap_d);
@@ -440,4 +441,3 @@ engine_nce_g_gpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<valu
 };
 
 template class engine_nce_g_gpu<1, 2>;
-

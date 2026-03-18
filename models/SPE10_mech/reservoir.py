@@ -125,7 +125,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.discr.biots.append(disc_matrix33(idata.rock.biot))
             self.discr.stfs.append(disc_stiffness(lam[cell_id], mu[cell_id]))
             if self.thermoporoelasticity:
-                self.discr.heat_conductions.append(disc_matrix33(idata.rock.conductivity))
+                self.discr.heat_conductions.append(disc_matrix33(idata.rock.thermal_conductivity))
                 self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn[cell_id]))
 
     def write_to_vtk(self, output_directory, ith_step, engine):

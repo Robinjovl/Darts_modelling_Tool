@@ -226,9 +226,9 @@ void engine_base_gpu::apply_local_chop_correction(std::vector<value_t> &X, std::
     new_z[nc - 1] = 1.0;
     for (int j = 0; j < nc - 1; j++)
     {
-      old_z[j] = X[i * n_vars + j + z_var];
+      old_z[j] = X[i * n_vars + j + z_var_idx];
       old_z[nc - 1] -= old_z[j];
-      new_z[j] = old_z[j] - dX[i * n_vars + j + z_var];
+      new_z[j] = old_z[j] - dX[i * n_vars + j + z_var_idx];
       new_z[nc - 1] -= new_z[j];
     }
 
@@ -244,7 +244,7 @@ void engine_base_gpu::apply_local_chop_correction(std::vector<value_t> &X, std::
     if (ratio < 1.0) // perform chopping if ratio is below 1.0
     {
       n_corrected++;
-      for (int j = z_var; j < z_var + nc - 1; j++)
+      for (int j = z_var_idx; j < z_var_idx + nc - 1; j++)
       {
         dX[i * n_vars + j] *= ratio;
       }

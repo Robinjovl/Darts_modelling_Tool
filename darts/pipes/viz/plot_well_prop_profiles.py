@@ -8,40 +8,43 @@ import pandas as pd
 from matplotlib.ticker import FormatStrFormatter
 
 from darts.models.darts_model import DartsModel
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_well_prop_profiles(
-    primary_vars_and_phase_props_file_address: str,
-    h5_well_data: dict,
+    well_name: str,
     coupled_model: DartsModel,
 ):
     """
-    This function is used to plot well property profiles at certain time steps. Please note that currently, the function
+    Plot property profiles at certain time steps for the specified well. Please note that currently, the function
     is limited to report_step_labels and report_step_times used below.
 
-    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of well segments are stored
-    :type primary_vars_and_phase_props_file_address: str
-    :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
-    :type h5_well_data: dict
+    :param well_name: Name of the well the properties of which will be plotted
+    :type well_name: str
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
     """
-    main_dir = os.path.join(coupled_model.output_folder, 'well_prop_profiles')
+    output_folder_name = f'well_prop_profiles_{well_name}'
+    main_dir = os.path.join(coupled_model.output_folder, output_folder_name)
 
-    # Reset_directory
+    # Reset directory
     if os.path.exists(main_dir):
         shutil.rmtree(main_dir)
     os.makedirs(main_dir)
 
     # Load primary vars and phase props
-    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+    well_props_file_path = os.path.join(
+        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
+    )
+    data_frame = pd.read_pickle(well_props_file_path)
 
-    simulation_time = h5_well_data["dynamic"]["time"]
+    # Well HDF5 file is used here to get the time step sizes
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
+    simulated_time = h5_well_dict["dynamic"]["time"]
 
-    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
-    # and assigns it to well_geom.
-    well_geom = next(iter(coupled_model.wells.values())).geometry
+    # Get well geometry info
+    well_geom = coupled_model.wells[well_name].geometry
 
     # Select the last num_segments cells (wellbore segments)
     num_segments = well_geom.num_segments
@@ -104,7 +107,7 @@ def plot_well_prop_profiles(
 
     report_step_times = np.cumsum(report_step_times)
     report_indices = [
-        np.where(np.isclose(simulation_time, a))[0][0] for a in report_step_times
+        np.where(np.isclose(simulated_time, a))[0][0] for a in report_step_times
     ]
 
     # Generate a colormap for the report steps
@@ -172,6 +175,8 @@ def plot_well_prop_profiles(
     plt.savefig(os.path.join(main_dir, "wellbore_pressure_profiles.svg"), format='svg')
     plt.show()
 
+    plt.close()
+
     # %% z_c
     # Create a figure and a single set of axes
     plt.figure(figsize=(10, 6))
@@ -237,6 +242,8 @@ def plot_well_prop_profiles(
     )
     plt.show()
 
+    plt.close()
+
     # %% Temperature
     # Create a figure and a single set of axes
     plt.figure(figsize=(10, 6))
@@ -292,6 +299,8 @@ def plot_well_prop_profiles(
     )
     plt.show()
 
+    plt.close()
+
     # %% Gas saturation
     # Create a figure and a single set of axes
     plt.figure(figsize=(10, 6))
@@ -342,3 +351,5 @@ def plot_well_prop_profiles(
     plt.savefig(os.path.join(main_dir, "wellbore_sG_profiles.pdf"), format='pdf')
     plt.savefig(os.path.join(main_dir, "wellbore_sG_profiles.svg"), format='svg')
     plt.show()
+
+    plt.close()

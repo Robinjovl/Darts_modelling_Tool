@@ -7,7 +7,7 @@ from darts.engines import value_vector, redirect_darts_output
 redirect_darts_output('binary.log')
 
 n = Model()
-n.init()
+n.init(discr_type="tpfa")
 
 time = 10
 n.run(time)

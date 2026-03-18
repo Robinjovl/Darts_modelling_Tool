@@ -44,8 +44,7 @@ class Model(CICDModel):
 
     def set_wells(self):
         if self.wells_mode == 'wells':
-            well_type = ms_well.MS_Type.EPM
-            self.reservoir.add_well("P1", well_type)
+            self.reservoir.add_well("P1")
             self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx // 2, 1, 1), ms_epm=False)
 
     def set_physics(self):
@@ -140,7 +139,7 @@ class ModelProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         self.ph = np.array([0], dtype=np.intp)
@@ -150,7 +149,7 @@ class ModelProperties(PropertyContainer):
             # molar weight of mixture
             for i in range(self.nc):
                 M += self.Mw[i] * self.x[j][i]
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, 0)  # output in [kg/m3]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure, 0)  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 

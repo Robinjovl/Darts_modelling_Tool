@@ -3,8 +3,8 @@ from darts.physics.base.operators_base import (
     PropertyOperators as BasePropertyOperators,
 )
 from darts.physics.base.operators_base import (
+    ThermalVarOperator,
     WellControlOperators,
-    WellInitOperators,
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
@@ -112,7 +112,7 @@ class ElementBasedReactiveFlow(Compositional):
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
-        self.well_init_operators = WellInitOperators(
+        self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
@@ -140,7 +140,7 @@ class ElementBasedReactiveFlow(Compositional):
         - :class:`comp_itor` initialization and porosity interpolator
         - :class:`property_itor` output property interpolator
         - :class:`well_ctrl_itor` well control interpolator
-        - :class:`well_init_itor` well initialization interpolator
+        - :class:`thermal_var_itor` well initialization interpolator
         :param platform: Platform to run the simulation
         :type platform: str (cpu or gpu)
         :param itor_type: Interpolator type
@@ -215,9 +215,9 @@ class ElementBasedReactiveFlow(Compositional):
             precision=itor_precision,
         )
         self.n_well_ctrl_itor_ops = n_well_ctrl_ops
-        self.well_init_itor, n_well_init_ops = self.create_interpolator(
-            self.well_init_operators,
-            n_ops=self.well_init_operators.n_ops,
+        self.thermal_var_itor, n_thermal_var_ops = self.create_interpolator(
+            self.thermal_var_operator,
+            n_ops=self.thermal_var_operator.n_ops,
             axes_min=value_vector(self.PT_axes_min),
             axes_max=value_vector(self.PT_axes_max),
             timer_name='well initialization',
@@ -226,4 +226,4 @@ class ElementBasedReactiveFlow(Compositional):
             mode=itor_mode,
             precision=itor_precision,
         )
-        self.n_well_init_itor_ops = n_well_init_ops
+        self.n_thermal_var_ops = n_thermal_var_ops
