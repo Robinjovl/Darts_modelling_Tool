@@ -77,16 +77,16 @@ public:
         this->constraint.set_rate_control(is_inj, control_type, phase_idx, target, inj_comp, inj_temp);
     }
 
-    int add_to_jacobian(double dt, std::vector<value_t>& X, value_t* jac_well_head, std::vector<value_t>& RHS);
+    int initialize_control_epm(std::vector<value_t>& X);
+    int initialize_control_dfm(std::vector<value_t>& X);
 
     int check_constraints(double dt, std::vector<value_t>& X);
+
+    int add_to_jacobian(double dt, std::vector<value_t>& X, value_t* jac_well_head, std::vector<value_t>& RHS);
 
     int calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data);
 
     int calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data, index_t n_blocks);
-
-    int initialize_control_epm(std::vector<value_t>& X);
-    int initialize_control_dfm(std::vector<value_t>& X);
 
     void addSegment();
 

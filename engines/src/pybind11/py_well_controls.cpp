@@ -89,13 +89,13 @@ void pybind_well_controls(py::module &m)
   py::class_<well_control_iface, py_well_control_iface /* <--- trampoline*/> well_control_iface(m, "well_control_iface");
   well_control_iface
     .def(py::init<index_t, index_t, bool, operator_set_gradient_evaluator_iface*, operator_set_gradient_evaluator_iface*, operator_set_gradient_evaluator_iface*>())
-    .def("add_to_jacobian_epm", &well_control_iface::add_to_jacobian_epm)
-    .def("add_to_jacobian_dfm", &well_control_iface::add_to_jacobian_dfm)
-    .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
-    .def("set_bhp_control", &well_control_iface::set_bhp_control)
-    .def("set_rate_control", &well_control_iface::set_rate_control)
-    .def("get_well_control_type_str", &well_control_iface::get_well_control_type_str)
-    .def("get_well_control_type", &well_control_iface::get_well_control_type);
+      .def("set_bhp_control", &well_control_iface::set_bhp_control)
+      .def("set_rate_control", &well_control_iface::set_rate_control)
+      .def("get_well_control_type", &well_control_iface::get_well_control_type)
+      .def("get_well_control_type_str", &well_control_iface::get_well_control_type_str)
+      .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
+      .def("add_to_jacobian_epm", &well_control_iface::add_to_jacobian_epm)
+      .def("add_to_jacobian_dfm", &well_control_iface::add_to_jacobian_dfm);
 
   py::enum_<well_control_iface::WellControlType>(well_control_iface, "WellControlType")
     .value("NONE", well_control_iface::WellControlType::NONE)

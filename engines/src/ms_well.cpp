@@ -69,6 +69,68 @@ void ms_well::init_mech_physics(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, in
     dfm_well_ctrl_etor_ad = dfm_well_ctrl_etor_;  // adjoint method
 }
 
+int ms_well::initialize_control_epm(std::vector<value_t>& X)
+{
+    if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
+    {
+        std::cout << "Well " << name << " has uninitialized well control\n";
+        exit(1);
+    }
+    std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
+
+    // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
+    for (auto& p : perforations)
+    {
+        index_t i_w, i_r;
+        value_t wi, wid;
+        std::tie(i_w, i_r, wi, wid) = p;
+        i_w += well_body_idx;
+
+        // move the state from X
+        std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
+        // copy neighbour state
+        std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+        // initialize
+        control.initialize_well_block_epm(state, state_neighbour);
+        // move initialized state back to X
+        std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
+    }
+    // Initialize state in well head - state neighbour is well body, state is well head
+    // move the state from X
+    std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
+    // copy neighbour state
+    std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+    // initialize
+    control.initialize_well_block_epm(state, state_neighbour);
+    // move initialized state back to X
+    std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
+    return 0;
+}
+
+int ms_well::initialize_control_dfm(std::vector<value_t>& X)
+{
+    if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
+    {
+        std::cout << "Well " << name << " has uninitialized well control\n";
+        exit(1);
+    }
+    std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
+
+    // Initialize all the well blocks. Wellhead state will be overwritten later.
+    std::copy(init_state.begin(), init_state.end(), X.begin() + well_head_idx * n_block_size);
+
+    // Initialize state in well head - state neighbour is well body, state is well head
+    // move the state from X
+    std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
+    // copy neighbour state
+    std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+    // initialize
+    control.initialize_well_block_dfm(state, state_neighbour);
+    // move initialized state back to X
+    std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
+    return 0;
+}
+
 int ms_well::check_constraints(double dt, std::vector<value_t>& X)
 {
     if (ms_type == ms_well::MS_Type::DFM)
@@ -255,68 +317,6 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
     time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_vars + P_VAR]);
     time_data[name + " : temperature (K)"].push_back(well_ctrl_ops[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
 
-    return 0;
-}
-
-int ms_well::initialize_control_epm(std::vector<value_t>& X)
-{
-    if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
-    {
-        std::cout << "Well " << name << " has uninitialized well control\n";
-        exit(1);
-    }
-    std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
-
-    // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
-    for (auto& p : perforations)
-    {
-        index_t i_w, i_r;
-        value_t wi, wid;
-        std::tie(i_w, i_r, wi, wid) = p;
-        i_w += well_body_idx;
-
-        // move the state from X
-        std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
-        // copy neighbour state
-        std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-        // initialize
-        control.initialize_well_block_epm(state, state_neighbour);
-        // move initialized state back to X
-        std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
-    }
-    // Initialize state in well head - state neighbour is well body, state is well head
-    // move the state from X
-    std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
-    // copy neighbour state
-    std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-    // initialize
-    control.initialize_well_block_epm(state, state_neighbour);
-    // move initialized state back to X
-    std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
-    return 0;
-}
-
-int ms_well::initialize_control_dfm(std::vector<value_t>& X)
-{
-    if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
-    {
-        std::cout << "Well " << name << " has uninitialized well control\n";
-        exit(1);
-    }
-    std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
-
-    // Initialize all the well blocks. Wellhead state will be overwritten later.
-    std::copy(init_state.begin(), init_state.end(), X.begin() + well_head_idx * n_block_size);
-
-    // Initialize state in well head - state neighbour is well body, state is well head
-    // move the state from X
-    std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
-    // copy neighbour state
-    std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-    // initialize
-    control.initialize_well_block_dfm(state, state_neighbour);
-    // move initialized state back to X
-    std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
     return 0;
 }
 

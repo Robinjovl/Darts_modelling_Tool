@@ -117,6 +117,159 @@ std::string well_control_iface::get_well_control_target_str()
 	}
 }
 
+int well_control_iface::initialize_well_block_epm(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
+{
+	// Fill target state with target BHP/rate pressure, composition and target temperature
+	std::vector<value_t> target_state(n_vars);
+
+	// Pressure initialization
+	if (this->control_type == WellControlType::BHP)
+	{
+		// BHP-controlled: set bhp
+		target_state[0] = this->target;
+	}
+	else
+	{
+		// Rate-controlled: initialize with pressure of neighbouring cell ensuring the correct flow direction
+		target_state[0] = (this->target > 0.) ? state_neighbour[0] + 0.001 : state_neighbour[0] * 0.99;
+	}
+
+	// Other state specifications
+	if (this->well_state_offset == 1)  // if production well
+	{
+		// PRODUCTION WELL
+		// Initialize production well with state of neighbouring cell
+		for (int i = 1; i < n_vars; i++)
+		{
+			target_state[i] = state_neighbour[i];
+		}
+	}
+	else
+	{
+		// INJECTION WELL
+		// Initialize injection well with injection stream
+		for (int i = 1; i < n_vars - thermal; i++)
+		{
+			target_state[i] = this->inj_comp[i - 1];
+		}
+
+		// For temperature/enthalpy, use specified control
+		if (this->thermal)
+		{
+			// Evaluate ThermalVarOperator to initialize temperature/enthalpy of well head according to specified injection conditions
+			target_state[n_vars - 1] = inj_temp;
+			std::vector<value_t> thermal_var_op(1);
+			this->thermal_var_etor->evaluate(target_state, thermal_var_op);
+
+			target_state[n_vars - 1] = thermal_var_op[0];
+		}
+	}
+
+	// Fill state block with target state vector
+	for (size_t i = 0; i < n_vars; i++)
+	{
+		state_block[i] = target_state[i];
+	}
+
+	return 0;
+}
+
+int well_control_iface::check_constraint_violation(value_t dt, index_t well_head_idx, value_t well_transmissibility,
+	uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
+{
+	value_t* X_well_head = &X[n_block_size * well_head_idx + P_VAR];
+	value_t* X_well_body = X_well_head + n_block_size;
+	value_t p_diff = X_well_head[0] - X_well_body[0];
+
+	if (this->control_type == WellControlType::BHP)
+	{
+		// Check if BHP constraint is violated
+		state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
+		epm_well_ctrl_etor->evaluate(state, well_ctrl_ops);
+		index_t pres_op_idx = WellControlType::NUMBER_OF_RATE_TYPES * n_phases;
+
+		return (p_diff > 0.) ?
+			well_ctrl_ops[pres_op_idx] > this->target : // injection well
+		well_ctrl_ops[pres_op_idx] < this->target;  // production well
+	}
+	else
+	{
+		// Check if rate constraint is violated
+		state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_vars);
+		epm_well_ctrl_etor->evaluate(state, well_ctrl_ops);
+		if (phase_idx.has_value())
+		{
+			index_t rate_op_idx = this->control_type * n_phases + phase_idx.value();  // find correct index in WellControlOperators
+
+			return (this->target > 0.) ?
+				well_ctrl_ops[rate_op_idx] * p_diff * well_transmissibility > this->target : // injection well
+			well_ctrl_ops[rate_op_idx] * p_diff * well_transmissibility < this->target;  // production well
+		}
+		else
+		{
+			// total-rate: sum rates over phases and compare
+			value_t total_rate = 0.;
+			for (index_t p = 0; p < n_phases; ++p)
+			{
+				index_t rate_op_idx = this->control_type * n_phases + p;
+				total_rate += well_ctrl_ops[rate_op_idx] * p_diff * well_transmissibility;
+			}
+
+			return (this->target > 0.) ?
+				total_rate > this->target :
+			total_rate < this->target;
+		}
+	}
+}
+
+int well_control_iface::initialize_well_block_dfm(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
+{
+	// Fill target state with target BHP/rate pressure, composition and target temperature
+	std::vector<value_t> target_state(n_vars);
+
+	// Pressure initialization
+	if (this->control_type == WellControlType::BHP)
+	{
+		// BHP-controlled: set bhp
+		target_state[0] = this->target;
+	}
+	else
+	{
+		// Rate-controlled: No change is needed
+		target_state[0] = state_block[0];
+	}
+
+	// Other state specifications
+	if (this->well_state_offset == 0)  // if injection well
+	{
+		// INJECTION WELL
+		// Initialize injection well with injection stream
+		for (int i = 1; i < n_vars - thermal; i++)
+		{
+			target_state[i] = this->inj_comp[i - 1];
+		}
+
+		// For temperature/enthalpy, use specified control
+		if (this->thermal)
+		{
+			// Evaluate ThermalVarOperator to initialize temperature/enthalpy of well head according to specified injection conditions
+			target_state[n_vars - 1] = inj_temp;
+			std::vector<value_t> thermal_var_op(1);
+			this->thermal_var_etor->evaluate(target_state, thermal_var_op);
+
+			target_state[n_vars - 1] = thermal_var_op[0];
+		}
+	}
+
+	// Fill state block with target state vector
+	for (size_t i = 0; i < n_vars; i++)
+	{
+		state_block[i] = target_state[i];
+	}
+
+	return 0;
+}
+
 int well_control_iface::add_to_jacobian_epm(value_t dt, index_t well_head_idx, value_t well_transmissibility,
 	uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t* jacobian_row, std::vector<value_t>& RHS)
 {
@@ -375,159 +528,6 @@ int well_control_iface::add_to_jacobian_dfm(value_t dt, index_t well_head_idx, v
 				jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + jj] = well_ctrl_ops_derivs[temp_op_idx * n_vars + jj];
 			}
 		}
-	}
-
-	return 0;
-}
-
-int well_control_iface::check_constraint_violation(value_t dt, index_t well_head_idx, value_t well_transmissibility,
- 										     	   uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
-{
-	value_t* X_well_head = &X[n_block_size * well_head_idx + P_VAR];
-	value_t* X_well_body = X_well_head + n_block_size;
-	value_t p_diff = X_well_head[0] - X_well_body[0];
-
-	if (this->control_type == WellControlType::BHP)
-	{
-		// Check if BHP constraint is violated
-		state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
-		epm_well_ctrl_etor->evaluate(state, well_ctrl_ops);
-		index_t pres_op_idx = WellControlType::NUMBER_OF_RATE_TYPES * n_phases;
-
-		return (p_diff > 0.) ?
-			well_ctrl_ops[pres_op_idx] > this->target : // injection well
-		well_ctrl_ops[pres_op_idx] < this->target;  // production well
-	}
-	else
-	{
-		// Check if rate constraint is violated
-		state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_vars);
-		epm_well_ctrl_etor->evaluate(state, well_ctrl_ops);
-		if (phase_idx.has_value())
-		{
-			index_t rate_op_idx = this->control_type * n_phases + phase_idx.value();  // find correct index in WellControlOperators
-
-			return (this->target > 0.) ?
-				well_ctrl_ops[rate_op_idx] * p_diff * well_transmissibility > this->target : // injection well
-			    well_ctrl_ops[rate_op_idx] * p_diff * well_transmissibility < this->target;  // production well
-		}
-		else
-		{
-			// total-rate: sum rates over phases and compare
-			value_t total_rate = 0.;
-			for (index_t p = 0; p < n_phases; ++p)
-			{
-				index_t rate_op_idx = this->control_type * n_phases + p;
-				total_rate += well_ctrl_ops[rate_op_idx] * p_diff * well_transmissibility;
-			}
-
-			return (this->target > 0.) ?
-				total_rate > this->target :
-			    total_rate < this->target;
-		}
-	}
-}
-
-int well_control_iface::initialize_well_block_epm(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
-{
-	// Fill target state with target BHP/rate pressure, composition and target temperature
-	std::vector<value_t> target_state(n_vars);
-
-	// Pressure initialization
-	if (this->control_type == WellControlType::BHP)
-	{
-		// BHP-controlled: set bhp
-		target_state[0] = this->target;
-	}
-	else
-	{
-		// Rate-controlled: initialize with pressure of neighbouring cell ensuring the correct flow direction
-		target_state[0] = (this->target > 0.) ? state_neighbour[0] + 0.001 : state_neighbour[0] * 0.99;
-	}
-
-	// Other state specifications
-	if (this->well_state_offset == 1)  // if production well
-	{
-		// PRODUCTION WELL
-		// Initialize production well with state of neighbouring cell
-		for (int i = 1; i < n_vars; i++)
-		{
-			target_state[i] = state_neighbour[i];
-		}
-	}
-	else
-	{
-		// INJECTION WELL
-		// Initialize injection well with injection stream
-		for (int i = 1; i < n_vars - thermal; i++)
-		{
-			target_state[i] = this->inj_comp[i - 1];
-		}
-
-		// For temperature/enthalpy, use specified control
-		if (this->thermal)
-		{
-			// Evaluate ThermalVarOperator to initialize temperature/enthalpy of well head according to specified injection conditions
-			target_state[n_vars - 1] = inj_temp;
-			std::vector<value_t> thermal_var_op(1);
-			this->thermal_var_etor->evaluate(target_state, thermal_var_op);
-
-			target_state[n_vars - 1] = thermal_var_op[0];
-		}
-	}
-
-	// Fill state block with target state vector
-	for (size_t i = 0; i < n_vars; i++)
-	{
-		state_block[i] = target_state[i];
-	}
-
-	return 0;
-}
-
-int well_control_iface::initialize_well_block_dfm(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
-{
-	// Fill target state with target BHP/rate pressure, composition and target temperature
-	std::vector<value_t> target_state(n_vars);
-
-	// Pressure initialization
-	if (this->control_type == WellControlType::BHP)
-	{
-		// BHP-controlled: set bhp
-		target_state[0] = this->target;
-	}
-	else
-	{
-		// Rate-controlled: No change is needed
-		target_state[0] = state_block[0];
-	}
-
-	// Other state specifications
-	if (this->well_state_offset == 0)  // if injection well
-	{
-		// INJECTION WELL
-		// Initialize injection well with injection stream
-		for (int i = 1; i < n_vars - thermal; i++)
-		{
-			target_state[i] = this->inj_comp[i - 1];
-		}
-
-		// For temperature/enthalpy, use specified control
-		if (this->thermal)
-		{
-			// Evaluate ThermalVarOperator to initialize temperature/enthalpy of well head according to specified injection conditions
-			target_state[n_vars - 1] = inj_temp;
-			std::vector<value_t> thermal_var_op(1);
-			this->thermal_var_etor->evaluate(target_state, thermal_var_op);
-
-			target_state[n_vars - 1] = thermal_var_op[0];
-		}
-	}
-
-	// Fill state block with target state vector
-	for (size_t i = 0; i < n_vars; i++)
-	{
-		state_block[i] = target_state[i];
 	}
 
 	return 0;
