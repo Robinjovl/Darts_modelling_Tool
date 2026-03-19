@@ -335,22 +335,87 @@ class ZerodModel(DartsModel):
             source[self.physics.nc] = self.energy_source.evaluate(t)
         return source
 
-    def _apply_state_constraints(self, dAdx, b, n_vars, nc):
+    def _apply_state_constraints(self, n_vars, nc):
         """
-        Enforce optional fixed-state constraints (pressure/temperature).
+        Return fixed-derivative constraints (variable index -> value).
+
+        For robust fixed-state handling we avoid replacing conservation rows.
+        Instead, derivatives of constrained variables are prescribed and the
+        remaining derivatives are computed from all balance equations.
         """
+        constraints = {}
         if self.fixed_pressure and n_vars > 0:
-            n_solid = self.property_container.n_solid
-            dAdx[n_solid, :] = 0.0
-            dAdx[n_solid, 0] = 1.0
-            b[n_solid] = 0.0
+            # state[0] is pressure
+            constraints[0] = 0.0
 
         if self.fixed_temperature and n_vars > nc:
             state_spec = getattr(getattr(self, "physics", None), "state_spec", None)
             if state_spec == PhysicsBase.StateSpecification.PT:
-                dAdx[nc, :] = 0.0
-                dAdx[nc, nc] = 1.0
-                b[nc] = 0.0
+                # thermal unknown index for PT state specification
+                constraints[nc] = 0.0
+
+        return constraints
+
+    @staticmethod
+    def _solve_with_constraints(dAdx, b, n_vars, constraints):
+        """
+        Solve dAdx * dxdt = b with optional fixed derivative constraints.
+
+        For constrained cases (e.g., fixed pressure), we prefer exact solves on
+        a square, independent subset of balance rows to avoid smoothing errors
+        introduced by least-squares on highly stiff chemistry systems.
+        """
+        if not constraints:
+            return np.linalg.solve(dAdx, b)
+
+        fixed_idx = np.array(sorted(constraints.keys()), dtype=np.intp)
+        fixed_vals = np.array([constraints[i] for i in fixed_idx], dtype=float)
+        free_idx = np.array(
+            [i for i in range(n_vars) if i not in constraints], dtype=np.intp
+        )
+
+        rhs = np.asarray(b, dtype=float).copy()
+        if fixed_idx.size > 0:
+            rhs -= dAdx[:, fixed_idx].dot(fixed_vals)
+
+        A_free = dAdx[:, free_idx]
+        n_eq, n_free = A_free.shape
+        if n_eq == n_free:
+            x_free = np.linalg.solve(A_free, rhs)
+        elif n_eq == n_free + 1:
+            # Drop one row and keep an exact solve on the remaining square system.
+            best_x = None
+            best_res = np.inf
+            for drop_row in range(n_eq):
+                row_mask = np.ones(n_eq, dtype=bool)
+                row_mask[drop_row] = False
+                A_sq = A_free[row_mask, :]
+                b_sq = rhs[row_mask]
+                try:
+                    x_try = np.linalg.solve(A_sq, b_sq)
+                except np.linalg.LinAlgError:
+                    continue
+                # Pick the solution that best matches all rows.
+                res_try = np.linalg.norm(A_free.dot(x_try) - rhs, ord=np.inf)
+                if res_try < best_res:
+                    best_res = res_try
+                    best_x = x_try
+
+            if best_x is None:
+                x_free, *_ = np.linalg.lstsq(A_free, rhs, rcond=None)
+            else:
+                x_free = best_x
+        elif n_eq > n_free:
+            # Generic fallback for cases with more constraints.
+            x_free, *_ = np.linalg.lstsq(A_free, rhs, rcond=None)
+        else:
+            # Underdetermined fallback (should not happen in current 0D setup).
+            x_free, *_ = np.linalg.lstsq(A_free, rhs, rcond=None)
+
+        dxdt = np.zeros(n_vars, dtype=float)
+        dxdt[free_idx] = x_free
+        dxdt[fixed_idx] = fixed_vals
+        return dxdt
 
     def step_radau(
         self,
@@ -460,11 +525,9 @@ class ZerodModel(DartsModel):
             if self.energy_source is not None and n_vars > nc:
                 b[nc] = self.energy_source.evaluate(_t)
 
-            # enforce fixed pressure/temperature constraints
-            self._apply_state_constraints(dAdx, b, n_vars, nc)
-
             try:
-                dxdt = np.linalg.solve(dAdx, b)
+                constraints = self._apply_state_constraints(n_vars, nc)
+                dxdt = self._solve_with_constraints(dAdx, b, n_vars, constraints)
             except np.linalg.LinAlgError:
                 dxdt = np.zeros_like(x)
             return dxdt
@@ -503,10 +566,9 @@ class ZerodModel(DartsModel):
                     f"get_obl_source_terms must return {n_vars} values, got {b.size}."
                 )
 
-            self._apply_state_constraints(dAdx, b, n_vars, nc)
-
             try:
-                dxdt = np.linalg.solve(dAdx, b)
+                constraints = self._apply_state_constraints(n_vars, nc)
+                dxdt = self._solve_with_constraints(dAdx, b, n_vars, constraints)
             except np.linalg.LinAlgError:
                 dxdt = np.zeros_like(x)
 
