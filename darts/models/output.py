@@ -2321,8 +2321,17 @@ class Output:
             # Calculate dead operators
             p_dead = 1.01325  # Dead pressure (1 atm)
             T_dead = 273.15 + 15  # Dead temperature (15 deg C)
-            # TODO: Since the dead states are usually outside the OBL bounds, create a separate interpolator
-            # with its own OBL bounds or use evaluators instead.
+
+            if not (
+                self.physics.PT_axes_min[p_idx]
+                <= p_dead
+                <= self.physics.PT_axes_max[p_idx]
+                and self.physics.PT_axes_min[t_idx]
+                <= T_dead
+                <= self.physics.PT_axes_max[t_idx]
+            ):
+                # Since the dead pressure or temperature for well advective heat rate calculation is outside the OBL bounds, leave it zero.
+                return np.zeros((n_ts, n_conns, pc.nph))
 
             states_2d[:, p_idx] = p_dead
             states_2d[:, t_idx] = T_dead
