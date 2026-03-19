@@ -189,6 +189,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         // index of diagonal block entry for block i in CSR values array
         diag_idx = N_VARS_SQ * diag_ind[i];
 
+        // printf("Ciao da Engine Nuovo");
+
         // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
         for (uint8_t c = 0; c < NE; c++)
         {
@@ -354,6 +356,9 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     {
                         // calculate phase volumetric rate at DFM well connection
                         value_t phase_velocity = phases_vels[p * n_conns + conn_idx];
+
+                        value_t* jac_perf = &(jacobian->get_values()[jacobian->get_rows_ptr()[w->desired_perf_idx] * n_vars * n_vars]); 
+                        w->add_to_perf_jacobian(dt, X, jac_perf, RHS);
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
 

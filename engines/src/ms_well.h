@@ -133,6 +133,14 @@ public:
 
   int add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS);
 
+  ///////////////////
+  // DEBUG IPR TRY //
+  ///////////////////
+
+  int add_to_perf_jacobian(double dt, std::vector<value_t> &X, value_t* jac_perf, std::vector<value_t> &RHS);
+
+  ////////////////////
+
   int check_constraints(double dt, std::vector<value_t> &X);
 
   int calc_rates(std::vector<value_t> &X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data);

@@ -35,6 +35,19 @@ int ms_well::add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_we
   return 0;
 }
 
+///////////////////////
+// DEBUG IPR TRY JAC //
+///////////////////////
+int ms_well::add_to_perf_jacobian(double dt, std::vector<value_t> &X, value_t* jac_perf, std::vector<value_t> &RHS)
+{
+
+  //control.add_to_jacobian(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
+
+  return 0;
+}
+///////////////////////
+
+
 int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data)
 {
   index_t upstream_idx;
