@@ -120,6 +120,28 @@ class DartsModel:
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
 
+    def get_evaluator_factory(self, region):
+        """
+        Return a picklable factory callable ``() -> operator_set_evaluator_iface``
+        that constructs a fresh, independent evaluator for the given region.
+        Each call must return a new instance with its own PropertyContainer,
+        flash solver, and other stateful objects.
+
+        Override this method in your Model subclass to enable ``parallel_evaluation=True``.
+
+        :param region: Region index
+        :type region: int
+        :return: Factory callable that creates a fresh evaluator
+        :rtype: callable
+        :raises NotImplementedError: If not overridden in a subclass
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement get_evaluator_factory(). "
+            "Override this method in your Model subclass to enable parallel_evaluation. "
+            "The factory must return a fresh operator_set_evaluator_iface instance "
+            "with independent PropertyContainer and flash solver per call."
+        )
+
     def init(
         self,
         discr_type: str = "tpfa",
@@ -130,6 +152,8 @@ class DartsModel:
         itor_type: str = "multilinear",
         is_barycentric: bool = False,
         n_solid: int = None,
+        parallel_evaluation: bool = False,
+        n_workers: int = None,
     ):
         """
         Function to initialize the model, which includes:
@@ -156,6 +180,11 @@ class DartsModel:
         :type is_barycentric: bool
         :param n_solid: Number of solid minerals for element-based reactive flow
         :type n_solid: int
+        :param parallel_evaluation: Enable parallel batch evaluation of supporting points via multiprocessing.
+            Requires the model to implement ``get_evaluator_factory(region)`` method.
+        :type parallel_evaluation: bool
+        :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
+        :type n_workers: int
         """
         # Initialize reservoir and Mesh object
         assert self.reservoir is not None, "Reservoir object has not been defined"
@@ -175,6 +204,11 @@ class DartsModel:
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
         self.platform = platform
+        # Build evaluator_factory_hook from model's get_evaluator_factory if available
+        evaluator_factory_hook = None
+        if parallel_evaluation:
+            evaluator_factory_hook = self.get_evaluator_factory
+
         self.physics.init_physics(
             discr_type=discr_type,
             platform=platform,
@@ -183,6 +217,9 @@ class DartsModel:
             itor_type=itor_type,
             is_barycentric=is_barycentric,
             n_solid=n_solid,
+            parallel_evaluation=parallel_evaluation,
+            n_workers=n_workers,
+            evaluator_factory_hook=evaluator_factory_hook,
         )
         if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu

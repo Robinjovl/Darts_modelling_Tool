@@ -142,6 +142,9 @@ class PhysicsBase:
         verbose: bool = False,
         is_barycentric: bool = False,
         n_solid: int = None,
+        parallel_evaluation: bool = False,
+        n_workers: int = None,
+        evaluator_factory_hook=None,
     ):
         """
         Function to initialize all contained objects within the Physics object.
@@ -186,7 +189,14 @@ class PhysicsBase:
 
         self.set_operators()
         self.set_interpolators(
-            platform, itor_type, itor_mode, itor_precision, is_barycentric
+            platform,
+            itor_type,
+            itor_mode,
+            itor_precision,
+            is_barycentric,
+            parallel_evaluation=parallel_evaluation,
+            n_workers=n_workers,
+            evaluator_factory_hook=evaluator_factory_hook,
         )
         return
 
@@ -290,10 +300,12 @@ class PhysicsBase:
                     "constructing a fresh evaluator per worker process."
                 )
             from darts.physics.base.parallel_evaluator import ParallelEvaluator
+
             for region in self.regions:
                 factory = evaluator_factory_hook(region)
                 self.reservoir_operators[region] = ParallelEvaluator(
-                    evaluator_factory=factory, n_workers=n_workers,
+                    evaluator_factory=factory,
+                    n_workers=n_workers,
                 )
 
         # self.n_ops = self.engine.get_n_ops()

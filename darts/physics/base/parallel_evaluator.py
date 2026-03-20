@@ -18,13 +18,13 @@ Usage:
     # par_eval can be passed to create_interpolator() as the evaluator
 """
 
+import multiprocessing
 import os
 import warnings
-import multiprocessing
+
 import numpy as np
 
 from darts.engines import operator_set_evaluator_iface, value_vector
-
 
 # ── Module-level worker functions (must be picklable for multiprocessing) ────
 
@@ -56,7 +56,10 @@ def _worker_evaluate_chunk(coords_flat, n_dims, n_ops):
         try:
             _worker_evaluator.evaluate(sv, vv)
         except Exception as e:
-            warnings.warn(f"Worker evaluation failed for point {i}: {e}")
+            warnings.warn(
+                f"Worker evaluation failed for point {i}: {e}",
+                stacklevel=2,
+            )
             vv_np = np.asarray(vv)
             vv_np[:] = np.nan
         results[i * n_ops : (i + 1) * n_ops] = np.asarray(vv)
@@ -94,6 +97,13 @@ class ParallelEvaluator(operator_set_evaluator_iface):
             initargs=(evaluator_factory,),
         )
 
+    def __getattr__(self, name):
+        """Delegate unknown attribute lookups to the underlying serial evaluator."""
+        # Avoid infinite recursion during __init__ before _serial_evaluator exists
+        if name.startswith('_'):
+            raise AttributeError(name)
+        return getattr(self._serial_evaluator, name)
+
     def evaluate(self, state, values):
         """Single-point evaluate delegates to local serial evaluator."""
         return self._serial_evaluator.evaluate(state, values)
@@ -122,7 +132,9 @@ class ParallelEvaluator(operator_set_evaluator_iface):
 
         # For very small batches, skip pool overhead
         if n_points <= self._n_workers:
-            return self._serial_evaluate_batch(states_np, n_points, values_np, n_dims, n_ops)
+            return self._serial_evaluate_batch(
+                states_np, n_points, values_np, n_dims, n_ops
+            )
 
         # Split points into chunks for workers
         chunk_size = (n_points + self._n_workers - 1) // self._n_workers
@@ -141,9 +153,12 @@ class ParallelEvaluator(operator_set_evaluator_iface):
             )
         except Exception as e:
             warnings.warn(
-                f"Parallel evaluation failed: {e}. Falling back to serial."
+                f"Parallel evaluation failed: {e}. Falling back to serial.",
+                stacklevel=2,
             )
-            return self._serial_evaluate_batch(states_np, n_points, values_np, n_dims, n_ops)
+            return self._serial_evaluate_batch(
+                states_np, n_points, values_np, n_dims, n_ops
+            )
 
         # Gather results into output array
         offset = 0
