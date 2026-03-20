@@ -55,6 +55,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         zc = np.append(state[1 : self.nc], 1 - np.sum(state[1 : self.nc]))
 
         if len(zc) > 2 and zc[-1] < 0.99 * self.eps_z and self.extrapolation_flag:
+            # TODO: Fix second condition, this is problematic for small eps_z values (~1e-14)
             self.extrapolate(state, values)
             return True
         else:

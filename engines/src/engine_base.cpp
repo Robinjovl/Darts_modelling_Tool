@@ -2006,6 +2006,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
 	// Apply normalization of compositions X
 	double sum_z, last_z;
 	bool z_corrected;
+	std::vector<int> var_corrections(n_vars, 0);
 	index_t n_solid_corrected = 0, n_fluid_corrected = 0;
 
 	// Check all compositions, apply projection to have last_z = min_sim_z if last_z < min_sim_z
@@ -2023,11 +2024,13 @@ void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
 			{
 				Xi[index0 + c] = min_sim_z;
 				z_corrected = true;
+				var_corrections[c]++;
 			}
 			else if (Xi[index0 + c] > max_sim_z)
 			{
 				Xi[index0 + c] = max_sim_z;
 				z_corrected = true;
+				var_corrections[c]++;
 			}
 			sum_z += Xi[index0 + c];
 		}
@@ -2037,6 +2040,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
 		{
 			last_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
 			z_corrected = true;
+			var_corrections[nc - 1]++;
 		}
 		sum_z += last_z;
 		// correction
@@ -2060,11 +2064,13 @@ void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
 			{
 				Xi[index0 + c] = min_sim_z;
 				z_corrected = true;
+				var_corrections[c]++;
 			}
 			else if (Xi[index0 + c] > max_sim_z)
 			{
 				Xi[index0 + c] = max_sim_z;
 				z_corrected = true;
+				var_corrections[c]++;
 			}
 			sum_z += Xi[index0 + c];
 		}
@@ -2074,6 +2080,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
 		{
 			last_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
 			z_corrected = true;
+			var_corrections[nc - 1]++;
 		}
 		sum_z += last_z;
 		// correction
@@ -2090,8 +2097,14 @@ void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
 	}
 	if (n_solid_corrected || n_fluid_corrected)
 	{
+		std::string var_corrections_str = "";
+		for (int v = 0; v < n_vars; v++)
+		{
+			var_corrections_str += std::to_string(var_corrections[v]) + " ";
+		}
 		std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
-		  " block(s), to fluid in " << n_fluid_corrected << " block(s)\n";
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s) with var corrections: "
+		  << var_corrections_str << '\n';
 	}
 }
 
@@ -2100,6 +2113,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 	double sum_z, new_z;
 	index_t nb = mesh->n_blocks;
 	bool z_corrected;
+	std::vector<int> var_corrections(n_vars, 0);
 	index_t n_solid_corrected = 0, n_fluid_corrected = 0;
 
 	for (index_t i = 0; i < nb; i++)
@@ -2115,11 +2129,13 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 			{
 			  	new_z = min_sim_z;
 			  	z_corrected = true;
+				var_corrections[c]++;
 			}
 			else if (new_z > max_sim_z)
 			{
 			  	new_z = max_sim_z;
 			  	z_corrected = true;
+				var_corrections[c]++;
 			}
 			sum_z += new_z;
 		}
@@ -2129,6 +2145,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		{
 			new_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
 		  	z_corrected = true;
+			var_corrections[nc - 1]++;
 		}
 		sum_z += new_z;
 		// correction
@@ -2159,11 +2176,13 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 			{
 				new_z = min_sim_z;
 				z_corrected = true;
+				var_corrections[c]++;
 			}
 			else if (new_z > max_sim_z)
 			{
 				new_z = max_sim_z;
 				z_corrected = true;
+				var_corrections[c]++;
 			}
 			sum_z += new_z;
 		}
@@ -2173,6 +2192,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		{
 			new_z = (sum_z > max_sim_z) ? sum_z * min_sim_z : min_sim_z;
 			z_corrected = true;
+			var_corrections[nc - 1]++;
 		}
 		sum_z += new_z;
 		// correction
@@ -2195,8 +2215,14 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 	}
 	if (n_solid_corrected || n_fluid_corrected)
 	{
+		std::string var_corrections_str = "";
+		for (int v = 0; v < n_vars; v++)
+		{
+			var_corrections_str += std::to_string(var_corrections[v]) + " ";
+		}
 		std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
-		  " block(s), to fluid in " << n_fluid_corrected << " block(s)\n";
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s) with var corrections: "
+		  << var_corrections_str << '\n';
 	}
 }
 
@@ -2204,6 +2230,7 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 {
 	double sum_z, new_z, old_last_z, new_last_z, neg_z, frac;
 	index_t nb = mesh->n_blocks;
+	std::vector<int> var_corrections(n_vars, 0);
 	index_t n_solid_corrected = 0, n_fluid_corrected = 0, c_min;
 	bool z_corrected = false;
 
@@ -2239,11 +2266,12 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 			{
 			  	// compute fraction of update to be at min_sim_z
 			  	frac = (min_sim_z - old_last_z) / (last_dz);
-			  	for (index_t c = 0; c < n_solid; c++)
-			  	{
+				for (index_t c = 0; c < n_solid; c++)
+				{
 					dX[i * n_vars + z_var_idx + c] *= frac;
 				}
 				z_corrected = true;
+				var_corrections[nc - 1]++;
 			  	n_solid_corrected++;
 			}
 			else
@@ -2269,11 +2297,12 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 				frac = -(min_sim_z - X[i * n_vars + z_var_idx + c_min]) / (dX[i * n_vars + z_var_idx + c_min]);
 
 				// correct update to be at min_sim_z for the smallest component
-			  	for (index_t c = 0; c < n_solid; c++)
+				for (index_t c = 0; c < n_solid; c++)
 				{
 					dX[i * n_vars + z_var_idx + c] *= frac;
 				}
 				z_corrected = true;
+				var_corrections[c_min]++;
 			  	n_solid_corrected++;
 			}
 		}
@@ -2309,11 +2338,12 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 			{
 			  	// compute fraction of update to be at min_sim_z
 			  	frac = (min_sim_z - old_last_z) / (last_dz);
-			  	for (index_t c = n_solid; c < nc - 1; c++)
-			  	{
+				for (index_t c = n_solid; c < nc - 1; c++)
+				{
 					dX[i * n_vars + z_var_idx + c] *= frac;
 				}
 				z_corrected = true;
+				var_corrections[nc - 1]++;
 			  	n_fluid_corrected++;
 			}
 			else
@@ -2344,6 +2374,7 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 					dX[i * n_vars + z_var_idx + c] *= frac;
 				}
 				z_corrected = true;
+				var_corrections[c_min]++;
 			  	n_fluid_corrected++;
 			}
 		}
@@ -2352,8 +2383,14 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 
 	if (n_solid_corrected || n_fluid_corrected)
 	{
+		std::string var_corrections_str = "";
+		for (int v = 0; v < n_vars; v++)
+		{
+			var_corrections_str += std::to_string(var_corrections[v]) + " ";
+		}
 		std::cout << "Composition correction applied to solid in " << n_solid_corrected <<
-		  " block(s), to fluid in " << n_fluid_corrected << " block(s)\n";
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s) with var corrections: "
+		  << var_corrections_str << '\n';
 	}
 }
 
@@ -2363,6 +2400,7 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 	std::vector<value_t> check_vec;
 	index_t nb = mesh->n_blocks;
 	bool z_corrected;
+	std::vector<int> var_corrections(n_vars, 0);
 	index_t n_corrected = 0;
 
 	// Check if solving for the log-transform or regular composition:
@@ -2389,12 +2427,14 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 					z_corrected = true;
 					check_vec[c] = 1;
 					min_count += 1;
+					var_corrections[c]++;
 				}
 				else if (new_z > max_sim_z)
 				{
 					new_z = max_sim_z;
 					z_corrected = true;
 					temp_sum += new_z;
+					var_corrections[c]++;
 				}
 				else
 				{
@@ -2412,6 +2452,7 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 				z_corrected = true;
 				check_vec[nc - 1] = 1;
 				min_count += 1;
+				var_corrections[nc - 1]++;
 			}
 			else
 			{
@@ -2466,12 +2507,14 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 					z_corrected = true;
 					check_vec[c] = 1;
 					min_count += 1;
+					var_corrections[c]++;
 				}
 				else if (new_z > max_sim_z)
 				{
 					new_z = max_sim_z;
 					z_corrected = true;
 					temp_sum += new_z;
+					var_corrections[c]++;
 				}
 				else
 				{
@@ -2489,6 +2532,7 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 				z_corrected = true;
 				check_vec[nc - 1] = 1;
 				min_count += 1;
+				var_corrections[nc - 1]++;
 			}
 			else
 			{
@@ -2522,7 +2566,15 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 	}
 
 	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+	{
+		std::string var_corrections_str = "";
+		for (int v = 0; v < n_vars; v++)
+		{
+			var_corrections_str += std::to_string(var_corrections[v]) + " ";
+		}
+		std::cout << "Composition correction applied in " << n_corrected
+		  << " block(s) with var corrections: " << var_corrections_str << std::endl;
+	}
 }
 
 void engine_base::apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX)

@@ -145,10 +145,7 @@ class Pipe:
             assert pc.temperature is not None, (
                 "If model is isothermal, system_temperature must be specified!"
             )
-        elif not self.isothermal:
-            assert pc.temperature is None, (
-                "If model is non-isothermal, system_temperature must not be specified!"
-            )
+
         self.system_temperature = pc.temperature
         self.p_idx = physics.vars.index("pressure")
 
@@ -1168,6 +1165,7 @@ class Pipe:
         :param Re: Reynolds number
         :param relative_roughness: Pipe relative roughness
         """
+        f = f[0]  # Make sure f passed to math.sqrt is a float
         # Ensure the friction factor doesn't go negative or zero
         # Return a large value to prevent sqrt of negative number
         if f <= 0:

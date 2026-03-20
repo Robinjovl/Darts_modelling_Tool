@@ -113,7 +113,7 @@ class SingleAmbientTemperature:
             density = (
                 self.physics.property_containers[0]
                 .density_ev[phase_name]
-                .evaluate(p, temp, initial_phase_composition)
+                .evaluate(p[0], temp, initial_phase_composition)
             )
 
             return g * density * 1e-5  # Convert Pascal to bar
@@ -325,7 +325,7 @@ class LinearAmbientTemperature:
             density = (
                 self.physics.property_containers[0]
                 .density_ev[phase_name]
-                .evaluate(p, temp, initial_phase_composition)
+                .evaluate(p[0], temp, initial_phase_composition)
             )
 
             return g * density * 1e-5  # Convert Pas to bar

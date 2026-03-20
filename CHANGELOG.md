@@ -17,6 +17,13 @@
 - Support well controls (rate and WHP) for DFM wells consistent with EPM wells. WHP is controlled for DFM wells and BHP is controlled for EPM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
 - Support total (mass, molar, volumetric, and advective heat) rate control for both EPM and DFM wells. If well rate is controlled and phase is not specified, total rate will be applied ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
 - Fix the issue in the derivative of wellhead equation for rate control of EPM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Fluid heat capacity is added into the input data for THM models [!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270):
+- Breaking changes:
+  - Rock thermal conductivity was renamed in the input data for geomechanical models:
+  \
+  {- Before: idata.rock.conductivity -}\
+  {+ Now:    idata.rock.thermal_conductivity +}
+  \
 
 # 1.4.0 [17-02-2026]
 - OBL and operators:
