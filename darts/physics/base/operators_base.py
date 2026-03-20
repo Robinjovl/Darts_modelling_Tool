@@ -42,6 +42,27 @@ class OperatorsBase(operator_set_evaluator_iface):
             "Please provide dz for extrapolation"
         )
 
+    def evaluate_batch(self, states, n_points, values, n_ops):
+        """
+        Default serial batch evaluation: loops calling evaluate() per point.
+        Override in a subclass or wrapper (e.g. ParallelEvaluator) for parallel dispatch.
+
+        :param states: Flat array of coordinates [n_points * n_dims]
+        :param n_points: Number of points to evaluate
+        :param values: Flat output array [n_points * n_ops], pre-allocated
+        :param n_ops: Number of operators per point
+        :return: 0 if successful
+        """
+        states_np = np.asarray(states)
+        values_np = np.asarray(values)
+        n_dims = len(states_np) // n_points
+        for i in range(n_points):
+            sv = value_vector(states_np[i * n_dims : (i + 1) * n_dims].copy())
+            vv = value_vector(np.zeros(n_ops))
+            self.evaluate(sv, vv)
+            values_np[i * n_ops : (i + 1) * n_ops] = np.asarray(vv)
+        return 0
+
     def apply_extrapolation(self, state, values):
         """
         Method that determines whether or not extrapolation should be applied to current state (z[-1] < 0).

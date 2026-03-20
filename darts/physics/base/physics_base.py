@@ -254,6 +254,9 @@ class PhysicsBase:
         itor_mode='adaptive',
         itor_precision='d',
         is_barycentric: bool = False,
+        parallel_evaluation: bool = False,
+        n_workers: int = None,
+        evaluator_factory_hook=None,
     ):
         """
         Function to initialize set interpolator objects based on the set of operators.
@@ -269,7 +272,30 @@ class PhysicsBase:
         :type itor_precision: str
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param parallel_evaluation: Enable parallel batch evaluation of supporting points via multiprocessing
+        :type parallel_evaluation: bool
+        :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
+        :type n_workers: int
+        :param evaluator_factory_hook: Callable ``(region: int) -> callable`` that returns a factory
+            function for constructing a fresh evaluator per worker process. Required when
+            ``parallel_evaluation=True``. Each factory must return an ``operator_set_evaluator_iface``.
+        :type evaluator_factory_hook: callable
         """
+        # Optionally wrap evaluators with ParallelEvaluator for batch parallelism
+        if parallel_evaluation:
+            if evaluator_factory_hook is None:
+                raise ValueError(
+                    "parallel_evaluation=True requires evaluator_factory_hook: "
+                    "a callable(region) -> callable that returns a factory for "
+                    "constructing a fresh evaluator per worker process."
+                )
+            from darts.physics.base.parallel_evaluator import ParallelEvaluator
+            for region in self.regions:
+                factory = evaluator_factory_hook(region)
+                self.reservoir_operators[region] = ParallelEvaluator(
+                    evaluator_factory=factory, n_workers=n_workers,
+                )
+
         # self.n_ops = self.engine.get_n_ops()
         self.acc_flux_itor = {}
         self.property_itor = {}

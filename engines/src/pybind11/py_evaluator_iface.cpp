@@ -17,7 +17,10 @@ void pybind_evaluator_iface(py::module &m)
   py::class_<operator_set_evaluator_iface, py_operator_set_evaluator_iface /* <--- trampoline*/> operator_set_evaluator_iface(m, "operator_set_evaluator_iface");
   operator_set_evaluator_iface
       .def(py::init<>())
-      .def("evaluate", &operator_set_evaluator_iface::evaluate, "Evaluate operator values", "states"_a, "values"_a);
+      .def("evaluate", &operator_set_evaluator_iface::evaluate, "Evaluate operator values", "states"_a, "values"_a)
+      .def("evaluate_batch", &operator_set_evaluator_iface::evaluate_batch,
+           "Batch-evaluate operator values for multiple points",
+           "states"_a, "n_points"_a, "values"_a, "n_ops"_a);
 
   py::class_<operator_set_gradient_evaluator_iface>(m, "operator_set_gradient_evaluator_iface", operator_set_evaluator_iface);
 }

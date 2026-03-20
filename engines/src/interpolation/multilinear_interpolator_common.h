@@ -185,31 +185,34 @@ __forceinline__ __host__ __device__ void interpolate_with_derivatives(const valu
   }
 }
 
+/**
+ * @brief Multilinear interpolation with derivatives using a caller-provided workspace buffer.
+ *        The workspace must hold at least (2 * (1 << N_DIMS) - 1) * N_OPS elements.
+ *        This avoids per-call heap allocation and is intended for use in tight parallel loops
+ *        where the workspace is allocated once per thread and reused across cells.
+ */
 template <typename value_t, uint16_t N_DIMS, uint16_t N_OPS>
-__forceinline__ __host__ __device__ void interpolate_point_with_derivatives(const double *axis_values,
-                                                                            const value_t *body_data,
-                                                                            const value_t *axis_low,
-                                                                            const value_t *axis_mult,
-                                                                            const value_t *axis_step_inv,
-                                                                            // OUTPUT:
-                                                                            double *interp_values, double *interp_derivs)
+__forceinline__ __host__ __device__ void interpolate_point_with_derivatives_ws(const double *axis_values,
+                                                                               const value_t *body_data,
+                                                                               const value_t *axis_low,
+                                                                               const value_t *axis_mult,
+                                                                               const value_t *axis_step_inv,
+                                                                               value_t *workspace,
+                                                                               // OUTPUT:
+                                                                               double *interp_values, double *interp_derivs)
 {
   static const uint32_t N_VERTS = 1 << N_DIMS;
-  uint32_t pwr = N_VERTS / 2; // distance between high and low values
-  static_assert(N_DIMS <= 24, "N_DIMS is too large and exceeds memory limits.");
-  std::vector<value_t> workspace((2 * N_VERTS - 1) * N_OPS);
+  uint32_t pwr = N_VERTS / 2;
 
   // copy operator values for all vertices
-  for (int i = 0; i < N_VERTS * N_OPS; ++i)
+  for (uint32_t i = 0; i < N_VERTS * N_OPS; ++i)
   {
     workspace[i] = body_data[i];
   }
 
   for (int i = 0; i < N_DIMS; ++i)
   {
-    //printf ("i = %d, N_VERTS = %d, New offset: %d\n", i, N_VERTS, 2 * N_VERTS - (N_VERTS>>i));
-
-    for (int j = 0; j < pwr; ++j)
+    for (uint32_t j = 0; j < pwr; ++j)
     {
       for (int op = 0; op < N_OPS; ++op)
       {
@@ -242,6 +245,28 @@ __forceinline__ __host__ __device__ void interpolate_point_with_derivatives(cons
       interp_derivs[op * N_DIMS + i] = workspace[(2 * N_VERTS - (N_VERTS >> i)) * N_OPS + op];
     }
   }
+}
+
+/**
+ * @brief Convenience wrapper that allocates workspace internally.
+ *        Delegates to interpolate_point_with_derivatives_ws.
+ *        Prefer the _ws variant in tight loops to avoid per-call heap allocation.
+ */
+template <typename value_t, uint16_t N_DIMS, uint16_t N_OPS>
+__forceinline__ __host__ __device__ void interpolate_point_with_derivatives(const double *axis_values,
+                                                                            const value_t *body_data,
+                                                                            const value_t *axis_low,
+                                                                            const value_t *axis_mult,
+                                                                            const value_t *axis_step_inv,
+                                                                            // OUTPUT:
+                                                                            double *interp_values, double *interp_derivs)
+{
+  static const uint32_t N_VERTS = 1 << N_DIMS;
+  static_assert(N_DIMS <= 24, "N_DIMS is too large and exceeds memory limits.");
+  std::vector<value_t> workspace((2 * N_VERTS - 1) * N_OPS);
+  interpolate_point_with_derivatives_ws<value_t, N_DIMS, N_OPS>(
+      axis_values, body_data, axis_low, axis_mult, axis_step_inv,
+      workspace.data(), interp_values, interp_derivs);
 }
 
 template <typename value_t, uint16_t N_DIMS, uint16_t N_OPS>
