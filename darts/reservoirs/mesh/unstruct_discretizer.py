@@ -533,13 +533,16 @@ class UnstructDiscretizer:
 
     def find_vtk_output_cells(self):
         """
-        Method to find the fracture and matrix cells (nodes and idxs) for output to .vtk format
+        Method to find the fracture and matrix cells (nodes and idxs) for output to .vtk format.
+        Uses geom_order (same as load_mesh) so that local cell numbering matches load_mesh:
+          matrix cells get indices 0..mat-1, fracture cells get mat..mat+frac-1.
+        These are then remapped to solution-vector ordering (fracture 0..frac-1, matrix frac..frac+mat-1).
         """
         self.vtk_output_nodes_to_cells = {"fracture": {}, "matrix": {}}
         self.vtk_output_cell_idxs = {"fracture": {}, "matrix": {}}
         cell_count = 0
 
-        for geometry in self.mesh_data.cell_data_dict['gmsh:physical'].keys():
+        for geometry in self.geom_order:
             tags = self.mesh_data.cell_data_dict['gmsh:physical'][geometry]
             nodes = {}
             cell_idxs = {}
@@ -572,6 +575,24 @@ class UnstructDiscretizer:
                     self.vtk_output_nodes_to_cells[cell_type][geometry] += nodes[tag]
                     self.vtk_output_cell_idxs[cell_type].setdefault(geometry, [])
                     self.vtk_output_cell_idxs[cell_type][geometry] += cell_idxs[tag]
+
+        # Remap geom-order indices to solution-vector ordering.
+        # After the loop above (geom_order = matrix first, then fracture):
+        #   matrix cells have indices 0..mat-1
+        #   fracture cells have indices mat..mat+frac-1
+        # In the solution vector (calc_connections_all_cells):
+        #   fracture cells are at 0..frac-1  (offset_frac_cell_count = 0)
+        #   matrix cells are at frac..frac+mat-1  (offset_mat_cell_count = frac_cells_tot)
+        n_frac = self.frac_cells_tot
+        n_mat = self.mat_cells_tot
+        for geom in self.vtk_output_cell_idxs["matrix"]:
+            self.vtk_output_cell_idxs["matrix"][geom] = [
+                idx + n_frac for idx in self.vtk_output_cell_idxs["matrix"][geom]
+            ]
+        for geom in self.vtk_output_cell_idxs["fracture"]:
+            self.vtk_output_cell_idxs["fracture"][geom] = [
+                idx - n_mat for idx in self.vtk_output_cell_idxs["fracture"][geom]
+            ]
 
         return
 
@@ -702,15 +723,15 @@ class UnstructDiscretizer:
             + self.frac_bound_faces_tot
         )
         tot_cell_count = 0
-        # matrix cells
-        for ith_cell in self.mat_cell_info_dict:
-            self.depth_all_cells[tot_cell_count] = self.mat_cell_info_dict[
+        # fracture cells first (consistent with solution vector, volume, and centroid ordering)
+        for ith_cell in self.frac_cell_info_dict:
+            self.depth_all_cells[tot_cell_count] = self.frac_cell_info_dict[
                 ith_cell
             ].depth
             tot_cell_count += 1
-        # fracture cells
-        for ith_cell in self.frac_cell_info_dict:
-            self.depth_all_cells[tot_cell_count] = self.frac_cell_info_dict[
+        # matrix cells
+        for ith_cell in self.mat_cell_info_dict:
+            self.depth_all_cells[tot_cell_count] = self.mat_cell_info_dict[
                 ith_cell
             ].depth
             tot_cell_count += 1
