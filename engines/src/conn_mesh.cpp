@@ -2030,7 +2030,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 void conn_mesh::add_connection_for_lateral_heat_exchange_for_dfm(ms_well* &well)
 {
 	for (index_t i = 0; i < well->connections_for_lateral_heat_transfer.size(); i++)
-	{
+	{ 
 		index_t i_w, i_r;
 		value_t wid;
 		std::tie(i_w, i_r, wid) = well->connections_for_lateral_heat_transfer[i];

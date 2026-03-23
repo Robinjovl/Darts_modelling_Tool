@@ -38,13 +38,40 @@ int ms_well::add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_we
 ///////////////////////
 // DEBUG IPR TRY JAC //
 ///////////////////////
-int ms_well::add_to_perf_jacobian(double dt, std::vector<value_t> &X, value_t* jac_perf, std::vector<value_t> &RHS)
+int ms_well::add_to_perf_jacobian(value_t dt, index_t well_head_idx, index_t num_segments, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
 {
+  // n_vars is number of flow variables
+  // n_block_size is size of block which includes flow and mechanics variables
+  value_t *X_well_bh = &X[n_block_size * (well_head_idx +num_segments-1) + P_VAR];
+  value_t *X_well_body = X_well_bh - n_block_size;
+  value_t *RHS_well_bh = &RHS[n_block_size * (well_head_idx +num_segments-1) + P_VAR];
 
-  //control.add_to_jacobian(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
+  value_t p_bh = X_well_bh[0] ;
+  //printf("p_hp internal %g \n",p_bh);
+  //value_t rhs_gl=(5090.7*p_bh-95414)*dt;
+  value_t rhs_gl= ( 44282.4335*p_bh*p_bh-945908.154790548*p_bh+5048339.07544942)*dt;
+  //printf("flow internal %g \n",rhs_gl/dt);
+  RHS_well_bh[0] = -rhs_gl;
+  //printf("SELEX int %zu \n",(well_head_idx +num_segments-1));
 
+  // Rate operator derivatives
+  for (int jj = 0; jj < n_vars; jj++)
+  {
+     if (jj==0)
+     {
+     	//value_t rhs_gl_jac=(5090.7)*dt;
+      value_t rhs_gl_jac=(2*44282.4335*p_bh-945908.154790548)*dt;
+     	jacobian_row[n_block_size * P_VAR + P_VAR + jj] = -rhs_gl_jac;
+ 
+     }
+     else
+     {
+      // der with respect to enth , HOW?
+    }
+  }
   return 0;
 }
+
 ///////////////////////
 
 

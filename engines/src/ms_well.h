@@ -137,7 +137,7 @@ public:
   // DEBUG IPR TRY //
   ///////////////////
 
-  int add_to_perf_jacobian(double dt, std::vector<value_t> &X, value_t* jac_perf, std::vector<value_t> &RHS);
+  int add_to_perf_jacobian(value_t dt, index_t well_head_idx, index_t num_segments, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
   ////////////////////
 

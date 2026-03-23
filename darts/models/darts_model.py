@@ -7,6 +7,7 @@ import numpy as np
 
 from darts.models.output import Output
 
+
 try:
     from darts.engines import copy_data_to_device
 except ImportError:
@@ -851,6 +852,7 @@ class DartsModel:
         converged = self.physics.engine.post_newtonloop(dt, t)
 
         self.timer.node["simulation"].stop()
+
         return converged
 
     def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):

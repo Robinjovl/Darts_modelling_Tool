@@ -86,3 +86,4 @@ else:
     primary_vars_and_phase_props_file_address = os.path.join(coupled_model.output.output_folder, "well_primary_vars_and_phase_props.pkl")
     plot_heat_map_pcolormesh(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
     plot_heat_map_contourf(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, y_axis_tick_interval=250)
+    

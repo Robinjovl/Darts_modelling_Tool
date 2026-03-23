@@ -178,6 +178,22 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     for (index_t i = start; i < end; ++i)
     { // loop over grid blocks
 
+        for (ms_well* w : wells)
+        {
+            if (w->ms_type == ms_well::MS_Type::DFM)
+            {
+                if(i==(w->well_head_idx + w->num_segments -1))
+                {
+                    float p_bh = 0;
+                    p_bh =  X[i * N_VARS + P_VAR];
+                    printf("phase_p_bh_newform NEW: %g \n ", p_bh);
+                    printf("segment: %zu \n ", i);
+
+                }
+            }
+        }
+
+        
       // initialize the CFL_in and CFL_out
         for (uint8_t c = 0; c < NC; c++)
         {
@@ -357,8 +373,13 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         // calculate phase volumetric rate at DFM well connection
                         value_t phase_velocity = phases_vels[p * n_conns + conn_idx];
 
-                        value_t* jac_perf = &(jacobian->get_values()[jacobian->get_rows_ptr()[w->desired_perf_idx] * n_vars * n_vars]); 
-                        w->add_to_perf_jacobian(dt, X, jac_perf, RHS);
+                        for (ms_well *w : wells)
+                        {
+                            wells[0]->well_transmissibility=0;
+
+                            value_t* jac_perf = &(jacobian->get_values()[jacobian->get_rows_ptr()[(w->well_head_idx + w->num_segments -1)] * n_vars * n_vars]); 
+                            w->add_to_perf_jacobian(dt,w->well_head_idx,w->num_segments,P_VAR,X,jac_perf,RHS);                       
+                        }
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
 
@@ -459,6 +480,15 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     {
                         // calculate phase volumetric rate at DFM well connection
                         value_t phase_velocity = phases_vels[p * n_conns + conn_idx];
+
+                        for (ms_well *w : wells)
+                        {
+                            wells[0]->well_transmissibility=0;
+                            
+                            value_t* jac_perf = &(jacobian->get_values()[jacobian->get_rows_ptr()[(w->well_head_idx + w->num_segments -1)] * n_vars * n_vars]); 
+                            w->add_to_perf_jacobian(dt,w->well_head_idx,w->num_segments,P_VAR,X,jac_perf,RHS);
+                            //printf("INDEX well %zu \n", (w->well_head_idx + w->num_segments -1));
+                        }                        
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity;
 

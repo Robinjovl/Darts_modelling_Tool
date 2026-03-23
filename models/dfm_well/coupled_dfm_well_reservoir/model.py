@@ -41,8 +41,8 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
-        (nr, nz) = (1000, 1)
-        (dr, dz) = (0.01, 50)
+        (nr, nz) = (2, 1)
+        (dr, dz) = (100, 100)
 
         poro = np.ones((nr, nz)) * 0.21
         permr = np.ones((nr, nz)) * 100
@@ -172,7 +172,7 @@ class Model(CICDModel):
         #%% Add source/sink terms
         inj_segment_idx = 0
         inflow_or_outflow = "inflow"
-        target_inj_rate = 58895.98  # in kmol/day
+        target_inj_rate = 58895.98*1  # in kmol/day
         ramp_up_period = 3 / (24 * 60)  # in day
 
         inj_phase_comp = np.array([1.])
