@@ -142,79 +142,81 @@ def assemble_lgr_connections_eclipse(self):
                 fc_cp.append(fine_global)
                 fc_T.append(t)
                 fc_Tt.append(tt)
+
     # add new z direction connections between overburden and underburden
+    if self.cfg.get("burden", None) is not None:
+    
+        cm_burden, cp_burden, T_burden, Tt_burden = [], [], [], []
 
-    cm_burden, cp_burden, T_burden, Tt_burden = [], [], [], []
+        for name in lgr_orders:
+            self.level1_imag_z[name].discretize()
+            disc_im = self.level1_imag_z[name].discretizer
+            cmi, cpi, Ti, Ti_therm = disc_im.calc_structured_discr()
 
-    for name in lgr_orders:
-        self.level1_imag_z[name].discretize()
-        disc_im = self.level1_imag_z[name].discretizer
-        cmi, cpi, Ti, Ti_therm = disc_im.calc_structured_discr()
+            lgr = self.lgrs[name]["lgr_coords_in_parent_grid"]
+            ic = lgr['i_range'][0]   # 1-based
+            jc = lgr['j_range'][0]   # 1-based
+            k1  = lgr['k_range'][0]   # 1-based
+            k2  = lgr['k_range'][1]   # 1-based
 
-        lgr = self.lgrs[name]["lgr_coords_in_parent_grid"]
-        ic = lgr['i_range'][0]   # 1-based
-        jc = lgr['j_range'][0]   # 1-based
-        k1  = lgr['k_range'][0]   # 1-based
-        k2  = lgr['k_range'][1]   # 1-based
+            k_over  = k1 - 1
+            k_under = k2 + 1
+            # the local index of the burden coarse cell in level0 (this local means of the level0 system after squeezing out inactive cells)
+            over_coarse_local  = int(g2l0[self.convert_ijk_to_gindex_1based(ic, jc, k_over,  self.level0.nx, self.level0.ny)])
+            under_coarse_local = int(g2l0[self.convert_ijk_to_gindex_1based(ic, jc, k_under, self.level0.nx, self.level0.ny)])
 
-        k_over  = k1 - 1
-        k_under = k2 + 1
-        # the local index of the burden coarse cell in level0 (this local means of the level0 system after squeezing out inactive cells)
-        over_coarse_local  = int(g2l0[self.convert_ijk_to_gindex_1based(ic, jc, k_over,  self.level0.nx, self.level0.ny)])
-        under_coarse_local = int(g2l0[self.convert_ijk_to_gindex_1based(ic, jc, k_under, self.level0.nx, self.level0.ny)])
+            nx_im = self.level1_imag_z[name].nx
+            ny_im = self.level1_imag_z[name].ny
+            nxy_im = nx_im * ny_im
 
-        nx_im = self.level1_imag_z[name].nx
-        ny_im = self.level1_imag_z[name].ny
-        nxy_im = nx_im * ny_im
+            # build sets/maps for imag grid
+            fine_set = set()
+            coarse_set = set()
+            top_map = {}
+            bot_map = {}
 
-        # build sets/maps for imag grid
-        fine_set = set()
-        coarse_set = set()
-        top_map = {}
-        bot_map = {}
+            for j in range(ny_im):
+                for i in range(nx_im):
+                    fine_local = self.ijk0_to_lin(i, j, 1, nx_im, ny_im)   # k=1 fine layer in imag
+                    coarse_local = self.ijk0_to_lin(i, j, 0, nx_im, ny_im) # k=0 coarse/burden layer in imag
+                    fine_set.add(fine_local)
+                    coarse_set.add(coarse_local)
 
-        for j in range(ny_im):
-            for i in range(nx_im):
-                fine_local = self.ijk0_to_lin(i, j, 1, nx_im, ny_im)   # k=1 fine layer in imag
-                coarse_local = self.ijk0_to_lin(i, j, 0, nx_im, ny_im) # k=0 coarse/burden layer in imag
-                fine_set.add(fine_local)
-                coarse_set.add(coarse_local)
+                    # map imag fine-local (k=1) -> real LGR fine global (top/bottom layer)
+                    fine2d = j * nx_im + i
+                    top_fine_global = fine2d + lgr_offsets[name] 
+                    bot_fine_global = top_fine_global + (self.level1[name].n - self.level1[name].nx * self.level1[name].ny)
+                    top_map[fine_local] = top_fine_global
+                    bot_map[fine_local] = bot_fine_global
 
-                # map imag fine-local (k=1) -> real LGR fine global (top/bottom layer)
-                fine2d = j * nx_im + i
-                top_fine_global = fine2d + lgr_offsets[name] 
-                bot_fine_global = top_fine_global + (self.level1[name].n - self.level1[name].nx * self.level1[name].ny)
-                top_map[fine_local] = top_fine_global
-                bot_map[fine_local] = bot_fine_global
+            
+            def k_of(local_id: int) -> int:
+                return local_id // nxy_im
 
-        
-        def k_of(local_id: int) -> int:
-            return local_id // nxy_im
+            for cm, cp, t, tt in zip(cmi, cpi, Ti, Ti_therm):
 
-        for cm, cp, t, tt in zip(cmi, cpi, Ti, Ti_therm):
+                # vertical filter
+                if abs(k_of(cm) - k_of(cp)) != 1:
+                    continue
 
-            # vertical filter
-            if abs(k_of(cm) - k_of(cp)) != 1:
-                continue
+                if cm in fine_set and cp in coarse_set:
+                    fine_local = cm
+                elif cp in fine_set and cm in coarse_set:
+                    fine_local = cp
+                else:
+                    continue
 
-            if cm in fine_set and cp in coarse_set:
-                fine_local = cm
-            elif cp in fine_set and cm in coarse_set:
-                fine_local = cp
-            else:
-                continue
+                # --- overburden ↔ LGR TOP ---
+                cm_burden.append(over_coarse_local)
+                cp_burden.append(top_map[fine_local])
+                T_burden.append(t)
+                Tt_burden.append(tt)
 
-            # --- overburden ↔ LGR TOP ---
-            cm_burden.append(over_coarse_local)
-            cp_burden.append(top_map[fine_local])
-            T_burden.append(t)
-            Tt_burden.append(tt)
-
-            # --- underburden ↔ LGR BOTTOM ---
-            cm_burden.append(under_coarse_local)
-            cp_burden.append(bot_map[fine_local])
-            T_burden.append(t)
-            Tt_burden.append(tt)
+                # --- underburden ↔ LGR BOTTOM ---
+                cm_burden.append(under_coarse_local)
+                cp_burden.append(bot_map[fine_local])
+                T_burden.append(t)
+                Tt_burden.append(tt)
 
 
     # assemble all connections
@@ -235,10 +237,11 @@ def assemble_lgr_connections_eclipse(self):
     T_parts.append(np.asarray(fc_T, dtype= float))
     Tt_parts.append(np.asarray(fc_Tt, dtype= float))
     # overburden and underburden connections
-    cm_parts.append(np.asarray(cm_burden, dtype= int))
-    cp_parts.append(np.asarray(cp_burden, dtype= int))
-    T_parts.append(np.asarray(T_burden, dtype= float))
-    Tt_parts.append(np.asarray(Tt_burden, dtype= float))
+    if self.cfg.get("burden", None) is not None:
+        cm_parts.append(np.asarray(cm_burden, dtype= int))
+        cp_parts.append(np.asarray(cp_burden, dtype= int))
+        T_parts.append(np.asarray(T_burden, dtype= float))
+        Tt_parts.append(np.asarray(Tt_burden, dtype= float))
 
 
     cm_all = np.concatenate(cm_parts)
