@@ -2,6 +2,14 @@ import abc
 import warnings
 
 import numpy as np
+from pydantic import BaseModel, Field
+
+
+class DensityBasicConfig(BaseModel):
+    """Configuration for DensityBasic evaluator."""
+
+    compr: float = Field(ge=0)
+    dens0: float = Field(gt=0)
 
 
 class Density:

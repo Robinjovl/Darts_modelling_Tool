@@ -1,5 +1,14 @@
 import abc
 
+from pydantic import BaseModel, Field
+
+
+class EnthalpyBasicConfig(BaseModel):
+    """Configuration for EnthalpyBasic evaluator."""
+
+    tref: float = Field(273.15)
+    hcap: float = Field(0.0357, ge=0)
+
 
 class Enthalpy:
     def __init__(self, components: list = None):

@@ -1,9 +1,33 @@
 import numpy as np
+from pydantic import BaseModel, Field
 
 from darts.engines import value_vector
 from darts.physics.base.property_base import PropertyBase
 from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator
 from darts.physics.properties.flash import Flash
+
+
+class PropertyContainerConfig(BaseModel):
+    """Pydantic configuration for PropertyContainer construction.
+
+    Fields mirror ``PropertyContainer.__init__`` parameters.
+    """
+
+    phases_name: list[str] | None = None
+    components_name: list[str] | None = None
+    Mw: list[float] | None = None
+    min_z: float | None = Field(
+        1e-9, ge=0, description="Backward-compat alias for eps_z"
+    )
+    eps_z: float | None = Field(
+        None, ge=0, description="Min composition bound in OBL grid"
+    )
+    temperature: float = Field(
+        1.0, description="Constant temperature for isothermal simulation"
+    )
+    nc_sol: int | None = None
+    np_sol: int | None = None
+    rock_comp: float | None = None
 
 
 class PropertyContainer(PropertyBase):
@@ -108,6 +132,25 @@ class PropertyContainer(PropertyBase):
         ]
 
         self.output_props = {"sat0": lambda: self.sat[0]}
+
+    @classmethod
+    def from_config(cls, config: PropertyContainerConfig) -> "PropertyContainer":
+        """Construct a PropertyContainer from a validated config object."""
+        eps_z = config.eps_z if config.eps_z is not None else config.min_z
+        kwargs: dict = dict(
+            phases_name=config.phases_name,
+            components_name=config.components_name,
+            Mw=config.Mw,
+            eps_z=eps_z,
+            temperature=config.temperature,
+        )
+        if config.nc_sol is not None:
+            kwargs["nc_sol"] = config.nc_sol
+        if config.np_sol is not None:
+            kwargs["np_sol"] = config.np_sol
+        if config.rock_comp is not None:
+            kwargs["rock_comp"] = config.rock_comp
+        return cls(**kwargs)
 
     def get_state(self, state):
         """

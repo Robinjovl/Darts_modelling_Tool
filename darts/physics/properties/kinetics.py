@@ -3,6 +3,15 @@ import json
 from pathlib import Path
 
 import numpy as np
+from pydantic import BaseModel, Field
+
+
+class KineticBasicConfig(BaseModel):
+    """Configuration for KineticBasic evaluator."""
+
+    equi_prod: float
+    rate: float = Field(1.0, ge=0)
+    ne: int = Field(ge=1)
 
 
 class Kinetics:

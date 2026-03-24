@@ -1,7 +1,9 @@
 import os
 import warnings
+from typing import Literal
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict, Field
 from scipy.interpolate import griddata
 
 from darts.engines import (
@@ -13,6 +15,47 @@ from darts.engines import (
 )
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
+
+# Type alias for scalar-or-array fields used in reservoir properties.
+ScalarOrArray = float | list[float]
+
+
+class StructReservoirConfig(BaseModel):
+    """Pydantic configuration for structured reservoir grid construction.
+
+    Fields mirror the ``StructReservoir.__init__`` parameters (excluding
+    ``timer`` and ``cache`` which are runtime concerns).  This model
+    serves as the single source of truth for JSON schema generation and
+    validation of structured-reservoir specifications.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["structured"] = "structured"
+    nx: int = Field(ge=1, description="Number of blocks in x-direction")
+    ny: int = Field(ge=1, description="Number of blocks in y-direction")
+    nz: int = Field(ge=1, description="Number of blocks in z-direction")
+    dx: ScalarOrArray = Field(description="Block size in x-direction [m]")
+    dy: ScalarOrArray = Field(description="Block size in y-direction [m]")
+    dz: ScalarOrArray = Field(description="Block size in z-direction [m]")
+    permx: ScalarOrArray = Field(description="Permeability in x-direction [mD]")
+    permy: ScalarOrArray = Field(description="Permeability in y-direction [mD]")
+    permz: ScalarOrArray = Field(description="Permeability in z-direction [mD]")
+    poro: ScalarOrArray = Field(description="Porosity [fraction]")
+    depth: float | list[float] | None = Field(
+        default=None, description="Depth array or scalar [m]"
+    )
+    start_z: float | list[float] = Field(
+        default=0.0, description="Top reservoir depth [m]"
+    )
+    rcond: ScalarOrArray = Field(
+        default=0.0, description="Rock thermal conductivity [W/m-K]"
+    )
+    hcap: ScalarOrArray = Field(default=0.0, description="Rock heat capacity [J/kg-K]")
+    actnum: int | list[int] = Field(default=1, description="Active cell indicator")
+    op_num: int | list[int] = Field(
+        default=0, description="Operator region number (PVTNUM, SCALNUM, ...)"
+    )
 
 
 class StructReservoir(ReservoirBase):
@@ -68,6 +111,25 @@ class StructReservoir(ReservoirBase):
         """
         super().__init__(timer, cache)
 
+        self._init_kwargs = dict(
+            nx=nx,
+            ny=ny,
+            nz=nz,
+            dx=dx,
+            dy=dy,
+            dz=dz,
+            permx=permx,
+            permy=permy,
+            permz=permz,
+            poro=poro,
+            depth=depth,
+            start_z=start_z,
+            rcond=rcond,
+            hcap=hcap,
+            actnum=actnum,
+            op_num=op_num,
+        )
+
         self.nx = nx
         self.ny = ny
         self.nz = nz
@@ -112,6 +174,23 @@ class StructReservoir(ReservoirBase):
             "xz_plus": None,
         }
         self.connected_well_segments = {}
+
+    @classmethod
+    def from_config(
+        cls, config: StructReservoirConfig, *, timer: timer_node
+    ) -> "StructReservoir":
+        """Construct a StructReservoir from a validated config object.
+
+        :param config: Validated reservoir configuration.
+        :param timer: Timer node for discretization timing.
+        :returns: Fully constructed StructReservoir instance.
+        """
+        kwargs = config.model_dump(exclude={"type"})
+        return cls(timer=timer, **kwargs)
+
+    def to_config(self) -> StructReservoirConfig:
+        """Return the configuration that would reproduce this reservoir."""
+        return StructReservoirConfig(**self._init_kwargs)
 
     def discretize(self, cache: bool = False, verbose: bool = False) -> conn_mesh:
         self.discretizer = StructDiscretizer(

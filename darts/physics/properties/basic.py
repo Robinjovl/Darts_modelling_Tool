@@ -1,4 +1,23 @@
+from typing import Any
+
 import numpy as np
+from pydantic import BaseModel, Field
+
+
+class ConstFuncConfig(BaseModel):
+    """Configuration for ConstFunc evaluator."""
+
+    value: Any
+
+
+class PhaseRelPermConfig(BaseModel):
+    """Configuration for PhaseRelPerm evaluator."""
+
+    phase: str
+    swc: float = Field(0.0, ge=0)
+    sgr: float = Field(0.0, ge=0)
+    kre: float = Field(1.0, ge=0)
+    n: float = Field(2.0, ge=0)
 
 
 class ConstFunc:

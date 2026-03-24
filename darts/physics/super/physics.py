@@ -1,6 +1,8 @@
 import warnings
+from typing import Literal
 
 import numpy as np
+from pydantic import BaseModel, Field
 from scipy.interpolate import interp1d
 
 from darts.engines import *
@@ -11,6 +13,25 @@ from darts.physics.base.operators_base import (
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators
+
+
+class CompositionalConfig(BaseModel):
+    """Pydantic configuration for Compositional physics construction.
+
+    Fields mirror ``Compositional.__init__`` parameters (excluding
+    ``components``, ``phases``, and ``timer`` which are provided separately).
+    """
+
+    state_spec: Literal["P", "PT", "PH"] = "P"
+    n_points: int = Field(200, ge=2)
+    min_p: float = Field(1.0, ge=0)
+    max_p: float = Field(300.0, ge=0)
+    min_z: float = Field(1e-9, ge=0)
+    max_z: float = Field(0.999999, ge=0)
+    epsilon_z: float = Field(1e-9, ge=0)
+    min_t: float | None = Field(None, ge=0)
+    max_t: float | None = Field(None, ge=0)
+    extrapolation_flag: bool = False
 
 
 class Compositional(PhysicsBase):
@@ -170,6 +191,52 @@ class Compositional(PhysicsBase):
             n_axes_points=n_axes_points,
             timer=timer,
             cache=cache,
+        )
+
+    @classmethod
+    def from_config(
+        cls,
+        config: CompositionalConfig,
+        *,
+        components: list[str],
+        phases: list[str],
+        timer,
+    ) -> "Compositional":
+        """Construct a Compositional physics from a validated config object.
+
+        :param config: Validated physics configuration.
+        :param components: List of component names.
+        :param phases: List of phase names.
+        :param timer: Timer node.
+        :returns: Fully constructed Compositional instance.
+        """
+        state_map = {
+            "P": PhysicsBase.StateSpecification.P,
+            "PT": PhysicsBase.StateSpecification.PT,
+            "PH": PhysicsBase.StateSpecification.PH,
+        }
+        state_spec = state_map.get(config.state_spec, PhysicsBase.StateSpecification.P)
+        min_t = config.min_t
+        max_t = config.max_t
+        if state_spec != PhysicsBase.StateSpecification.P and (
+            min_t is None or max_t is None
+        ):
+            min_t = 273.15 if min_t is None else min_t
+            max_t = 473.15 if max_t is None else max_t
+        return cls(
+            components,
+            phases,
+            timer,
+            state_spec=state_spec,
+            n_points=config.n_points,
+            min_p=config.min_p,
+            max_p=config.max_p,
+            min_z=config.min_z,
+            max_z=config.max_z,
+            epsilon_z=config.epsilon_z,
+            min_t=min_t,
+            max_t=max_t,
+            extrapolation_flag=config.extrapolation_flag,
         )
 
     def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):

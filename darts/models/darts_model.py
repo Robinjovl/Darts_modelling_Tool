@@ -1,8 +1,11 @@
 import os
+import re
 import warnings
 from math import fabs
+from typing import Any
 
 import numpy as np
+from pydantic import BaseModel, Field
 
 from darts.models.output import Output
 
@@ -24,6 +27,34 @@ from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
+
+
+class SimParamsConfig(BaseModel):
+    """Pydantic configuration for simulation parameters.
+
+    Fields mirror ``DartsModel.set_sim_params()`` arguments plus additional
+    DataTS attributes (``newton_tol_stationary``, ``min_line_search_update``)
+    that are set post-construction.
+    """
+
+    first_ts: float | None = Field(None, description="Initial timestep [days]")
+    mult_ts: float | None = Field(None, description="Timestep multiplier")
+    max_ts: float | None = Field(None, description="Maximum timestep [days]")
+    runtime: float = Field(1000.0, description="Total runtime [days]")
+    tol_newton: float | None = Field(None, description="Newton solver tolerance")
+    tol_linear: float | None = Field(None, description="Linear solver tolerance")
+    it_newton: int | None = Field(None, description="Max Newton iterations")
+    it_linear: int | None = Field(None, description="Max linear iterations")
+    newton_type: str | None = Field(
+        None, description="Newton type, e.g. 'newton_local_chop'"
+    )
+    line_search: bool = Field(False, description="Enable line search")
+    newton_tol_stationary: float | None = Field(
+        None, description="Stationary detection tolerance"
+    )
+    min_line_search_update: float | None = Field(
+        None, description="Min line search update"
+    )
 
 
 class DataTS:
@@ -479,6 +510,232 @@ class DartsModel:
                 type(self.data_ts.linear_type) is not linear_solver_types
             ):  # it's not needed to copy it to params for PETSC option
                 self.params.linear_type = self.data_ts.linear_type
+
+    def set_sim_params_from_config(self, config: SimParamsConfig) -> None:
+        """Apply simulation parameters from a validated config object.
+
+        Maps string-based ``newton_type`` to the engine enum and delegates
+        to :meth:`set_sim_params` for the core parameters.  Additional
+        DataTS-only attributes (``newton_tol_stationary``,
+        ``min_line_search_update``) are set directly after.
+        """
+        kwargs: dict[str, Any] = {}
+        for key in (
+            "first_ts",
+            "mult_ts",
+            "max_ts",
+            "runtime",
+            "tol_newton",
+            "tol_linear",
+            "it_newton",
+            "it_linear",
+        ):
+            val = getattr(config, key)
+            if val is not None:
+                kwargs[key] = val
+
+        if config.line_search is not None:
+            kwargs["line_search"] = config.line_search
+
+        # Map newton_type string → engine enum
+        if config.newton_type == "newton_local_chop":
+            kwargs["newton_type"] = sim_params.newton_local_chop
+        elif config.newton_type is not None:
+            kwargs["newton_type"] = config.newton_type
+
+        self.set_sim_params(**kwargs)
+
+        if config.newton_tol_stationary is not None:
+            self.data_ts.newton_tol_stationary = config.newton_tol_stationary
+        if config.min_line_search_update is not None:
+            self.data_ts.min_line_search_update = config.min_line_search_update
+
+    # ------------------------------------------------------------------
+    # Dict-based setters for JSON-driven workflows
+    # ------------------------------------------------------------------
+
+    def set_wells_from_dict(self, wells_dict: dict[str, Any]) -> None:
+        """Add wells and perforations from a dict matching the WellsSpec schema.
+
+        :param wells_dict: ``{"wells": [{"name": ..., "perforations": [...]}]}``
+        """
+        for well in wells_dict.get("wells", []):
+            self.reservoir.add_well(well["name"])
+            for perf in well.get("perforations", []):
+                i, j, k0 = perf["ijk"]
+                k1 = perf.get("k_end") or k0
+                if k1 < k0:
+                    raise ValueError(
+                        f"Invalid perforation interval for well {well['name']}: "
+                        f"k_end({k1}) < k({k0})"
+                    )
+                well_radius = perf.get("well_radius") or 0.0762
+                skin = perf.get("skin") or 0.0
+                for k in range(k0, k1 + 1):
+                    self.reservoir.add_perforation(
+                        well["name"],
+                        res_cell_idx=(i, j, k),
+                        well_diameter=2.0 * well_radius,
+                        skin=skin,
+                    )
+
+    def set_initial_conditions_from_dict(self, ic_dict: dict[str, Any]) -> None:
+        """Set initial conditions from a dict matching InitialConditionsSpec.
+
+        Normalises variable names (pressure synonyms, z-indexed composition,
+        case-insensitive component names) and auto-fills missing component
+        variables with 0.0.
+
+        :param ic_dict: ``{"by_array": {"pressure": 50, "CO2": 0.1, ...}}``
+        """
+        by_array = dict(ic_dict.get("by_array", {}))
+        expected_vars = list(self.physics.vars)
+        expected_lower = {v.lower(): v for v in expected_vars}
+        comp_vars = expected_vars[1:]  # first var is pressure
+
+        norm: dict[str, Any] = {}
+        for k, v in by_array.items():
+            kl = str(k).strip().lower()
+            # Pressure synonyms
+            if kl in ("p", "pressure"):
+                norm[expected_lower.get("pressure", "pressure")] = v
+                continue
+            # z-indexed composition (z0, z_1, etc.)
+            m = re.fullmatch(r"z\s*_?(\d+)", kl)
+            if m:
+                idx = int(m.group(1))
+                if 0 <= idx < len(comp_vars):
+                    norm[comp_vars[idx]] = v
+                continue
+            # Component name (case-insensitive)
+            if kl in expected_lower:
+                norm[expected_lower[kl]] = v
+                continue
+            # Fallback: keep as-is
+            norm[k] = v
+
+        # Fill missing component vars with 0.0
+        for var in comp_vars:
+            if var not in norm:
+                norm[var] = 0.0
+
+        self.physics.set_initial_conditions_from_array(
+            mesh=self.reservoir.mesh, input_distribution=norm
+        )
+
+    def set_well_controls_from_dict(
+        self,
+        wells_dict: dict[str, Any] | None = None,
+        well_controls_dict: dict[str, Any] | None = None,
+    ) -> None:
+        """Set well controls from dicts matching WellsSpec / WellControlsSpec.
+
+        Per-well controls (from the wells array) take precedence over
+        top-level defaults (from well_controls_dict).  Well role
+        (injector/producer) is inferred from per-well control fields or
+        well name conventions.
+
+        :param wells_dict: ``{"wells": [{"name": ..., "controls": {...}}]}``
+        :param well_controls_dict: top-level defaults ``{"inj_bhp": ..., "prod_bhp": ...}``
+        """
+        from darts.engines import well_control_iface
+
+        def _map_rate_type(name: str | None):
+            if not name:
+                return well_control_iface.MOLAR_RATE
+            key = str(name).strip().upper()
+            mapping = {
+                "MOLAR_RATE": well_control_iface.MOLAR_RATE,
+                "MASS_RATE": well_control_iface.MASS_RATE,
+                "VOLUMETRIC_RATE": well_control_iface.VOLUMETRIC_RATE,
+                "ADVECTIVE_HEAT_RATE": well_control_iface.ADVECTIVE_HEAT_RATE,
+            }
+            return mapping.get(key, well_control_iface.MOLAR_RATE)
+
+        def _well_role(name: str, per_well: dict | None) -> bool | None:
+            if per_well:
+                if any(
+                    per_well.get(k) is not None
+                    for k in ("inj_rate", "inj_bhp", "inj_composition")
+                ):
+                    return True
+                if per_well.get("prod_bhp") is not None:
+                    return False
+            upper = name.upper()
+            if "INJ" in upper:
+                return True
+            if "PRD" in upper or "PROD" in upper:
+                return False
+            if re.match(r"^I\d+(?:$|[_-])", upper):
+                return True
+            if re.match(r"^P\d+(?:$|[_-])", upper):
+                return False
+            return None
+
+        def _ctrl(per_well: dict | None, attr: str) -> Any:
+            val = per_well.get(attr) if per_well else None
+            if val is not None:
+                return val
+            return well_controls_dict.get(attr) if well_controls_dict else None
+
+        # Build per-well control lookup from wells_dict
+        per_well_cfg: dict[str, dict] = {}
+        if wells_dict:
+            for w in wells_dict.get("wells", []):
+                ctrl = w.get("controls")
+                if ctrl:
+                    per_well_cfg[w["name"]] = ctrl
+
+        for w in self.reservoir.wells:
+            pw = per_well_cfg.get(w.name)
+            role = _well_role(w.name, pw)
+
+            inj_rate = _ctrl(pw, "inj_rate")
+            inj_bhp = _ctrl(pw, "inj_bhp")
+            inj_comp = _ctrl(pw, "inj_composition")
+            inj_temp = _ctrl(pw, "inj_temp")
+            inj_phase = _ctrl(pw, "phase_name")
+            rate_type = _ctrl(pw, "rate_type")
+            prod_bhp = _ctrl(pw, "prod_bhp")
+
+            if role is True and (inj_rate is not None or inj_bhp is not None):
+                if inj_rate is not None:
+                    self.physics.set_well_controls(
+                        wctrl=w.control,
+                        control_type=_map_rate_type(rate_type),
+                        is_inj=True,
+                        target=inj_rate,
+                        phase_name=inj_phase,
+                        inj_composition=inj_comp,
+                        inj_temp=inj_temp,
+                    )
+                    if inj_bhp is not None:
+                        self.physics.set_well_controls(
+                            wctrl=w.constraint,
+                            control_type=well_control_iface.BHP,
+                            is_inj=True,
+                            target=inj_bhp,
+                            inj_composition=inj_comp,
+                            inj_temp=inj_temp,
+                        )
+                else:
+                    self.physics.set_well_controls(
+                        wctrl=w.control,
+                        control_type=well_control_iface.BHP,
+                        is_inj=True,
+                        target=inj_bhp,
+                        inj_composition=inj_comp,
+                        inj_temp=inj_temp,
+                    )
+                continue
+
+            if role is False and prod_bhp is not None:
+                self.physics.set_well_controls(
+                    wctrl=w.control,
+                    control_type=well_control_iface.BHP,
+                    is_inj=False,
+                    target=prod_bhp,
+                )
 
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """

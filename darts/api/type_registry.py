@@ -25,6 +25,21 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# Built-in configs — imported from the core classes they describe.
+# Re-exported here for backward compatibility.
+from darts.physics.properties.basic import (  # noqa: E402, F401
+    ConstFuncConfig,
+    PhaseRelPermConfig,
+)
+from darts.physics.properties.density import DensityBasicConfig  # noqa: E402, F401
+from darts.physics.properties.enthalpy import EnthalpyBasicConfig  # noqa: E402, F401
+from darts.physics.properties.flash import ConstantKConfig  # noqa: E402, F401
+from darts.physics.properties.kinetics import KineticBasicConfig  # noqa: E402, F401
+from darts.physics.super.physics import CompositionalConfig  # noqa: E402, F401
+from darts.physics.super.property_container import (
+    PropertyContainerConfig,  # noqa: E402, F401
+)
+
 try:  # Pydantic v2
     from pydantic import ConfigDict
 except Exception:  # pragma: no cover - v1 fallback
@@ -105,25 +120,9 @@ def _schema_entry(entry: _TypeEntry) -> dict[str, Any]:
 TYPE_REGISTRY = TypeRegistry()
 
 
-# ========================
-# Built-in example configs
-# ========================
-
-
-class CompositionalConfig(BaseModel):
-    state_spec: Literal["P", "PT", "PH"] = "P"
-    n_points: int = Field(200, ge=2)
-    min_p: float = Field(1.0, ge=0)
-    max_p: float = Field(300.0, ge=0)
-    min_z: float = Field(1e-9, ge=0)
-    max_z: float = Field(0.999999, ge=0)
-    epsilon_z: float = Field(1e-9, ge=0)
-    min_t: float | None = Field(None, ge=0)
-    max_t: float | None = Field(None, ge=0)
-    extrapolation_flag: bool = False
-
-
 class BlackOilConfig(BaseModel):
+    """Configuration for BlackOil physics (remains here until BlackOil gets its own)."""
+
     pvt_path: str
     thermal: bool = False
     type_hydr: Literal["isothermal", "thermal"] = "isothermal"
@@ -140,20 +139,6 @@ class BlackOilConfig(BaseModel):
     max_z: float = Field(1.0, ge=0)
 
 
-class PropertyContainerConfig(BaseModel):
-    phases_name: list[str] | None = None
-    components_name: list[str] | None = None
-    Mw: list[float] | None = None
-    # Backward compatible: accept min_z as alias for eps_z
-    min_z: float | None = Field(1e-9, ge=0)
-    eps_z: float | None = Field(None, ge=0)
-    temperature: float = Field(1.0)
-    # Optional solid/rock options (used by some models)
-    nc_sol: int | None = None
-    np_sol: int | None = None
-    rock_comp: float | None = None
-
-
 class AnyConfig(BaseModel):
     """Permissive config model for local plugins."""
 
@@ -163,33 +148,6 @@ class AnyConfig(BaseModel):
 
         class Config:
             extra = "allow"
-
-
-class ConstantKConfig(BaseModel):
-    K: list[float]
-    epsilon: float = Field(1e-8, ge=0)
-
-
-class DensityBasicConfig(BaseModel):
-    compr: float = Field(ge=0)
-    dens0: float = Field(gt=0)
-
-
-class ConstFuncConfig(BaseModel):
-    value: Any
-
-
-class EnthalpyBasicConfig(BaseModel):
-    tref: float = Field(273.15)
-    hcap: float = Field(0.0357, ge=0)
-
-
-class PhaseRelPermConfig(BaseModel):
-    phase: str
-    swc: float = Field(0.0, ge=0)
-    sgr: float = Field(0.0, ge=0)
-    kre: float = Field(1.0, ge=0)
-    n: float = Field(2.0, ge=0)
 
 
 # ========================
@@ -334,12 +292,6 @@ def make_dead_oil_property_container(cfg: PropertyContainerConfig) -> Any:
     if cfg.rock_comp is not None:
         kwargs["rock_comp"] = cfg.rock_comp
     return DeadOilProperties(**kwargs)
-
-
-class KineticBasicConfig(BaseModel):
-    equi_prod: float
-    rate: float = Field(1.0, ge=0)
-    ne: int = Field(ge=1)
 
 
 def make_kinetic_basic(cfg: KineticBasicConfig) -> Any:

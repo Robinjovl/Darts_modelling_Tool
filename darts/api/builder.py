@@ -448,37 +448,16 @@ class ModelBuilder:
 
     @staticmethod
     def apply_sim_params(sp: SimParamsSpec, model: DartsModelProtocol) -> None:
-        """Apply simulation parameters to *model*."""
-        kwargs: dict[str, Any] = {}
-        for k in [
-            "first_ts",
-            "mult_ts",
-            "max_ts",
-            "runtime",
-            "tol_newton",
-            "tol_linear",
-            "it_newton",
-            "it_linear",
-            "line_search",
-        ]:
-            v = getattr(sp, k)
-            if v is not None:
-                kwargs[k] = v
-        # Map optional newton_type
-        newton_type = getattr(sp, "newton_type", None)
-        if newton_type:
-            from darts.engines import sim_params as spm
+        """Apply simulation parameters to *model*.
 
-            if newton_type == "newton_local_chop":
-                kwargs["newton_type"] = spm.newton_local_chop
-            else:
-                logger.warning("Unknown newton_type %r, ignoring", newton_type)
-        model.set_sim_params(**kwargs)
-        # Post DataTS tweaks
-        if getattr(sp, "newton_tol_stationary", None) is not None:
-            model.data_ts.newton_tol_stationary = sp.newton_tol_stationary  # type: ignore[attr-defined]
-        if getattr(sp, "min_line_search_update", None) is not None:
-            model.data_ts.min_line_search_update = sp.min_line_search_update  # type: ignore[attr-defined]
+        Delegates to ``DartsModel.set_sim_params_from_config()`` which handles
+        newton_type mapping and DataTS tweaks.
+        """
+        from darts.models.darts_model import SimParamsConfig
+
+        # Convert schema spec to core config (field names are identical)
+        cfg = SimParamsConfig(**sp.model_dump(exclude_none=True))
+        model.set_sim_params_from_config(cfg)  # type: ignore[attr-defined]
 
     @staticmethod
     def apply_output(out: OutputSpec, model: DartsModelProtocol) -> None:

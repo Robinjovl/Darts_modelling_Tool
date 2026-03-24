@@ -2,6 +2,14 @@ import abc
 
 import numpy as np
 from numba import jit
+from pydantic import BaseModel, Field
+
+
+class ConstantKConfig(BaseModel):
+    """Configuration for ConstantK flash evaluator."""
+
+    K: list[float]
+    epsilon: float = Field(1e-8, ge=0)
 
 
 class Flash:
