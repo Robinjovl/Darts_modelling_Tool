@@ -320,7 +320,7 @@ class UnstructReservoir(ReservoirBase):
 
             print('Writing mesh data to VTK file')
             meshio.write(
-                f"{output_directory:s}/mesh_matrix.vtk",
+                f"{output_directory:s}/mesh.vtk",
                 meshio.Mesh(
                     points=self.discretizer.mesh_data.points,
                     cells=mat_nodes,
@@ -354,7 +354,7 @@ class UnstructReservoir(ReservoirBase):
                             )
 
                 meshio.write(
-                    f"{output_directory:s}/mesh_fracture.vtk",
+                    f"{output_directory:s}/mesh_frac.vtk",
                     meshio.Mesh(
                         points=self.discretizer.mesh_data.points,
                         cells=frac_nodes,
