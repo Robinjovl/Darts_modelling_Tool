@@ -23,7 +23,7 @@
 - Use `$build-open-darts` when compilation, editable installs, wheel builds, GPU builds, or packaging changes are required, or when work touches `engines/`, `discretizer/`, `solvers/`, `thirdparty/`, `CMakeLists.txt`, `setup.py`, `pyproject.toml`, or build helper scripts.
 - Use `$verify-open-darts` when changes affect runtime code, numerical behavior, tests, packaging, or build/test behavior. Do not mark the task complete until the required checks for the touched area pass or a concrete blocker is recorded.
 - Use `$test-open-darts` when reproducing or validating simulation behavior, regression failures, interpolator behavior, discretizer behavior, or model changes.
-- Use `$lint-format-open-darts` for Python file edits before handoff.
+- Use `$lint-format-open-darts` for Python file edits before handoff. **Always run `ruff check` on all modified Python files before presenting changes as complete or committing.** Pre-commit hooks enforce this — failing to lint wastes a commit cycle.
 - Use `$docs-open-darts` when editing `docs/`, Sphinx configuration, docstrings used by docs, or documentation with behavior impact.
 - Use `$gitlab-cicd-open-darts` when touching `.gitlab-ci.yml`, `.cicd/jobs/`, release/deploy rules, or CI artifact flow.
 - Use `$debug-profile-open-darts` when investigating crashes, leaks, memory issues, slowdowns, or profiling data.
