@@ -115,8 +115,8 @@ class Model(CICDModel):
                                                    ('L', ConstFunc(7.)),
                                                    ])
 
-        property_container.rel_perm_ev = dict([('G', PhaseRelPerm("gas", swc=0.25, sgr=0.0, n=1.5)),
-                                               ('L', PhaseRelPerm("oil", swc=0.25, sgr=0.0, n=4))])
+        property_container.rel_perm_ev = dict([('G', PhaseRelPerm("gas", swc=0.0, sgr=0.0, n=1.0)),
+                                               ('L', PhaseRelPerm("oil", swc=0.0, sgr=0.0, n=1.0))])
 
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
 
