@@ -191,122 +191,171 @@ class TableKFlash(Flash):
 
         return np.array([kco2, kh2o])
 
-class Model(DartsModel):
-    def build_dz (self, dz0:float, total_thickness: float, ratio: float = 2.0):
-        layers = []
-        s = 0
-        dz = float(dz0)
-        while dz + s < total_thickness:
-            layers.append(dz)
-            s += dz
-            dz*= ratio
-        layers.append(total_thickness - s) # add last layer
-        return np.asarray(layers, dtype=float)
-    def build_cell_center(self):
-        if not hasattr(self, 'reservoir') or self.reservoir is None:
-            raise RuntimeError("Reservoir not built yet.")
-        n = self.reservoir.n
-        self.reservoir.discretize()
-        x = np.empty(n, dtype=float)
-        y = np.empty(n, dtype=float)
-        z = np.asarray(self.reservoir.global_data["depth"], dtype = float).copy()
-        # level 0 
-        nx0= int(self.reservoir.nx)
-        ny0= int(self.reservoir.ny)
-        nz0= int(self.reservoir.nz)
-        dx0 =  float(np.asarray(self.reservoir.global_data["dx"]).flat[0])
-        dy0 = float(np.asarray(self.reservoir.global_data["dy"]).flat[0])
-        for id in range(n):
-            k = id // (nx0 * ny0) # 0 based
-            j = (id % (nx0 * ny0)) // nx0
-            i = id % nx0
-            x[id] = (i + 0.5) * dx0
-            y[id] = (j + 0.5) * dy0
 
-        self.reservoir.cell_center_x = x
-        self.reservoir.cell_center_y = y
-        self.reservoir.cell_center_z = z
-        return x,y,z
-        
-    def __init__(self):
+class Model(DartsModel):
+    def __init__(self, cfg:dict):
         # Call base class constructor
         super().__init__()
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
-
+        self.cfg = cfg
         self.set_reservoir()
         self.zero = 1e-8
         self.set_physics()
+        
 
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=2, runtime=1000, 
                             tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
         self.timer.node["initialization"].stop()
+
+    def build_lgr_definition(self):
+        """
+        -parent name
+        -i,j,k range in parent grid (1-based)
+        -local name
+        """
+        lgrs = self.cfg["lgrs"]
+
+        return lgrs
+    
+    def build_well_completion(self):
+        return self.cfg["wells"]
+    
+    def convert_ijk_to_gindex_1based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
+        """
+        Convert (i,j,k) in 1-based to global index in 0-based
+        """
+        g_index_0based = (k_1based - 1) * nx * ny + (j_1based - 1) * nx + (i_1based - 1)
+        return g_index_0based
+    
+    def ijk0_to_lin(self, i0: int, j0: int, k0: int, nx: int, ny: int) -> int:
+        """Convert 0-based (i,j,k) to linear index"""
+        return k0 * nx * ny + j0 * nx + i0
+
+    def create_actnum_with_lgr(self, nx0, ny0, nz0, refined_ij_list):
+        actnum0 = np.ones(nx0 * ny0 * nz0, dtype=np.int32)
+        for (i_c,j_c,k_c) in refined_ij_list:
+            g = self.convert_ijk_to_gindex_1based(i_c, j_c, k_c, nx0, ny0)
+            actnum0[g] = 0  # deactivate the coarse cell that will be refined
+        return actnum0
+
+    def auto_image_grid_dx_dy(self, dx_parent, dy_parent, rx, ry):
+       
+        dx_image = np.r_[dx_parent, np.full(rx, dx_parent/rx), dx_parent]
+        dy_image = np.r_[dy_parent, np.full(ry, dy_parent/ry), dy_parent]
+
+        return dx_image, dy_image
+    
+     # build cell center coordinates for visualization
+    def build_cell_center(self):
+        if not hasattr(self, 'reservoir') or self.reservoir is None:
+            raise RuntimeError("Reservoir not built yet.")
+        n = self.reservoir.n
+        x = np.empty(n, dtype=float)
+        y = np.empty(n, dtype=float)
+        z = np.asarray(self.reservoir.depth, dtype = float).copy()
+        # level 0 
+        self.level0.discretize()
+        disc0 = self.level0.discretizer
+        l2g0 = np.asarray(disc0.local_to_global, dtype=int)
+        
+        n0 = len(l2g0)
+        nx0= int(self.level0.nx)
+        ny0= int(self.level0.ny)
+        nz0= int(self.level0.nz)
+        dx0 =  float(np.asarray(self.level0.global_data["dx"]).flat[0])
+        dy0 = float(np.asarray(self.level0.global_data["dy"]).flat[0])
+        for local_id, global_id in enumerate(l2g0):
+            k = global_id // (nx0 * ny0) # 0 based
+            j = (global_id % (nx0 * ny0)) // nx0
+            i = global_id % nx0
+            x[local_id] = (i + 0.5) * dx0
+            y[local_id] = (j + 0.5) * dy0
+            
+        # lgr blocks
+        meta = self.lgr_meta
+        for name in meta['lgr_orders']:
+            offset = meta['lgr_offsets'][name]
+            grid = self.level1[name]
+            nx1, ny1, nz1 = int(grid.nx), int(grid.ny), int(grid.nz)
+            cfg = self.lgrs[name]['lgr_coords_in_parent_grid']
+            i_start, j_start = cfg['i_range'][0], cfg['j_range'][0] # 1-based
+            rx, ry, rz = cfg['refine']
+            x0 = (i_start - 1) * dx0 # left corner of lgr block in global coordinate
+            y0 = (j_start - 1) * dy0
+            dx1 = dx0 / rx
+            dy1 = dy0 / ry
+            n_lgr = int(grid.n)
+            nxy1 = nx1 * ny1
+            for lid in range(n_lgr): # local id in lgr block
+                k = lid // nxy1
+                r = lid - k*nxy1
+                j = r//nx1
+                i = r % nx1
+
+                glid = offset + lid
+                x[glid] = x0 + (i+0.5) * dx1
+                y[glid] = y0 + (j+0.5) * dy1
+
+        self.reservoir.cell_center_x = x
+        self.reservoir.cell_center_y = y
+        self.reservoir.cell_center_z = z
+        return x,y,z
     
     def set_reservoir(self):
+        self.lgrs = self.build_lgr_definition()
+        grid = self.cfg["grid"]
+        #Build Level0 with actnum + overburden and underburden
+        nx0, ny0 = grid["nx"], grid["ny"] # global grid size
+        dx0, dy0 = grid["dx"], grid["dy"]
+        nz_res = grid["nz_res"]
+        dz_res = grid["dz_res"]
 
-        nx0, ny0 = 80, 80 # global grid size
-        dx0, dy0 = 100, 100
-        nz_res = 10
-        dz_res = 20
-
-        over_thickness = 2000.0
-        under_thickness = 2000.0
-        dz_over = self.build_dz(dz0=dz_res, total_thickness=over_thickness)
-        dz_over = dz_over[::-1]  # reverse for overburden
-
-        dz_under = self.build_dz(dz0=dz_res,total_thickness=under_thickness)
-        nz_over = len(dz_over)
-        nz_under = len(dz_under)
-        nz0 = nz_over + nz_res + nz_under
-        dz0_layers = np.concatenate([dz_over, np.full(nz_res, dz_res, dtype=float), dz_under])
-        permx0, permy0, permz0 = 50, 50, 50
-        poro0 = 0.1
-        poro_burden = 0.0001
-        perm_burden = 1e-6
-        self.nz_over = nz_over
-        self.nz_res = nz_res
+        nz0 = nz_res
+        dz0_layers = np.full(nz_res, dz_res, dtype=float)
+        rock = self.cfg["rock"]
+        permx0, permy0, permz0 = rock["perm_x"], rock["perm_y"], rock["perm_z"]
+        poro0 = rock["poro"]
 
         # thermal properties
-        rcond_res = 181.44 # KJ/m/day/k
-        hcap_res = 2650 # kJ/m3/K assume reservoir density here
-        rcond_over, rcond_under = 149.54, 149.54
-        hcap_over, hcap_under = 2347.29, 2347.29
+        rcond_res = rock["rcond_res"] # KJ/m/day/k
+        hcap_res = rock["hcap_res"] # kJ/m3/K assume reservoir density here
+        reservoir_top = grid["reservoir_top"]
+
+        refined_cells_ijk = []
+        for name, cfg in self.lgrs.items():
+            i1, i2 = cfg['lgr_coords_in_parent_grid']['i_range']
+            j1, j2 = cfg['lgr_coords_in_parent_grid']['j_range']
+            k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
+            assert i1 == i2 and j1 == j2, "This script only assume column LGR"  
+            for k in range(k1, k2 + 1):
+                refined_cells_ijk.append( (i1, j1, k) )  
+
+        self.refined_cells_ijk = refined_cells_ijk
+
+        actnum0 = self.create_actnum_with_lgr(nx0, ny0, nz0, refined_cells_ijk)
+
 
         k_index0 = np.arange(nx0 * ny0 * nz0, dtype=np.int32) // (nx0 * ny0)
-        kx0_full = np.full(nx0 * ny0 * nz0, perm_burden, dtype=float)
-        ky0_full = np.full(nx0 * ny0 * nz0, perm_burden, dtype=float)
-        kz0_full = np.full(nx0 * ny0 * nz0, perm_burden, dtype=float)
+        kx0_full = np.full(nx0 * ny0 * nz0, permx0, dtype=float)
+        ky0_full = np.full(nx0 * ny0 * nz0, permy0, dtype=float)
+        kz0_full = np.full(nx0 * ny0 * nz0, permz0, dtype=float)
 
-        rcon0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
-        hcap0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
-        poro0_full = np.full(nx0 * ny0 * nz0, poro_burden, dtype=float)
-  
-        mask_over = k_index0 < nz_over
-        mask_res  = (k_index0 >= nz_over) & (k_index0 < nz_over + nz_res)
-        mask_under = k_index0 >= (nz_over + nz_res)
-        kx0_full [mask_res] = permx0
-        ky0_full [mask_res] = permy0
-        kz0_full [mask_res] = permz0
+        rcon0_full = np.full(nx0 * ny0 * nz0, rcond_res, dtype=float) 
+        hcap0_full = np.full(nx0 * ny0 * nz0, hcap_res, dtype=float)
+        poro0_full = np.full(nx0 * ny0 * nz0, poro0, dtype=float)
 
-        rcon0_full[mask_over] = rcond_over
-        rcon0_full[mask_res] = rcond_res
-        rcon0_full[mask_under] = rcond_under
-        hcap0_full[mask_over] = hcap_over
-        hcap0_full[mask_res] = hcap_res
-        hcap0_full[mask_under] =hcap_under
-        poro0_full[mask_res] = poro0
-
-        self.reservoir = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
+        self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
-                                      start_z=0, rcond=rcon0_full, hcap=hcap0_full,)
+                                      start_z=2000,actnum=actnum0, rcond=rcon0_full, hcap=hcap0_full,)
         boundary_factor = 2000
         base_vol = float(dx0 * dy0 * dz_res)
         v_big = base_vol * boundary_factor
 
-        self.reservoir.boundary_volumes = {
+        self.level0.boundary_volumes = {
             "xy_minus": None,
             "xy_plus": None,
             "yz_minus": v_big,
@@ -314,29 +363,147 @@ class Model(DartsModel):
             "xz_minus": v_big,
             "xz_plus": v_big,
         }
-        self.reservoir.discretize()
+
+
+        # Build Level1 grids and imaginary grids
+        self.level1 = {}
+        self.level1_imag = {}
+        self.level1_imag_z = {}
+        
+        for name, cfg in self.lgrs.items():
+            rx, ry, rz = cfg['lgr_coords_in_parent_grid']['refine']
+            k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
+            nk = k2 - k1 + 1
+
+            nx1,ny1,nz1 = rx, ry, nk
+            dx1 = dx0 / rx
+            dy1 = dy0 / ry
+            dz1 = dz_res
+
+            self.level1[name] = StructReservoir(self.timer, nx=nx1, ny=ny1, nz=nz1, dx=dx1, dy=dy1, dz=dz1,
+                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=reservoir_top, rcond=rcond_res, hcap=hcap_res)
+
+            dx_imag, dy_imag = self.auto_image_grid_dx_dy(dx0, dy0, rx, ry)
+
+            # 2D imaginary grid per layer
+            self.level1_imag[name] = StructReservoir(self.timer, nx=rx+2, ny=ry+2, nz=1, dx=dx_imag, dy=dy_imag, dz=dz_res,
+                                        permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=reservoir_top,rcond=rcond_res, hcap=hcap_res,)
+
+            
+        cm_all, cp_all, T_all, T_all_therm, meta = assemble_lgr_connections_eclipse(self)
+        self.lgr_meta = meta
+
+       # assemble properties
+        self.level0.discretize()
+        disc0 = self.level0.discretizer
+        l2g0 = disc0.local_to_global          # l2g0 has already eliminated inactive cells
+
+        dx0_arr = disc0.convert_to_flat_array(self.level0.global_data['dx'], 'dx')[l2g0]
+        dy0_arr = disc0.convert_to_flat_array(self.level0.global_data['dy'], 'dy')[l2g0]
+        dz0_arr = disc0.convert_to_flat_array(self.level0.global_data['dz'], 'dz')[l2g0]
+        
+        depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
+        volume0_arr = np.array(self.level0.volume, copy=False).astype(float) # self.level0.volume is already filtered
+
+        rcon0_arr = rcon0_full[l2g0]
+        hcap0_arr = hcap0_full[l2g0]
+        kx0_arr = kx0_full[l2g0]
+        ky0_arr = ky0_full[l2g0]
+        kz0_arr = kz0_full[l2g0]
+        poro0_arr = poro0_full[l2g0]
+        
+
+        dx_list = [dx0_arr]; dy_list = [dy0_arr]; dz_list = [dz0_arr]
+        kx_list = [kx0_arr]; ky_list = [ky0_arr]; kz_list = [kz0_arr]
+        poro_list = [poro0_arr]; depth_list = [depth0_arr]; volume_list = [volume0_arr]
+        rcond_list = [rcon0_arr]; hcap_list = [hcap0_arr]
+
+        for name in meta['lgr_orders']:
+            rx, ry, rz = self.lgrs[name]['lgr_coords_in_parent_grid']['refine']
+            self.level1[name].discretize()
+            disc1 = self.level1[name].discretizer
+
+            dx_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["dx"], "dx"))
+            dy_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["dy"], "dy"))
+            dz_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["dz"], "dz"))
+            kx_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["permx"], "permx"))
+            ky_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["permy"], "permy"))
+            kz_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["permz"], "permz"))
+
+            poro_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["poro"], "poro"))
+            depth_list.append(disc1.convert_to_flat_array(self.level1[name].global_data["depth"], "depth"))
+            volume_list.append(np.ones(self.level1[name].n, dtype=float) * (dx0/rx) * (dy0/ry) * dz_res)
+            rcond_list.append(np.ones(self.level1[name].n, dtype=float)*rcond_res)
+            hcap_list.append(np.ones(self.level1[name].n, dtype=float) * hcap_res)
+
+        dx = np.concatenate(dx_list)
+        dy = np.concatenate(dy_list)
+        dz = np.concatenate(dz_list)
+        kx = np.concatenate(kx_list)
+        ky = np.concatenate(ky_list)
+        kz = np.concatenate(kz_list)
+        poro = np.concatenate(poro_list)
+        depth = np.concatenate(depth_list)
+        volume = np.concatenate(volume_list)
+        rcon = np.concatenate(rcond_list)
+        hcap = np.concatenate(hcap_list)
+
+        # print(f'final volume list is {volume}')
+
+        self.reservoir = LGRReservoir(self.timer,
+                                        cell_m=cm_all,
+                                        cell_p=cp_all,
+                                        tran=T_all,
+                                        tran_thermal=T_all_therm,
+                                        poro=poro,
+                                        rcond=rcon,
+                                        hcap=hcap,
+                                        depth=depth,
+                                        volume=volume,
+                                        dx=dx,
+                                        dy=dy,
+                                        dz=dz,
+                                        kx=kx,
+                                        ky=ky,
+                                        kz=kz,
+                                        )
+        
         self.build_cell_center()
         return
 
-   
-    def set_wells(self):
-        self.reservoir.add_well("I1")
-        for k in range(self.nz_over, self.nz_over + self.nz_res):         
-            self.reservoir.add_perforation("I1", res_cell_idx=(41,41,k), ms_epm=False)
 
-        self.reservoir.add_well("P1")
-        for k in range(self.nz_over, self.nz_over + 5):         
-            self.reservoir.add_perforation("P1", res_cell_idx=(36,46,k), ms_epm=False)
-        self.reservoir.add_well("P2")
-        for k in range(self.nz_over, self.nz_over + 5):         
-            self.reservoir.add_perforation("P2", res_cell_idx=(46,46,k), ms_epm=False)
-        self.reservoir.add_well("P3")
-        for k in range(self.nz_over, self.nz_over + 5):         
-            self.reservoir.add_perforation("P3", res_cell_idx=(36,36,k), ms_epm=False)
-        self.reservoir.add_well("P4")
-        for k in range(self.nz_over, self.nz_over + 5):         
-            self.reservoir.add_perforation("P4", res_cell_idx=(46,36,k), ms_epm=False)
-     
+
+    def set_wells(self):
+        wells= self.cfg["wells"]
+        
+        for key, value in wells.items():
+            self.reservoir.add_well(key)
+        center_2d = self.lgr_meta['well_local_center']
+        comp = self.build_well_completion()
+        for wname, cfg in comp.items():
+            lgr_name = cfg["lgr"]
+            per_from = cfg["k_from"]
+            per_to = cfg["k_to"]
+            
+            for k in range(per_from -1, per_to):  
+                rx,ry,_ = self.lgrs[lgr_name]['lgr_coords_in_parent_grid']['refine']
+                inj_local = center_2d + k * (rx * ry)
+                inj_global = inj_local + self.lgr_meta['lgr_offsets'][comp[wname]["lgr"]]
+                self.reservoir.add_perforation(wname, cell_index=inj_global, ms_epm=False)
+       
+        wat_wells = self.cfg["water_inj"]
+        for key, value in wat_wells.items():
+            self.reservoir.add_well(key)
+        # add four water injectors 
+        for wname, cfg in wat_wells.items():
+            k_from = cfg["k_from"]
+            k_to = cfg["k_to"]
+            i0 = cfg["i0"]
+            j0 = cfg["j0"]
+            for k in range(k_from , k_to + 1):
+                id0 = self.convert_ijk_to_gindex_1based(i0, j0, k, self.level0.nx, self.level0.ny) 
+                idx_global = self.level0.discretizer.global_to_local[id0]
+                self.reservoir.add_perforation(wname, cell_index=idx_global, ms_epm=False)
   
 
     def set_physics(self):
@@ -371,10 +538,10 @@ class Model(DartsModel):
                                               ('aqueous', Garcia2001(components))])
         property_container.viscosity_ev = dict([('CO2_rich', Fenghour1998()),
                                                 ('aqueous', Islam2012(components))])
-        # property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas", swc=0.30, sgr=0.1, kre=1.0, n=4.2)),
-        #                                        ('aqueous', PhaseRelPerm("oil", swc=0.30, sgr=0.1, kre=1.0, n=1.9))])
-        property_container.rel_perm_ev = dict([('CO2_rich', GasRelPerm(pvt)),
-                                               ('aqueous', WatRelPerm(pvt))])
+        property_container.rel_perm_ev = dict([('CO2_rich', PhaseRelPerm("gas", swc=0.30, sgr=0.1, kre=1.0, n=4.2)),
+                                               ('aqueous', PhaseRelPerm("oil", swc=0.30, sgr=0.1, kre=1.0, n=1.9))])
+        # property_container.rel_perm_ev = dict([('CO2_rich', GasRelPerm(pvt)),
+        #                                        ('aqueous', WatRelPerm(pvt))])
         property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(eos=pr)),
                                                 ('aqueous', EoSEnthalpy(eos=aq))])
         property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(181.44)),
@@ -404,7 +571,7 @@ class Model(DartsModel):
         depths = np.asarray(self.reservoir.mesh.depth)
         min_depth = np.min(depths)
         max_depth = np.max(depths)
-        nb = int(self.reservoir.nz)
+        nb = int(self.level0.nz)
         depths = np.linspace(min_depth,max_depth,nb)
 
         init = Initialize(self.physics)
@@ -420,13 +587,14 @@ class Model(DartsModel):
 
         dTdh = 40/1000 #k/m
         
-        X = init.solve(depth_bottom=max_depth, depth_top= min_depth,depth_known=2000, nb=nb,
+        X = init.solve(depth_bottom=2200, depth_top= 2000,depth_known=2000, nb=nb,
                        boundary_state=boundary_state,primary_specs=primary_specs,secondary_specs=None, dTdh=dTdh).reshape((nb, self.physics.n_vars))
- 
+
         self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
                                                              input_depth= init.depths,
                                                             input_distribution={v:X[:,i] for i, v in enumerate(self.physics.vars)})
         return
+
 
     def set_well_controls(self):
        
@@ -460,9 +628,6 @@ class Model(DartsModel):
                                                is_inj=False, target=0
                                                ,phase_name="aqueous"
                                                )
-           
-               
 
 
 
-   

@@ -10,7 +10,7 @@ import sys, os
 def plot_well_time_data_2(m, time_data_df,
                                 save_output_files=True,
                                 well_names=None,
-                                component="CO2",
+                                component="CO2_rich",
                                 include_rates=("mass_rate",),
                                 include_bhp=True,
                                 include_bht=True):

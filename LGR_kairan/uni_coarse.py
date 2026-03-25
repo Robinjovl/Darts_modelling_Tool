@@ -158,11 +158,11 @@ class Model(DartsModel):
     def set_wells(self):
         self.reservoir.add_well("I1")
         for k in range(self.nz_over, self.nz_over + self.nz_res):         
-            self.reservoir.add_perforation("I1", res_cell_idx=(20,40,k))
+            self.reservoir.add_perforation("I1", res_cell_idx=(4,6,k))
 
         self.reservoir.add_well("P1")
         for k in range(self.nz_over, self.nz_over + self.nz_res):         
-            self.reservoir.add_perforation("P1", res_cell_idx=(60,40,k))
+            self.reservoir.add_perforation("P1", res_cell_idx=(8,6,k))
   
 
     def set_physics(self):
@@ -271,13 +271,13 @@ class Model(DartsModel):
             if i == 0:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                 #                                is_inj=True, target=5600000., inj_composition=inj_composition, inj_temp=296.15)
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=360., inj_composition=inj_composition, inj_temp=296.15)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+                                               is_inj=True, target=30000., inj_composition=inj_composition, inj_temp=296.15)
             else:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                 #                                is_inj=False, target=1400000.)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=102.)
+                                               is_inj=False, target=120.)
 
 
 

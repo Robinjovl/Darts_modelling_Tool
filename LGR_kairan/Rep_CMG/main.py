@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from model_consK import Model
+from lgr_model import Model
 from darts.engines import value_vector, redirect_darts_output
 from darts.physics.base.operators_base import PropertyOperators as props
 from output import get_physics_field, plot_xz_section, plot_well_time_data_2, plot_xy_plane
@@ -10,20 +10,20 @@ from darts.engines import well_control_iface
 def make_cfg_lgr():
     cfg = {
         "grid":{
-            "nx" : 80,
-            "ny" : 80,
+            "nx" : 81,
+            "ny" : 81,
             "dx" :100,
             "dy" :100,
-            "nz_res" : 10,
-            "dz_res" : 20.0,
+            "nz_res" : 40,
+            "dz_res" : 5.0,
             "reservoir_top" : 2000,
         },
         "burden":{
             "over_thickness":2000,
             "under_thickness":2000,
             "dz_ratio" : 2,
-            "poro_burden" : 0.0001,
-            "perm_burden" : 1e-6,
+            "poro_burden" : 1e-5,
+            "perm_burden" : 1e-9,
 
         },
         "rock":{
@@ -39,7 +39,7 @@ def make_cfg_lgr():
                 "parent_grid_name": "global",
                 "lgr_coords_in_parent_grid" :{"i_range": [41, 41],
                                                 "j_range": [41, 41],
-                                                "k_range": [1, 10],
+                                                "k_range": [1, 40],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "inj"
 
@@ -49,7 +49,7 @@ def make_cfg_lgr():
                 "parent_grid_name": "global",
                 "lgr_coords_in_parent_grid" :{"i_range": [36, 36],
                                                 "j_range": [46, 46],
-                                                "k_range": [1, 10],
+                                                "k_range": [1, 40],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "prod"
 
@@ -59,7 +59,7 @@ def make_cfg_lgr():
                 "parent_grid_name": "global",
                 "lgr_coords_in_parent_grid" :{"i_range": [46, 46],
                                                 "j_range": [46, 46],
-                                                "k_range": [1, 10],
+                                                "k_range": [1, 40],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "prod"
 
@@ -69,7 +69,7 @@ def make_cfg_lgr():
                 "parent_grid_name": "global",
                 "lgr_coords_in_parent_grid" :{"i_range": [36, 36],
                                                 "j_range": [36, 36],
-                                                "k_range": [1, 10],
+                                                "k_range": [1, 40],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "prod"
 
@@ -79,7 +79,7 @@ def make_cfg_lgr():
                 "parent_grid_name": "global",
                 "lgr_coords_in_parent_grid" :{"i_range": [46, 46],
                                                 "j_range": [36, 36],
-                                                "k_range": [1, 10],
+                                                "k_range": [1, 40],
                                                 "refine": [7, 7, 1],
                                                 "tag" : "prod"
 
@@ -88,33 +88,46 @@ def make_cfg_lgr():
         },
 
         "wells":{
-           "I1": {"lgr": "lgr0", "k_from": 1, "k_to": 10},
-           "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 5},
-           "P2": {"lgr": "lgr2", "k_from": 1, "k_to": 5},
-           "P3": {"lgr": "lgr3", "k_from": 1, "k_to": 5},
-           "P4": {"lgr": "lgr4", "k_from": 1, "k_to": 5},
+           "I1": {"lgr": "lgr0", "k_from": 1, "k_to": 40},
+           "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 20},
+           "P2": {"lgr": "lgr2", "k_from": 1, "k_to": 20},
+           "P3": {"lgr": "lgr3", "k_from": 1, "k_to": 20},
+           "P4": {"lgr": "lgr4", "k_from": 1, "k_to": 20},
         },
 
         "water_inj": {
-            "W1": {"k_from": 1, "k_to": 10, "i0": 29, "j0": 53},
-            "W2": {"k_from": 1, "k_to": 10, "i0": 53, "j0": 53},
-            "W3": {"k_from": 1, "k_to": 10, "i0": 29, "j0": 29},
-            "W4": {"k_from": 1, "k_to": 10, "i0": 53, "j0": 29}
+            "W1": {"k_from": 1, "k_to": 40, "i0": 29, "j0": 53},
+            "W2": {"k_from": 1, "k_to": 40, "i0": 53, "j0": 53},
+            "W3": {"k_from": 1, "k_to": 40, "i0": 29, "j0": 29},
+            "W4": {"k_from": 1, "k_to": 40, "i0": 53, "j0": 29}
         }
     }
     return cfg
 
+# def cal_average_res_pre(m):
+#     n_res = m.reservoir.mesh.n_res_blocks
+#     n_vars = len(m.physics.vars)
+#     X = np.asarray(m.physics.engine.X, dtype=float)
+#     P = X.reshape((-1, n_vars))[:n_res, 0]
+#     return float(P.mean())
+
 def cal_average_res_pre(m):
     n_res = m.reservoir.mesh.n_res_blocks
     n_vars = len(m.physics.vars)
+
     X = np.asarray(m.physics.engine.X, dtype=float)
     P = X.reshape((-1, n_vars))[:n_res, 0]
-    return float(P.mean())
+
+    poro = np.array(m.reservoir.mesh.poro, copy=False)[:n_res]
+    volume = np.array(m.reservoir.mesh.volume, copy=False)[:n_res]
+
+    pv = poro * volume
+    return float(np.sum(P * pv) / np.sum(pv))
 
 USE_LGR=True
 Nt = 100
 Dt = 366/2
-output_dir = r"output_9w"
+output_dir = r"output_lgr"
 FIG_DIR = os.path.join(output_dir, "figures")
 SECTION_DIR = os.path.join(FIG_DIR, "sections")
 WELL_DIR = os.path.join(FIG_DIR, "well_time_plots") # lowercase is better
@@ -130,8 +143,8 @@ if __name__ == '__main__':
 
     # darts_model.params.linear_type = darts_model.params.linear_solver_t.cpu_superlu
     redirect_darts_output('run.log')
-    darts_model.init(platform="cpu") # cpu or GPU, PLATFORM
-    darts_model.set_output(output_folder="output_9w")
+    darts_model.init(platform="gpu") # cpu or GPU, PLATFORM
+    darts_model.set_output(output_folder="output_lgr")
 
     #plot initial condition
     prim0 = get_physics_field(darts_model)
@@ -152,7 +165,7 @@ if __name__ == '__main__':
     for k in prim0.keys():
         if "co2" in k.lower():
             plot_xz_section(
-                darts_model, prim0[k] - 1e-8, use_lgr=USE_LGR, zmin=0, zmax=4200,
+                darts_model, prim0[k] - 1e-8, use_lgr=USE_LGR, zmin=2000, zmax=2200,
                 savepath=os.path.join(SECTION_DIR, f"section_CO2_step_{t0}.png"),
                 title="CO2_delta (initial)", logscale=False, vmin=0, vmax=1
             )
@@ -180,7 +193,9 @@ if __name__ == '__main__':
                         darts_model.physics.set_well_controls(
                             wctrl=w.control,
                             control_type=well_control_iface.MASS_RATE,
+                            # control_type=well_control_iface.VOLUMETRIC_RATE,
                             is_inj=True,
+                            # target=4.32e4,
                             target=3.3264e7,
                             inj_composition=[1.0 - darts_model.zero],
                             phase_name="CO2_rich",
@@ -211,7 +226,9 @@ if __name__ == '__main__':
                         darts_model.physics.set_well_controls(
                             wctrl=w.control,
                             control_type=well_control_iface.MASS_RATE,
+                            # control_type=well_control_iface.VOLUMETRIC_RATE,
                             is_inj=True,
+                            # target=4.32e4,
                             target=3.3264e7,
                             phase_name="CO2_rich",
                             inj_composition=[1.0 - darts_model.zero],
@@ -245,14 +262,14 @@ if __name__ == '__main__':
             darts_model.run(Dt)
             pc = darts_model.physics.property_containers[0]
     
-            if ave_pre < 205.18:
+            if ave_pre < 205.1:
                 for i, w in enumerate(darts_model.reservoir.wells):
                     if "W" in w.name:
                         darts_model.physics.set_well_controls(
                             wctrl=w.control,
                             control_type=well_control_iface.BHP,
                             is_inj=True,
-                            target=205.18,
+                            target=205.1,
                             inj_composition=[darts_model.zero],
                             inj_temp=288.15
                         )
@@ -285,27 +302,27 @@ if __name__ == '__main__':
                 rhoG = property_array["rhoG"][0,:]
                 rhoAq = property_array["rhoAq"][0,:]
                 plot_xy_plane(
-                    darts_model, satG, depth=2010, use_lgr=USE_LGR,
+                    darts_model, satG, depth=2002.5, use_lgr=USE_LGR,
                     savepath=os.path.join(SECTION_DIR, f"section_satG_xy_step_{t_end}.png"),
                     title=f"satG at step {t_end}", logscale=False, vmin=0, vmax=1
                 )
                 plot_xy_plane(
-                    darts_model, satG, depth=2090, use_lgr=USE_LGR,
+                    darts_model, satG, depth=2097.5, use_lgr=USE_LGR,
                     savepath=os.path.join(SECTION_DIR, f"section_satG_xy_step_{t_end} at bottom of Pro.png"),
                     title=f"satG at step {t_end}", logscale=False, vmin=0, vmax=1
                 )
                 plot_xy_plane(
-                    darts_model, muG, depth=2090, use_lgr=USE_LGR,
-                    savepath=os.path.join(SECTION_DIR, f"section_muG_xy_step_{t_end}.png"),
+                    darts_model, muG, depth=2097.5, use_lgr=USE_LGR,
+                    savepath=os.path.join(SECTION_DIR, f"section_muG_xy_step_{t_end} at bottom of Producer.png"),
                     title=f"muG at step {t_end}", logscale=False
                 )
                 plot_xy_plane(
-                    darts_model, muAQ, depth=2090, use_lgr=USE_LGR,
-                    savepath=os.path.join(SECTION_DIR, f"section_muAq_xy_step_{t_end}.png"),
+                    darts_model, muAQ, depth=2097.5, use_lgr=USE_LGR,
+                    savepath=os.path.join(SECTION_DIR, f"section_muAq_xy_step_{t_end} at bottom of Producer.png"),
                     title=f"muAq at step {t_end}", logscale=False
                 )
                 plot_xy_plane(
-                    darts_model, rhoAq, depth=2010, use_lgr=USE_LGR,
+                    darts_model, rhoAq, depth=2002.5, use_lgr=USE_LGR,
                     savepath=os.path.join(SECTION_DIR, f"section_rhoAq_xy_step_{t_end}.png"),
                     title=f"rhoAq at step {t_end}", logscale=False
                 )
@@ -321,7 +338,7 @@ if __name__ == '__main__':
                             title=k, logscale=False
                         )
                         plot_xy_plane(
-                            darts_model, prim[k], depth=2010, use_lgr=USE_LGR,
+                            darts_model, prim[k], depth=2002.5, use_lgr=USE_LGR,
                             savepath=os.path.join(SECTION_DIR, f"section_P_xy_step_{t_end}.png"),
                             title=k, logscale=False
                         )
@@ -337,7 +354,7 @@ if __name__ == '__main__':
                             title="CO2_delta", logscale=False, vmin=0, vmax=1
                         )
                         plot_xy_plane(
-                            darts_model, prim[k] - 1e-8, depth=2010, use_lgr=USE_LGR,
+                            darts_model, prim[k] - 1e-8, depth=2002.5, use_lgr=USE_LGR,
                             savepath=os.path.join(SECTION_DIR, f"section_CO2_xy_step_{t_end}.png"),
                             title="CO2_delta", logscale=False, vmin=0, vmax=1
                         )
@@ -354,7 +371,7 @@ if __name__ == '__main__':
                             title=k, logscale=False
                         )
                         plot_xy_plane(
-                            darts_model, prim[k], depth=2010, use_lgr=USE_LGR,
+                            darts_model, prim[k], depth=2002.5, use_lgr=USE_LGR,
                             savepath=os.path.join(SECTION_DIR, f"section_T_xy_step_{t_end}.png"),
                             title=k, logscale=False
                         )

@@ -82,8 +82,8 @@ class Model(DartsModel):
     
     def set_reservoir(self):
 
-        nx0, ny0 = 80*3, 80*3 # global grid size
-        dx0, dy0 = 100/3, 100/3
+        nx0, ny0 = 10*10, 10*10 # global grid size
+        dx0, dy0 = 100/10, 100/10
         nz_res = 40
         dz_res = 5
 
