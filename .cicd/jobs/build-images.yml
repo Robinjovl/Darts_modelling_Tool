@@ -7,9 +7,9 @@ docker-image-builder:
     entrypoint: [""]
   needs: []
   before_script:
-    # Set up registry auth for Kaniko and for the manifest check below
+    # Set up registry auth for Kaniko (use username/password fields, not base64 auth)
     - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64)\"}}}" > /kaniko/.docker/config.json
+    - printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' "$CI_REGISTRY" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" > /kaniko/.docker/config.json
   script:
     # --- content-hash check (similar to apptainer-image-builder-base) ---
     - CONTEXT_SHA=$(cat
@@ -24,9 +24,9 @@ docker-image-builder:
     - |
       NEEDS_BUILD=1
       if [ "${UPDATE_DOCKER_IMAGE:-0}" != "1" ]; then
-        AUTH_HEADER="Authorization: Basic $(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64)"
+        AUTH_B64=$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')
         if wget -q -O /dev/null \
-             --header "${AUTH_HEADER}" \
+             --header "Authorization: Basic ${AUTH_B64}" \
              --header "Accept: application/vnd.docker.distribution.manifest.v2+json" \
              "https://${CI_REGISTRY}/v2/${CI_PROJECT_PATH}/linux-builder/manifests/${IMAGE_TAG}" 2>/dev/null; then
           echo "Image ${FULL_IMAGE}:${IMAGE_TAG} already exists — skipping build"
