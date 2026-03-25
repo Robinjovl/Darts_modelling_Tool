@@ -218,6 +218,7 @@ class UnstructDiscretizer:
                 self.bound_faces_tot = meshObject["bound_faces_tot"]
                 self.frac_bound_faces_tot = meshObject["frac_bound_faces_tot"]
                 self.output_faces_tot = meshObject["output_faces_tot"]
+                self.geom_order = meshObject["geom_order"]
 
                 if self.verbose:
                     print("Load cell information from cache...")
@@ -509,7 +510,7 @@ class UnstructDiscretizer:
             meshObject["bound_faces_tot"] = self.bound_faces_tot
             meshObject["frac_bound_faces_tot"] = self.frac_bound_faces_tot
             meshObject["output_faces_tot"] = self.output_faces_tot
-
+            meshObject["geom_order"] = self.geom_order
             with open(self.mesh_file + ".meshObject.cache", "wb") as handle:
                 pickle.dump(meshObject, handle, protocol=4)
 

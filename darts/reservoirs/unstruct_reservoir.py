@@ -81,7 +81,7 @@ class UnstructReservoir(ReservoirBase):
             permy=self.permy,
             permz=self.permz,
             frac_aper=self.frac_aper,
-            cache=False,
+            cache=self.cache,
         )
 
         if self.frac_aper is not None and self.sh_max is not None:
@@ -103,7 +103,7 @@ class UnstructReservoir(ReservoirBase):
 
         # Perform discretization:
         cell_m, cell_p, tran, tran_thermal = (
-            self.discretizer.calc_connections_all_cells()
+            self.discretizer.calc_connections_all_cells(cache=self.cache)
         )
 
         # Initialize mesh using built connection list
