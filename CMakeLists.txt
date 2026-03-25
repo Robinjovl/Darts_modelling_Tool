@@ -154,10 +154,17 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # Using LTO as it seems to reduce compile time
   # No need for manual optimization flag, CMake build types automatically handle it.
   # Debug: O0    Release: 03
-  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-pipe;-std=c++20")
 
   # Linker flags
   set(opendarts_cxx_linker_flags "")
+
+  # Use mold linker if available (significantly faster linking for template-heavy code)
+  find_program(MOLD_LINKER mold)
+  if(MOLD_LINKER)
+    message(STATUS "  Using mold linker: ${MOLD_LINKER}")
+    list(APPEND opendarts_cxx_linker_flags "-fuse-ld=mold")
+  endif()
 
   if(${OPENDARTS_CONFIG} STREQUAL "MT")
     list(APPEND opendarts_cxx_compiler_flags "-fopenmp")

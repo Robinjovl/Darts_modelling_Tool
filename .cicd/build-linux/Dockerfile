@@ -84,6 +84,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
+        ccache \
+        wget \
         git \
 		make \
 		smbclient \
@@ -91,6 +93,12 @@ RUN apt-get update && \
 		libglu1-mesa-dev \
 		libxcursor1 \
 		libxinerama1
+
+# Install mold linker (much faster linking for template-heavy C++ code)
+RUN wget -q https://github.com/rui314/mold/releases/download/v2.35.1/mold-2.35.1-x86_64-linux.tar.gz && \
+    tar -xzf mold-2.35.1-x86_64-linux.tar.gz --strip-components=1 -C /usr/local && \
+    rm mold-2.35.1-x86_64-linux.tar.gz && \
+    mold --version
 
 # Set up GCC environment variables for proper paths in execution
 ENV CROSS_ROOT=/opt/gcc-${GCC_VERSION}/bin
