@@ -614,21 +614,21 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    #physics_types_list += ['single_phase']
-    physics_types_list += ['single_phase_thermal']
+    physics_types_list += ['single_phase']
+    #physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['none']
     #wells_types_list += ['prod']
-    #wells_types_list += ['inj']
-    wells_types_list += ['doublet']
+    wells_types_list += ['inj']
+    #wells_types_list += ['doublet']
     
     # for THM solver run
-    #n_years = 1
+    n_years = 1
     #n_years = 2
     #n_years = 5
     #n_years = 10
-    n_years = 30
+    #n_years = 30
     #n_years = 50
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
@@ -642,8 +642,8 @@ if __name__ == '__main__':
     #timestep = 1
     #timestep = 4
     
-    #run_thm = True
-    run_thm = False
+    run_thm = True
+    #run_thm = False
     
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
     generate_mesh=True
