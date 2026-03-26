@@ -55,20 +55,16 @@ docker-image-builder:
           --context "${CI_PROJECT_DIR}/.cicd/build-linux" \
           --dockerfile "${CI_PROJECT_DIR}/.cicd/build-linux/Dockerfile" \
           ${DEST_ARGS} \
-          --cache=true \
-          --cache-repo="${FULL_IMAGE}/cache" \
           --snapshot-mode=redo \
-          --use-new-run
+          --use-new-run \
+          --compressed-caching=false
       fi
   rules:
     # Always run when manually requested
     - if: $UPDATE_DOCKER_IMAGE == "1"
-    # Auto-detect Dockerfile/Toolchain changes on protected branches
+    # On protected branches: always run — the script's content-hash check
+    # will skip the build if the image already exists in the registry
     - if: $CI_COMMIT_REF_PROTECTED == "true"
-      changes:
-        paths:
-          - .cicd/build-linux/Dockerfile
-          - .cicd/build-linux/Toolchain.cmake
     # Validate Dockerfile changes in merge requests (no push)
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
