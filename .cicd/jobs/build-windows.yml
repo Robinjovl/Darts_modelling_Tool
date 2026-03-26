@@ -9,12 +9,15 @@
         CONDA_BIN_PATH: 'D:\miniconda3\condabin'
         SCCACHE_DIR: "${CI_PROJECT_DIR}\\.sccache"
     cache:
-      - key: "sccache-windows-${CI_JOB_NAME}"
+      # NOTE: Do not use CI_JOB_NAME in cache keys on Windows — it contains
+      # characters illegal in NTFS paths (e.g. "build-windows: [3.10]").
+      # Use CACHE_JOB_KEY (set by extending jobs) instead.
+      - key: "sccache-win-${CACHE_JOB_KEY}"
         paths:
           - .sccache\
-      - key: "build-windows-${CI_JOB_NAME}-${CI_COMMIT_REF_SLUG}"
+      - key: "build-win-${CACHE_JOB_KEY}-${CI_COMMIT_REF_SLUG}"
         fallback_keys:
-          - "build-windows-${CI_JOB_NAME}-main"
+          - "build-win-${CACHE_JOB_KEY}-main"
         paths:
           - build\
     script:
@@ -60,6 +63,7 @@ build-windows:
         - if: $TEST_ALL_PYTHONS == "1"
     variables:
         ODLS: '-a'
+        CACHE_JOB_KEY: "bos-py${PY_VER}"
     parallel:
         matrix:
             - PY_VER: '3.10'
@@ -72,6 +76,7 @@ build-windows-ODLS:
     rules: *python_version_rules
     variables:
         ODLS: ''         # build with open-darts linear solvers
+        CACHE_JOB_KEY: "odls-py${PY_VER}"
     parallel:
         matrix:
             - PY_VER: '3.10'
