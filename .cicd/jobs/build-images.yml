@@ -56,7 +56,9 @@ docker-image-builder:
           --dockerfile "${CI_PROJECT_DIR}/.cicd/build-linux/Dockerfile" \
           ${DEST_ARGS} \
           --cache=true \
-          --cache-repo="${FULL_IMAGE}/cache"
+          --cache-repo="${FULL_IMAGE}/cache" \
+          --snapshot-mode=redo \
+          --use-new-run
       fi
   rules:
     # Always run when manually requested
