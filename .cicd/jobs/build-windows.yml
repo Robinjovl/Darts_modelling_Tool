@@ -32,7 +32,15 @@
         - conda activate $env:CONDA_ENV
         # Make sure wheel package could be installed
         - python -m pip install --upgrade pip setuptools wheel
-        - if (Get-Command sccache -ErrorAction SilentlyContinue) { $env:OD_CMAKE_ARGS = "-D CMAKE_C_COMPILER_LAUNCHER=sccache -D CMAKE_CXX_COMPILER_LAUNCHER=sccache"; sccache --zero-stats }
+        - |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            $ver = (sccache --version) -join ' '
+            Write-Host "========== [COMPILER CACHE] sccache ENABLED ($ver) =========="
+            $env:OD_CMAKE_ARGS = "-D CMAKE_C_COMPILER_LAUNCHER=sccache -D CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+            sccache --zero-stats
+          } else {
+            Write-Host "========== [COMPILER CACHE] sccache NOT FOUND — building without compiler cache =========="
+          }
         # Copy VS redist libraries
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
@@ -40,7 +48,11 @@
         - echo "ODLS:" $env:ODLS
         # Compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -w -t -j 8 -p
-        - if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --show-stats }
+        - |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            Write-Host "========== [COMPILER CACHE] sccache stats =========="
+            sccache --show-stats
+          }
     after_script:
         - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
         - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent

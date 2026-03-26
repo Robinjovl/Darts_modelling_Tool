@@ -29,15 +29,20 @@
         - python -m pip install --upgrade pip setuptools wheel
         - |
           if command -v ccache >/dev/null 2>&1; then
+            echo "========== [COMPILER CACHE] ccache ENABLED ($(ccache --version | head -1)) =========="
             export OD_CMAKE_ARGS="-D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache"
             ccache --zero-stats
           else
-            echo "ccache not found — building without compiler cache"
+            echo "========== [COMPILER CACHE] ccache NOT FOUND — building without compiler cache =========="
           fi
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
         - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS -p
-        - ccache --show-stats || true
+        - |
+          if command -v ccache >/dev/null 2>&1; then
+            echo "========== [COMPILER CACHE] ccache stats =========="
+            ccache --show-stats
+          fi
     after_script:
         - source /opt/conda/bin/activate
         - conda env remove -n ${CONDA_ENV} --yes || true
