@@ -9,16 +9,17 @@
 #include "multilinear_interpolator_base.hpp"
 #include "multilinear_interpolator_common.h"
 
+
 using namespace std;
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
-                                                                                              const std::vector<int> &axes_points,
-                                                                                              const std::vector<double> &axes_min,
-                                                                                              const std::vector<double> &axes_max)
-    : interpolator_base(supporting_point_evaluator, axes_points, axes_min, axes_max),
-      axes_min_internal(axes_min),
-      axes_max_internal(axes_max),
+                                                                                              const std::vector<int> &axes_points_,
+                                                                                              const std::vector<double> &axes_min_,
+                                                                                              const std::vector<double> &axes_max_)
+    : interpolator_base(supporting_point_evaluator, axes_points_, axes_min_, axes_max_),
+      axes_min_internal(axes_min_),
+      axes_max_internal(axes_max_),
       axes_step_internal(axes_step),
       axes_step_inv_internal(axes_step_inv)
 {
@@ -92,6 +93,7 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate(
   return 0;
 }
 
+
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_with_derivatives(const double *point,
                                                                                                  double *values,
@@ -123,7 +125,7 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_
                                                                                                  std::vector<double> &values, std::vector<double> &derivatives)
 {
 #pragma omp parallel for
-  for (int i = 0; i < points_idxs.size(); i++)
+  for (size_t i = 0; i < points_idxs.size(); ++i)
   {
 
     index_t offset = points_idxs[i];

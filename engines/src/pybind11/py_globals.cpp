@@ -3,6 +3,7 @@
 #include "py_globals.h"
 #include "globals.h"
 #include "engines_build_info.h"
+#include <cctype>
 #include <iostream>
 #include <fstream>
 
@@ -255,7 +256,7 @@ void pybind_globals(py::module &m)
 
   m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");
 
-#ifdef defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__)
   m.def("stream", &stream_main, "Launch stream bandwidth test");
 #endif // defined(__linux__) || defined(__APPLE__)
 
@@ -275,4 +276,6 @@ void pybind_globals(py::module &m)
 #endif
 
 }
+
+
 #endif //PYBIND11_ENABLED

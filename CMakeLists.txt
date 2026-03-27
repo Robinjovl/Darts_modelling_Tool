@@ -196,8 +196,31 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 
 endif()
 
+set(opendarts_cxx_warning_suppression_flags "")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  set(opendarts_cxx_warning_suppression_flags
+    -Wno-attributes
+    -Wno-shadow
+    -Wno-unused-variable
+    -Wno-unused-but-set-variable
+    -Wno-unused-parameter
+    -Wno-sign-compare
+    -Wno-maybe-uninitialized
+    -Wno-format-overflow
+    -Wno-stringop-overflow
+    -Wno-comment
+    -Wno-enum-compare
+    -Wno-switch
+    -Wno-cast-function-type
+    -Wno-array-bounds
+  )
+endif()
+
+list(APPEND opendarts_cxx_compiler_flags ${opendarts_cxx_warning_suppression_flags})
+
 message(STATUS "   Compiler flags: ${opendarts_cxx_compiler_flags}")
 message(STATUS "   Linker flags  : ${opendarts_cxx_linker_flags}")
+message(STATUS "   Warning suppressions: ${opendarts_cxx_warning_suppression_flags}")
 
 # Setup options
 option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests are not built, to save time

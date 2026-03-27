@@ -1,7 +1,7 @@
 # Give the user some feedback on what is going on
-message(STATUS "Building openDARTS discretizer")  
+message(STATUS "Building openDARTS discretizer")
 
-# Get hostname and username 
+# Get hostname and username
 cmake_host_system_information(RESULT opendarts_discretizer_BUILD_HOSTNAME QUERY HOSTNAME)
 if(WIN32)
   set(opendarts_discretizer_BUILD_USERNAME $ENV{USERNAME})
@@ -10,8 +10,8 @@ else()
 endif()
 
 # Thirdparty libraries ---------------------------------------------------------
-# Reports we started looking for MShIO libraries and initializes the flag 
-# that checks if all have been found 
+# Reports we started looking for MShIO libraries and initializes the flag
+# that checks if all have been found
 message(CHECK_START "   Importing MshIO")
 if(NOT DEFINED MshIO_DIR)
   set(MshIO_DIR "${CMAKE_CURRENT_LIST_DIR}/../thirdparty/MshIO")
@@ -31,7 +31,8 @@ target_sources(mshio
 target_include_directories(mshio PUBLIC "${MshIO_DIR}/include/" )
 
 set(mshio_cxx_compiler_flags "-fPIC;-std=c++17;-fno-lto")
-target_compile_options(mshio 
+list(APPEND mshio_cxx_compiler_flags ${opendarts_cxx_warning_suppression_flags})
+target_compile_options(mshio
   PRIVATE
     ${mshio_cxx_compiler_flags}
 )
@@ -57,4 +58,4 @@ message(CHECK_PASS "done!")
 add_subdirectory(src)
 # ------------------------------------------------------------------------------
 
-message(STATUS "Building openDARTS discretizer - done!")  
+message(STATUS "Building openDARTS discretizer - done!")

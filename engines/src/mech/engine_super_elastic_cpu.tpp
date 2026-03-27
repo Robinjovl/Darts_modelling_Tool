@@ -11,6 +11,7 @@
 #include "mech/engine_super_elastic_cpu.hpp"
 #include "conn_mesh.h"
 
+
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
@@ -121,9 +122,11 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			break;
 		}
 #ifdef _WIN32
-#if 0 // can be enabled if amgdll.dll is available \
-	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
-		case sim_params::CPU_GMRES_CPR_AMG1R5:
+#if 0
+		  // Can be enabled if amgdll.dll is available.
+		  // Since we compile PIC code, we cannot link the existing static library,
+		  // which was compiled without the fPIC flag.
+			case sim_params::CPU_GMRES_CPR_AMG1R5:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;

@@ -12,11 +12,11 @@ using namespace std;
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
-    multilinear_adaptive_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
-                                          const std::vector<int> &axes_points,
-                                          const std::vector<double> &axes_min,
-                                          const std::vector<double> &axes_max)
-    : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max)
+    multilinear_adaptive_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator_,
+                                          const std::vector<int> &axes_points_,
+                                          const std::vector<double> &axes_min_,
+                                          const std::vector<double> &axes_max_)
+    : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator_, axes_points_, axes_min_, axes_max_)
 
 {
 }
@@ -79,7 +79,7 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hype
 
     this->get_hypercube_points(hypercube_index, points);
 
-    for (int i = 0; i < this->N_VERTS; ++i)
+    for (uint32_t i = 0; i < this->N_VERTS; ++i)
     {
       // obtain point data and copy it to hypercube data
       const typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::point_data_t &p_data = this->get_point_data(points[i]);
