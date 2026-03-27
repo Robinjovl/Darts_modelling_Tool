@@ -348,7 +348,7 @@ class Pipe:
             lb_idx = self.lb_idx
 
         """ Calculate phase props of previous time step at centroids """
-        if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
+        if iter_counter == 0 and self.is_first_first_iter and flag == 1:
             if self.prop_eval_method == "OBL":
                 state0 = value_vector(Xn_dfm_well)
                 values0 = value_vector(np.zeros(num_segments * self.n_prop_ops))
@@ -509,7 +509,7 @@ class Pipe:
                 miuL0,
             ]
 
-        elif iter_counter == 0 and self.is_first_first_iter is False and flag == 1:
+        elif iter_counter == 0 and not self.is_first_first_iter and flag == 1:
             self.iter_phases_props0 = self.iter_phases_props
 
         xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, miuG0, miuL0 = self.iter_phases_props0
@@ -804,7 +804,7 @@ class Pipe:
                 rhoL_face_der,
             ]
 
-        if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
+        if iter_counter == 0 and self.is_first_first_iter and flag == 1:
             # Initial velocities in the wellbore are zero
             rhoM0_vM0, vM0, vG0, vL0 = (
                 np.array([0]),
@@ -813,7 +813,7 @@ class Pipe:
                 np.array([0]),
             )
             self.velocities0 = np.array([rhoM0_vM0, vM0, vG0, vL0])
-        elif iter_counter == 0 and self.is_first_first_iter is False and flag == 1:
+        elif iter_counter == 0 and not self.is_first_first_iter and flag == 1:
             rhoM0_vM0, vM0, vG0, vL0 = self.rhoM_vM, self.vM, self.vG, self.vL
             self.velocities0 = np.array([rhoM0_vM0, vM0, vG0, vL0])
 
@@ -954,9 +954,9 @@ class Pipe:
 
         self.vM = self.rhoM_vM / self.rhoM_face
 
-        if iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
+        if iter_counter == 0 and flag == 1 and self.is_first_first_iter:
             self.vD0 = np.zeros(num_interfaces)
-        elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
+        elif iter_counter == 0 and flag == 1 and not self.is_first_first_iter:
             if self.enable_drift_velocity:
                 self.update_drift_velocity()
             else:
@@ -1060,13 +1060,13 @@ class Pipe:
         return phase_vels
 
     def calc_mixture_densities(self, iter_counter, flag):
-        if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
+        if iter_counter == 0 and self.is_first_first_iter and flag == 1:
             _, _, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
 
             _, _, sG0_face, rhoG0_face, rhoL0_face, _, _ = self.iter_phases_props0_face
             self.rhoM0_face = sG0_face * rhoG0_face + (1 - sG0_face) * rhoL0_face
 
-        elif iter_counter == 0 and self.is_first_first_iter is False and flag == 1:
+        elif iter_counter == 0 and not self.is_first_first_iter and flag == 1:
             self.rhoM0_face = self.rhoM_face
 
         # Calculate mixture density
@@ -1085,10 +1085,10 @@ class Pipe:
             )
 
         # Calculate adjusted-mixture density
-        if iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
+        if iter_counter == 0 and flag == 1 and self.is_first_first_iter:
             # At the beginning, there is no flow, so C00 is considered 1 everywhere.
             self.C00 = np.ones(self.geometry.num_interfaces)
-        elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
+        elif iter_counter == 0 and flag == 1 and not self.is_first_first_iter:
             if self.enable_profile_parameter:
                 self.update_profile_parameter()
             else:
