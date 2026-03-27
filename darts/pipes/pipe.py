@@ -62,6 +62,8 @@ class Pipe:
         eps_p: float = 1e-4,
         eps_temp: float = 0.1,
         eps_z: float = 0.00001,
+        enable_profile_parameter: bool = True,
+        enable_drift_velocity: bool = True,
         verbose: bool = False,
     ):
         """
@@ -107,6 +109,12 @@ class Pipe:
                       numerically differentiating pipe phase velocities with respect to composition
         :type eps_z: float
         :param verbose: Whether to display extra info about PipeModel
+        :param enable_profile_parameter: Whether to calculate and use profile parameter for multiphase flow. If False,
+                                         profile parameter is set to one.
+        :type enable_profile_parameter: bool
+        :param enable_drift_velocity: Whether to calculate and use drift velocity for multiphase flow. If False,
+                                      drift velocity is set to zero.
+        :type enable_drift_velocity: bool
         :type verbose: boolean
         """
         assert pipe_name == pipe_geometry.pipe_name, (
@@ -271,6 +279,9 @@ class Pipe:
         self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
 
         self.lateral_heat_rate_eval = None
+
+        self.enable_profile_parameter = enable_profile_parameter
+        self.enable_drift_velocity = enable_drift_velocity
 
         if verbose:
             print(f'** Model of the pipe "{self.geometry.pipe_name}" is created!')
@@ -946,7 +957,10 @@ class Pipe:
         if iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
             self.vD0 = np.zeros(num_interfaces)
         elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
-            self.update_drift_velocity()
+            if self.enable_drift_velocity:
+                self.update_drift_velocity()
+            else:
+                self.vD0 = np.zeros(num_interfaces)
 
         # If the differentiation method is OBL, preallocate derivative matrices
         if self.diff_method == "OBL":
@@ -1071,11 +1085,15 @@ class Pipe:
             )
 
         # Calculate adjusted-mixture density
-        if iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
-            self.update_profile_parameter()
-        elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
+        if iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
             # At the beginning, there is no flow, so C00 is considered 1 everywhere.
             self.C00 = np.ones(self.geometry.num_interfaces)
+        elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
+            if self.enable_profile_parameter:
+                self.update_profile_parameter()
+            else:
+                self.C00 = np.ones(self.geometry.num_interfaces)
+
         self.rhoM_adjusted_face = (
             self.C00 * sG_face * rhoG_face + (1 - self.C00 * sG_face) * rhoL_face
         )
