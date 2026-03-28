@@ -199,20 +199,17 @@ endif()
 set(opendarts_cxx_warning_suppression_flags "")
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(opendarts_cxx_warning_suppression_flags
-    -Wno-attributes
-    -Wno-shadow
-    -Wno-unused-variable
-    -Wno-unused-but-set-variable
-    -Wno-unused-parameter
-    -Wno-sign-compare
-    -Wno-maybe-uninitialized
-    -Wno-format-overflow
-    -Wno-stringop-overflow
-    -Wno-comment
-    -Wno-enum-compare
-    -Wno-switch
-    -Wno-cast-function-type
-    -Wno-array-bounds
+    # --- Reasonable suppressions (keep permanently) ---
+    -Wno-attributes         # cross-platform attribute compatibility (pybind11, MSVC attributes)
+    -Wno-maybe-uninitialized # GCC false positives in optimized builds
+    -Wno-comment            # harmless nested comment warnings
+    -Wno-cast-function-type # common with pybind11 callback casts
+    # --- Tech debt: to be fixed incrementally (202+154+140+656+194 unique locations) ---
+    -Wno-unused-variable       # ~202 unique locations, mostly in engine template instantiations
+    -Wno-unused-but-set-variable # ~100 unique locations in engine templates
+    -Wno-unused-parameter      # ~50 unique locations, mostly in virtual method overrides
+    -Wno-shadow                # ~154 unique locations, needs per-location review
+    -Wno-sign-compare          # ~140 unique locations, int vs size_t in loops
   )
 endif()
 

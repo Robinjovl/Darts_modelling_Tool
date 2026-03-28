@@ -30,7 +30,10 @@ target_sources(mshio
 
 target_include_directories(mshio PUBLIC "${MshIO_DIR}/include/" )
 
-set(mshio_cxx_compiler_flags "-fPIC;-std=c++17;-fno-lto")
+set(mshio_cxx_compiler_flags "")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  list(APPEND mshio_cxx_compiler_flags -fPIC -std=c++17 -fno-lto)
+endif()
 list(APPEND mshio_cxx_compiler_flags ${opendarts_cxx_warning_suppression_flags})
 target_compile_options(mshio
   PRIVATE

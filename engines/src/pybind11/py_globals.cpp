@@ -91,7 +91,7 @@ void pybind_globals(py::module &m)
   py::class_<__uint128_t>(m, "uint128", "128-bit unsigned integer")
     .def(py::init<>())
     .def(py::init([](py::int_ i){
-      const py::int_ two64 = py::int_(1) << 64;
+      const py::int_ two64 = py::int_(1) << py::int_(64);
       const py::int_ hi_py = i / two64;
       const py::int_ lo_py = i % two64;
       // now cast each half to uint64_t
@@ -115,7 +115,7 @@ void pybind_globals(py::module &m)
 #endif
       py::int_ py_hi = py::int_(hi);
       py::int_ py_lo = py::int_(lo);
-      return (py_hi << 64) | py_lo;
+      return (py_hi << py::int_(64)) | py_lo;
     })
     .def("__index__", [](const __uint128_t &v){
 #ifdef _MSC_VER
@@ -127,7 +127,7 @@ void pybind_globals(py::module &m)
 #endif
       py::int_ py_hi = py::int_(hi);
       py::int_ py_lo = py::int_(lo);
-      return (py_hi << 64) | py_lo;
+      return (py_hi << py::int_(64)) | py_lo;
     })
     .def("__repr__", [](const __uint128_t &v){
       std::ostringstream oss;

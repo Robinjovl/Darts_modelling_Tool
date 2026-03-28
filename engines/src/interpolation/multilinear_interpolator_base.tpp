@@ -125,7 +125,7 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_
                                                                                                  std::vector<double> &values, std::vector<double> &derivatives)
 {
 #pragma omp parallel for
-  for (size_t i = 0; i < points_idxs.size(); ++i)
+  for (int64_t i = 0; i < static_cast<int64_t>(points_idxs.size()); ++i)
   {
 
     index_t offset = points_idxs[i];

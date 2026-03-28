@@ -249,6 +249,8 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 

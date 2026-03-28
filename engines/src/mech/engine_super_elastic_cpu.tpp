@@ -283,6 +283,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 

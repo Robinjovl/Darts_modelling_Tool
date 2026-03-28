@@ -261,6 +261,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 
