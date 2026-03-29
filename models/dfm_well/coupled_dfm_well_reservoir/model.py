@@ -251,6 +251,8 @@ class Model(CICDModel):
         return rhs_flux
 
     def set_well_controls(self):
+        # When using well controls, make sure all the unnecessary sources/sinks from the pipe are removed and the
+        # function set_rhs_flux is commented out.
         inj_composition = []
         w = self.reservoir.wells[0]
 
