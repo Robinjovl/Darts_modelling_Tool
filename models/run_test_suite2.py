@@ -51,11 +51,11 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         # Tests for drift-flux well model (DFM) (implemented only for CPU)
         accepted_dirs += [
             # Coupled well-reservoir modeling using DFM wells is
-            os.path.join('dfm_well', 'coupled_dfm_well_reservoir'),
+            os.path.join('dfm_well', '2ph_1comp_coupled_dfm_well_reservoir'),
             # Single-phase thermal well flow in a DFM well
-            os.path.join('dfm_well', 'single_phase_thermal_dfm_well_flow'),
+            os.path.join('dfm_well', '1ph_1comp_thermal_dfm_well_vs_dwell'),
             # Two-phase isothermal well flow in a DFM well
-            os.path.join('dfm_well', 'two_phase_isothermal_dfm_well_flow'),
+            os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_vertical_well_vs_dwell'),
         ]
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
