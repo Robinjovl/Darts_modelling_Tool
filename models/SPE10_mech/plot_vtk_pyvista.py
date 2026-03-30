@@ -159,12 +159,12 @@ def plot_vtk_pyvista(output_dir, contour=False):
                                    plotter.camera.position[2])  # invert X axis
         #plotter.reset_camera(bounds=[xmin_blk, xmax_blk, ymin_blk, ymax_blk, zmin_blk, zmax_blk])
         plotter.camera.zoom(1.1)
-        n_xlabels = int(round((xmax_blk - xmin_blk) / 1000.)) + 1
+        #n_xlabels = int(round((xmax_blk - xmin_blk) / 1000.)) + 1
         plotter.show_bounds(grid=False, location='outer', ticks='outside',
                             xtitle='X, m.', ytitle='', ztitle='Z, m.',
-                            show_yaxis=False, n_xlabels=n_xlabels, n_zlabels=6,
-                            font_size=8, fmt='%d')
-        #plotter.add_text(arr_name_plot, position='upper_edge', font_size=8)
+                            show_yaxis=False, n_xlabels=9, n_zlabels=6,
+                            font_size=12, fmt='%d')
+        #plotter.add_text(arr_name_plot, position='upper_edge', font_size=8)  # title
         plotter.show(screenshot=os.path.join(output_dir_plots, arr_name_plot + "_slice.png"))
         plotter.close()
         
@@ -265,7 +265,7 @@ if __name__ == "__main__":
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
     
-    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
+    output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
     
     plot_vtk_pyvista(output_dir, contour=contour)
