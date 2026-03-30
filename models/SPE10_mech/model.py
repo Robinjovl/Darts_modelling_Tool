@@ -15,6 +15,7 @@ from darts.models.thmc_model import THMCModel
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.engines import value_vector, sim_params
 from darts.tools.keyword_file_tools import load_single_keyword
+from darts.physics.super.initialize import Initialize
 
 from reservoir import UnstructReservoirCustom
 
@@ -23,6 +24,37 @@ def fmt_e(x : float):
 
 def fmt(x : float):
     return "{:.3}".format(x) if np.isscalar(x) else str(x)
+
+class Initialize_Custom(Initialize):
+ 
+    def solve_allwards(self,
+        depth_bottom: float,
+        depth_top: float,
+        depth_known: float,
+        boundary_state: dict,
+        primary_specs: dict = None,
+        secondary_specs: dict = None,
+        nb: int = 100,
+        dTdh: float = 0.03
+    ):
+        Xi = [boundary_state['pressure']]
+        for c in self.physics.components[:-1]:
+            Xi += [boundary_state[c]]
+        if 'temperature' in boundary_state.keys():
+            Xi += [boundary_state['temperature']]
+        
+        X0 = self.solve_state(Xi=Xi, specs=boundary_state)
+        # Initialize depth table
+        X, bc_idx = self.init_depth_table(depth_bottom=depth_bottom,
+                                          depth_top=depth_top,
+                                          depth_known=depth_known,
+                                          X0=X0,
+                                          nb=nb,
+                                          dTdh=dTdh)
+        # Solve vertical equilibrium
+        X = self.solve(X=X, bc_idx=bc_idx, specs=primary_specs, downward=False)  # solve above
+        X = self.solve(X=X, bc_idx=bc_idx, specs=primary_specs, downward=True)  # solve below
+        return X
 
 class Model(THMCModel):
     def __init__(self, model_folder, physics_type='dead_oil', 
@@ -155,7 +187,7 @@ class Model(THMCModel):
         self.idata.fluid.heat_capacity = 75. #[kJ/kmol/K]
 
         # initial conditions (p, T gradients)
-        #self.idata.initial.reference_depth_for_temperature = 0.  # [m]
+        self.idata.initial.reference_depth_for_temperature = 0.  # [m]
         self.idata.initial.temperature_gradient = 0.#0.03  # [K/m]
         self.idata.initial.temperature_at_ref_depth = 0.#273.15 + 10  # [K]
         #self.idata.initial.reference_depth_for_pressure = 0.  # [m]
@@ -481,12 +513,12 @@ class Model(THMCModel):
 
         if True: # compute fluid equilibrium from given p,T at the surface
             # pressure gradient might vary as the density depends on the temperature
-            from darts.physics.super.initialize import Initialize
 
             boundary_state = {var: props.x[0, c] for c, var in enumerate(self.physics.components[:-1])}
-            boundary_state['temperature'] = self.idata.initial.temperature_at_ref_depth 
+            if self.thermal:
+                boundary_state['temperature'] = self.idata.initial.temperature_at_ref_depth 
             boundary_state['pressure'] = self.idata.initial.pressure_at_ref_depth
-            init = Initialize(physics=self.physics, algorithm='multilinear', mode='adaptive',
+            init = Initialize_Custom(physics=self.physics, algorithm='multilinear', mode='adaptive',
                               is_barycentric=False)
 
             nb = 100
@@ -497,7 +529,7 @@ class Model(THMCModel):
             # run initialization
             min_depth = self.reservoir.depths.min()
             max_depth = self.reservoir.depths.max()
-            X = init.solve(depth_bottom=max_depth, depth_top=min_depth, depth_known=min_depth,
+            X = init.solve_allwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=min_depth,
                            nb=nb, primary_specs=primary_specs, boundary_state=boundary_state,
                            dTdh=self.idata.initial.temperature_gradient).reshape((nb, self.physics.n_vars))
             input_distribution = {var: X[:, i] for i, var in enumerate(self.physics.vars)}
