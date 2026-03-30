@@ -214,7 +214,7 @@ class Model(THMCModel):
 
         # well controls
         self.idata.other.delta_temp_inj = 40 # [K] - delta for temperature control
-        if False:         # BHP control
+        if True:         # BHP control
             self.idata.other.delta_p = 50 # [bar] - delta for BHP control
             self.idata.other.wctrl_type = well_control_iface.BHP
             self.idata.other.well_rate = None

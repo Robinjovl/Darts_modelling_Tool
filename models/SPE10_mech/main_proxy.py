@@ -393,11 +393,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                     if z_range.min() <= zi <= z_range.max():
                         plt.axhline(y=zi, color='gray', linestyle='dotted')
                         
-            plt.axhline(y=m.idata.other.rsv_top, color='black', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
-            plt.axhline(y=m.idata.other.rsv_bottom, color='black', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
-            plt.plot(thm, z_range, label=mode + '_THM', c='blue')#, marker='.')
+            plt.axhline(y=m.idata.other.rsv_top, color='black', linestyle='dotted')#, xmin=0.95, xmax=1.0)
+            plt.axhline(y=m.idata.other.rsv_bottom, color='black', linestyle='dotted', label=r'reservoir top/bottom')#, xmin=0.95, xmax=1.0)
+            plt.plot(thm, z_range, label='THM', c='blue')#, marker='.')
             if prx is not None:
-                plt.plot(prx, z_range, label=mode + '_proxy', linestyle='--', c='red')#, marker='.')
+                plt.plot(prx, z_range, label='Proxy', linestyle='--', c='red')#, marker='.')
                 
             if ('stress' in mode or 'strain' in mode) and plot_thm2:
                 plt.plot(thm2, z_range, label=mode + '_THM2', color='black')#marker='.', 
@@ -425,8 +425,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 with np.errstate(divide='ignore', invalid='ignore'):
                     rel_diff = np.where(np.abs(thm) > 0, (diff / np.abs(thm)) * 100.0, np.nan)
                 fig, ax1 = plt.subplots()
-                ax1.axhline(y=m.idata.other.rsv_top, color='black', linestyle='dotted', label='rsv top')
-                ax1.axhline(y=m.idata.other.rsv_bottom, color='black', linestyle='dotted', label='rsv bottom')
+                ax1.axhline(y=m.idata.other.rsv_top, color='black', linestyle='dotted')
+                ax1.axhline(y=m.idata.other.rsv_bottom, color='black', linestyle='dotted', label=r'reservoir top/bottom')
                 ax1.plot(diff, z_range, c='green', label='abs. diff')
                 ax1.invert_yaxis()
                 ax1.set_xlabel('Absolute diff. ' + s)
@@ -445,7 +445,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                     lines2, labels2 = ax2.get_legend_handles_labels()
                     ax1.legend(lines1 + lines2, labels1 + labels2)
                 fig.tight_layout()
-                fig.savefig(os.path.join(output_folder, 'diff_'+ mode + '_' + loc + '_' + suffix + '.png'))
+                fig.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '_diff'+ '.png'))
                 plt.close(fig)
             
 
@@ -467,13 +467,13 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift a bit to make it at the cell centers by XY
+    #points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift a bit to make it at the cell centers by XY
     #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
     #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
-    #points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
+    points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
     #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
     
-    if True: # evaluate along the wells
+    if False: # evaluate along the wells
         if wells_type in ['prod', 'doublet']:
             points_xy['prod_well'] = m.idata.other.prod_well_coords[:2]  # -2 to skip z coord
         if wells_type in ['inj', 'doublet']:
