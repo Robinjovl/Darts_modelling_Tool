@@ -111,7 +111,10 @@ class Model(THMCModel):
         
         p_init = 300 * np.ones(nx * ny * nz)  # [bar]
 
-        self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
+        if 'thermal' in self.physics_type:
+            self.idata = InputData(type_hydr='thermal', type_mech='thermoporoelasticity', init_type = 'gradient')
+        else:
+            self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
 
         self.idata.other.nx, self.idata.other.ny, self.idata.other.nz = nx, ny, nz
 
@@ -214,7 +217,7 @@ class Model(THMCModel):
 
         # well controls
         self.idata.other.delta_temp_inj = 40 # [K] - delta for temperature control
-        if True:         # BHP control
+        if not self.wells_type == 'doublet':         # BHP control
             self.idata.other.delta_p = 50 # [bar] - delta for BHP control
             self.idata.other.wctrl_type = well_control_iface.BHP
             self.idata.other.well_rate = None

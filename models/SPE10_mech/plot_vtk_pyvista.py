@@ -76,6 +76,8 @@ def plot_vtk_pyvista(output_dir, contour=False):
     arr_name = 'delta_tot_stress'; tensor = True; component_index = 1; arr_name_plot = 'delta_tot_stress_YY,bars';
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
 
+    rsv_xy_plot_bnd = 7500. # m.
+
     for plot_config in plot_config_list:
         arr_name, tensor, arr_name_plot, contour, component_index = plot_config
 
@@ -91,11 +93,10 @@ def plot_vtk_pyvista(output_dir, contour=False):
         # Create a slice
         slice_plane = block.slice(normal='y')
         #slice_plane = block  # no slice (plot in 3D)
-
-        # Define the bounds: [xmin, xmax, ymin, ymax, zmin, zmax]
-        # Use large values for Y and Z if you only want to limit X
-        #bounds = [-2000.0, 2000.0, -2000.0, 2000.0, 1000., 4000.]
-        #slice_plane = slice_plane.clip_box(bounds=bounds, invert=False)
+        y_bnd = max(abs(block.bounds[2]), abs(block.bounds[3]))
+        slice_plane = slice_plane.clip_box(
+            bounds=[-rsv_xy_plot_bnd, rsv_xy_plot_bnd, -y_bnd, y_bnd,
+                    block.bounds[4], block.bounds[5]], invert=False)
 
         if tensor:
             slice_plane[arr_name_plot] = slice_plane[arr_name][:,component_index]
@@ -129,8 +130,31 @@ def plot_vtk_pyvista(output_dir, contour=False):
 
         #arrows = slice_plane.glyph(orient="stress_vec", factor=0.05)
         #plotter.add_mesh(arrows, color="black")
+        xmin_blk = -rsv_xy_plot_bnd 
+        xmax_blk = rsv_xy_plot_bnd 
+        ymin_blk = -rsv_xy_plot_bnd
+        ymax_blk = rsv_xy_plot_bnd 
+        zmin_blk = block.bounds[4] 
+        zmax_blk = block.bounds[5]
+        y_slice = block.center[1]
+        # horizontal reference lines at z=2000 and z=2400
+        for z_ref in [2000., 2400.]:
+            plotter.add_mesh(pv.Line(pointa=(xmin_blk, y_slice, z_ref),
+                                     pointb=(xmax_blk, y_slice, z_ref)),
+                             color='white', line_width=0.5)
+        # vertical lines for injection (x=550) and production (x=-550) wells
+        for x_well, clr in [(550., 'cyan'), (-550., 'red')]:
+            plotter.add_mesh(pv.Line(pointa=(x_well, y_slice, 0.),
+                                     pointb=(x_well, y_slice, 2400.)),
+                             color=clr, line_width=2)
         plotter.view_xz()
-        plotter.show_axes()
+        plotter.camera.up = (0, 0, -1)  # invert Z axis
+        #plotter.reset_camera(bounds=[xmin_blk, xmax_blk, ymin_blk, ymax_blk, zmin_blk, zmax_blk])
+        plotter.camera.zoom(1.1)
+        plotter.show_bounds(grid=False, location='outer', ticks='outside',
+                            xtitle='X, m.', ytitle='', ztitle='Z, m.',
+                            show_yaxis=False, n_xlabels=5, n_zlabels=6,
+                            font_size=8)
         plotter.show(screenshot=os.path.join(output_dir_plots, arr_name_plot + "_slice.png"))
         plotter.close()
         
@@ -161,15 +185,22 @@ def plot_vtk_pyvista(output_dir, contour=False):
         x_coords = structured_resample.points[:, 0].reshape(res_x, res_z)
         z_coords = structured_resample.points[:, 2].reshape(res_x, res_z)
         
-        # plot 
-        plt.figure(figsize=(8, 4))
-        plt.contourf(x_coords, z_coords, values_2d, levels=30, cmap='viridis')
-        plt.colorbar()
-        plt.xlabel("X Axis")
-        plt.ylabel("Z Axis")
-        plt.axis('equal')
-        plt.savefig(os.path.join(output_dir_plots, arr_name_plot + "_contour.png"))
-        plt.close()
+        # plot contours (don't look nice, so commented)
+        if False:
+            plt.figure(figsize=(8, 4))
+            plt.contourf(x_coords, z_coords, values_2d, levels=30, cmap='viridis')
+            plt.colorbar()
+            for z_ref in [2000., 2400.]:
+                plt.axhline(y=z_ref, color='white', linestyle='--', linewidth=1)
+            for x_well, clr in [(550., 'cyan'), (-550., 'red')]:
+                plt.axvline(x=x_well, color=clr, linestyle='--', linewidth=1)
+            plt.xlabel("X Axis")
+            plt.ylabel("Depth, m.")
+            plt.ylim(zmin_blk, zmax_blk)
+            plt.gca().invert_yaxis()
+            plot_suffix = "_contour.png"
+            plt.savefig(os.path.join(output_dir_plots, arr_name_plot + plot_suffix))
+            plt.close()
         
         # plot 1D #################################################################################
         sample_resolution = 15
@@ -191,7 +222,9 @@ def plot_vtk_pyvista(output_dir, contour=False):
                 plt.plot(values, z, "-o", markersize=2, label=arr_name_plot)
             #
             plt.xlabel(arr_name_plot)
-            plt.ylabel("Height (z), m.")
+            plt.ylabel("Depth, m.")
+            plt.ylim(zmin_blk, zmax_blk)
+            plt.gca().invert_yaxis()
             plt.title(f"Vertical profile of {arr_name_plot} at x={x0}, y={y0}")
             #
             plt.grid(True)
@@ -208,7 +241,7 @@ def plot_vtk_pyvista(output_dir, contour=False):
 if __name__ == "__main__":
     contour = False
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
-    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_57')
+    output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
     plot_vtk_pyvista(output_dir, contour=contour)
