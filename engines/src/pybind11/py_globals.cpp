@@ -24,11 +24,6 @@ using namespace opendarts::config;
 namespace py = pybind11;
 
 
-#if defined(__linux__) || defined(__APPLE__)
-  // declaration of stream test main function
-  // used to check the system bandwidth
-  int stream_main();
-#endif // defined(__linux__) || defined(__APPLE__)
 
 
 void redirect_darts_output(std::string file_name) {
@@ -256,9 +251,6 @@ void pybind_globals(py::module &m)
 
   m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");
 
-#if defined(__linux__) || defined(__APPLE__)
-  m.def("stream", &stream_main, "Launch stream bandwidth test");
-#endif // defined(__linux__) || defined(__APPLE__)
 
 #ifdef _OPENMP
   m.def("get_num_threads", &omp_get_num_threads, "Get the number of OpenMP threads to be used");
