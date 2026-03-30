@@ -393,17 +393,19 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                     if z_range.min() <= zi <= z_range.max():
                         plt.axhline(y=zi, color='gray', linestyle='dotted')
                         
-            plt.axhline(y=m.idata.other.rsv_top, color='red', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
-            plt.axhline(y=m.idata.other.rsv_bottom, color='red', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
-            plt.plot(thm, z_range, label=mode + '_THM')#, marker='.')
+            plt.axhline(y=m.idata.other.rsv_top, color='black', linestyle='dotted', label='rsv top')#, xmin=0.95, xmax=1.0)
+            plt.axhline(y=m.idata.other.rsv_bottom, color='black', linestyle='dotted', label='rsv bottom')#, xmin=0.95, xmax=1.0)
+            plt.plot(thm, z_range, label=mode + '_THM', c='blue')#, marker='.')
             if prx is not None:
-                plt.plot(prx, z_range, label=mode + '_proxy', linestyle='--')#, marker='.')
+                plt.plot(prx, z_range, label=mode + '_proxy', linestyle='--', c='red')#, marker='.')
+                
             if ('stress' in mode or 'strain' in mode) and plot_thm2:
                 plt.plot(thm2, z_range, label=mode + '_THM2', color='black')#marker='.', 
                 
             # for comparizon with analytical solution laterally infinite rsv
             #if mode == 'delta_total_stress_z' and np.fabs(prx.max()) < 0.05 and np.fabs(thm.max()) < 0.05: # vertical stress is almost zero
             #    plt.xlim(-0.25, 0.25)    
+            
             plt.gca().invert_yaxis()
             plt.xlabel(s)
             plt.title(s)
@@ -416,6 +418,36 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.tight_layout()
             plt.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '.png'))
             plt.close()
+            
+            # plot the difference THM solution vs Proxy
+            if prx is not None:
+                diff = thm - prx
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    rel_diff = np.where(np.abs(thm) > 0, (diff / np.abs(thm)) * 100.0, np.nan)
+                fig, ax1 = plt.subplots()
+                ax1.axhline(y=m.idata.other.rsv_top, color='black', linestyle='dotted', label='rsv top')
+                ax1.axhline(y=m.idata.other.rsv_bottom, color='black', linestyle='dotted', label='rsv bottom')
+                ax1.plot(diff, z_range, c='green', label='abs. diff')
+                ax1.invert_yaxis()
+                ax1.set_xlabel('Absolute diff. ' + s)
+                ax1.set_title(s)
+                ax1.set_ylabel('Depth, m.')
+                ax1.minorticks_on()
+                ax1.grid(which='major', linestyle='-', linewidth=0.8)
+                ax1.grid(which='minor', linestyle=':', linewidth=0.5)
+                if True:  # plot only abs. diff
+                    ax1.legend() 
+                else:  # plot also rel.diff
+                    ax2 = ax1.twiny()
+                    ax2.plot(rel_diff, z_range, c='orange', linestyle='--', label='rel. diff')
+                    ax2.set_xlabel('Relative diff., %')
+                    lines1, labels1 = ax1.get_legend_handles_labels()
+                    lines2, labels2 = ax2.get_legend_handles_labels()
+                    ax1.legend(lines1 + lines2, labels1 + labels2)
+                fig.tight_layout()
+                fig.savefig(os.path.join(output_folder, 'diff_'+ mode + '_' + loc + '_' + suffix + '.png'))
+                plt.close(fig)
+            
 
     def plot_contour(array_dict, points_x, points_y, output_folder, layer=0):
         # plot contours XY plane, 1 layer by z
@@ -602,7 +634,7 @@ if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
-    #case = '34_34_57'  # z 0 - 5 km 
+    #case = '34_34_57'  # z 0 - 5 km
     case = '34_34_66'  # z 0 - 5 km 
     #case = '34_34_65'  # z 0 - 10 km
     #case='34_35_57' # perm_frac
@@ -642,8 +674,8 @@ if __name__ == '__main__':
     #timestep = 1
     #timestep = 4
     
-    run_thm = True
-    #run_thm = False
+    #run_thm = True
+    run_thm = False
     
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
     generate_mesh=True
