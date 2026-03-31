@@ -22,7 +22,8 @@
         "min_p": 1,
         "max_p": 300,
         "min_z": 0.0,
-        "max_z": 1.0
+        "max_z": 1.0,
+        "extrapolation_flag": true
       }
     },
     "components": [
