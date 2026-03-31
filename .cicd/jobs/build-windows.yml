@@ -5,7 +5,7 @@
         - windows-shell
     needs: []
     variables:
-        CONDA_ENV: "darts-win-${CI_JOB_ID}"
+        CONDA_ENV: "darts-win"
         CONDA_BIN_PATH: 'D:\miniconda3\condabin'
     script:
         # Load MS Build Tools environment to the powershell
