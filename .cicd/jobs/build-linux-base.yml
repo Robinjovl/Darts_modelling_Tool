@@ -6,20 +6,6 @@
         - linux
     variables:
         CONDA_ENV: "darts-${CI_JOB_ID}"
-        CCACHE_DIR: "${CI_PROJECT_DIR}/.ccache"
-        CCACHE_BASEDIR: "${CI_PROJECT_DIR}"
-        CCACHE_COMPILERCHECK: "content"
-        CCACHE_MAXSIZE: "2G"
-        CCACHE_SLOPPINESS: "pch_defines,time_macros"
-    cache:
-      - key: "ccache-linux-${CI_JOB_NAME}"
-        paths:
-          - .ccache/
-      - key: "build-linux-${CI_JOB_NAME}-${CI_COMMIT_REF_SLUG}"
-        fallback_keys:
-          - "build-linux-${CI_JOB_NAME}-main"
-        paths:
-          - build/
     before_script:
         - echo 'before build-linux'
         - source /opt/conda/bin/activate
@@ -27,22 +13,9 @@
         - conda activate ${CONDA_ENV}
         - export PY_SUFFIX=`python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"`
         - python -m pip install --upgrade pip setuptools wheel
-        - |
-          if command -v ccache >/dev/null 2>&1; then
-            echo "========== [COMPILER CACHE] ccache ENABLED ($(ccache --version | head -1)) =========="
-            export OD_CMAKE_ARGS="-D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache"
-            ccache --zero-stats
-          else
-            echo "========== [COMPILER CACHE] ccache NOT FOUND — building without compiler cache =========="
-          fi
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
-        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS -p
-        - |
-          if command -v ccache >/dev/null 2>&1; then
-            echo "========== [COMPILER CACHE] ccache stats =========="
-            ccache --show-stats
-          fi
+        - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS -p
     after_script:
         - source /opt/conda/bin/activate
         - conda env remove -n ${CONDA_ENV} --yes || true
