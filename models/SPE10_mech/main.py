@@ -3,6 +3,7 @@ import numpy as np
 import os
 import shutil
 from darts.engines import redirect_darts_output, timer_node
+from plot_vtk_pyvista import plot_vtk_pyvista
 
 def run_python(m, days=0, restart_dt=0, init_step = False):
     if days:
@@ -192,6 +193,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     
     #time_data_dict = m.output.store_well_time_data(save_output_files=True)
     #m.output.plot_well_time_data(phase_volumetric_rates=True)
+
+    plot_vtk_pyvista(m.output_directory)
 
     return m, data
 

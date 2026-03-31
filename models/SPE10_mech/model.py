@@ -279,13 +279,11 @@ class Model(THMCModel):
                                  np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
                                  rsv_bottom + 100,
                                  np.arange(rsv_bottom + 200, 5000 + 1, 100)])
-        elif nz == 65:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
-            Zc = np.hstack([np.arange(0, rsv_top - 100, 100),
-                                 rsv_top - 100,
-                                 np.arange(rsv_top - 50, rsv_bottom, 25),
-                                 rsv_bottom + 50,
-                                 np.arange(rsv_bottom + 100, 5000, 100), 
-                                 np.arange(5000, 10500, 500)])
+        elif nz == 90:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
+            Zc = np.hstack([np.arange(0, rsv_top - 500 + 1, 100),
+                                 np.arange(rsv_top - 450, rsv_bottom + 450 + 1, 25),
+                                 rsv_bottom + 500,
+                                 np.arange(rsv_bottom + 600, 5000 + 1, 100)])
         else:
             print('not found an option to mesh with nz = ', nz)
             exit(1)

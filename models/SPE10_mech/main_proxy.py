@@ -635,8 +635,8 @@ if __name__ == '__main__':
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
     #case = '34_34_57'  # z 0 - 5 km
-    case = '34_34_66'  # z 0 - 5 km 
-    #case = '34_34_65'  # z 0 - 10 km
+    #case = '34_34_66'  # z 0 - 5 km 
+    case = '34_34_90'  # z 0 - 5 km more refined around rsv
     #case='34_35_57' # perm_frac
     
     #case = '34_34_15'
@@ -646,22 +646,30 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    #physics_types_list += ['single_phase']
-    physics_types_list += ['single_phase_thermal']
+    
+    thermal = False
+    #thermal = True
+    
+    if not thermal:
+        physics_types_list += ['single_phase']
+    else:
+        physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['none']
     #wells_types_list += ['prod']
-    #wells_types_list += ['inj']
-    wells_types_list += ['doublet']
+    if not thermal:
+        wells_types_list += ['inj']
+    else:
+        wells_types_list += ['doublet']
     
     # for THM solver run
-    #n_years = 1
-    #n_years = 2
-    #n_years = 5
-    #n_years = 10
-    n_years = 30
-    #n_years = 50
+    
+    if not thermal:
+        n_years = 1
+    else:
+        n_years = 30
+
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
 
