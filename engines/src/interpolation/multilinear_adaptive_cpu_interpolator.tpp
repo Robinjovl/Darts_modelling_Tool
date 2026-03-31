@@ -103,7 +103,9 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
 // First, all missing points and hypercubes need to be generated in a single thread mode
 // this guarantees correct data insertion into point_data and hypercube_data,
 // and also allows for not thread-safe operator generation
+#ifdef _OPENMP
 #pragma omp single
+#endif
   for (size_t p = 0; p < points_idxs.size(); p++)
   {
     index_t offset = points_idxs[p];

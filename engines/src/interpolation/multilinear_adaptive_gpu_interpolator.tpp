@@ -437,13 +437,13 @@ multilinear_adaptive_interpolate_thread_per_state_stages_kernel(const unsigned i
   if (FIRST_STAGE)
   {
     // do not process states corresponding to new hypercubes
-    if (state_markers[i] != -1)
+    if (state_markers[i] != static_cast<index_t>(-1))
       return;
   }
   else
   {
     // do not process states NOT corresponding to new hypercubes
-    if (state_markers[i] == -1)
+    if (state_markers[i] == static_cast<index_t>(-1))
       return;
   }
 
@@ -503,13 +503,13 @@ multilinear_adaptive_interpolate_thread_per_operator_stages_kernel(const unsigne
   if (FIRST_STAGE)
   {
     // do not process states corresponding to new hypercubes
-    if (state_markers[state_idx_idx] != -1)
+    if (state_markers[state_idx_idx] != static_cast<index_t>(-1))
       return;
   }
   else
   {
     // do not process states NOT corresponding to new hypercubes
-    if (state_markers[state_idx_idx] == -1)
+    if (state_markers[state_idx_idx] == static_cast<index_t>(-1))
       return;
   }
 

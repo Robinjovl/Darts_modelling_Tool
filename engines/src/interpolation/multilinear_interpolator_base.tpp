@@ -124,7 +124,9 @@ template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_with_derivatives(const std::vector<double> &points, const std::vector<int> &points_idxs,
                                                                                                  std::vector<double> &values, std::vector<double> &derivatives)
 {
+#ifdef _OPENMP
 #pragma omp parallel for
+#endif
   for (int64_t i = 0; i < static_cast<int64_t>(points_idxs.size()); ++i)
   {
 
