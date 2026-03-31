@@ -57,7 +57,7 @@ multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilin
     : multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max)
 
 {
-  int min_job_size;
+  // int min_job_size;
 #ifdef USE_THREAD_PER_OPERATOR_KERNEL
   // this->kernel_block_size = get_kernel_thread_block_size(
   //     multilinear_adaptive_interpolate_thread_per_operator_kernel<index_t, value_t, N_DIMS, N_OPS>, min_job_size);
@@ -263,7 +263,7 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
   for (int i = 0, h = 0; i < n_states_idxs; i++)
   {
     // generate if not -1 (marker for 1 stage interpolation) and not already generated
-    if (hypercubes_to_compute[i] != -1 && !generated_hypercubes.count(hypercubes_to_compute[i]))
+    if (hypercubes_to_compute[i] != static_cast<index_t>(-1) && !generated_hypercubes.count(hypercubes_to_compute[i]))
     {
       generated_hypercubes.insert(hypercubes_to_compute[i]);
       new_hypercube_index[h] = hypercubes_to_compute[i];
@@ -417,7 +417,7 @@ multilinear_adaptive3_check_hypercube_ready_kernel(const unsigned int n_states_i
   else
   {
     // hypercube is available, mark state to be computed next
-    hypercubes_to_compute[i] = -1;
+    hypercubes_to_compute[i] = static_cast<index_t>(-1);
   }
 }
 
@@ -532,12 +532,11 @@ multilinear_adaptive_interpolate_thread_per_operator_stages_kernel(const unsigne
   {
     if (FIRST_STAGE)
     {
-      printf("Thread %d error s1: Requesting hypercube %d\n", i, hypercube_idx);
+      printf("Thread %u error s1: Requesting hypercube %u\n", i, (unsigned)hypercube_idx);
     }
     else
     {
-      int idx = hypercube_idx;
-      printf("Thread %d error s2: Requesting hypercube %d\n", i, idx);
+      printf("Thread %u error s2: Requesting hypercube %u\n", i, (unsigned)hypercube_idx);
     }
   }
   else
@@ -569,7 +568,7 @@ add_hypercubes_to_hashmap(const unsigned int n_new_hypercubes, const index_t *ne
   {
     if (i == 0)
     {
-      printf("Should not have happened: hashmap overflow occured! Decrease hashmap expansion threshold below %lf\n", hypercube_data_d->occupied / hypercube_data_d->size);
+      printf("Should not have happened: hashmap overflow occured! Decrease hashmap expansion threshold below %f\n", (double)hypercube_data_d->occupied / hypercube_data_d->size);
       hypercube_data_d->occupied += n_new_hypercubes;
     }
     return;
