@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 import numpy as np
 
 from darts.input.input_data import FluidProps, InputData
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.super.property_container import (
+    PropertyContainer,
+    PropertyContainerConfig,
+)
 
 
 class DeadOilBase(Compositional):
@@ -134,6 +139,26 @@ class DeadOilProperties(PropertyContainer):
             rock_comp=rock_comp,
             temperature=temperature,
         )
+
+    @classmethod
+    def from_config(cls, config: PropertyContainerConfig) -> DeadOilProperties:
+        """Construct from a validated PropertyContainerConfig."""
+        eps_z = config.eps_z if config.eps_z is not None else config.min_z
+        components_name = config.components_name
+        phases_name = config.phases_name
+        if components_name is None or phases_name is None:
+            raise ValueError("components_name and phases_name are required")
+        Mw = config.Mw if config.Mw is not None else [1.0] * len(components_name)
+        kwargs: dict = dict(
+            phases_name=phases_name,
+            components_name=components_name,
+            Mw=Mw,
+            eps_z=eps_z,
+            temperature=config.temperature,
+        )
+        if config.rock_comp is not None:
+            kwargs["rock_comp"] = config.rock_comp
+        return cls(**kwargs)
 
     def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = True):
         ph = np.array([j for j in range(self.nph)])

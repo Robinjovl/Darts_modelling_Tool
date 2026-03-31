@@ -2,10 +2,10 @@ import os
 import re
 import warnings
 from math import fabs
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from darts.models.output import Output
 
@@ -37,24 +37,185 @@ class SimParamsConfig(BaseModel):
     that are set post-construction.
     """
 
-    first_ts: float | None = Field(None, description="Initial timestep [days]")
-    mult_ts: float | None = Field(None, description="Timestep multiplier")
-    max_ts: float | None = Field(None, description="Maximum timestep [days]")
-    runtime: float = Field(1000.0, description="Total runtime [days]")
-    tol_newton: float | None = Field(None, description="Newton solver tolerance")
-    tol_linear: float | None = Field(None, description="Linear solver tolerance")
-    it_newton: int | None = Field(None, description="Max Newton iterations")
-    it_linear: int | None = Field(None, description="Max linear iterations")
-    newton_type: str | None = Field(
-        None, description="Newton type, e.g. 'newton_local_chop'"
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "first_ts": 0.001,
+                    "mult_ts": 2.0,
+                    "max_ts": 1.0,
+                    "runtime": 1000.0,
+                    "tol_newton": 0.01,
+                    "tol_linear": 0.001,
+                    "it_newton": 10,
+                    "it_linear": 50,
+                }
+            ]
+        },
     )
-    line_search: bool = Field(False, description="Enable line search")
+
+    first_ts: float | None = Field(None, gt=0, description="First time step [d]")
+    mult_ts: float | None = Field(None, gt=0, description="Time step multiplier")
+    max_ts: float | None = Field(None, gt=0, description="Maximum time step [d]")
+    runtime: float | None = Field(None, gt=0, description="Simulation runtime [d]")
+    tol_newton: float | None = Field(None, gt=0, description="Newton tolerance")
+    tol_linear: float | None = Field(None, gt=0, description="Linear tolerance")
+    it_newton: int | None = Field(
+        None, ge=1, description="Maximum number of Newton iterations"
+    )
+    it_linear: int | None = Field(
+        None, ge=1, description="Maximum number of linear iterations"
+    )
+    newton_type: Literal["newton_local_chop", "default"] | None = Field(
+        None, description="Newton type identifier"
+    )
+    line_search: bool | None = Field(
+        None, description="Enable line search for Newton solver"
+    )
     newton_tol_stationary: float | None = Field(
-        None, description="Stationary detection tolerance"
+        None, gt=0, description="Stationary Newton tolerance"
     )
     min_line_search_update: float | None = Field(
-        None, description="Min line search update"
+        None, gt=0, description="Minimum line search update"
     )
+
+
+class WellPerforationConfig(BaseModel):
+    """Perforation definition with optional well parameters."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"ijk": [1, 1, 1], "well_radius": 0.0762}]},
+    )
+
+    ijk: list[int] = Field(
+        description="[i,j,k] indices (1-based)", min_length=3, max_length=3
+    )
+    k_end: int | None = Field(
+        None,
+        ge=1,
+        description=(
+            "Optional inclusive K-end index for vertical completion interval; "
+            "when provided, expands ijk[2]..k_end into multiple perforations"
+        ),
+    )
+    well_radius: float | None = Field(None, gt=0, description="Well radius")
+    skin: float | None = Field(None, description="Skin factor")
+
+
+class WellControlsConfig(BaseModel):
+    """Well controls configuration (per-well or top-level)."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"inj_bhp": 140.0, "prod_bhp": 50.0, "inj_composition": [1.0, 0.0, 0.0]}
+            ]
+        },
+    )
+
+    inj_bhp: float | None = Field(
+        None, ge=0, description="Injector bottom-hole pressure [bar]"
+    )
+    prod_bhp: float | None = Field(
+        None, ge=0, description="Producer bottom-hole pressure [bar]"
+    )
+    inj_composition: list[float] | None = Field(
+        None, description="Injector composition (length = nc or nc-1)"
+    )
+    inj_temp: float | None = Field(None, gt=0, description="Injector temperature [K]")
+    inj_rate: float | None = Field(None, ge=0, description="Injector target rate")
+    rate_type: (
+        Literal["MOLAR_RATE", "MASS_RATE", "VOLUMETRIC_RATE", "ADVECTIVE_HEAT_RATE"]
+        | None
+    ) = Field(None, description="Rate control type for injector")
+    phase_name: str | None = Field(
+        None, description="Phase name for rate-controlled injector"
+    )
+
+
+class WellConfig(BaseModel):
+    """Well specification with perforations and optional controls."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "name": "I1",
+                    "perforations": [{"ijk": [1, 1, 1]}],
+                    "controls": {"inj_bhp": 140.0},
+                }
+            ]
+        },
+    )
+
+    name: str = Field(description="Well name")
+    perforations: list[WellPerforationConfig] = Field(
+        min_length=1, description="List of perforations"
+    )
+    controls: WellControlsConfig | None = Field(
+        None,
+        description=(
+            "Per-well controls that override top-level well_controls defaults"
+        ),
+    )
+
+
+class WellsConfig(BaseModel):
+    """List of wells."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "wells": [
+                        {"name": "I1", "perforations": [{"ijk": [1, 1, 1]}]},
+                        {"name": "P1", "perforations": [{"ijk": [1000, 1, 1]}]},
+                    ]
+                }
+            ]
+        },
+    )
+
+    wells: list[WellConfig] = Field(
+        min_length=1, description="List of well specifications"
+    )
+
+
+class InitialConditionsConfig(BaseModel):
+    """Initial conditions mapping for physics variables."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [{"by_array": {"pressure": 50.0, "CO2": 0.1, "C1": 0.2}}]
+        },
+    )
+
+    by_array: dict[str, Any] = Field(
+        description="Initial state variables (pressure, compositions, etc.)"
+    )
+
+
+class OutputConfig(BaseModel):
+    """Output configuration."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [{"folder": "output", "precision": "d", "save_initial": True}]
+        },
+    )
+
+    folder: str | None = Field(None, description="Output folder")
+    precision: Literal["s", "d"] | None = Field(
+        None, description="Output precision (s=single, d=double)"
+    )
+    save_initial: bool | None = Field(None, description="Save initial state to output")
 
 
 class DataTS:

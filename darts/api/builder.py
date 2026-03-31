@@ -190,89 +190,12 @@ class ModelBuilder:
         if rtype != "structured":
             raise ValueError(f"Unsupported reservoir type: {rtype!r}")
 
-        from darts.reservoirs.struct_reservoir import StructReservoir
+        from darts.reservoirs.struct_reservoir import (
+            StructReservoir,
+            StructReservoirConfig,
+        )
 
-        def _resolve_val(val: Any) -> Any:
-            if isinstance(val, DataRef) or (
-                isinstance(val, dict) and "kind" in val and "value" in val
-            ):
-                return resolve_data_ref(
-                    val, base_path=base_path, object_store=object_store
-                )
-            return val
-
-        def _maybe_array(val: Any) -> Any:
-            if isinstance(val, list | tuple):
-                import numpy as np
-
-                return np.asarray(val)
-            return val
-
-        layers = getattr(r, "layers", None)
-        layer_specs: list[dict[str, Any]] = []
-        if layers:
-            for layer in layers:
-                if hasattr(layer, "model_dump"):
-                    layer_specs.append(layer.model_dump(exclude_none=True))
-                elif isinstance(layer, dict):
-                    layer_specs.append(
-                        {k: v for k, v in layer.items() if v is not None}
-                    )
-                else:
-                    raise TypeError("Unsupported layer specification type")
-            total_cells = int(r.nx * r.ny * r.nz)
-
-            def _is_list_like(val: Any) -> bool:
-                if isinstance(val, list | tuple):
-                    return True
-                try:
-                    import numpy as np
-
-                    return isinstance(val, np.ndarray)
-                except Exception:
-                    return False
-
-            def _layers_have_field(key: str) -> bool:
-                return any(layer.get(key) is not None for layer in layer_specs)
-
-            def _expand_layered_value(key: str, base_val: Any) -> Any:
-                if not _layers_have_field(key):
-                    return base_val
-                if _is_list_like(base_val):
-                    if any(layer.get(key) is None for layer in layer_specs):
-                        raise ValueError(
-                            f"Layered '{key}' requires a scalar default when some layers omit it."
-                        )
-                out: list[Any] = []
-                for layer in layer_specs:
-                    count = int(layer.get("count", 0))
-                    if count <= 0:
-                        raise ValueError("Layer count must be >= 1")
-                    val = layer.get(key, None)
-                    val = _resolve_val(val) if val is not None else base_val
-                    if val is None:
-                        raise ValueError(
-                            f"Layered '{key}' is missing for a layer and no base value was provided."
-                        )
-                    if _is_list_like(val):
-                        if len(val) != count:
-                            raise ValueError(
-                                f"Layered '{key}' list length must equal count ({count})."
-                            )
-                        out.extend(list(val))
-                    else:
-                        out.extend([val] * count)
-                if len(out) != total_cells:
-                    raise ValueError(
-                        f"Layered '{key}' produced {len(out)} values, expected {total_cells}."
-                    )
-                return out
-
-        kwargs: dict[str, Any] = {}
-        for key in [
-            "nx",
-            "ny",
-            "nz",
+        _DATAREF_FIELDS = (
             "dx",
             "dy",
             "dz",
@@ -283,30 +206,33 @@ class ModelBuilder:
             "depth",
             "hcap",
             "rcond",
-        ]:
-            val = _resolve_val(getattr(r, key))
-            if layer_specs:
-                val = _expand_layered_value(key, val)
-            if val is not None:
-                kwargs[key] = _maybe_array(val)
-        required = [
-            "nx",
-            "ny",
-            "nz",
-            "dx",
-            "dy",
-            "dz",
-            "permx",
-            "permy",
-            "permz",
-            "poro",
-        ]
-        missing = [k for k in required if k not in kwargs]
-        if missing:
-            raise ValueError(
-                "Reservoir spec missing required fields: " + ", ".join(missing)
-            )
-        model.reservoir = StructReservoir(model.timer, **kwargs)
+        )
+
+        def _resolve_val(val: Any) -> Any:
+            if isinstance(val, DataRef) or (
+                isinstance(val, dict) and "kind" in val and "value" in val
+            ):
+                return resolve_data_ref(
+                    val, base_path=base_path, object_store=object_store
+                )
+            return val
+
+        # Dump spec to dict, resolve DataRef values, and rebuild as native config.
+        raw = r.model_dump(exclude_none=True)
+
+        for key in _DATAREF_FIELDS:
+            if key in raw:
+                raw[key] = _resolve_val(raw[key])
+
+        # Resolve DataRef values inside layers as well.
+        if raw.get("layers"):
+            for layer in raw["layers"]:
+                for key in _DATAREF_FIELDS:
+                    if key in layer:
+                        layer[key] = _resolve_val(layer[key])
+
+        config = StructReservoirConfig(**raw)
+        model.reservoir = StructReservoir.from_config(config, timer=model.timer)
 
     @staticmethod
     def apply_physics(
@@ -376,7 +302,6 @@ class ModelBuilder:
                         obj = f_entry.constructor(
                             f_cfg,
                             nc=fluid_nc,
-                            epsilon=getattr(f_cfg, "epsilon", 1e-8),
                         )
                         pc.flash_ev = obj
                     # Per-phase evaluator slots
@@ -453,11 +378,7 @@ class ModelBuilder:
         Delegates to ``DartsModel.set_sim_params_from_config()`` which handles
         newton_type mapping and DataTS tweaks.
         """
-        from darts.models.darts_model import SimParamsConfig
-
-        # Convert schema spec to core config (field names are identical)
-        cfg = SimParamsConfig(**sp.model_dump(exclude_none=True))
-        model.set_sim_params_from_config(cfg)  # type: ignore[attr-defined]
+        model.set_sim_params_from_config(sp)  # type: ignore[attr-defined]
 
     @staticmethod
     def apply_output(out: OutputSpec, model: DartsModelProtocol) -> None:

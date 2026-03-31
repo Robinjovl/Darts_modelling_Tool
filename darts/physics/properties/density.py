@@ -31,6 +31,11 @@ class DensityBasic(Density):
     def evaluate(self, pressure, temperature: float = None, x: list = None):
         return self.dens0 * (1 + self.compr * (pressure - self.p0))
 
+    @classmethod
+    def from_config(cls, config: DensityBasicConfig) -> "DensityBasic":
+        """Construct from a validated config object."""
+        return cls(compr=config.compr, dens0=config.dens0)
+
 
 class DensityBrineCO2(DensityBasic):
     def __init__(

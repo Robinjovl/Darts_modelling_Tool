@@ -3,7 +3,7 @@ import warnings
 from typing import Literal
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from scipy.interpolate import griddata
 
 from darts.engines import (
@@ -20,6 +20,35 @@ from darts.reservoirs.reservoir_base import ReservoirBase
 ScalarOrArray = float | list[float]
 
 
+class ReservoirLayerConfig(BaseModel):
+    """Layered overrides for structured reservoirs.
+
+    Each layer specifies a ``count`` (number of cells in KJI order) and
+    optional property overrides.  When ``layers`` is provided in
+    :class:`StructReservoirConfig`, layer values are expanded into flat
+    per-cell arrays during :meth:`StructReservoir.from_config`.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"count": 100, "dz": 6, "permx": 500, "permy": 500, "permz": 80}
+            ]
+        },
+    )
+
+    count: int = Field(ge=1, description="Number of cells in this layer (KJI order)")
+    dx: ScalarOrArray | None = Field(None, description="Cell size in x [m]")
+    dy: ScalarOrArray | None = Field(None, description="Cell size in y [m]")
+    dz: ScalarOrArray | None = Field(None, description="Cell size in z [m]")
+    permx: ScalarOrArray | None = Field(None, description="Permeability in x [mD]")
+    permy: ScalarOrArray | None = Field(None, description="Permeability in y [mD]")
+    permz: ScalarOrArray | None = Field(None, description="Permeability in z [mD]")
+    poro: ScalarOrArray | None = Field(None, description="Porosity [fraction]")
+    depth: float | list[float] | None = Field(None, description="Reference depth [m]")
+
+
 class StructReservoirConfig(BaseModel):
     """Pydantic configuration for structured reservoir grid construction.
 
@@ -29,21 +58,53 @@ class StructReservoirConfig(BaseModel):
     validation of structured-reservoir specifications.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "type": "structured",
+                    "nx": 1000,
+                    "ny": 1,
+                    "nz": 1,
+                    "dx": 1.0,
+                    "dy": 10.0,
+                    "dz": 10.0,
+                    "permx": 100.0,
+                    "permy": 100.0,
+                    "permz": 10.0,
+                    "poro": 0.3,
+                    "depth": 1000.0,
+                }
+            ]
+        },
+    )
 
     type: Literal["structured"] = "structured"
-    nx: int = Field(ge=1, description="Number of blocks in x-direction")
-    ny: int = Field(ge=1, description="Number of blocks in y-direction")
-    nz: int = Field(ge=1, description="Number of blocks in z-direction")
-    dx: ScalarOrArray = Field(description="Block size in x-direction [m]")
-    dy: ScalarOrArray = Field(description="Block size in y-direction [m]")
-    dz: ScalarOrArray = Field(description="Block size in z-direction [m]")
-    permx: ScalarOrArray = Field(description="Permeability in x-direction [mD]")
-    permy: ScalarOrArray = Field(description="Permeability in y-direction [mD]")
-    permz: ScalarOrArray = Field(description="Permeability in z-direction [mD]")
-    poro: ScalarOrArray = Field(description="Porosity [fraction]")
+    nx: int = Field(ge=1, description="Number of cells in x direction")
+    ny: int = Field(ge=1, description="Number of cells in y direction")
+    nz: int = Field(ge=1, description="Number of cells in z direction")
+    dx: ScalarOrArray | None = Field(
+        default=None, description="Cell size in x direction [m]"
+    )
+    dy: ScalarOrArray | None = Field(
+        default=None, description="Cell size in y direction [m]"
+    )
+    dz: ScalarOrArray | None = Field(
+        default=None, description="Cell size in z direction [m]"
+    )
+    permx: ScalarOrArray | None = Field(
+        default=None, description="Permeability in x direction [mD]"
+    )
+    permy: ScalarOrArray | None = Field(
+        default=None, description="Permeability in y direction [mD]"
+    )
+    permz: ScalarOrArray | None = Field(
+        default=None, description="Permeability in z direction [mD]"
+    )
+    poro: ScalarOrArray | None = Field(default=None, description="Porosity [fraction]")
     depth: float | list[float] | None = Field(
-        default=None, description="Depth array or scalar [m]"
+        default=None, description="Reference depth [m]"
     )
     start_z: float | list[float] = Field(
         default=0.0, description="Top reservoir depth [m]"
@@ -56,6 +117,34 @@ class StructReservoirConfig(BaseModel):
     op_num: int | list[int] = Field(
         default=0, description="Operator region number (PVTNUM, SCALNUM, ...)"
     )
+    layers: list[ReservoirLayerConfig] | None = Field(
+        default=None, description="Layered overrides for per-cell properties"
+    )
+
+    _PROPERTY_FIELDS = ("dx", "dy", "dz", "permx", "permy", "permz", "poro")
+
+    @model_validator(mode="after")
+    def _check_required_properties(self) -> "StructReservoirConfig":
+        """Ensure property fields are present at top level or covered by layers."""
+        layer_keys: set[str] = set()
+        if self.layers:
+            for lay in self.layers:
+                layer_keys.update(
+                    k
+                    for k in self._PROPERTY_FIELDS
+                    if getattr(lay, k, None) is not None
+                )
+        missing = [
+            k
+            for k in self._PROPERTY_FIELDS
+            if getattr(self, k) is None and k not in layer_keys
+        ]
+        if missing:
+            raise ValueError(
+                "Reservoir config missing required fields (provide at top level "
+                f"or in every layer): {', '.join(missing)}"
+            )
+        return self
 
 
 class StructReservoir(ReservoirBase):
@@ -181,11 +270,66 @@ class StructReservoir(ReservoirBase):
     ) -> "StructReservoir":
         """Construct a StructReservoir from a validated config object.
 
+        When ``config.layers`` is provided, layer specs are expanded into
+        flat per-cell arrays before construction.
+
         :param config: Validated reservoir configuration.
         :param timer: Timer node for discretization timing.
         :returns: Fully constructed StructReservoir instance.
         """
-        kwargs = config.model_dump(exclude={"type"})
+        kwargs = {
+            k: v
+            for k, v in config.model_dump(exclude={"type", "layers"}).items()
+            if v is not None
+        }
+
+        if config.layers:
+            total_cells = int(config.nx * config.ny * config.nz)
+            layer_dicts = [lay.model_dump(exclude_none=True) for lay in config.layers]
+            _LAYERED_KEYS = (
+                "dx",
+                "dy",
+                "dz",
+                "permx",
+                "permy",
+                "permz",
+                "poro",
+                "depth",
+            )
+            for key in _LAYERED_KEYS:
+                if not any(key in ld for ld in layer_dicts):
+                    continue
+                base_val = kwargs.get(key)
+                out: list = []
+                for ld in layer_dicts:
+                    count = ld["count"]
+                    val = ld.get(key, base_val)
+                    if val is None:
+                        raise ValueError(
+                            f"Layered '{key}' is missing for a layer "
+                            "and no base value was provided."
+                        )
+                    if isinstance(val, list):
+                        if len(val) != count:
+                            raise ValueError(
+                                f"Layered '{key}' list length must "
+                                f"equal count ({count})."
+                            )
+                        out.extend(val)
+                    else:
+                        out.extend([val] * count)
+                if len(out) != total_cells:
+                    raise ValueError(
+                        f"Layered '{key}' produced {len(out)} values, "
+                        f"expected {total_cells}."
+                    )
+                kwargs[key] = out
+
+        # Convert list values to numpy arrays (StructReservoir expects ndarray).
+        for key, val in kwargs.items():
+            if isinstance(val, list):
+                kwargs[key] = np.asarray(val)
+
         return cls(timer=timer, **kwargs)
 
     def to_config(self) -> StructReservoirConfig:

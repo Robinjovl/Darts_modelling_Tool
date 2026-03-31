@@ -33,6 +33,11 @@ class KineticBasic:
         self.kinetic_rate = np.zeros(ne)
         self.combined_ions = combined_ions
 
+    @classmethod
+    def from_config(cls, config: KineticBasicConfig) -> "KineticBasic":
+        """Construct from a validated config object."""
+        return cls(config.equi_prod, config.rate, config.ne)
+
     def evaluate(self, pressure, temperature, x, nu_sol):
         if self.combined_ions:
             ion_prod = (x[1][1] / 2) ** 2

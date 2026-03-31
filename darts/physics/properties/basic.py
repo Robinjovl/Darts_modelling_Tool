@@ -24,6 +24,11 @@ class ConstFunc:
     def __init__(self, value):
         self.value = value
 
+    @classmethod
+    def from_config(cls, config: ConstFuncConfig) -> "ConstFunc":
+        """Construct from a validated config object."""
+        return cls(config.value)
+
     def evaluate(self, dummy1=0, dummy2=0, dummy3=0, dummy4=0):
         return self.value
 
@@ -60,6 +65,11 @@ class PhaseRelPerm:
             kr = self.kre * ((sat - self.sr) / (1 - self.Sgr - self.Swc)) ** self.n
 
         return kr
+
+    @classmethod
+    def from_config(cls, config: PhaseRelPermConfig) -> "PhaseRelPerm":
+        """Construct from a validated config object."""
+        return cls(config.phase, config.swc, config.sgr, config.kre, config.n)
 
 
 class PhaseRelPerm_VG:  # Van Genuchten

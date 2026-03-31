@@ -53,6 +53,16 @@ class ConstantK(Flash):
         self.temperature = temperature
         return 0
 
+    @classmethod
+    def from_config(cls, config: ConstantKConfig, *, nc: int) -> "ConstantK":
+        """Construct from a validated config object.
+
+        :param config: Validated flash configuration.
+        :param nc: Number of fluid components.
+        """
+        assert len(config.K) == nc, "Length of K must equal number of components"
+        return cls(nc, config.K, config.epsilon)
+
 
 @jit(nopython=True)
 def RR2(k, zc, eps):

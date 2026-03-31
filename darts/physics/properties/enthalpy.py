@@ -31,3 +31,8 @@ class EnthalpyBasic(Enthalpy):
         # Enthalpy based on constant heat capacity
         enthalpy = self.hcap * (temperature - self.tref)
         return enthalpy
+
+    @classmethod
+    def from_config(cls, config: EnthalpyBasicConfig) -> "EnthalpyBasic":
+        """Construct from a validated config object."""
+        return cls(tref=config.tref, hcap=config.hcap)

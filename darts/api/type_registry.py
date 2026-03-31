@@ -155,42 +155,6 @@ class AnyConfig(BaseModel):
 # ========================
 
 
-def make_compositional(
-    cfg: CompositionalConfig, components: list[str], phases: list[str], timer
-) -> Any:
-    from darts.physics.super.physics import Compositional
-
-    # StateSpecification enum mapping
-    state_map = {
-        "P": Compositional.StateSpecification.P,
-        "PT": Compositional.StateSpecification.PT,
-        "PH": Compositional.StateSpecification.PH,
-    }
-    state_spec = state_map.get(cfg.state_spec, Compositional.StateSpecification.P)
-    min_t = cfg.min_t
-    max_t = cfg.max_t
-    if state_spec != Compositional.StateSpecification.P and (
-        min_t is None or max_t is None
-    ):
-        min_t = 273.15 if min_t is None else min_t
-        max_t = 473.15 if max_t is None else max_t
-    return Compositional(
-        components,
-        phases,
-        timer,
-        state_spec=state_spec,
-        n_points=cfg.n_points,
-        min_p=cfg.min_p,
-        max_p=cfg.max_p,
-        min_z=cfg.min_z,
-        max_z=cfg.max_z,
-        epsilon_z=cfg.epsilon_z,
-        min_t=min_t,
-        max_t=max_t,
-        extrapolation_flag=cfg.extrapolation_flag,
-    )
-
-
 def make_black_oil(
     cfg: BlackOilConfig, components: list[str], phases: list[str], timer
 ) -> Any:
@@ -220,84 +184,6 @@ def make_black_oil(
         raise ValueError(f"BlackOil phases mismatch: {phases} vs {idata.fluid.phases}")
 
     return BlackOil(idata, timer, thermal=cfg.thermal)
-
-
-def make_property_container(cfg: PropertyContainerConfig) -> Any:
-    from darts.physics.super.property_container import PropertyContainer
-
-    eps_z = cfg.eps_z if cfg.eps_z is not None else cfg.min_z
-    kwargs = dict(
-        phases_name=cfg.phases_name,
-        components_name=cfg.components_name,
-        Mw=cfg.Mw,
-        eps_z=eps_z,
-        temperature=cfg.temperature,
-    )
-    if cfg.nc_sol is not None:
-        kwargs["nc_sol"] = cfg.nc_sol
-    if cfg.np_sol is not None:
-        kwargs["np_sol"] = cfg.np_sol
-    if cfg.rock_comp is not None:
-        kwargs["rock_comp"] = cfg.rock_comp
-    return PropertyContainer(**kwargs)
-
-
-def make_constant_k(cfg: ConstantKConfig, nc: int, epsilon: float) -> Any:
-    from darts.physics.properties.flash import ConstantK
-
-    assert len(cfg.K) == nc, "Length of K must equal number of components"
-    return ConstantK(nc, cfg.K, epsilon)
-
-
-def make_density_basic(cfg: DensityBasicConfig) -> Any:
-    from darts.physics.properties.density import DensityBasic
-
-    return DensityBasic(compr=cfg.compr, dens0=cfg.dens0)
-
-
-def make_const_func(cfg: ConstFuncConfig) -> Any:
-    from darts.physics.properties.basic import ConstFunc
-
-    return ConstFunc(cfg.value)
-
-
-def make_enthalpy_basic(cfg: EnthalpyBasicConfig) -> Any:
-    from darts.physics.properties.enthalpy import EnthalpyBasic
-
-    return EnthalpyBasic(tref=cfg.tref, hcap=cfg.hcap)
-
-
-def make_phase_relperm(cfg: PhaseRelPermConfig) -> Any:
-    from darts.physics.properties.basic import PhaseRelPerm
-
-    return PhaseRelPerm(cfg.phase, cfg.swc, cfg.sgr, cfg.kre, cfg.n)
-
-
-def make_dead_oil_property_container(cfg: PropertyContainerConfig) -> Any:
-    from darts.physics.deadoil import DeadOilProperties
-
-    eps_z = cfg.eps_z if cfg.eps_z is not None else cfg.min_z
-    components_name = cfg.components_name
-    phases_name = cfg.phases_name
-    if components_name is None or phases_name is None:
-        raise ValueError("components_name and phases_name are required")
-    Mw = cfg.Mw if cfg.Mw is not None else [1.0] * len(components_name)
-    kwargs = dict(
-        phases_name=phases_name,
-        components_name=components_name,
-        Mw=Mw,
-        eps_z=eps_z,
-        temperature=cfg.temperature,
-    )
-    if cfg.rock_comp is not None:
-        kwargs["rock_comp"] = cfg.rock_comp
-    return DeadOilProperties(**kwargs)
-
-
-def make_kinetic_basic(cfg: KineticBasicConfig) -> Any:
-    from darts.physics.properties.kinetics import KineticBasic
-
-    return KineticBasic(cfg.equi_prod, cfg.rate, cfg.ne)
 
 
 # ========================
@@ -520,14 +406,26 @@ def load_local_plugin_registry(
 # ========================
 
 
+def _lazy_from_config(module: str, cls_name: str, cfg: Any, **kwargs: Any) -> Any:
+    """Lazy-import a class and call its ``from_config()`` classmethod."""
+    mod = importlib.import_module(module)
+    cls = getattr(mod, cls_name)
+    return cls.from_config(cfg, **kwargs)
+
+
 def _register_defaults() -> None:
     TYPE_REGISTRY.register(
         _TypeEntry(
             type_id="physics/Compositional@v1",
             kind="physics",
             config_model=CompositionalConfig,
-            constructor=lambda cfg, **kw: make_compositional(
-                cfg, kw.get("components", []), kw.get("phases", []), kw.get("timer")
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.super.physics",
+                "Compositional",
+                cfg,
+                components=kw.get("components", []),
+                phases=kw.get("phases", []),
+                timer=kw.get("timer"),
             ),
             doc="Compositional physics (super physics).",
             customizable=False,
@@ -552,7 +450,11 @@ def _register_defaults() -> None:
             type_id="pc/SuperPropertyContainer@v1",
             kind="pc",
             config_model=PropertyContainerConfig,
-            constructor=lambda cfg, **kw: make_property_container(cfg),
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.super.property_container",
+                "PropertyContainer",
+                cfg,
+            ),
             doc="Super property container with phases and components.",
             customizable=False,
             source="builtin",
@@ -563,7 +465,11 @@ def _register_defaults() -> None:
             type_id="pc/DeadOilProperties@v1",
             kind="pc",
             config_model=PropertyContainerConfig,
-            constructor=lambda cfg, **kw: make_dead_oil_property_container(cfg),
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.deadoil",
+                "DeadOilProperties",
+                cfg,
+            ),
             doc="Dead-oil property container (no flash, immiscible phases).",
             customizable=False,
             source="builtin",
@@ -574,9 +480,12 @@ def _register_defaults() -> None:
             type_id="flash/ConstantK@v1",
             kind="flash",
             config_model=ConstantKConfig,
-            constructor=lambda cfg, **kw: make_constant_k(
-                cfg, kw.get("nc"), kw.get("epsilon", cfg.epsilon)
-            ),
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.properties.flash",
+                "ConstantK",
+                cfg,
+                nc=kw.get("nc"),
+            ),  # epsilon is read from cfg, not from kwargs
             doc="Constant-K flash evaluator.",
             customizable=False,
             source="builtin",
@@ -587,7 +496,11 @@ def _register_defaults() -> None:
             type_id="density/DensityBasic@v1",
             kind="density",
             config_model=DensityBasicConfig,
-            constructor=lambda cfg, **kw: make_density_basic(cfg),
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.properties.density",
+                "DensityBasic",
+                cfg,
+            ),
             doc="Basic density correlation (linear compressibility).",
             customizable=False,
             source="builtin",
@@ -598,7 +511,11 @@ def _register_defaults() -> None:
             type_id="viscosity/ConstFunc@v1",
             kind="viscosity",
             config_model=ConstFuncConfig,
-            constructor=lambda cfg, **kw: make_const_func(cfg),
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.properties.basic",
+                "ConstFunc",
+                cfg,
+            ),
             doc="Constant viscosity function.",
             customizable=False,
             source="builtin",
@@ -609,7 +526,11 @@ def _register_defaults() -> None:
             type_id="conductivity/ConstFunc@v1",
             kind="conductivity",
             config_model=ConstFuncConfig,
-            constructor=lambda cfg, **kw: make_const_func(cfg),
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.properties.basic",
+                "ConstFunc",
+                cfg,
+            ),
             doc="Constant thermal conductivity function.",
             customizable=False,
             source="builtin",
@@ -620,7 +541,11 @@ def _register_defaults() -> None:
             type_id="enthalpy/EnthalpyBasic@v1",
             kind="enthalpy",
             config_model=EnthalpyBasicConfig,
-            constructor=lambda cfg, **kw: make_enthalpy_basic(cfg),
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.properties.enthalpy",
+                "EnthalpyBasic",
+                cfg,
+            ),
             doc="Constant heat capacity enthalpy model.",
             customizable=False,
             source="builtin",
@@ -631,7 +556,11 @@ def _register_defaults() -> None:
             type_id="relperm/PhaseRelPerm@v1",
             kind="relperm",
             config_model=PhaseRelPermConfig,
-            constructor=lambda cfg, **kw: make_phase_relperm(cfg),
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.properties.basic",
+                "PhaseRelPerm",
+                cfg,
+            ),
             doc="Phase relative permeability by phase name.",
             customizable=False,
             source="builtin",
@@ -642,7 +571,11 @@ def _register_defaults() -> None:
             type_id="kinetic/KineticBasic@v1",
             kind="kinetic",
             config_model=KineticBasicConfig,
-            constructor=lambda cfg, **kw: make_kinetic_basic(cfg),
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.properties.kinetics",
+                "KineticBasic",
+                cfg,
+            ),
             doc="Basic kinetic reaction evaluator.",
             customizable=False,
             source="builtin",
