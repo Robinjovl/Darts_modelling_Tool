@@ -636,7 +636,8 @@ if __name__ == '__main__':
     #case = '16_16_15'
     #case = '34_34_57'  # z 0 - 5 km
     #case = '34_34_66'  # z 0 - 5 km 
-    case = '34_34_90'  # z 0 - 5 km more refined around rsv
+    case = '42_42_66'  # z 0 - 5 km 
+    #case = '34_34_90'  # z 0 - 5 km more refined around rsv
     #case='34_35_57' # perm_frac
     
     #case = '34_34_15'
