@@ -12,7 +12,7 @@ docker-image-builder:
     # Add space-separated paths here to extend the hash scope.
     DOCKER_HASH_FILES: >-
       ${CI_PROJECT_DIR}/.cicd/build-linux/Dockerfile
-      ${CI_PROJECT_DIR}/.cicd/build-linux/Toolchain.cmake
+      ${CI_PROJECT_DIR}/.cicd/jobs/build-images.yml
   before_script:
     # Set up registry auth for Kaniko (use username/password fields, not base64 auth)
     - mkdir -p /kaniko/.docker
@@ -25,15 +25,13 @@ docker-image-builder:
     - IMAGE_TAG="sha-${BUILD_KEY}"
     - FULL_IMAGE="${CI_REGISTRY_IMAGE}/linux-builder"
     - echo "Docker context hash => ${IMAGE_TAG}"
-    # Check if image with this content hash already exists in registry
+    # Check if image with this content hash already exists in registry.
+    # Uses crane (bundled in kaniko debug image) with the same docker config
+    # that kaniko uses for pushing — more reliable than a manual wget auth check.
     - |
       NEEDS_BUILD=1
       if [ "${UPDATE_DOCKER_IMAGE:-0}" != "1" ]; then
-        AUTH_B64=$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')
-        if wget -q -O /dev/null \
-             --header "Authorization: Basic ${AUTH_B64}" \
-             --header "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-             "https://${CI_REGISTRY}/v2/${CI_PROJECT_PATH}/linux-builder/manifests/${IMAGE_TAG}" 2>/dev/null; then
+        if DOCKER_CONFIG=/kaniko/.docker crane manifest "${FULL_IMAGE}:${IMAGE_TAG}" >/dev/null 2>&1; then
           echo "Image ${FULL_IMAGE}:${IMAGE_TAG} already exists — skipping build"
           NEEDS_BUILD=0
         else
