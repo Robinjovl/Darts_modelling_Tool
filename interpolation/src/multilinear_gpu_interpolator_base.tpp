@@ -123,12 +123,12 @@ double multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_a
   return axes_max[axis];
 }
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-double multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_min(int axis) const 
+double multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_min(int axis) const
 {
   return axes_min[axis];
 }
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_interpolations() const 
+uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_interpolations() const
 {
   return n_interpolations;
 }

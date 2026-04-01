@@ -2,7 +2,7 @@
 #define PY_GLOBALS_INTERPOLATION_H
 
 #include <pybind11/stl_bind.h>
-#include "globals.h"
+#include "interpolation_config.h"
 
 #include <vector>
 #include <tuple>
@@ -18,12 +18,3 @@ PYBIND11_MAKE_OPAQUE(std::vector<operator_set_gradient_evaluator_iface*>);
 
 
 #endif
-
-
-
-
-
-
-
-
-

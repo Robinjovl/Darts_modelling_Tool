@@ -1,6 +1,7 @@
 #ifdef PYBIND11_ENABLED
 #include <pybind11/pybind11.h>
-#include "py_globals.h"
+#include "py_globals_interpolation.h"
+#include "recursive_exposers.h"
 #include <pybind11/stl.h>
 
 #include "multilinear_static_cpu_interpolator.hpp"
@@ -80,7 +81,7 @@ struct interpolator_exposer
           .def_readwrite("point_data", &interpolator_class::point_data)
           .def("get_hypercube_indexes", &interpolator_class::get_hypercube_indexes);
       }
-      else if constexpr ( (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>> || 
+      else if constexpr ( (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>> ||
                            std::is_same_v<interpolator_class, linear_static_cpu_interpolator<i_t, N_DIMS, N_OPS>>) )
       {
         py::class_<interpolator_class,

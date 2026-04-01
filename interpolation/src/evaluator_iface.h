@@ -2,7 +2,7 @@
 #define B7CB6645_948A_4B50_A7D5_980BEFD16090
 
 #include <vector>
-#include "globals.h"
+#include "interpolation_config.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 using namespace opendarts::auxiliary;

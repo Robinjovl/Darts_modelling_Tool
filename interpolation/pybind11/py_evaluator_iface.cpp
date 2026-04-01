@@ -1,4 +1,4 @@
-#include "py_globals.h"
+#include "py_globals_interpolation.h"
 #include "py_evaluator_iface.h"
 
 namespace py = pybind11;

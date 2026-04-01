@@ -8,8 +8,8 @@
 
 /**
  * @brief  Piecewise mulitlinear interpolator with adaptive storage
- * 
- * 
+ *
+ *
  * @tparam index_t type used for indexing of supporting points and hypercubes
  * @tparam value_t value type used for supporting point storage, hypercube storage and interpolation
  * @tparam N_DIMS The number of dimensions in paramter space
@@ -25,7 +25,7 @@ public:
    using typename multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::hypercube_points_index_t;
    /**
      * @brief Construct the interpolator with specified parametrization space
-     * 
+     *
      * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
      * @param[in] axes_points               Number of supporting points (minimum 2) along axes
      * @param[in] axes_min                  Minimum value for each axis
@@ -38,9 +38,9 @@ public:
 
    /**
    * @brief adaptive point storage: the values of operators at requested supporting points
-   * Storage is grown dynamically in the process of simulation. 
+   * Storage is grown dynamically in the process of simulation.
    * Only supporting points that are required for interpolation are computed and added
-   * 
+   *
    */
    std::unordered_map<index_t, point_data_t> point_data;
 
@@ -52,20 +52,20 @@ public:
    std::vector<index_t> get_hypercube_indexes() const;
 protected:
    /**
-     * @brief Get values of operators at a given point 
-     * Provide a reference to correct location in the adaptive point storage. 
+     * @brief Get values of operators at a given point
+     * Provide a reference to correct location in the adaptive point storage.
      * If the point is not found, compute it first, and then return the reference.
      *
-     * @param[in] point_index index of point 
+     * @param[in] point_index index of point
      * @return operator values at given point
      */
    const point_data_t &get_point_data(const index_t point_index);
    /**
-     * @brief Get values of operators at all vertices of the hypercube. 
-     * Provide a reference to correct location in the adaptive hypercube storage. 
+     * @brief Get values of operators at all vertices of the hypercube.
+     * Provide a reference to correct location in the adaptive hypercube storage.
      * If the hypercube is not found, compute it first, and then return the reference.
      *
-     * @param[in] hypercube_index index of hypercube 
+     * @param[in] hypercube_index index of hypercube
      * @return operator values at all vertices of the hypercube
      */
    const hypercube_data_t &get_hypercube_data(const index_t hypercube_index);
@@ -84,11 +84,11 @@ protected:
    * @brief adaptive hypercube storage: the values of operators at every vertex of reqested hypercubes
    * Storage is grown dynamically in the process of simulation
    * Only hypercubes that are required for interpolation are computed and added
-   * 
-   * In fact it is an excess storage used to reduce memory accesses during interpolation. 
+   *
+   * In fact it is an excess storage used to reduce memory accesses during interpolation.
    * Here all values of all vertexes of requested hypercube are stored consecutevely and are accessed via a single index
    * Usage of point_data for interpolation directly would require N_VERTS memory accesses (>1000 accesses for 10-dimensional space)
-   *  * 
+   *  *
    */
    std::unordered_map<index_t, hypercube_data_t> hypercube_data;
 };

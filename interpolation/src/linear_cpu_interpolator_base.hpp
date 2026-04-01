@@ -5,11 +5,11 @@
 #include <vector>
 #include <pybind11/pybind11.h>
 #include "interpolator_base.hpp"
-#include "mech/matrix.h"
+#include "matrix.h"
 
 /**
  * @brief  Interpolator base for static/adaptive piecewise linear interpolator.
- * 
+ *
  * @tparam index_t index type used for supporting point indexing
  * @tparam N_DIMS The number of dimensions in paramter space
  * @tparam N_OPS The number of operators to be interpolated
@@ -20,7 +20,7 @@ class linear_cpu_interpolator_base : public interpolator_base
 public:
     /**
      * @brief Construct an interpolator with specified parametrization space
-     * 
+     *
      * @param[in] supporting_point_evaluator      Object used to compute operators values at supporting points
      * @param[in] axes_points                     Number of supporting points (minimum 2) along axes
      * @param[in] axes_min                        Minimum value for each axis
@@ -65,7 +65,7 @@ public:
                                      std::vector<double> &interp_values, std::vector<double> &derivatives) override;
 
     /**
-     * @brief Structure that stores pre-processed information 
+     * @brief Structure that stores pre-processed information
      *        required to perform linear interpolation on Delaunay triangulated of hypercube.
      */
     struct Delaunay

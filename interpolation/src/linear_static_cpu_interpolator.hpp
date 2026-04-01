@@ -18,7 +18,7 @@ class linear_static_cpu_interpolator : public linear_cpu_interpolator_base<index
 public:
     /**
      * @brief Construct the interpolator with specified parametrization space
-     * 
+     *
      * @param[in] supporting_point_evaluator      Object used to compute operators values at supporting points
      * @param[in] axes_points                     Number of supporting points (minimum 2) along axes
      * @param[in] axes_min                        Minimum value for each axis
@@ -32,8 +32,8 @@ public:
                                    bool _use_barycentric_interpolation);
 
     /**
-     * @brief Initialize the interpolator by computing all values of supporting points if the storage was not already initialized 
-     * 
+     * @brief Initialize the interpolator by computing all values of supporting points if the storage was not already initialized
+     *
      * @return int 0 if successful
      */
     int init() override;
