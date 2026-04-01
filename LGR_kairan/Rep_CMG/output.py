@@ -2,7 +2,7 @@ from matplotlib.collections import PatchCollection
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-from matplotlib.colors import LogNorm, Normalize
+from matplotlib.colors import LogNorm, Normalize, LinearSegmentedColormap
 import sys, os
 
 
@@ -244,6 +244,7 @@ def plot_xz_section(model, values, use_lgr=True,y0= None, tol= None, zmin=None, 
 
     fig.savefig(savepath, bbox_inches="tight")
     plt.close(fig)
+
 def plot_xy_plane(model, values, depth, use_lgr=True, tol=None,
                   xmin=None, xmax=None, ymin=None, ymax=None,
                     savepath="xy.png", title="", 
@@ -339,5 +340,147 @@ def plot_xy_plane(model, values, depth, use_lgr=True, tol=None,
         ax.set_title(title)
     else:
         ax.set_title(f"XY @ depth={depth:.2f} m")
+    fig.savefig(savepath, bbox_inches="tight")
+    plt.close(fig)
+
+def get_cmg_saturation_cmap():
+    """
+    CMG-like saturation colormap:
+    low  -> bright green
+    mid  -> yellow
+    high -> orange/red
+    """
+    colors = [
+        (0.00, "#00e65c"),   # bright green
+        (0.18, "#00ff00"),   # green
+        (0.45, "#ccff00"),   # yellow-green
+        (0.62, "#ffff00"),   # yellow
+        (0.80, "#ff9900"),   # orange
+        (1.00, "#ff0000"),   # red
+    ]
+    return LinearSegmentedColormap.from_list("cmg_sat", colors)
+
+def plot_xy_saturation_cmg(model, values, depth, use_lgr=True, tol=None,
+                           xmin=None, xmax=None, ymin=None, ymax=None,
+                           savepath="xy_sat_cmg.png", title="",
+                           vmin=0.009, vmax=0.695,
+                           edgecolor="k", linewidth=0.15,
+                           equal_aspect=True,
+                           cbar_ticks=None,
+                           fig_size=(6.2, 5.6),
+                           dpi=200):
+    """
+    Plot XY saturation map in a CMG-like style.
+
+    Parameters
+    ----------
+    values : array-like
+        Saturation values per cell
+    depth : float
+        Target depth
+    vmin, vmax : float
+        Fixed saturation scale to match CMG style
+    cbar_ticks : list or None
+        Optional custom ticks for colorbar
+    """
+    res = model.reservoir
+    x = np.asarray(res.cell_center_x)
+    y = np.asarray(res.cell_center_y)
+    z = np.asarray(res.cell_center_z)
+    v = np.asarray(values, dtype=float)
+
+    if v.size != x.size:
+        raise ValueError(f"Values size {v.size} does not match number of cells {x.size}.")
+
+    if tol is None:
+        if use_lgr:
+            tol = 0.5 * float(np.min(model.reservoir.dz))
+        else:
+            dz = model.reservoir.global_data["dz"].reshape(-1, order="F")
+            tol = 0.5 * float(np.min(dz))
+
+    m = np.abs(z - depth) <= tol
+    if xmin is not None:
+        m = m & (x >= xmin)
+    if xmax is not None:
+        m = m & (x <= xmax)
+    if ymin is not None:
+        m = m & (y >= ymin)
+    if ymax is not None:
+        m = m & (y <= ymax)
+
+    xp, yp, vp = x[m], y[m], v[m]
+
+    if xp.size == 0:
+        raise ValueError("No cells selected for the requested depth/tolerance window.")
+
+    if use_lgr:
+        dx = np.asarray(res.dx)
+        dy = np.asarray(res.dy)
+        dxp = dx[m]
+        dyp = dy[m]
+    else:
+        dx = model.reservoir.global_data["dx"].reshape(-1, order="F")
+        dy = model.reservoir.global_data["dy"].reshape(-1, order="F")
+        dxp = dx[m]
+        dyp = dy[m]
+
+    # clip into fixed CMG-style range
+    vals_to_plot = np.clip(vp, vmin, vmax)
+    norm = Normalize(vmin=vmin, vmax=vmax)
+    cmap = get_cmg_saturation_cmap()
+
+    patches = []
+    for xi, yi, dxi, dyi in zip(xp, yp, dxp, dyp):
+        patches.append(plt.Rectangle((xi - dxi/2, yi - dyi/2), dxi, dyi))
+
+    fig, ax = plt.subplots(figsize=fig_size, dpi=dpi)
+
+    pc = PatchCollection(
+        patches,
+        cmap=cmap,
+        norm=norm,
+        edgecolor=edgecolor,
+        linewidth=linewidth,
+        antialiased=False
+    )
+    pc.set_array(vals_to_plot)
+    ax.add_collection(pc)
+
+    ax.set_xlim(np.min(xp - dxp/2), np.max(xp + dxp/2))
+    ax.set_ylim(np.min(yp - dyp/2), np.max(yp + dyp/2))
+
+    # --- colorbar ---
+    cbar = fig.colorbar(pc, ax=ax, fraction=0.035, pad=0.04)
+
+    if cbar_ticks is None:
+        cbar_ticks = [vmin, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, vmax]
+
+    cbar.set_ticks(cbar_ticks)
+
+    tick_labels = []
+    for t in cbar_ticks:
+        if np.isclose(t, vmin) or np.isclose(t, vmax):
+            tick_labels.append(f"{t:.3f}")
+        else:
+            tick_labels.append(f"{t:.3f}" if t < 0.1 else f"{t:.3f}".rstrip("0").rstrip("."))
+
+    cbar.set_ticklabels(tick_labels)
+    cbar.ax.tick_params(labelsize=10)
+
+    # optional: no label, because CMG usually only shows scale
+    # cbar.set_label("Gas saturation")
+
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+
+    if equal_aspect:
+        ax.set_aspect("equal", adjustable="box")
+
+    if title:
+        ax.set_title(title)
+    else:
+        ax.set_title(f"XY @ depth={depth:.2f} m")
+
     fig.savefig(savepath, bbox_inches="tight")
     plt.close(fig)

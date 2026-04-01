@@ -4,7 +4,7 @@ import pandas as pd
 from lgr_model import Model
 from darts.engines import value_vector, redirect_darts_output
 from darts.physics.base.operators_base import PropertyOperators as props
-from output import get_physics_field, plot_xz_section, plot_well_time_data_2, plot_xy_plane
+from output import get_physics_field, plot_xy_saturation_cmg, plot_xz_section, plot_well_time_data_2, plot_xy_plane
 from darts.engines import well_control_iface
 
 def make_cfg_lgr():
@@ -301,11 +301,21 @@ if __name__ == '__main__':
                 # XCO2 = property_array["XCO2"][0,:]
                 rhoG = property_array["rhoG"][0,:]
                 rhoAq = property_array["rhoAq"][0,:]
-                plot_xy_plane(
-                    darts_model, satG, depth=2002.5, use_lgr=USE_LGR,
-                    savepath=os.path.join(SECTION_DIR, f"section_satG_xy_step_{t_end}.png"),
-                    title=f"satG at step {t_end}", logscale=False, vmin=0, vmax=1
-                )
+                # plot_xy_plane(
+                #     darts_model, satG, depth=2002.5, use_lgr=USE_LGR,
+                #     savepath=os.path.join(SECTION_DIR, f"section_satG_xy_step_{t_end}.png"),
+                #     title=f"satG at step {t_end}", logscale=False, vmin=0, vmax=1
+                # )
+                plot_xy_saturation_cmg(
+                            darts_model,
+                            values=satG,
+                            depth=2002.5,
+                            use_lgr=USE_LGR,
+                            savepath=os.path.join(SECTION_DIR, f"section_CO2_sat_xy_step_{t_end}_cmg.png"),
+                            title="CO2 Saturation",
+                            vmin=0.009,
+                            vmax=0.695
+                        )
                 plot_xy_plane(
                     darts_model, satG, depth=2097.5, use_lgr=USE_LGR,
                     savepath=os.path.join(SECTION_DIR, f"section_satG_xy_step_{t_end} at bottom of Pro.png"),
@@ -353,11 +363,12 @@ if __name__ == '__main__':
                             savepath=os.path.join(SECTION_DIR, f"section_CO2_step_{t_end}.png"),
                             title="CO2_delta", logscale=False, vmin=0, vmax=1
                         )
-                        plot_xy_plane(
-                            darts_model, prim[k] - 1e-8, depth=2002.5, use_lgr=USE_LGR,
-                            savepath=os.path.join(SECTION_DIR, f"section_CO2_xy_step_{t_end}.png"),
-                            title="CO2_delta", logscale=False, vmin=0, vmax=1
-                        )
+                        # plot_xy_plane(
+                        #     darts_model, prim[k] - 1e-8, depth=2002.5, use_lgr=USE_LGR,
+                        #     savepath=os.path.join(SECTION_DIR, f"section_CO2_xy_step_{t_end}.png"),
+                        #     title="CO2_delta", logscale=False, vmin=0, vmax=1
+                        # )
+                        
                         break
                 
 
@@ -379,3 +390,32 @@ if __name__ == '__main__':
         time_data_dict = darts_model.output.store_well_time_data(save_output_files=True)
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
         plot_well_time_data_2(darts_model, time_data_df, save_output_files=WELL_DIR)
+
+        
+
+        n_vars = darts_model.physics.n_vars
+        n_res_blocks = darts_model.reservoir.mesh.n_res_blocks
+
+        X = np.array(darts_model.physics.engine.X, copy=False).reshape((-1, n_vars))
+        volumes = np.array(darts_model.reservoir.mesh.volume, copy=False)[:n_res_blocks]
+        poro = np.array(darts_model.reservoir.mesh.poro, copy=False)[:n_res_blocks]
+
+        pc = darts_model.physics.property_containers[0]
+
+        co2_idx = pc.components_name.index("CO2")
+        total_co2_kmol_sequestered = 0.0
+
+        for i in range(n_res_blocks):
+            state = X[i, :]
+            pc.evaluate(state)
+
+            co2_cell_kmol_per_m3 = 0.0
+            for ph in range(pc.np_fl):   # fluid phases only
+                co2_cell_kmol_per_m3 += pc.sat[ph] * pc.dens_m[ph] * pc.x[ph, co2_idx]
+
+            total_co2_kmol_sequestered += co2_cell_kmol_per_m3 * poro[i] * volumes[i]
+
+        total_co2_mass_kg = total_co2_kmol_sequestered * 44.01
+
+        print(f"Total CO2 in reservoir: {total_co2_kmol_sequestered:.6e} kmol")
+        print(f"Total CO2 mass in reservoir: {total_co2_mass_kg:.6e} kg")
