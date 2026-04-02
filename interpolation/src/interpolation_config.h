@@ -123,8 +123,6 @@ namespace std
 #elif defined(__GNUC__)
 #endif
 
-// Guard against redefinition when globals.h is also included (engines context)
-#ifndef GLOBALS_H
 namespace std
 {
   template <>
@@ -146,6 +144,5 @@ namespace std
   // Custom to_string for __uint128_t
   std::string to_string(const __uint128_t& value);
 };
-#endif /* !GLOBALS_H */
 
 #endif /* INTERPOLATION_CONFIG_H */
