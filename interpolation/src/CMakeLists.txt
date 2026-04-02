@@ -44,6 +44,19 @@ if (CUDA)
 
   target_sources(darts_interpolation PRIVATE
     ${CUDA_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_hashmap_async.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_hashmap_async.tpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_gpu_interpolator_base.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_gpu_interpolator_base.tpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_adaptive_gpu_interpolator.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_adaptive_gpu_interpolator.tpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_static_gpu_interpolator.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_static_gpu_interpolator.tpp
+  )
+
+  target_link_libraries(darts_interpolation
+    PUBLIC
+      CUDA::cudart
   )
 endif()
 

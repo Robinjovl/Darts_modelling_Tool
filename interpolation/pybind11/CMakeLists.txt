@@ -20,6 +20,12 @@ pybind11_add_module(darts_interpolation_py
   ${INTERPOLATION_PYBIND11_PUBLIC_HEADER_FILES}
 )
 
+if (CUDA)
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all.cpp
+    PROPERTIES LANGUAGE CUDA)
+endif()
+
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(darts_interpolation_py
     PUBLIC
