@@ -4,6 +4,11 @@
 set(INTERPOLATION_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_evaluator_iface.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d1_d2.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d3_d4.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d5_d6.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d7_d8.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d9_d10.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_main_interpolation.cpp
 )
 
@@ -23,6 +28,11 @@ pybind11_add_module(darts_interpolation_py
 if (CUDA)
   set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d1_d2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d3_d4.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d5_d6.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d7_d8.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d9_d10.cpp
     PROPERTIES LANGUAGE CUDA)
 endif()
 

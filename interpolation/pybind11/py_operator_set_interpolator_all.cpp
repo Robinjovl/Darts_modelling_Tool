@@ -1,18 +1,22 @@
 #ifdef PYBIND11_ENABLED
 #include <pybind11/pybind11.h>
-#include "py_globals_interpolation.h"
-#include <pybind11/stl.h>
-
-#include "py_interpolator_exposer.hpp"
 
 namespace py = pybind11;
 
+// Split across multiple TUs to reduce peak compiler memory usage
+void pybind_operator_set_interpolator_d1_d2(py::module&);
+void pybind_operator_set_interpolator_d3_d4(py::module&);
+void pybind_operator_set_interpolator_d5_d6(py::module&);
+void pybind_operator_set_interpolator_d7_d8(py::module&);
+void pybind_operator_set_interpolator_d9_d10(py::module&);
+
 void pybind_operator_set_interpolator_all(py::module& m)
 {
-	const int N_DIMS_MAX = 10;
-	const int N_OPS_MAX = 10;
-	recursive_exposer_ndims_nops2<interpolator_exposer, py::module, N_DIMS_MAX, N_OPS_MAX> e;
-	e.expose(m);
+	pybind_operator_set_interpolator_d1_d2(m);
+	pybind_operator_set_interpolator_d3_d4(m);
+	pybind_operator_set_interpolator_d5_d6(m);
+	pybind_operator_set_interpolator_d7_d8(m);
+	pybind_operator_set_interpolator_d9_d10(m);
 }
 
 #endif //PYBIND11_ENABLED
