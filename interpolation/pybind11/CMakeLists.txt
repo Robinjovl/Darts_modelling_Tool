@@ -4,11 +4,19 @@
 set(INTERPOLATION_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_evaluator_iface.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d1_d2.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d3_d4.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d5_d6.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d7_d8.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d9_d10.cpp
+  # Split interpolator_super into 4 parts for parallel compilation
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part1.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part2.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part3.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part4.cpp
+  # Split interpolator_rates into 3 parts for parallel compilation
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part1.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part2.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part3.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_main_interpolation.cpp
 )
 
@@ -20,7 +28,7 @@ set(INTERPOLATION_PYBIND11_PUBLIC_HEADER_FILES
 )
 
 # Define the pybind11 module
-pybind11_add_module(darts_interpolation_py
+pybind11_add_module(interpolators
   ${INTERPOLATION_PYBIND11_SRC_FILES}
   ${INTERPOLATION_PYBIND11_PUBLIC_HEADER_FILES}
 )
@@ -28,34 +36,40 @@ pybind11_add_module(darts_interpolation_py
 if (CUDA)
   set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d1_d2.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d3_d4.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d5_d6.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d7_d8.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_d9_d10.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part1.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part4.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part1.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
     PROPERTIES LANGUAGE CUDA)
 endif()
 
 if(NOT DEFINED BOS_SOLVERS_DIR)
-  target_compile_definitions(darts_interpolation_py
+  target_compile_definitions(interpolators
     PUBLIC
       OPENDARTS_LINEAR_SOLVERS
       PYBIND11_ENABLED
   )
 else()
-  target_compile_definitions(darts_interpolation_py
+  target_compile_definitions(interpolators
     PUBLIC
       PYBIND11_ENABLED
   )
 endif()
 
-target_link_libraries(darts_interpolation_py
+target_link_libraries(interpolators
   PUBLIC
     opendarts_compiler_flags
     darts_interpolation
 )
 
-target_include_directories(darts_interpolation_py
+target_include_directories(interpolators
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
@@ -66,7 +80,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${INTERPOLATION_PYBIND11_
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${INTERPOLATION_PYBIND11_PUBLIC_HEADER_FILES})
 
 # Install the module
-install(TARGETS darts_interpolation_py
+install(TARGETS interpolators
   CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
   DESTINATION ./
 )

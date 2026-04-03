@@ -5,12 +5,16 @@
 namespace py = pybind11;
 
 void pybind_operator_set_interpolator_all(py::module &);
+void pybind_operator_set_interpolator_super(py::module &);
+void pybind_operator_set_interpolator_rates(py::module &);
+void pybind_operator_set_interpolator_pz_cap_gra(py::module &);
+void pybind_operator_set_interpolator_pze_gra(py::module &);
 void pybind_evaluator_iface(py::module&);
 void pybind_globals(py::module&);
 
 class operator_set_gradient_evaluator_iface;
 
-PYBIND11_MODULE(darts_interpolation_py, m)
+PYBIND11_MODULE(interpolators, m)
 {
   m.doc() = "open-DARTS interpolation library";
 
@@ -56,6 +60,10 @@ PYBIND11_MODULE(darts_interpolation_py, m)
   pybind_evaluator_iface(m);
   pybind_globals(m);
   pybind_operator_set_interpolator_all(m);
+  pybind_operator_set_interpolator_super(m);
+  pybind_operator_set_interpolator_rates(m);
+  pybind_operator_set_interpolator_pz_cap_gra(m);
+  pybind_operator_set_interpolator_pze_gra(m);
 }
 
 void pybind_globals(py::module& m)

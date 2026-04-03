@@ -14,10 +14,6 @@ set(OD_ENGINES_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_mp_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_globals.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_ms_well.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp  # geothermal
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_well_controls.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_main.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_contact.cpp
@@ -51,10 +47,6 @@ if (CUDA)
 
   set_source_files_properties(
     ${CUDA_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp
 
     PROPERTIES LANGUAGE CUDA)

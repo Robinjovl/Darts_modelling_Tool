@@ -30,6 +30,9 @@ typedef double value_t;
 typedef int interp_index_t;
 typedef double interp_value_t;
 
+// Maximum number of parameter-space dimensions for interpolator template instantiation
+#define MAX_DIMS 8
+
 // workaround for vscode grammar checker
 #ifdef __INTELLISENSE__
 #define __global__

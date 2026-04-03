@@ -81,26 +81,4 @@ struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, 1, 1>
     }
 };
 
-// single-dimension exposer: fixed N_DIMS, recurse N_OPS from N_OPS down to 1
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint8_t N_OPS>
-struct recursive_exposer_nops
-{
-    static void expose(pymodule_t& m)
-    {
-        exposer_t<N_DIMS, N_OPS> e;
-        e.expose(m);
-        recursive_exposer_nops<exposer_t, pymodule_t, N_DIMS, N_OPS - 1>::expose(m);
-    }
-};
-
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS>
-struct recursive_exposer_nops<exposer_t, pymodule_t, N_DIMS, 1>
-{
-    static void expose(pymodule_t& m)
-    {
-        exposer_t<N_DIMS, 1> e;
-        e.expose(m);
-    }
-};
-
 #endif /* RECURSIVE_EXPOSERS_H */

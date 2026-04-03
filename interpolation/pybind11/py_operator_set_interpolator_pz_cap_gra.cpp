@@ -1,6 +1,6 @@
 #ifdef PYBIND11_ENABLED
 #include <pybind11/pybind11.h>
-#include "py_globals.h"
+#include "py_globals_interpolation.h"
 #include <pybind11/stl.h>
 
 #include "py_interpolator_exposer.hpp"
@@ -12,8 +12,8 @@ void pybind_operator_set_interpolator_pz_cap_gra(py::module &m)
   // nc, grav + pc, 2 phases  : n_ops = (1 + 2) * N_DIMS + 2 + 2
 
   // N_DIMS = 1, 2, ..., N_DIMS_MAX
-  const int N_DIMS_MAX = MAX_NC;
-  
+  const int N_DIMS_MAX = MAX_DIMS;
+
   // N_OPS = A * N_DIMS + B
   const int A = 3;
   const int B = 4;
@@ -29,7 +29,7 @@ void pybind_operator_set_interpolator_pz_cap_gra(py::module &m)
   const int B1 = 6;
   recursive_exposer_ndims_nops<interpolator_exposer, py::module, N_DIMS_MAX1, A1, B1> e1;
 
- 
+
   e.expose(m);
   e1.expose(m);
 }
