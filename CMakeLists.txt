@@ -196,8 +196,28 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 
 endif()
 
+set(opendarts_cxx_warning_suppression_flags "")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  set(opendarts_cxx_warning_suppression_flags
+    # --- Reasonable suppressions (keep permanently) ---
+    -Wno-attributes         # cross-platform attribute compatibility (pybind11, MSVC attributes)
+    -Wno-maybe-uninitialized # GCC false positives in optimized builds
+    -Wno-comment            # harmless nested comment warnings
+    -Wno-cast-function-type # common with pybind11 callback casts
+    # --- Tech debt: to be fixed incrementally (202+154+140+656+194 unique locations) ---
+    -Wno-unused-variable       # ~202 unique locations, mostly in engine template instantiations
+    -Wno-unused-but-set-variable # ~100 unique locations in engine templates
+    -Wno-unused-parameter      # ~50 unique locations, mostly in virtual method overrides
+    -Wno-shadow                # ~154 unique locations, needs per-location review
+    -Wno-sign-compare          # ~140 unique locations, int vs size_t in loops
+  )
+endif()
+
+list(APPEND opendarts_cxx_compiler_flags ${opendarts_cxx_warning_suppression_flags})
+
 message(STATUS "   Compiler flags: ${opendarts_cxx_compiler_flags}")
 message(STATUS "   Linker flags  : ${opendarts_cxx_linker_flags}")
+message(STATUS "   Warning suppressions: ${opendarts_cxx_warning_suppression_flags}")
 
 # Setup options
 option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests are not built, to save time
@@ -269,7 +289,7 @@ if(CUDA)
             set(CMAKE_CUDA_ARCHITECTURES native)
         endif()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --ptxas-options=-v -allow-unsupported-compiler")
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --expt-relaxed-constexpr -allow-unsupported-compiler")
         add_compile_definitions(WITH_GPU)
     else()
         message(FATAL_ERROR "CUDA requested but not found!")

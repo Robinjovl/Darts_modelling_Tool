@@ -31,7 +31,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, value_t dt,
     return;
 
   index_t j, jac_idx = 0;
-  value_t p_diff, t_diff, gamma_p_diff, gamma_t_diff, tran_dt;
+  value_t p_diff, t_diff, gamma_t_diff;
   value_t RHS_l[N_VARS];
   value_t jac_diag_l[N_VARS * N_VARS];
   value_t jac_offd_l[N_VARS * N_VARS];
@@ -360,8 +360,6 @@ engine_nce_g_gpu<NC, NP>::calc_well_residual_L2()
   std::vector<value_t> res(n_vars, 0);
   std::vector<value_t> norm(n_vars, 0);
 
-  std::vector<value_t> &hcap = mesh->heat_capacity;
-
   for (ms_well *w : wells)
   {
     int nperf = w->perforations.size();
@@ -400,7 +398,6 @@ double
 engine_nce_g_gpu<NC, NP>::calc_well_residual_Linf()
 {
   double residual = 0, res = 0;
-  std::vector<value_t> &hcap = mesh->heat_capacity;
 
   for (ms_well *w : wells)
   {

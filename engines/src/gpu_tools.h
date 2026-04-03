@@ -59,7 +59,7 @@ void free_device_data(T *device_data)
   CUDA_CHECK_RETURN(cudaFree(device_data));
 };
 
-static void print_gpu_mem_usage()
+inline void print_gpu_mem_usage()
 {
   double free_gb, total_gb;
 
@@ -122,7 +122,7 @@ __host__ __device__ void print_device_vector_kernel(const T *vector_d, int n_ite
   // std::cout << std::endl;
 };
 
-static __host__ __device__ void print_device_int_vector_kernel(const int *vector_d, int n_items, char *vector_name)
+inline __host__ __device__ void print_device_int_vector_kernel(const int *vector_d, int n_items, char *vector_name)
 {
   printf("%s:", vector_name);
   for (int i = 0; i < n_items; i++)

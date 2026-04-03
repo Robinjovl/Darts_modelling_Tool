@@ -3,6 +3,7 @@
 #include "py_globals.h"
 #include "globals.h"
 #include "engines_build_info.h"
+#include <cctype>
 #include <iostream>
 #include <fstream>
 
@@ -23,11 +24,6 @@ using namespace opendarts::config;
 namespace py = pybind11;
 
 
-#if defined(__linux__) || defined(__APPLE__)
-  // declaration of stream test main function
-  // used to check the system bandwidth
-  int stream_main();
-#endif // defined(__linux__) || defined(__APPLE__)
 
 
 void redirect_darts_output(std::string file_name) {
@@ -90,7 +86,7 @@ void pybind_globals(py::module &m)
   py::class_<__uint128_t>(m, "uint128", "128-bit unsigned integer")
     .def(py::init<>())
     .def(py::init([](py::int_ i){
-      const py::int_ two64 = py::int_(1) << 64;
+      const py::int_ two64 = py::int_(1) << py::int_(64);
       const py::int_ hi_py = i / two64;
       const py::int_ lo_py = i % two64;
       // now cast each half to uint64_t
@@ -114,7 +110,7 @@ void pybind_globals(py::module &m)
 #endif
       py::int_ py_hi = py::int_(hi);
       py::int_ py_lo = py::int_(lo);
-      return (py_hi << 64) | py_lo;
+      return (py_hi << py::int_(64)) | py_lo;
     })
     .def("__index__", [](const __uint128_t &v){
 #ifdef _MSC_VER
@@ -126,7 +122,7 @@ void pybind_globals(py::module &m)
 #endif
       py::int_ py_hi = py::int_(hi);
       py::int_ py_lo = py::int_(lo);
-      return (py_hi << 64) | py_lo;
+      return (py_hi << py::int_(64)) | py_lo;
     })
     .def("__repr__", [](const __uint128_t &v){
       std::ostringstream oss;
@@ -255,9 +251,6 @@ void pybind_globals(py::module &m)
 
   m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");
 
-#ifdef defined(__linux__) || defined(__APPLE__)
-  m.def("stream", &stream_main, "Launch stream bandwidth test");
-#endif // defined(__linux__) || defined(__APPLE__)
 
 #ifdef _OPENMP
   m.def("get_num_threads", &omp_get_num_threads, "Get the number of OpenMP threads to be used");
@@ -275,4 +268,6 @@ void pybind_globals(py::module &m)
 #endif
 
 }
+
+
 #endif //PYBIND11_ENABLED
