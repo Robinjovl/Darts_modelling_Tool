@@ -38,7 +38,7 @@ namespace utils
 
 	static inline size_t from3Dto1DIndex(size_t ix, size_t iy, size_t iz, size_t nx, size_t ny, size_t nz) {
 		// get the index of an element in a 3d matrix in a corresponding 1d array
-		(void)nx;
+		(void)nx;  // nx is not used in the formula; cast suppresses -Wunused-parameter
 		return (iz + iy * nz + ix * (ny * nz));
 	}
 

@@ -1372,9 +1372,7 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 {
 	double estimate;
 	int hour, min, sec;
-	char buffer[4096];
-	char buffer2[4096];
-	char line[] = "-------------------------------------------------------------------------------------------------------------\n";
+	const std::string line = "-------------------------------------------------------------------------------------------------------------\n";
 
 	estimate = timer->get_timer();
 	hour = estimate / 3600;
@@ -1383,12 +1381,10 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 	estimate -= min * 60;
 	sec = estimate;
 
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-truncation"  // GCC cannot statically bound the %s content even though snprintf already limits buffer to sizeof(buffer); safe by construction
-#endif
-	snprintf(buffer, sizeof(buffer), "T = %g, DT = %g, NI = %d, LI = %d, RES = %.1e (%.1e), CFL=%.3lf (ELAPSED %02d:%02d:%02d",
+	char tmp[256];
+	snprintf(tmp, sizeof(tmp), "T = %g, DT = %g, NI = %d, LI = %d, RES = %.1e (%.1e), CFL=%.3lf (ELAPSED %02d:%02d:%02d",
 			time, deltat, n_newton_last_dt, n_linear_last_dt, newton_residual_last_dt, well_residual_last_dt, CFL_max, hour, min, sec);
+	std::string msg(tmp);
 	if ((dt * params->mult_ts > params->max_ts || full_step_timer.timer) && t < stop_time)
 	{
 		if (!full_step_timer.timer)
@@ -1404,15 +1400,11 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 			min = estimate / 60;
 			estimate -= min * 60;
 			sec = estimate;
-			snprintf(buffer2, sizeof(buffer2), "%s, REMAINING %02d:%02d:%02d", buffer, hour, min, sec);
-			snprintf(buffer, sizeof(buffer), "%s", buffer2);
+			snprintf(tmp, sizeof(tmp), ", REMAINING %02d:%02d:%02d", hour, min, sec);
+			msg += tmp;
 		}
 	}
-	snprintf(buffer2, sizeof(buffer2), "%s %s )\n%s", line, buffer, line);
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
-	std::cout << buffer2 << std::flush;
+	std::cout << line << " " << msg << " )\n" << line << std::flush;
 
 	return 0;
 }
