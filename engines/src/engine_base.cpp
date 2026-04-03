@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstdarg>
 #include <cstring>
 #include <cinttypes>
 #include <vector>
@@ -1381,10 +1382,20 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 	estimate -= min * 60;
 	sec = estimate;
 
-	char tmp[256];
-	snprintf(tmp, sizeof(tmp), "T = %g, DT = %g, NI = %d, LI = %d, RES = %.1e (%.1e), CFL=%.3lf (ELAPSED %02d:%02d:%02d",
+	auto fmt = [](const char *format, ...) -> std::string {
+		va_list args;
+		va_start(args, format);
+		int n = vsnprintf(nullptr, 0, format, args);
+		va_end(args);
+		std::string s(n, '\0');
+		va_start(args, format);
+		vsnprintf(&s[0], n + 1, format, args);
+		va_end(args);
+		return s;
+	};
+
+	std::string msg = fmt("T = %g, DT = %g, NI = %d, LI = %d, RES = %.1e (%.1e), CFL=%.3lf (ELAPSED %02d:%02d:%02d",
 			time, deltat, n_newton_last_dt, n_linear_last_dt, newton_residual_last_dt, well_residual_last_dt, CFL_max, hour, min, sec);
-	std::string msg(tmp);
 	if ((dt * params->mult_ts > params->max_ts || full_step_timer.timer) && t < stop_time)
 	{
 		if (!full_step_timer.timer)
@@ -1400,8 +1411,7 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 			min = estimate / 60;
 			estimate -= min * 60;
 			sec = estimate;
-			snprintf(tmp, sizeof(tmp), ", REMAINING %02d:%02d:%02d", hour, min, sec);
-			msg += tmp;
+			msg += fmt(", REMAINING %02d:%02d:%02d", hour, min, sec);
 		}
 	}
 	std::cout << line << " " << msg << " )\n" << line << std::flush;
