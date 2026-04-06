@@ -83,8 +83,8 @@ __device__ int insert_vector_element(gpu_hash_map<vector_element_t, VECTOR_SIZE>
         return insertFailTableIsFull;
 
     int slot = bitwise_and_hash(hashmap, key);
-    const unsigned tid = blockIdx.x * blockDim.x + threadIdx.x; // global thread index
-    const unsigned vector_index = tid % VECTOR_SIZE;
+    // const unsigned tid = blockIdx.x * blockDim.x + threadIdx.x; // global thread index
+    // const unsigned vector_index = tid % VECTOR_SIZE;
 
     for (int i = 0; i < hashmap->size; i++)
     {
@@ -107,7 +107,7 @@ template <typename vector_element_t, int VECTOR_SIZE>
 __device__ int lookup_data(gpu_hash_map<vector_element_t, VECTOR_SIZE> *hashmap, const int key, vector_element_t **vector)
 {
     int slot = bitwise_and_hash(hashmap, key);
-    const unsigned tid = blockIdx.x * blockDim.x + threadIdx.x; // global thread index
+    // const unsigned tid = blockIdx.x * blockDim.x + threadIdx.x;
     // if (tid == 0)
     // {
     //     printf("Requesting key %d slot %d\n", key, slot);
