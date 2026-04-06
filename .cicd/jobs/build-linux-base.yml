@@ -16,6 +16,13 @@
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
         - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS -p
+        - |
+          WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
+          WARN_COUNT=${WARN_COUNT:-0}
+          if [ "$WARN_COUNT" -gt 0 ] && { [ "$CI_COMMIT_BRANCH" = "development" ] || [ "$CI_COMMIT_BRANCH" = "main" ]; }; then
+            echo "FAILED: $WARN_COUNT open-DARTS compilation warning(s) on $CI_COMMIT_BRANCH branch"
+            exit 1
+          fi
     after_script:
         - source /opt/conda/bin/activate
         - conda env remove -n ${CONDA_ENV} --yes || true
