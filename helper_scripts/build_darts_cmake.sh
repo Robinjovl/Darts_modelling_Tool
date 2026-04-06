@@ -363,6 +363,17 @@ report_build_summary()
     "open-DARTS:make_darts.log"
   )
 
+  # Count warnings/errors before printing (avoid reading make_darts.log while appending)
+  local -A warn_counts err_counts
+  for entry in "${components[@]}"; do
+    local name="${entry%%:*}"
+    local logfile="${entry##*:}"
+    if [[ -f "$logfile" ]]; then
+      warn_counts[$name]=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
+      err_counts[$name]=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
+    fi
+  done
+
   # Print to stdout and append to make_darts.log
   {
     echo ""
@@ -374,17 +385,14 @@ report_build_summary()
 
     for entry in "${components[@]}"; do
       local name="${entry%%:*}"
-      local logfile="${entry##*:}"
-      if [[ -f "$logfile" ]]; then
-        local w=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
-        local e=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
-        printf " %-14s | %8d | %6d\n" "$name" "$w" "$e"
+      if [[ -n "${warn_counts[$name]+x}" ]]; then
+        printf " %-14s | %8d | %6d\n" "$name" "${warn_counts[$name]}" "${err_counts[$name]}"
       fi
     done
 
     echo "========================================="
 
-    local darts_warnings=$(grep -cE "$warn_pattern" make_darts.log 2>/dev/null || true)
+    local darts_warnings=${warn_counts[open-DARTS]:-0}
     if [[ $darts_warnings -gt 0 ]]; then
       echo ""
       echo " open-DARTS unique warnings:"

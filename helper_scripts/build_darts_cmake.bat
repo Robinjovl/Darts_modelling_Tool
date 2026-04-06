@@ -161,7 +161,7 @@ cmake %cmake_options% ..
 
 REM build and install
 msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts.log || goto :error
-msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts.log || goto :error
+msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts_install.log || goto :error
 
 if %testing%==true ctest -C %config%  || goto :error
 
@@ -244,7 +244,7 @@ if !darts_warnings! GTR 0 (
 
 echo.
 echo OPENDARTS_WARNING_COUNT=!darts_warnings!
-echo OPENDARTS_WARNING_COUNT=!darts_warnings!>> make_darts.log
+>>make_darts.log echo OPENDARTS_WARNING_COUNT=!darts_warnings!
 exit /b 0
 
 REM Help info --------------------------------------------------------
