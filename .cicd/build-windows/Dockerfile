@@ -20,8 +20,7 @@ RUN curl -SL --output vs_buildtools.exe https://aka.ms/vs/17/release/vs_buildtoo
 
 # Step 2: Install CMake 3.29.3 (prebuilt binary, no need to compile on Windows)
 RUN curl -SL --output cmake.zip https://github.com/Kitware/CMake/releases/download/v3.29.3/cmake-3.29.3-windows-x86_64.zip `
-    && tar -xf cmake.zip `
-    && ren cmake-3.29.3-windows-x86_64 C:\cmake `
+    && powershell -Command "Expand-Archive -Path cmake.zip -DestinationPath C:\cmake" `
     && del /q cmake.zip
 
 # Step 3: Install Miniforge (conda-forge)
@@ -63,12 +62,6 @@ RUN setx /M PATH "C:\Git\cmd;%PATH%"
 
 # Add Conda to PATH
 RUN setx /M PATH "C:\conda;C:\conda\Scripts;%PATH%"
-
-# Copy toolchain file (Windows equivalent of Toolchain.cmake)
-COPY Toolchain.cmake C:\BuildTools\
-
-# Set CMAKE_TOOLCHAIN_FILE
-RUN setx /M CMAKE_TOOLCHAIN_FILE "C:\BuildTools\Toolchain.cmake"
 
 # Set up the MSVC developer environment on entry
 ENTRYPOINT ["C:\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat", "&&"]
