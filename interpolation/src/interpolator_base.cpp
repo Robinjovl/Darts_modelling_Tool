@@ -3,14 +3,6 @@
 #include <assert.h>
 #include "interpolator_base.hpp"
 
-namespace std
-{
-  std::string to_string(const __uint128_t& value)
-  {
-    return std::to_string(static_cast<double>(value));
-  };
-};
-
 interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator_,
                                      const std::vector<int> &axes_points_,
                                      const std::vector<double> &axes_min_,

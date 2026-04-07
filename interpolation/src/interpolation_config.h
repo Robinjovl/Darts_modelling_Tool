@@ -144,8 +144,11 @@ namespace std
     }
   };
 
-  // Custom to_string for __uint128_t
-  std::string to_string(const __uint128_t& value);
+  // Custom to_string for __uint128_t (inline to avoid link dependency)
+  inline std::string to_string(const __uint128_t& value)
+  {
+    return std::to_string(static_cast<double>(value));
+  }
 };
 
 #endif /* INTERPOLATION_CONFIG_H */

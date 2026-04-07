@@ -33,11 +33,6 @@ pybind11_add_module(engines
   ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
 )
 
-# Add interpolation pybind11 sources (outside engines source tree)
-target_sources(engines PRIVATE
-  ${CMAKE_SOURCE_DIR}/interpolation/pybind11/py_evaluator_iface.cpp
-)
-
 if (CUDA)
   set(CUDA_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_gpu.cpp
@@ -82,8 +77,6 @@ target_link_libraries(engines
     engines_build_info
     engines_engines
     engines_mechanics
-    engines_interpolator
-    darts_interpolation
     engines_conn_mesh
 )
 
@@ -92,7 +85,6 @@ target_link_libraries(engines
 target_include_directories(engines
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/interpolation/pybind11>
     $<INSTALL_INTERFACE:include>
 )
 

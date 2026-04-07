@@ -8,7 +8,7 @@
 
 #include "globals.h"
 #include "conn_mesh.h"
-#include "interpolator_base.hpp"
+#include "evaluator_iface.h"
 #include "pybind11/py_globals.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS

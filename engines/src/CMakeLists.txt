@@ -87,8 +87,13 @@ install(TARGETS engines_global
 # ------------------------------------------------------------------------------
 
 
-# --- Include interpolators ----------------------------------------------------
-add_subdirectory(interpolation)
+# --- Interpolation header paths -----------------------------------------------
+# Engines uses only the abstract interface (evaluator_iface.h) from the
+# interpolation library — no link dependency, headers only.
+set(INTERPOLATION_INCLUDE_DIRS
+  ${CMAKE_SOURCE_DIR}/interpolation/src
+  ${CMAKE_SOURCE_DIR}/interpolation/pybind11
+)
 # ------------------------------------------------------------------------------
 
 
@@ -195,9 +200,13 @@ target_link_libraries(engines_conn_mesh
   PUBLIC
     engines_global
     engines_wells
-    engines_interpolator
     opendarts_compiler_flags
     linear_solvers
+)
+
+target_include_directories(engines_conn_mesh
+  PUBLIC
+    ${INTERPOLATION_INCLUDE_DIRS}
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)
@@ -266,7 +275,11 @@ target_link_libraries(engines_wells
   PUBLIC
     opendarts_compiler_flags
     linear_solvers
-    engines_interpolator
+)
+
+target_include_directories(engines_wells
+  PUBLIC
+    ${INTERPOLATION_INCLUDE_DIRS}
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)
@@ -361,9 +374,13 @@ target_link_libraries(engines_engines
   PUBLIC
     opendarts_compiler_flags
     linear_solvers
-    engines_interpolator
 	HYPRE::HYPRE
     pybind11::pybind11
+)
+
+target_include_directories(engines_engines
+  PUBLIC
+    ${INTERPOLATION_INCLUDE_DIRS}
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

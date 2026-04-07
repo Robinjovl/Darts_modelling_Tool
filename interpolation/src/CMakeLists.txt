@@ -83,15 +83,5 @@ target_include_directories(darts_interpolation
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${INTERPOLATION_SRC_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${INTERPOLATION_PUBLIC_HEADER_FILES})
 
-# Install
-install(TARGETS darts_interpolation
-  CONFIGURATIONS RELEASE
-  DESTINATION lib
-)
-
-install(TARGETS darts_interpolation
-  CONFIGURATIONS DEBUG
-  DESTINATION lib
-)
 
 # ------------------------------------------------------------------------------

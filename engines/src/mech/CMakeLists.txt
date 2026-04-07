@@ -44,7 +44,6 @@ target_link_libraries(engines_mechanics
     opendarts_compiler_flags
     linear_solvers
     engines_global
-    engines_interpolator
 	opendarts_discretizer
 	HYPRE::HYPRE
     pybind11::pybind11
@@ -56,6 +55,7 @@ target_include_directories(engines_mechanics
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
+    ${INTERPOLATION_INCLUDE_DIRS}
 )
 
 # Setup IDE directory structure for engines_mechanics
