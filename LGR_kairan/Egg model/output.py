@@ -1,11 +1,9 @@
-from matplotlib.collections import PatchCollection
+import sys, os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+from matplotlib.collections import PatchCollection
 from matplotlib.colors import LogNorm, Normalize
-import sys, os
-
-
 
 def plot_well_time_data_2(m, time_data_df,
                                 save_output_files=True,
@@ -137,12 +135,6 @@ def get_physics_field(model):
     X_res = X[:n*nb]
     Xc = X_res.reshape((n,nb), order="C")
     return {str(v): Xc[:,i] for i, v in enumerate(model.physics.vars)}
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-from matplotlib.collections import PatchCollection
-from matplotlib.colors import LogNorm, Normalize
-
 
 def plot_xz_section(
     model,
@@ -161,21 +153,21 @@ def plot_xz_section(
     linewidth=0.15,
     cmap="coolwarm",
 ):
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import matplotlib.ticker as mticker
-    from matplotlib.collections import PatchCollection
-    from matplotlib.colors import LogNorm, Normalize
+    
 
     res = model.reservoir
     x = np.asarray(res.cell_center_x, dtype=float)
     y = np.asarray(res.cell_center_y, dtype=float)
     z = np.asarray(res.cell_center_z, dtype=float)
     v = np.asarray(values, dtype=float)
-
-    dx = np.asarray(res.dx, dtype=float)
-    dy = np.asarray(res.dy, dtype=float)
-    dz = np.asarray(res.dz, dtype=float)
+    if use_lgr:
+        dx = np.asarray(res.dx, dtype=float)
+        dy = np.asarray(res.dy, dtype=float)
+        dz = np.asarray(res.dz, dtype=float)
+    else:
+        dx = np.asarray(model.reservoir.global_data["dx"], dtype=float).reshape(-1, order="F")
+        dy = np.asarray(model.reservoir.global_data["dy"], dtype=float).reshape(-1, order="F")
+        dz = np.asarray(model.reservoir.global_data["dz"], dtype=float).reshape(-1, order="F")
 
     if y0 is None:
         # 默认用 injector LGR 那一列附近；至少比全模型 median 更合理
@@ -267,6 +259,8 @@ def plot_xz_section(
 
     fig.savefig(savepath, bbox_inches="tight")
     plt.close(fig)
+
+
 
 def plot_xy_plane(model, values, depth, use_lgr=True, tol=None,
                   xmin=None, xmax=None, ymin=None, ymax=None,

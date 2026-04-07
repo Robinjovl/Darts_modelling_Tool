@@ -104,8 +104,8 @@ def assemble_lgr_connections(self):
             
             # central fine cells in imaginary grid
             
-            for j in range(1,ry+1):
-                for i in range(1,rx+1):
+            for j in range(1, ry+1):
+                for i in range(1, rx+1):
                     imag_idx = base_im + j*nxim + i # index of 5*5 grid
                     fine_local = base_fine + (j-1)*rx + (i-1) # local fine index in level1
                     fine_global = fine_global_offset + fine_local # global index of fine cell
@@ -256,7 +256,8 @@ def assemble_lgr_connections(self):
     cp_all = np.concatenate(cp_parts)
     T_all = np.concatenate(T_parts)
     T_all_therm = np.concatenate(Tt_parts)
-
+    
+    # only assume all LGRs have the same refine ratio and are centered in the parent grid, then the global index of local center is
     center_2d = (ry//2) * rx + (rx//2)
 
     print(f'cm is {cm_all}')

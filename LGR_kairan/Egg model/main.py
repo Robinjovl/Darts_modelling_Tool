@@ -49,7 +49,9 @@ def make_cfg_lgr():
 
 USE_LGR=True
 
-output_dir = r".\egg_model_output"
+Nt = 50
+Dt = 365
+output_dir = r".\output_lgr_heter"
 FIG_DIR = os.path.join(output_dir, "figures")
 SECTION_DIR = os.path.join(FIG_DIR, "sections")
 WELL_DIR = os.path.join(FIG_DIR, "well_time_plots")
@@ -65,172 +67,206 @@ if __name__ == '__main__':
    
     # darts_model.params.linear_type = darts_model.params.linear_solver_t.cpu_superlu
     redirect_darts_output('run.log')
-    darts_model.init()
-    darts_model.set_output(output_folder='egg_model_output')
+    darts_model.init(platform="cpu")
+    darts_model.set_output(output_folder='output_lgr_heter')
     
+    # for name in darts_model.lgr_meta["lgr_orders"]:
+    #     off = darts_model.lgr_meta["lgr_offsets"][name]
+    #     nloc = darts_model.level1[name].n
+    #     print(name, "dx unique:", np.unique(darts_model.reservoir.dx[off:off+nloc]))
+    #     print(name, "dy unique:", np.unique(darts_model.reservoir.dy[off:off+nloc]))
+    #     print(name, "x unique first layer:", np.unique(np.round(darts_model.reservoir.cell_center_x[off:off+25], 6)))
+    #     print(name, "y unique first layer:", np.unique(np.round(darts_model.reservoir.cell_center_y[off:off+25], 6)))
+
      #plot initial condition
     prim0 = get_physics_field(darts_model)
 
     #Permeability
-    plot_xz_section(
-        darts_model, darts_model.reservoir.kx, use_lgr=USE_LGR, zmin=0, zmax=90,
-        savepath=os.path.join(SECTION_DIR, f"section_kx_xz.png"),
-        title=f"permeability kx (initial)", logscale=True
-    )
-    plot_xy_plane(
-        darts_model, darts_model.reservoir.kx, depth=15, use_lgr=USE_LGR,
-        savepath=os.path.join(SECTION_DIR, f"section_kx_xy.png"),
-        title=f"permeability kx (initial)", logscale=True
-    )
+    if USE_LGR:
+            plot_xz_section(
+            darts_model, darts_model.reservoir.kx, use_lgr=USE_LGR, zmin=1990, zmax=2080,
+            savepath=os.path.join(SECTION_DIR, f"section_kx_xz.png"),
+            title=f"permeability kx", logscale=True
+        )
+            plot_xy_plane(
+                darts_model, darts_model.reservoir.kx, depth=2005, use_lgr=USE_LGR,
+                savepath=os.path.join(SECTION_DIR, f"section_kx_xy.png"),
+                title=f"permeability kx", logscale=True
+            )
+
+    else:
+        plot_xz_section(
+            darts_model, darts_model.reservoir.global_data["permx"].reshape(-1, order="F"), use_lgr=USE_LGR, zmin=1990, zmax=2080,
+            savepath=os.path.join(SECTION_DIR, f"section_kx_xz.png"),
+            title=f"permeability kx", logscale=True
+        )
+        plot_xy_plane(
+            darts_model, darts_model.reservoir.global_data["permx"].reshape(-1, order="F"), depth=2005, use_lgr=USE_LGR,
+            savepath=os.path.join(SECTION_DIR, f"section_kx_xy.png"),
+            title=f"permeability kx ", logscale=True
+        )
 
     # pressure
     for k in prim0.keys():
         kk = k.lower()
         if ("pressure" in kk) or (kk == "p"):
             plot_xz_section(
-                darts_model, prim0[k], use_lgr=USE_LGR, zmin=0, zmax=90,
-                savepath=os.path.join(SECTION_DIR, f"section_P_XZ.png"),
-                title=f"{k} (initial)", logscale=False
+                darts_model, prim0[k], use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                savepath=os.path.join(SECTION_DIR, f"section_P_XZ_injector.png"),
+                title=f"{k} (initial)", logscale=False, edgecolor="none", linewidth=0.0
             )
+            plot_xz_section(
+                darts_model, prim0[k], use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                y0=1365,savepath=os.path.join(SECTION_DIR, f"section_P_xz_producer.png"),
+                title=f"{k} (initial)", logscale=False, edgecolor="none", linewidth=0.0
+            )
+
             plot_xy_plane(
-                darts_model, prim0[k], depth=15, use_lgr=USE_LGR,
-                savepath=os.path.join(SECTION_DIR, f"section_P_xy.png"),
-                title=f"{k} (initial)", logscale=False
+                darts_model, prim0[k], depth=2035, use_lgr=USE_LGR,
+                savepath=os.path.join(SECTION_DIR, f"section_P_xy_middle.png"),
+                title=f"{k} (initial)", logscale=False, edgecolor="none", linewidth=0.0
             )
             break
 
     # CO2 
-    for k in prim0.keys():
-        if "co2" in k.lower():
-            plot_xz_section(
-                darts_model, prim0[k] - 1e-8, use_lgr=USE_LGR, zmin=0, zmax=90,
-                savepath=os.path.join(SECTION_DIR, f"section_CO2_xz.png"),
-                title="CO2_delta (initial)", logscale=False, vmin=0, vmax=1
-            )
-            plot_xy_plane(
-                darts_model, prim0[k] - 1e-8, depth=15, use_lgr=USE_LGR,
-                savepath=os.path.join(SECTION_DIR, f"section_CO2_xy.png"),
-                title="CO2_delta (initial)", logscale=False, vmin=0, vmax=1
-            )
-            break
+    # for k in prim0.keys():
+    #     if "co2" in k.lower():
+    #         plot_xz_section(
+    #             darts_model, prim0[k] - 1e-8, use_lgr=USE_LGR, zmin=1990, zmax=2080,
+    #             savepath=os.path.join(SECTION_DIR, f"section_CO2_xz.png"),
+    #             title="CO2_delta (initial)", logscale=False, vmin=0, vmax=1
+    #         )
+    #         plot_xy_plane(
+    #             darts_model, prim0[k] - 1e-8, depth=2035, use_lgr=USE_LGR,
+    #             savepath=os.path.join(SECTION_DIR, f"section_CO2_xy_middle.png"),
+    #             title="CO2_delta (initial)", logscale=False, vmin=0, vmax=1
+    #         )
+    #         break
 
     # temperature
     for k in prim0.keys():
         kk = k.lower()
         if ("temp" in kk) or ("temperature" in kk):
             plot_xz_section(
-                darts_model, prim0[k], use_lgr=USE_LGR, zmin=0, zmax=90,
-                savepath=os.path.join(SECTION_DIR, f"section_T_xz.png"),
-                title=f"{k} (initial)", logscale=False
+                darts_model, prim0[k], use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                savepath=os.path.join(SECTION_DIR, f"section_T_xz_injector.png"),
+                title=f"{k} (initial)", logscale=False, edgecolor="none", linewidth=0.0
+            )
+            plot_xz_section(
+                darts_model, prim0[k], use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                y0=1365,savepath=os.path.join(SECTION_DIR, f"section_T_xz_producer.png"),
+                title=f"{k} (initial)", logscale=False, edgecolor="none", linewidth=0.0
             )
             plot_xy_plane(
-                darts_model, prim0[k], depth=15, use_lgr=USE_LGR,
-                savepath=os.path.join(SECTION_DIR, f"section_T_xy.png"),
-                title=f"{k} (initial)", logscale=False
+                darts_model, prim0[k], depth=2035, use_lgr=USE_LGR,
+                savepath=os.path.join(SECTION_DIR, f"section_T_xy_middle.png"),
+                title=f"{k} (initial)", logscale=False, edgecolor="none", linewidth=0.0
             )
             break
 
-
+    Tmin = 68 + 273.15
+    Tmax = 80+ 273.15
     if True:
-        darts_model.run(30)
-        # darts_model.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
-        # darts_model.run_python(300, restart_dt=1e-3)
-        darts_model.print_timers()
-        darts_model.print_stat()
-        # save_dict = {
-        #     "X": np.array(darts_model.physics.engine.X, copy=True),
-        #     "vars": [str(v) for v in darts_model.physics.vars],
-        #     "n_cells": int(len(darts_model.reservoir.poro)),
-        #     "n_vars": len(darts_model.physics.vars),
-        #     }
+        for t in range(Nt):
+            darts_model.run(Dt)
 
-        # np.save("solution_final.npy", save_dict)
-        output_props = darts_model.physics.vars + darts_model.output.properties
-        timesteps, property_array = darts_model.output.output_properties(output_properties = ["satG", "XCO2", "rhoG", "rhoAq"],engine=True)
-        darts_model.output.save_property_array(timesteps, property_array)
+            darts_model.print_timers()
+            darts_model.print_stat()
+            
+            t_end = float(darts_model.physics.engine.t)
+
+            if t_end == Dt or t_end ==Dt*5 or t_end == Dt*10 or t_end == Dt*15 or t_end == Dt*20 or t_end == Dt*25 or t_end == Dt*30  or t_end == Dt*40 or t_end == Dt*50:        
+                output_props = darts_model.physics.vars + darts_model.output.properties
+                timesteps, property_array = darts_model.output.output_properties(
+                    output_properties = ["satG","rhoG", "muG"],engine=True
+                    )
+                darts_model.output.save_property_array(timesteps, property_array)
+
+                satG = property_array["satG"][0,:]
+                muG = property_array["muG"][0,:]
+                rhoG = property_array["rhoG"][0,:]
         
-        satG = property_array["satG"][0,:]
-        XCO2 = property_array["XCO2"][0,:]
-        rhoG = property_array["rhoG"][0,:]
-        rhoAq = property_array["rhoAq"][0,:]
-        plot_xy_plane(
-            darts_model, satG, depth=15, use_lgr=USE_LGR,
-            savepath=os.path.join(SECTION_DIR, f"section_satG_xy.png"),
-            title=f"satG", logscale=False, vmin=0, vmax=1
-        )
-        plot_xy_plane(
-            darts_model, XCO2, depth=15, use_lgr=USE_LGR,
-            savepath=os.path.join(SECTION_DIR, f"section_XCO2_xy_step.png"),
-            title=f"XCO2", logscale=False, vmin=0, vmax=1
-        )
-        plot_xy_plane(
-            darts_model, rhoG, depth=15, use_lgr=USE_LGR,
-            savepath=os.path.join(SECTION_DIR, f"section_rhoG_xy_step.png"),
-            title=f"rhoG", logscale=False
-        )
-        plot_xy_plane(
-            darts_model, rhoAq, depth=15, use_lgr=USE_LGR,
-            savepath=os.path.join(SECTION_DIR, f"section_rhoAq_xy_step.png"),
-            title=f"rhoAq", logscale=False
-        )
-        plot_xz_section(
-            darts_model, satG, use_lgr=USE_LGR, zmin=0, zmax=90,
-            savepath=os.path.join(SECTION_DIR, f"section_satG_xz.png"),
-            title=f"satG", logscale=False, vmin=0, vmax=1
-        )
+                plot_xy_plane(
+                    darts_model, muG, depth=2035, use_lgr=USE_LGR,
+                    savepath=os.path.join(SECTION_DIR, f"section_muG_xy_{t_end}_middle.png"),
+                    title=f"muG", logscale=False, edgecolor="none", linewidth=0.0
+                )
+                plot_xy_plane(
+                    darts_model, rhoG, depth=2035, use_lgr=USE_LGR,
+                    savepath=os.path.join(SECTION_DIR, f"section_rhoG_xy_{t_end}_middle.png"),
+                    title=f"rhoG", logscale=False, edgecolor="none", linewidth=0.0
+                )
 
-        prim = get_physics_field(darts_model)
-        print("vars:", list(prim.keys()))
-        for k in prim.keys():
-            if "pressure" in k.lower() or k.lower() == "p":
-                plot_xz_section(darts_model, prim[k],use_lgr=USE_LGR ,zmin=0, zmax=90,
-                                savepath=os.path.join(SECTION_DIR, "section_P_xz.png"),
-                                title=k,
-                                logscale=False)
-                plot_xy_plane(
-                            darts_model, prim[k], depth=15, use_lgr=USE_LGR,
-                            savepath=os.path.join(SECTION_DIR, f"section_P_xy.png"),
-                            title=k, logscale=False
-                        )
-                break
+                plot_xz_section(
+                    darts_model, muG, use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                    savepath=os.path.join(SECTION_DIR, f"section_muG_xz_{t_end}_injector.png"),
+                    title=f"muG", logscale=False, edgecolor="none", linewidth=0.0
+                )
 
-     
-        for k in prim.keys():
-            if "co2" in k.lower() :  
-                plot_xz_section(darts_model, prim[k] - 1e-8, use_lgr=USE_LGR, zmin=0, zmax=90,
-                                savepath=os.path.join(SECTION_DIR, "section_CO2_xz.png"),
-                                title="CO2_delta",
-                                logscale=False,
-                                vmin=0, vmax=1)   
-                plot_xy_plane(
-                            darts_model, prim[k] - 1e-8, depth=15, use_lgr=USE_LGR,
-                            savepath=os.path.join(SECTION_DIR, f"section_CO2_xy.png"),
-                            title="CO2_delta", logscale=False, vmin=0, vmax=1
-                        )
-                break
-        
-        for k in prim.keys():
-            if "temp" in k.lower() or "temperature" in k.lower():
-                plot_xz_section(darts_model, prim[k], use_lgr=USE_LGR, zmin=0, zmax=90,
-                                savepath=os.path.join(SECTION_DIR, "coarse_section_T.png"),
-                                title=k,
-                                logscale=False)
-                plot_xy_plane(
-                            darts_model, prim[k], depth=15, use_lgr=USE_LGR,
-                            savepath=os.path.join(SECTION_DIR, f"section_T_xy.png"),
-                            title=k, logscale=False
-                        )
-                break
+                plot_xz_section(
+                    darts_model, muG, use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                    y0=1365,savepath=os.path.join(SECTION_DIR, f"section_muG_xz_{t_end}_producer.png"),
+                    title=f"muG", logscale=False, edgecolor="none", linewidth=0.0
+                )
+
+                prim = get_physics_field(darts_model)
+                print("vars:", list(prim.keys()))
+                for k in prim.keys():
+                    if "pressure" in k.lower() or k.lower() == "p":
+                        plot_xz_section(darts_model, prim[k],use_lgr=USE_LGR ,zmin=1990, zmax=2080,
+                                        savepath=os.path.join(SECTION_DIR, f"section_P_xz_{t_end}_injector.png"),
+                                        title=k,
+                                        logscale=False, edgecolor="none", linewidth=0.0)
+                        plot_xz_section(darts_model, prim[k], use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                                        y0=1365,savepath=os.path.join(SECTION_DIR, f"section_P_xz_{t_end}_producer.png"),
+                                        title=k,
+                                        logscale=False, edgecolor="none", linewidth=0.0)
+                        plot_xy_plane(
+                                    darts_model, prim[k], depth=2035, use_lgr=USE_LGR,
+                                    savepath=os.path.join(SECTION_DIR, f"section_P_xy_{t_end}_middle.png"),
+                                    title=k, logscale=False, edgecolor="none", linewidth=0.0
+                                )
+                        break
+
+            
+                # for k in prim.keys():
+                #     if "co2" in k.lower() :  
+                #         plot_xz_section(darts_model, prim[k] - 1e-8, use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                #                         savepath=os.path.join(SECTION_DIR, f"section_CO2_xz_{t_end}.png"),
+                #                         title="CO2_delta",
+                #                         logscale=False,
+                #                         vmin=0, vmax=1)   
+                #         plot_xy_plane(
+                #                     darts_model, prim[k] - 1e-8, depth=2035, use_lgr=USE_LGR,
+                #                     savepath=os.path.join(SECTION_DIR, f"section_CO2_xy_{t_end}_middle.png"),
+                #                     title="CO2_delta", logscale=False, vmin=0, vmax=1
+                #                 )
+                #         break
+                
+                for k in prim.keys():
+                    if "temp" in k.lower() or "temperature" in k.lower():
+                        plot_xz_section(darts_model, prim[k], use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                                        savepath=os.path.join(SECTION_DIR, f"coarse_section_T_{t_end}_injector.png"),
+                                        title=k,vmin=Tmin, vmax=Tmax, edgecolor="none", linewidth=0.0,
+                                        logscale=False)
+                        
+                        plot_xz_section(darts_model, prim[k], use_lgr=USE_LGR, zmin=1990, zmax=2080,
+                                        y0=1365,savepath=os.path.join(SECTION_DIR, f"coarse_section_T_{t_end}_producer.png"),
+                                        title=k,vmin=Tmin, vmax=Tmax, edgecolor="none", linewidth=0.0,
+                                        logscale=False)
+                        plot_xy_plane(
+                                    darts_model, prim[k], depth=2035, use_lgr=USE_LGR,
+                                    savepath=os.path.join(SECTION_DIR, f"section_T_xy_{t_end}_middle.png"),
+                                    title=k, logscale=False,vmin=Tmin, vmax=Tmax, edgecolor="none", linewidth=0.0
+                                )
+                        break
 
         # compute well time data
         time_data_dict = darts_model.output.store_well_time_data(save_output_files=True)
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
 
         plot_well_time_data_2(darts_model, time_data_df,save_output_files=WELL_DIR)
-    else:
-        # darts_model.load_restart_data()
-        darts_model.load_restart_data('output/solution.h5')
-        time_data = pd.read_pickle("darts_time_data.pkl")
+
 
 
 

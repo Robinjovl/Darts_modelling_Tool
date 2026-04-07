@@ -105,14 +105,8 @@ class Model(DartsModel):
             k1, k2 = cfg['k_range'] 
             nk = k2 - k1 + 1
             rx, ry, rz = cfg['refine']
-
-            disc1 = self.level1[name].discretizer
-            dx_3d = np.asarray(self.level1[name].global_data["dx"], dtype=float)
-            dy_3d = np.asarray(self.level1[name].global_data["dy"], dtype=float)
-
-            dx_vec = dx_3d[:,0,0].copy()
-            dy_vec = dy_3d[0,:,0].copy()
-
+            dx_vec = np.array([8,6,2,6,8], dtype=float)
+            dy_vec = np.array([8,6,2,6,8], dtype=float)
             assert len(dx_vec) == rx, f"len(dx_vec)={len(dx_vec)} does not match rx={rx}"
             assert len(dy_vec) == ry, f"len(dy_vec)={len(dy_vec)} does not match ry={ry}"
             x0 = (i_start - 1) * dx0 # left corner of lgr block in global coordinate
@@ -120,16 +114,14 @@ class Model(DartsModel):
 
             x_centers_local = x0 + np.cumsum(dx_vec) - 0.5 * dx_vec
             y_centers_local = y0 + np.cumsum(dy_vec) - 0.5 * dy_vec
-
-           
+            local_counter = 0
             for kk in range(nk):
                 for jj in range(ry):
                     for ii in range(rx):
-                        base_fine = kk * rx * ry
-                        global_id = offset + base_fine + jj*rx + ii
+                        global_id = offset + local_counter
                         x[global_id] = x_centers_local[ii]
                         y[global_id] = y_centers_local[jj]
-                        
+                        local_counter += 1
 
         self.reservoir.cell_center_x = x
         self.reservoir.cell_center_y = y
@@ -142,12 +134,6 @@ class Model(DartsModel):
         (nx,ny,nz) = (60,60,9) # plus 2 layers of overburden and underburden, each has 1 layer, so total nz is 7+2=9
         nb = nx*ny*nz
         nb_res = nx*ny*7
-        base_dir = Path(__file__).resolve().parent
-        perm_file = base_dir / "PERM1_ECL.INC"
-
-        permx_res = load_single_keyword(str(perm_file), "PERMX", nb_res)
-        permy_res = load_single_keyword(str(perm_file), "PERMY", nb_res)
-        permz_res = load_single_keyword(str(perm_file), "PERMZ", nb_res)
     
         dx = 30
         dy = 30
@@ -201,13 +187,11 @@ class Model(DartsModel):
         mask_under = k_index0 >= (nz_over + nz_res)
 
         # --- reshape Egg model permeability to reservoir part only ---
-        permx_res = np.asarray(permx_res, dtype=float).reshape(nx * ny * nz_res, order="F")
-        permy_res = np.asarray(permy_res, dtype=float).reshape(nx * ny * nz_res, order="F")
-        permz_res = np.asarray(permz_res, dtype=float).reshape(nx * ny * nz_res, order="F")
+        permx_res = 100
+        permy_res = 100
+        permz_res = 10
         
-        assert len(permx_res) == nb_res, f"PERMX length {len(permx_res)} != {nb_res}"
-        assert len(permy_res) == nb_res, f"PERMY length {len(permy_res)} != {nb_res}"
-        assert len(permz_res) == nb_res, f"PERMZ length {len(permz_res)} != {nb_res}"
+    
 
         # assign reservoir permeability into middle 7 layers
         kx0_full[mask_res] = permx_res
@@ -262,8 +246,7 @@ class Model(DartsModel):
             assert 2 <= i1 <= nx - 2, f"LGR {name} too close to x boundary"
             assert 2 <= j1 <= ny - 2, f"LGR {name} too close to y boundary"
 
-            rx, ry, rz = cfg['lgr_coords_in_parent_grid']['refine']
-            nx1,ny1,nz1 = rx, ry, nk
+            nx1,ny1,nz1 = 5, 5, nk
             dx_vec = np.array([8,6,2,6,8], dtype=float)
             dx1 = np.broadcast_to(dx_vec[:, None, None], (nx1, ny1, nz1)).copy()
             dy_vec = np.array([8,6,2,6,8], dtype=float) 
@@ -673,7 +656,8 @@ class Model(DartsModel):
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, min_z, Mw):
         # Call base class constructor
-        nc = len(components_name)
+        # nc = len(components_name)
+        # Mw = np.ones(nc)
         super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
 
     def evaluate(self, state):
