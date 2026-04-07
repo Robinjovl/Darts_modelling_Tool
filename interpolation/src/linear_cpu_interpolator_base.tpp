@@ -6,22 +6,23 @@
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
 
+
 namespace py = pybind11;
 typedef linalg::Matrix<double> Matrix;
 
 template <typename index_t, int N_DIMS, int N_OPS>
 linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
-                                                                                   const std::vector<int> &axes_points,
-                                                                                   const std::vector<double> &axes_min,
-                                                                                   const std::vector<double> &axes_max,
+                                                                                   const std::vector<int> &axes_points_,
+                                                                                   const std::vector<double> &axes_min_,
+                                                                                   const std::vector<double> &axes_max_,
                                                                                    bool _use_barycentric_interpolation)
-    : interpolator_base(supporting_point_evaluator, axes_points, axes_min, axes_max),
+    : interpolator_base(supporting_point_evaluator, axes_points_, axes_min_, axes_max_),
       use_barycentric_interpolation(_use_barycentric_interpolation)
 {
 
     axes_mult[N_DIMS - 1] = 1;
     for (int dim{N_DIMS - 2}; dim >= 0; dim--)
-        axes_mult[dim] = axes_mult[dim + 1] * axes_points[dim + 1];
+        axes_mult[dim] = axes_mult[dim + 1] * axes_points_[dim + 1];
 
     // initialize the values with 0
     standard_simplex = {};

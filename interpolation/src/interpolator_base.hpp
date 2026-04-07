@@ -81,7 +81,7 @@ public:
       * @param filename name of the file
       * @return int error code
       */
-    virtual int write_to_file(const std::string filename)
+    virtual int write_to_file(const std::string & /*filename*/)
     {
         printf ("Not implemented!\n");
         return -1;

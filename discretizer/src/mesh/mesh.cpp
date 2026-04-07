@@ -473,11 +473,19 @@ void Mesh::generate_adjacency_matrix()
 	conn_signs.resize(num_of_elements);
 
 
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"       // GCC bug #108088: false positive in vector<bool>::reserve, fixed in GCC 14
+#pragma GCC diagnostic ignored "-Wstringop-overflow"  // GCC bug #108088: same root cause, emitted under a different flag depending on optimisation level
+#endif
 	for (index_t i = 0; i < num_of_elements; i++)
 	{
 		adj_2d[i].reserve(MAX_CONNS_PER_ELEM);
 		conn_signs[i].reserve(MAX_CONNS_PER_ELEM);
 	}
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 	// Append connections per element to 2D array
 	for (auto& conn : conns)

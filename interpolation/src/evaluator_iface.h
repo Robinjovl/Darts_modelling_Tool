@@ -111,13 +111,13 @@ public:
      *
      * @param axis index of axis in question
      */
-   virtual int get_axis_n_points(int axis) const { return 0; };
+	   virtual int get_axis_n_points(int /*axis*/) const { return 0; };
    /**
      * @brief Get the minimum value for given axis, default empty implementation
      *
      * @param axis index of axis in question
      */
-   virtual double get_axis_min(int axis) const { return 0; };
+	   virtual double get_axis_min(int /*axis*/) const { return 0; };
 
    /**
      * @brief Get the maximum value for given axis, default empty implementation

@@ -161,7 +161,7 @@ cmake %cmake_options% ..
 
 REM build and install
 msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts.log || goto :error
-msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts.log || goto :error
+msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts_install.log || goto :error
 
 if %testing%==true ctest -C %config%  || goto :error
 
@@ -196,12 +196,56 @@ echo ************************************************************************
 echo   Building python package open-darts: DONE!
 echo ************************************************************************
 
+call :report_build_summary
+
 rem || goto :error checks exit code of command
 rem if one of the commands fails, interrupt batch and return error code
 :error
 echo Build finished with error code %errorlevel%.
 exit /b %errorlevel%
 goto :eof
+
+REM Build warnings/errors summary -----------------------------------
+REM Extracts msbuild's built-in "N Warning(s)" / "N Error(s)" summary lines.
+:report_build_summary
+set darts_warnings=0
+
+echo.
+echo =========================================
+echo  Build warnings/errors summary
+echo =========================================
+echo  Component       Warnings  Errors
+
+for %%L in (
+  "Hypre:make_hypre.log"
+  "SuperLU:make_superlu.log"
+  "IPhreeqc:make_iphreeqc.log"
+  "open-DARTS:make_darts.log"
+) do (
+  for /f "tokens=1,2 delims=:" %%A in (%%L) do (
+    if exist %%B (
+      set /a w=0
+      set /a e=0
+      for /f "tokens=1" %%N in ('findstr /c:"Warning(s)" %%B 2^>NUL') do set /a w=%%N
+      for /f "tokens=1" %%N in ('findstr /c:"Error(s)" %%B 2^>NUL') do set /a e=%%N
+      echo  %%A          !w!        !e!
+      if "%%A"=="open-DARTS" set darts_warnings=!w!
+    )
+  )
+)
+
+echo =========================================
+
+if !darts_warnings! GTR 0 (
+  echo.
+  echo  open-DARTS unique warnings:
+  findstr /c:": warning " make_darts.log 2>NUL | sort
+)
+
+echo.
+echo OPENDARTS_WARNING_COUNT=!darts_warnings!
+>>make_darts.log echo OPENDARTS_WARNING_COUNT=!darts_warnings!
+exit /b 0
 
 REM Help info --------------------------------------------------------
 :help_info

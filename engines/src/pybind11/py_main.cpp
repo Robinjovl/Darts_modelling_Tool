@@ -53,7 +53,7 @@ PYBIND11_MODULE(engines, m)
       .def(py::pickle(
           [](const std::vector<index_t>& p) { // __getstate__
               py::tuple t(p.size());
-              for (int i = 0; i < p.size(); i++)
+              for (size_t i = 0; i < p.size(); i++)
                   t[i] = p[i];
 
               return t;
@@ -61,7 +61,7 @@ PYBIND11_MODULE(engines, m)
           [](py::tuple t) { // __setstate__
               std::vector<index_t> p(t.size());
 
-              for (int i = 0; i < p.size(); i++)
+              for (size_t i = 0; i < p.size(); i++)
                   p[i] = t[i].cast<index_t>();
 
               //p.setExtra(t[1].cast<int>());
@@ -78,7 +78,7 @@ PYBIND11_MODULE(engines, m)
       .def(py::pickle(
           [](const std::vector<value_t> &p) { // __getstate__
             py::tuple t(p.size());
-            for (int i = 0; i < p.size(); i++)
+            for (size_t i = 0; i < p.size(); i++)
               t[i] = p[i];
 
             return t;
@@ -86,7 +86,7 @@ PYBIND11_MODULE(engines, m)
           [](py::tuple t) { // __setstate__
             std::vector<value_t> p(t.size());
 
-            for (int i = 0; i < p.size(); i++)
+            for (size_t i = 0; i < p.size(); i++)
               p[i] = t[i].cast<value_t>();
 
             //p.setExtra(t[1].cast<int>());

@@ -14,6 +14,7 @@
 #include <iterator>
 #include "mesh/mesh.h"
 
+
 namespace utils
 {
 	using linalg::index_t;
@@ -29,13 +30,15 @@ namespace utils
 		if (edge[2] != edge[5]){
 			x_coord = (z_edge - edge[2]) / (edge[5] - edge[2]) * (edge[3] - edge[0]) + edge[0];
 			y_coord = (z_edge - edge[2]) / (edge[5] - edge[2]) * (edge[4] - edge[1]) + edge[1];
+}
+
+			std::pair<double, double> coords{ x_coord, y_coord };
+			return coords;
 		}
-		std::pair<double, double> coords{ x_coord, y_coord };
-		return coords;
-	}
 
 	static inline size_t from3Dto1DIndex(size_t ix, size_t iy, size_t iz, size_t nx, size_t ny, size_t nz) {
-		// get the index of an element in a 3d matrix in a corresponding 1d array 
+		// get the index of an element in a 3d matrix in a corresponding 1d array
+		(void)nx;  // nx is not used in the formula; cast suppresses -Wunused-parameter
 		return (iz + iy * nz + ix * (ny * nz));
 	}
 
@@ -106,7 +109,7 @@ namespace utils
 	void inline parse_value(T &value, const std::string &word, bool &break_flag)
 	{
 		value = 0;
-		try { 
+		try {
 			value = (T) std::stod(word);
 			//if (T == double)
 			//	buf = std::stod(word);
@@ -119,7 +122,7 @@ namespace utils
 			//else
 			//	throw std::runtime_error("unknown type in parsing " + word);
 		}
-		catch (const std::invalid_argument& ia) { 
+		catch (const std::invalid_argument& ia) {
 			std::cerr << "Invalid argument: " << ia.what() << " in word: " << word << '\n';
 			break_flag = true;
 		}
@@ -183,8 +186,8 @@ namespace utils
 							return;
 						}
 						b.push_back(buf);
-						if (b.size() == num_values)
-							break;
+							if (num_values >= 0 && b.size() == static_cast<size_t>(num_values))
+								break;
 					}
 				}
 				else {
@@ -193,8 +196,8 @@ namespace utils
 						return;
 					}
 					b.push_back(buf);
-					if (b.size() == num_values)
-						break;
+						if (num_values >= 0 && b.size() == static_cast<size_t>(num_values))
+							break;
 				}
 			}
 
@@ -202,7 +205,7 @@ namespace utils
 			b.clear();
 
 			// break when slash found
-			if (line.find('/') != -1) break;
+				if (line.find('/') != std::string::npos) break;
 		}
 
 		infile.close();
@@ -220,7 +223,7 @@ namespace utils
 		// sort indexes based on comparing values in v
 		// using std::stable_sort instead of std::sort
 		// to avoid unnecessary index re-orderings
-		// when v contains elements of equal values 
+		// when v contains elements of equal values
 		stable_sort(idx.begin(), idx.end(),
 			[&v](size_t i1, size_t i2) {return v[i1] < v[i2]; });
 

@@ -21,13 +21,8 @@ py::array_t<T> get_raw_array(T* arr, size_t size) {
     { size }, // Number of elements in the array
     { sizeof(T) }, // Stride of the array in bytes
     arr, // Pointer to the raw array data
-    py::capsule(arr, [](void* f) {}) // Capsule for memory management
+    py::capsule(arr, [](void* /*f*/) {}) // Capsule for memory management
   );
 }
 
 #endif
-
-
-
-
-

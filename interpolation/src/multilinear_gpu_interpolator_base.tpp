@@ -20,8 +20,7 @@ multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_
 {
   assert(axes_min.size() == axes_points.size());
   assert(axes_max.size() == axes_points.size());
-  int n_dims_interpolator = N_DIMS;
-  assert(n_dims_interpolator == axes_points.size());
+  assert(N_DIMS == axes_points.size());
 
   axes_step.resize(N_DIMS);
   axes_step_inv.resize(N_DIMS);
