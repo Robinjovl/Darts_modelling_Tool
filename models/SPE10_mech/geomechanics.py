@@ -292,7 +292,7 @@ class geomech():
 
             # for thermoelasticity: 
             delta_temperature_points = gd((self.centroids[:, 1], self.centroids[:, 0], self.centroids[:, 2]), \
-                delta_temperature, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='linear')
+                delta_temperature, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='linear', fill_value=0.)
             stress += self.young * self.thermal_expansion * delta_temperature_points / (1 - 2 * self.poisson) * kronecker
 
             #print('dir=', ui, 'stress=\n', stress)

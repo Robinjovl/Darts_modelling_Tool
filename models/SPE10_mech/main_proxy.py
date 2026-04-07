@@ -117,14 +117,18 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     prisms = geomech_init_geometry(msh_initial)
     print('\tprisms all', prisms.shape[0])
 
-    if m.idata.rock.perm_non_rsv <= 1e-6: #use only the permeable part, assuming there is no p,T change in the impermeable part
+    perm_threshold_for_prisms = 1e-6
+    #perm_threshold_for_prisms = 0 # do not use [rsv] filtering
+
+    if m.idata.rock.perm_non_rsv <= perm_threshold_for_prisms: #use only the permeable part, assuming there is no p,T change in the impermeable part
         rsv = poro > m.idata.rock.poro_non_rsv  # reservoir (permeable) cells only will be used as input for proxy
     else: # there will be pressure diffusion, so need to use all cells
         rsv = poro > 0 # use all cells in the proxy
+        
     delta_pressure_rsv = delta_pressure[rsv]
     delta_temperature_rsv = delta_temperature[rsv]
     prisms_rsv = prisms[rsv, :]
-    print('\tprisms rsv', prisms.shape[0])
+    print('\tprisms rsv', prisms_rsv.shape[0])
 
     # centroids are only used for THM data plotting, they are not used in proxy
     centroids = np.zeros((prisms.shape[0], 3))
@@ -132,7 +136,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     centroids[:, 1] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # X
     centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
     
-    g.centroids = centroids
+    g.centroids = centroids[rsv, :]
 
     n_dim = 3  # X,Y,Z
     bounds = [0]*n_dim
@@ -449,7 +453,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 plt.close(fig)
             
 
-    def plot_contour(array_dict, points_x, points_y, output_folder, layer=0):
+    def plot_contour(array_dict, points_x, points_y, output_folder, layer=0, slice='XY'):
         # plot contours XY plane, 1 layer by z
         for arr_name, arr in array_dict.items():
             if len(arr.shape) == 3:
@@ -459,8 +463,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             cs = plt.contourf(points_x, points_y, arr_layer, levels=10)  
             plt.colorbar(cs)
             plt.gca().set_aspect('equal')
-            plt.xlabel('X')
-            plt.ylabel('Y')
+            plt.xlabel('X, m.')
+            if slice == 'XY':
+                plt.ylabel('Y')
+            elif slice == 'XZ':
+                plt.ylabel('Depth, m.')
+                plt.gca().invert_yaxis()
             plt.title(arr_name)
             plt.savefig(os.path.join(output_folder, arr_name + '.png'))
             plt.close()
@@ -479,49 +487,42 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         if wells_type in ['inj', 'doublet']:
             points_xy['inj_well'] = m.idata.other.inj_well_coords[:2]
 
-    # plot 2D THM displs (XY plane)
-    if False:
-        #points_x = np.arange(bounds[0][0], bounds[0][1], 250) # the whole mesh by XY
-        points_x = np.arange(-1000, 1000, 100)  # only internal XY part
-        points_y = points_x
-        points_z = np.array([2150])
-        #points_z = np.hstack([np.arange(0, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 4000, 200)])
-        #points_z = np.arange(1800, 2400, 25)
-        points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
-        array_dict = {'ux_thm_2d': ux_last, 'uy_thm_2d': uy_last, 'uz_thm_2d': uz_last}
-        array_dict.update({'delta_stress_XX_MPa': delta_Sxx_last, 'delta_stress_ZZ_MPa': delta_Szz_last})
-        #for arr_name in array_dict.keys():
-        #    array_dict[arr_name] = array_dict[arr_name][rsv]
-        array_dict.update({'delta_pressure_MPa': delta_pressure, 'delta_temperature': delta_temperature})
-        array_dict_interp = get_thm_by_interp(array_dict, points_x_3d, points_y_3d, points_z_3d)
-        plot_contour(array_dict_interp, points_x, points_y, output_folder=folder)
-
     # compute with proxy in 3D volume
-    if False:
-        print('plotting 2D slices')
+    if True:
+
+        points_x = np.arange(-1050, 1050, 5.)  # only internal XY part
+        points_y = np.array([0.])
+        #points_z = np.hstack([np.arange(1000, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 3000, 200)])
+        points_z = np.arange(1900, 2500, 5.)
+        points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
+        
+        print('plotting 2D slices, n_points =', points_x.size * points_y.size * points_z.size)
         p_nx, p_ny, p_nz = points_x.size, points_y.size, points_z.size
         points = np.zeros((3, points_x_3d.size))
         points[1, :], points[0, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
-        ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
+        uy_prx, ux_prx, uz_prx = get_proxy_displs(points)
         ux_prx_3d = ux_prx.reshape((p_nx, p_ny, p_nz))
         uy_prx_3d = uy_prx.reshape((p_nx, p_ny, p_nz))
         uz_prx_3d = uz_prx.reshape((p_nx, p_ny, p_nz))
         
+        _, _, _, sxx_prx, syy_prx, szz_prx = get_proxy_strain_stress(points)  # need to X<->Y if non-symmetric
+        sxx_prx = sxx_prx.reshape((p_nx, p_ny, p_nz))
+        syy_prx = syy_prx.reshape((p_nx, p_ny, p_nz))
+        szz_prx = szz_prx.reshape((p_nx, p_ny, p_nz))        
+        
         # save to pkl
-        displs = {'ux_prx_2d': ux_prx_3d, 'uy_prx_2d': uy_prx_3d, 'uz_prx_2d': uz_prx_3d}
+        displs = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
         import pickle
         with open(os.path.join(folder, "displs_prx.pkl"), "wb") as f:   # note 'wb' = write binary
             pickle.dump(displs, f)
         
-        #rsv_idx = np.where((self.rsv_top < m.reservoir.Zc) & (m.reservoir.Zc < self.rsv_top)).min()
-        
-        #plt.contourf(uz_prx_3d[:,10,:].transpose())  # XZ plane
-        #plt.contourf(uz_prx_3d[:,:,20])  # XY plane 
-        #plt.plot(ux_prx_3d[10,10,:])  # along Z-axis
-        
-        array_dict = {'ux_prx_3d':ux_prx_3d[:,:,0].transpose(), 'uy_prx_3d':uy_prx_3d[:,:,0].transpose(), 
-                      'uz_prx_3d':uz_prx_3d[:,:,0].transpose()}
-        plot_contour(array_dict, points_x, points_y, output_folder=folder)
+        array_dict = {'ux_prx_3d':ux_prx_3d[:,0,:].transpose(), 
+                      'uy_prx_3d':uy_prx_3d[:,0,:].transpose(), 
+                      'uz_prx_3d':uz_prx_3d[:,0,:].transpose(),
+                      'sxx_prx_3d':sxx_prx[:,0,:].transpose(), 
+                      'syy_prx_3d':syy_prx[:,0,:].transpose(), 
+                      'szz_prx_3d':szz_prx[:,0,:].transpose()}
+        plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
         
         # plot 1D plots at different X-layers to check the strain computation
         if False:
@@ -635,8 +636,8 @@ if __name__ == '__main__':
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
     #case = '34_34_57'  # z 0 - 5 km
-    #case = '34_34_66'  # z 0 - 5 km 
-    case = '42_42_66'  # z 0 - 5 km 
+    case = '34_34_66'  # z 0 - 5 km 
+    #case = '42_42_66'  # z 0 - 5 km 
     #case = '34_34_90'  # z 0 - 5 km more refined around rsv
     #case='34_35_57' # perm_frac
     
@@ -681,8 +682,8 @@ if __name__ == '__main__':
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
     timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
     
-    run_thm = True
-    #run_thm = False
+    #run_thm = True
+    run_thm = False
     
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
     generate_mesh=True
