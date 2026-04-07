@@ -11,13 +11,21 @@ SHELL ["cmd", "/S", "/C"]
 RUN curl -SL --output vs_buildtools.exe https://aka.ms/vs/17/release/vs_buildtools.exe `
     && start /w vs_buildtools.exe --quiet --wait --norestart --nocache `
        --installPath "C:\BuildTools" `
-       --add Microsoft.VisualStudio.Workload.VCTools;includeRecommended `
+	   --add Microsoft.VisualStudio.Workload.MSBuildTools `
+       --add Microsoft.VisualStudio.Workload.VCTools `
+	   --add Microsoft.VisualStudio.ComponentGroup.NativeDesktop.Core `
        --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+	   --add Microsoft.VisualStudio.Component.VC.140 `
+       --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
        --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
        --add Microsoft.VisualStudio.Component.Windows10SDK `
 	   --add Microsoft.Component.MSBuild `
-    || IF "%ERRORLEVEL%"=="3010" EXIT 0 `
+	   --includeRecommended `
     && del /q vs_buildtools.exe
+
+RUN curl.exe -SL --output winsdksetup.exe "https://go.microsoft.com/fwlink/?linkid=2272610" `
+    && start /w winsdksetup.exe /features OptionId.DesktopCPPx64 /quiet /norestart `
+    && del /q winsdksetup.exe
 
 # Step 2: Install CMake 3.29.3 (prebuilt binary, no need to compile on Windows)
 RUN curl -SL --output cmake.zip https://github.com/Kitware/CMake/releases/download/v3.29.3/cmake-3.29.3-windows-x86_64.zip `
@@ -45,6 +53,9 @@ SHELL ["cmd", "/S", "/C"]
 # Copy Build Tools from builder
 COPY --from=builder C:\BuildTools C:\BuildTools
 
+# Copy Build Tools from builder
+COPY --from=builder  "C:\Program Files (x86)\Windows Kits"  "C:\Program Files (x86)\Windows Kits"
+
 # Copy CMake from builder
 COPY --from=builder C:\cmake C:\cmake
 
@@ -67,3 +78,10 @@ RUN setx /M PATH "C:\conda;C:\conda\Scripts;%PATH%"
 # Set up the MSVC developer environment on entry
 ENTRYPOINT ["C:\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat", "&&"]
 CMD ["cmd"]
+
+# Add Windows SDK tools (rc.exe, mt.exe) to PATH
+RUN powershell -Command `
+    "$rcPath = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits' -Recurse -Filter 'rc.exe' | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).DirectoryName; `
+    $oldPath = [Environment]::GetEnvironmentVariable('PATH','Machine'); `
+    [Environment]::SetEnvironmentVariable('PATH', \"$rcPath;$oldPath\", 'Machine'); `
+    Write-Host \"Added SDK path: $rcPath\""
