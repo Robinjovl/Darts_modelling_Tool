@@ -11,10 +11,11 @@ SHELL ["cmd", "/S", "/C"]
 RUN curl -SL --output vs_buildtools.exe https://aka.ms/vs/17/release/vs_buildtools.exe `
     && start /w vs_buildtools.exe --quiet --wait --norestart --nocache `
        --installPath "C:\BuildTools" `
-       --add Microsoft.VisualStudio.Workload.VCTools `
+       --add Microsoft.VisualStudio.Workload.VCTools;includeRecommended `
        --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
        --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
-       --add Microsoft.VisualStudio.Component.VC.CMake.Project `
+       --add Microsoft.VisualStudio.Component.Windows10SDK `
+	   --add Microsoft.Component.MSBuild `
     || IF "%ERRORLEVEL%"=="3010" EXIT 0 `
     && del /q vs_buildtools.exe
 
