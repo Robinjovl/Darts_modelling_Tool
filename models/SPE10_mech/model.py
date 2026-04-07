@@ -103,7 +103,7 @@ class Model(THMCModel):
         # set properties
         porosity =  0.1
         #permeability = 1000 # [mD] # this matched thm and analytical solution
-        permeability = 10 # [mD] # this matches proxy and thm
+        permeability = 1000 # [mD] # this matches proxy and thm
         
         E = 12 # Young modulus [GPa]
         #E = 22  # GPa, Dinantian carbonate 
@@ -151,8 +151,8 @@ class Model(THMCModel):
             
         # rock properties for outside reservoir boundaries part of the mesh
         self.idata.rock.poro_non_rsv = 0.001
-        #self.idata.rock.perm_non_rsv = 1e-9 # this matched thm and analytical solution
-        self.idata.rock.perm_non_rsv = 0.01   # this matches proxy and thm
+        self.idata.rock.perm_non_rsv = 1e-9 # this matched thm and analytical solution
+        #self.idata.rock.perm_non_rsv = 0.01   # this matches proxy and thm
         self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
         
         if self.idata.other.perm_frac:

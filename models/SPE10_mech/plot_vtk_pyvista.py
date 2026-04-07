@@ -77,7 +77,7 @@ def plot_vtk_pyvista(output_dir, contour=False):
     arr_name = 'delta_tot_stress'; tensor = True; component_index = 1; arr_name_plot = 'delta_tot_stress_YY,bars';
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
 
-    rsv_xy_plot_bnd = 7500. # m.
+    rsv_xy_plot_bnd = 5000. # m.
 
     for plot_config in plot_config_list:
         arr_name, tensor, arr_name_plot, contour, component_index = plot_config
@@ -135,8 +135,8 @@ def plot_vtk_pyvista(output_dir, contour=False):
         #plotter.add_mesh(arrows, color="black")
         xmin_blk = -rsv_xy_plot_bnd 
         xmax_blk = rsv_xy_plot_bnd 
-        ymin_blk = -rsv_xy_plot_bnd
-        ymax_blk = rsv_xy_plot_bnd 
+        #ymin_blk = -rsv_xy_plot_bnd
+        #ymax_blk = rsv_xy_plot_bnd 
         zmin_blk = block.bounds[4] 
         zmax_blk = block.bounds[5]
         y_slice = block.center[1]
@@ -258,6 +258,7 @@ def plot_vtk_pyvista(output_dir, contour=False):
             plt.legend(fontsize=7)
             plt.savefig(os.path.join(output_dir_plots, arr_name_plot_1d + '_vertic_line_' + name + '.png'))
             plt.close()
+    print('Plotting from VTK is completed for', output_dir)
         ##################################################################################
 
 if __name__ == "__main__":
@@ -265,7 +266,9 @@ if __name__ == "__main__":
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
     
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
-    output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
+    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
+    
+    #output_dir = r'\\wsl.localhost\Ubuntu-24.04\root\projects\open-darts_dev_debug\models\SPE10_mech\results\sol_cpp_single_phase_inj_42_42_66'
     
     plot_vtk_pyvista(output_dir, contour=contour)
