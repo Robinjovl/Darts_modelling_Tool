@@ -14,8 +14,10 @@
         - export PY_SUFFIX=`python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"`
         - python -m pip install --upgrade pip setuptools wheel
     script:
+        # Build open-darts
         - echo "build *.so on linux started with ODLS=$ODLS"
         - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS -p
+        # Check for warnings
         - |
           WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
           WARN_COUNT=${WARN_COUNT:-0}
