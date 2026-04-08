@@ -318,11 +318,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points_eps = eval_points + eps
         res = g.calc_strain_stress_cpp(eval_points_eps, prisms_rsv, delta_pressure_rsv, delta_temperature_rsv)
-        stress_p, strain_p, stress_t, strain_t, stress, strain = res
+        stress_p, strain_p, stress_total_p, stress_t, strain_t, stress_total_t, stress, strain, stress_total = res
         #[Sp_xx, Sp_yy, Sp_zz, Sp_yz, Sp_xz, Sp_xy] = stress_p
         #[St_xx, St_yy, St_zz, St_yz, St_xz, St_xy] = stress_t
         return strain[1,:], strain[0,:], strain[2,:], \
-            stress[1,:], stress[0,:], stress[2,:] # xx yy zz
+            stress[1,:], stress[0,:], stress[2,:], stress_total[1,:], stress_total[0,:], stress_total[2,:]  # xx yy zz
 
 
     def compare_vert_line(points, suffix='', loc='', output_folder='.', modes={}):
@@ -334,7 +334,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         dt = array_dict_interp['dt']
         
         ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
-        qx_prx, qy_prx, qz_prx, sx_prx, sy_prx, sz_prx =  get_proxy_strain_stress(points)
+        qx_prx, qy_prx, qz_prx, sx_prx, sy_prx, sz_prx, sx_total_prx, sy_total_prx, sz_total_prx =  get_proxy_strain_stress(points)
         
         # get total from effective stress 
         if False: # to avoid smoothing at the rsv boundaries
@@ -460,7 +460,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 arr_layer = arr[:, :, layer]
             else:
                 arr_layer = arr
-            cs = plt.contourf(points_x, points_y, arr_layer, levels=10)  
+            #cs = plt.contourf(points_x, points_y, arr_layer, levels=10)
+            cs = plt.imshow(arr_layer)
             plt.colorbar(cs)
             plt.gca().set_aspect('equal')
             plt.xlabel('X, m.')
@@ -499,16 +500,20 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         print('plotting 2D slices, n_points =', points_x.size * points_y.size * points_z.size)
         p_nx, p_ny, p_nz = points_x.size, points_y.size, points_z.size
         points = np.zeros((3, points_x_3d.size))
-        points[1, :], points[0, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
-        uy_prx, ux_prx, uz_prx = get_proxy_displs(points)
+        points[0, :], points[1, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
+        
+        ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
         ux_prx_3d = ux_prx.reshape((p_nx, p_ny, p_nz))
         uy_prx_3d = uy_prx.reshape((p_nx, p_ny, p_nz))
         uz_prx_3d = uz_prx.reshape((p_nx, p_ny, p_nz))
         
-        _, _, _, sxx_prx, syy_prx, szz_prx = get_proxy_strain_stress(points)  # need to X<->Y if non-symmetric
+        _, _, _, sxx_prx, syy_prx, szz_prx, sxx_total_prx, syy_total_prx, szz_total_prx = get_proxy_strain_stress(points)  # need to X<->Y if non-symmetric
         sxx_prx = sxx_prx.reshape((p_nx, p_ny, p_nz))
         syy_prx = syy_prx.reshape((p_nx, p_ny, p_nz))
-        szz_prx = szz_prx.reshape((p_nx, p_ny, p_nz))        
+        szz_prx = szz_prx.reshape((p_nx, p_ny, p_nz))
+        sxx_total_prx = sxx_total_prx.reshape((p_nx, p_ny, p_nz))
+        syy_total_prx = syy_total_prx.reshape((p_nx, p_ny, p_nz))
+        szz_total_prx = szz_total_prx.reshape((p_nx, p_ny, p_nz))        
         
         # save to pkl
         displs = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
@@ -521,7 +526,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                       'uz_prx_3d':uz_prx_3d[:,0,:].transpose(),
                       'sxx_prx_3d':sxx_prx[:,0,:].transpose(), 
                       'syy_prx_3d':syy_prx[:,0,:].transpose(), 
-                      'szz_prx_3d':szz_prx[:,0,:].transpose()}
+                      'szz_prx_3d':szz_prx[:,0,:].transpose(),
+                      'sxx_total_prx_3d':sxx_total_prx[:,0,:].transpose(), 
+                      'syy_total_prx_3d':syy_total_prx[:,0,:].transpose(), 
+                      'szz_total_prx_3d':szz_total_prx[:,0,:].transpose()
+                      }
         plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
         
         # plot 1D plots at different X-layers to check the strain computation

@@ -292,19 +292,24 @@ class geomech():
 
             # for thermoelasticity: 
             delta_temperature_points = gd((self.centroids[:, 1], self.centroids[:, 0], self.centroids[:, 2]), \
-                delta_temperature, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='linear', fill_value=0.)
+                delta_temperature, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='nearest', fill_value=0.)
             stress += self.young * self.thermal_expansion * delta_temperature_points / (1 - 2 * self.poisson) * kronecker
 
-            #print('dir=', ui, 'stress=\n', stress)
+            # compute total stress from effective 
+            delta_pressure_points = gd((self.centroids[:, 1], self.centroids[:, 0], self.centroids[:, 2]), \
+                delta_pressure, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='nearest', fill_value=0.)
+            stress_total = stress + self.biot * delta_pressure_points 
 
             if ui == 0:
-                stress_p, strain_p = stress.copy(), strain.copy()
+                stress_p, strain_p, stress_total_p = stress.copy(), strain.copy(), stress_total.copy()
             elif ui == 1:
-                stress_t, strain_t = stress.copy(), strain.copy()
+                stress_t, strain_t, stress_total_t = stress.copy(), strain.copy(), stress_total.copy()
             else:
-                stress_total, strain_total = stress.copy(), strain.copy()
-
-        return stress_p, strain_p, stress_t, strain_t, stress_total, strain_total
+                stress_pt, strain_pt, stress_total_pt = stress.copy(), strain.copy(), stress_total.copy()
+                
+        return stress_p, strain_p, stress_total_p, \
+               stress_t, strain_t, stress_total_t, \
+               stress_pt, strain_pt, stress_total_pt
 
     def get_stress_on_fault(self, stress_tensor, fault):
         stress_n = stress_tensor @ fault.normal @ fault.normal
