@@ -1,0 +1,11 @@
+clean-windows:
+    stage: pre_commit
+    tags:
+        - windows-shell
+    variables:
+        CONDA_ENV: "darts-win"
+        CONDA_PATH: 'D:\miniconda3'
+    script:
+        # Force-remove directory if conda left trash behind (from the previous pipelines)
+        $envPath = "$env:CONDA_PATH\envs\$env:CONDA_ENV"
+        Remove-Item -Recurse -Force $env:CONDA_ENV* -ErrorAction SilentlyContinue
