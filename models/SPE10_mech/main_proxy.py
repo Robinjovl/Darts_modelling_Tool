@@ -117,8 +117,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     prisms = geomech_init_geometry(msh_initial)
     print('\tprisms all', prisms.shape[0])
 
-    perm_threshold_for_prisms = 1e-6
-    #perm_threshold_for_prisms = 0 # do not use [rsv] filtering
+    #perm_threshold_for_prisms = 1e-6
+    perm_threshold_for_prisms = 0 # do not use [rsv] filtering
 
     if m.idata.rock.perm_non_rsv <= perm_threshold_for_prisms: #use only the permeable part, assuming there is no p,T change in the impermeable part
         rsv = poro > m.idata.rock.poro_non_rsv  # reservoir (permeable) cells only will be used as input for proxy
@@ -460,8 +460,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 arr_layer = arr[:, :, layer]
             else:
                 arr_layer = arr
-            #cs = plt.contourf(points_x, points_y, arr_layer, levels=10)
-            cs = plt.imshow(arr_layer)
+            cs = plt.contourf(points_x, points_y, arr_layer, levels=10)
+            #cs = plt.imshow(arr_layer)
             plt.colorbar(cs)
             plt.gca().set_aspect('equal')
             plt.xlabel('X, m.')
@@ -491,7 +491,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     # compute with proxy in 3D volume
     if True:
 
-        points_x = np.arange(-1050, 1050, 5.)  # only internal XY part
+        points_x = np.arange(-1050, 1050, 10.)  # only internal XY part
         points_y = np.array([0.])
         #points_z = np.hstack([np.arange(1000, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 3000, 200)])
         points_z = np.arange(1900, 2500, 5.)
@@ -502,33 +502,42 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         points = np.zeros((3, points_x_3d.size))
         points[0, :], points[1, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
         
-        ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
-        ux_prx_3d = ux_prx.reshape((p_nx, p_ny, p_nz))
-        uy_prx_3d = uy_prx.reshape((p_nx, p_ny, p_nz))
-        uz_prx_3d = uz_prx.reshape((p_nx, p_ny, p_nz))
+        dp = gd((g.centroids[:, 1], g.centroids[:, 0], g.centroids[:, 2]), \
+            delta_pressure, (points[1, :], points[0, :], points[2, :]), method='nearest', fill_value=0.)
+        dp = dp.reshape((p_nx, p_ny, p_nz)) 
+        array_dict = {'dp':dp[:,0,:].transpose()}
+        plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
         
-        _, _, _, sxx_prx, syy_prx, szz_prx, sxx_total_prx, syy_total_prx, szz_total_prx = get_proxy_strain_stress(points)  # need to X<->Y if non-symmetric
-        sxx_prx = sxx_prx.reshape((p_nx, p_ny, p_nz))
-        syy_prx = syy_prx.reshape((p_nx, p_ny, p_nz))
-        szz_prx = szz_prx.reshape((p_nx, p_ny, p_nz))
-        sxx_total_prx = sxx_total_prx.reshape((p_nx, p_ny, p_nz))
-        syy_total_prx = syy_total_prx.reshape((p_nx, p_ny, p_nz))
-        szz_total_prx = szz_total_prx.reshape((p_nx, p_ny, p_nz))        
-        
-        # save to pkl
-        displs = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
-        import pickle
-        with open(os.path.join(folder, "displs_prx.pkl"), "wb") as f:   # note 'wb' = write binary
-            pickle.dump(displs, f)
+        if False:
+            ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
+            ux_prx_3d = ux_prx.reshape((p_nx, p_ny, p_nz))
+            uy_prx_3d = uy_prx.reshape((p_nx, p_ny, p_nz))
+            uz_prx_3d = uz_prx.reshape((p_nx, p_ny, p_nz))
+            
+            _, _, _, sxx_prx, syy_prx, szz_prx, sxx_total_prx, syy_total_prx, szz_total_prx = get_proxy_strain_stress(points)  # need to X<->Y if non-symmetric
+            sxx_prx = sxx_prx.reshape((p_nx, p_ny, p_nz))
+            syy_prx = syy_prx.reshape((p_nx, p_ny, p_nz))
+            szz_prx = szz_prx.reshape((p_nx, p_ny, p_nz))
+            sxx_total_prx = sxx_total_prx.reshape((p_nx, p_ny, p_nz))
+            syy_total_prx = syy_total_prx.reshape((p_nx, p_ny, p_nz))
+            szz_total_prx = szz_total_prx.reshape((p_nx, p_ny, p_nz))  
+            
+            # save to pkl
+            displs = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
+            import pickle
+            with open(os.path.join(folder, "displs_prx.pkl"), "wb") as f:   # note 'wb' = write binary
+                pickle.dump(displs, f)
+        else:
+            
         
         array_dict = {'ux_prx_3d':ux_prx_3d[:,0,:].transpose(), 
-                      'uy_prx_3d':uy_prx_3d[:,0,:].transpose(), 
+                      #'uy_prx_3d':uy_prx_3d[:,0,:].transpose(), 
                       'uz_prx_3d':uz_prx_3d[:,0,:].transpose(),
                       'sxx_prx_3d':sxx_prx[:,0,:].transpose(), 
-                      'syy_prx_3d':syy_prx[:,0,:].transpose(), 
+                      #'syy_prx_3d':syy_prx[:,0,:].transpose(), 
                       'szz_prx_3d':szz_prx[:,0,:].transpose(),
                       'sxx_total_prx_3d':sxx_total_prx[:,0,:].transpose(), 
-                      'syy_total_prx_3d':syy_total_prx[:,0,:].transpose(), 
+                      #'syy_total_prx_3d':syy_total_prx[:,0,:].transpose(), 
                       'szz_total_prx_3d':szz_total_prx[:,0,:].transpose()
                       }
         plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
