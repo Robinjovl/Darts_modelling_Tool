@@ -1,8 +1,25 @@
 #include "py_globals_interpolation.h"
 #include "py_evaluator_iface.h"
 #include <pybind11/stl_bind.h>
+#include <pybind11/numpy.h>
 
 namespace py = pybind11;
+
+template <typename T>
+py::array to_numpy(std::vector<T>& vec)
+{
+  return py::array(
+    py::buffer_info(
+      vec.data(),
+      sizeof(T),
+      py::format_descriptor<T>::format(),
+      1,
+      { vec.size() },
+      { sizeof(T) }
+    ),
+    py::cast(&vec)
+  );
+}
 
 void pybind_operator_set_interpolator_all(py::module &);
 void pybind_operator_set_interpolator_super(py::module &);
@@ -34,7 +51,10 @@ PYBIND11_MODULE(interpolators, m)
           }))
       .def("resize",
           (void (std::vector<index_t>::*) (size_t count)) & std::vector<index_t>::resize,
-          "changes the number of elements stored");
+          "changes the number of elements stored")
+      .def("to_numpy", [](std::vector<index_t>& vec) {
+          return to_numpy(vec);
+      });
 
   py::bind_vector<std::vector<value_t>>(m, "value_vector", py::module_local(true), py::buffer_protocol())
       .def(py::pickle(
@@ -52,7 +72,10 @@ PYBIND11_MODULE(interpolators, m)
           }))
       .def("resize",
           (void (std::vector<value_t>::*) (size_t count)) &std::vector<value_t>::resize,
-          "changes the number of elements stored");
+          "changes the number of elements stored")
+      .def("to_numpy", [](std::vector<value_t>& vec) {
+          return to_numpy(vec);
+      });
 
   py::bind_vector<std::vector<operator_set_gradient_evaluator_iface *>>(m, "op_vector");
   py::bind_map<std::map<std::string, timer_node>>(m, "timer_map");

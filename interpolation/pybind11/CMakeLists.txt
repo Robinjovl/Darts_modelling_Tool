@@ -3,7 +3,12 @@
 # Source files
 set(INTERPOLATION_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_evaluator_iface.cpp
+  # Split interpolator_all into 5 parts by N_DIMS range for parallel compilation
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all_part1.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all_part2.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all_part3.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all_part4.cpp
   # Split interpolator_super into 4 parts for parallel compilation
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part1.cpp
@@ -36,6 +41,10 @@ pybind11_add_module(interpolators
 if (CUDA)
   set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all_part1.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all_part2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all_part3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_all_part4.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part1.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super_part2.cpp

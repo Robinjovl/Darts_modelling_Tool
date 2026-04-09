@@ -31,6 +31,30 @@ struct recursive_exposer_ndims_nops<exposer_t, pymodule_t, 1, N_OPS_A, N_OPS_B>
   }
 };
 
+// single-axis exposer: for a fixed N_DIMS, expose all N_OPS from N_OPS down to 1
+// Used to split the full (N_DIMS, N_OPS) grid across translation units by N_DIMS.
+
+template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint8_t N_OPS>
+struct recursive_exposer_nops
+{
+    static void expose(pymodule_t& m)
+    {
+        exposer_t<N_DIMS, N_OPS> e;
+        e.expose(m);
+        recursive_exposer_nops<exposer_t, pymodule_t, N_DIMS, N_OPS - 1>::expose(m);
+    }
+};
+
+template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS>
+struct recursive_exposer_nops<exposer_t, pymodule_t, N_DIMS, 1>
+{
+    static void expose(pymodule_t& m)
+    {
+        exposer_t<N_DIMS, 1> e;
+        e.expose(m);
+    }
+};
+
 // double-recursive exposer for all (N_DIMS, N_OPS) combinations up to given maxima
 
 template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint8_t N_OPS>
