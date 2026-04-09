@@ -394,25 +394,25 @@ class Pipe:
                         xL_b_mass_0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_b_mass']
 
                     # Calculate averaged liquid props
-                    # TODO: Check to see if they're multiplied as expected
-                    rhoL0 = np.where(
-                        (sL_a_0 + sL_b_0) > 0,
-                        (rhoL_a_0 * sL_a_0 + rhoL_b_0 * sL_b_0) / (sL_a_0 + sL_b_0),
-                        0.0,
-                    )
-                    miuL0 = np.where(
-                        (sL_a_0 + sL_b_0) > 0,
-                        (miuL_a_0 * sL_a_0 + miuL_b_0 * sL_b_0) / (sL_a_0 + sL_b_0),
-                        0.0,
-                    )
-                    xL_mass0 = np.where(
-                        (sL_a_0 + sL_b_0) > 0,
-                        (
-                            xL_a_mass_0 * rhoL_a_0 * sL_a_0
-                            + xL_b_mass_0 * rhoL_b_0 * sL_b_0
-                        )
-                        / (rhoL_a_0 * sL_a_0 + rhoL_b_0 * sL_b_0),
-                        0.0,
+                    den = sL_a_0 + sL_b_0
+                    mask = den > 0
+                    rhoL0 = np.zeros(num_segments)
+                    miuL0 = np.zeros(num_segments)
+                    xL_mass0 = np.zeros((num_segments, nc))
+                    rhoL0[mask] = (
+                        rhoL_a_0[mask] * sL_a_0[mask] + rhoL_b_0[mask] * sL_b_0[mask]
+                    ) / den[mask]
+                    miuL0[mask] = (
+                        miuL_a_0[mask] * sL_a_0[mask] + miuL_b_0[mask] * sL_b_0[mask]
+                    ) / den[mask]
+                    xL_mass0[mask, :] = (
+                        xL_a_mass_0[mask, :] * rhoL_a_0[mask, None] * sL_a_0[mask, None]
+                        + xL_b_mass_0[mask, :]
+                        * rhoL_b_0[mask, None]
+                        * sL_b_0[mask, None]
+                    ) / (
+                        rhoL_a_0[mask, None] * sL_a_0[mask, None]
+                        + rhoL_b_0[mask, None] * sL_b_0[mask, None]
                     )
 
             elif self.prop_eval_method == "direct":
@@ -560,22 +560,23 @@ class Pipe:
                     xL_b_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_b_mass']
 
                 # Calculate averaged liquid props
-                # TODO: Check to see if they're multiplied as expected
-                rhoL = np.where(
-                    (sL_a + sL_b) > 0,
-                    (rhoL_a * sL_a + rhoL_b * sL_b) / (sL_a + sL_b),
-                    0.0,
-                )
-                miuL = np.where(
-                    (sL_a + sL_b) > 0,
-                    (miuL_a * sL_a + miuL_b * sL_b) / (sL_a + sL_b),
-                    0.0,
-                )
-                xL_mass = np.where(
-                    (sL_a + sL_b) > 0,
-                    (xL_a_mass * rhoL_a * sL_a + xL_b_mass * rhoL_b * sL_b)
-                    / (rhoL_a * sL_a + rhoL_b * sL_b),
-                    0.0,
+                den = sL_a + sL_b
+                mask = den > 0
+                rhoL = np.zeros(num_segments)
+                miuL = np.zeros(num_segments)
+                xL_mass = np.zeros((num_segments, nc))
+                rhoL[mask] = (
+                    rhoL_a[mask] * sL_a[mask] + rhoL_b[mask] * sL_b[mask]
+                ) / den[mask]
+                miuL[mask] = (
+                    miuL_a[mask] * sL_a[mask] + miuL_b[mask] * sL_b[mask]
+                ) / den[mask]
+                xL_mass[mask, :] = (
+                    xL_a_mass[mask, :] * rhoL_a[mask, None] * sL_a[mask, None]
+                    + xL_b_mass[mask, :] * rhoL_b[mask, None] * sL_b[mask, None]
+                ) / (
+                    rhoL_a[mask, None] * sL_a[mask, None]
+                    + rhoL_b[mask, None] * sL_b[mask, None]
                 )
 
         elif self.prop_eval_method == "direct":
@@ -665,22 +666,26 @@ class Pipe:
                 rhoL_b_der = self.get_op_der_matrix(op_idx=GRAV_OP + lb_idx)
                 sL_a_der = self.get_op_der_matrix(op_idx=SAT_OP + la_idx)
                 sL_b_der = self.get_op_der_matrix(op_idx=SAT_OP + lb_idx)
-                # TODO: I took the code above to write this derivative. The code above itself has TODO.
-                rhoL_der = np.where(
-                    (sL_a + sL_b) > 0,
-                    (
-                        (sL_a + sL_b)
-                        * (
-                            sL_a * rhoL_a_der
-                            + rhoL_a * sL_a_der
-                            + sL_b * rhoL_b_der
-                            + rhoL_b * sL_b_der
-                        )
-                        - (rhoL_a * sL_a + rhoL_b * sL_b) * (sL_a_der + sL_b_der)
+
+                den = sL_a + sL_b
+                mask = den > 0
+                rhoL_der = np.zeros_like(rhoL_a_der)
+                num = (
+                    sL_a[:, None]
+                    + sL_b[:, None]
+                    * (
+                        sL_a[:, None] * rhoL_a_der
+                        + rhoL_a[:, None] * sL_a_der
+                        + sL_b[:, None] * rhoL_b_der
+                        + rhoL_b[:, None] * sL_b_der
                     )
-                    / (sL_a + sL_b) ** 2,
-                    0.0,
+                    - (
+                        rhoL_a[:, None] * sL_a[:, None]
+                        + rhoL_b[:, None] * sL_b[:, None]
+                    )
+                    * (sL_a_der + sL_b_der)
                 )
+                rhoL_der[mask, :] = num[mask, :] / (den[mask, None] ** 2)
 
         """ Calculate phase props of previous time step at interfaces """
         if iter_counter == 0 and flag == 1:
@@ -1391,6 +1396,7 @@ class Pipe:
         """
         n_conns = self.geometry.num_interfaces
         n_vars = self.physics.n_vars
+        nph = self.physics.nph
 
         # Evaluate phase velocities
         phase_vels = self.eval_phase_vels(
@@ -1421,10 +1427,27 @@ class Pipe:
             self.conn_row_idx, self.conn_local_col_idx
         ].astype(np.float64, copy=False)
 
+        # Process phase velocities for two- and three-phase flow
+        vG, vL = phase_vels[:n_conns], phase_vels[n_conns:]
+        phase_vels = np.empty((n_conns, nph), dtype=np.float64)
+        phase_vels[:, self.g_idx] = vG
+        if nph == 2:
+            phase_vels[:, self.l_idx] = vL
+        elif nph == 3:
+            phase_vels[:, self.la_idx] = vL
+            phase_vels[:, self.lb_idx] = vL
+        phase_vels = phase_vels.ravel(order="F")
+
+        # Process derivatives of phase velocities for two- and three-phase flow
         vel_der_size_all = n_conns * 2 * n_vars
-        phase_vels_ders = np.empty(2 * vel_der_size_all, dtype=np.float64)
-        phase_vels_ders[:vel_der_size_all] = vel_der_dense_G.ravel()
-        phase_vels_ders[vel_der_size_all:] = vel_der_dense_L.ravel()
+        phase_vels_ders = np.empty((vel_der_size_all, nph), dtype=np.float64)
+        phase_vels_ders[:, self.g_idx] = vel_der_dense_G.ravel()
+        if nph == 2:
+            phase_vels_ders[:, self.l_idx] = vel_der_dense_L.ravel()
+        elif nph == 3:
+            phase_vels_ders[:, self.la_idx] = vel_der_dense_L.ravel()
+            phase_vels_ders[:, self.lb_idx] = vel_der_dense_L.ravel()
+        phase_vels_ders = phase_vels_ders.ravel(order="F")
 
         return phase_vels, phase_vels_ders
 

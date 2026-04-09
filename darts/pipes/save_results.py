@@ -13,7 +13,7 @@ def save_dfm_well_props(
 ):
     """
     Store the primary variables and phase properties of the well segments of the specified DFM well in a pickle file
-    in the output folder
+    located in the output folder
 
     :param well_name: Name of the well the properties of which will be saved
     :type well_name: str
@@ -44,9 +44,17 @@ def save_dfm_well_props(
         well_segments_idxs, cell_id
     )
 
-    # Preallocate primary vars and phase props
     pc = coupled_model.physics.property_containers[0]
 
+    # Get phase indices
+    g_idx = coupled_model.wells[well_name].g_idx
+    if pc.nph == 2:
+        l_idx = coupled_model.wells[well_name].l_idx
+    elif pc.nph == 3:
+        la_idx = coupled_model.wells[well_name].la_idx
+        lb_idx = coupled_model.wells[well_name].lb_idx
+
+    # Preallocate arrays for primary vars and phase properties
     p = np.zeros(num_segments)
     z = np.zeros((num_segments, pc.nc))
     T = np.zeros(num_segments)
@@ -115,38 +123,30 @@ def save_dfm_well_props(
                 ):
                     T[j] = pc.temperature
 
-            # xG[j,:] = pc.x[1,:]
-            xG[j, :] = pc.x[0, :]
+            xG[j, :] = pc.x[g_idx, :]
             if pc.nph == 2:
-                xL[j, :] = pc.x[1, :]
+                xL[j, :] = pc.x[l_idx, :]
             elif pc.nph == 3:
-                # xL_a[j, :] = pc.x[0, :]
-                xL_a[j, :] = pc.x[1, :]
-                xL_b[j, :] = pc.x[2, :]
-            # sG[j] = pc.sat[1]
-            sG[j] = pc.sat[0]
+                xL_a[j, :] = pc.x[la_idx, :]
+                xL_b[j, :] = pc.x[lb_idx, :]
+            sG[j] = pc.sat[g_idx]
             if pc.nph == 2:
-                sL[j] = pc.sat[1]
+                sL[j] = pc.sat[l_idx]
             elif pc.nph == 3:
-                # sL_a[j] = pc.sat[0]
-                sL_a[j] = pc.sat[1]
-                sL_b[j] = pc.sat[2]
-            # rhoG[j] = pc.dens[1]
-            rhoG[j] = pc.dens[0]
+                sL_a[j] = pc.sat[la_idx]
+                sL_b[j] = pc.sat[lb_idx]
+            rhoG[j] = pc.dens[g_idx]
             if pc.nph == 2:
-                rhoL[j] = pc.dens[1]
+                rhoL[j] = pc.dens[l_idx]
             elif pc.nph == 3:
-                # rhoL_a[j] = pc.dens[0]
-                rhoL_a[j] = pc.dens[1]
-                rhoL_b[j] = pc.dens[2]
-            # miuG[j] = pc.mu[1]
-            miuG[j] = pc.mu[0]
+                rhoL_a[j] = pc.dens[la_idx]
+                rhoL_b[j] = pc.dens[lb_idx]
+            miuG[j] = pc.mu[g_idx]
             if pc.nph == 2:
-                miuL[j] = pc.mu[1]
+                miuL[j] = pc.mu[l_idx]
             elif pc.nph == 3:
-                # miuL_a[j] = pc.mu[0]
-                miuL_a[j] = pc.mu[1]
-                miuL_b[j] = pc.mu[2]
+                miuL_a[j] = pc.mu[la_idx]
+                miuL_b[j] = pc.mu[lb_idx]
 
         # Save phase velocities
         if i == 0:

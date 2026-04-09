@@ -415,7 +415,7 @@ def plot_heat_map_pcolormesh(
 
         plt.tight_layout()
         file_address = os.path.join(
-            coupled_model.output_folder,
+            main_dir,
             f"{figure_counter}- Liquid L_a saturation.{save_as}",
         )
         plt.savefig(file_address)
