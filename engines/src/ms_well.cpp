@@ -95,6 +95,11 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
         upstream_idx = well_body_idx; // producer
 
     state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+    if (hysteresis_enabled)
+    {
+        const value_t sg_max_well = 1.;  // wells always on drainage branch for hysteresis
+        state.push_back(sg_max_well);
+    }
 
     rate_evaluator->evaluate(state, rates);
 
@@ -179,6 +184,11 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
         upstream_idx = well_body_idx; // producer
 
     state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+    if (hysteresis_enabled)
+    {
+        const value_t sg_max_well = 1.;  // wells always on drainage branch for hysteresis
+        state.push_back(sg_max_well);
+    }
 
     rate_evaluator->evaluate(state, rates);
 

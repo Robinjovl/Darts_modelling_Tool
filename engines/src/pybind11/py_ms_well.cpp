@@ -57,7 +57,8 @@ void pybind_ms_well(py::module& m)
         .def_readwrite("phases_vels_ders", &ms_well::phases_vels_ders)
         // For lateral heat transfer in DFM wells
         .def_readwrite("with_lateral_heat_transfer", &ms_well::with_lateral_heat_transfer)
-        .def_readwrite("connections_for_lateral_heat_transfer", &ms_well::connections_for_lateral_heat_transfer);
+        .def_readwrite("connections_for_lateral_heat_transfer", &ms_well::connections_for_lateral_heat_transfer)
+        .def_readwrite("hysteresis_enabled", &ms_well::hysteresis_enabled);
 
 
     py::enum_<ms_well::MS_Type>(ms_well_class, "MS_Type")

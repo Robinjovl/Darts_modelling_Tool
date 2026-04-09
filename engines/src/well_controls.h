@@ -40,6 +40,14 @@ public:
 
     static const int n_state_ctrls = 2;  // pressure (BHP) and temperature (BHT) operators
 
+    // Hysteresis support: per-well maximum gas saturation tracking and extended state/derivative arrays
+    bool hysteresis_enabled = false;     // opt-in flag: default OFF, set to true to enable Killough/Land hysteresis
+    std::vector<value_t> sgw_max;       // [n_well_blocks] maximum gas saturations for hysteresis
+    std::vector<value_t> Xopw;          // extended state vector with sgw_max appended
+    std::vector<value_t> xopw_ders_arr; // extended derivatives array for hysteresis
+    virtual void extract_xopw_ders();
+    virtual void extract_Xopw(std::vector<value_t>& X);
+
 protected:
     WellControlType control_type = WellControlType::NONE;
     index_t phase_idx{ 0 }, n_phases, n_comps, thermal, n_vars, n_ops, well_state_offset;

@@ -167,6 +167,11 @@ public:
 
 	virtual void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
 
+	virtual void extract_Xop();
+	virtual void extract_xop_ders();
+
+	bool hysteresis_enabled = false;  // opt-in flag: default OFF, activates sg_max axis in OBL interpolation
+
 	virtual int apply_newton_update(value_t dt);
 
 	// Here we make the same thing as inside interpolation, but during Newton update
@@ -368,6 +373,9 @@ public:
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
 	std::vector<value_t> dispersivity;		// [n_regions * NP * NC] dispersion coefficients
+	std::vector<value_t> sg_max;			// [n_blocks] maximum gas saturations for hysteresis in capillary curves
+	std::vector<value_t> Xop;				// [n_blocks * (n_vars+1)] extended state vector with sg_max for hysteresis interpolation
+	std::vector<value_t> xop_ders_arr;		// [n_blocks * n_ops * (n_vars+1)] extended derivatives array for hysteresis
 
 	// rates, bhps, FIPs, etc
 	std::unordered_map<std::string, std::vector<value_t>> time_data_report;
@@ -994,8 +1002,18 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		block_idxs[op_region].emplace_back(idx++);
 	}
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+	if (hysteresis_enabled)
+	{
+		extract_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, xop_ders_arr);
+		extract_xop_ders();
+	}
+	else
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+	}
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();

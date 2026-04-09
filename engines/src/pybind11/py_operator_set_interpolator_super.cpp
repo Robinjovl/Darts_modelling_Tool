@@ -43,6 +43,7 @@ void pybind_operator_set_interpolator_super(py::module &m)
 
     // NP = 2: A =  6, B = 17(th)
     ABPair<6, 17>,    // thermal problem, two phase
+    ABPair<6, 11>,    // thermal problem, two phase, hysteresis (N_OPS = 6*(NC-1) + 7*NP+3)
 
     // NP = 3: A =  8, B = 19 (th) ???
     ABPair<8, 24>,    // Three phase thermal
