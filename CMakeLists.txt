@@ -294,10 +294,29 @@ if(CUDA)
         # where unqualified data()/size() calls match both std:: and cuda::std:: overloads for
         # cuda::std::span<char>. We ship a patched copy of the header that fully qualifies those
         # calls, and prepend its directory to the nvcc include search path so it is picked up
-        # before the system CCCL one. Active only when the system header is present.
-        if(EXISTS "${CMAKE_SOURCE_DIR}/cmake_patches/cccl_override/cub/block/block_load_to_shared.cuh")
-            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -I${CMAKE_SOURCE_DIR}/cmake_patches/cccl_override")
+        # before the system CCCL one.
+        #
+        # The override is scoped narrowly so future CUDA releases can pick up upstream fixes:
+        #   1. Only engages for the exact CUDA toolkit versions known to carry the regression
+        #      (CUDA 13.2.x; 13.0/13.1 don't ship the offending header, 13.3+ is assumed fixed).
+        #   2. Only engages if the *system* CCCL header is actually present on this toolkit
+        #      (guarding against custom/minimal CUDA installs).
+        #   3. Only engages if the vendored patched copy is present (so deleting this directory
+        #      disables the workaround with no further changes).
+        # See cmake_patches/cccl_override/README.md for the full rationale and references.
+        set(_cccl_override_dir "${CMAKE_SOURCE_DIR}/cmake_patches/cccl_override")
+        set(_cccl_override_header "${_cccl_override_dir}/cub/block/block_load_to_shared.cuh")
+        set(_cccl_system_header "${CUDAToolkit_TARGET_DIR}/include/cccl/cub/block/block_load_to_shared.cuh")
+        if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "13.2"
+           AND CUDAToolkit_VERSION VERSION_LESS "13.3"
+           AND EXISTS "${_cccl_system_header}"
+           AND EXISTS "${_cccl_override_header}")
+            message(STATUS "Applying CCCL workaround for CUDA ${CUDAToolkit_VERSION} block_load_to_shared.cuh ambiguity")
+            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -I${_cccl_override_dir}")
         endif()
+        unset(_cccl_override_dir)
+        unset(_cccl_override_header)
+        unset(_cccl_system_header)
         add_compile_definitions(WITH_GPU)
     else()
         message(FATAL_ERROR "CUDA requested but not found!")
