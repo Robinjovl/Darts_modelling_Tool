@@ -290,6 +290,14 @@ if(CUDA)
         endif()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --expt-relaxed-constexpr -allow-unsupported-compiler")
+        # Workaround for CUDA 13.2 + gcc 13 + CCCL ambiguity in cub/block/block_load_to_shared.cuh
+        # where unqualified data()/size() calls match both std:: and cuda::std:: overloads for
+        # cuda::std::span<char>. We ship a patched copy of the header that fully qualifies those
+        # calls, and prepend its directory to the nvcc include search path so it is picked up
+        # before the system CCCL one. Active only when the system header is present.
+        if(EXISTS "${CMAKE_SOURCE_DIR}/cmake_patches/cccl_override/cub/block/block_load_to_shared.cuh")
+            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -I${CMAKE_SOURCE_DIR}/cmake_patches/cccl_override")
+        endif()
         add_compile_definitions(WITH_GPU)
     else()
         message(FATAL_ERROR "CUDA requested but not found!")
