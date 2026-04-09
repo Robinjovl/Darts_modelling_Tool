@@ -340,7 +340,7 @@ public:
       {
         actual_dst_ptr[idx] = src_ptr[idx];
       }
-      return {::cuda::ptr_rebind<T>(actual_dst_ptr), size(gmem_src)};
+      return {::cuda::ptr_rebind<T>(actual_dst_ptr), ::cuda::std::size(gmem_src)};
     }
   }
 
