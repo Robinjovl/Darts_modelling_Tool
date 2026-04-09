@@ -4,7 +4,7 @@
     tags:
         - windows-shell
     variables:
-        CONDA_ENV: "darts-win"
+        CONDA_ENV: "darts-win-${CI_JOB_ID}"
         CONDA_BIN_PATH: 'D:\miniconda3\condabin'
     before_script:
         # create and activate a conda env

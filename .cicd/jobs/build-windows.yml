@@ -5,7 +5,7 @@
         - windows-shell
     needs: []
     variables:
-        CONDA_ENV: "darts-win"
+        CONDA_ENV: "darts-win-${CI_JOB_ID}"
         CONDA_BIN_PATH: 'D:\miniconda3\condabin'
     script:
         # Load MS Build Tools environment to the powershell
@@ -26,6 +26,7 @@
         - echo "ODLS:" $env:ODLS
         # Compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
+        # Check for warnings
         - |
           $match = Select-String -Path make_darts.log -Pattern 'OPENDARTS_WARNING_COUNT=(\d+)' | Select-Object -Last 1
           $warnCount = if ($match) { [int]$match.Matches[0].Groups[1].Value } else { 0 }

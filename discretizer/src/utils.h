@@ -135,8 +135,8 @@ namespace utils
 	{
 		index_t lines_num = count_lines(filename);
 		std::ifstream infile(filename);
-		std::vector<value_t> b;
-		value_t buf;
+		std::vector<T> b;
+		T buf;
 		bool read_data_mode = false;
 		bool break_flag = false;
 		res.reserve(6 * lines_num);
