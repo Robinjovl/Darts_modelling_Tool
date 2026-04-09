@@ -3,9 +3,9 @@ clean-windows:
     tags:
         - windows-shell
     variables:
-        CONDA_ENV: "darts-win"
-        CONDA_PATH: 'D:\miniconda3'
+        DARTS_CONDA_ENVS_PATH: 'D:\miniconda3\envs\darts-win*'
+        FLASH_CONDA_ENVS_PATH: 'D:\miniconda3\envs\flash-win*'
     script:
         # Force-remove directory if conda left trash behind (from the previous pipelines)
-        $envPath = "$env:CONDA_PATH\envs\$env:CONDA_ENV"
-        Remove-Item -Recurse -Force $env:CONDA_ENV* -ErrorAction SilentlyContinue
+        - Remove-Item -Recurse -Force $env:DARTS_CONDA_ENVS_PATH -ErrorAction SilentlyContinue
+        - Remove-Item -Recurse -Force $env:FLASH_CONDA_ENVS_PATH -ErrorAction SilentlyContinue
