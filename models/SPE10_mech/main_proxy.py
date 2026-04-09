@@ -461,7 +461,6 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             else:
                 arr_layer = arr
             cs = plt.contourf(points_x, points_y, arr_layer, levels=10)
-            #cs = plt.imshow(arr_layer)
             plt.colorbar(cs)
             plt.gca().set_aspect('equal')
             plt.xlabel('X, m.')
@@ -471,8 +470,30 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 plt.ylabel('Depth, m.')
                 plt.gca().invert_yaxis()
             plt.title(arr_name)
-            plt.savefig(os.path.join(output_folder, arr_name + '.png'))
+            plt.savefig(os.path.join(output_folder, arr_name + '_contour.png'))
             plt.close()
+
+            
+    def plot_imshow(array_dict, points_x, points_y, output_folder, layer=0, slice='XY'):
+        # plot contours XY plane, 1 layer by z
+        for arr_name, arr in array_dict.items():
+            if len(arr.shape) == 3:
+                arr_layer = arr[:, :, layer]
+            else:
+                arr_layer = arr
+            cs = plt.imshow(arr_layer)
+            plt.colorbar(cs)
+            plt.gca().set_aspect('equal')
+            plt.xlabel('I')
+            if slice == 'XY':
+                plt.ylabel('J')
+            elif slice == 'XZ':
+                plt.ylabel('K')
+                plt.gca().invert_yaxis()
+            plt.title(arr_name)
+            plt.savefig(os.path.join(output_folder, arr_name + '_imshow.png'))
+            plt.close()
+
     
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
@@ -490,7 +511,6 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     # compute with proxy in 3D volume
     if True:
-
         points_x = np.arange(-1050, 1050, 10.)  # only internal XY part
         points_y = np.array([0.])
         #points_z = np.hstack([np.arange(1000, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 3000, 200)])
@@ -507,12 +527,13 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         dp = dp.reshape((p_nx, p_ny, p_nz)) 
         array_dict = {'dp':dp[:,0,:].transpose()}
         plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
+        plot_imshow(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
         
-        if False:
+        if True: # run proxy and save PKLs
             ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
-            ux_prx_3d = ux_prx.reshape((p_nx, p_ny, p_nz))
-            uy_prx_3d = uy_prx.reshape((p_nx, p_ny, p_nz))
-            uz_prx_3d = uz_prx.reshape((p_nx, p_ny, p_nz))
+            ux_prx = ux_prx.reshape((p_nx, p_ny, p_nz))
+            uy_prx = uy_prx.reshape((p_nx, p_ny, p_nz))
+            uz_prx = uz_prx.reshape((p_nx, p_ny, p_nz))
             
             _, _, _, sxx_prx, syy_prx, szz_prx, sxx_total_prx, syy_total_prx, szz_total_prx = get_proxy_strain_stress(points)  # need to X<->Y if non-symmetric
             sxx_prx = sxx_prx.reshape((p_nx, p_ny, p_nz))
@@ -523,30 +544,48 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             szz_total_prx = szz_total_prx.reshape((p_nx, p_ny, p_nz))  
             
             # save to pkl
-            displs = {'ux_prx_3d': ux_prx_3d, 'uy_prx_3d': uy_prx_3d, 'uz_prx_3d': uz_prx_3d}
             import pickle
+            displs = {'ux_prx': ux_prx, 'uy_prx': uy_prx, 'uz_prx': uz_prx}
             with open(os.path.join(folder, "displs_prx.pkl"), "wb") as f:   # note 'wb' = write binary
                 pickle.dump(displs, f)
-        else:
-            
-        
-        array_dict = {'ux_prx_3d':ux_prx_3d[:,0,:].transpose(), 
-                      #'uy_prx_3d':uy_prx_3d[:,0,:].transpose(), 
-                      'uz_prx_3d':uz_prx_3d[:,0,:].transpose(),
-                      'sxx_prx_3d':sxx_prx[:,0,:].transpose(), 
-                      #'syy_prx_3d':syy_prx[:,0,:].transpose(), 
-                      'szz_prx_3d':szz_prx[:,0,:].transpose(),
-                      'sxx_total_prx_3d':sxx_total_prx[:,0,:].transpose(), 
-                      #'syy_total_prx_3d':syy_total_prx[:,0,:].transpose(), 
-                      'szz_total_prx_3d':szz_total_prx[:,0,:].transpose()
+            stresses = {'sxx_prx': sxx_prx, 'syy_prx': syy_prx, 'szz_prx': szz_prx,
+                        'sxx_total_prx': sxx_total_prx, 'syy_total_prx': syy_total_prx, 'szz_total_prx': szz_total_prx}
+            with open(os.path.join(folder, "stresses_prx.pkl"), "wb") as f:
+                pickle.dump(stresses, f)
+        else: # do not rerun proxy, read from PKl files (if only plotting is changed)
+            import pickle
+            with open(os.path.join(folder, "displs_prx.pkl"), "rb") as f:
+                displs = pickle.load(f)
+            ux_prx = displs['ux_prx']
+            uy_prx = displs['uy_prx']
+            uz_prx = displs['uz_prx']
+            with open(os.path.join(folder, "stresses_prx.pkl"), "rb") as f:
+                stresses = pickle.load(f)
+            sxx_prx = stresses['sxx_prx']
+            syy_prx = stresses['syy_prx']
+            szz_prx = stresses['szz_prx']
+            sxx_total_prx = stresses['sxx_total_prx']
+            syy_total_prx = stresses['syy_total_prx']
+            szz_total_prx = stresses['szz_total_prx']
+
+        array_dict = {'ux_prx':ux_prx[:,0,:].transpose(), 
+                      #'uy_prx':uy_prx[:,0,:].transpose(), 
+                      'uz_prx':uz_prx[:,0,:].transpose(),
+                      'sxx_prx':sxx_prx[:,0,:].transpose(), 
+                      #'syy_prx':syy_prx[:,0,:].transpose(), 
+                      'szz_prx':szz_prx[:,0,:].transpose(),
+                      'sxx_total_prx':sxx_total_prx[:,0,:].transpose(), 
+                      #'syy_total_prx':syy_total_prx[:,0,:].transpose(), 
+                      'szz_total_prx':szz_total_prx[:,0,:].transpose()
                       }
         plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
+        plot_imshow(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
         
         # plot 1D plots at different X-layers to check the strain computation
         if False:
             j = 10
             for i in range(9,12):
-                plt.plot(points_z, ux_prx_3d[i,j,:], label='prx_'+str(i), marker='.')
+                plt.plot(points_z, ux_prx[i,j,:], label='prx_'+str(i), marker='.')
                 ux_thm = []
                 for p_z in points_z:
                     p = points_x[i], points_y[j], p_z
