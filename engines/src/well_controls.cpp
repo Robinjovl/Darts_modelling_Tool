@@ -166,7 +166,7 @@ int well_control_iface::initialize_well_block_epm(std::vector<value_t>& state_bl
 	}
 
 	// Fill state block with target state vector
-	for (size_t i = 0; i < n_vars; i++)
+	for (index_t i = 0; i < n_vars; i++)
 	{
 		state_block[i] = target_state[i];
 	}
@@ -177,6 +177,7 @@ int well_control_iface::initialize_well_block_epm(std::vector<value_t>& state_bl
 int well_control_iface::check_constraint_violation(value_t dt, index_t well_head_idx, value_t well_transmissibility,
 	uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
 {
+	(void)dt;
 	value_t* X_well_head = &X[n_block_size * well_head_idx + P_VAR];
 	value_t* X_well_body = X_well_head + n_block_size;
 	value_t p_diff = X_well_head[0] - X_well_body[0];
@@ -273,6 +274,7 @@ int well_control_iface::initialize_well_block_dfm(std::vector<value_t>& state_bl
 int well_control_iface::add_to_jacobian_epm(value_t dt, index_t well_head_idx, value_t well_transmissibility,
 	uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t* jacobian_row, std::vector<value_t>& RHS)
 {
+	(void)dt;
 	// n_vars is number of flow variables
 	// n_block_size is size of block which includes flow and mechanics variables
 	value_t* X_well_head = &X[n_block_size * well_head_idx + P_VAR];
@@ -401,6 +403,7 @@ int well_control_iface::add_to_jacobian_dfm(value_t dt, index_t well_head_idx, v
 	uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t* jacobian_row, std::vector<value_t>& RHS,
 	std::vector<value_t>& phases_vels, std::vector<value_t>& phases_vels_ders)
 {
+	(void)dt;
 	// n_vars is number of flow variables
 	// n_block_size is size of block which includes flow and mechanics variables
 	value_t* X_well_head = &X[n_block_size * well_head_idx + P_VAR];

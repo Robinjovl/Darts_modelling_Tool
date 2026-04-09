@@ -3,7 +3,7 @@
 namespace py = pybind11;
 using dis::Discretizer;
 using dis::BoundaryCondition;
-using dis::Matrix33; 
+using dis::Matrix33;
 using dis::Matrix;
 
 PYBIND11_MAKE_OPAQUE(std::vector<Matrix>);
@@ -17,9 +17,9 @@ void pybind_discretizer(py::module &m)
 		.def_readwrite("values", &Matrix::values)
 		.def(py::pickle(
 		  [](const Matrix& p) { // __getstate__
-			const size_t size = p.M * p.N;
+			const size_t size = static_cast<size_t>(p.M) * static_cast<size_t>(p.N);
 			py::tuple t(size + 2);
-			for (int i = 0; i < size; i++)
+			for (size_t i = 0; i < size; i++)
 			  t[i] = p.values[i];
 
 			t[size] = p.M;
@@ -33,7 +33,7 @@ void pybind_discretizer(py::module &m)
 
 			Matrix p(M, N);
 
-			for (int i = 0; i < t.size() - 2; i++)
+			for (size_t i = 0; i < t.size() - 2; i++)
 			  p.values[i] = t[i].cast<value_t>();
 
 			return p;
@@ -42,7 +42,7 @@ void pybind_discretizer(py::module &m)
 	  .def(py::pickle(
 		[](const std::vector<Matrix>& p) { // __getstate__
 		  py::tuple t(p.size());
-		  for (int i = 0; i < p.size(); i++)
+		  for (size_t i = 0; i < p.size(); i++)
 			t[i] = p[i];
 
 		  return t;
@@ -50,7 +50,7 @@ void pybind_discretizer(py::module &m)
 		[](py::tuple t) { // __setstate__
 		  std::vector<Matrix> p(t.size());
 
-		  for (int i = 0; i < p.size(); i++)
+		  for (size_t i = 0; i < p.size(); i++)
 			p[i] = t[i].cast<Matrix>();
 
 		  return p;
@@ -65,7 +65,7 @@ void pybind_discretizer(py::module &m)
 	  .def(py::pickle(
 		[](const Matrix33& p) { // __getstate__
 		  py::tuple t(p.values.size());
-		  for (int i = 0; i < p.values.size(); i++)
+		  for (size_t i = 0; i < p.values.size(); i++)
 			t[i] = p.values[i];
 
 		  return t;
@@ -73,7 +73,7 @@ void pybind_discretizer(py::module &m)
 		[](py::tuple t) { // __setstate__
 		  Matrix33 p;
 
-		  for (int i = 0; i < t.size(); i++)
+		  for (size_t i = 0; i < t.size(); i++)
 			p.values[i] = t[i].cast<value_t>();
 
 		  return p;
@@ -82,7 +82,7 @@ void pybind_discretizer(py::module &m)
 	  .def(py::pickle(
 		[](const std::vector<Matrix33>& p) { // __getstate__
 		  py::tuple t(p.size());
-		  for (int i = 0; i < p.size(); i++)
+		  for (size_t i = 0; i < p.size(); i++)
 			t[i] = p[i];
 
 		  return t;
@@ -90,7 +90,7 @@ void pybind_discretizer(py::module &m)
 		[](py::tuple t) { // __setstate__
 		  std::vector<Matrix33> p(t.size());
 
-		  for (int i = 0; i < p.size(); i++)
+		  for (size_t i = 0; i < p.size(); i++)
 			p[i] = t[i].cast<Matrix33>();
 
 		  return p;

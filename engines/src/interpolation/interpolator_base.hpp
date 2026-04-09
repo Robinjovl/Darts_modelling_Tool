@@ -14,7 +14,7 @@ class interpolator_base : public operator_set_gradient_evaluator_cpu
 public:
     /**
      * @brief Construct an interpolator with predefined parametrization space
-     * 
+     *
      * @param[in] supporting_point_evaluator    Object used to compute operator values at supporting points
      * @param[in] axes_points                   Number of supporting points (minimum 2) along axes
      * @param[in] axes_min                      Minimum value for each axis
@@ -27,7 +27,7 @@ public:
 
     /**
      * @brief Initialize interpolator, perform internal sanity checks unavailable at construction time
-     * 
+     *
      * @return int 0 if successful
      */
     virtual int init();
@@ -77,11 +77,11 @@ public:
 
      /**
       * @brief Write interpolator data to file
-      * 
+      *
       * @param filename name of the file
-      * @return int error code 
+      * @return int error code
       */
-    virtual int write_to_file(const std::string filename)
+    virtual int write_to_file(const std::string & /*filename*/)
     {
         printf ("Not implemented!\n");
         return -1;
@@ -95,7 +95,7 @@ public:
     virtual int get_n_dims() const = 0;
 
     /**
-     * @brief Get the number of operators 
+     * @brief Get the number of operators
      *        Virtual, to be overriden by a child class
      *
      */
@@ -138,7 +138,7 @@ public:
     /**
      * @brief Get the number of supporting points used (evaluated through supporting_point_evaluator)
      *        The number is equal to n_points_total for static interpolation methods
-     * 
+     *
      * @return the number of supporting points used
      */
     uint64_t get_n_points_used() const;

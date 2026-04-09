@@ -1,5 +1,7 @@
 #include <cmath>
+#include <cstdarg>
 #include <cstring>
+#include <cinttypes>
 #include <vector>
 #include <algorithm>
 #include <iostream>
@@ -1371,9 +1373,7 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 {
 	double estimate;
 	int hour, min, sec;
-	char buffer[1024];
-	char buffer2[1024];
-	char line[] = "-------------------------------------------------------------------------------------------------------------\n";
+	const std::string line = "-------------------------------------------------------------------------------------------------------------\n";
 
 	estimate = timer->get_timer();
 	hour = estimate / 3600;
@@ -1382,7 +1382,19 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 	estimate -= min * 60;
 	sec = estimate;
 
-	sprintf(buffer, "T = %g, DT = %g, NI = %d, LI = %d, RES = %.1e (%.1e), CFL=%.3lf (ELAPSED %02d:%02d:%02d",
+	auto fmt = [](const char *format, ...) -> std::string {
+		va_list args;
+		va_start(args, format);
+		int n = vsnprintf(nullptr, 0, format, args);
+		va_end(args);
+		std::string s(n, '\0');
+		va_start(args, format);
+		vsnprintf(&s[0], n + 1, format, args);
+		va_end(args);
+		return s;
+	};
+
+	std::string msg = fmt("T = %g, DT = %g, NI = %d, LI = %d, RES = %.1e (%.1e), CFL=%.3lf (ELAPSED %02d:%02d:%02d",
 			time, deltat, n_newton_last_dt, n_linear_last_dt, newton_residual_last_dt, well_residual_last_dt, CFL_max, hour, min, sec);
 	if ((dt * params->mult_ts > params->max_ts || full_step_timer.timer) && t < stop_time)
 	{
@@ -1399,12 +1411,10 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 			min = estimate / 60;
 			estimate -= min * 60;
 			sec = estimate;
-			sprintf(buffer2, "%s, REMAINING %02d:%02d:%02d", buffer, hour, min, sec);
-			sprintf(buffer, "%s", buffer2);
+			msg += fmt(", REMAINING %02d:%02d:%02d", hour, min, sec);
 		}
 	}
-	sprintf(buffer2, "%s %s )\n%s", line, buffer, line);
-	std::cout << buffer2 << std::flush;
+	std::cout << line << " " << msg << " )\n" << line << std::flush;
 
 	return 0;
 }
@@ -1439,8 +1449,8 @@ int engine_base::print_stat()
 	r_code += sprintf(buffer + r_code, "Number of operators: %d\n", n_ops);
 
 	r_code += sprintf(buffer + r_code, "Number of points: %d\n", acc_flux_op_set_list[0]->get_axis_n_points(0));
-	r_code += sprintf(buffer + r_code, "Number of interpolations: %lu \n", acc_flux_op_set_list[0]->get_n_interpolations());
-	r_code += sprintf(buffer + r_code, "Number of points generated: %lu (%.3f%%)\n", acc_flux_op_set_list[0]->get_n_points_used(), (acc_flux_op_set_list[0]->get_n_points_used() * 100.0 / acc_flux_op_set_list[0]->get_n_points_total()));
+	r_code += sprintf(buffer + r_code, "Number of interpolations: %" PRIu64 " \n", acc_flux_op_set_list[0]->get_n_interpolations());
+	r_code += sprintf(buffer + r_code, "Number of points generated: %" PRIu64 " (%.3f%%)\n", acc_flux_op_set_list[0]->get_n_points_used(), (acc_flux_op_set_list[0]->get_n_points_used() * 100.0 / acc_flux_op_set_list[0]->get_n_points_total()));
 	//r_code += sprintf(buffer + r_code, "Number of hypercubes used: %lu (%.3f%%)\n", acc_flux_op_set_list[0]->get_n_hypercubes_used(), (acc_flux_op_set_list[0]->get_n_hypercubes_used() * 100.0 / acc_flux_op_set_list[0]->get_n_hypercubes_total()));
 	/*
 	r_code += sprintf (buffer + r_code, "OMIPS: %.4lf \n", acc_flux_op_set->get_n_interpolations() / interpolation_timer / 1000000);

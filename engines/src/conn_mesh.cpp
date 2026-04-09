@@ -5,6 +5,7 @@
 #include <iostream>
 #include <algorithm>
 #include <numeric>
+#include <type_traits>
 #include <stdlib.h>
 #include <assert.h>
 
@@ -867,7 +868,10 @@ conn_mesh::reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::v
 
     for (index_t j = 0; j < n_conns / 2; ++j)
     {
-      two_way_values[one_way_to_conn_index_forward[j]] = -one_way_values[j]; // m->p
+      if constexpr (std::is_same_v<T, bool>)
+        two_way_values[one_way_to_conn_index_forward[j]] = one_way_values[j]; // m->p: bool flags are direction-independent
+      else
+        two_way_values[one_way_to_conn_index_forward[j]] = -one_way_values[j]; // m->p
       two_way_values[one_way_to_conn_index_reverse[j]] = one_way_values[j];  // p->m
     }
   }

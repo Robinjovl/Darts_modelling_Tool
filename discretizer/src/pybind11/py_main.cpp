@@ -24,7 +24,7 @@ PYBIND11_MODULE(discretizer, m)
 		.def(py::pickle(
 			[](const std::vector<value_t> &p) { // __getstate__
 		py::tuple t(p.size());
-		for (int i = 0; i < p.size(); i++)
+		for (size_t i = 0; i < p.size(); i++)
 			t[i] = p[i];
 
 		return t;
@@ -32,12 +32,12 @@ PYBIND11_MODULE(discretizer, m)
 			[](py::tuple t) { // __setstate__
 		std::vector<value_t> p(t.size());
 
-		for (int i = 0; i < p.size(); i++)
+		for (size_t i = 0; i < p.size(); i++)
 			p[i] = t[i].cast<value_t>();
 
 		return p;
 	}));
-	
+
 	m.def("load_single_float_keyword", utils::load_single_keyword<value_t>);
 	m.def("load_single_int_keyword", utils::load_single_keyword<index_t>);
 	m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");

@@ -176,6 +176,8 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		break;
 	  }
 #endif
+	  default:
+		break;
 	}
   }
 

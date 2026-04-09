@@ -242,6 +242,8 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 
