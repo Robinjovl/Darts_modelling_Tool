@@ -317,6 +317,10 @@ class WellOperators(OperatorsSuper):
             ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
         """ Molar density operator """
+        # molar density: rho_mj [kmol/m3]
+        values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
+            self.property.ph
+        ]
 
         """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
 
