@@ -1,15 +1,24 @@
 import numpy as np
-import pandas as pd
+
 from darts.engines import *
-import matplotlib.pyplot as plt
-import seaborn as sns
+from darts.interpolators import *
 
 
 class test_itor:
-    def __init__(self, n_dims: int, n_ops: int,
-                 axes_n_points: index_vector, axes_min: value_vector, axes_max: value_vector,
-                 type: str = 'multilinear', mode: str = 'adaptive', version: str = '',
-                 platform: str = 'cpu', precision: str = 'd', index: str = 'i'):
+    def __init__(
+        self,
+        n_dims: int,
+        n_ops: int,
+        axes_n_points: index_vector,
+        axes_min: value_vector,
+        axes_max: value_vector,
+        type: str = 'multilinear',
+        mode: str = 'adaptive',
+        version: str = '',
+        platform: str = 'cpu',
+        precision: str = 'd',
+        index: str = 'i',
+    ):
         # create a darts wrapper for function
         class dummy_func(operator_set_evaluator_iface):
             def __init__(self, n_dims: int, n_ops: int):
@@ -45,14 +54,11 @@ class test_itor:
         self.timer.node['init'] = timer_node()
         self.reset_timing()
         # calculate ibject name using 32 bit index type (i)
-        itor_name = "%s_%s%s_%s_interpolator_%s_%s_%d_%d" % (type,
-                                                             mode, version,
-                                                             platform,
-                                                             index,
-                                                             precision,
-                                                             n_dims,
-                                                             n_ops)
-        print("Creating %s..." % itor_name)
+        itor_name = (
+            f"{type}_{mode}{version}_{platform}_interpolator_{index}_{precision}"
+            f"_{n_dims}_{n_ops}"
+        )
+        print(f"Creating {itor_name}...")
         self.name = itor_name
 
         self.timer.node['init'].start()
@@ -74,13 +80,21 @@ class test_itor:
 
     def interpolate_array(self, X):
         # interpolate and shape the result
-        assert (self.n_states * self.n_dims == len(X))
-        self.itor.evaluate_with_derivatives(X, self.block_idx, self.values, self.derivatives)
+        assert self.n_states * self.n_dims == len(X)
+        self.itor.evaluate_with_derivatives(
+            X, self.block_idx, self.values, self.derivatives
+        )
         self.n_interpolations += 1
-        self.min_interpolation_time = min(self.min_interpolation_time, self.get_interpolation_time())
-        self.max_interpolation_time = max(self.max_interpolation_time, self.get_interpolation_time())
+        self.min_interpolation_time = min(
+            self.min_interpolation_time, self.get_interpolation_time()
+        )
+        self.max_interpolation_time = max(
+            self.max_interpolation_time, self.get_interpolation_time()
+        )
         self.total_interpolation_time += self.get_interpolation_time()
-        self.avg_interpolation_time = self.total_interpolation_time / self.n_interpolations
+        self.avg_interpolation_time = (
+            self.total_interpolation_time / self.n_interpolations
+        )
         self.timer.reset_recursive()
         return np.array(self.values, copy=False)
 
@@ -119,16 +133,94 @@ def make_itors(n_dims=2, n_ops=0, n_points=64, min=0, max=1):
     itors = []
 
     itors.append(
-        test_itor(n_dims, n_ops, axes_n_points, axes_min, axes_max, 'multilinear', 'static', '', 'gpu', 'd', 'i'))
+        test_itor(
+            n_dims,
+            n_ops,
+            axes_n_points,
+            axes_min,
+            axes_max,
+            'multilinear',
+            'static',
+            '',
+            'gpu',
+            'd',
+            'i',
+        )
+    )
     itors.append(
-        test_itor(n_dims, n_ops, axes_n_points, axes_min, axes_max, 'multilinear', 'static', '2', 'gpu', 'd', 'i'))
+        test_itor(
+            n_dims,
+            n_ops,
+            axes_n_points,
+            axes_min,
+            axes_max,
+            'multilinear',
+            'static',
+            '2',
+            'gpu',
+            'd',
+            'i',
+        )
+    )
     itors.append(
-        test_itor(n_dims, n_ops, axes_n_points, axes_min, axes_max, 'multilinear', 'static', '', 'gpu', 's', 'i'))
+        test_itor(
+            n_dims,
+            n_ops,
+            axes_n_points,
+            axes_min,
+            axes_max,
+            'multilinear',
+            'static',
+            '',
+            'gpu',
+            's',
+            'i',
+        )
+    )
     itors.append(
-        test_itor(n_dims, n_ops, axes_n_points, axes_min, axes_max, 'multilinear', 'static', '2', 'gpu', 's', 'i'))
+        test_itor(
+            n_dims,
+            n_ops,
+            axes_n_points,
+            axes_min,
+            axes_max,
+            'multilinear',
+            'static',
+            '2',
+            'gpu',
+            's',
+            'i',
+        )
+    )
     itors.append(
-        test_itor(n_dims, n_ops, axes_n_points, axes_min, axes_max, 'multilinear', 'adaptive', '3', 'gpu', 'd', 'i'))
+        test_itor(
+            n_dims,
+            n_ops,
+            axes_n_points,
+            axes_min,
+            axes_max,
+            'multilinear',
+            'adaptive',
+            '3',
+            'gpu',
+            'd',
+            'i',
+        )
+    )
     itors.append(
-        test_itor(n_dims, n_ops, axes_n_points, axes_min, axes_max, 'multilinear', 'adaptive', '3', 'gpu', 's', 'i'))
+        test_itor(
+            n_dims,
+            n_ops,
+            axes_n_points,
+            axes_min,
+            axes_max,
+            'multilinear',
+            'adaptive',
+            '3',
+            'gpu',
+            's',
+            'i',
+        )
+    )
 
     return itors

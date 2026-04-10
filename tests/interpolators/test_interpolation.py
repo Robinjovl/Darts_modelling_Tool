@@ -1,6 +1,7 @@
 import numpy as np
 
 from darts.engines import *
+from darts.interpolators import *
 
 
 class Linear(operator_set_evaluator_iface):
