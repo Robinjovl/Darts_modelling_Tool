@@ -1,6 +1,7 @@
 #ifndef APPROXIMATION_H_
 #define APPROXIMATION_H_
 
+
 #include <type_traits>
 #include <array>
 #include "mesh/mesh.h"
@@ -18,10 +19,10 @@ namespace dis
   // 'Tvar' - temperature
   enum VarName { Uvar, Pvar, Tvar };
 
-  template <VarName Var> inline constexpr index_t var_block_size = 0;
-  template <> inline constexpr index_t var_block_size<Uvar> = 3; // number of variables for the displacements (ux, uy, uz)
-  template <> inline constexpr index_t var_block_size<Pvar> = 1; // number of variables for the pressure (p)
-  template <> inline constexpr index_t var_block_size<Tvar> = 1; // number of variables for the heat (T)
+  template <VarName Var> constexpr index_t var_block_size = 0;
+  template <> constexpr index_t var_block_size<Uvar> = 3; // number of veriables for the displacements (ux, uy, uz)
+  template <> constexpr index_t var_block_size<Pvar> = 1; // number of veriables for the pressure (p)
+  template <> constexpr index_t var_block_size<Tvar> = 1; // number of veriables for the heat (T)
 
   template <VarName... VarNames> constexpr index_t vars_size = []
   {
@@ -80,7 +81,7 @@ namespace dis
 
       std::vector<index_t> old_stencil(stencil);
       Matrix old_a(a);
-      for (index_t i = 0; i < stencil.size(); i++)
+      for (size_t i = 0; i < stencil.size(); i++)
       {
         stencil[i] = old_stencil[sorted_ids[i]];
 
@@ -161,8 +162,8 @@ namespace dis
   struct IndexOf<V, TypeList<Others...>> {
     static constexpr int value = [] {
       constexpr std::array<VarName, sizeof...(Others)> arr = { Others... };
-      for (int i = 0; i < sizeof...(Others); ++i) {
-        if (arr[i] == V) return i;
+      for (size_t i = 0; i < sizeof...(Others); ++i) {
+        if (arr[i] == V) return static_cast<int>(i);
       }
       return -1;
     }();
@@ -189,9 +190,9 @@ namespace dis
   }
 
   // merge stencils
-  static void merge_stencils(const std::vector<index_t>& st1, const std::vector<index_t>& st2, std::vector<index_t>& st)
+  [[maybe_unused]] static inline void merge_stencils(const std::vector<index_t>& st1, const std::vector<index_t>& st2, std::vector<index_t>& st)
   {
-    index_t i = 0, j = 0;
+    size_t i = 0, j = 0;
 
     while (i != st1.size() && j != st2.size())
     {
@@ -260,7 +261,7 @@ namespace dis
 
     constexpr auto var_sizes2 = std::array{ var_block_size<VarNames2>... };
 
-    index_t i = 0, j = 0, k = 0;
+    size_t i = 0, j = 0, k = 0;
     while (i != ap1.stencil.size() && j != ap2.stencil.size())
     {
       if (ap1.stencil[i] == ap2.stencil[j])
@@ -382,5 +383,6 @@ namespace dis
     return res;
   }
 }
+
 
 #endif /* APPROXIMATION_H_ */

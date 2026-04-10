@@ -10,6 +10,7 @@
 
 #include "engine_nce_g_cpu.hpp"
 
+
 template <uint8_t NC, uint8_t NP>
 int engine_nce_g_cpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                    std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
@@ -102,7 +103,7 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
         index_t j, diag_idx, jac_idx;
         value_t p_diff, gamma_p_diff;
         value_t t_diff, gamma_t_diff;
-		index_t cell_conn_idx, cell_conn_num;
+		index_t cell_conn_idx = 0, cell_conn_num = 0;
 		std::array<value_t, NP> phase_fluxes;
 
         numa_set(Jac, 0, rows[start] * N_VARS_SQ, rows[end] * N_VARS_SQ);

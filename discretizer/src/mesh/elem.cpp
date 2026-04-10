@@ -10,7 +10,7 @@ void Elem::calculate_centroid(const std::vector<Vector3>& nodes, const std::vect
 	double Cx = 0.0;
 	double Cy = 0.0;
 	double Cz = 0.0;
-	
+
 	// iterate among all points (nodes) in the element
 	for (int i = this->pts_offset; i < this->pts_offset + this->n_pts; ++i) {
 		int node_idx = elem_nodes[i]; // read the index of the element in the elem_nodes vector
@@ -49,7 +49,7 @@ void Elem::calculate_centroid(const std::vector<Vector3>& nodes, const std::vect
             Cy += i.y / 2;
             Cz += i.z / 2;
         }
-        
+
         break;
     }
     case TRI: {
@@ -58,18 +58,13 @@ void Elem::calculate_centroid(const std::vector<Vector3>& nodes, const std::vect
             Cy += i.y / 3;
             Cz += i.z / 3;
         }
-        
+
         break;
     }
-    case QUAD: {
-        Vector3 corner1 = element_nodes[0] - element_nodes[1];
-        Vector3 corner2 = element_nodes[0] - element_nodes[3];
-        Vector3 corner3 = element_nodes[2] - element_nodes[1];
-        Vector3 corner4 = element_nodes[2] - element_nodes[3];
-
-        // volume is computed as area * "pseudo thickness"
-        //this->volume = cell_area * 10e-4;
-        break;
+	    case QUAD: {
+	        // volume is computed as area * "pseudo thickness"
+	        //this->volume = cell_area * 10e-4;
+	        break;
     }
     case HEX: {
         // split the hexahedron into five tetrahedrons and sum their volumes
@@ -123,7 +118,7 @@ Vector3 mesh::triangle_centroid_area(const std::vector<Vector3>& nodes, double* 
     Vector3 corner2 = nodes[0] - nodes[2];
 
     *cell_area = 0.5 * cross(corner1, corner2).norm();
-    
+
     double Cx = 0.0;
     double Cy = 0.0;
     double Cz = 0.0;
@@ -217,14 +212,14 @@ void Elem::calculate_volume_and_centroid(const std::vector<Vector3>& nodes, cons
         Vector3 corner2 = element_nodes[0] - element_nodes[3];
         Vector3 corner3 = element_nodes[2] - element_nodes[1];
         Vector3 corner4 = element_nodes[2] - element_nodes[3];
-        
+
         std::vector<Vector3> nodes_triangle1 = { element_nodes[0], element_nodes[1], element_nodes[2] };
         std::vector<Vector3> nodes_triangle2 = { element_nodes[0], element_nodes[2], element_nodes[3] };
 
         double area_triangle1, area_triangle2;
-        Vector3 centroid1 = triangle_centroid_area(nodes_triangle1, &area_triangle1);
-        Vector3 centroid2 = triangle_centroid_area(nodes_triangle2, &area_triangle2);
-           
+	        triangle_centroid_area(nodes_triangle1, &area_triangle1);
+	        triangle_centroid_area(nodes_triangle2, &area_triangle2);
+
         //Cx = (centroid1.x * area_triangle1 + centroid2.x * area_triangle2) / (area_triangle1 + area_triangle2);
         //Cy = (centroid1.y * area_triangle1 + centroid2.y * area_triangle2) / (area_triangle1 + area_triangle2);
         //Cz = (centroid1.z * area_triangle1 + centroid2.z * area_triangle2) / (area_triangle1 + area_triangle2);
@@ -266,15 +261,9 @@ void Elem::calculate_volume_and_centroid(const std::vector<Vector3>& nodes, cons
         std::vector<Vector3> tetra5{ element_nodes[0], element_nodes[5], element_nodes[7], element_nodes[4] };
 
 
-        Vector3 centroid1 = tetra_centroid(tetra1);
-        Vector3 centroid2 = tetra_centroid(tetra2);
-        Vector3 centroid3 = tetra_centroid(tetra3);
-        Vector3 centroid4 = tetra_centroid(tetra4);
-        Vector3 centroid5 = tetra_centroid(tetra5);
-
-        double volume1 = tetra_volume(tetra1);
-        double volume2 = tetra_volume(tetra2);
-        double volume3 = tetra_volume(tetra3);
+	        double volume1 = tetra_volume(tetra1);
+	        double volume2 = tetra_volume(tetra2);
+	        double volume3 = tetra_volume(tetra3);
         double volume4 = tetra_volume(tetra4);
         double volume5 = tetra_volume(tetra5);
 
@@ -366,13 +355,10 @@ void Elem::calculate_volume_and_centroid(const std::vector<Vector3>& nodes, cons
             std::vector<Vector3> tetra1{ element_nodes[0], element_nodes[2], element_nodes[1], element_nodes[4] };
             std::vector<Vector3> tetra2{ element_nodes[0], element_nodes[2], element_nodes[3], element_nodes[4] };
 
-            Vector3 centroid1 = tetra_centroid(tetra1);
-            Vector3 centroid2 = tetra_centroid(tetra2);
+	            double volume1 = tetra_volume(tetra1);
+	            double volume2 = tetra_volume(tetra2);
 
-            double volume1 = tetra_volume(tetra1);
-            double volume2 = tetra_volume(tetra2);
-
-            volume = tetra_volume(tetra1) + tetra_volume(tetra2);
+            volume = volume1 + volume2;
 
             //Cx = (centroid1.x * volume1 + centroid2.x * volume2) / this->volume;
             //Cy = (centroid1.y * volume1 + centroid2.y * volume2) / this->volume;
@@ -398,7 +384,7 @@ void Elem::calculate_volume_and_centroid(const std::vector<Vector3>& nodes, cons
             Cz /= this->n_pts;
 
             c = Vector3{ Cx, Cy, Cz};
-           
+
         }
         else {
             // subdivide into two tetras, total volume is the sum of their volumes
@@ -406,11 +392,8 @@ void Elem::calculate_volume_and_centroid(const std::vector<Vector3>& nodes, cons
             std::vector<Vector3> tetra2{ element_nodes[1], element_nodes[3], element_nodes[2], element_nodes[4] };
 
 
-            Vector3 centroid1 = tetra_centroid(tetra1);
-            Vector3 centroid2 = tetra_centroid(tetra2);
-
-            double volume1 = tetra_volume(tetra1);
-            double volume2 = tetra_volume(tetra2);
+	            double volume1 = tetra_volume(tetra1);
+	            double volume2 = tetra_volume(tetra2);
 
             volume = 0;
             for (auto i : { volume1, volume2 }) {
@@ -487,11 +470,9 @@ void Connection::calculate_area(const std::vector<Vector3>& nodes, const std::ve
 		A += 0.5 * cross(temp1, temp2).norm();
 	}
 	else if (this->n_pts == 4) {
-		auto temp2 = nodes[conn_nodes[this->pts_offset]] - nodes[conn_nodes[this->pts_offset + 2]];
-        auto temp3 = nodes[conn_nodes[this->pts_offset]] - nodes[conn_nodes[this->pts_offset + 3]];
-        auto temp4 = nodes[conn_nodes[this->pts_offset + 1]] - nodes[conn_nodes[this->pts_offset + 2]];
-        auto temp5 = nodes[conn_nodes[this->pts_offset + 1]] - nodes[conn_nodes[this->pts_offset + 3]];
-        auto temp6 = nodes[conn_nodes[this->pts_offset + 2]] - nodes[conn_nodes[this->pts_offset + 3]];
+	        auto temp3 = nodes[conn_nodes[this->pts_offset]] - nodes[conn_nodes[this->pts_offset + 3]];
+	        auto temp4 = nodes[conn_nodes[this->pts_offset + 1]] - nodes[conn_nodes[this->pts_offset + 2]];
+	        auto temp6 = nodes[conn_nodes[this->pts_offset + 2]] - nodes[conn_nodes[this->pts_offset + 3]];
 
 		A += 0.5 * cross(temp1, temp3).norm();
 		A += 0.5 * cross(temp3, temp6).norm();
@@ -506,7 +487,7 @@ void Connection::calculate_area(const std::vector<Vector3>& nodes, const std::ve
 void Connection::calculate_normal(const std::vector<Vector3>& nodes, const std::vector<index_t>& conn_nodes, const std::vector<mesh::Elem>& elems, const std::vector<index_t>& elem_nodes) {
 
 	// For qudrangle and triangle faces find normal vector through crossprod of face edges
-	if (this->n_pts == 4 || this->n_pts == 3) 
+	if (this->n_pts == 4 || this->n_pts == 3)
     {
 		auto temp1 = nodes[conn_nodes[this->pts_offset]] - nodes[conn_nodes[this->pts_offset + 2]];
 		auto temp2 = nodes[conn_nodes[this->pts_offset]] - nodes[conn_nodes[this->pts_offset + 1]];
@@ -528,7 +509,7 @@ void Connection::calculate_normal(const std::vector<Vector3>& nodes, const std::
         }
 		this->n = sign * crossprod / crossprod.norm();
 	}
-	else if (this->n_pts == 2) 
+	else if (this->n_pts == 2)
     {
 		auto temp1 = nodes[conn_nodes[this->pts_offset]] - nodes[conn_nodes[this->pts_offset + 1]];
 		Vector3 el1_node, el2_node;

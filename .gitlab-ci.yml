@@ -17,6 +17,9 @@ include:
   - local: '.cicd/jobs/pre-commit.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  - local: '.cicd/jobs/cleanup-windows.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/build-images.yml'
   - local: '.cicd/jobs/build-linux.yml'
     rules:

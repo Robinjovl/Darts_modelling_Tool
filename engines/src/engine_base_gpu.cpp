@@ -323,6 +323,7 @@ int engine_base_gpu::test_assembly(int n_times, int kernel_number, int dump_jaco
          timer->node["jacobian assembly"].node["interpolation"].get_timer_gpu() / n_times,
          timer->node["jacobian assembly"].node["kernel"].get_timer_gpu() / n_times);
   //printf ("Average assembly kernel: %e sec\n", timer->node["test_assembly"].get_timer_gpu() / n_times);
+  return 0;
 }
 
 int engine_base_gpu::test_spmv(int n_times, int kernel_number, int dump_result)

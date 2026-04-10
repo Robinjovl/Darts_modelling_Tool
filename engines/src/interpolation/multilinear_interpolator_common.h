@@ -1,6 +1,7 @@
 #ifndef D89802AE_4C88_4BCD_88D1_1B45D12E933F
 #define D89802AE_4C88_4BCD_88D1_1B45D12E933F
 
+
 // define those to avoid warning indication in syntax check for non-nvcc compilers
 // use inline so header-defined helpers do not violate ODR in multiple translation units
 #ifndef __NVCC__
@@ -88,15 +89,16 @@ __forceinline__ __host__ __device__ int get_axis_interval_index(double axis_valu
 }
 
 template <uint8_t N_DIMS, typename service_value_t, typename service_index_t>
-__forceinline__ __host__ __device__ service_index_t get_body_idx(const value_t *axis_values, int i,
+__forceinline__ __host__ __device__ service_index_t get_body_idx(const value_t *axis_values, int axis_index,
                                                                  service_value_t *axis_min, service_value_t *axis_max,
                                                                  service_value_t *axis_step_inv, service_index_t *axis_body_mult,
                                                                  uint32_t *axis_points)
 {
+  (void)axis_index;
   service_index_t body_idx = 0;
-  for (int i = 0; i < N_DIMS; ++i)
+  for (int dim = 0; dim < N_DIMS; ++dim)
   {
-    body_idx += get_axis_idx(axis_values, i, axis_min, axis_max, axis_step_inv, axis_points) * axis_body_mult[i];
+    body_idx += get_axis_idx(axis_values, dim, axis_min, axis_max, axis_step_inv, axis_points) * axis_body_mult[dim];
   }
 
   return body_idx;
@@ -148,16 +150,16 @@ __forceinline__ __host__ __device__ void interpolate_with_derivatives(const valu
   interp_value_t workspace[(2 * N_VERTS - 1) * N_OPS];
 
   // copy operator values for all vertices
-  for (int i = 0; i < N_VERTS * N_OPS; ++i)
+  for (uint32_t idx = 0; idx < N_VERTS * N_OPS; ++idx)
   {
-    workspace[i] = body_data[i];
+    workspace[idx] = body_data[idx];
   }
 
-  for (int i = 0; i < N_DIMS; ++i)
+  for (uint16_t i = 0; i < N_DIMS; ++i)
   {
     //printf ("i = %d, N_VERTS = %d, New offset: %d\n", i, N_VERTS, 2 * N_VERTS - (N_VERTS>>i));
 
-    for (int j = 0; j < pwr; ++j)
+    for (uint32_t j = 0; j < pwr; ++j)
     {
       for (int op = 0; op < N_OPS; ++op)
       {
@@ -207,16 +209,16 @@ __forceinline__ __host__ __device__ void interpolate_point_with_derivatives(cons
   std::vector<value_t> workspace((2 * N_VERTS - 1) * N_OPS);
 
   // copy operator values for all vertices
-  for (int i = 0; i < N_VERTS * N_OPS; ++i)
+  for (uint32_t i = 0; i < N_VERTS * N_OPS; ++i)
   {
     workspace[i] = body_data[i];
   }
 
-  for (int i = 0; i < N_DIMS; ++i)
+  for (uint16_t i = 0; i < N_DIMS; ++i)
   {
     //printf ("i = %d, N_VERTS = %d, New offset: %d\n", i, N_VERTS, 2 * N_VERTS - (N_VERTS>>i));
 
-    for (int j = 0; j < pwr; ++j)
+    for (uint32_t j = 0; j < pwr; ++j)
     {
       for (int op = 0; op < N_OPS; ++op)
       {
@@ -297,4 +299,6 @@ __forceinline__ __host__ __device__ void interpolate_operator_with_derivatives(c
     interp_derivs[operator_idx * N_DIMS + i] = workspace[2 * N_VERTS - (N_VERTS >> i)];
   }
 }
+
+
 #endif /* D89802AE_4C88_4BCD_88D1_1B45D12E933F */
