@@ -4,10 +4,6 @@
 #include <vector>
 #include "interpolation_config.h"
 
-#ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
-#endif // OPENDARTS_LINEAR_SOLVERS
-
 
 /**
  * @brief Virtual interface class for evaluation of physical properties values

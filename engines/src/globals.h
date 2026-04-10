@@ -1,18 +1,10 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-#ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/auxiliary/timer_node.hpp"
-#else
 #include "timer_node.h"
-#endif // OPENDARTS_LINEAR_SOLVERS
 
 #include <fstream>
 #include <vector>
-
-#ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
-#endif // OPENDARTS_LINEAR_SOLVERS
 
 #include <cstdint>
 using namespace std;

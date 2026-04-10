@@ -5,11 +5,7 @@
 // Provides timer_node, basic typedefs, and platform helpers
 // without depending on engines/src/globals.h.
 
-#ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/auxiliary/timer_node.hpp"
-#else
 #include "timer_node.h"
-#endif // OPENDARTS_LINEAR_SOLVERS
 
 #include <fstream>
 #include <vector>
@@ -18,10 +14,6 @@
 #include <functional>
 #include <string>
 #include <limits>
-
-#ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
-#endif // OPENDARTS_LINEAR_SOLVERS
 
 using namespace std;
 

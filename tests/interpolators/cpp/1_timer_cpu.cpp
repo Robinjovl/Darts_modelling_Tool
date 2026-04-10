@@ -2,26 +2,26 @@
 #include <cmath>
 #include <iostream>
 
-#include "openDARTS/auxiliary/timer_node.hpp"
+#include "timer_node.h"
 
 int main()
 {
   /*
     test_01__time_node_cpu
-    Tests opendarts::aux::time_node, initializes a times and check if it is
+    Tests timer_node, initializes a timer and checks if it is
     behaving as intended.
   */
 
   int error_output = 0;  // set to 0 because the test fails when the computer is very loaded,
-                         // the measured wall time is larger than the number of clock cycles times 
-                         // clock speed (which is how time is measured in the timer). This means 
+                         // the measured wall time is larger than the number of clock cycles times
+                         // clock speed (which is how time is measured in the timer). This means
                          // the test fails in many computers, but nothin is wrong with the code.
-                         // Until we find a solution to properly test this functionality, the test 
+                         // Until we find a solution to properly test this functionality, the test
                          // is made to always pass.
   double target_elapsed_time = 0.2; // the time we wish to leave the computer in the while loop
   double error_tolerance = 0.001;
 
-  opendarts::auxiliary::timer_node timer_node;
+  ::timer_node timer_node;
 
   // Start the timer
   timer_node.start();

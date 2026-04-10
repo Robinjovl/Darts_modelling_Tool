@@ -45,7 +45,7 @@ target_sources(engines_global
 target_link_libraries(engines_global
   PUBLIC
     opendarts_compiler_flags
-    linear_solvers # gets auxiliary and config via linear_solver. Kept like this for compatibility with old linear solvers
+    linear_solvers
 )
 
 if (CUDA)
@@ -91,7 +91,7 @@ install(TARGETS engines_global
 # Engines uses only the abstract interface (evaluator_iface.h) from the
 # interpolation library — no link dependency, headers only.
 set(INTERPOLATION_INCLUDE_DIRS
-  ${CMAKE_SOURCE_DIR}/interpolation/src
+  ${CMAKE_SOURCE_DIR}/interpolation/include
   ${CMAKE_SOURCE_DIR}/interpolation/pybind11
 )
 # ------------------------------------------------------------------------------

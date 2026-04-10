@@ -78,7 +78,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>..\..\..\..\engines\src\interpolation;..\..\..\..\engines\src;..\..\..\..\thirdparty\pybind11\include;$(PYTHONPATH)\include;..\..\..\..\solvers\auxiliary\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\..\engines\src\interpolation;..\..\..\..\engines\src;..\..\..\..\thirdparty\pybind11\include;$(PYTHONPATH)\include;..\..\..\..\interpolation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions)  /bigobj </AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -119,7 +119,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>..\..\..\..\engines\src\interpolation;..\..\..\..\engines\src;..\..\..\..\thirdparty\pybind11\include;$(PYTHONPATH)\include;..\..\..\..\solvers\auxiliary\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\..\engines\src\interpolation;..\..\..\..\engines\src;..\..\..\..\thirdparty\pybind11\include;$(PYTHONPATH)\include;..\..\..\..\interpolation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -286,7 +286,6 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="..\..\..\..\engines\src\pybind11\py_evaluator_iface.cpp" />
     <ClCompile Include="..\..\..\..\engines\src\pybind11\py_main_interpolation.cpp" />
     <ClCompile Include="..\..\..\..\engines\src\pybind11\py_operator_set_interpolator_all.cpp" />
-    <ClCompile Include="..\..\..\..\solvers\auxiliary\src\timer_node.cpp" />
     <ClCompile Include="C:\Users\isaifullin\Documents\projects\open-darts_dev\engines\src\interpolation\interpolator_base.cpp" />
     <ClInclude Include="..\..\..\..\engines\src\pybind11\py_evaluator_iface.h" />
     <ClInclude Include="..\..\..\..\engines\src\pybind11\py_interpolator_exposer.hpp" />
