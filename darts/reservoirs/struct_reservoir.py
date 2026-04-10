@@ -227,7 +227,7 @@ class StructReservoir(ReservoirBase):
         segment_direction: str = "z_axis",
         skin: float = 0.0,
         ms_epm: bool = None,
-        with_peaceman_for_coupled_well_reservoir: bool = False,
+        with_peaceman_for_dfm_well: bool = False,
         verbose: bool = False,
     ):
         """
@@ -241,8 +241,8 @@ class StructReservoir(ReservoirBase):
             assert well_seg_idx is None, (
                 "If the well is of the EPM type, well_seg_idx must not be specified!"
             )
-            assert with_peaceman_for_coupled_well_reservoir is False, (
-                "Coupled well-reservoir can be used only if the well type if DFM!"
+            assert with_peaceman_for_dfm_well is False, (
+                "with_peaceman_for_dfm_well can be True only if the well type is DFM!"
             )
             res_block_local, wi, wid = self.discretizer.calc_well_index(
                 i,
@@ -259,16 +259,14 @@ class StructReservoir(ReservoirBase):
             assert ms_epm is None, (
                 "If the well is of the DFM type, ms_epm must not be specified!"
             )
-            res_block_local, wi, wid = (
-                self.discretizer.calc_well_index_for_coupled_well_reservoir(
-                    i,
-                    j,
-                    k,
-                    well_diameter=well_diameter,
-                    segment_direction=segment_direction,
-                    with_peaceman=with_peaceman_for_coupled_well_reservoir,
-                    skin=skin,
-                )
+            res_block_local, wi, wid = self.discretizer.calc_well_index_for_dfm_well(
+                i,
+                j,
+                k,
+                well_diameter=well_diameter,
+                segment_direction=segment_direction,
+                with_peaceman=with_peaceman_for_dfm_well,
+                skin=skin,
             )
 
         if well_index is None:

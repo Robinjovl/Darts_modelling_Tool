@@ -176,7 +176,7 @@ class Model(CICDModel):
         self.reservoir.discretizer.len_cell_zdir[0, 0, 0] = 50.0
         well_index = 0.0  # Zero well index since perforation is treated with a well injectivity/productivity index instead
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
-                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True,
+                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_dfm_well=True,
                                        well_index=well_index)
 
     def set_well_controls(self):

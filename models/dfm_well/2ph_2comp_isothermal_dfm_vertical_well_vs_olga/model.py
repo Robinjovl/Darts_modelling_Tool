@@ -192,7 +192,7 @@ class Model(CICDModel):
         well_index = 0.0  # Zero well index since perforation is treated with a well injectivity/productivity index instead
         well_index = 65.54393  # For the variable injectivity, which is equivalent to 1e5 kg/day/bar
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_index=well_index,
-                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True)
+                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_dfm_well=True)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
