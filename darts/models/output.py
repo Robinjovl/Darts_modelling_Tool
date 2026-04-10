@@ -1033,13 +1033,19 @@ class Output:
             # Get current time
             timesteps = np.array(self.physics.engine.t).reshape(1)
 
-            X = np.array(
-                self.physics.engine.X[
-                    : self.physics.n_vars * self.reservoir.mesh.n_res_blocks
-                ],
-                copy=True,
-            )  # reservoir solution at current time
-            var_names = self.physics.vars  # primary variable names
+            if hasattr(self.physics, "get_interpolator_state_labels"):
+                X = self.physics.get_engine_interpolator_state(
+                    n_blocks=self.reservoir.mesh.n_res_blocks
+                )
+                var_names = self.physics.get_interpolator_state_labels()
+            else:
+                X = np.array(
+                    self.physics.engine.X[
+                        : self.physics.n_vars * self.reservoir.mesh.n_res_blocks
+                    ],
+                    copy=True,
+                )
+                var_names = self.physics.vars
 
         n_vars = len(var_names)  # number of primary variables
         nb = self.reservoir.mesh.n_res_blocks  # number of reservoir blocks
