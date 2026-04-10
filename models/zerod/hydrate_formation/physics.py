@@ -26,7 +26,7 @@ class ZeroCapillaryPressure:
         return np.zeros(self.nph, dtype=float)
 
 
-class HydrateKineticsPeter(Kinetics):
+class HydrateKineticsLi(Kinetics):
     """
     CO2-hydrate kinetics used in the Li et al. publication case.
     """
@@ -223,7 +223,6 @@ class HydrateBatchPhysics(Compositional):
         flash_ev.init_flash(
             flash_type=DARTSFlash.FlashType.PTFlash,
             eos_order=["AQ", "CEOS"],
-            split_switch_tol=1e1,
             split_negative_flash_iter=10,
             t_min=min_t,
             t_max=max_t,
@@ -296,7 +295,7 @@ class HydrateBatchPhysics(Compositional):
         for i in regions:
             pc = self.property_containers[i]
             if self.guest_component == "CO2":
-                pc.kinetic_rate_ev[0] = HydrateKineticsPeter(
+                pc.kinetic_rate_ev[0] = HydrateKineticsLi(
                     components=pc.components_name,
                     phases=pc.phases_name,
                     mw=pc.Mw,

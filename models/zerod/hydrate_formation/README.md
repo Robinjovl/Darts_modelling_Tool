@@ -1,7 +1,7 @@
 # Hydrate Formation 0D Example
 
 This example adds two `ZerodModel` reductions of the hydrate publication model from
-`/oahu/data/avnovikov/darts-models/publications/26_hydrate`:
+`https://gitlab.com/open-darts/darts-models/publications/26_hydrate`:
 
 - `ch4`: methane hydrate formation based on the `Moridis_CH4form` setup
 - `co2`: CO2 hydrate formation based on the `Li_CO2inj` setup
