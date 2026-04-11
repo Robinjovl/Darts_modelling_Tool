@@ -29,6 +29,8 @@ void ms_well::init_physics(int n_vars_, int n_ops_, std::vector<std::string> pha
     phase_names = phase_names_;
     thermal = thermal_;
 
+    with_pi = !pi_perforations.empty();
+
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
 

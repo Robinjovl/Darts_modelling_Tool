@@ -37,7 +37,7 @@ class Model(CICDModel):
                             it_newton=10, it_linear=10,
                             newton_type=sim_params.newton_local_chop,
                             coupled_well_res_norm_method=2,
-                            runtime = 100 / 60 / 60 / 24,  # This runtime will be used when CI test is conducted without the main file
+                            runtime = 5 / 60 / 24,  # This runtime will be used when CI test is conducted without the main file
                             )
 
         self.timer.node["initialization"].stop()
@@ -185,14 +185,12 @@ class Model(CICDModel):
         # Well with a single perforation
         well_1_perforated_segment = well_1_geometry.num_segments
 
-        # Reservoir cell sizes for the Peaceman model
-        self.reservoir.discretizer.len_cell_xdir[0, 0, 0] = 50.0
-        self.reservoir.discretizer.len_cell_ydir[0, 0, 0] = 50.0
-        self.reservoir.discretizer.len_cell_zdir[0, 0, 0] = 50.0
-        well_index = 0.0  # Zero well index since perforation is treated with a well injectivity/productivity index instead
-        well_index = 65.54393  # For the variable injectivity, which is equivalent to 1e5 kg/day/bar
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_index=well_index,
-                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_dfm_well=True)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
+                                       well_diameter=well_1_geometry.pipe_ID,
+                                       # well_index=65.54393,  # For the variable injectivity, which is equivalent to 1e5 kg/day/bar
+                                       pi=1e5,
+                                       pi_type=ms_well.PI_Type.MASS,
+                                       )
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]

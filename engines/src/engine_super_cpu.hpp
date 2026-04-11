@@ -127,6 +127,9 @@ public:
 
   void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX) override;
 
+  // Add jacobian of phase rates at perforations if productivity/injectivity index is used
+  void add_well_pi_jacobian(ms_well* well, value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
+
   void enable_flux_output();
 };
 

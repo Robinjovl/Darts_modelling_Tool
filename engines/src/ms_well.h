@@ -42,6 +42,16 @@ public:
         DFM
     };
 
+    // PI_Type is used to control phase rates at perforations with the productivity/injectivity index
+    enum PI_Type : int
+    {
+        NONE = -1,
+        MOLAR,
+        MASS,
+        VOLUMETRIC,
+        NUMBER_OF_PI_TYPES
+    };
+
     ms_well();
 
     void init_physics(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
@@ -120,6 +130,8 @@ public:
     index_t well_head_conn_idx;   // index of the connection between the two well segments at the top of the well (for EPM wells, connection is between the ghost segment and the lower segment)
 
     std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
+    bool with_pi = false;  // with a pi (productivity/injectivity index) for at least a perforation
+    std::vector<std::tuple<index_t, index_t, value_t, PI_Type>> pi_perforations;
     bool with_lateral_heat_transfer = false;   // only used for a DFM well. If true, lateral heat transfer between the DFM well segments and reservoir blocks is considered.
     std::vector<std::tuple<index_t, index_t, value_t>> connections_for_lateral_heat_transfer; // tuple of (dfm_segment_index, reservoir_block_index, geometric_part_of_the_heat_transfer_equation)
 

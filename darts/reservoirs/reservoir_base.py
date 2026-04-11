@@ -100,11 +100,11 @@ class ReservoirBase:
         :param well_name: Well name
         :type well_name: str
         :param ms_well_type: Type of the multi-segment well model:
-        ms_well.MS_Type.EPM: For the Equivalent Porous Medium model (default well type)
-        ms_well.MS_Type.DFM: For the Drift-Flux model
+                             ms_well.MS_Type.EPM: For the Equivalent Porous Medium model (default well type)
+                             ms_well.MS_Type.DFM: For the Drift-Flux model
         :type ms_well_type: ms_well.MS_Type
         :param well_diameter: Well inside diameter. If ms_well_type is EPM, this input argument is needed. If
-        ms_well_type is DFM, this will be extracted from well_geometry.
+                              ms_well_type is DFM, this will be extracted from well_geometry.
         :type well_diameter: float
         :param well_geometry: Geometry of the well. If ms_well_type is DFM, this input argument must be specified.
         :type well_geometry: PipeGeometry
