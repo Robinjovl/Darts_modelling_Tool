@@ -1149,151 +1149,81 @@ void engine_super_cpu<NC, NP, THERMAL>::add_well_pi_jacobian(ms_well* well, valu
                     if (phase_p_diff < 0)
                     {
                         // mass and energy outflow
-                        //// calculate phase volumetric rate and partial derivatives for phase volumetric rate
-                        //value_t phase_volumetric_rate;
-                        //value_t phase_vol_rate_der_i[N_VARS];
-                        //value_t phase_vol_rate_der_j[N_VARS];
-                        //if (!DFM_conn)
-                        //{
-                        //    // calculate phase volumetric rate at reservoir connection using Darcy's law
-                        //    phase_volumetric_rate = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * phase_p_diff;
 
-                        //    // calculate partial derivatives of phase volumetric rate at reservoir connection
-                        //    for (uint8_t v = 0; v < N_VARS; v++)
-                        //    {
-                        //        phase_vol_rate_der_i[v] = tran[conn_idx] * (op_ders_arr[(i * N_OPS + LAMBDA_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[i * N_OPS + LAMBDA_OP + p] * grav_pc_der_i[v]);
-                        //        phase_vol_rate_der_j[v] = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * grav_pc_der_j[v];
-                        //    }
-                        //}
-                        //else if (DFM_conn)
-                        //{
-                        //    // calculate phase volumetric rate at DFM well connection
-                        //    value_t phase_velocity = phases_vels[p * n_conns + conn_idx];
+                        if (op_vals_arr[i * N_OPS + SAT_OP + p] < 1e-10)
+                            continue;
 
-                        //    phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
+                        // calculate phase volumetric rate
+                        value_t phase_volumetric_rate;
+                        // Use relative permeability instead of saturation later (in the new set of operators, use kr) by saying that kr is not part of PI
+                        if (pi_type == ms_well::PI_Type::MOLAR)  // if PI in kmol/day/bar
+                            phase_volumetric_rate = pi * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff / op_vals_arr[i * N_OPS + DENS_OP + p];
+                        else if (pi_type == ms_well::PI_Type::MASS)  // if PI in kg/day/bar
+                            phase_volumetric_rate = pi * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff / op_vals_arr[i * N_OPS + GRAV_OP + p];
+                        else if (pi_type == ms_well::PI_Type::VOLUMETRIC)  // if PI in m3/day/bar
+                            phase_volumetric_rate = pi * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff;
 
-                        //    // get partial derivatives of phase volumetric rate at DFM well connection
-                        //    for (uint8_t v = 0; v < N_VARS; v++)
-                        //    {
-                        //        value_t phase_velocity_der_i;
-                        //        value_t phase_velocity_der_j;
+                        // get partial derivatives of phase volumetric rate
+                        value_t phase_vol_rate_der_i[N_VARS];
+                        value_t phase_vol_rate_der_j[N_VARS];
+                        if (pi_type == ms_well::PI_Type::MOLAR)
+                        {
+                            for (uint8_t v = 0; v < N_VARS; v++)
+                            {
+                                phase_vol_rate_der_i[v] = (pi * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_i[v]) * op_vals_arr[i * N_OPS + DENS_OP + p]
+                                    - op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * (pi * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff)) / (op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + DENS_OP + p]);
+                                phase_vol_rate_der_j[v] = pi * op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_j[v] / op_vals_arr[i * N_OPS + DENS_OP + p];
+                            }
+                        }
+                        else if (pi_type == ms_well::PI_Type::MASS)
+                        {
+                            for (uint8_t v = 0; v < N_VARS; v++)
+                            {
+                                phase_vol_rate_der_i[v] = (pi * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_i[v]) * op_vals_arr[i * N_OPS + GRAV_OP + p]
+                                    - op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v] * (pi * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff)) / (op_vals_arr[i * N_OPS + GRAV_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p]);
+                                phase_vol_rate_der_j[v] = pi * op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_j[v] / op_vals_arr[i * N_OPS + GRAV_OP + p];
+                            }
+                        }
+                        else if (pi_type == ms_well::PI_Type::VOLUMETRIC)
+                        {
+                            for (uint8_t v = 0; v < N_VARS; v++)
+                            {
+                                phase_vol_rate_der_i[v] = pi * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_i[v]);
+                                phase_vol_rate_der_j[v] = pi * op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_j[v];
+                            }
+                        }
 
-                        //        index_t a = (i < j) ? 0 : N_VARS;
-                        //        index_t b = (i < j) ? N_VARS : 0;
-                        //        phase_velocity_der_i = phases_vels_ders[p * n_conns * vel_der_size + conn_idx * vel_der_size + a + v];
-                        //        phase_velocity_der_j = phases_vels_ders[p * n_conns * vel_der_size + conn_idx * vel_der_size + b + v];
-
-                        //        phase_vol_rate_der_i[v] = wells[0]->well_transmissibility * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_i);
-                        //        phase_vol_rate_der_j[v] = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_j;
-                        //    }
-                        //}
-                        // mass and energy outflow with effect of gravity and capillarity
+                        // Add rhs and jac
                         for (uint8_t c = 0; c < NE; c++)
                         {
-                            //value_t c_flux_coef = trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
-
-                            //RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef;
-
-                            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                            ///////////////////////////////////////////////////// Begin outflow /////////////////////////////////////////////////////
-                            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                            value_t phase_molar_rate;
-
-                            if (pi_type == ms_well::PI_Type::MOLAR)  //if PI in kmol/day/bar
-                            {
-                                // Use relative permeability instead of saturation later (in the new set of operators, use kr) by saying that kr is not part of PI
-                                phase_molar_rate = pi * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff;
-                            }
-                            else if (pi_type == ms_well::PI_Type::MASS)  //if PI in kg/day/bar
-                            {
-                                //MW_avg = sum(x * MW)
-                                //phase_molar_rate = pi / MW_avg * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff;
-
-                                if (p == 0)
-                                    phase_molar_rate = pi / 44.009 * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff;
-                                else if (p == 1)
-                                    phase_molar_rate = pi / 18.01528 * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff;
-                            }
-                            else if (pi_type == ms_well::PI_Type::VOLUMETRIC)  // if PI in m3/day/bar
-                            {
-                                // update derivatives
-                                // phase_molar_rate = pi * op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_p_diff;
-                            }
-
-                            if (op_vals_arr[i * N_OPS + SAT_OP + p] < 1e-10)
-                                continue;
-
-                            // In the new set of operators, use x
-                            RHS[i * N_VARS + c] -= phase_molar_rate * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
+                            RHS[i * N_VARS + c] -= phase_volumetric_rate * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                             for (uint8_t v = 0; v < N_VARS; v++)
                             {
-                                Jac[diag_idx + c * N_VARS + v] -= phase_molar_rate * (op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * op_vals_arr[i * N_OPS + DENS_OP + p]
-                                    - op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c]) / op_vals_arr[i * N_OPS + DENS_OP + p] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
-
-                                value_t phase_molar_rate_der_i;
-                                value_t phase_molar_rate_der_j;
-                                if (pi_type == ms_well::PI_Type::MOLAR)
-                                {
-                                    phase_molar_rate_der_i = pi * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff
-                                        + op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_i[v]);
-                                    phase_molar_rate_der_j = pi * op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_j[v];
-                                }
-                                else if (pi_type == ms_well::PI_Type::MASS)
-                                {
-                                    if (p == 0)
-                                    {
-                                        phase_molar_rate_der_i = pi / 44.009 * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff
-                                            + op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_i[v]);
-                                        phase_molar_rate_der_j = pi / 44.009 * op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_j[v];
-                                    }
-                                    else if (p == 1)
-                                    {
-                                        phase_molar_rate_der_i = pi / 18.01528 * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff
-                                            + op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_i[v]);
-                                        phase_molar_rate_der_j = pi / 18.01528 * op_vals_arr[i * N_OPS + SAT_OP + p] * grav_pc_der_j[v];
-                                    }
-                                }
-                                else if (pi_type == ms_well::PI_Type::VOLUMETRIC)
-                                {
-                                    // TODO
-                                }
-
-                                Jac[diag_idx + c * N_VARS + v] -= phase_molar_rate_der_i * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
-                                Jac[jac_idx + c * N_VARS + v] -= phase_molar_rate_der_j * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
+                                Jac[diag_idx + c * N_VARS + v] -= (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v]) * dt;
+                                Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                                 if (v == 0)
                                 {
                                     if (pi_type == ms_well::PI_Type::MOLAR)
                                     {
-                                        Jac[jac_idx + c * N_VARS + v] -= pi * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
-                                        Jac[diag_idx + c * N_VARS + v] += pi * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
+                                        Jac[jac_idx + c * N_VARS + v] -= pi * op_vals_arr[i * N_OPS + SAT_OP + p] / op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
+                                        Jac[diag_idx + c * N_VARS + v] += pi * op_vals_arr[i * N_OPS + SAT_OP + p] / op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
                                     }
                                     else if (pi_type == ms_well::PI_Type::MASS)
                                     {
-                                        if (p == 0)
-                                        {
-                                            Jac[jac_idx + c * N_VARS + v] -= pi / 44.009 * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
-                                            Jac[diag_idx + c * N_VARS + v] += pi / 44.009 * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
-                                        }
-                                        else if (p == 1)
-                                        {
-                                            Jac[jac_idx + c * N_VARS + v] -= pi / 18.01528 * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
-                                            Jac[diag_idx + c * N_VARS + v] += pi / 18.01528 * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[i * N_OPS + DENS_OP + p] * dt;
-                                        }
+                                        Jac[jac_idx + c * N_VARS + v] -= pi * op_vals_arr[i * N_OPS + SAT_OP + p] / op_vals_arr[i * N_OPS + GRAV_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
+                                        Jac[diag_idx + c * N_VARS + v] += pi * op_vals_arr[i * N_OPS + SAT_OP + p] / op_vals_arr[i * N_OPS + GRAV_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
                                     }
                                     else if (pi_type == ms_well::PI_Type::VOLUMETRIC)
                                     {
-                                        // TODO
+                                        Jac[jac_idx + c * N_VARS + v] -= pi * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
+                                        Jac[diag_idx + c * N_VARS + v] += pi * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
                                     }
                                 }
 
                                 // Let's ignore SPE for now
                             }
-                            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                            ///////////////////////////////////////////////////// End outflow ///////////////////////////////////////////////////////
-                            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
                             //// Add potential energy flux
                             //if (THERMAL && c == (NE - 1))
                             //{
@@ -1337,152 +1267,81 @@ void engine_super_cpu<NC, NP, THERMAL>::add_well_pi_jacobian(ms_well* well, valu
                     else
                     {
                         //// mass and energy inflow
-                        //// calculate phase volumetric rate and partial derivatives for phase volumetric rate
-                        //value_t phase_volumetric_rate;
-                        //value_t phase_vol_rate_der_i[N_VARS];
-                        //value_t phase_vol_rate_der_j[N_VARS];
-                        //if (!DFM_conn)
-                        //{
-                        //    // calculate phase volumetric rate at reservoir connection using Darcy's law
-                        //    phase_volumetric_rate = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * phase_p_diff;
 
-                        //    // calculate partial derivatives of phase volumetric rate at reservoir connection
-                        //    for (uint8_t v = 0; v < N_VARS; v++)
-                        //    {
-                        //        phase_vol_rate_der_i[v] = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * grav_pc_der_i[v];
-                        //        phase_vol_rate_der_j[v] = tran[conn_idx] * (op_ders_arr[(j * N_OPS + LAMBDA_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[j * N_OPS + LAMBDA_OP + p] * grav_pc_der_j[v]);
-                        //    }
-                        //}
-                        //else if (DFM_conn)
-                        //{
-                        //    // calculate phase volumetric rate at DFM well connection
-                        //    value_t phase_velocity = phases_vels[p * n_conns + conn_idx];
+                        if (op_vals_arr[j * N_OPS + SAT_OP + p] < 1e-10)
+                            continue;
 
-                        //    phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity;
+                        // calculate phase volumetric rate
+                        value_t phase_volumetric_rate;
+                        // Use relative permeability instead of saturation later (in the new set of operators, use kr) by saying that kr is not part of PI
+                        if (pi_type == ms_well::PI_Type::MOLAR)  // if PI in kmol/day/bar
+                            phase_volumetric_rate = pi * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff / op_vals_arr[j * N_OPS + DENS_OP + p];
+                        else if (pi_type == ms_well::PI_Type::MASS)  // if PI in kg/day/bar
+                            phase_volumetric_rate = pi * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff / op_vals_arr[j * N_OPS + GRAV_OP + p];
+                        else if (pi_type == ms_well::PI_Type::VOLUMETRIC)  // if PI in m3/day/bar
+                            phase_volumetric_rate = pi * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff;
 
-                        //    // get partial derivatives of phase volumetric rate at DFM well connection
-                        //    for (uint8_t v = 0; v < N_VARS; v++)
-                        //    {
-                        //        value_t phase_velocity_der_i;
-                        //        value_t phase_velocity_der_j;
+                        // get partial derivatives of phase volumetric rate
+                        value_t phase_vol_rate_der_i[N_VARS];
+                        value_t phase_vol_rate_der_j[N_VARS];
+                        if (pi_type == ms_well::PI_Type::MOLAR)
+                        {
+                            for (uint8_t v = 0; v < N_VARS; v++)
+                            {
+                                phase_vol_rate_der_i[v] = pi * op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_i[v] / op_vals_arr[j * N_OPS + DENS_OP + p];
+                                phase_vol_rate_der_j[v] = (pi * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_j[v]) * op_vals_arr[j * N_OPS + DENS_OP + p]
+                                    - op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * (pi * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff)) / (op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + DENS_OP + p]);
+                            }
+                        }
+                        else if (pi_type == ms_well::PI_Type::MASS)
+                        {
+                            for (uint8_t v = 0; v < N_VARS; v++)
+                            {
+                                phase_vol_rate_der_i[v] = pi * op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_i[v] / op_vals_arr[j * N_OPS + GRAV_OP + p];
+                                phase_vol_rate_der_j[v] = (pi * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_j[v]) * op_vals_arr[j * N_OPS + GRAV_OP + p]
+                                    - op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v] * (pi * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff)) / (op_vals_arr[j * N_OPS + GRAV_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p]);
+                            }
+                        }
+                        else if (pi_type == ms_well::PI_Type::VOLUMETRIC)
+                        {
+                            for (uint8_t v = 0; v < N_VARS; v++)
+                            {
+                                phase_vol_rate_der_i[v] = pi * op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_i[v];
+                                phase_vol_rate_der_j[v] = pi * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_j[v]);
+                            }
+                        }
 
-                        //        index_t a = (i < j) ? 0 : N_VARS;
-                        //        index_t b = (i < j) ? N_VARS : 0;
-                        //        phase_velocity_der_i = phases_vels_ders[p * n_conns * vel_der_size + conn_idx * vel_der_size + a + v];
-                        //        phase_velocity_der_j = phases_vels_ders[p * n_conns * vel_der_size + conn_idx * vel_der_size + b + v];
-
-                        //        phase_vol_rate_der_i[v] = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity_der_i;
-                        //        phase_vol_rate_der_j[v] = wells[0]->well_transmissibility * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity_der_j);
-                        //    }
-                        //}
-                        // mass and energy inflow with effect of gravity and capillarity
+                        // Add rhs and jac
                         for (uint8_t c = 0; c < NE; c++)
                         {
-                            //value_t c_flux_coef = trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
-
-                            //RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef;
-
-                            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                            ///////////////////////////////////////////////////// Begin inflow //////////////////////////////////////////////////////
-                            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                            // Implementation of mass and molar are verified against the results of the hard-coded method
-                            value_t phase_molar_rate;
-
-                            if (pi_type == ms_well::PI_Type::MOLAR)  //if PI in kmol/day/bar
-                            {
-                                // Use relative permeability instead of saturation later (in the new set of operators, use kr) by saying that kr is not part of PI
-                                phase_molar_rate = pi * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff;
-                            }
-                            else if (pi_type == ms_well::PI_Type::MASS)  //if PI in kg/day/bar
-                            {
-                                //MW_avg = sum(x * MW)
-                                //phase_molar_rate = pi / MW_avg * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff;
-
-                                if (p == 0)
-                                    phase_molar_rate = pi / 44.009 * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff;
-                                else if (p == 1)
-                                    phase_molar_rate = pi / 18.01528 * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff;
-                            }
-                            else if (pi_type == ms_well::PI_Type::VOLUMETRIC)  //if PI in m3/day/bar
-                            {
-                                // update derivatives
-                                // phase_molar_rate = pi * op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_p_diff;
-                            }
-
-                            if (op_vals_arr[j * N_OPS + SAT_OP + p] < 1e-10)
-                                continue;
-
-                            // In the new set of operators, use x
-                            RHS[i * N_VARS + c] -= phase_molar_rate * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
+                            RHS[i * N_VARS + c] -= phase_volumetric_rate * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                             for (uint8_t v = 0; v < N_VARS; v++)
                             {
-                                Jac[jac_idx + c * N_VARS + v] -= phase_molar_rate * (op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * op_vals_arr[j * N_OPS + DENS_OP + p]
-                                    - op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c]) / op_vals_arr[j * N_OPS + DENS_OP + p] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
-
-                                value_t phase_molar_rate_der_j;
-                                value_t phase_molar_rate_der_i;
-                                if (pi_type == ms_well::PI_Type::MOLAR)
-                                {
-                                    phase_molar_rate_der_j = pi * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff
-                                        + op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_j[v]);
-                                    phase_molar_rate_der_i = pi * op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_i[v];
-                                }
-                                else if (pi_type == ms_well::PI_Type::MASS)
-                                {
-                                    if (p == 0)
-                                    {
-                                        phase_molar_rate_der_j = pi / 44.009 * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff
-                                            + op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_j[v]);
-                                        phase_molar_rate_der_i = pi / 44.009 * op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_i[v];
-                                    }
-                                    if (p == 1)
-                                    {
-                                        phase_molar_rate_der_j = pi / 18.01528 * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_p_diff
-                                            + op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_j[v]);
-                                        phase_molar_rate_der_i = pi / 18.01528 * op_vals_arr[j * N_OPS + SAT_OP + p] * grav_pc_der_i[v];
-                                    }
-                                }
-                                else if (pi_type == ms_well::PI_Type::VOLUMETRIC)
-                                {
-                                    // TODO
-                                }
-
-                                Jac[jac_idx + c * N_VARS + v] -= phase_molar_rate_der_j * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
-                                Jac[diag_idx + c * N_VARS + v] -= phase_molar_rate_der_i * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
+                                Jac[diag_idx + c * N_VARS + v] -= (phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v]) * dt;
+                                Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                                 if (v == 0)
                                 {
                                     if (pi_type == ms_well::PI_Type::MOLAR)
                                     {
-                                        Jac[jac_idx + c * N_VARS + v] -= pi * op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
-                                        Jac[diag_idx + c * N_VARS + v] += pi * op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
+                                        Jac[jac_idx + c * N_VARS + v] -= pi * op_vals_arr[j * N_OPS + SAT_OP + p] / op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+                                        Jac[diag_idx + c * N_VARS + v] += pi * op_vals_arr[j * N_OPS + SAT_OP + p] / op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
                                     }
                                     else if (pi_type == ms_well::PI_Type::MASS)
                                     {
-                                        if (p == 0)
-                                        {
-                                            Jac[jac_idx + c * N_VARS + v] -= pi / 44.009 * op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
-                                            Jac[diag_idx + c * N_VARS + v] += pi / 44.009 * op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
-                                        }
-                                        if (p == 1)
-                                        {
-                                            Jac[jac_idx + c * N_VARS + v] -= pi / 18.015289 * op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
-                                            Jac[diag_idx + c * N_VARS + v] += pi / 18.01528 * op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] / op_vals_arr[j * N_OPS + DENS_OP + p] * dt;
-                                        }
+                                        Jac[jac_idx + c * N_VARS + v] -= pi * op_vals_arr[j * N_OPS + SAT_OP + p] / op_vals_arr[j * N_OPS + GRAV_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+                                        Jac[diag_idx + c * N_VARS + v] += pi * op_vals_arr[j * N_OPS + SAT_OP + p] / op_vals_arr[j * N_OPS + GRAV_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
                                     }
                                     else if (pi_type == ms_well::PI_Type::VOLUMETRIC)
                                     {
-                                        // TODO
+                                        Jac[jac_idx + c * N_VARS + v] -= pi * op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+                                        Jac[diag_idx + c * N_VARS + v] += pi * op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
                                     }
                                 }
 
                                 // Let's ignore SPE for now
                             }
-                            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                            ///////////////////////////////////////////////////// End inflow ////////////////////////////////////////////////////////
-                            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
                             //// Add potential energy flux
                             //if (THERMAL && c == (NE - 1))
                             //{
