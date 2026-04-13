@@ -18,7 +18,6 @@ class PropertyContainer(PropertyBase):
         rock_comp: float = 1e-6,
         rate_ann_mat=None,
         temperature: float = None,
-        history_labels: list | None = None,
     ):
         """
         This is the PropertyContainer class for the Compositional engine.
@@ -56,12 +55,6 @@ class PropertyContainer(PropertyBase):
         else:
             self.thermal = True
             self.temperature = None
-        self.history_labels = list(history_labels or [])
-        self.primary_state_size = self.nc + int(self.thermal)
-        self.history_indices = {
-            label: self.primary_state_size + idx
-            for idx, label in enumerate(self.history_labels)
-        }
 
         # In case of PH-formulation, PT flashes are required for calculating initial distribution (Initialize class)
         self.evaluate_PT_bool = False  # set to True when PH-formulation but PT-flash needs to be calculated (Initialize)
@@ -135,28 +128,11 @@ class PropertyContainer(PropertyBase):
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:
-            state_spec_2 = vec_state_as_np[self.nc]
+            state_spec_2 = vec_state_as_np[-1]
         else:
             state_spec_2 = self.temperature
 
         return pressure, state_spec_2, zc
-
-    def get_history_values(self, state) -> dict:
-        if not self.history_labels:
-            return {}
-
-        vec_state_as_np = np.asarray(state)
-        history_values = {}
-        for label, idx in self.history_indices.items():
-            if idx < len(vec_state_as_np):
-                history_values[label] = vec_state_as_np[idx]
-        return history_values
-
-    @staticmethod
-    def evaluate_property_evaluator(evaluator, *args, history_values=None):
-        if history_values and getattr(evaluator, "supports_history", False):
-            return evaluator.evaluate(*args, **history_values)
-        return evaluator.evaluate(*args)
 
     def comp_out_of_bounds(self, vec_composition):
         # Check if composition sum is above 1 or element comp below 0, i.e. if point is unphysical:
@@ -323,27 +299,11 @@ class PropertyContainer(PropertyBase):
             )
 
         self.compute_saturation(self.ph)
-        history_values = self.get_history_values(state)
-        if isinstance(self.capillary_pressure_ev, dict):
-            for j in self.ph:
-                self.pc[j] = self.evaluate_property_evaluator(
-                    self.capillary_pressure_ev[self.phases_name[j]],
-                    self.sat[j],
-                    history_values=history_values,
-                )
-        else:
-            self.pc = self.evaluate_property_evaluator(
-                self.capillary_pressure_ev,
-                self.sat,
-                history_values=history_values,
-            )
+
+        self.pc[:] = self.capillary_pressure_ev.evaluate(self.sat)
 
         for j in self.ph:
-            self.kr[j] = self.evaluate_property_evaluator(
-                self.rel_perm_ev[self.phases_name[j]],
-                self.sat[j],
-                history_values=history_values,
-            )
+            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
 
         for j in range(self.ns):
             idx = self.np_fl + j

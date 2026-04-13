@@ -26,9 +26,10 @@ class KilloughLandModel:
         if sg >= sg_max:
             return sg
 
-        sgr = self.residual_gas_saturation(sg_max)
+        # sgr = self.residual_gas_saturation(sg_max)
+        sgr = sg_max / 2
         if sg < sgr:
-            return float(np.clip(sg / (1.0 - self.land_constant * sg), 0.0, 1.0))
+            return float(np.clip(sgr*2,0.0, 1.0))
         return sg_max
 
 
@@ -227,12 +228,13 @@ class KilloughRelPermTable(_LookupTableMixin, _KilloughRelPermBase):
 
     def _make_scanning_interp(self, sg_max: float):
         sg_max = min(float(sg_max), self.sg_max_limit)
-        sgr = self.history_model.residual_gas_saturation(sg_max)
+        # sgr = self.history_model.residual_gas_saturation(sg_max)
+        sgr = sg_max/2
         if abs(sg_max - sgr) < 1e-12:
             self._scan_cache[sg_max] = self.kr_interpolator
             return self.kr_interpolator
 
-        s1 = np.linspace(sgr, sg_max, 100)
+        s1 = np.linspace(sgr, sg_max, 1000)
         s_star = self.sgci_max + (s1 - sgr) * (self.sg_max_limit - self.sgci_max) / (
             sg_max - sgr
         )
@@ -285,10 +287,15 @@ class _KilloughCapillaryPressureBase:
 
         sg = float(np.clip(1.0 - sat, 0.0, self.sg_max_limit))
         pc_dr = self.evaluate_drainage(sg)
-        if Sg_max is None or Sg_max >= self.sg_max_limit or sg >= Sg_max:
+        if Sg_max is None:
             return pc_dr
 
-        sgr = self.history_model.residual_gas_saturation(Sg_max)
+        Sg_max = float(np.clip(Sg_max, 0.0, self.sg_max_limit))
+        if sg >= Sg_max:
+            return pc_dr
+
+        # sgr = self.history_model.residual_gas_saturation(Sg_max)
+        sgr = Sg_max / 2
         numerator = 1.0 / (1.0 - sg - (1.0 - Sg_max) + self.epsilon) - 1.0 / self.epsilon
         denominator = (
             1.0 / ((1.0 - sgr) - (1.0 - Sg_max) + self.epsilon) - 1.0 / self.epsilon

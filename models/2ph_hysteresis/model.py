@@ -9,11 +9,14 @@ from darts.engines import value_vector
 from darts.models.darts_model import DartsModel
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import Garcia2001
+from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.hysteresis import (
+    KilloughLandModel as K,
     KilloughCapillaryPressureTable,
     KilloughRelPermCorey,
+    KilloughRelPermTable
 )
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.super.physics import Compositional
@@ -67,17 +70,105 @@ def default_corey_regions() -> dict[int, Corey]:
     return {0: Corey(**base)}
 
 
+class Hys_PropertyContainer(PropertyContainer):
+    def get_state(self, state):
+        vec = np.asarray(state)
+        pressure = vec[0]
+        zc = np.append(vec[1:self.nc], 1 - np.sum(vec[1:self.nc]))
+        if zc[-1] < 0.99 * self.eps_z:
+            zc = self.comp_out_of_bounds(zc)
+        if self.thermal:
+            # When hysteresis is active, state = [P, z..., T, sg_max]
+            # sg_max is appended at the end, so T is at state[-2]
+            has_hysteresis = len(vec) > self.nc + 1  # nc+1 would be [P, z..., T]
+            state_spec_2 = vec[-2] if has_hysteresis else vec[-1]
+        else:
+            state_spec_2 = self.temperature
+        return pressure, state_spec_2, zc
+    def evaluate(self, state: value_vector):
+        pressure, state_spec_2, zc = self.get_state(state)
+        self.clean_arrays()
+
+        self.ph = self.run_flash(
+            pressure, state_spec_2, zc, evaluate_PT=self.evaluate_PT_bool
+        )
+        self.pressure = pressure
+        assert self.temperature is not None, (
+            "PropertyContainer does not specify self.temperature, should be set to "
+            "constant temperature in case of isothermal physics, "
+            "self.flash.temperature in case of thermal"
+        )
+
+        for j in self.ph:
+            M = np.sum(self.Mw[: self.nc_fl] * self.x[j][: self.nc_fl])
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
+                self.pressure, self.temperature, self.x[j, :]
+            )
+            self.dens_m[j] = self.dens[j] / M
+            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
+                self.pressure, self.temperature, self.x[j, :], self.dens[j]
+            )
+
+        self.compute_saturation(self.ph)
+        sg_max = float(np.asarray(state)[-1])
+
+        if isinstance(self.capillary_pressure_ev, dict):
+            for j in self.ph:
+                self.pc[j] = self.capillary_pressure_ev[self.phases_name[j]].evaluate(
+                    self.sat[j], sg_max
+                )
+        else:
+            self.pc = self.capillary_pressure_ev.evaluate(self.sat, sg_max)
+
+        for j in self.ph:
+            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(
+                self.sat[j], sg_max
+            )
+
+        for j in range(self.ns):
+            idx = self.np_fl + j
+            self.sat[idx] = zc[self.nc_fl + j]
+            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
+                self.pressure, self.temperature
+            )
+            self.dens_m[idx] = self.dens[idx] / self.Mw[self.nc_fl + j]
+
+        self.mass_source = self.evaluate_mass_source(
+            self.pressure, self.temperature, zc
+        )
+
+        return
+
+
+class IsothermalCapillaryPressure:
+    def __init__(self, aqueous_pc, gas_pc):
+        self.aqueous_pc = aqueous_pc
+        self.gas_pc = gas_pc
+
+    def evaluate(self, sat):
+        return np.array(
+            [
+                self.aqueous_pc.evaluate(float(sat[0])),
+                self.gas_pc.evaluate(float(sat[1])),
+            ],
+            dtype=float,
+        )
+
+
 class Model(DartsModel):
     def __init__(self, hys: bool = True):
         super().__init__()
         self.hys = hys
+        self.thermal = False
         self.prod = True
         self.rate_rhs = True
         self.zero = 1e-12
         self.components = ["H2O", "CO2"]
         self.temperature = 338.15
+        self.injection_temperature = self.temperature
+        self.rock_heat_capacity = 2200.0
+        self.rock_conductivity = 181.44
         self.producer_bhp = 250.0
-        self.injection_rate = 6.734006734006734e-05 * 3600.0 * 24.0
         self.well_centers = {"I1": [0.0, 0.0, 0.5]}
         self.lookup_file = str(Path(__file__).with_name("LookupTable.txt"))
         self.corey = default_corey_regions()
@@ -88,6 +179,8 @@ class Model(DartsModel):
         nx: int = 100,
         n_points: int = 1000,
         temperature: float = 338.15,
+        thermal: bool = False,
+        injection_temperature: float | None = None,
         zero: float = 1e-12,
         producer_bhp: float = 250.0,
         injection_rate: float = 6.734006734006734e-05 * 3600.0 * 24.0,
@@ -98,9 +191,13 @@ class Model(DartsModel):
         logscale: bool = False,
     ) -> None:
         self.zero = zero
+        self.thermal = thermal
         self.temperature = temperature
+        self.injection_temperature = (
+            temperature if injection_temperature is None else injection_temperature
+        )
+        self.temperature_points = n_points
         self.producer_bhp = producer_bhp
-        self.injection_rate = injection_rate
         self.components = list(components or ["H2O", "CO2"])
         self.corey = corey_regions or default_corey_regions()
         self.initial_z_h2o = (
@@ -118,12 +215,14 @@ class Model(DartsModel):
             n_points=n_points,
             components=self.components,
             temperature=temperature,
+            thermal = thermal,
+            temperature_points=self.temperature_points,
         )
         self.inj_stream = self.build_injection_stream(
             injection_stream=injection_stream,
             zero=zero,
         )
-        self.inj_rate = [injection_rate, 0.0]
+        self.inj_rate = [0.0,injection_rate ]
         self.p_prod = producer_bhp
 
     def build_injection_stream(
@@ -135,9 +234,12 @@ class Model(DartsModel):
             injection_stream = {"H2O": zero, "CO2": 1.0 - zero}
 
         z_h2o = float(injection_stream["H2O"])
+        stream = [z_h2o]
+        if self.thermal:
+            stream.append(self.injection_temperature)
         return {
-            0: [z_h2o],
-            1: [1.0 - z_h2o],
+            0: list(stream),
+            1: list(stream),
         }
 
     def set_reservoir(
@@ -178,8 +280,8 @@ class Model(DartsModel):
             permx=40,
             permy=40,
             permz=40,
-            hcap=0,
-            rcond=0,
+            hcap=self.rock_heat_capacity if self.thermal else 0.0,
+            rcond=self.rock_conductivity if self.thermal else 0.0,
             poro=0.2,
             op_num=op_num,
             depth=depth,
@@ -208,6 +310,8 @@ class Model(DartsModel):
         n_points: int,
         components: list[str],
         temperature: float,
+        thermal: bool = False,
+        temperature_points: int = 64,
         zero: float | None = None,
         lookup_file: str | None = None,
     ) -> None:
@@ -216,21 +320,6 @@ class Model(DartsModel):
         self.lookup_file = lookup_file
         phases = ["Aq", "V"]
         comp_data = CompData(components, setprops=True)
-
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(
-            comp_data,
-            {
-                AQEoS.water: AQEoS.Jager2003,
-                AQEoS.solute: AQEoS.Ziabakhsh2012,
-            },
-        )
-
-        flash_params = FlashParams(comp_data)
-        flash_params.add_eos("PR", pr)
-        flash_params.add_eos("AQ", aq)
-        flash_params.eos_order = ["AQ", "PR"]
-
         history_kwargs = {}
         if self.hys:
             history_kwargs = {
@@ -242,33 +331,48 @@ class Model(DartsModel):
                 "hysteresis_enabled": True,
             }
 
+        axes_min = [1.0, zero / 10.0]
+        axes_max = [500.0, 1.0 - zero / 10.0]
+        n_axes_points = [n_points, n_points]
+        state_spec = (
+            Compositional.StateSpecification.PT
+            if thermal
+            else Compositional.StateSpecification.P
+        )
+        if thermal:
+            temp_min = min(273.15, temperature, self.injection_temperature)
+            temp_max = max(450.0, temperature, self.injection_temperature)
+            axes_min.append(temp_min)
+            axes_max.append(temp_max)
+            n_axes_points.append(max(3, int(temperature_points)))
+
         self.physics = Compositional(
             components,
             phases,
             self.timer,
             n_points,
-            min_p=1,
-            max_p=500,
+            min_p=200,
+            max_p=300,
             min_z=zero / 10.0,
             max_z=1.0 - zero / 10.0,
             epsilon_z=zero / 10.0,
-            state_spec=Compositional.StateSpecification.P,
+            state_spec=state_spec,
             cache=False,
-            axes_min=[1.0, zero / 10.0],
-            axes_max=[500.0, 1.0 - zero / 10.0],
-            n_axes_points=[n_points, n_points],
+            axes_min=axes_min,
+            axes_max=axes_max,
+            n_axes_points=n_axes_points,
             **history_kwargs,
         )
 
         for region, params in corey_regions.items():
-            property_container = PropertyContainer(
+            property_container_cls = Hys_PropertyContainer if self.hys else PropertyContainer
+            property_container = property_container_cls(
                 phases_name=phases,
                 components_name=components,
                 Mw=comp_data.Mw,
                 temperature=temperature,
                 rock_comp=0,
                 eps_z=zero / 10.0,
-                history_labels=self.physics.history_labels,
             )
             property_container.flash_ev = ConstantK(
                 len(components),
@@ -276,37 +380,49 @@ class Model(DartsModel):
                 zero,
             )
             property_container.density_ev = {
-                "V": EoSDensity(pr, comp_data.Mw),
-                "Aq": Garcia2001(components),
+                'V': ConstFunc(800.),
+                'Aq': ConstFunc(1000.)
             }
             property_container.viscosity_ev = {
-                "V": Fenghour1998(),
-                "Aq": Islam2012(components),
+                'V': ConstFunc(6.4e-2),
+                'Aq': ConstFunc(0.47)
             }
             property_container.rel_perm_ev = {
-                "V": KilloughRelPermCorey(params, "gas"),
-                "Aq": KilloughRelPermCorey(params, "water"),
+                "V": KilloughRelPermTable(params, "gas"),
+                "Aq": KilloughRelPermTable(params, "water"),
             }
-            property_container.capillary_pressure_ev = {
-                "V": KilloughCapillaryPressureTable(
-                    params,
-                    "gas",
-                    lookup_file=lookup_file,
-                ),
-                "Aq": KilloughCapillaryPressureTable(
-                    params,
-                    "Aq",
-                    lookup_file=lookup_file,
-                ),
-            }
+            gas_pc = KilloughCapillaryPressureTable(
+                params,
+                "gas",
+                lookup_file=lookup_file,
+            )
+            aqueous_pc = KilloughCapillaryPressureTable(
+                params,
+                "Aq",
+                lookup_file=lookup_file,
+            )
+            if self.hys:
+                property_container.capillary_pressure_ev = {
+                    "V": gas_pc,
+                    "Aq": aqueous_pc,
+                }
+            else:
+                property_container.capillary_pressure_ev = IsothermalCapillaryPressure(
+                    aqueous_pc=aqueous_pc,
+                    gas_pc=gas_pc,
+                )    
+
             property_container.enthalpy_ev = {
-                "V": EoSEnthalpy(pr),
-                "Aq": EoSEnthalpy(aq),
+                'Aq': EnthalpyBasic(hcap=4.18),
+                'V': EnthalpyBasic(hcap=0.035)
             }
+            conductivity = 1.0 if thermal else 0.0
             property_container.conductivity_ev = {
-                "V": ConstFunc(0.0),
-                "Aq": ConstFunc(0.0),
+                "V": ConstFunc(conductivity),
+                "Aq": ConstFunc(conductivity),
             }
+            if thermal:
+                property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
             property_container.output_props = {
                 "sat_Aq": lambda ii=region: self.physics.property_containers[ii].sat[0],
                 "sat_V": lambda ii=region: self.physics.property_containers[ii].sat[1],
@@ -328,12 +444,17 @@ class Model(DartsModel):
     def set_initial_conditions(self):
         pressure = self.producer_bhp * np.ones(self.reservoir.mesh.n_res_blocks)
         z_h2o = self.initial_z_h2o * np.ones(self.reservoir.mesh.n_res_blocks)
+        input_distribution = {
+            self.physics.vars[0]: pressure,
+            self.physics.vars[1]: z_h2o,
+        }
+        if self.physics.thermal:
+            input_distribution[self.physics.vars[-1]] = self.temperature * np.ones(
+                self.reservoir.mesh.n_res_blocks
+            )
         return self.physics.set_initial_conditions_from_array(
             mesh=self.reservoir.mesh,
-            input_distribution={
-                self.physics.vars[0]: pressure,
-                self.physics.vars[1]: z_h2o,
-            },
+            input_distribution=input_distribution,
         )
 
     def set_well_controls(self, rate=None) -> None:
@@ -379,8 +500,8 @@ class Model(DartsModel):
             property_container = self.physics.property_containers[region]
             property_container.evaluate(state)
 
-            n_co2 = self.inj_rate[0] / m_co2
-            n_h2o = self.inj_rate[1] / m_h2o
+            n_co2 = self.inj_rate[1] / m_co2
+            n_h2o = self.inj_rate[0] / m_h2o
             rhs_flux[co2_idx] -= n_co2
             rhs_flux[h2o_idx] -= n_h2o
 
@@ -402,19 +523,9 @@ class Model(DartsModel):
 
         for region, corey in self.corey.items():
             block_idx = np.where(self.op_num[:n_res_blocks] == region)[0]
-            c_land = 1.0 / corey.sgrmax - 1.0 / (1.0 - corey.swc)
+            land_model = K(swc=corey.swc, sgrmax=corey.sgrmax)
             for block in block_idx:
-                if sg[block] >= sg_max[block]:
-                    sg_max[block] = sg[block]
-                    continue
-
-                sgr = sg_max[block] / (1.0 + c_land * sg_max[block])
-                if sg[block] < sgr:
-                    sg_max[block] = np.clip(
-                        sg[block] / (1.0 - c_land * sg[block]),
-                        0.0,
-                        1.0,
-                    )
+                sg_max[block] = land_model.update_sg_max(sg[block], sg_max[block])
 
         self.physics.set_engine_history_array(
             "sg_max",
