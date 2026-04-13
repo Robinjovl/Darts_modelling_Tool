@@ -128,7 +128,11 @@ class PropertyContainer(PropertyBase):
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:
-            state_spec_2 = vec_state_as_np[-1]
+            # History fields (e.g. sg_max) are appended after primary state vars.
+            # Primary thermal state: [P, z_0..z_{nc-2}, T] = nc+1 elements.
+            # If extra fields are present, T sits at [-2] rather than [-1].
+            has_history = len(vec_state_as_np) > self.nc + 1
+            state_spec_2 = vec_state_as_np[-2] if has_history else vec_state_as_np[-1]
         else:
             state_spec_2 = self.temperature
 
@@ -300,10 +304,32 @@ class PropertyContainer(PropertyBase):
 
         self.compute_saturation(self.ph)
 
-        self.pc[:] = self.capillary_pressure_ev.evaluate(self.sat)
+        # Extract history field (e.g. sg_max) if appended to state by the physics.
+        # Primary state length: nc vars for isothermal, nc+1 for thermal.
+        # If state is longer, the last element is the history field (e.g. sg_max).
+        vec_state = np.asarray(state)
+        n_primary = self.nc + (1 if self.thermal else 0)
+        sg_max = float(vec_state[-1]) if len(vec_state) > n_primary else None
+
+        # Evaluate capillary pressure — supports both a single evaluator and a
+        # per-phase dict.  When the evaluator declares supports_history=True and
+        # sg_max is available, it is forwarded so hysteretic scanning curves are used.
+        if isinstance(self.capillary_pressure_ev, dict):
+            for j in self.ph:
+                pc_ev = self.capillary_pressure_ev[self.phases_name[j]]
+                if sg_max is not None and getattr(pc_ev, "supports_history", False):
+                    self.pc[j] = pc_ev.evaluate(self.sat[j], sg_max)
+                else:
+                    self.pc[j] = pc_ev.evaluate(self.sat[j])
+        else:
+            self.pc[:] = self.capillary_pressure_ev.evaluate(self.sat)
 
         for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
+            kr_ev = self.rel_perm_ev[self.phases_name[j]]
+            if sg_max is not None and getattr(kr_ev, "supports_history", False):
+                self.kr[j] = kr_ev.evaluate(self.sat[j], sg_max)
+            else:
+                self.kr[j] = kr_ev.evaluate(self.sat[j])
 
         for j in range(self.ns):
             idx = self.np_fl + j

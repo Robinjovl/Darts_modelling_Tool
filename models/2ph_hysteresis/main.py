@@ -130,7 +130,7 @@ def run_case(config: CaseConfig) -> Model:
 
     n_steps = int(round(config.total_days / config.report_step_days))
     for step in range(1, n_steps + 1):
-        model.run_hysteresis(
+        model.run(
             config.report_step_days,
             save_solution_data=False,
             save_well_data=False,

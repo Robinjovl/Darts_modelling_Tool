@@ -8,17 +8,13 @@ import numpy as np
 from darts.engines import value_vector
 from darts.models.darts_model import DartsModel
 from darts.physics.properties.basic import ConstFunc
-from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.enthalpy import EnthalpyBasic
-from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.hysteresis import (
     KilloughLandModel as K,
     KilloughCapillaryPressureTable,
-    KilloughRelPermCorey,
-    KilloughRelPermTable
+    KilloughRelPermTable,
 )
-from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
@@ -68,91 +64,6 @@ def default_corey_regions() -> dict[int, Corey]:
         a=0.8,
     )
     return {0: Corey(**base)}
-
-
-class Hys_PropertyContainer(PropertyContainer):
-    def get_state(self, state):
-        vec = np.asarray(state)
-        pressure = vec[0]
-        zc = np.append(vec[1:self.nc], 1 - np.sum(vec[1:self.nc]))
-        if zc[-1] < 0.99 * self.eps_z:
-            zc = self.comp_out_of_bounds(zc)
-        if self.thermal:
-            # When hysteresis is active, state = [P, z..., T, sg_max]
-            # sg_max is appended at the end, so T is at state[-2]
-            has_hysteresis = len(vec) > self.nc + 1  # nc+1 would be [P, z..., T]
-            state_spec_2 = vec[-2] if has_hysteresis else vec[-1]
-        else:
-            state_spec_2 = self.temperature
-        return pressure, state_spec_2, zc
-    def evaluate(self, state: value_vector):
-        pressure, state_spec_2, zc = self.get_state(state)
-        self.clean_arrays()
-
-        self.ph = self.run_flash(
-            pressure, state_spec_2, zc, evaluate_PT=self.evaluate_PT_bool
-        )
-        self.pressure = pressure
-        assert self.temperature is not None, (
-            "PropertyContainer does not specify self.temperature, should be set to "
-            "constant temperature in case of isothermal physics, "
-            "self.flash.temperature in case of thermal"
-        )
-
-        for j in self.ph:
-            M = np.sum(self.Mw[: self.nc_fl] * self.x[j][: self.nc_fl])
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
-                self.pressure, self.temperature, self.x[j, :]
-            )
-            self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
-                self.pressure, self.temperature, self.x[j, :], self.dens[j]
-            )
-
-        self.compute_saturation(self.ph)
-        sg_max = float(np.asarray(state)[-1])
-
-        if isinstance(self.capillary_pressure_ev, dict):
-            for j in self.ph:
-                self.pc[j] = self.capillary_pressure_ev[self.phases_name[j]].evaluate(
-                    self.sat[j], sg_max
-                )
-        else:
-            self.pc = self.capillary_pressure_ev.evaluate(self.sat, sg_max)
-
-        for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(
-                self.sat[j], sg_max
-            )
-
-        for j in range(self.ns):
-            idx = self.np_fl + j
-            self.sat[idx] = zc[self.nc_fl + j]
-            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
-                self.pressure, self.temperature
-            )
-            self.dens_m[idx] = self.dens[idx] / self.Mw[self.nc_fl + j]
-
-        self.mass_source = self.evaluate_mass_source(
-            self.pressure, self.temperature, zc
-        )
-
-        return
-
-
-class IsothermalCapillaryPressure:
-    def __init__(self, aqueous_pc, gas_pc):
-        self.aqueous_pc = aqueous_pc
-        self.gas_pc = gas_pc
-
-    def evaluate(self, sat):
-        return np.array(
-            [
-                self.aqueous_pc.evaluate(float(sat[0])),
-                self.gas_pc.evaluate(float(sat[1])),
-            ],
-            dtype=float,
-        )
 
 
 class Model(DartsModel):
@@ -320,6 +231,10 @@ class Model(DartsModel):
         self.lookup_file = lookup_file
         phases = ["Aq", "V"]
         comp_data = CompData(components, setprops=True)
+        # history_kwargs activates hysteresis support in the physics engine.
+        # When hys=False these kwargs are omitted, so sg_max is never appended
+        # to the interpolation state and all evaluators use pure drainage curves
+        # (sg_max defaults to 0 in KilloughRelPermTable / KilloughCapillaryPressureTable).
         history_kwargs = {}
         if self.hys:
             history_kwargs = {
@@ -365,8 +280,7 @@ class Model(DartsModel):
         )
 
         for region, params in corey_regions.items():
-            property_container_cls = Hys_PropertyContainer if self.hys else PropertyContainer
-            property_container = property_container_cls(
+            property_container = PropertyContainer(
                 phases_name=phases,
                 components_name=components,
                 Mw=comp_data.Mw,
@@ -401,16 +315,13 @@ class Model(DartsModel):
                 "Aq",
                 lookup_file=lookup_file,
             )
-            if self.hys:
-                property_container.capillary_pressure_ev = {
-                    "V": gas_pc,
-                    "Aq": aqueous_pc,
-                }
-            else:
-                property_container.capillary_pressure_ev = IsothermalCapillaryPressure(
-                    aqueous_pc=aqueous_pc,
-                    gas_pc=gas_pc,
-                )    
+            # Both drainage-only (hys=False) and hysteretic (hys=True) cases use
+            # the same dict-based evaluators. PropertyContainer.evaluate() forwards
+            # sg_max when it is present in state (hys=True) and skips it otherwise.
+            property_container.capillary_pressure_ev = {
+                "V": gas_pc,
+                "Aq": aqueous_pc,
+            }
 
             property_container.enthalpy_ev = {
                 'Aq': EnthalpyBasic(hcap=4.18),
@@ -531,20 +442,6 @@ class Model(DartsModel):
             "sg_max",
             sg_max,
             n_blocks=self.reservoir.mesh.n_blocks,
-        )
-
-    def run_hysteresis(
-        self,
-        days: float,
-        save_well_data: bool = True,
-        save_solution_data: bool = True,
-        verbose: bool = True,
-    ):
-        return super().run(
-            days=days,
-            save_well_data=save_well_data,
-            save_reservoir_data=save_solution_data,
-            verbose=verbose,
         )
 
     def pore_volume(self) -> float:
