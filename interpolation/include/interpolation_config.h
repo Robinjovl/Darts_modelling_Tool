@@ -15,8 +15,6 @@
 #include <string>
 #include <limits>
 
-using namespace std;
-
 typedef int index_t;
 typedef double value_t;
 typedef int interp_index_t;

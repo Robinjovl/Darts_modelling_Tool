@@ -22,7 +22,7 @@ int linear_static_cpu_interpolator<index_t, N_DIMS, N_OPS>::init()
     if (point_data.size() == 0)
     {
         index_t n_points = this->axes_mult[0] * this->axes_points[0];
-        cout << "Computing " << n_points << " supporting points for static storage..." << std::endl;
+        std::cout << "Computing " << n_points << " supporting points for static storage..." << std::endl;
         point_data.resize(n_points * N_OPS);
 
         for (index_t point_i = 0; point_i < n_points; point_i++)

@@ -49,7 +49,14 @@ PYBIND11_MODULE(engines, m)
   // Import darts.interpolators so that evaluator interface types
   // (operator_set_gradient_evaluator_iface, op_vector, etc.) are registered
   // in pybind11's global type map before engines uses them.
-  py::module_::import("darts.interpolators");
+  try {
+    py::module_::import("darts.interpolators");
+  } catch (const py::error_already_set&) {
+    throw std::runtime_error(
+      "darts.engines requires darts.interpolators to be importable "
+      "(shared pybind11 types are registered there). "
+      "Reinstall open-darts: pip install --force-reinstall open-darts");
+  }
   //auto m1 = m.def_submodule("engines", "Collection of DARTS simulators based on OBL approach");
   py::bind_vector<std::vector<index_t>>(m, "index_vector", py::module_local(true), py::buffer_protocol())
       .def(py::pickle(

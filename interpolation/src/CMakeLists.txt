@@ -59,7 +59,7 @@ if (CUDA)
   )
 
   target_link_libraries(darts_interpolation
-    PUBLIC
+    PRIVATE
       CUDA::cudart
   )
 endif()

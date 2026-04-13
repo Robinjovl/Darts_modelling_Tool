@@ -1,23 +1,22 @@
 #include "evaluator_iface.h"
 #include "thrust/device_vector.h"
+#include <stdexcept>
 //#include "thrust/host_ptr.h"
 
 #ifdef WITH_GPU
 int operator_set_gradient_evaluator_cpu::evaluate_with_derivatives_d(int n_states_idxs, double *state_d, int *states_idxs_d,
                                                                      double *values_d, double *derivatives_d)
 {
-  //TODO: to determine sizes of arrays to get them copied without changing the arguments,
-  //         we need to introduce get_n_dims() and get_n_ops() methods on this level
-  printf("Not yet implemented!\n");
-  return 0;
+  throw std::runtime_error(
+    "operator_set_gradient_evaluator_cpu::evaluate_with_derivatives_d: "
+    "device evaluation not implemented on the CPU evaluator");
 }
 
 int operator_set_gradient_evaluator_cpu::evaluate_d(double *state_d, double *values_d)
 {
-  //TODO: to determine sizes of arrays to get them copied without changing the arguments,
-  //         we need to introduce get_n_dims() and get_n_ops() methods on this level
-  printf("Not yet implemented!\n");
-  return 0;
+  throw std::runtime_error(
+    "operator_set_gradient_evaluator_cpu::evaluate_d: "
+    "device evaluation not implemented on the CPU evaluator");
 }
 
 int operator_set_gradient_evaluator_gpu::evaluate(const std::vector<double> &state, std::vector<double> &values)

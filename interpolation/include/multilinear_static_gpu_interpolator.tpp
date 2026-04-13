@@ -10,8 +10,6 @@
 #include "multilinear_static_gpu_interpolator.hpp"
 #include "gpu_tools.h"
 
-using namespace std;
-
 #define USE_THREAD_PER_OPERATOR_KERNEL
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
@@ -55,7 +53,7 @@ multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinea
   // the block size from get_kernel_thread_block_size sometimes leads to underperforming up to 10x times...
   // so set it here to 64
   this->kernel_block_size = 128;
-  cout << "multilinear static gpu interpolator _thread_per_state kernel block size is " << this->kernel_block_size
+  std::cout << "multilinear static gpu interpolator _thread_per_state kernel block size is " << this->kernel_block_size
        << ", minimum " << min_job_size << " states needed to reach full occupancy" << std::endl;
 
 #endif
@@ -67,7 +65,7 @@ int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
   // evaluate supporting point data unless it was already assigned via Python
   if (point_data.size() == 0)
   {
-    cout << "Computing " << this->n_points_total << " supporting points for static storage..." << std::endl;
+    std::cout << "Computing " << this->n_points_total << " supporting points for static storage..." << std::endl;
     point_data.resize(this->n_points_total);
 
     for (auto i = 0; i < this->n_points_total; i++)

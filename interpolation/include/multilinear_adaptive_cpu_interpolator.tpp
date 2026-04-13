@@ -8,8 +8,6 @@
 
 #include "multilinear_adaptive_cpu_interpolator.hpp"
 
-using namespace std;
-
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
     multilinear_adaptive_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator_,

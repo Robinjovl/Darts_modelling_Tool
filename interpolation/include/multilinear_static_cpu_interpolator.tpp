@@ -8,8 +8,6 @@
 
 #include "multilinear_static_cpu_interpolator.hpp"
 
-using namespace std;
-
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinear_static_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                                           const std::vector<int> &axes_points,
@@ -30,7 +28,7 @@ int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
   // evaluate supporting point data unless it was already assigned via Python
   if (point_data.size() == 0)
   {
-    cout << "Computing " << this->n_points_total << " supporting points for static storage..." << std::endl;
+    std::cout << "Computing " << this->n_points_total << " supporting points for static storage..." << std::endl;
     point_data.resize(this->n_points_total);
 
     for (auto i = 0; i < this->n_points_total; i++)
@@ -85,17 +83,17 @@ int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_
 
   if (txtFile.is_open ())
   {
-    txtFile << this->get_n_dims() << " " << this->get_n_ops() << endl;
+    txtFile << this->get_n_dims() << " " << this->get_n_ops() << std::endl;
     for (int k = 0; k < N_DIMS; k++)
     {
-      txtFile << this->axes_points[k] << " " << this->axes_min[k] << " " << this->axes_max[k] << endl;
+      txtFile << this->axes_points[k] << " " << this->axes_min[k] << " " << this->axes_max[k] << std::endl;
     }
 
     for (index_t k = 0; k < point_data.size(); ++k)
       {
         for (int i = 0; i < point_data[k].size(); ++i)
           txtFile << point_data[k][i] << " ";
-        txtFile << endl;
+        txtFile << std::endl;
       }
 
   }

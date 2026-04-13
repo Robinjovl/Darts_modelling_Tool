@@ -92,7 +92,6 @@ install(TARGETS engines_global
 # interpolation library — no link dependency, headers only.
 set(INTERPOLATION_INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}/interpolation/include
-  ${CMAKE_SOURCE_DIR}/interpolation/pybind11
 )
 # ------------------------------------------------------------------------------
 

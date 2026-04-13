@@ -1,4 +1,5 @@
-from darts.engines import *
+from darts.engines import index_vector, redirect_darts_output
+from darts.interpolators import *
 
 
 def test_itors(

@@ -9,7 +9,19 @@
 #include "globals.h"
 #include "conn_mesh.h"
 #include "evaluator_iface.h"
-#include "pybind11/py_globals.h"
+
+#include <pybind11/numpy.h>
+namespace py = pybind11;
+
+template <typename T>
+inline py::array_t<T> get_raw_array(T* arr, size_t size) {
+  return py::array_t<T>(
+    { size },
+    { sizeof(T) },
+    arr,
+    py::capsule(arr, [](void* /*f*/) {})
+  );
+}
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/data_types.hpp"

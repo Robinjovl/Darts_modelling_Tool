@@ -86,6 +86,8 @@ target_include_directories(engines
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
+  PRIVATE
+    ${CMAKE_SOURCE_DIR}/interpolation/pybind11
 )
 
 # Setup IDE directory structure for engines
