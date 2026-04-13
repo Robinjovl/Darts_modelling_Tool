@@ -128,9 +128,8 @@ class Model(DartsModel):
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz_res,
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
                                       start_z=1990, rcond=rcon0_full, hcap=hcap0_full,)
-        boundary_factor = 2000
         
-        v_big = 30*30*10* boundary_factor
+        v_big = 1e20
 
         self.reservoir.boundary_volumes = {
             "xy_minus": v_big,
@@ -148,11 +147,11 @@ class Model(DartsModel):
     def set_wells(self):
         self.reservoir.add_well("I1")
         for k in range(2, 9):         
-            self.reservoir.add_perforation("I1", res_cell_idx=(150,150,k),ms_epm=True)
+            self.reservoir.add_perforation("I1", res_cell_idx=(226,150,k),ms_epm=True, well_diameter=0.1524)
 
         self.reservoir.add_well("P1")
         for k in range(2, 9):         
-            self.reservoir.add_perforation("P1", res_cell_idx=(70,230,k),ms_epm=True)
+            self.reservoir.add_perforation("P1", res_cell_idx=(76,150,k),ms_epm=True, well_diameter=0.1524)
   
 
     def set_physics(self):
@@ -229,11 +228,11 @@ class Model(DartsModel):
         return
 
     def set_well_controls(self):
-        inj_composition = [1.0 - self.zero]  # pure CO2 injection
+        inj_composition = [1.0 ]  # pure CO2 injection
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                            is_inj=True, target=86400., inj_composition=inj_composition, inj_temp=314.15)
+                                            is_inj=True, target=1.0368e7, inj_composition=inj_composition, inj_temp=314.15)
                 
             else:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,

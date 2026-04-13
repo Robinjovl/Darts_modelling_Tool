@@ -83,8 +83,8 @@ class Model(DartsModel):
 
         permx_res, permy_res, permz_res = 100, 100, 10
         poro0 = 0.2
-        poro_burden = 0.0001
-        perm_burden = 1e-6
+        poro_burden = 1e-5
+        perm_burden = 1e-9
 
         # thermal properties
         rcond_res = 181.44 # KJ/m/day/k
@@ -130,15 +130,15 @@ class Model(DartsModel):
                                       start_z=1990, rcond=rcon0_full, hcap=hcap0_full,)
         boundary_factor = 2000
         base_vol = float(dx * dy * dz_res)
-        v_big = base_vol * boundary_factor
+        v_big = 1e20
 
         self.reservoir.boundary_volumes = {
             "xy_minus": v_big,
             "xy_plus": v_big,
-            "yz_minus": None,
-            "yz_plus": None,
-            "xz_minus": None,
-            "xz_plus": None,
+            "yz_minus": v_big,
+            "yz_plus": v_big,
+            "xz_minus": v_big,
+            "xz_plus": v_big,
         }
         self.reservoir.discretize()
         self.build_cell_center()
@@ -148,11 +148,11 @@ class Model(DartsModel):
     def set_wells(self):
         self.reservoir.add_well("I1")
         for k in range(2, 9):         
-            self.reservoir.add_perforation("I1", res_cell_idx=(30,30,k),ms_epm=True)
+            self.reservoir.add_perforation("I1", res_cell_idx=(30,30,k),ms_epm=True, well_diameter=0.1524)
 
         self.reservoir.add_well("P1")
         for k in range(2, 9):         
-            self.reservoir.add_perforation("P1", res_cell_idx=(14,46,k),ms_epm=True)
+            self.reservoir.add_perforation("P1", res_cell_idx=(14,46,k),ms_epm=True, well_diameter=0.1524)
   
 
     def set_physics(self):
@@ -233,8 +233,7 @@ class Model(DartsModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                            is_inj=True, target=86400., inj_composition=inj_composition, inj_temp=314.15)
-                
+                                            is_inj=True, target=1.0368e7, inj_composition=inj_composition, inj_temp=314.15)                
             else:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                 #                                is_inj=False, target=1400000.)

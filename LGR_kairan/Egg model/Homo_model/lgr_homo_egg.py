@@ -105,8 +105,13 @@ class Model(DartsModel):
             k1, k2 = cfg['k_range'] 
             nk = k2 - k1 + 1
             rx, ry, rz = cfg['refine']
-            dx_vec = np.array([8,6,2,6,8], dtype=float)
-            dy_vec = np.array([8,6,2,6,8], dtype=float)
+
+            dx_3d = np.asarray(self.level1[name].global_data["dx"], dtype=float)
+            dy_3d = np.asarray(self.level1[name].global_data["dy"], dtype=float)
+
+            dx_vec = dx_3d[:,0,0].copy()
+            dy_vec = dy_3d[0,:,0].copy()
+            
             assert len(dx_vec) == rx, f"len(dx_vec)={len(dx_vec)} does not match rx={rx}"
             assert len(dy_vec) == ry, f"len(dy_vec)={len(dy_vec)} does not match ry={ry}"
             x0 = (i_start - 1) * dx0 # left corner of lgr block in global coordinate
@@ -131,13 +136,12 @@ class Model(DartsModel):
     def set_reservoir(self):
         # set heterogeneous egg model
         self.lgrs = self.define_lgr()
-        (nx,ny,nz) = (60,60,9) # plus 2 layers of overburden and underburden, each has 1 layer, so total nz is 7+2=9
+        (nx,ny,nz) = (self.cfg["reservoir"]["nx"], self.cfg["reservoir"]["ny"], self.cfg["reservoir"]["nz"]) # plus 2 layers of overburden and underburden, each has 1 layer, so total nz is 7+2=9
         nb = nx*ny*nz
-        nb_res = nx*ny*7
     
-        dx = 30
-        dy = 30
-        dz = 10
+        dx = self.cfg["reservoir"]["dx"]
+        dy = self.cfg["reservoir"]["dy"]
+        dz = self.cfg["reservoir"]["dz"]
 
         burden = self.cfg["burden"] 
        
@@ -206,19 +210,16 @@ class Model(DartsModel):
         hcap0_full[mask_res] = 2200
         hcap0_full[mask_under] = hcap_under
         
-        poro0_full[mask_res] = 0.2
+        poro0_full[mask_res] =self.cfg["reservoir"]["poro"]
 
 
 
-        actnum0 = self.create_actnum_with_lgr(60, 60, 9, refined_cells_ijk)
+        actnum0 = self.create_actnum_with_lgr(nx, ny, nz, refined_cells_ijk)
         self.level0 = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full, depth=None, start_z=1990,
                                       hcap=hcap0_full, rcond=rcon0_full, actnum=actnum0)
 
-        
-        boundary_factor = 2000
-        base_vol = float(dx * dy * dz)
-        v_big = base_vol * boundary_factor
+        v_big = 1e20
 
         self.level0.boundary_volumes = {
             "xy_minus": v_big,
@@ -246,10 +247,14 @@ class Model(DartsModel):
             assert 2 <= i1 <= nx - 2, f"LGR {name} too close to x boundary"
             assert 2 <= j1 <= ny - 2, f"LGR {name} too close to y boundary"
 
-            nx1,ny1,nz1 = 5, 5, nk
-            dx_vec = np.array([8,6,2,6,8], dtype=float)
+           
+            nx1, ny1,_ = cfg['lgr_coords_in_parent_grid']['refine']
+            nz1 = nk
+            dx_vec = cfg['lgr_coords_in_parent_grid']['dx_vec']
+            dx_vec = np.array(dx_vec, dtype=float)
             dx1 = np.broadcast_to(dx_vec[:, None, None], (nx1, ny1, nz1)).copy()
-            dy_vec = np.array([8,6,2,6,8], dtype=float) 
+            dy_vec = cfg['lgr_coords_in_parent_grid']['dy_vec']
+            dy_vec = np.array(dy_vec, dtype=float)
             dy1 = np.broadcast_to(dy_vec[None, :, None], (nx1, ny1, nz1)).copy()
             assert len(dx_vec) == nx1, f"len(dx_vec)={len(dx_vec)} != nx1={nx1}"
             assert len(dy_vec) == ny1, f"len(dy_vec)={len(dy_vec)} != ny1={ny1}"
@@ -541,7 +546,7 @@ class Model(DartsModel):
                 rx,ry,_ = self.lgrs[lgr_name]['lgr_coords_in_parent_grid']['refine']
                 inj_local = center_2d + k * (rx * ry)
                 inj_global = inj_local + self.lgr_meta['lgr_offsets'][comp[wname]["lgr"]]
-                self.reservoir.add_perforation(wname, cell_index=inj_global,ms_epm=True)
+                self.reservoir.add_perforation(wname, cell_index=inj_global,ms_epm=True, well_radius=0.0762)
   
     """single phase- single component model"""
     def set_physics(self):
@@ -638,11 +643,11 @@ class Model(DartsModel):
 
 
     def set_well_controls(self):
-        inj_composition = [1.0 - self.zero]  # pure CO2 injection
+        inj_composition = [1.0]  # pure CO2 injection
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                            is_inj=True, target=86400., inj_composition=inj_composition, inj_temp=314.15)
+                                            is_inj=True, target=1.0368e7, inj_composition=inj_composition, inj_temp=314.15)
                 
             else:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,

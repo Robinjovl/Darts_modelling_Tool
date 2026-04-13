@@ -143,7 +143,7 @@ class Model(DartsModel):
         nb = nx*ny*nz
         nb_res = nx*ny*7
         base_dir = Path(__file__).resolve().parent
-        perm_file = base_dir / "PERM1_ECL.INC"
+        perm_file = base_dir / "PERM90_ECL.INC"
 
         permx_res = load_single_keyword(str(perm_file), "PERMX", nb_res)
         permy_res = load_single_keyword(str(perm_file), "PERMY", nb_res)
@@ -226,7 +226,7 @@ class Model(DartsModel):
 
 
 
-        actnum0 = self.create_actnum_with_lgr(60, 60, 9, refined_cells_ijk)
+        actnum0 = self.create_actnum_with_lgr(nx, ny, nz, refined_cells_ijk)
         self.level0 = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full, depth=None, start_z=1990,
                                       hcap=hcap0_full, rcond=rcon0_full, actnum=actnum0)
@@ -234,7 +234,7 @@ class Model(DartsModel):
         
         boundary_factor = 2000
         base_vol = float(dx * dy * dz)
-        v_big = base_vol * boundary_factor
+        v_big = 1e20
 
         self.level0.boundary_volumes = {
             "xy_minus": v_big,
@@ -264,9 +264,9 @@ class Model(DartsModel):
 
             rx, ry, rz = cfg['lgr_coords_in_parent_grid']['refine']
             nx1,ny1,nz1 = rx, ry, nk
-            dx_vec = np.array([8,6,2,6,8], dtype=float)
+            dx_vec = np.array(cfg["lgr_coords_in_parent_grid"]["dx_vec"], dtype=float)
             dx1 = np.broadcast_to(dx_vec[:, None, None], (nx1, ny1, nz1)).copy()
-            dy_vec = np.array([8,6,2,6,8], dtype=float) 
+            dy_vec = np.array(cfg["lgr_coords_in_parent_grid"]["dy_vec"], dtype=float)
             dy1 = np.broadcast_to(dy_vec[None, :, None], (nx1, ny1, nz1)).copy()
             assert len(dx_vec) == nx1, f"len(dx_vec)={len(dx_vec)} != nx1={nx1}"
             assert len(dy_vec) == ny1, f"len(dy_vec)={len(dy_vec)} != ny1={ny1}"
@@ -655,11 +655,11 @@ class Model(DartsModel):
 
 
     def set_well_controls(self):
-        inj_composition = [1.0 - self.zero]  # pure CO2 injection
+        inj_composition = [1.0]  # pure CO2 injection
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                            is_inj=True, target=86400., inj_composition=inj_composition, inj_temp=314.15)
+                                            is_inj=True, target=1.0368e7, inj_composition=inj_composition, inj_temp=314.15)
                 
             else:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,

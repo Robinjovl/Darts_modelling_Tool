@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib.collections import PatchCollection
 from matplotlib.colors import LogNorm, Normalize
+import pandas as pd
 
 def plot_well_time_data_2(m, time_data_df,
                                 save_output_files=True,
@@ -360,4 +361,21 @@ def plot_xy_plane(model, values, depth, use_lgr=True, tol=None,
     fig.savefig(savepath, bbox_inches="tight")
     plt.close(fig)
 
-    
+def plot_average_res_pressure(time_days, avg_pressures, save_dir, filename="avg_res_pressure.png"):
+    os.makedirs(save_dir, exist_ok=True)
+
+    plt.figure(figsize=(8, 4.8), dpi=150)
+    plt.plot(time_days, avg_pressures, marker='o', markersize=3)
+    plt.xlabel("Time [days]")
+    plt.ylabel("Average reservoir pressure [bar]")
+    plt.title("PV-weighted average reservoir pressure vs time")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, filename), bbox_inches="tight")
+    plt.close()
+
+    df = pd.DataFrame({
+        "time_days": time_days,
+        "avg_res_pressure_bar": avg_pressures
+    })
+    df.to_excel(os.path.join(save_dir, "avg_res_pressure.xlsx"), index=False)

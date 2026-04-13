@@ -59,7 +59,7 @@ def assemble_lgr_connections(self):
     ff_Tt = np.concatenate(ff_Tt) if ff_Tt else np.array([], dtype=float)
 
     
-    # step 3: extract fine-fine and fine-coarse from imaginary grid
+    # step 3: extract fine-coarse from imaginary grid
 
     fc_cm = []
     fc_cp = []
@@ -77,6 +77,9 @@ def assemble_lgr_connections(self):
         self.level1_imag[name].discretize()
         disc_im = self.level1_imag[name].discretizer
         cmi, cpi, Ti, Ti_therm = disc_im.calc_structured_discr()
+        # customized transmissibility scaling for fine-coarse connections, to better match the original model's behavior.
+        # alpha = 3.624043958155789 / 2.8422382239720037
+        # Ti = Ti * alpha
 
         nxim = rx +2
         nyim = ry +2
