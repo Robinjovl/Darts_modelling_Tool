@@ -14,10 +14,10 @@
 - Fix BHT calculation for PH formulation in the method `store_bhp_bht` in `output.py` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Store the arrays `time`, `n_newton_iters`, and `time_step_size` in the class `DartsModel` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Implement `engine_base::apply_thermal_var_correction` to improve the issue related to sharp enthalpy updates from the Newton-Raphson solver for the pressure-enthalpy (PH) formulation ([!289](https://gitlab.com/open-darts/open-darts/-/merge_requests/289))
-- Unstrutured reservoir [MR298](https://gitlab.com/open-darts/open-darts/-/merge_requests/298): 
+- Unstrutured reservoir [MR298](https://gitlab.com/open-darts/open-darts/-/merge_requests/298):
 	- fixed the order in store_depth_all_cells (could affect the initialization by gradient)
 	- vtk output is fixed for 3D meshes (order)
-	- separate vtk files for matrix and fracture data 
+	- separate vtk files for matrix and fracture data
 	- reservoir cache is fixed
 - Fluid heat capacity is added into the input data for THM models [!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270)
 - Breaking changes:
@@ -25,6 +25,11 @@
   \
   {- Before: idata.rock.conductivity -}\
   {+ Now:    idata.rock.thermal_conductivity +}
+  \
+  - Equilibrium initialization function name was changed from version 1.3.2:
+  \
+  {- Before: init.solve() -}\
+  {+ Now:    init.solve_up_and_downwards() +}
   \
 
 
