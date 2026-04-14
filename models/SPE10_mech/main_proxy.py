@@ -545,28 +545,24 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             
             # save to pkl
             import pickle
-            displs = {'ux_prx': ux_prx, 'uy_prx': uy_prx, 'uz_prx': uz_prx}
-            with open(os.path.join(folder, "displs_prx.pkl"), "wb") as f:   # note 'wb' = write binary
-                pickle.dump(displs, f)
-            stresses = {'sxx_prx': sxx_prx, 'syy_prx': syy_prx, 'szz_prx': szz_prx,
-                        'sxx_total_prx': sxx_total_prx, 'syy_total_prx': syy_total_prx, 'szz_total_prx': szz_total_prx}
-            with open(os.path.join(folder, "stresses_prx.pkl"), "wb") as f:
-                pickle.dump(stresses, f)
+            data = {'ux_prx': ux_prx, 'uy_prx': uy_prx, 'uz_prx': uz_prx,
+                    'sxx_prx': sxx_prx, 'syy_prx': syy_prx, 'szz_prx': szz_prx,
+                    'sxx_total_prx': sxx_total_prx, 'syy_total_prx': syy_total_prx, 'szz_total_prx': szz_total_prx}
+            with open(os.path.join(folder, "displs_stresses_prx.pkl"), "wb") as f:
+                pickle.dump(data, f)
         else: # do not rerun proxy, read from PKl files (if only plotting is changed)
             import pickle
-            with open(os.path.join(folder, "displs_prx.pkl"), "rb") as f:
-                displs = pickle.load(f)
-            ux_prx = displs['ux_prx']
-            uy_prx = displs['uy_prx']
-            uz_prx = displs['uz_prx']
-            with open(os.path.join(folder, "stresses_prx.pkl"), "rb") as f:
-                stresses = pickle.load(f)
-            sxx_prx = stresses['sxx_prx']
-            syy_prx = stresses['syy_prx']
-            szz_prx = stresses['szz_prx']
-            sxx_total_prx = stresses['sxx_total_prx']
-            syy_total_prx = stresses['syy_total_prx']
-            szz_total_prx = stresses['szz_total_prx']
+            with open(os.path.join(folder, "displs_stresses_prx.pkl"), "rb") as f:
+                data = pickle.load(f)
+            ux_prx = data['ux_prx']
+            uy_prx = data['uy_prx']
+            uz_prx = data['uz_prx']
+            sxx_prx = data['sxx_prx']
+            syy_prx = data['syy_prx']
+            szz_prx = data['szz_prx']
+            sxx_total_prx = data['sxx_total_prx']
+            syy_total_prx = data['syy_total_prx']
+            szz_total_prx = data['szz_total_prx']
 
         array_dict = {'ux_prx':ux_prx[:,0,:].transpose(), 
                       #'uy_prx':uy_prx[:,0,:].transpose(), 
@@ -690,10 +686,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
 if __name__ == '__main__':
 
-    #case = '6_6_5'  # for debugging
+    case = '6_6_5'  # for debugging
     #case = '16_16_15'
     #case = '34_34_57'  # z 0 - 5 km
-    case = '34_34_66'  # z 0 - 5 km 
+    #case = '34_34_66'  # z 0 - 5 km 
     #case = '42_42_66'  # z 0 - 5 km 
     #case = '34_34_90'  # z 0 - 5 km more refined around rsv
     #case='34_35_57' # perm_frac
@@ -739,8 +735,8 @@ if __name__ == '__main__':
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
     timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
     
-    #run_thm = True
-    run_thm = False
+    run_thm = True
+    #run_thm = False
     
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
     generate_mesh=True
