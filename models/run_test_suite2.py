@@ -14,6 +14,26 @@ def _ensure_parent_dir(path):
     if parent and not os.path.exists(parent):
         os.makedirs(parent, exist_ok=True)
 
+
+def _normalize_odls_env():
+    """
+    Infer iterative-solver runs from the default CPU solver when ODLS is unset.
+
+    Manual `darts run_test_suite2.py ...` runs no longer export ODLS, while the
+    default solver still differs between ODLS and iterative builds. The testsuite
+    naming and a few solver selections still rely on ODLS, so synthesize it here
+    when the build clearly defaults to an iterative CPU solver.
+    """
+    if os.getenv('TEST_GPU') == '1':
+        return False
+    if os.getenv('ODLS') is None:
+        try:
+            if sim_params().linear_type != sim_params.cpu_superlu:
+                os.environ['ODLS'] = '-a'
+        except Exception:
+            pass
+    return os.getenv('ODLS') == '-a'
+
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
     base_dir = os.getcwd()  # base directory is models/
     logs_dir = os.path.join(base_dir, "_logs")  # directory in which log files will be saved
@@ -261,6 +281,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
 
 def check_performance(mod):
+    _normalize_odls_env()
     pkl_suffix = ''
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
         pkl_suffix = '_gpu'
@@ -352,9 +373,7 @@ if __name__ == '__main__':
     if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
         test_all_models = True
 
-    iter_solvers = False
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
-        iter_solvers = True
+    iter_solvers = _normalize_odls_env()
 
     rcode = run_testing(platform, overwrite, iter_solvers, test_all_models)
     exit(rcode)

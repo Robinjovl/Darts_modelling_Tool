@@ -206,7 +206,9 @@ public:
 	  // maximum values
 	  std::fill_n(max_row_values_inv.data(), n_blocks * N_VARS, 0.0);
 
+#ifdef _OPENMP
 	  #pragma omp parallel for
+#endif
 	  for (index_t i = 0; i < n_blocks; i++)
 	  {
 		index_t csr_start = rows[i];
@@ -243,7 +245,9 @@ public:
 	  }
 
 	  // scaling
+#ifdef _OPENMP
 	  #pragma omp parallel for
+#endif
 	  for (index_t i = 0; i < n_blocks; i++)
 	  {
 		index_t csr_start = rows[i];
@@ -736,6 +740,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			else
 			{
+			  // N_VARS == 1: CPR collapses to pure AMG, still needs the GMRES outer solver
+			  linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			  linear_solver->set_prec(new linsolv_bos_amg<1>);
 			  linear_solver_type_str = "GPU_GMRES_AMG";
 			}
@@ -797,6 +803,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			else
 			{
+			  // N_VARS == 1: CPR collapses to pure AMGX, still needs the GMRES outer solver
+			  linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			  linear_solver->set_prec(new linsolv_amgx<1>);
 			  linear_solver_type_str = "GPU_GMRES_AMGX";
 			}

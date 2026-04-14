@@ -24,6 +24,7 @@ namespace opendarts
     public:
       timer_node();
       timer_node(const opendarts::auxiliary::timer_node &a);
+      timer_node &operator=(const timer_node &) = default;
       void start();
       void stop();
       double get_timer();

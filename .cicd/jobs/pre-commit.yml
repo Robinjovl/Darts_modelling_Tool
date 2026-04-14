@@ -3,7 +3,7 @@ pre-commit:
     tags:
         - linux_tahiti_gpu
     variables:
-        PRE_COMMIT_HOME: ".cache/pre-commit"
+        PRE_COMMIT_HOME: "/data/gitlab-runner/.cache/pre-commit"
         CONDA_ENV: "precommit-${CI_JOB_ID}"
     before_script:
         - echo 'Setting up pre-commit on tahiti (conda env + cache)...'
