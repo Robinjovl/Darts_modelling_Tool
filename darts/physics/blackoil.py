@@ -1,7 +1,62 @@
+import os
+from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from darts.input.input_data import FluidProps, InputData
 from darts.physics.properties.black_oil import *
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
+
+
+class BlackOilConfig(BaseModel):
+    """Configuration for BlackOil physics (PVT-driven)."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "pvt_path": "pvt_data.in",
+                    "thermal": False,
+                    "n_points": 5001,
+                    "min_p": 1.0,
+                    "max_p": 450.0,
+                }
+            ]
+        },
+    )
+
+    pvt_path: Annotated[
+        str, Field(description="Path to PVT data file (may be relative)")
+    ]
+    thermal: Annotated[
+        bool, Field(description="Whether to run in thermal (PT) mode")
+    ] = False
+    type_hydr: Annotated[
+        Literal["isothermal", "thermal"],
+        Field(description="Hydraulic problem type"),
+    ] = "isothermal"
+    type_mech: Annotated[
+        Literal["none", "poroelasticity", "thermoporoelasticity"],
+        Field(description="Mechanical coupling type"),
+    ] = "none"
+    init_type: Annotated[
+        Literal["uniform"], Field(description="Initialization type")
+    ] = "uniform"
+    n_points: Annotated[int, Field(ge=2, description="OBL table resolution")] = 5001
+    zero: Annotated[float, Field(ge=0, description="OBL zero offset")] = 1e-12
+    epsilon_z: Annotated[float, Field(ge=0, description="OBL composition epsilon")] = (
+        1e-13
+    )
+    min_p: Annotated[float, Field(ge=0, description="Minimum OBL pressure [bar]")] = 1.0
+    max_p: Annotated[float, Field(ge=0, description="Maximum OBL pressure [bar]")] = (
+        450.0
+    )
+    min_t: Annotated[float, Field(description="Minimum OBL temperature [°C]")] = -10.0
+    max_t: Annotated[float, Field(description="Maximum OBL temperature [°C]")] = 100.0
+    min_z: Annotated[float, Field(ge=0, description="Minimum OBL composition")] = 0.0
+    max_z: Annotated[float, Field(ge=0, description="Maximum OBL composition")] = 1.0
 
 
 class BlackOilBase(Compositional):
@@ -57,6 +112,50 @@ class BlackOil(Compositional):
         property_container.rock_compress_ev = RockCompactionEvaluator(idata.fluid.pvt)
 
         self.add_property_region(property_container)
+
+    @classmethod
+    def from_config(
+        cls,
+        config: "BlackOilConfig",
+        *,
+        components: list[str] | None = None,
+        phases: list[str] | None = None,
+        timer: Any,
+    ) -> "BlackOil":
+        """Construct a BlackOil physics instance from a :class:`BlackOilConfig`.
+
+        Reads the PVT file referenced by ``config.pvt_path``, builds an
+        :class:`InputData` instance, and forwards OBL parameters. If
+        ``components`` / ``phases`` are provided they must match the fluid
+        definition loaded from PVT.
+        """
+        pvt_path = os.path.expanduser(config.pvt_path)
+        idata = InputData(
+            type_hydr=config.type_hydr,
+            type_mech=config.type_mech,
+            init_type=config.init_type,
+        )
+        idata.fluid = BlackOilFluidProps(pvt=pvt_path)
+        idata.obl.n_points = config.n_points
+        idata.obl.zero = config.zero
+        idata.obl.epsilon_z = config.epsilon_z
+        idata.obl.min_p = config.min_p
+        idata.obl.max_p = config.max_p
+        idata.obl.min_t = config.min_t
+        idata.obl.max_t = config.max_t
+        idata.obl.min_z = config.min_z
+        idata.obl.max_z = config.max_z
+
+        if components and components != idata.fluid.components:
+            raise ValueError(
+                f"BlackOil components mismatch: {components} vs {idata.fluid.components}"
+            )
+        if phases and phases != idata.fluid.phases:
+            raise ValueError(
+                f"BlackOil phases mismatch: {phases} vs {idata.fluid.phases}"
+            )
+
+        return cls(idata, timer, thermal=config.thermal)
 
 
 class BlackOilFluidProps(FluidProps):

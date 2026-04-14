@@ -172,7 +172,8 @@
     "tol_newton": 0.01,
     "tol_linear": 0.001,
     "it_newton": 10,
-    "it_linear": 50
+    "it_linear": 50,
+    "newton_type": "newton_local_chop"
   },
   "output": {
     "folder": "output",

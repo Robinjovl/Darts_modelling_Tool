@@ -23,6 +23,7 @@ from darts.models.darts_model import (
     WellPerforationConfig,
     WellsConfig,
 )
+from darts.reservoirs.cpg_reservoir import CPGReservoirConfig
 from darts.reservoirs.struct_reservoir import (
     ReservoirLayerConfig,
     StructReservoirConfig,
@@ -36,7 +37,13 @@ class SpecBaseModel(BaseModel):
 
 
 class DataRef(SpecBaseModel):
-    """Reference to external data or stored Python objects."""
+    """JSON-only reference to external data (path/URI) or in-memory object.
+
+    Exists because native DARTS configs only accept plain Python values;
+    DataRef lets a JSON payload point at data without inlining it. Resolved
+    to a concrete value by :func:`darts.api.data_refs.resolve_data_ref`
+    before any native config is constructed.
+    """
 
     model_config = ConfigDict(
         title="DataRef",
@@ -61,11 +68,19 @@ class DataRef(SpecBaseModel):
     ] = None
 
 
+# Scalar, per-cell array, or DataRef. Native configs use ScalarOrArray;
+# adding DataRef here is what makes reservoir fields JSON-loadable from
+# external files without widening the native type.
 ReservoirValue = float | list[float] | DataRef
 
 
 def _reservoir_discriminator(v: Any) -> str:
-    """Discriminate reservoir spec variants by the ``type`` field."""
+    """Route a reservoir payload to the right spec variant.
+
+    Needed because the reservoir section is a JSON discriminated union
+    (structured / cpg / dataref) — native configs have no such union since
+    each reservoir class is instantiated directly in Python.
+    """
     if isinstance(v, dict):
         if "kind" in v and "value" in v:
             return "dataref"
@@ -76,7 +91,13 @@ def _reservoir_discriminator(v: Any) -> str:
 
 
 class PluginRegistryEntrySpec(SpecBaseModel):
-    """Register a local plugin type."""
+    """JSON-side record for registering a user plugin at load time.
+
+    Native DARTS has no plugin registry — classes are imported and wired
+    up directly in Python. This spec lets a JSON model declare an
+    importable constructor (and optional config model) to be added to
+    :data:`TYPE_REGISTRY` before the model is applied.
+    """
 
     model_config = ConfigDict(
         title="PluginRegistryEntrySpec",
@@ -111,7 +132,13 @@ class PluginRegistryEntrySpec(SpecBaseModel):
 
 
 class PluginRegistrySpec(SpecBaseModel):
-    """Local plugin registry entries loaded from JSON."""
+    """Top-level ``plugin_registry`` section of a JSON model spec.
+
+    Lists modules to import (which self-register via
+    ``register_darts_plugins`` / ``DARTS_PLUGIN_ENTRIES``) and/or explicit
+    entries. JSON-only: purely a transport format for configuring
+    :data:`TYPE_REGISTRY`.
+    """
 
     model_config = ConfigDict(
         title="PluginRegistrySpec",
@@ -142,7 +169,12 @@ class PluginRegistrySpec(SpecBaseModel):
 
 
 class StrictReservoirLayerSpec(ReservoirLayerConfig):
-    """Layered overrides with DataRef support for JSON workflows."""
+    """JSON variant of :class:`ReservoirLayerConfig` with DataRef support.
+
+    Identical to the native config except per-cell fields accept
+    :class:`DataRef` in addition to scalars/arrays. The builder resolves
+    DataRefs before constructing the native :class:`ReservoirLayerConfig`.
+    """
 
     dx: Annotated[
         ReservoirValue | None, Field(gt=0, description="Cell size in x [m]")
@@ -194,11 +226,13 @@ class StrictPluginInstance(PluginInstance):
 
 
 class StrictReservoirSpec(StructReservoirConfig):
-    """Reservoir spec with DataRef support for JSON workflows.
+    """JSON variant of :class:`StructReservoirConfig` with DataRef support.
 
-    Inherits all fields from :class:`StructReservoirConfig` and overrides
-    property fields to accept ``ReservoirValue`` (float | list[float] | DataRef).
-    DataRef values are resolved by the builder before native construction.
+    Only diverges from the native config to widen per-cell fields to
+    :data:`ReservoirValue` — the single place where DataRef (a
+    JSON-transport concern) leaks into a reservoir spec. The builder
+    resolves DataRefs and then constructs the native
+    :class:`StructReservoirConfig`.
     """
 
     # Override property fields to accept DataRef in addition to plain scalars/arrays
@@ -248,55 +282,7 @@ class StrictReservoirSpec(StructReservoirConfig):
     ] = None
 
 
-class StrictCPGReservoirSpec(SpecBaseModel):
-    """Corner-point (CPG) reservoir loaded from GRDECL-like files."""
-
-    model_config = ConfigDict(
-        title="StrictCPGReservoirSpec",
-        json_schema_extra={
-            "examples": [
-                {
-                    "type": "cpg",
-                    "grid_file": "meshes/brugge/grid.grdecl",
-                    "prop_file": "meshes/brugge/reservoir.in",
-                    "minpv": 1e-5,
-                    "min_poro": 1e-5,
-                    "boundary_volume": 1e10,
-                }
-            ]
-        },
-    )
-
-    type: Annotated[
-        Literal["cpg"],
-        Field(description="Reservoir type (corner-point geometry)"),
-    ]
-    grid_file: Annotated[str, Field(description="Path to GRDECL grid file")]
-    prop_file: Annotated[
-        str, Field(description="Path to reservoir property file (GRDECL-like)")
-    ]
-    fault_file: Annotated[
-        str | None,
-        Field(description="Optional file with fault transmissibility multipliers"),
-    ] = None
-    minpv: Annotated[
-        float | None,
-        Field(ge=0, description="Minimum pore volume threshold for active cells [m3]"),
-    ] = None
-    min_poro: Annotated[
-        float | None,
-        Field(ge=0, le=1, description="Optional porosity cutoff for ACTNUM filtering"),
-    ] = None
-    min_perm: Annotated[
-        float | None,
-        Field(ge=0, description="Optional lower bound for PERMX/PERMY/PERMZ [mD]"),
-    ] = None
-    boundary_volume: Annotated[
-        float | None,
-        Field(
-            gt=0, description="Optional lateral boundary volume assigned to edge cells"
-        ),
-    ] = None
+StrictCPGReservoirSpec = CPGReservoirConfig
 
 
 class StrictPluginSlots(SpecBaseModel):
@@ -527,8 +513,20 @@ class StrictModelSpec(SpecBaseModel):
     ] = None
 
 
+# ---------------------------------------------------------------------------
+# Patch* variants
+# ---------------------------------------------------------------------------
+# Parallel hierarchy to the Strict* specs where every field is optional so
+# clients can send partial updates. Used by the MCP adapter to implement
+# RFC-7396 JSON Merge Patch: the server validates incoming patches against
+# Patch* models, merges them into the accumulated spec, then validates the
+# result against Strict* before building. Purely an MCP/JSON-transport
+# concern — native DARTS objects are always fully constructed.
+# ---------------------------------------------------------------------------
+
+
 class PatchPluginSlots(StrictPluginSlots):
-    """Optional evaluator plugin overrides."""
+    """Optional evaluator plugin overrides (see Patch* variants header)."""
 
     model_config = ConfigDict(
         title="PatchPluginSlots",

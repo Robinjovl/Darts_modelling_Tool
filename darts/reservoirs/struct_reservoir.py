@@ -3,7 +3,7 @@ import warnings
 from typing import Literal
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 from scipy.interpolate import griddata
 
 from darts.engines import (
@@ -123,9 +123,13 @@ class StructReservoirConfig(BaseModel):
 
     _PROPERTY_FIELDS = ("dx", "dy", "dz", "permx", "permy", "permz", "poro")
 
-    @model_validator(mode="after")
-    def _check_required_properties(self) -> "StructReservoirConfig":
-        """Ensure property fields are present at top level or covered by layers."""
+    def _assert_buildable(self) -> None:
+        """Raise if required property fields are missing for construction.
+
+        Enforced at build time (``from_config``) rather than as a pydantic
+        model_validator so that partial/patch payloads can still validate
+        against this config (see ``PatchReservoirSpec`` in ``darts.api``).
+        """
         layer_keys: set[str] = set()
         if self.layers:
             for lay in self.layers:
@@ -144,7 +148,6 @@ class StructReservoirConfig(BaseModel):
                 "Reservoir config missing required fields (provide at top level "
                 f"or in every layer): {', '.join(missing)}"
             )
-        return self
 
 
 class StructReservoir(ReservoirBase):
@@ -277,6 +280,7 @@ class StructReservoir(ReservoirBase):
         :param timer: Timer node for discretization timing.
         :returns: Fully constructed StructReservoir instance.
         """
+        config._assert_buildable()
         kwargs = {
             k: v
             for k, v in config.model_dump(exclude={"type", "layers"}).items()

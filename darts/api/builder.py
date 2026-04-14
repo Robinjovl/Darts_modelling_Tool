@@ -401,12 +401,7 @@ class ModelBuilder:
         *,
         base_path: str | None = None,
     ) -> None:
-        from darts.reservoirs.cpg_reservoir import (
-            CPG_Reservoir,
-            check_arrays,
-            read_arrays,
-        )
-        from darts.tools.keyword_file_tools import compressed_file
+        from darts.reservoirs.cpg_reservoir import CPG_Reservoir, CPGReservoirConfig
 
         def _resolve_path(path: str) -> str:
             if os.path.isabs(path):
@@ -415,40 +410,14 @@ class ModelBuilder:
                 return os.path.join(base_path, path)
             return path
 
-        grid_file = _resolve_path(r.grid_file)
-        prop_file = _resolve_path(r.prop_file)
-        fault_file = _resolve_path(r.fault_file) if r.fault_file else None
+        raw = r.model_dump(exclude_none=True)
+        raw["grid_file"] = _resolve_path(raw["grid_file"])
+        raw["prop_file"] = _resolve_path(raw["prop_file"])
+        if raw.get("fault_file"):
+            raw["fault_file"] = _resolve_path(raw["fault_file"])
 
-        compressed_file(grid_file)
-        compressed_file(prop_file)
-
-        arrays = read_arrays(gridfile=grid_file, propfile=prop_file)
-        check_arrays(arrays)
-
-        if r.min_poro is not None and "PORO" in arrays and "ACTNUM" in arrays:
-            arrays["ACTNUM"][arrays["PORO"] < r.min_poro] = 0
-        if r.min_perm is not None:
-            for key in ("PERMX", "PERMY", "PERMZ"):
-                if key in arrays:
-                    arrays[key][arrays[key] < r.min_perm] = r.min_perm
-
-        reservoir = CPG_Reservoir(
-            model.timer,
-            arrays=arrays,
-            faultfile=fault_file,
-            minpv=r.minpv if r.minpv is not None else 0.0,
-        )
-        reservoir.discretize()
-        reservoir.input_arrays = arrays
-
-        if r.boundary_volume is not None:
-            bv = r.boundary_volume
-            reservoir.set_boundary_volume(
-                xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv
-            )
-            reservoir.apply_volume_depth()
-
-        model.reservoir = reservoir
+        config = CPGReservoirConfig(**raw)
+        model.reservoir = CPG_Reservoir.from_config(config, timer=model.timer)
 
     @staticmethod
     def _as_plugin_instance(obj: Any) -> PluginInstance:

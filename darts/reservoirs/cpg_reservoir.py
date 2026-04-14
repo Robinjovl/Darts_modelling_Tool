@@ -1,10 +1,13 @@
+import os
 import time
 import warnings
+from typing import Annotated, Literal
 
 import numpy as np
 from opmcpg._cpggrid import index_vector as index_vector_cpggrid
 from opmcpg._cpggrid import process_cpg_grid
 from opmcpg._cpggrid import value_vector as value_vector_cpggrid
+from pydantic import BaseModel, ConfigDict, Field
 from pyevtk.hl import pointsToVTK
 
 import darts
@@ -31,13 +34,62 @@ except ImportError:
     warnings.warn("No vtk module loaded.", stacklevel=2)
 
 import inspect
-import os
 import sys
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 parentdir2 = os.path.dirname(parentdir)
 sys.path.insert(0, os.path.join(parentdir2, "python"))
+
+
+class CPGReservoirConfig(BaseModel):
+    """Configuration for a corner-point (CPG) reservoir loaded from GRDECL-like files."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "type": "cpg",
+                    "grid_file": "meshes/brugge/grid.grdecl",
+                    "prop_file": "meshes/brugge/reservoir.in",
+                    "minpv": 1e-5,
+                    "min_poro": 1e-5,
+                    "boundary_volume": 1e10,
+                }
+            ]
+        },
+    )
+
+    type: Annotated[
+        Literal["cpg"], Field(description="Reservoir type (corner-point geometry)")
+    ] = "cpg"
+    grid_file: Annotated[str, Field(description="Path to GRDECL grid file")]
+    prop_file: Annotated[
+        str, Field(description="Path to reservoir property file (GRDECL-like)")
+    ]
+    fault_file: Annotated[
+        str | None,
+        Field(description="Optional file with fault transmissibility multipliers"),
+    ] = None
+    minpv: Annotated[
+        float | None,
+        Field(ge=0, description="Minimum pore volume threshold for active cells [m3]"),
+    ] = None
+    min_poro: Annotated[
+        float | None,
+        Field(ge=0, le=1, description="Optional porosity cutoff for ACTNUM filtering"),
+    ] = None
+    min_perm: Annotated[
+        float | None,
+        Field(ge=0, description="Optional lower bound for PERMX/PERMY/PERMZ [mD]"),
+    ] = None
+    boundary_volume: Annotated[
+        float | None,
+        Field(
+            gt=0, description="Optional lateral boundary volume assigned to edge cells"
+        ),
+    ] = None
 
 
 class CPG_Reservoir(ReservoirBase):
@@ -70,6 +122,51 @@ class CPG_Reservoir(ReservoirBase):
         self.vtk_filenames_and_times = {}
         self.vtkobj = 0
         self.vtk_grid_type = 1
+
+    @classmethod
+    def from_config(
+        cls, config: "CPGReservoirConfig", *, timer: timer_node
+    ) -> "CPG_Reservoir":
+        """Construct a CPG_Reservoir from a :class:`CPGReservoirConfig`.
+
+        Reads grid/property files, applies optional ACTNUM/PERM filtering from
+        ``min_poro``/``min_perm``, discretizes the grid, and applies
+        ``boundary_volume`` if provided. File paths must be resolved by the
+        caller (e.g. the JSON builder resolves paths relative to a base_path
+        before constructing the config).
+        """
+        from darts.tools.keyword_file_tools import compressed_file
+
+        compressed_file(config.grid_file)
+        compressed_file(config.prop_file)
+
+        arrays = read_arrays(gridfile=config.grid_file, propfile=config.prop_file)
+        check_arrays(arrays)
+
+        if config.min_poro is not None and "PORO" in arrays and "ACTNUM" in arrays:
+            arrays["ACTNUM"][arrays["PORO"] < config.min_poro] = 0
+        if config.min_perm is not None:
+            for key in ("PERMX", "PERMY", "PERMZ"):
+                if key in arrays:
+                    arrays[key][arrays[key] < config.min_perm] = config.min_perm
+
+        reservoir = cls(
+            timer,
+            arrays=arrays,
+            faultfile=config.fault_file,
+            minpv=config.minpv if config.minpv is not None else 0.0,
+        )
+        reservoir.discretize()
+        reservoir.input_arrays = arrays
+
+        if config.boundary_volume is not None:
+            bv = config.boundary_volume
+            reservoir.set_boundary_volume(
+                xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv
+            )
+            reservoir.apply_volume_depth()
+
+        return reservoir
 
     def set_arrays(self, arrays):
         """

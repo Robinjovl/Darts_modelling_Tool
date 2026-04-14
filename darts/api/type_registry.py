@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 
 # Built-in configs — imported from the core classes they describe.
 # Re-exported here for backward compatibility.
+from darts.physics.blackoil import BlackOilConfig  # noqa: E402, F401
 from darts.physics.properties.basic import (  # noqa: E402, F401
     ConstFuncConfig,
     PhaseRelPermConfig,
@@ -120,25 +121,6 @@ def _schema_entry(entry: _TypeEntry) -> dict[str, Any]:
 TYPE_REGISTRY = TypeRegistry()
 
 
-class BlackOilConfig(BaseModel):
-    """Configuration for BlackOil physics (remains here until BlackOil gets its own)."""
-
-    pvt_path: str
-    thermal: bool = False
-    type_hydr: Literal["isothermal", "thermal"] = "isothermal"
-    type_mech: Literal["none", "poroelasticity", "thermoporoelasticity"] = "none"
-    init_type: Literal["uniform"] = "uniform"
-    n_points: int = Field(5001, ge=2)
-    zero: float = Field(1e-12, ge=0)
-    epsilon_z: float = Field(1e-13, ge=0)
-    min_p: float = Field(1.0, ge=0)
-    max_p: float = Field(450.0, ge=0)
-    min_t: float = Field(-10.0)
-    max_t: float = Field(100.0)
-    min_z: float = Field(0.0, ge=0)
-    max_z: float = Field(1.0, ge=0)
-
-
 class AnyConfig(BaseModel):
     """Permissive config model for local plugins."""
 
@@ -148,42 +130,6 @@ class AnyConfig(BaseModel):
 
         class Config:
             extra = "allow"
-
-
-# ========================
-# Constructors (adapters)
-# ========================
-
-
-def make_black_oil(
-    cfg: BlackOilConfig, components: list[str], phases: list[str], timer
-) -> Any:
-    from darts.input.input_data import InputData
-    from darts.physics.blackoil import BlackOil, BlackOilFluidProps
-
-    pvt_path = os.path.expanduser(cfg.pvt_path)
-    idata = InputData(
-        type_hydr=cfg.type_hydr, type_mech=cfg.type_mech, init_type=cfg.init_type
-    )
-    idata.fluid = BlackOilFluidProps(pvt=pvt_path)
-    idata.obl.n_points = cfg.n_points
-    idata.obl.zero = cfg.zero
-    idata.obl.epsilon_z = cfg.epsilon_z
-    idata.obl.min_p = cfg.min_p
-    idata.obl.max_p = cfg.max_p
-    idata.obl.min_t = cfg.min_t
-    idata.obl.max_t = cfg.max_t
-    idata.obl.min_z = cfg.min_z
-    idata.obl.max_z = cfg.max_z
-
-    if components and components != idata.fluid.components:
-        raise ValueError(
-            f"BlackOil components mismatch: {components} vs {idata.fluid.components}"
-        )
-    if phases and phases != idata.fluid.phases:
-        raise ValueError(f"BlackOil phases mismatch: {phases} vs {idata.fluid.phases}")
-
-    return BlackOil(idata, timer, thermal=cfg.thermal)
 
 
 # ========================
@@ -437,8 +383,13 @@ def _register_defaults() -> None:
             type_id="physics/BlackOil@v1",
             kind="physics",
             config_model=BlackOilConfig,
-            constructor=lambda cfg, **kw: make_black_oil(
-                cfg, kw.get("components", []), kw.get("phases", []), kw.get("timer")
+            constructor=lambda cfg, **kw: _lazy_from_config(
+                "darts.physics.blackoil",
+                "BlackOil",
+                cfg,
+                components=kw.get("components", []),
+                phases=kw.get("phases", []),
+                timer=kw.get("timer"),
             ),
             doc="Black-oil physics (PVT-driven).",
             customizable=False,
