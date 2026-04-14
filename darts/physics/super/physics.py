@@ -243,27 +243,14 @@ class Compositional(PhysicsBase):
         ]
         return np.hstack([primary_state] + history_cols).reshape(-1)
 
-    def init_physics(
-        self,
-        discr_type: str = "tpfa",
-        platform: str = "cpu",
-        itor_type: str = "multilinear",
-        itor_mode: str = "adaptive",
-        itor_precision: str = "d",
-        verbose: bool = False,
-        is_barycentric: bool = False,
-        n_solid: int = None,
-    ):
-        self.axes_min, self.axes_max = self.determine_obl_bounds(
-            min_p=self.PT_axes_min[0],
-            max_p=self.PT_axes_max[0],
-            min_t=self.PT_axes_min[-1],
-            max_t=self.PT_axes_max[-1],
-            min_z=self.PT_axes_min[1 : self.nc],
-            max_z=self.PT_axes_max[1 : self.nc],
-            state_spec=self.state_spec,
-        )
+    def _extend_axes_with_history(self):
+        """Save primary OBL axes and append history dimensions (e.g. sg_max).
 
+        Called from set_interpolators() before creating any itor objects so
+        that create_interpolator() can distinguish between primary axes (used
+        for well / property interpolators) and extended axes (used for
+        reservoir interpolators that include history fields).
+        """
         self.primary_axes_min = value_vector(self.axes_min)
         self.primary_axes_max = value_vector(self.axes_max)
         self.primary_n_axes_points = index_vector(self.n_axes_points)
@@ -275,17 +262,43 @@ class Compositional(PhysicsBase):
                 list(self.n_axes_points) + self.history_n_axes_points
             )
 
-        self.engine = self.set_engine(discr_type, platform)
-        if n_solid is not None:
-            self.engine.n_solid = n_solid
-        self.set_state_spec(state_spec=self.state_spec)
-        self.set_operators()
-        self.set_interpolators(
-            platform, itor_type, itor_mode, itor_precision, is_barycentric
+    def set_interpolators(
+        self,
+        platform: str = "cpu",
+        itor_type: str = "multilinear",
+        itor_mode: str = "adaptive",
+        itor_precision: str = "d",
+        is_barycentric: bool = False,
+    ):
+        """Extend OBL axes with history dimensions then delegate to base class."""
+        self._extend_axes_with_history()
+        super().set_interpolators(platform, itor_type, itor_mode, itor_precision, is_barycentric)
+
+    def init_physics(
+        self,
+        discr_type: str = "tpfa",
+        platform: str = "cpu",
+        itor_type: str = "multilinear",
+        itor_mode: str = "adaptive",
+        itor_precision: str = "d",
+        verbose: bool = False,
+        is_barycentric: bool = False,
+        n_solid: int = None,
+    ):
+        # Base class handles: determine_obl_bounds, set_engine, set_state_spec,
+        # set_operators, set_interpolators (which is overridden above to extend axes).
+        super().init_physics(
+            discr_type=discr_type,
+            platform=platform,
+            itor_type=itor_type,
+            itor_mode=itor_mode,
+            itor_precision=itor_precision,
+            verbose=verbose,
+            is_barycentric=is_barycentric,
+            n_solid=n_solid,
         )
         if self.hysteresis_enabled and hasattr(self.engine, "hysteresis_enabled"):
             self.engine.hysteresis_enabled = True
-        return
 
     def init_wells(self, wells):
         super().init_wells(wells)
@@ -362,28 +375,6 @@ class Compositional(PhysicsBase):
         self.create_itor_timers(itor, timer_name)
         itor.init()
         return itor, n_ops
-
-    def set_well_controls(
-        self,
-        wctrl,
-        control_type,
-        is_inj,
-        target,
-        phase_name=None,
-        inj_composition=None,
-        inj_temp=None,
-    ):
-        super().set_well_controls(
-            wctrl=wctrl,
-            control_type=control_type,
-            is_inj=is_inj,
-            target=target,
-            phase_name=phase_name,
-            inj_composition=inj_composition,
-            inj_temp=inj_temp,
-        )
-        if self.hysteresis_enabled and hasattr(wctrl, "hysteresis_enabled"):
-            wctrl.hysteresis_enabled = True
 
     def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):
         """
