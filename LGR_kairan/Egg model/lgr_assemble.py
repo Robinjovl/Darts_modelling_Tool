@@ -7,6 +7,7 @@ from darts.engines import(
     value_vector,
     ms_well,
 )
+from lgr_scaled_fc import build_flow_based_scaled_fc
 
 def assemble_lgr_connections(self):
     # STEP 1 discretize Level 0
@@ -61,101 +62,109 @@ def assemble_lgr_connections(self):
     
     # step 3: extract fine-coarse from imaginary grid
 
-    fc_cm = []
-    fc_cp = []
-    fc_T = []
-    fc_Tt = []
+    fc_cm, fc_cp, fc_T, fc_Tt, fc_debug_df = build_flow_based_scaled_fc(
+        model=self,
+        lgr_orders=lgr_orders,
+        lgr_offsets=lgr_offsets,
+        verbose=True,
+    )
 
-    for name in lgr_orders:
-        cfg = self.lgrs[name]
-        ic = cfg['lgr_coords_in_parent_grid']['i_range'][0]
-        jc = cfg['lgr_coords_in_parent_grid']['j_range'][0]
-        k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
-        rx,ry,rz = cfg['lgr_coords_in_parent_grid']['refine']
-        nk = k2 - k1 + 1
 
-        self.level1_imag[name].discretize()
-        disc_im = self.level1_imag[name].discretizer
-        cmi, cpi, Ti, Ti_therm = disc_im.calc_structured_discr()
-        # customized transmissibility scaling for fine-coarse connections, to better match the original model's behavior.
-        # alpha = 3.624043958155789 / 2.8422382239720037
-        # Ti = Ti * alpha
+    # fc_cm = []
+    # fc_cp = []
+    # fc_T = []
+    # fc_Tt = []
 
-        nxim = rx +2
-        nyim = ry +2
-        nxy_im = nxim * nyim
-        plane_size = rx * ry
-        fine_global_offset = lgr_offsets[name]
+    # for name in lgr_orders:
+    #     cfg = self.lgrs[name]
+    #     ic = cfg['lgr_coords_in_parent_grid']['i_range'][0]
+    #     jc = cfg['lgr_coords_in_parent_grid']['j_range'][0]
+    #     k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
+    #     rx,ry,rz = cfg['lgr_coords_in_parent_grid']['refine']
+    #     nk = k2 - k1 + 1
 
-        # build per layer fine/ halo index map 
-        fine_im_set = set()
-        coarse_im_set = set()
-        imag_fine_to_global = {} # this global means consider actnum and concatenate lgr to the end of level0
-        image_ring_to_level0 = {}
+    #     self.level1_imag[name].discretize()
+    #     disc_im = self.level1_imag[name].discretizer
+    #     cmi, cpi, Ti, Ti_therm = disc_im.calc_structured_discr()
+    #     # customized transmissibility scaling for fine-coarse connections, to better match the original model's behavior.
+    #     # alpha = 3.624043958155789 / 2.8422382239720037
+    #     # Ti = Ti * alpha
 
-        for kk, k in enumerate(range(k1, k2 +1)):
-            nbr_g = {
-                "left" : self.convert_ijk_to_gindex_1based(ic-1, jc, k, self.level0.nx, self.level0.ny),
-                "right" : self.convert_ijk_to_gindex_1based(ic+1, jc, k, self.level0.nx, self.level0.ny),
-                "up" : self.convert_ijk_to_gindex_1based(ic, jc-1, k, self.level0.nx, self.level0.ny),
-                "down" : self.convert_ijk_to_gindex_1based(ic, jc+1, k, self.level0.nx, self.level0.ny),
-            }
-            nbr_l = {k: int(g2l0[v]) for k, v in nbr_g.items()} # local indices in level0 after actnum squeeze
+    #     nxim = rx +2
+    #     nyim = ry +2
+    #     nxy_im = nxim * nyim
+    #     plane_size = rx * ry
+    #     fine_global_offset = lgr_offsets[name]
 
-            base_im = kk * nxy_im
-            base_fine = kk * plane_size
+    #     # build per layer fine/ halo index map 
+    #     fine_im_set = set()
+    #     coarse_im_set = set()
+    #     imag_fine_to_global = {} # this global means consider actnum and concatenate lgr to the end of level0
+    #     image_ring_to_level0 = {}
+
+    #     for kk, k in enumerate(range(k1, k2 +1)):
+    #         nbr_g = {
+    #             "left" : self.convert_ijk_to_gindex_1based(ic-1, jc, k, self.level0.nx, self.level0.ny),
+    #             "right" : self.convert_ijk_to_gindex_1based(ic+1, jc, k, self.level0.nx, self.level0.ny),
+    #             "up" : self.convert_ijk_to_gindex_1based(ic, jc-1, k, self.level0.nx, self.level0.ny),
+    #             "down" : self.convert_ijk_to_gindex_1based(ic, jc+1, k, self.level0.nx, self.level0.ny),
+    #         }
+    #         nbr_l = {k: int(g2l0[v]) for k, v in nbr_g.items()} # local indices in level0 after actnum squeeze
+
+    #         base_im = kk * nxy_im
+    #         base_fine = kk * plane_size
             
-            # central fine cells in imaginary grid
+    #         # central fine cells in imaginary grid
             
-            for j in range(1, ry+1):
-                for i in range(1, rx+1):
-                    imag_idx = base_im + j*nxim + i # index of 5*5 grid
-                    fine_local = base_fine + (j-1)*rx + (i-1) # local fine index in level1
-                    fine_global = fine_global_offset + fine_local # global index of fine cell
+    #         for j in range(1, ry+1):
+    #             for i in range(1, rx+1):
+    #                 imag_idx = base_im + j*nxim + i # index of 5*5 grid
+    #                 fine_local = base_fine + (j-1)*rx + (i-1) # local fine index in level1
+    #                 fine_global = fine_global_offset + fine_local # global index of fine cell
 
-                    imag_fine_to_global[imag_idx] = fine_global
-                    fine_im_set.add(imag_idx)
+    #                 imag_fine_to_global[imag_idx] = fine_global
+    #                 fine_im_set.add(imag_idx)
                     
-            # halo cells
-            for jj in range(1,ry+1):
-                left_idx = base_im + jj*nxim + 0
-                right_idx = base_im + jj*nxim + (rx+1)
-                image_ring_to_level0[left_idx] = nbr_l['left']
-                image_ring_to_level0[right_idx] = nbr_l['right']
-                coarse_im_set.add(left_idx)
-                coarse_im_set.add(right_idx)
-            for ii in range(1,rx+1):
-                up_idx = base_im + 0*nxim + ii
-                down_idx = base_im + (ry+1)*nxim + ii
-                image_ring_to_level0[up_idx] = nbr_l['up']
-                image_ring_to_level0[down_idx] = nbr_l['down']
-                coarse_im_set.add(up_idx)
-                coarse_im_set.add(down_idx)
+    #         # halo cells
+    #         for jj in range(1,ry+1):
+    #             left_idx = base_im + jj*nxim + 0
+    #             right_idx = base_im + jj*nxim + (rx+1)
+    #             image_ring_to_level0[left_idx] = nbr_l['left']
+    #             image_ring_to_level0[right_idx] = nbr_l['right']
+    #             coarse_im_set.add(left_idx)
+    #             coarse_im_set.add(right_idx)
+    #         for ii in range(1,rx+1):
+    #             up_idx = base_im + 0*nxim + ii
+    #             down_idx = base_im + (ry+1)*nxim + ii
+    #             image_ring_to_level0[up_idx] = nbr_l['up']
+    #             image_ring_to_level0[down_idx] = nbr_l['down']
+    #             coarse_im_set.add(up_idx)
+    #             coarse_im_set.add(down_idx)
 
-        for cm, cp, t, tt in zip(cmi, cpi, Ti, Ti_therm):
-            if (cm // nxy_im) != (cp // nxy_im):
-                continue
-            cm_is_fine = cm in fine_im_set
-            cp_is_fine = cp in fine_im_set
-            cm_is_coarse = cm in coarse_im_set
-            cp_is_coarse = cp in coarse_im_set
+    #     for cm, cp, t, tt in zip(cmi, cpi, Ti, Ti_therm):
+    #         if (cm // nxy_im) != (cp // nxy_im):
+    #             continue
+    #         cm_is_fine = cm in fine_im_set
+    #         cp_is_fine = cp in fine_im_set
+    #         cm_is_coarse = cm in coarse_im_set
+    #         cp_is_coarse = cp in coarse_im_set
 
-            # fine-coarse connection
-            if cm_is_fine and cp_is_coarse:
-                fine_global = imag_fine_to_global[cm]
-                coarse_local = image_ring_to_level0[cp]
-                fc_cm.append(coarse_local)
-                fc_cp.append(fine_global)
-                fc_T.append(t)
-                fc_Tt.append(tt)
+    #         # fine-coarse connection
+    #         if cm_is_fine and cp_is_coarse:
+    #             fine_global = imag_fine_to_global[cm]
+    #             coarse_local = image_ring_to_level0[cp]
+    #             fc_cm.append(coarse_local)
+    #             fc_cp.append(fine_global)
+    #             fc_T.append(t)
+    #             fc_Tt.append(tt)
 
-            elif cp_is_fine and cm_is_coarse:
-                fine_global = imag_fine_to_global[cp]
-                coarse_local = image_ring_to_level0[cm]
-                fc_cm.append(coarse_local)
-                fc_cp.append(fine_global)
-                fc_T.append(t)
-                fc_Tt.append(tt)
+    #         elif cp_is_fine and cm_is_coarse:
+    #             fine_global = imag_fine_to_global[cp]
+    #             coarse_local = image_ring_to_level0[cm]
+    #             fc_cm.append(coarse_local)
+    #             fc_cp.append(fine_global)
+    #             fc_T.append(t)
+    #             fc_Tt.append(tt)
 
 
     # step 4: extract overburden and underburden connections from imaginary grid   
@@ -168,6 +177,7 @@ def assemble_lgr_connections(self):
         k1  = lgr['k_range'][0]   # 1-based
         k2  = lgr['k_range'][1]   # 1-based
         rx, ry, rz = lgr['refine']
+        nk = k2 - k1 + 1
 
         plane_size = rx * ry
         fine_global_offset = lgr_offsets[name]
