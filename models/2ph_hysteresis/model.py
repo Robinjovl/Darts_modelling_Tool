@@ -423,7 +423,11 @@ class Model(DartsModel):
             return
 
         n_res_blocks = self.reservoir.mesh.n_res_blocks
-        sg = np.asarray(self.get_engine_output_properties(["sat_V"])["sat_V"], dtype=float)
+        _, output_props = self.output.output_properties(
+            output_properties=["sat_V"],
+            engine=True,
+        )
+        sg = np.asarray(output_props["sat_V"][0], dtype=float)
         sg_max = np.array(
             self.physics.get_engine_history_array(
                 "sg_max",

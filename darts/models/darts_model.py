@@ -247,63 +247,6 @@ class DartsModel:
     def update_history_fields_after_timestep(self):
         return
 
-    def get_engine_output_properties(self, output_properties: list):
-        nb = self.reservoir.mesh.n_res_blocks
-        if hasattr(self.physics, "get_interpolator_state_labels"):
-            state_labels = self.physics.get_interpolator_state_labels()
-            flat_state = self.physics.get_engine_interpolator_state(n_blocks=nb)
-            state_size = self.physics.get_interpolator_state_size()
-        else:
-            state_labels = list(self.physics.vars)
-            flat_state = np.asarray(self.physics.engine.X, copy=False)[
-                : self.physics.n_vars * nb
-            ]
-            state_size = self.physics.n_vars
-
-        primary_props = [prop for prop in output_properties if prop in state_labels]
-        primary_prop_idxs = {prop: state_labels.index(prop) for prop in primary_props}
-
-        secondary_props = [prop for prop in output_properties if prop not in state_labels]
-        secondary_prop_idxs = {}
-        for prop in secondary_props:
-            for container in self.physics.property_containers.values():
-                if prop in container.output_props:
-                    secondary_prop_idxs[prop] = list(container.output_props.keys()).index(
-                        prop
-                    )
-                    break
-            else:
-                raise KeyError(
-                    f"Secondary property '{prop}' not found in any property container."
-                )
-
-        property_array = {
-            prop: np.zeros(nb, dtype=float) for prop in primary_props + secondary_props
-        }
-        for prop, idx in primary_prop_idxs.items():
-            property_array[prop][:] = flat_state[idx::state_size]
-
-        if secondary_props:
-            state = value_vector(
-                np.stack([flat_state[j::state_size] for j in range(state_size)]).T.flatten()
-            )
-            n_ops = self.physics.n_ops
-            values = value_vector(np.zeros(n_ops * nb))
-            values_numpy = np.array(values, copy=False)
-            dvalues = value_vector(np.zeros(n_ops * nb * state_size))
-
-            for region, prop_itor in self.physics.property_itor.items():
-                block_idx = np.where(self.op_num == region)[0].astype(np.int32)
-                prop_itor.evaluate_with_derivatives(
-                    state, index_vector(block_idx), values, dvalues
-                )
-
-                for prop_name, prop_idx in secondary_prop_idxs.items():
-                    temp = values_numpy[prop_idx::n_ops]
-                    property_array[prop_name][block_idx] = temp[block_idx]
-
-        return property_array
-
     def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
