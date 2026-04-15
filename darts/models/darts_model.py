@@ -1176,6 +1176,18 @@ class DartsModel:
         for name in list(vars(self).keys()):
             delattr(self, name)
 
+    # Convenience: apply a validated ModelSpec to this model instance
+    def apply_model_spec(self, spec_dict: dict):
+        try:
+            from darts.api import ModelBuilder, ModelSpec
+        except Exception as err:
+            raise RuntimeError("darts.api is required to use apply_model_spec") from err
+        try:
+            spec = ModelSpec.model_validate(spec_dict)  # pydantic v2
+        except Exception:
+            spec = ModelSpec.parse_obj(spec_dict)  # pydantic v1
+        ModelBuilder.apply(spec, self)
+
     def set_well_controls_idata(self, time: float = 0.0, verbose=True):
         """
         :param time: simulation time, [days]

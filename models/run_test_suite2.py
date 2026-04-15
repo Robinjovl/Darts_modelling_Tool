@@ -2,6 +2,7 @@ import darts.engines as darts_engines
 from darts.engines import print_build_info as engines_pbi
 from darts.print_build_info import print_build_info as package_pbi
 from for_each_model import for_each_model, run_tests, abort_redirection, redirect_all_output, for_each_model_adjoint
+from json_test_suite import run_json_tests
 import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
@@ -215,6 +216,12 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         os.chdir(models_root)
     n_total += n_total_mainpy
 
+    # JSON model tests
+    print('\nJSON model tests:')
+    n_total_json, failed_models_json = run_json_tests(model_dir)
+    failed_models_json = ['json: ' + x for x in failed_models_json]
+    n_total += n_total_json
+
     # discretizer tests
     print('\nDiscretizer tests:')
     n_total_discr, failed_models_cpg = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
@@ -246,8 +253,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_adj
     # test for adjoint ------------------end---------------------------------
 
-    failed_models = failed_models_m + failed_models_main + failed_models_cpg + failed_models_dfn + \
-                    failed_models_mech + failed_models_adj + failed_models_chem
+    failed_models = failed_models_m + failed_models_main + failed_models_json + failed_models_cpg + \
+                    failed_models_dfn + failed_models_mech + failed_models_adj + failed_models_chem
     print('Failed models   :\n\t', '\n\t'.join(failed_models))
 
     n_failed =  len(failed_models)
@@ -256,6 +263,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     print('Number of failed models by types:')
     print('\tmodel.py', len(failed_models_m))
     print('\tmain.py', len(failed_models_main))
+    print('\tjson', len(failed_models_json))
     print('\tcpg', len(failed_models_cpg))
     print('\tdfn', len(failed_models_dfn))
     print('\tmech', len(failed_models_mech))

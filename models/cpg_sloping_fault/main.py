@@ -82,7 +82,6 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
         output_properties_main = m.physics.vars  # only main variables
         output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
-        m.reservoir.create_vtk_wells(output_directory=out_dir)
         n_timesteps = len(m.idata.sim.time_steps)
         for ith_step in range(n_timesteps + 1):
             # compute additional properties only for the first and for the last timestep:
@@ -104,7 +103,15 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
                 # append properties to reservoir.h5
                 m.output.save_property_array(timesteps, property_array)
 
-            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
+            m.output.output_to_vtk(
+                output_data=[timesteps, property_array],
+                ith_step=ith_step,
+                # render_with_paraview=(ith_step == n_timesteps),
+                # paraview_timestep_mode='all',
+                # paraview_render_options={
+                #     'fields': ['pressure[bar]', 'Zo'],
+                # },
+            )
 
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
 

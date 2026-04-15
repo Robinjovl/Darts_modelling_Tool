@@ -20,7 +20,7 @@ keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal en
 requires-python = ">=3.10"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
 dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk',
-    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash>=0.12.1', 'phreeqpy']
+    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash>=0.12.1', 'phreeqpy', 'pydantic>=2.12']
 
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.md"]

@@ -143,6 +143,11 @@ class Output:
             "temperature": "[K]",
         }
 
+        # Disable repeated failed rendering attempts in long workflows.
+        self._paraview_render_disabled = False
+        # Disable repeated failed well VTK export attempts in long workflows.
+        self._vtk_wells_export_disabled = False
+
         self.set_units()
 
     def set_units(self):
@@ -1122,6 +1127,12 @@ class Output:
         output_properties: list = None,
         engine: bool = False,
         output_data: list = None,
+        render_with_paraview: bool = None,
+        paraview_timestep_mode: str = "all",
+        paraview_output_dir: str = None,
+        paraview_render_options: dict = None,
+        export_wells_vtk: bool = True,
+        wells_vtk_options: dict = None,
     ):
         """
         Function to for creating `.vtk` files for viewing results in Paraview.
@@ -1134,8 +1145,35 @@ class Output:
         :type output_directory: str
         :param output_properties: List of properties to include in .vtk file. Defaults to None in which case only primary (state) variables are evaluated.
         :type output_properties: list
+        :param engine: Import state variables directly from the live engine if True.
+            If False, state is read from the HDF5 solution file.
+        :type engine: bool
         :param output_data: List [array of timesteps, dictionary of property arrays]. Defaults to None, in which case properties are evaluated from the HDF5 file or engine
         :type output_data: list
+        :param render_with_paraview: Optional flag to render multiview ParaView screenshots from generated `.pvd`.
+            If None, value is taken from env var ``DARTS_PARAVIEW_RENDER`` (default: disabled).
+        :type render_with_paraview: bool, optional
+        :param paraview_timestep_mode: ParaView render timestep mode: ``latest`` or ``all``.
+        :type paraview_timestep_mode: str
+        :param paraview_output_dir: Optional output directory for ParaView screenshots.
+            Defaults to ``<vtk_output_directory>/paraview_renders``.
+        :type paraview_output_dir: str, optional
+        :param paraview_render_options: Optional dictionary with advanced multiview rendering settings.
+            Passed directly to ``darts.tools.paraview_render.ParaViewMultiViewRenderer``.
+            Useful keys include ``fields``, ``field_ranges``, ``camera``, ``colormap``, ``annotate_time``,
+            ``video_length_sec``, ``video_quality``, ``video_format``, ``show_cell_edges``,
+            ``edge_line_width``, ``edge_color``, ``show_orientation_axes``,
+            ``orientation_axes_labels``, ``orientation_axes_position``, ``orientation_axes_size``,
+            ``orientation_axes_label_font_size``, ``orientation_axes_text_color``,
+            ``wells_vtk_file``, ``show_wells``, ``wells_color``, ``wells_opacity``,
+            ``wells_line_width``.
+        :type paraview_render_options: dict, optional
+        :param export_wells_vtk: Whether to export wells geometry to a standalone VTK
+            file via ``reservoir.create_vtk_wells(...)``. Enabled by default.
+        :type export_wells_vtk: bool, optional
+        :param wells_vtk_options: Optional keyword arguments forwarded to
+            ``reservoir.create_vtk_wells(...)``.
+        :type wells_vtk_options: dict, optional
 
         Notes
         -----
@@ -1143,6 +1181,9 @@ class Output:
         * The input ``ith_step`` indexes ``dynamic/time`` in the ``reservoir_solution.h5`` file.
         * If output_data = [timesteps, property_array] is passed directly as input, ``ith_step`` merely functions as a label in the created .vtk filename.
         """
+
+        def _env_to_bool(value: str) -> bool:
+            return str(value).strip().lower() in ("1", "true", "yes", "on")
 
         self.timer.start()
         self.timer.node["vtk_output"].start()
@@ -1221,6 +1262,89 @@ class Output:
                 prop_names,
                 data,  # this array only contains reservoir properties
             )
+
+        wells_vtk_file = None
+        if export_wells_vtk and not self._vtk_wells_export_disabled:
+            if hasattr(self.reservoir, "create_vtk_wells"):
+                try:
+                    export_opts = (
+                        dict(wells_vtk_options) if wells_vtk_options is not None else {}
+                    )
+                    if "output_directory" in export_opts:
+                        warnings.warn(
+                            "Ignoring wells_vtk_options['output_directory']; output directory is set by output_to_vtk().",
+                            stacklevel=2,
+                        )
+                        export_opts.pop("output_directory", None)
+
+                    wells_vtk_file = self.reservoir.create_vtk_wells(
+                        output_directory=output_directory,
+                        **export_opts,
+                    )
+                    if wells_vtk_file is not None:
+                        wells_vtk_file = os.path.abspath(str(wells_vtk_file))
+                        if not os.path.exists(wells_vtk_file):
+                            warnings.warn(
+                                f"Well VTK export returned missing file path: {wells_vtk_file}",
+                                stacklevel=2,
+                            )
+                            wells_vtk_file = None
+                except Exception as exc:
+                    self._vtk_wells_export_disabled = True
+                    warnings.warn(
+                        "Well VTK export failed and is now disabled for this Output "
+                        f"instance: {exc}",
+                        stacklevel=2,
+                    )
+            elif self.verbose:
+                print(
+                    "Reservoir object does not expose create_vtk_wells(); skipping "
+                    "well geometry VTK export."
+                )
+
+        if render_with_paraview is None:
+            render_with_paraview = _env_to_bool(
+                os.environ.get("DARTS_PARAVIEW_RENDER", "0")
+            )
+
+        if render_with_paraview and not self._paraview_render_disabled:
+            pvd_file = os.path.join(output_directory, "solution.pvd")
+            if os.path.exists(pvd_file):
+                try:
+                    from darts.tools.paraview_render import ParaViewMultiViewRenderer
+
+                    render_opts = (
+                        dict(paraview_render_options)
+                        if paraview_render_options is not None
+                        else {}
+                    )
+                    if "output_dir" not in render_opts:
+                        render_opts["output_dir"] = (
+                            paraview_output_dir
+                            if paraview_output_dir is not None
+                            else os.path.join(output_directory, "paraview_renders")
+                        )
+                    if "timestep_mode" not in render_opts:
+                        render_opts["timestep_mode"] = paraview_timestep_mode
+                    if wells_vtk_file and "wells_vtk_file" not in render_opts:
+                        render_opts["wells_vtk_file"] = wells_vtk_file
+
+                    renderer = ParaViewMultiViewRenderer(
+                        pvd_file=pvd_file,
+                        **render_opts,
+                    )
+                    result = renderer.render()
+                    if self.verbose and result.get("images"):
+                        print(
+                            f"ParaView rendering completed: {len(result['images'])} image(s) "
+                            f"in '{result.get('output_dir', render_opts['output_dir'])}'."
+                        )
+                except Exception as exc:
+                    self._paraview_render_disabled = True
+                    warnings.warn(
+                        f"ParaView rendering failed and is now disabled for this Output instance: {exc}",
+                        stacklevel=2,
+                    )
 
         self.timer.node["vtk_output"].stop()
         self.timer.stop()

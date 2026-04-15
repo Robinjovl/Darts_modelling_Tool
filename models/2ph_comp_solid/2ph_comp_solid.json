@@ -1,0 +1,246 @@
+{
+  "plugin_registry": {
+    "entries": [
+      {
+        "type_id": "density/ConstFunc@v1",
+        "kind": "density",
+        "constructor": "darts.physics.properties.basic:ConstFunc",
+        "config_model": "darts.api.type_registry:ConstFuncConfig",
+        "customizable": true,
+        "doc": "Constant density function for solid phase"
+      },
+      {
+        "type_id": "diffusion/ConstFunc@v1",
+        "kind": "diffusion",
+        "constructor": "darts.physics.properties.basic:ConstFunc",
+        "config_model": "darts.api.type_registry:ConstFuncConfig",
+        "customizable": true,
+        "doc": "Constant diffusion coefficients"
+      }
+    ]
+  },
+  "reservoir": {
+    "type": "structured",
+    "nx": 1000,
+    "ny": 1,
+    "nz": 1,
+    "dx": 1.0,
+    "dy": 1.0,
+    "dz": 1.0,
+    "permx": 100.0,
+    "permy": 100.0,
+    "permz": 10.0,
+    "poro": 1.0,
+    "depth": 1000.0
+  },
+  "physics": {
+    "plugin": {
+      "type_id": "physics/Compositional@v1",
+      "config": {
+        "state_spec": "P",
+        "n_points": 101,
+        "min_p": 1.0,
+        "max_p": 1000.0,
+        "min_z": 0.0,
+        "max_z": 1.0,
+        "epsilon_z": 1e-13,
+        "extrapolation_flag": true
+      }
+    },
+    "components": [
+      "CO2",
+      "Ions",
+      "H2O",
+      "CaCO3"
+    ],
+    "phases": [
+      "gas",
+      "wat",
+      "sol"
+    ],
+    "property_regions": [
+      {
+        "region": 0,
+        "property_container": {
+          "type_id": "pc/SuperPropertyContainer@v1",
+          "config": {
+            "components_name": [
+              "CO2",
+              "Ions",
+              "H2O",
+              "CaCO3"
+            ],
+            "phases_name": [
+              "gas",
+              "wat",
+              "sol"
+            ],
+            "Mw": [
+              44.01,
+              50.043,
+              18.015,
+              100.086
+            ],
+            "eps_z": 1e-13,
+            "temperature": 1.0,
+            "nc_sol": 1,
+            "np_sol": 1,
+            "rock_comp": 1e-07
+          }
+        },
+        "plugins": {
+          "flash_ev": {
+            "type_id": "flash/ConstantK@v1",
+            "config": {
+              "K": [
+                10.0,
+                1e-12,
+                0.1
+              ],
+              "epsilon": 1e-12
+            }
+          },
+          "density_ev": {
+            "gas": {
+              "type_id": "density/DensityBasic@v1",
+              "config": {
+                "compr": 0.0001,
+                "dens0": 100.0
+              }
+            },
+            "wat": {
+              "type_id": "density/DensityBasic@v1",
+              "config": {
+                "compr": 1e-06,
+                "dens0": 1000.0
+              }
+            },
+            "sol": {
+              "type_id": "density/ConstFunc@v1",
+              "config": {
+                "value": 2000.0
+              }
+            }
+          },
+          "viscosity_ev": {
+            "gas": {
+              "type_id": "viscosity/ConstFunc@v1",
+              "config": {
+                "value": 0.1
+              }
+            },
+            "wat": {
+              "type_id": "viscosity/ConstFunc@v1",
+              "config": {
+                "value": 1.0
+              }
+            }
+          },
+          "rel_perm_ev": {
+            "gas": {
+              "type_id": "relperm/PhaseRelPerm@v1",
+              "config": {
+                "phase": "gas"
+              }
+            },
+            "wat": {
+              "type_id": "relperm/PhaseRelPerm@v1",
+              "config": {
+                "phase": "wat"
+              }
+            }
+          },
+          "diffusion_ev": {
+            "gas": {
+              "type_id": "diffusion/ConstFunc@v1",
+              "config": {
+                "value": 1e-09
+              }
+            },
+            "wat": {
+              "type_id": "diffusion/ConstFunc@v1",
+              "config": {
+                "value": 1e-09
+              }
+            }
+          },
+          "kinetic_rate_ev": {
+            "0": {
+              "type_id": "kinetic/KineticBasic@v1",
+              "config": {
+                "equi_prod": 0.0625,
+                "rate": 1.0,
+                "ne": 4
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "wells": {
+    "wells": [
+      {
+        "name": "I1",
+        "perforations": [
+          {
+            "ijk": [
+              1,
+              1,
+              1
+            ]
+          }
+        ],
+        "controls": {
+          "inj_rate": 0.2,
+          "rate_type": "MOLAR_RATE",
+          "phase_name": "gas",
+          "inj_composition": [
+            0.9999999999970001,
+            1e-12,
+            9.999778782788784e-13
+          ]
+        }
+      },
+      {
+        "name": "P1",
+        "perforations": [
+          {
+            "ijk": [
+              1000,
+              1,
+              1
+            ]
+          }
+        ],
+        "controls": {
+          "prod_bhp": 50.0
+        }
+      }
+    ]
+  },
+  "initial_conditions": {
+    "by_array": {
+      "pressure": 95.0,
+      "CO2": 1e-12,
+      "Ions": 0.15000000000000002,
+      "H2O": 0.14999999999900002
+    }
+  },
+  "sim_params": {
+    "first_ts": 0.001,
+    "mult_ts": 2.0,
+    "max_ts": 1.0,
+    "runtime": 1000.0,
+    "tol_newton": 1e-05,
+    "tol_linear": 1e-06,
+    "it_newton": 10,
+    "it_linear": 50,
+    "newton_type": "newton_local_chop",
+    "newton_tol_stationary": 1e-05
+  },
+  "output": {
+    "folder": "output",
+    "precision": "d"
+  }
+}

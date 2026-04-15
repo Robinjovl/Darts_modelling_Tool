@@ -1,0 +1,8 @@
+{
+  "first_ts": 0.01,
+  "mult_ts": 2.0,
+  "max_ts": 5.0,
+  "runtime": 300,
+  "tol_newton": 0.001,
+  "tol_linear": 1e-6
+}

@@ -1,0 +1,172 @@
+{
+  "plugin_registry": {
+    "entries": [
+      {
+        "type_id": "pc/ModelProperties@v1",
+        "kind": "pc",
+        "constructor": "../2ph_do/model.py:ModelProperties",
+        "config_model": "darts.api.type_registry:PropertyContainerConfig",
+        "customizable": true,
+        "doc": "CPG Brugge dead-oil ModelProperties property container"
+      }
+    ]
+  },
+  "reservoir": {
+    "type": "cpg",
+    "grid_file": "meshes/brugge/grid.grdecl",
+    "prop_file": "meshes/brugge/reservoir.in",
+    "minpv": 1e-05,
+    "min_poro": 1e-05,
+    "min_perm": 1e-05,
+    "boundary_volume": 10000000000.0
+  },
+  "physics": {
+    "plugin": {
+      "type_id": "physics/Compositional@v1",
+      "config": {
+        "state_spec": "P",
+        "n_points": 400,
+        "min_p": 0,
+        "max_p": 1000,
+        "min_z": 0.0,
+        "max_z": 1.0,
+        "epsilon_z": 1e-14
+      }
+    },
+    "components": [
+      "w",
+      "o"
+    ],
+    "phases": [
+      "wat",
+      "oil"
+    ],
+    "property_regions": [
+      {
+        "region": 0,
+        "property_container": {
+          "type_id": "pc/ModelProperties@v1",
+          "config": {
+            "components_name": [
+              "w",
+              "o"
+            ],
+            "phases_name": [
+              "wat",
+              "oil"
+            ],
+            "eps_z": 1e-14
+          }
+        },
+        "plugins": {
+          "density_ev": {
+            "wat": {
+              "type_id": "density/DensityBasic@v1",
+              "config": {
+                "compr": 1e-05,
+                "dens0": 1014
+              }
+            },
+            "oil": {
+              "type_id": "density/DensityBasic@v1",
+              "config": {
+                "compr": 0.005,
+                "dens0": 500
+              }
+            }
+          },
+          "viscosity_ev": {
+            "wat": {
+              "type_id": "viscosity/ConstFunc@v1",
+              "config": {
+                "value": 0.3
+              }
+            },
+            "oil": {
+              "type_id": "viscosity/ConstFunc@v1",
+              "config": {
+                "value": 0.03
+              }
+            }
+          },
+          "rel_perm_ev": {
+            "wat": {
+              "type_id": "relperm/PhaseRelPerm@v1",
+              "config": {
+                "phase": "wat",
+                "swc": 0.1,
+                "sgr": 0.1
+              }
+            },
+            "oil": {
+              "type_id": "relperm/PhaseRelPerm@v1",
+              "config": {
+                "phase": "oil",
+                "swc": 0.1,
+                "sgr": 0.1
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "wells": {
+    "wells": [
+      {
+        "name": "INJ_12",
+        "perforations": [
+          {
+            "ijk": [
+              75,
+              20,
+              1
+            ],
+            "k_end": 9
+          }
+        ],
+        "controls": {
+          "inj_bhp": 250.0,
+          "inj_composition": [
+            1e-11
+          ],
+          "inj_temp": 300.0
+        }
+      },
+      {
+        "name": "PRD_12",
+        "perforations": [
+          {
+            "ijk": [
+              55,
+              25,
+              1
+            ],
+            "k_end": 9
+          }
+        ],
+        "controls": {
+          "prod_bhp": 100.0
+        }
+      }
+    ]
+  },
+  "initial_conditions": {
+    "by_array": {
+      "pressure": 150.0,
+      "w": 0.9999999999999
+    }
+  },
+  "sim_params": {
+    "first_ts": 0.01,
+    "mult_ts": 2.0,
+    "max_ts": 92.0,
+    "runtime": 730.0,
+    "tol_newton": 0.01,
+    "tol_linear": 0.0001
+  },
+  "output": {
+    "folder": "results_deadoil_brugge_wbhp_json",
+    "precision": "d"
+  }
+}

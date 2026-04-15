@@ -73,13 +73,15 @@ class ModelCCS(Model_CPG):
         nc, ni = comp_data.nc, comp_data.ni
         # len(components)
         flash_params = FlashParams(comp_data)
-        flash_params.add_eos("PR", CubicEoS(comp_data, CubicEoS.PR))
-        flash_params.add_eos("AQ", AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
-                                                     AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
-                                                     AQEoS.CompType.ion: AQEoS.Jager2003
-                                                     }))
-        pr = flash_params.eos_params["PR"].eos
-        aq = flash_params.eos_params["AQ"].eos
+        # Keep explicit EoS handles: FlashParams stores an internal copy and
+        # EoSParams no longer exposes a public ".eos" attribute.
+        pr = CubicEoS(comp_data, CubicEoS.PR)
+        aq = AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
+                               AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
+                               AQEoS.CompType.ion: AQEoS.Jager2003
+                               })
+        flash_params.add_eos("PR", pr)
+        flash_params.add_eos("AQ", aq)
         flash_params.eos_order = ["PR", "AQ"]
         phases = ["gas", "wat"]
 
@@ -88,6 +90,7 @@ class ModelCCS(Model_CPG):
         self.physics = Compositional(self.components, phases, timer=self.timer, n_points=self.idata.obl.n_points,
                                      min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
                                      min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
+                                     epsilon_z=self.idata.obl.zero,
                                      state_spec=state_spec, cache=False)
         #self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
 
@@ -96,7 +99,7 @@ class ModelCCS(Model_CPG):
         diff_w = 1e-9 * 86400
         diff_g = 2e-8 * 86400
         property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
-                                               min_z=self.zero, temperature=350)
+                                               eps_z=self.idata.obl.zero, temperature=350)
 
         # property_container.flash_ev = ConstantK(nc=2, ki=[0.001, 100])
         property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
