@@ -110,6 +110,9 @@ class TestPrimitiveApply:
             def set_sim_params(self, **kwargs):
                 self._sim_params = kwargs
 
+            def set_sim_params_from_config(self, config):
+                self.set_sim_params(**config.model_dump(exclude_none=True))
+
         return _Stub()
 
     def test_apply_sim_params(self):
@@ -319,6 +322,9 @@ class TestSharedPrimitiveReuse:
 
             def set_sim_params(self, **kwargs):
                 self._kwargs = kwargs
+
+            def set_sim_params_from_config(self, config):
+                self.set_sim_params(**config.model_dump(exclude_none=True))
 
         model = _Stub()
 
