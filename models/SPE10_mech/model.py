@@ -120,8 +120,8 @@ class Model(THMCModel):
             
         # rock properties for outside reservoir boundaries part of the mesh
         self.idata.rock.poro_non_rsv = 0.001
-        self.idata.rock.perm_non_rsv = 1e-9 # this matched thm and analytical solution
-        #self.idata.rock.perm_non_rsv = 0.01   # this matches proxy and thm
+        #self.idata.rock.perm_non_rsv = 1e-9 # this matched thm and analytical solution
+        self.idata.rock.perm_non_rsv = 0.01   # this matches proxy and thm
         self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
         
         if self.idata.other.perm_frac:

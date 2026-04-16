@@ -689,10 +689,10 @@ if __name__ == '__main__':
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
     #case = '34_34_57'  # z 0 - 5 km
-    #case = '34_34_66'  # z 0 - 5 km 
+    case = '34_34_66'  # z 0 - 5 km 
     #case = '42_42_66'  # z 0 - 5 km 
     #case = '34_34_90'  # z 0 - 5 km more refined around rsv
-    case = '42_42_90'  # z 0 - 5 km more refined around rsv
+    #case = '42_42_90'  # z 0 - 5 km more refined around rsv
     #case='34_35_57' # perm_frac
     
     #case = '34_34_15'
@@ -736,8 +736,8 @@ if __name__ == '__main__':
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
     timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
     
-    run_thm = True
-    #run_thm = False
+    #run_thm = True
+    run_thm = False
     
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
     generate_mesh=True
