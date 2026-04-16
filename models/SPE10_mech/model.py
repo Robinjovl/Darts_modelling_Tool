@@ -186,14 +186,10 @@ class Model(THMCModel):
 
         # well controls
         self.idata.other.delta_temp_inj = 40 # [K] - delta for temperature control
-        if not self.wells_type == 'doublet':         # BHP control
-            self.idata.other.delta_p = 50 # [bar] - delta for BHP control
-            self.idata.other.wctrl_type = well_control_iface.BHP
-            self.idata.other.well_rate = None
-        else: # RATE control
-            self.idata.other.delta_p = None
-            self.idata.other.wctrl_type = well_control_iface.MASS_RATE # mass or molar rate can be choosen here
-            self.idata.other.well_rate = 7500. * self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
+        # RATE control
+        self.idata.other.delta_p = None
+        self.idata.other.wctrl_type = well_control_iface.MASS_RATE # mass or molar rate can be choosen here
+        self.idata.other.well_rate = 0.#7500. * self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
 
         self.idata.mesh.bnd_tags = {}
         tags = self.idata.mesh.bnd_tags  # short name
@@ -359,6 +355,7 @@ class Model(THMCModel):
         return
 
     def set_wells(self):
+        #return
         centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
 
