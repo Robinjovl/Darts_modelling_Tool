@@ -72,7 +72,7 @@ class Model(THMCModel):
         # set properties
         porosity =  0.1
         #permeability = 1000 # [mD] # this matched thm and analytical solution
-        permeability = 1000 # [mD] # this matches proxy and thm
+        permeability = 10 # [mD] # this matches proxy and thm
         
         E = 12 # Young modulus [GPa]
         #E = 22  # GPa, Dinantian carbonate 
@@ -159,13 +159,16 @@ class Model(THMCModel):
         self.idata.fluid.heat_capacity = 75. #[kJ/kmol/K]
 
         # initial conditions (p, T gradients)
+        
+        # non-zero initial temperature doesn't work properly (doesn't converge, check t_ref implementation)
         self.idata.initial.reference_depth_for_temperature = 0.  # [m]
         self.idata.initial.temperature_gradient = 0.#0.03  # [K/m]
         self.idata.initial.temperature_at_ref_depth = 0.#273.15 + 10  # [K]
-        #self.idata.initial.reference_depth_for_pressure = 0.  # [m]
-        # doesn't affect the initial pressure since will be computed by equilibrium using fluid density
+        
+        # next 2 params don't affect the initial pressure since will be computed by equilibrium using fluid density
         # need to set well pressure controls as it is defined before the equilibrium state is evaluated
-        self.idata.initial.pressure_gradient = 0.1  # [bar/m]  
+        self.idata.initial.pressure_gradient = 0.1  # [bar/m] # this is used only in reservoir.get_reservoir_initial_pressure() => reservoir.p_init 
+        #self.idata.initial.reference_depth_for_pressure = 0.  # [m]
         self.idata.initial.pressure_at_ref_depth = 1.  # [bars]
     
         if self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
@@ -189,7 +192,8 @@ class Model(THMCModel):
         # RATE control
         self.idata.other.delta_p = None
         self.idata.other.wctrl_type = well_control_iface.MASS_RATE # mass or molar rate can be choosen here
-        self.idata.other.well_rate = 0.#7500. * self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
+        self.idata.other.well_rate = 2000. # [m^3/day] 
+        self.idata.other.well_rate *= self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
 
         self.idata.mesh.bnd_tags = {}
         tags = self.idata.mesh.bnd_tags  # short name
@@ -425,6 +429,7 @@ class Model(THMCModel):
                 # add perforation
                 self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
                 print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', centroids_3d[cell_id,:])
+                break  #TODO add only one perforation for now, need to fix the issue with the crossflow 
 
     def set_boundary_conditions(self): # for initial mechanical equilibrium initialization, wells are switched off
         for i, w in enumerate(self.reservoir.wells):
@@ -482,8 +487,7 @@ class Model(THMCModel):
 
         if True: # compute fluid equilibrium from given p,T at the surface
             # pressure gradient might vary as the density depends on the temperature
-
-            boundary_state = {var: props.x[0, c] for c, var in enumerate(self.physics.components[:-1])}
+            boundary_state = {}
             if self.thermal:
                 boundary_state['temperature'] = self.idata.initial.temperature_at_ref_depth 
             boundary_state['pressure'] = self.idata.initial.pressure_at_ref_depth

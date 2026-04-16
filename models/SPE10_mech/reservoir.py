@@ -29,7 +29,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         t1 = None
         if thermoporoelasticity:
             t1 = np.mean(self.t_init)
-        self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=t1)
+        self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=t1) #TODO how this mean() affects when gradient is applied
         self.wells = []
 
 
@@ -104,7 +104,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         #self.init_gravity(gravity_on=False)
 
         self.depths = np.array([c.values[2] for c in self.centroids])
-        # specify initial temperature and pressure for the 
+        # specify initial temperature and pressure #TODO get it from model.set_initial_conditions()
         self.p_init = self.get_reservoir_initial_pressure(self.depths[:self.n_matrix])
         if self.thermoporoelasticity: # specify initial temperature
             self.t_init = self.get_reservoir_initial_temperature(self.depths[:self.n_matrix])

@@ -221,51 +221,52 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
             plt.close()
         
         # plot 1D #################################################################################
-        sample_resolution = 15  # number of point along Z for plotting
-        # select a few evenly-spaced timestep indices (always include the 1-th and the last)
-        n_t = len(reader.time_values)
-        n_t_plot = 5
-        t_indices_1d = sorted(set(
-            [1] + list(np.linspace(0, n_t - 1, n_t_plot, dtype=int)) + [n_t - 1]))
-        
-        if 'stress' in arr_name:
-            t_indices_1d = [tstep_to_plot]
-        
-        # Define line endpoints (x, y fixed; z varies)
-        points_xy = [[50, 50, 'center'], [500, 500, 'right']] # XY
-        z1, z2 = 0.0, 5000.   # vertical extent
-        for x0, y0, name in points_xy:
-            p0 = (x0, y0, z1)
-            p1 = (x0, y0, z2)
-            plt.figure(figsize=(6, 6))
-            for t_idx in t_indices_1d:
-                reader.set_active_time_value(reader.time_values[t_idx])
-                mesh_t = reader.read()
-                block_t = mesh_t[0] if isinstance(mesh_t, pv.MultiBlock) else mesh_t
-                sampled = block_t.sample_over_line(pointa=p0, pointb=p1, resolution=sample_resolution)
-                z = sampled.points[:, 2]
-                values = sampled.point_data[arr_name]
-                t_days = reader.time_values[t_idx]
-                t_label = f't={t_days:.0f} d'
-                if len(values.shape) > 1:  # tensor: plot all components, label by component+time
-                    for kk, comp in enumerate(['XX', 'YY', 'ZZ', 'YZ', 'XZ', 'XY']):
-                        plt.plot(values[:, kk], z, "-o", markersize=2, label=f'{comp} {t_label}')
-                else:
-                    plt.plot(values, z, "-o", markersize=2, label=t_label)
-            arr_name_plot_1d = arr_name if len(values.shape) > 1 else arr_name_plot
-            plt.xlabel(arr_name_plot_1d)
-            plt.ylabel("Depth, m.")
-            plt.ylim(zmin_blk, zmax_blk)
-            plt.gca().invert_yaxis()
-            plt.title(f"Vertical profile of {arr_name_plot_1d} at x={x0}, y={y0}")
-            plt.grid(True)
-            plt.minorticks_on()
-            plt.grid(which='major', linestyle='-', linewidth=0.8)
-            plt.grid(which='minor', linestyle=':', linewidth=0.5)
-            plt.tight_layout()
-            plt.legend(fontsize=7)
-            plt.savefig(os.path.join(output_dir_plots, arr_name_plot_1d + '_vertic_line_' + name + '.png'))
-            plt.close()
+        if tstep_to_plot == -1:
+            sample_resolution = 75  # number of point along Z for plotting
+            # select a few evenly-spaced timestep indices (always include the 1-th and the last)
+            n_t = len(reader.time_values)
+            n_t_plot = 5
+            t_indices_1d = sorted(set(
+                [1] + list(np.linspace(0, n_t - 1, n_t_plot, dtype=int)) + [n_t - 1]))
+            
+            if 'stress' in arr_name:
+                t_indices_1d = [tstep_to_plot]
+            
+            # Define line endpoints (x, y fixed; z varies)
+            points_xy = [[50, 50, 'center'], [500, 500, 'right']] # XY
+            z1, z2 = 0.0, 5000.   # vertical extent
+            for x0, y0, name in points_xy:
+                p0 = (x0, y0, z1)
+                p1 = (x0, y0, z2)
+                plt.figure(figsize=(6, 6))
+                for t_idx in t_indices_1d:
+                    reader.set_active_time_value(reader.time_values[t_idx])
+                    mesh_t = reader.read()
+                    block_t = mesh_t[0] if isinstance(mesh_t, pv.MultiBlock) else mesh_t
+                    sampled = block_t.sample_over_line(pointa=p0, pointb=p1, resolution=sample_resolution)
+                    z = sampled.points[:, 2]
+                    values = sampled.point_data[arr_name]
+                    t_days = reader.time_values[t_idx]
+                    t_label = f't={t_days:.0f} d'
+                    if len(values.shape) > 1:  # tensor: plot all components, label by component+time
+                        for kk, comp in enumerate(['XX', 'YY', 'ZZ', 'YZ', 'XZ', 'XY']):
+                            plt.plot(values[:, kk], z, "-o", markersize=2, label=f'{comp} {t_label}')
+                    else:
+                        plt.plot(values, z, "-o", markersize=2, label=t_label)
+                arr_name_plot_1d = arr_name if len(values.shape) > 1 else arr_name_plot
+                plt.xlabel(arr_name_plot_1d)
+                plt.ylabel("Depth, m.")
+                plt.ylim(zmin_blk, zmax_blk)
+                plt.gca().invert_yaxis()
+                plt.title(f"Vertical profile of {arr_name_plot_1d} at x={x0}, y={y0}")
+                plt.grid(True)
+                plt.minorticks_on()
+                plt.grid(which='major', linestyle='-', linewidth=0.8)
+                plt.grid(which='minor', linestyle=':', linewidth=0.5)
+                plt.tight_layout()
+                plt.legend(fontsize=7)
+                plt.savefig(os.path.join(output_dir_plots, arr_name_plot_1d + '_vertic_line_' + name + '.png'))
+                plt.close()
     print('Plotting from VTK is completed for', output_dir)
         ##################################################################################
 

@@ -262,21 +262,21 @@ if __name__ == '__main__':
     decouple_geomech = True
     #decouple_geomech = False
 
-    mesh='16_16_15'  # for debugging
+    #mesh='16_16_15'  # for debugging
     #mesh='34_34_57' # rsv 2100-2200
-    #mesh='34_34_66' # rsv 2000-2400
+    mesh='34_34_66' # rsv 2000-2400
     #mesh='34_35_57'  # perm_frac
     
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
 
-    physics_type='single_phase'
-    #physics_type='single_phase_thermal'
+    #physics_type='single_phase'
+    physics_type='single_phase_thermal'
     
     #wells_type='none'
     #wells_type='prod'
-    wells_type='inj'
-    #wells_type='doublet'
+    #wells_type='inj'
+    wells_type='doublet'
 
     n_years = 30
     sim_time = 365.25 * n_years
