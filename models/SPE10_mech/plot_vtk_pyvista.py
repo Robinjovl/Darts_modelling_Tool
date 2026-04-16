@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 
-def plot_vtk_pyvista(output_dir, contour=False):
+def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
     '''
     Plot VTK results using PyVista.
     saves 2D plots - xz slice - of specified arrays (vertic displ and stress) from the last timestep.
@@ -24,8 +24,7 @@ def plot_vtk_pyvista(output_dir, contour=False):
     t_steps = np.asarray(reader.time_values) * days2sec
     print("Available timesteps (sec):", t_steps[:5], '...', t_steps[-5:])
 
-    # Load the last timestep
-    tstep_to_plot = -1
+    # Load the data for the asked timestep
     reader.set_active_time_value(reader.time_values[tstep_to_plot])
     mesh = reader.read()
 
@@ -51,6 +50,12 @@ def plot_vtk_pyvista(output_dir, contour=False):
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
 
     arr_name = "uz"; tensor = False; arr_name_plot = 'u_z,m';
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    
+    arr_name = "temperature"; tensor = False; arr_name_plot = 'temperature,K';
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    
+    arr_name = "pressure"; tensor = False; arr_name_plot = 'pressure,bars'; 
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
     
     arr_name = "delta_temperature"; tensor = False; arr_name_plot = 'delta_temperature,K';
@@ -85,6 +90,8 @@ def plot_vtk_pyvista(output_dir, contour=False):
         if arr_name not in block.array_names: # skip temperature if not thermal model
             print('Warning: ', arr_name, 'not found in point data')
             continue
+        
+        print('Plotting: ', arr_name)
         block.set_active_scalars(None)
         if not tensor:
             block.set_active_scalars(arr_name, preference='point')
@@ -263,12 +270,18 @@ def plot_vtk_pyvista(output_dir, contour=False):
 
 if __name__ == "__main__":
     contour = False
+    
+    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_16_16_15')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_doublet_16_16_15')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_16_16_15')
+    
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
     
-    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
     
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_42_42_90')
     #output_dir = r'\\wsl.localhost\Ubuntu-24.04\root\projects\open-darts_dev_debug\models\SPE10_mech\results\sol_cpp_single_phase_inj_42_42_66'
     
     plot_vtk_pyvista(output_dir, contour=contour)
