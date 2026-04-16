@@ -358,17 +358,18 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                                       self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
         
         # set juxtaposed rsv
-        rsv_thickness = np.fabs(self.rsv_bottom - self.rsv_top)
-        self.rsv_z_middle_1 = self.rsv_top + rsv_thickness * 0.25
-        self.rsv_z_middle_2 = self.rsv_top + rsv_thickness * 0.75
-        self.rsv_x_middle = (self.rsv_x1 + self.rsv_x2) * 0.5
-        rsv_left = reduce(np.logical_and, [self.rsv_z_middle_1 <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
-                                      self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
-                                      self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x_middle])
-        rsv_right = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_z_middle_2,
-                                      self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
-                                      self.rsv_x_middle <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
-        rsv = reduce(np.logical_or, [rsv_left, rsv_right])
+        if False:
+            rsv_thickness = np.fabs(self.rsv_bottom - self.rsv_top)
+            self.rsv_z_middle_1 = self.rsv_top + rsv_thickness * 0.25
+            self.rsv_z_middle_2 = self.rsv_top + rsv_thickness * 0.75
+            self.rsv_x_middle = (self.rsv_x1 + self.rsv_x2) * 0.5
+            rsv_left = reduce(np.logical_and, [self.rsv_z_middle_1 <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
+                                          self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
+                                          self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x_middle])
+            rsv_right = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_z_middle_2,
+                                          self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
+                                          self.rsv_x_middle <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
+            rsv = reduce(np.logical_or, [rsv_left, rsv_right])
         
         porosity_struct[rsv] = idata.rock.porosity
         permeability_struct[rsv] = idata.rock.permx # [mD]

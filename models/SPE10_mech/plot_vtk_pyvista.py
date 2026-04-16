@@ -15,14 +15,15 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
     #filename = os.path.join(output_dir, 'vtk', 'solution.pvd')
     #output_dir_plots = os.path.join(os.path.dirname(os.path.dirname(filename)), 'plots')
     filename = os.path.join(output_dir, 'solution.pvd')
-    output_dir_plots = os.path.join(os.path.dirname(filename), 'plots_timestep_last')
+    output_dir_plots = os.path.join(os.path.dirname(filename), 'plots_timestep_' + str(tstep_to_plot))
     os.makedirs(output_dir_plots, exist_ok=True)
 
     # Get reader and check available timesteps
     reader = pv.get_reader(filename)
-    days2sec = 86400
-    t_steps = np.asarray(reader.time_values) * days2sec
-    print("Available timesteps (sec):", t_steps[:5], '...', t_steps[-5:])
+    t_steps = np.asarray(reader.time_values)
+    print("Available timesteps (days):", t_steps[:5], '...', t_steps[-5:])
+    t_steps_years = t_steps / 365.25
+    print("Available timesteps (years):", t_steps_years[:5], '...', t_steps_years[-5:])
 
     # Load the data for the asked timestep
     reader.set_active_time_value(reader.time_values[tstep_to_plot])
@@ -284,4 +285,5 @@ if __name__ == "__main__":
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_42_42_90')
     #output_dir = r'\\wsl.localhost\Ubuntu-24.04\root\projects\open-darts_dev_debug\models\SPE10_mech\results\sol_cpp_single_phase_inj_42_42_66'
     
-    plot_vtk_pyvista(output_dir, contour=contour)
+    plot_vtk_pyvista(output_dir, contour=contour, tstep_to_plot=0)
+    plot_vtk_pyvista(output_dir, contour=contour, tstep_to_plot=-1)

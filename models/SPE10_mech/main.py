@@ -194,7 +194,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     #time_data_dict = m.output.store_well_time_data(save_output_files=True)
     #m.output.plot_well_time_data(phase_volumetric_rates=True)
 
-    plot_vtk_pyvista(m.output_directory)
+    plot_vtk_pyvista(m.output_directory, tstep_to_plot=0)  # initial
+    plot_vtk_pyvista(m.output_directory, tstep_to_plot=-1) # last
 
     return m, data
 
@@ -274,8 +275,8 @@ if __name__ == '__main__':
     
     #wells_type='none'
     #wells_type='prod'
-    #wells_type='inj'
-    wells_type='doublet'
+    wells_type='inj'
+    #wells_type='doublet'
 
     n_years = 30
     sim_time = 365.25 * n_years
