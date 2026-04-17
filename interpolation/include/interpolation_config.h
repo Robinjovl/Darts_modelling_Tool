@@ -21,6 +21,7 @@ typedef int interp_index_t;
 typedef double interp_value_t;
 
 // Maximum number of parameter-space dimensions for interpolator template instantiation
+// It was MAX_NC before
 #define MAX_DIMS 8
 
 // workaround for vscode grammar checker

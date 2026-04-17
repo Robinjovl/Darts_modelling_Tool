@@ -15,7 +15,9 @@ void expose_dims_from(py::module& m)
 {
 	if constexpr (D <= MAX_DIMS)
 	{
+		// for D = 7 in this particular source
 		recursive_exposer_nops<interpolator_exposer, py::module, D, MAX_DIMS>::expose(m);
+		// for 7 < D <= MAX_DIMS
 		expose_dims_from<D + 1>(m);
 	}
 }
