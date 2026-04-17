@@ -108,13 +108,13 @@ class MyOutput(Output):
         # locate tip of wormhole
         ids = np.where(property_array['porosity'][0] > 0.95)[0]
         if ids.size:
-            if hasattr(self.reservoir.discretizer, 'centroids_all_cells'):
-                id = np.argmax(self.reservoir.discretizer.centroids_all_cells[ids, 0])
-                max_propagation = self.reservoir.discretizer.centroids_all_cells[:, 0].max()
-                self.reservoir.wh_propagation_ratio = self.reservoir.discretizer.centroids_all_cells[ids, 0][id] / max_propagation
-            else:
-                warnings.warn("Centroids not available, setting wh_propagation_ratio to 0.0")
-                self.reservoir.wh_propagation_ratio = 0.0
+            axis = self.reservoir.wh_propagation_axis
+            direction = self.reservoir.wh_propagation_direction
+            coords = self.reservoir.discretizer.centroids_all_cells[:, axis]
+            extent = coords.max() - coords.min()
+            tip = coords[ids].max() if direction > 0 else coords[ids].min()
+            reference = tip - coords.min() if direction > 0 else coords.max() - tip
+            self.reservoir.wh_propagation_ratio = reference / extent if extent > 0 else 0.0
         else:
             self.reservoir.wh_propagation_ratio = 0.0
         print('WH propagation ratio:', self.reservoir.wh_propagation_ratio)
@@ -401,6 +401,8 @@ class Model(CICDModel):
                                              nx=self.domain_cells[0], ny=self.domain_cells[1], nz=self.domain_cells[2],
                                              dx=self.cell_sizes[0], dy=self.cell_sizes[1], dz=self.cell_sizes[2],
                                              permx=perm, permy=perm, permz=perm, poro=self.poro, depth=depth)
+            self.reservoir.wh_propagation_axis = 0
+            self.reservoir.wh_propagation_direction = 1
         elif self.domain == '2D':
             # grid
             if mesh_filename is None:
@@ -430,13 +432,15 @@ class Model(CICDModel):
                 a = 2 / 3 * np.sqrt(self.volume / self.reservoir.mesh.n_blocks / 0.006 / np.sin(angle))
                 max_x = self.reservoir.discretizer.mesh_data.points[:, 0].max()
                 # initial guesses
-                self.inj_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 0] < 1.5 * a)[0]
-                self.prd_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 0] > max_x - 1.5 * a)[0]
+                self.inj_cells = np.where(self.reservoir.discretizer.centroids_all_cells[:, 0] < 1.5 * a)[0]
+                self.prd_cells = np.where(self.reservoir.discretizer.centroids_all_cells[:, 0] > max_x - 1.5 * a)[0]
                 # exact filtering
                 self.inj_cells = [id for id in self.inj_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 0] < 1e-4 * a) > 2]
                 self.prd_cells = [id for id in self.prd_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 0] > max_x - 1e-4 * a) > 2]
                 self.inj_cells = np.array(self.inj_cells, dtype=np.intp)
                 self.prd_cells = np.array(self.prd_cells, dtype=np.intp)
+            self.reservoir.wh_propagation_axis = 0
+            self.reservoir.wh_propagation_direction = 1
 
             # porosity
             if poro_filename == None:
@@ -480,13 +484,15 @@ class Model(CICDModel):
             a = 2 / 3 * np.cbrt(self.volume / self.reservoir.mesh.n_blocks / 0.1)
             h = self.reservoir.discretizer.mesh_data.points[:,2].max()
             # initial guesses
-            self.prd_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 2] < a)[0]
-            self.inj_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 2] > h - a)[0]
+            self.prd_cells = np.where(self.reservoir.discretizer.centroids_all_cells[:, 2] < a)[0]
+            self.inj_cells = np.where(self.reservoir.discretizer.centroids_all_cells[:, 2] > h - a)[0]
             # exact filtering
             self.prd_cells = [id for id in self.prd_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 2] < 1e-4 * a) > 2]
             self.inj_cells = [id for id in self.inj_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 2] > h - 1e-4 * a) > 2]
             self.prd_cells = np.array(self.prd_cells, dtype=np.intp)
             self.inj_cells = np.array(self.inj_cells, dtype=np.intp)
+            self.reservoir.wh_propagation_axis = 2
+            self.reservoir.wh_propagation_direction = -1
         else:
             print(f'domain={self.domain} is not supported')
             exit(-1)

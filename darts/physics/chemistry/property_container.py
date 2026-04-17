@@ -195,7 +195,9 @@ class PropertyContainer(BasePropertyContainer):
         for j in range(self.nph):
             M = np.sum(self.Mw_array * self.x[j])
             self.dens[j] = self.dens_m[j] * M
-            self.sat[j] = self.sat_overall[j] / fluid_sat_sum if fluid_sat_sum > 0 else 0.0
+            self.sat[j] = (
+                self.sat_overall[j] / fluid_sat_sum if fluid_sat_sum > 0 else 0.0
+            )
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.diffusivity[j] = self.diffusion_ev[self.phases_name[j]].evaluate()
 
