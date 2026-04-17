@@ -31,11 +31,12 @@ class Model(DartsModel):
       and all sub-blocks inherit the same coarse permeability
     """
 
-    def __init__(self, refine=(5, 5, 1)):
+    def __init__(self, refine=(5, 5, 1), perm_file_name: str = "PERM1_ECL.INC"):
         super().__init__()
 
         self.timer.node["initialization"].start()
         self.refine = tuple(refine)
+        self.perm_file_name = perm_file_name
         self.set_reservoir()
         self.zero = 1e-8
         self.set_physics()
@@ -122,7 +123,7 @@ class Model(DartsModel):
         dz = 10.0 / fz
 
         base_dir = Path(__file__).resolve().parent
-        perm_file = base_dir / "PERM1_ECL.INC"
+        perm_file = base_dir / self.perm_file_name
 
         # Read original Egg permeability defined on 60x60x7 blocks
         permx_c = load_single_keyword(str(perm_file), "PERMX", nb_res_c)
@@ -203,10 +204,10 @@ class Model(DartsModel):
         self.reservoir.boundary_volumes = {
             "xy_minus": v_big,
             "xy_plus": v_big,
-            "yz_minus": v_big,
-            "yz_plus": v_big,
-            "xz_minus": v_big,
-            "xz_plus": v_big,
+            "yz_minus": None,
+            "yz_plus": None,
+            "xz_minus": None,
+            "xz_plus": None,
         }
 
         self.reservoir.discretize()
@@ -278,7 +279,7 @@ class Model(DartsModel):
             max_p=1000,
             min_z=self.zero / 10,
             max_z=1 - self.zero / 10,
-            min_t=273.15,
+            min_t=273.15 + 10,
             max_t=373.15 + 200,
         )
 
@@ -336,16 +337,16 @@ class Model(DartsModel):
                     wctrl=w.control,
                     control_type=well_control_iface.MASS_RATE,
                     is_inj=True,
-                    target=1.0368e7,
+                    target=4.32e6,
                     inj_composition=inj_composition,
-                    inj_temp=314.15,
+                    inj_temp=313.15,
                 )
             else:
                 self.physics.set_well_controls(
                     wctrl=w.control,
                     control_type=well_control_iface.BHP,
                     is_inj=False,
-                    target=150.0,
+                    target=190.0,
                 )
 
 

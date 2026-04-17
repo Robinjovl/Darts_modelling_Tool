@@ -1,5 +1,6 @@
 import os
 import shutil
+import warnings
 
 import h5py
 import matplotlib.pyplot as plt
@@ -14,8 +15,8 @@ from darts.engines import (
     well_control_iface,
 )
 from darts.physics.base.operators_base import PropertyOperators
-from darts.physics.blackoil import BlackOil
-from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH
+from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.geothermal.physics import Geothermal
 from darts.physics.super.physics import Compositional
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
@@ -24,7 +25,28 @@ from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 class Output:
     """
-    Base class for all output related functionality
+    This class handles simulation output including primary variables, secondary variables,
+    well reporting and visualizations (pyplots, .vtk files). All simulation output is saved
+    into HDF5 files. To view the contents of these HDF5 files users are recommended to use an HDF5 viewer.
+    Alternatively, primary and secondary variables can also be processed into xarray format.
+
+    * **Primary variables** (state/unknowns) for reservoir blocks and well blocks are written
+      to an HDF5 file named by default ``...\\reservoir_solution.h5`` and ``...\\well_data.h5``.
+    * **Secondary variables** ("properties"; e.g., saturations, densities, ...) are evaluated
+      using the DARTS interpolator and either stored in a separate file or appended to the
+      ``reservoir_solution.h5`` file under the dedicated group ``/properties``.
+    * **Well output** saved data in ``...\\well_data.h5`` is processed with the function ``store_well_time_data()``
+      for well rates. The resulting time series data is saved as an ``.xlsx`` file or ``*.pkl`` file.
+
+    Notes
+    -----
+    * The storage precision, compression algorithm, and compression level are configurable.
+      For large-scale runs, compression and precision have a significant impact on both
+      write performance and file size.
+    * You can find a tutorial on how to use the various output-related functionalities
+      `here <https://gitlab.com/open-darts/open-darts/-/blob/main/tutorials/output_and_restart.py?ref_type=heads>`_.
+    * The key naming formats for the rates stored in the ``time_data`` dictionary can be
+      found `here <https://open-darts.gitlab.io/open-darts/technical_reference/wells.html>`_.
     """
 
     def __init__(
@@ -41,24 +63,24 @@ class Output:
         all_phase_props: bool,
         precision: str,
         compression: str,
+        compression_level: int,
         verbose: bool,
     ):
         """
-        Class constructor method for output related functionalities including saving primary variables (state variables),
-        evaluating secondary variables (properties) and creating visualizations.
-
-        :param timer: timer object to measure time spent saving data, and evaluating properties
-        :reservoir: reservoir object
-        :param physics: physics object
-        :param op_list: list of operator interpolators
-        :param params: engine params
-        :param output_folder: output folder for saved data and figures
-        :param sol_filename: hdf5 filename for saving reservoir solution
-        :param well_filename: hdf5 filename for saving well solution
-        :param save_initial: boolean flag to save initial conditions of reservoir
-        :param all_phase_props: boolean flag to define properties (secondary variables) according to a predefined list.
-        :param compression: boolean flag to enable compression of hdf5 data
-        :param verbose: boolean flag to enable verbose output
+        :param timer: timer object, measurs time spent saving data, and evaluating properties.
+        :param reservoir: reservoir object.
+        :param physics: physics object.
+        :param op_list: list of operator interpolators.
+        :param params: engine params.
+        :param output_folder: output folder for saved data and figures.
+        :param sol_filename: hdf5 filename for saving reservoir solution.
+        :param well_filename: hdf5 filename for saving well solution.
+        :param save_initial: boolean flag to save initial conditions of reservoir.
+        :param all_phase_props: boolean flag to enable evaluation of phase properties according to a predefined list.
+        :param precision: data precision of saved data ('s' single precision, 'd' double precision).
+        :param compression: default 'gzip'.
+        :param compression_level: 0 (no compression, fast) and 9 (maximum compression, slow), default is 1.
+        :param verbose: boolean flag to enable verbose output.
         """
         super().__init__()
 
@@ -86,8 +108,10 @@ class Output:
 
         self.precision = precision
         self.compression = compression
+        self.compression_level = compression_level
         self.precision_map = {"d": np.float64, "s": np.float32}
 
+        self.thermal = self.physics.state_spec >= PhysicsBase.StateSpecification.PT
         self.properties = list(self.physics.property_containers[0].output_props.keys())
         if len(self.properties) < self.physics.n_ops:
             self.n_ops = self.physics.n_ops
@@ -106,8 +130,8 @@ class Output:
             "sat": "[-]",
             "mu": "[cP]",
             "kr": "[-]",
-            "pc": "[Bar]",
-            "pressure": "[Bar]",
+            "pc": "[bar]",
+            "pressure": "[bar]",
             "enthalpy": "[kJ]",
             "cond": "[kJ/m/day/K]",
             "temperature": "[K]",
@@ -138,9 +162,15 @@ class Output:
     def set_phase_properties(self):
         """
         This function constructs a predefined set of property operators for the compositional/geothermal physics class.
+
+        Notes
+        -----
+        * The properties for the super engine class include phase properties (density, molar density, saturation, viscosity, relative permeability, capillary pressure, enthalpy and conductivity) and molar phase fractions.
+        * The properties for the geothermal engine class include phase properties (density, molar density, saturation, viscosity, relative permeability, capillary pressure, enthalpy) and temperature.
+        * The declared interpolator is adaptive multilinear.
         """
 
-        if type(self.physics) is Compositional or type(self.physics) is BlackOil:
+        if isinstance(self.physics, Compositional):
             phase_props_labels = [
                 "dens",
                 "densm",
@@ -182,7 +212,11 @@ class Output:
                         )
 
                 self.physics.property_operators[region] = PropertyOperators(
-                    pc, self.physics.thermal, temp_dict
+                    property_container=pc,
+                    thermal=self.thermal,
+                    props=temp_dict,
+                    extrapolation_flag=self.physics.extrapolation_flag,
+                    dz=self.physics.dz,
                 )
                 self.physics.property_itor[region], n_ops = (
                     self.physics.create_interpolator(
@@ -203,7 +237,7 @@ class Output:
                 self.physics.property_containers[region].output_props = temp_dict
                 self.n_ops = n_ops
 
-        elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
+        elif isinstance(self.physics, Geothermal):
             phase_props_labels = [
                 "dens",
                 "densm",
@@ -236,7 +270,9 @@ class Output:
                         )
 
                 self.physics.property_operators[region] = PropertyOperators(
-                    pc, thermal=False, props=temp_dict
+                    property_container=pc,
+                    thermal=False,
+                    props=temp_dict,
                 )
                 self.physics.property_itor[region], n_ops = (
                     self.physics.create_interpolator(
@@ -262,13 +298,12 @@ class Output:
 
         return
 
-    def filter_phase_props(self, new_prop_keys):
+    def filter_phase_props(self, new_prop_keys: list):
         """
         Filter default list of properties to only evaluate desired properties listed in new_prop_keys.
 
         :param new_prop_keys: list of properties to keep
-        :type new_prop_keys: list
-
+        :type
         :raises ValueError: If any key in `new_prop_keys` is not an available property.
         """
         for region in self.physics.regions:
@@ -290,9 +325,11 @@ class Output:
             self.physics.property_containers[region].output_props = output_dictionary
 
             self.physics.property_operators[region] = PropertyOperators(
-                self.physics.property_containers[region],
-                self.physics.thermal,
-                output_dictionary,
+                property_container=self.physics.property_containers[region],
+                thermal=self.thermal,
+                props=output_dictionary,
+                extrapolation_flag=self.physics.extrapolation_flag,
+                dz=self.physics.dz,
             )
             self.physics.property_itor[region], n_ops = (
                 self.physics.create_interpolator(
@@ -313,16 +350,19 @@ class Output:
 
         return
 
-    def save_array(self, array, filename, compression_level=1):
+    def save_array(self, array: dict, filename: str, compression_level: int = 1):
         """
-        This function saved any dictionary as an h5 file with compression
+        This function saves any dictionary as an HDF5 file with compression.
 
-        : param array: data
-        : type array: dict
-        : param filename: filename in the format filename.h5
-        : type filename: str
-        : param compression_level : int value between 0 and 9
-        : type : int
+        :param array: data.
+        :param filename: Name of the output file. The file will be created inside `self.output_folder`.
+        :param compression_level: 0 (no compression) and 9 (maximum compression), default is 1.
+
+        Notes
+        -----
+        * Each key in the input dictionary is written as a separate dataset at the root level of the HDF5 file.
+        * Existing files with the same name will be overwritten.
+
         """
         output_directory = os.path.join(self.output_folder, filename)
         with h5py.File(output_directory, "w") as h5f:
@@ -335,26 +375,39 @@ class Output:
                 )
         return 0
 
-    def load_array(self, file_directory):
+    def load_array(self, filename: str):
         """
-        This function loads any saved data in h5 file format
+        This function loads any saved data in h5 file format.
 
-        : param file_directory: filename in the format filename.h5
-        : type file_directory: str
+        :param filename: Path to the HDF5 file to load (typically ending in ``.h5``).
+        :return array: Dictionary mapping dataset names to NumPy arrays.
+
+        Notes
+        -----
+        * All datasets located at the root level of the HDF5 file are read and returned as NumPy arrays.
+        * Dataset names are used as dictionary keys.
         """
 
         array = {}
-        with h5py.File(file_directory, "r") as h5f:
+        with h5py.File(filename, "r") as h5f:
             for key in h5f.keys():
                 array[key] = np.array(h5f[key])
         return array
 
-    def append_properties_to_reservoir(self, time: float, property_array: dict):
+    def append_properties_to_reservoir(
+        self, time: float, property_array: dict, compression_level: int = 1
+    ):
         """
-        Appends secondary properties to the existing 'reservoir.h5' file under the group 'properties'.
+        Append per-cell secondary properties into an existing HDF5 solution file.
 
         :param time: timestep index to write properties for.
         :param property_array: Dictionary with property names as keys and arrays (1D over cells) as values.
+        :param compression_level: 0 (no compression) and 9 (maximum compression), default is 1.
+
+        Notes
+        -----
+        * Writes properties into the root-level HDF5 group ``/properties`` using a time-indexed 2D layout: ``(n_timesteps, n_cells)``.
+        * The time index is determined by matching the provided ``time`` value against ``/dynamic/time``.
         """
 
         with h5py.File(self.sol_filepath, "a") as f:
@@ -384,7 +437,7 @@ class Output:
                             ),  # max shape none ensures that we can append as much data as possible
                             dtype=data.dtype,
                             compression="gzip",
-                            compression_opts=2,
+                            compression_opts=compression_level,
                         )
 
                     else:
@@ -403,13 +456,26 @@ class Output:
                     f"Timestamp {time} does not exist in the solution.h5 file."
                 )
 
-    def save_property_array(self, time_vector, property_array, filename=None):
+    def save_property_array(
+        self,
+        time_vector: np.ndarray,
+        property_array: dict,
+        filename=None,
+        compression_level: int = 1,
+    ):
         """
-        Saves property_array to an HDF5 file.
+        Function to save property_darry dictionary to HDF5 file.
 
-        :param time_vector : Array of timesteps
-        :param property_array : Dictionary where keys are property names and values are NumPy arrays.
-        :param filename : Name of the HDF5 file to save to.
+        :param time_vector: Array of timesteps
+        :param property_array: Dictionary where keys are property names and values are NumPy arrays.
+        :param filename: Name of the HDF5 file to save to.
+        :param compression_level: 0 (no compression) and 9 (maximum compression), default is 1 .
+
+        Notes
+        -----
+        * If ``filename`` is ``None``, properties are written into the root-level HDF5 group ``/properties`` in ``sol_filename.h5`` using a time-indexed 2D layout:``(n_timesteps, n_cells)``.
+        * The time index is determined by matching the provided ``time`` value against ``/dynamic/time``.
+        * If ``filename`` is specified, a new HDF5 file is created containing only the ``property_array`` data. Careful not to overwrite an existing file.
         """
 
         self.timer.start()
@@ -418,7 +484,6 @@ class Output:
         if filename is None:
             self.append_properties_to_reservoir(time_vector, property_array)
         else:
-            compression_level = 2
             output_directory = os.path.join(self.output_folder, filename)
 
             with h5py.File(output_directory, "w") as h5f:
@@ -444,13 +509,20 @@ class Output:
 
         return
 
-    def load_property_array(self, file_directory="property_array.h5"):
+    def load_property_array(self, file_directory: str = "property_array.h5"):
         """
-        Load saved properties back into a dictionary.
-        :param file_directory : filepath to saved property_array.h5
+        Load properties into a dictionary.
 
-        :return time_vector:  available timesteps
-        :return property_array: dictionary of properties
+        :param file_directory: Path to a standalone properties HDF5 file (default: ``property_array.h5``).
+        :returns: Tuple ``(time_vector, property_array)`` where:
+            - ``time_vector`` is a 1D NumPy array of timesteps.
+            - ``property_array`` is a dictionary mapping property names to NumPy arrays.
+        :raises KeyError: If fallback to ``self.sol_filepath`` is triggered and the file does not contain a ``/properties`` group.
+
+        Notes
+        -----
+        * Properties are saved as a standalone HDF5 file (``property_array.h5`` by default) or appended to ``reservoir_solution.h5`` under the group ``/properties``.
+        * If ``property_array.h5`` does not exist this function looks for data in ``reservoir_solution.h5``.
         """
         try:
             property_array = {}
@@ -466,7 +538,7 @@ class Output:
             with h5py.File(self.sol_filepath, "r") as f:
                 if "properties" not in f:
                     raise KeyError(
-                        "No 'properties' group found in the reservoir.h5 file."
+                        f"No 'properties' group found in the {self.sol_filepath} file."
                     ) from _err
 
                 time_vector = np.array(f["dynamic/time"][:])
@@ -515,7 +587,7 @@ class Output:
                 f.write(f"{self.physics.vars}\n")
 
                 f.write("-- Thermal:\n")
-                f.write(f"{self.physics.thermal}\n")
+                f.write(f"{self.thermal}\n")
 
                 f.write("-- State specification:\n")
                 f.write(f"{self.physics.state_spec}\n")
@@ -544,22 +616,111 @@ class Output:
 
         return 0
 
+    def _get_output_cell_centers(self):
+        """
+        Resolve cell center coordinates for the entire reservoir.
+
+        :returns: numpy array of shape (n_cells, 3) with [x, y, z] coordinates
+        :raises ValueError: when centroids are missing or have unexpected shape
+
+        Notes
+        -----
+        This method supports multiple reservoir/discretizer variants with different
+        centroid storage fields and returns all available centroids as-is.
+        """
+        # Resolve the centroids array from known reservoir/discretizer fields.
+        centroids = None
+        if hasattr(self.reservoir, "discretizer"):
+            if hasattr(self.reservoir.discretizer, "centroids_all_cells"):
+                centroids = self.reservoir.discretizer.centroids_all_cells
+            elif hasattr(self.reservoir.discretizer, "centroid_all_cells"):
+                centroids = self.reservoir.discretizer.centroid_all_cells
+
+        if centroids is None and hasattr(self.reservoir, "centroids_all_cells"):
+            centroids = self.reservoir.centroids_all_cells
+        if centroids is None and hasattr(self.reservoir, "centroids"):
+            centroids = self.reservoir.centroids
+        if centroids is None and hasattr(self.reservoir, "discr_mesh"):
+            if hasattr(self.reservoir.discr_mesh, "centroids"):
+                centroids = self.reservoir.discr_mesh.centroids
+        if centroids is None and hasattr(self.reservoir, "mesh"):
+            if hasattr(self.reservoir.mesh, "centroids"):
+                centroids = self.reservoir.mesh.centroids
+
+        if centroids is None:
+            raise ValueError(
+                "Cell centroids are not available for this reservoir type."
+            )
+
+        # Convert possible wrapped containers to a numpy array.
+        centroids = np.asarray(centroids)
+        if (
+            centroids.ndim == 1
+            and centroids.size > 0
+            and hasattr(centroids[0], "values")
+        ):
+            centroids = np.vstack(
+                [np.asarray(c.values, dtype=np.float64) for c in centroids]
+            )
+
+        # Expect a 2D array with x/y/z columns.
+        if centroids.ndim != 2 or centroids.shape[1] != 3:
+            raise ValueError(
+                f"Expected centroids with shape (n_cells, 3), got {centroids.shape}."
+            )
+
+        return centroids
+
     def configure_h5_output(
         self, filename: str, cell_ids, description, add_static_data: bool = False
     ):
         """
-        Configuration of *.h5 output
+        Create and initialize an HDF5 output file for simulation results.
 
-        :param filename: *.h5 filename
-        :param cell_ids: np.array of cell indexes for output
-        :param description: description for *.h5
-        :param add_static_data: flag to add static output
+        :param filename: Path/filename of the HDF5 file to create.
+        :param cell_ids: Cell/block indices to include in the dynamic output.
+        :param description: Text description stored as the file attribute ``description``.
+        :param add_static_data: If True, also write ``/static/block_m`` and ``/static/block_p``. Default is False.
+
+        .. rubric:: HDF5 layout
+        **/static** (optional)
+
+            - ``cell_centers``: ``(n_blocks, dim)`` float. Written only when ``cell_ids`` covers all reservoir blocks.
+            - ``block_m``, ``block_p``: arrays. Written when ``add_static_data=True``.
+
+        **/dynamic**
+
+            - ``time``: ``(n_t,)`` float, extensible along time.
+            - ``CFL_max``: ``(n_t,)`` float, extensible along time.
+            - ``cell_id``: ``(n_selected,)`` int32.
+            - ``X``: ``(n_t, n_selected, n_vars)`` float, extensible along time.
+            - ``variable_names``: ``(n_vars,)`` variable-length strings.
+
+        **/file attributes**
+
+            - ``description``: string stored as a file attribute.
+
+        .. rubric:: Notes
+        - Open and read HDF5 files using an HDF5 viewer.
+        - Careful not to overwrite existing files in ``output_folder\\...``.
         """
 
         with h5py.File(filename, "w") as f:
             # add static data group
+            need_static = add_static_data or (
+                cell_ids.size == self.reservoir.mesh.n_res_blocks
+            )
+            static_group = f.require_group("static") if need_static else None
+            if cell_ids.size == self.reservoir.mesh.n_res_blocks:
+                cell_centers = self._get_output_cell_centers().astype(
+                    self.precision_map[self.precision], copy=False
+                )
+                static_group.create_dataset(
+                    "cell_centers",
+                    data=cell_centers,
+                    dtype=self.precision_map[self.precision],
+                )
             if add_static_data:
-                static_group = f.create_group("static")
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
                 static_group.create_dataset("block_m", data=block_m)
@@ -596,6 +757,7 @@ class Output:
                 maxshape=(None, nb, self.physics.n_vars),
                 dtype=self.precision_map[self.precision],
                 compression=self.compression,
+                compression_opts=self.compression_level,
             )
 
             # add variable names
@@ -609,12 +771,10 @@ class Output:
 
     def configure_output(self, kind: str):
         """
-        Configuration of output
+        Configuration of output files.
 
-        :param kind: 'well' for well output or 'solution' to write the whole solution vector
+        :param kind: ``'well'`` for well output or ``'reservoir'`` to write the reservoir solution vector.
         :type kind: str
-        :param restart: Boolean to check if existing file should be overwritten or appended
-        :type restart: bool
         """
 
         # Ensure the directory and subdirectory exist
@@ -716,6 +876,11 @@ class Output:
 
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
+        :raises ValueError: If ``kind`` is not ``'well'`` or ``'reservoir'``.
+
+        Notes
+        -----
+        * This function is called after DartsModel.run(save_reservoir_data = True) unless explicitly stated otherwise with the flag.
         """
 
         if not hasattr(self, "output_configured") or kind not in self.output_configured:
@@ -738,9 +903,7 @@ class Output:
             self.timer.stop()
 
         else:
-            print(
-                "Please use either kind='well' or kind='reservoir' in save_data_to_h5"
-            )
+            raise ValueError("kind must be either 'well' or 'reservoir'.")
 
     def read_specific_data(
         self, filename: str, timestep: int = None
@@ -748,16 +911,16 @@ class Output:
         """
         Extracts time and data (primary variables) from an HDF5 file for a given timestep
 
-        :param filename: Path to the HDF5 file
-        :type file_path: str
+        :param filename: Path to the HDF5 file.
+        :type filename: str
         :param timestep: The timestep to extract data for.
         :type timestep: int
-
-        :return: time, ndarray with extracted timesteps
-        :return cell_id: ndarray with cell_id of each of the saved grid blocks
-        :return X: ndarray with data, shape: (number_of_timesteps, number_of_cells, number_of_vars)
-        :return var_names: ndarray with variable names
-
+        :returns:
+            * **time** – ndarray with extracted timesteps.
+            * **cell_id** – ndarray with cell_id of each of the saved grid blocks.
+            * **X** – ndarray with data ``(number_of_timesteps, number_of_cells, number_of_vars)``.
+            * **var_names** – ndarray with variable names.
+        :raises TypeError: If timestep is not an integer value.
         :raises FileNotFoundError: If the file does not exist.
         :raises IndexError: If `timestep` is out of range.
         """
@@ -817,10 +980,10 @@ class Output:
         filepath: str = None,
         output_properties: list = None,
         timestep: int = None,
-        engine=False,
+        engine: bool = False,
     ) -> tuple[np.ndarray, dict]:
         """
-        Evaluates and returns properties from saved data (HDF5 file) or a simulation engine.
+        Evaluates and returns reservoir properties from saved data (HDF5 file) or a simulation engine.
 
         :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
         :type filepath: str, optional
@@ -830,14 +993,15 @@ class Output:
         :type timestep: int, optional
         :param engine: If true, state variables are evaluated directly from engine.X. Defaults to False, which reads properties from the HDF5 file.
         :type engine: bool, optional
-
-        :return property_array: A dictionary where keys are primary/secondary variables and values are NumPy arrays of the requested properties for each grid block. The shape of each array is (number_of_timesteps, number_of_gridblocks).
-        :type property_array: dict
-        :return timesteps: A NumPy array of the time labels.
-        :type timesteps: np.ndarray
-
+        :returns:
+            * **property_array** (dict) - A dictionary where keys are primary/secondary variables and values are NumPy arrays of the requested properties for each grid block. The shape of each array is (number_of_timesteps, number_of_gridblocks).
+            * **timesteps** (ndarray) - A NumPy array of the time labels
         :raises KeyError: If specified property in `output_properties` is not found in any property container
         :raises TypeError: If output_properties is not a list
+
+        Notes
+        -----
+        * ith_step indexes ``dynamic/time`` in the ``reservoir_solution.h5`` file.
         """
 
         if self.verbose:
@@ -954,19 +1118,26 @@ class Output:
         output_data: list = None,
     ):
         """
-        Function to export results at timestamp t into `.vtk` format for viewing in Paraview.
+        Function to for creating `.vtk` files for viewing results in Paraview.
 
-        :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
-        :type filepath: str, optional
+        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
+        :type sol_filepath: str, optional
         :param ith_step: i'th reporting step indicates which timestep to create a .vtk from. Defaults to None, in which case all saved data points are evaluated.
         :type ith_step: int
         :param output_directory: directory of where to save .vtk file. Defaults to none in which case the 'self.output_folder/vtk' is used.
         :type output_directory: str
         :param output_properties: List of properties to include in .vtk file. Defaults to None in which case only primary (state) variables are evaluated.
         :type output_properties: list
-        :param output_data: List [array of timesteps, dictionary of propertiy arrays]. Defaults to None, in which case properties are evaluated from the HDF5 file or engine
+        :param output_data: List [array of timesteps, dictionary of property arrays]. Defaults to None, in which case properties are evaluated from the HDF5 file or engine
         :type output_data: list, optional
+
+        Notes
+        -----
+        * If no function inputs are specified .vtk files are created from all the available data in ``reservoir_solution.h5``.
+        * The input ``ith_step`` indexes ``dynamic/time`` in the ``reservoir_solution.h5`` file.
+        * If output_data = [timesteps, property_array] is passed directly as input, ``ith_step`` merely functions as a label in the created .vtk filename.
         """
+
         self.timer.start()
         self.timer.node["vtk_output"].start()
 
@@ -1050,32 +1221,46 @@ class Output:
 
     def output_to_xarray(
         self,
-        filepath: str = None,
+        sol_filepath: str = None,
         output_properties: list = None,
         timestep: int = None,
         engine: bool = False,
+        output_data: list = None,
     ) -> xr.Dataset:
         """
         Generates an xarray Dataset of properties and saves it as a NetCDF file.
         State variables area obtained from the engine or *.h5 file.
         Properties are interpolated by the property iterator.
 
-        :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
-        :type filepath: str, optional
+        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
+        :type sol_filepath: str, optional
         :param output_properties: List of properties to include in the dataset. If None, all properties are included.
         :type output_properties: list, optional
         :param timestep: Specific timestep to output. If None, all timesteps are included.
         :type timestep: int, optional
         :param engine: import state variable from engine if True. Default is False.
         :type engine: bool, optional
+        :param output_data: List [array of timesteps, dictionary of property arrays]. Defaults to None, in which case properties are evaluated from the HDF5 file or engine
+        :type output_data: list, optional
         :returns: xarray Dataset containing the property data.
         :rtype: xarray.Dataset
         """
+        from darts.reservoirs.struct_reservoir import StructReservoir
 
-        # Interpolate properties
-        time, data = self.output_properties(
-            filepath, output_properties, timestep, engine
-        )
+        if output_data is None:
+            time, data = self.output_properties(
+                self.sol_filepath if sol_filepath is None else sol_filepath,
+                output_properties,
+                timestep,
+                engine,
+            )
+        else:
+            time, data = output_data[0], output_data[1]
+
+        # # Interpolate properties
+        # time, data = self.output_properties(
+        #     sol_filepath, output_properties, timestep, engine
+        # )
         props = list(data.keys())
 
         # Initialize coords and data_vars for Xarray Dataset
@@ -1089,7 +1274,7 @@ class Output:
             data[prop] = array.reshape(array_shape)
 
         # Initialize coords and data_vars for Xarray Dataset
-        if type(self.reservoir).__name__ == "StructReservoir":
+        if isinstance(self.reservoir, StructReservoir):
             dx, dy, dz = (
                 self.reservoir.global_data["dx"],
                 self.reservoir.global_data["dy"],
@@ -1131,72 +1316,287 @@ class Output:
 
         return dataset
 
-    def plot_xarray(
+    def output_to_plt(
         self,
-        xarray_data,
-        timestep: int = -1,
-        x: int = None,
-        y: int = None,
-        z: int = None,
+        sol_filepath: str = None,
+        xarray_data: xr.Dataset = None,
+        output_properties: list = None,
+        timestep: int = None,
+        x_slice: int = None,
+        y_slice: int = None,
+        z_slice: int = None,
+        lims: dict = None,
+        fig_size: tuple = None,
+        axs_shape: tuple = None,
+        aspect_ratio: str = "equal",
+        logx: bool = False,
+        plot_zeros: bool = True,
+        cmap: str = "jet",
+        colorbar_loc: str = "right",
     ):
         """
-        :param xarray_data: xarray data set
-        :param timestep: time index
-        :param x: index in x-dimension
-        :param y: index in y-dimension
-        :param z: index in z-dimension
-        """
+        Method for plotting output using matplotlib library. !! Requires an xarray_data as an input !!
 
+        :param sol_filepath: Path to the solution HDF5 file. Defaults to None, in which case the default path is used.
+        :type sol_filepath: str, optional
+        :param xarray_data: Data for output
+        :type xarray_data: xr.Dataset
+        :param output_properties: List of properties to plot
+        :type output_properties: list
+        :param timestep: Timesteps to plot (int or list of int)
+        :type timestep: int
+        :param x_slice: index for cross-section in x-dimension
+        :param y_slice: index for cross-section in y-dimension
+        :param z_slice: index for cross-section in z-dimension
+        :param lims: Dictionary of lists with [lower, upper] limits for output variables, will default to [None, None]
+        :type lims: dict
+        :param fig_size: Tuple of (width, height) for figure
+        :param axs_shape: Tuple of (rows, columns) for figure
+        :param aspect_ratio: Aspect ratio ('equal', 'auto', or float), default is 'equal'
+        :param logx: Bool to plot x-axis in logscale, default is False
+        :param plot_zeros: Bool to plot zero values, default is True
+        :param cmap: plt.Colourmap, default is 'jet'
+        :param colorbar_loc: Location of colorbar ('right' or 'bottom'), default is 'right'
+        """
         from darts.reservoirs.struct_reservoir import StructReservoir
 
-        if type(self.reservoir) is not StructReservoir:
-            raise AttributeError(
-                "Reservoir class must be exactly of type StructReservoir."
-            )
+        if not isinstance(self.reservoir, StructReservoir):
+            raise AttributeError("Reservoir class must be of type StructReservoir.")
+        dims_to_plot = (
+            self.reservoir.ndims
+            - (x_slice is not None)
+            - (y_slice is not None)
+            - (z_slice is not None)
+        )
+        assert dims_to_plot <= 2, "No implementation exists for 3D plt"
 
         output_directory = os.path.join(self.output_folder, "figures")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory, exist_ok=True)
 
-        assert isinstance(timestep, int) and timestep < len(xarray_data['time']), (
-            f"Timestep should be an integer less than {len(xarray_data['time'])}."
+        # Check what data to use
+        if sol_filepath is not None and xarray_data is not None:
+            warnings.warn(
+                "Both solution filepath and xarray Dataset were provided to output_to_plt(), choosing xarray",
+                stacklevel=2,
+            )
+        # If no xarray_data has been provided, either generate from solution file or engine.X
+        if xarray_data is None:
+            xarray_data = self.output_to_xarray(
+                sol_filepath=sol_filepath,
+                output_properties=output_properties,
+                timestep=timestep,
+                engine=(sol_filepath is None),  # get from engine if no file provided
+            )
+
+        # Check if slices are consistent
+        if x_slice is not None:
+            assert x_slice < len(xarray_data['x']), (
+                f"x-level step should be less than {len(xarray_data['x']):d}"
+            )
+        if y_slice is not None:
+            assert y_slice < len(xarray_data['y']), (
+                f"y-level step should be less than {len(xarray_data['y']):d}"
+            )
+        if z_slice is not None:
+            assert z_slice < len(xarray_data['z']), (
+                f"z-level step should be less than {len(xarray_data['z']):d}"
+            )
+
+        # Set subplots, shape and size
+        axs_shape = axs_shape if axs_shape is not None else (1, len(output_properties))
+        fig_size = (
+            fig_size
+            if fig_size is not None
+            else (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
         )
 
-        var_names = list(xarray_data.data_vars)
-        for _i, var in enumerate(var_names):
-            plt.figure()
-            if z is not None:
-                assert z < len(xarray_data['z']), (
-                    f"z-level step should be less than {len(xarray_data['z']):d}"
-                )
-                xarray_data[var].isel(time=timestep, z=z).plot()
-                plt.savefig(output_directory + f'/{var} ts{timestep:d} z{z:d}.png')
+        # Define limits for properties
+        lims = lims if lims is not None else {}
+        for prop in output_properties:
+            if prop not in lims.keys():
+                lims[prop] = [None, None]
 
-            elif y is not None:
-                assert y < len(xarray_data['y']), (
-                    f"y-level step should be less than {len(xarray_data['y']):d}"
-                )
-                xarray_data[var].isel(time=timestep, y=y).plot()
-                plt.savefig(output_directory + f'/{var} ts{timestep:d} y{y:d}.png')
+        # Slice dataset in space
+        slices = {
+            key: val
+            for key, val in {'z': z_slice, 'y': y_slice, 'x': x_slice}.items()
+            if val is not None
+        }
+        data = xarray_data.isel(slices)
 
-            elif x is not None:
-                assert x < len(xarray_data['x']), (
-                    f"x-level step should be less than {len(xarray_data['x']):d}"
-                )
-                xarray_data[var].isel(time=timestep, x=x).plot()
-                plt.savefig(
-                    output_directory
-                    + f'/{var} ts{timestep:d} zx{z if z is not None else 0:d}.png'
-                )
+        # Set zeros to nan if plot_zeros = False
+        if not plot_zeros:
+            data = data.where(data != 0.0, np.nan)
 
+        # For 1D plot
+        if dims_to_plot == 1:
+            # Plot each timestep (plot over old fig object if provided)
+            for t, _ts in enumerate(data['time']):
+                fig, axs = plt.subplots(
+                    nrows=axs_shape[0],
+                    ncols=axs_shape[1],
+                    figsize=fig_size,
+                    dpi=100,
+                    facecolor="w",
+                    edgecolor="k",
+                )
+                for j, prop in enumerate(output_properties):
+                    axs[j].set_title(prop)
+
+                # Plot all output_properties
+                for j, prop in enumerate(output_properties):
+                    ax = fig.axes[j]
+
+                    # Horizontal slice
+                    if (self.reservoir.nx > 1 and x_slice is None) or (
+                        self.reservoir.ny > 1 and y_slice is None
+                    ):
+                        x = (
+                            self.reservoir.discretizer.centroids_all_cells[:, 0]
+                            if x_slice is None
+                            else self.reservoir.discretizer.centroids_all_cells[:, 1]
+                        )
+
+                        ax.plot(x, data[prop].isel(time=t).squeeze().values)
+                        ax.set(ylim=lims[prop])
+                        if logx:
+                            ax.set_xscale("log")
+                            ax.set_xlim([np.min(x), np.max(x)])
+                    # Vertical slice
+                    elif self.reservoir.nz > 1 and z_slice is None:
+                        z = self.reservoir.discretizer.centroids_all_cells[:, 2]
+                        ax.plot(data[prop].isel(time=t), z)
+                        if prop in lims.keys():
+                            ax.set(xlim=lims[prop])
+                    else:
+                        raise AssertionError(
+                            "Slices for 1D plot inconsistent with reservoir dimensions"
+                        )
+
+                # Save figure
+                filename = (
+                    f'ts{t:d}'
+                    + (f' x{x_slice:d}' if x_slice is not None else '')
+                    + (f' y{y_slice:d}' if y_slice is not None else '')
+                    + (f' z{x_slice:d}' if z_slice is not None else '')
+                    + '.png'
+                )
+                plt.savefig(os.path.join(output_directory, filename))
+
+        # For 2D plot
+        else:
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+            dx, dy, dz = (
+                self.reservoir.global_data["dx"],
+                self.reservoir.global_data["dy"],
+                self.reservoir.global_data["dz"],
+            )
+            # Use dx or dy for xgrid, depending on whether x-dimension/y-dimension exists
+            x_used, y_used = False, False  # track which dimensions
+            if self.reservoir.nx > 1 and x_slice is None:
+                xgrid = np.append(0, np.cumsum(dx[:, 0, 0]))
+                x_used = True
+            elif self.reservoir.ny > 1 and y_slice is None:
+                xgrid = np.append(0, np.cumsum(dy[0, :, 0]))
+                y_used = True
             else:
-                # model is a 1D reservoir
-                xarray_data[var].isel(time=timestep).plot()
-                plt.savefig(output_directory + f'/{var} ts{timestep:d}.png')
+                raise AssertionError(
+                    "Slices for 2D plot inconsistent with reservoir dimensions"
+                )
+
+            # Use dy or dz for ygrid, depending on whether y-dimension/z-dimension exists
+            # If y-dimension was already used for xgrid, use z-dimension
+            if self.reservoir.ny > 1 and y_slice is None and not y_used:
+                ygrid = np.append(0, np.cumsum(dy[0, :, 0]))
+                y_used = True
+            elif self.reservoir.nz > 1 and z_slice is None:
+                ygrid = np.append(0, np.cumsum(dz[0, 0, :]))
+            else:
+                raise AssertionError(
+                    "Slices for 2D plot inconsistent with reservoir dimensions"
+                )
+
+            # Create meshgrid object and determine size
+            X, Y = np.meshgrid(xgrid, ygrid)
+            if x_used and y_used:  # Both: x, y
+                shape = (self.reservoir.ny, self.reservoir.nx)
+                # transpose = False
+            elif x_used:  # Only x: x, z
+                shape = (self.reservoir.nz, self.reservoir.nx)
+                # transpose = True
+            else:  # Not x: y, z
+                shape = (self.reservoir.nz, self.reservoir.ny)
+                # transpose = True
+
+            # Plot each timestep (plot over old fig object if provided)
+            for t, _ts in enumerate(data['time']):
+                fig, axs = plt.subplots(
+                    nrows=axs_shape[0],
+                    ncols=axs_shape[1],
+                    figsize=fig_size,
+                    dpi=100,
+                    facecolor="w",
+                    edgecolor="k",
+                )
+                for j, prop in enumerate(output_properties):
+                    axs[j].set_title(prop)
+
+                # Plot all output_properties
+                for j, prop in enumerate(output_properties):
+                    ax = fig.axes[j]
+
+                    im = ax.pcolormesh(
+                        X,
+                        Y,
+                        data[prop].isel(time=t).squeeze().values.reshape(shape),
+                        cmap=cmap,
+                        vmin=lims[prop][0],
+                        vmax=lims[prop][1],
+                    )
+                    if not x_used or not y_used:  # z-dimension used, invert y-axis
+                        ax.invert_yaxis()
+                    if logx:
+                        ax.set_xscale("log")
+                        ax.set_xlim([xgrid[1], xgrid[-1]])
+                        ax.set_aspect("auto")
+                    else:
+                        ax.set_aspect(aspect_ratio)
+
+                    divider = make_axes_locatable(ax)
+                    if colorbar_loc == 'right':
+                        cax = divider.append_axes('right', size='5%', pad=0.05)
+                        fig.colorbar(im, cax=cax, orientation='vertical')
+                    else:
+                        cax = divider.append_axes('bottom', size='15%', pad=0.3)
+                        fig.colorbar(im, cax=cax, orientation='horizontal')
+                    # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
+                    # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
+                plt.tight_layout()
+
+                # Save figure
+                filename = (
+                    f'ts{t:d}'
+                    + (f' x{x_slice:d}' if x_slice is not None else '')
+                    + (f' y{y_slice:d}' if y_slice is not None else '')
+                    + (f' z{x_slice:d}' if z_slice is not None else '')
+                    + '.png'
+                )
+                plt.savefig(os.path.join(output_directory, filename))
+
         plt.close('all')
+        return fig
 
     def store_well_time_data(
-        self, types_of_well_rates: list = None, save_output_files: bool = False
+        self,
+        phase_molar_rates: bool = True,
+        phase_mass_rates: bool = True,
+        phase_volumetric_rates: bool = True,
+        component_molar_rates: bool = True,
+        component_mass_rates: bool = True,
+        advective_heat_rates: bool = True,
+        save_output_files: bool = False,
     ):
         """
         Compute and store well time data including rates and bottom-hole conditions (BHT and BHP)
@@ -1206,15 +1606,19 @@ class Output:
         1- summing up the rates of perforations
         2- calculating the rates directly at the wellhead connection
 
-        :param types_of_well_rates: List of types of well rates that can be computed:
-                                    "phase_molar_rates"
-                                    "phase_mass_rates"
-                                    "phase_volumetric_rates"
-                                    "component_molar_rates"
-                                    "component_mass_rates"
-                                    "advective_heat_rates" for thermal scenarios
-        :type types_of_well_rates: list
-        :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default false
+        :param phase_molar_rates: Compute phase molar rates, default is True
+        :type phase_molar_rates: bool
+        :param phase_mass_rates: Compute phase mass rates, default is True
+        :type phase_mass_rates:bool
+        :param phase_volumetric_rates: Compute phase volumetric rates, default is True
+        :type phase_volumetric_rates:bool
+        :param component_molar_rates: Compute component molar rates, default is True
+        :type component_molar_rates: bool
+        :param component_mass_rates: Compute component mass rates, default is True
+        :type component_mass_rates: bool
+        :param advective_heat_rates: Compute advective heat rates for thermal scenarios, default is True
+        :type advective_heat_rates: bool
+        :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default is false
         :type save_output_files: bool
         """
         # Start timer for store_well_time_data
@@ -1222,46 +1626,47 @@ class Output:
         self.timer.node["output_well_time_data"].start()
 
         h5_well_data = load_hdf5_to_dict(self.well_filepath)
-        self.configure_physics()
 
         time = h5_well_data["dynamic"]["time"]
         time_data_dict = {"time": time}
 
         (
-            perfs_conn_ids,
-            well_head_conn_ids,
+            perfs_conn_idxs,
+            well_head_conn_idxs,
             geometric_WI,
             well_head_conn_trans,
         ) = self.get_wellhead_perf_connection_info()
 
-        if types_of_well_rates is None:
-            types_of_well_rates = [
-                "phase_molar_rates",
-                "phase_mass_rates",
-                "phase_volumetric_rates",
-                "component_molar_rates",
-                "component_mass_rates",
-            ]
-            if self.physics.thermal:
-                types_of_well_rates.append("advective_heat_rates")
-
         # Store BHP and BHT
         self.store_bhp_bht(h5_well_data, time_data_dict)
+
+        # Store types of well rates in a list to be calculated
+        types_of_well_rates = []
+        types_of_well_rates += ["phase_molar_rates"] if phase_molar_rates else []
+        types_of_well_rates += ["phase_mass_rates"] if phase_mass_rates else []
+        types_of_well_rates += (
+            ["phase_volumetric_rates"] if phase_volumetric_rates else []
+        )
+        types_of_well_rates += (
+            ["component_molar_rates"] if component_molar_rates else []
+        )
+        types_of_well_rates += ["component_mass_rates"] if component_mass_rates else []
+        types_of_well_rates += (
+            ["advective_heat_rates"] if advective_heat_rates and self.thermal else []
+        )
 
         for rate_type in types_of_well_rates:
             if (
                 rate_type == "component_molar_rates"
                 or rate_type == "component_mass_rates"
-            ) and self.physics.property_containers[
-                0
-            ].physics_type == "geothermal_engine":
+            ) and isinstance(self.physics, Geothermal):
                 continue
             # Compute perforation rates
-            rates_perfs = self.calc_rates_at_connections(
+            rates_perfs = self.calc_rates_at_conns(
                 h5_well_data,
-                perfs_conn_ids,
+                perfs_conn_idxs,
                 geometric_WI,
-                self.physics.thermal,
+                self.thermal,
                 rate_type,
             )
             # Store perforation rates
@@ -1269,11 +1674,11 @@ class Output:
             # Store well rates by summing perforation rates
             self.store_well_rates_sums(time_data_dict, rates_perfs, rate_type)
             # Compute wellhead rates
-            rates_wellhead = self.calc_rates_at_connections(
+            rates_wellhead = self.calc_rates_at_conns(
                 h5_well_data,
-                well_head_conn_ids,
+                well_head_conn_idxs,
                 well_head_conn_trans,
-                self.physics.thermal,
+                self.thermal,
                 rate_type,
             )
             # Store wellhead rates
@@ -1293,74 +1698,60 @@ class Output:
         self.timer.stop()
         return time_data_dict
 
-    def configure_physics(self):
-        """
-        This function makes the physics of the geothermal engine compatible with how the physics of the super engine
-        is defined. This function is used in the method store_well_time_data of the current class.
-        """
-        pc = self.physics.property_containers[0]
-        pc.physics_type = "super_engine"
-        physics_name = type(self.physics).__name__
-        if physics_name in ("Geothermal", "GeothermalPH"):
-            pc.physics_type = "geothermal_engine"
-            pc.phases_name = self.physics.phases[: pc.nph]
-            pc.nc_fl = 1
-            pc.components_name = ["H2O"]
-            self.physics.thermal = True
-
     def get_wellhead_perf_connection_info(self):
         """
-        This function gives information of the connections, including perforations and wellhead, for evaluation of
+        Give information of the connections, including perforations and wellhead, for evaluation of
         perforation and wellhead rates in the method store_well_time_data of the current class.
         """
         block_m = np.array(self.reservoir.mesh.block_m, copy=False)
         block_p = np.array(self.reservoir.mesh.block_p, copy=False)
         # Create a dictionary containing connection indices of perforations for each well (values are lists)
-        well_perf_conn_ids = {}
+        well_perf_conn_idxs = {}
         # Create a dictionary containing connection index of wellhead for each well (values are integers)
-        well_head_conn_id = {}
-        for idx, well in enumerate(self.reservoir.wells):
-            res_cell_ids = [perf[1] for perf in well.perforations]
+        well_head_conn_idx = {}
+        for iw, well in enumerate(self.reservoir.wells):
+            res_cell_idxs = [perf[1] for perf in well.perforations]
 
-            # Find ids of those connections which 1. block_p is in res_cell_ids, 2. block_m is in the desired well
-            if idx + 1 < len(self.reservoir.wells):  # If there is a next well
-                next_well = self.reservoir.wells[idx + 1]
+            # Find indices of perforations in the connection list (those connections
+            # which 1. block_m is in the desired well and 2. block_p is in res_cell_idxs)
+            if iw + 1 < len(self.reservoir.wells):  # If there is a next well
+                next_well = self.reservoir.wells[iw + 1]
                 mask = np.logical_and(
-                    np.isin(block_p, res_cell_ids),
                     np.logical_and(
                         block_m >= well.well_head_idx, block_m < next_well.well_head_idx
                     ),
+                    np.isin(block_p, res_cell_idxs),
                 )
             else:  # If there is no next well
                 mask = np.logical_and(
-                    np.isin(block_p, res_cell_ids), block_m >= well.well_head_idx
+                    block_m >= well.well_head_idx,
+                    np.isin(block_p, res_cell_idxs),
                 )
 
-            conn_ids = np.nonzero(mask)
-            well_perf_conn_ids[well.name] = conn_ids[0]
-            assert (
-                well_perf_conn_ids[well.name].size == len(well.perforations)
-                and (
-                    block_m[well_perf_conn_ids[well.name]]
-                    > self.reservoir.mesh.n_res_blocks
-                ).all()
+            conn_idxs = np.nonzero(mask)
+            well_perf_conn_idxs[well.name] = conn_idxs[0]
+            assert well_perf_conn_idxs[well.name].size == len(
+                well.perforations
+            ) and np.all(
+                block_m[well_perf_conn_idxs[well.name]]
+                > self.reservoir.mesh.n_res_blocks
             )
 
-            # Find id of well_head -> well_body connection in the connection list
-            wh_conn_id = np.where(
+            # Find idx of well_head-well_body connection in the connection list
+            wh_conn_idx = np.where(
                 np.logical_and(
                     block_m == well.well_head_idx, block_p == well.well_body_idx
                 )
             )[0]
-            assert len(wh_conn_id) == 1
-            well_head_conn_id[well.name] = wh_conn_id[0]
+            assert len(wh_conn_idx) == 1
+            well_head_conn_idx[well.name] = wh_conn_idx[0]
 
         # Get perforation connection indices for all wells
-        perfs_conn_ids = [
-            item for sublist in well_perf_conn_ids.values() for item in sublist
+        perfs_conn_idxs = [
+            item for sublist in well_perf_conn_idxs.values() for item in sublist
         ]
         # Get wellhead connection indices for all wells
-        well_head_conn_ids = list(well_head_conn_id.values())
+        well_head_conn_idxs = list(well_head_conn_idx.values())
 
         # Get well indices (WI) for each perforation
         geometric_WI = np.array(
@@ -1371,13 +1762,13 @@ class Output:
             [well.well_transmissibility for well in self.reservoir.wells]
         )
 
-        return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
+        return perfs_conn_idxs, well_head_conn_idxs, geometric_WI, well_head_conn_trans
 
     def store_perf_rates(
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
     ):
         """
-        This function stores perforation rates from the 3D numpy array rates_perfs for the rate type rate_type in the
+        Store perforation rates from the 3D numpy array rates_perfs for the rate type rate_type in the
         dict time_data_dict. This function is used in the method store_well_time_data of the current class.
 
         :param time_data_dict: Dictionary in which well time series will be stored
@@ -1417,7 +1808,7 @@ class Output:
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
     ):
         """
-        This function stores summation of perforation rates for each well from the 3D numpy array rates_perfs for the
+        Store summation of perforation rates for each well from the 3D numpy array rates_perfs for the
         rate type rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of
         the current class.
 
@@ -1471,7 +1862,7 @@ class Output:
         self, time_data_dict: dict, wh_rates: np.ndarray, rate_type: str
     ):
         """
-        This function stores wellhead rate for each well from the 3D numpy array rates_perfs for the rate type
+        Store wellhead rate for each well from the 3D numpy array rates_perfs for the rate type
         rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of the
         current class.
 
@@ -1505,7 +1896,7 @@ class Output:
 
     def store_bhp_bht(self, h5_well_data: dict, time_data_dict: dict):
         """
-        This function stores bottom-hole pressure (BHP) and temperature (BHT) of wells over time in time_data_dict.
+        Store bottom-hole pressure (BHP) and temperature (BHT) of wells over time in time_data_dict.
         This function is used in the method store_well_time_data of the current class.
 
         :param h5_well_data: Dictionary extracted from the HDF5 file that stores well primary variables, etc.
@@ -1521,18 +1912,17 @@ class Output:
 
         for well in self.reservoir.wells:
             BHP = np.zeros(nt)
-            BHT = np.zeros(nt) if self.physics.thermal else np.full(nt, pc.temperature)
+            BHT = np.zeros(nt) if self.thermal else np.full(nt, pc.temperature)
             wellhead_cell_idx = self.find_values_in_an_array(
                 [well.well_head_idx], cell_id
             )
             p_idx = variable_names.index("pressure")
             for i in range(nt):
-                p = X[i, :, p_idx]
-                BHP[i] = p[wellhead_cell_idx]
-                if self.physics.thermal:
+                BHP[i] = X[i, wellhead_cell_idx, p_idx]
+                if self.thermal:
                     if "temperature" in variable_names:
                         t_idx = variable_names.index("temperature")
-                        BHT[i] = X[i, :, t_idx][wellhead_cell_idx]
+                        BHT[i] = X[i, wellhead_cell_idx, t_idx]
                     else:
                         h_idx = variable_names.index("enthalpy")
                         BHT[i] = pc.temperature_ev.evaluate(
@@ -1541,22 +1931,22 @@ class Output:
             time_data_dict[f"well_{well.name}_BHP"] = BHP
             time_data_dict[f"well_{well.name}_BHT"] = BHT
 
-    def calc_rates_at_connections(
+    def calc_rates_at_conns(
         self,
         h5_well_data: dict,
-        conn_ids: list,
+        conn_idxs: list,
         trans: np.ndarray,
         thermal: bool,
         rate_type: str,
     ):
         """
-        This function calculates different types of rates at perforations or wellhead connections of wells.
+        Calculate different types of rates at perforations or wellhead connections of wells.
         This function is used in the method store_well_time_data of the current class.
 
         :param h5_well_data: Well data stored in the HDF5 file
         :type h5_well_data: dict
-        :param conn_ids: IDs of connections
-        :type conn_ids: list
+        :param conn_idxs: Indices of the desired connections in the connection list
+        :type conn_idxs: list
         :param trans: Transmissibility (For perforations, it is geometric part of well index)
         :type trans: np.ndarray
         :param thermal: If the model is thermal or not
@@ -1564,27 +1954,27 @@ class Output:
         :param rate_type: Type of well rate to calculate
         :type rate_type: str
         """
-        # Evaluate position of block_m, block_p in stored data, for every connection
+        # Evaluate position of block_m, block_p in stored data for every connection
         block_m = h5_well_data["static"]["block_m"]
         block_p = h5_well_data["static"]["block_p"]
         cell_id = h5_well_data["dynamic"]["cell_id"]
-        cell_m = self.find_values_in_an_array(block_m[conn_ids], cell_id)  # well cells
-        cell_p = self.find_values_in_an_array(
-            block_p[conn_ids], cell_id
-        )  # reservoir cells
-        num_conn = len(conn_ids)
-        assert cell_m.size == num_conn and cell_p.size == num_conn
+        # Line below finds indices of the m cells of the connections in cell_id
+        cell_m = self.find_values_in_an_array(block_m[conn_idxs], cell_id)
+        # Line below finds indices of the p cells of the connections in cell_id
+        cell_p = self.find_values_in_an_array(block_p[conn_idxs], cell_id)
+        n_conns = len(conn_idxs)
+        assert cell_m.size == n_conns and cell_p.size == n_conns
 
-        num_ts = h5_well_data["dynamic"]["time"].size
+        n_ts = h5_well_data["dynamic"]["time"].size
 
         pc = self.physics.property_containers[0]
+        ne = self.physics.reservoir_operators[0].ne
 
         p_idx = h5_well_data["dynamic"]["variable_names"].index("pressure")
         if thermal:
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                t_idx = h5_well_data["dynamic"]["variable_names"].index(
-                    "temperature"
-                )  # This does not work for geothermal engine
+                # Line below does not work for geothermal engine
+                t_idx = h5_well_data["dynamic"]["variable_names"].index("temperature")
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
                 pass
             else:
@@ -1597,27 +1987,29 @@ class Output:
             )
 
         p = h5_well_data["dynamic"]["X"][:, :, p_idx]
-
         dp = p[:, cell_p] - p[:, cell_m]
-
-        id_upwind = np.where(dp < 0, cell_m, cell_p)
+        idx_upwind = np.where(dp < 0, cell_m, cell_p)
 
         # This adds a new axis, turning a 1D array into a 2D column vector
-        time_idx = np.arange(num_ts)[:, None]
+        time_idx = np.arange(n_ts)[:, None]
 
-        states = h5_well_data["dynamic"]["X"][time_idx, id_upwind]
+        states = h5_well_data["dynamic"]["X"][time_idx, idx_upwind]
 
         if self.precision == "s":
             states = np.clip(
                 states,
-                self.physics.axes_min[None, None, :],
-                self.physics.axes_max[None, None, :],
+                np.array(self.physics.axes_min),
+                np.array(self.physics.axes_max),
             )
 
-        batch_size = num_ts * num_conn
-        flat_states = states.reshape(batch_size, self.physics.n_vars)
+        batch_size = n_ts * n_conns
+        n_well_ctrl_ops = self.physics.well_ctrl_operators.n_ops
+        n_reservoir_ops = self.physics.reservoir_operators[0].n_ops
+        n_vars = self.physics.n_vars
+        block_idx = index_vector(np.arange(batch_size).astype(np.int32))
+        states_2d = states.reshape(batch_size, n_vars)
 
-        states_vec = value_vector(flat_states.ravel())
+        states_vec = value_vector(states_2d.ravel())
 
         if rate_type in [
             "phase_molar_rates",
@@ -1625,46 +2017,30 @@ class Output:
             "phase_volumetric_rates",
             "advective_heat_rates",
         ]:
-            values = value_vector(
-                np.zeros(num_ts * num_conn * self.physics.well_ctrl_operators.n_ops)
-            )
+            values = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
             dvalues = value_vector(
-                np.zeros(
-                    (num_ts * num_conn * self.physics.well_ctrl_operators.n_ops)
-                    * self.physics.n_vars
-                )
+                np.zeros((batch_size * n_well_ctrl_ops) * self.physics.n_vars)
             )
 
-            block_idx = np.arange(num_ts * num_conn).astype(np.int32)
             self.physics.well_ctrl_itor.evaluate_with_derivatives(
-                states_vec, index_vector(block_idx), values, dvalues
+                states_vec, block_idx, values, dvalues
             )
 
             # self.physics.well_ctrl_itor.evaluate(states_vec, values)
 
-            values_reshaped = np.asarray(values).reshape(
-                batch_size, self.physics.well_ctrl_operators.n_ops
-            )
+            values_reshaped = np.asarray(values).reshape(batch_size, n_well_ctrl_ops)
 
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            values = value_vector(
-                np.zeros(num_ts * num_conn * self.physics.reservoir_operators[0].n_ops)
-            )
+            values = value_vector(np.zeros(batch_size * n_reservoir_ops))
             dvalues = value_vector(
-                np.zeros(
-                    (num_ts * num_conn * self.physics.reservoir_operators[0].n_ops)
-                    * self.physics.n_vars
-                )
+                np.zeros((batch_size * n_reservoir_ops) * self.physics.n_vars)
             )
 
-            block_idx = np.arange(num_ts * num_conn).astype(np.int32)
             self.physics.acc_flux_itor[0].evaluate_with_derivatives(
-                states_vec, index_vector(block_idx), values, dvalues
+                states_vec, block_idx, values, dvalues
             )
 
-            values_reshaped = np.asarray(values).reshape(
-                batch_size, self.physics.reservoir_operators[0].n_ops
-            )
+            values_reshaped = np.asarray(values).reshape(batch_size, n_reservoir_ops)
 
         else:
             raise Exception(
@@ -1682,12 +2058,29 @@ class Output:
             ops = values_reshaped[:, op_start : op_start + pc.nph]
         elif rate_type == "component_molar_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
-            ops = values_reshaped[
-                :, op_start : op_start + pc.nc_fl * pc.nph
-            ]  # molar ops
+            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
+            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+
+            op_start = self.physics.reservoir_operators[0].LAMBDA_OP
+            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            lambda_op = lambda_op[:, :, np.newaxis]
+
+            molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
+            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_fl)
+
+            ops = molar_ops
         elif rate_type == "component_mass_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
-            molar_ops = values_reshaped[:, op_start : op_start + pc.nc_fl * pc.nph]
+            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
+            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+
+            op_start = self.physics.reservoir_operators[0].LAMBDA_OP
+            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            lambda_op = lambda_op[:, :, np.newaxis]
+
+            molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
+            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_fl)
+
             mw = np.array(self.physics.property_containers[0].Mw[: pc.nc_fl])
             mw_tiled = np.tile(mw, pc.nph)
             ops = molar_ops * mw_tiled
@@ -1697,32 +2090,53 @@ class Output:
 
             # Calc heat operators for the dead state (1 atm and 15 deg C)
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                flat_states[:, p_idx] = 1.01325  # Dead pressure (1 atm)
-                flat_states[:, t_idx] = 273.15 + 15  # Dead temperature (15 deg C)
-                states_vec_dead = value_vector(flat_states.ravel())
+                p_dead = 1.01325  # Dead pressure (1 atm)
+                T_dead = 273.15 + 15  # Dead temperature (15 deg C)
+                if not (
+                    self.physics.axes_min[p_idx]
+                    <= p_dead
+                    <= self.physics.axes_max[p_idx]
+                ):
+                    warnings.warn(
+                        f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
+                        stacklevel=1,
+                    )
+                if not (
+                    self.physics.axes_min[-1] <= T_dead <= self.physics.axes_max[-1]
+                ):
+                    warnings.warn(
+                        f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
+                        stacklevel=1,
+                    )
+
+                states_2d[:, p_idx] = p_dead
+                states_2d[:, t_idx] = T_dead
+                states_vec_dead = value_vector(states_2d.ravel())
+
+                values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
+                dvalues_dead = value_vector(
+                    np.zeros((batch_size * n_well_ctrl_ops) * self.physics.n_vars)
+                )
+
                 self.physics.well_ctrl_itor.evaluate_with_derivatives(
-                    states_vec_dead, index_vector(block_idx), values, dvalues
+                    states_vec_dead, block_idx, values_dead, dvalues_dead
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-                values_reshaped_dead = np.asarray(values).reshape(
-                    batch_size, self.physics.well_ctrl_operators.n_ops
+                values_reshaped_dead = np.asarray(values_dead).reshape(
+                    batch_size, n_well_ctrl_ops
                 )
                 ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
                 # TODO This does not work properly if the super engine is of the PH type
-                enthalpy_w, dens_m_w, kr_w, miu_w = (
-                    -44582.229072,
-                    55.457385,
-                    1,
-                    1.132781,
-                )  # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
+                # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
+                enthalpy_w, dens_m_w, kr_w, miu_w = -44582.2291, 55.4574, 1, 1.1328
                 ops_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
                 ops_dead = np.zeros(ops.shape)
-                ops_dead[ops != 0.0] = (
-                    ops_dead_phase  # If value is zero, no need to subtract ops_dead_phase from it
-                )
+                # If value is zero, no need to subtract ops_dead_phase from it
+                ops_dead[ops != 0.0] = ops_dead_phase
 
             ops = ops - ops_dead
+            print('Ops after subtracting dead state contribution:', ops)
 
         # Reshape arrays
         if rate_type in [
@@ -1730,72 +2144,46 @@ class Output:
             "phase_mass_rates",
             "phase_volumetric_rates",
         ]:
-            ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
+            ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            ops_reshaped = ops.reshape(num_ts, num_conn, -1)
+            ops_reshaped = ops.reshape(n_ts, n_conns, -1)
         elif rate_type == "advective_heat_rates":
-            ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
+            ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
 
-        trans_exp = trans[None, :, None]
-        dp_exp = dp[:, :, None]
-        rates = -ops_reshaped * trans_exp * dp_exp
+        tran = trans[None, :, None]
+        dpr = dp[:, :, None]
+        rates = -ops_reshaped * tran * dpr
 
         return rates
 
-    # %% Auxiliary functions
-    def find_conn_ids_for_perfs(
-        self, perfs: list, block_m: np.ndarray, block_p: np.ndarray, n_res_blocks: int
+    def plot_well_time_data(
+        self,
+        phase_molar_rates: bool = True,
+        phase_mass_rates: bool = True,
+        phase_volumetric_rates: bool = True,
+        component_molar_rates: bool = True,
+        component_mass_rates: bool = True,
+        advective_heat_rates: bool = True,
     ):
         """
-        This function finds the connection IDs of perforations
+        Plot well time data.
 
-        :param perfs: List of perforations (well_block_index, reservoir_block_index, well_index, well_indexD)
-        :type perfs: List
-        :param block_m: block_m of the connection list
-        :type block_m: np.ndarray
-        :param block_p: block_p of the connection list
-        :type block_p: np.ndarray
-        :param n_res_blocks: Number of reservoir blocks
-        :type n_res_blocks: int
-        """
-        res_cell_ids = [perf[1] for perf in perfs]
-        perfs_conn_ids = np.nonzero(
-            np.logical_and(np.isin(block_p, res_cell_ids), block_m >= n_res_blocks)
-        )[0]
-        assert (
-            len(perfs_conn_ids) == len(perfs)
-            and (block_m[perfs_conn_ids] > n_res_blocks).all()
-        )
-        return perfs_conn_ids
+        Bottom-hole pressure (BHP) and bottom-hole temperature (BHT) are
+        always included in the plots. Additional well rate categories can
+        be enabled or disabled using the corresponding boolean input arguments.
 
-    def find_values_in_an_array(self, to_find: np.ndarray | list, in_array: np.ndarray):
-        """
-        :param to_find: The values the indices of which we want to find in in_array
-        :type to_find: np.ndarray or list
-        :param in_array: The array in which we want to find the values in to_find
-        :type in_array: np.ndarray
-        """
-        indices = []
-        for element in to_find:
-            id = np.where(in_array == element)[0]
-            if id.size > 0:
-                indices.append(id[0])
-        return np.array(indices, dtype=np.intp)
-
-    def plot_well_time_data(self, types_of_well_rates: list = None):
-        """
-        Plots well time data that are specified in the list types_of_well_time_data over time, including
-        phase_molar_rates, phase_mass_rates, phase_volumetric_rates, component_molar_rates, component_mass_rates,
-        advective_heat_rates, BHP (bottom-hole pressure), and BHT (bottom-hole temperature)
-
-        :param types_of_well_rates: List of types of well rates that can be computed:
-                                    "phase_molar_rates"
-                                    "phase_mass_rates"
-                                    "phase_volumetric_rates"
-                                    "component_molar_rates"
-                                    "component_mass_rates"
-                                    "advective_heat_rates" for thermal scenarios
-        :type types_of_well_rates: list
+        :param phase_molar_rates: Plot phase molar rates, default is True
+        :type phase_molar_rates: bool
+        :param phase_mass_rates: Plot phase mass rates, default is True
+        :type phase_mass_rates:bool
+        :param phase_volumetric_rates: Plot phase volumetric rates, default is True
+        :type phase_volumetric_rates:bool
+        :param component_molar_rates: Plot component molar rates, default is True
+        :type component_molar_rates: bool
+        :param component_mass_rates: Plot component mass rates, default is True
+        :type component_mass_rates: bool
+        :param advective_heat_rates: Plot advective heat rates for thermal scenarios, default is True
+        :type advective_heat_rates: bool
         """
         main_dir = os.path.join(self.output_folder, "figures/well_time_plots")
 
@@ -1809,17 +2197,20 @@ class Output:
         df = pd.read_pickle(os.path.join(self.output_folder, "well_time_data.pkl"))
         time = df["time"]
 
-        # Specify types of well rates that will be plotted if types_of_well_rates is not entered by the user
-        if types_of_well_rates is None:
-            types_of_well_rates = [
-                "phase_molar_rates",
-                "phase_mass_rates",
-                "phase_volumetric_rates",
-                "component_molar_rates",
-                "component_mass_rates",
-            ]
-            if self.physics.thermal:
-                types_of_well_rates.append("advective_heat_rates")
+        # Store types of well rates in a list to be plotted
+        types_of_well_rates = []
+        types_of_well_rates += ["phase_molar_rates"] if phase_molar_rates else []
+        types_of_well_rates += ["phase_mass_rates"] if phase_mass_rates else []
+        types_of_well_rates += (
+            ["phase_volumetric_rates"] if phase_volumetric_rates else []
+        )
+        types_of_well_rates += (
+            ["component_molar_rates"] if component_molar_rates else []
+        )
+        types_of_well_rates += ["component_mass_rates"] if component_mass_rates else []
+        types_of_well_rates += (
+            ["advective_heat_rates"] if advective_heat_rates and self.thermal else []
+        )
 
         self.unit_dict = {
             "molar": "kmol/day",
@@ -1888,12 +2279,11 @@ class Output:
 
     def create_perf_dirs(self, main_dir: str):
         """
-        This function creates a new directory (folder) for each perforation of each well. The rates for each perforation
+        Create a new directory (folder) for each perforation of each well. The rates for each perforation
         will be stored in their corresponding directory later. This function is used in the method plot_well_time_data
         of the current class.
 
-        :param main_dir: Directory in which a folder for each well already exists or will be created. Folder
-        for each perforation will be created in the corresponding well folder.
+        :param main_dir: Directory in which a folder for each well already exists or will be created. Folder for each perforation will be created in the corresponding well folder.
         :type main_dir: str
         """
         for well in self.reservoir.wells:
@@ -1904,15 +2294,14 @@ class Output:
 
     def create_perf_keys(self, rtype: str, well_name: str, perf_idx: int):
         """
-        This function creates keys for perforation rates. This function is used in the method plot_well_time_data
+        Create keys for perforation rates. This function is used in the method plot_well_time_data
         of the current class.
 
         :param rtype: Type of the well rate
         :type rtype: str
         :param well_name: Name of the well
         :type well_name: str
-        :param perf_idx: Index of the perforation. This index starts from zero and the order depends on the order
-        at which perforations are added to the wellbore using the add_perforation method.
+        :param perf_idx: Index of the perforation. This index starts from zero and the order depends on the order at which perforations are added to the wellbore using the add_perforation method.
         :type perf_idx: int
         """
         pc = self.physics.property_containers[0]
@@ -1939,7 +2328,7 @@ class Output:
 
     def create_total_keys(self, rtype: str, well_name: str):
         """
-        This function creates keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
+        Create keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
         method plot_well_time_data of the current class.
 
         :param rtype: Type of well rate
@@ -2002,3 +2391,18 @@ class Output:
             )
             keys.append((f"{base}{rtype}", label))
         return keys
+
+    # Auxiliary functions
+    def find_values_in_an_array(self, to_find: np.ndarray | list, arr: np.ndarray):
+        """
+        :param to_find: The values the indices of which we want to find in arr
+        :type to_find: np.ndarray or list
+        :param arr: The array in which we want to find the values in to_find
+        :type arr: np.ndarray
+        """
+        indices = []
+        for element in to_find:
+            idx = np.where(arr == element)[0]
+            if idx.size > 0:
+                indices.append(idx[0])
+        return np.array(indices, dtype=np.intp)

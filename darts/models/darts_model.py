@@ -266,6 +266,7 @@ class DartsModel:
         all_phase_props: bool = False,
         precision: str = "d",
         compression: str = "gzip",
+        compression_level: int = 0,
         verbose: bool = False,
     ):
         """
@@ -302,7 +303,8 @@ class DartsModel:
             all_phase_props,
             precision,
             compression,
-            verbose,
+            compression_level = compression_level,
+            verbose = verbose,
         )
 
         return

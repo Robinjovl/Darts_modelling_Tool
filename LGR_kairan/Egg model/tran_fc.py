@@ -20,6 +20,7 @@ from dartsflash.components import CompData
 
 from darts.physics.super.initialize import Initialize
 from darts.tools.keyword_file_tools import load_single_keyword
+from darts.engines import redirect_darts_output
 
 class SinglePhaseCO2Properties(PropertyContainer):
     def __init__(self, phases_name, components_name, min_z, Mw):
@@ -336,6 +337,7 @@ def compute_eff_tran_for_one_lgr_layer(
         patch_center_1b=effective_2d_model.patch_center_1b,
         n_nb_cols=refine[0],
     )
+    redirect_darts_output("upscaling_2d.log")
     effective_2d_model.init(platform='cpu')
     effective_2d_model.set_output(output_folder="local_upscaling_tmp")
     for dt in range(n_steps):

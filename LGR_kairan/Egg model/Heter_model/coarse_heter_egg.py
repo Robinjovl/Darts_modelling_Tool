@@ -29,10 +29,11 @@ class Model(DartsModel):
     - use the same well locations as the heter/LGR setup
     """
 
-    def __init__(self):
+    def __init__(self, perm_file_name:str):
         super().__init__()
 
         self.timer.node["initialization"].start()
+        self.perm_file_name = perm_file_name
         self.set_reservoir()
         self.zero = 1e-8
         self.set_physics()
@@ -91,7 +92,7 @@ class Model(DartsModel):
         nb_res = nx * ny * nz_res
 
         base_dir = Path(__file__).resolve().parent
-        perm_file = base_dir / "PERM90_ECL.INC"
+        perm_file = base_dir / self.perm_file_name
 
         permx_res = load_single_keyword(str(perm_file), "PERMX", nb_res)
         permy_res = load_single_keyword(str(perm_file), "PERMY", nb_res)
@@ -157,14 +158,14 @@ class Model(DartsModel):
 
         boundary_factor = 2000
         base_vol = float(dx * dy * dz)
-        v_big = 1e20
+        v_big = boundary_factor * base_vol
         self.reservoir.boundary_volumes = {
-            "xy_minus": v_big,
-            "xy_plus": v_big,
-            "yz_minus": v_big,
-            "yz_plus": v_big,
-            "xz_minus": v_big,
-            "xz_plus": v_big,
+            "xy_minus": 1e20,
+            "xy_plus": 1e20,
+            "yz_minus": None,
+            "yz_plus": None,
+            "xz_minus": None,
+            "xz_plus": None,
         }
 
         self.reservoir.discretize()
@@ -230,7 +231,7 @@ class Model(DartsModel):
             max_p=1000,
             min_z=self.zero / 10,
             max_z=1 - self.zero / 10,
-            min_t=273.15,
+            min_t=273.15 + 10,
             max_t=373.15 + 200,
         )
 
@@ -288,16 +289,16 @@ class Model(DartsModel):
                     wctrl=w.control,
                     control_type=well_control_iface.MASS_RATE,
                     is_inj=True,
-                    target=1.0368e7,
+                    target=4.32e6,
                     inj_composition=inj_composition,
-                    inj_temp=314.15,
+                    inj_temp=313.15,
                 )
             else:
                 self.physics.set_well_controls(
                     wctrl=w.control,
                     control_type=well_control_iface.BHP,
                     is_inj=False,
-                    target=150.0,
+                    target=190.0,
                 )
 
 
@@ -338,9 +339,9 @@ class ModelProperties(PropertyContainer):
         return
 
 
-if __name__ == "__main__":
-    m = Model()
-    m.init(platform="cpu")
-    print("coarse_heter_egg model initialized successfully.")
-    print(f"Grid: nx={m.reservoir.nx}, ny={m.reservoir.ny}, nz={m.reservoir.nz}")
-    print(f"Total reservoir blocks: {m.reservoir.mesh.n_res_blocks}")
+# if __name__ == "__main__":
+#     m = Model()
+#     m.init(platform="cpu")
+#     print("coarse_heter_egg model initialized successfully.")
+#     print(f"Grid: nx={m.reservoir.nx}, ny={m.reservoir.ny}, nz={m.reservoir.nz}")
+#     print(f"Total reservoir blocks: {m.reservoir.mesh.n_res_blocks}")

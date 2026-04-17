@@ -25,13 +25,14 @@ from darts.tools.keyword_file_tools import load_single_keyword
 
 
 class Model(DartsModel):
-    def __init__(self, cfg:dict):
+    def __init__(self, cfg:dict, perm_file_name:str):
         # Call base class constructor
         super().__init__()
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
         self.cfg = cfg
+        self.perm_file_name = perm_file_name
         self.set_reservoir()
         self.zero = 1e-8
         self.set_physics()
@@ -143,7 +144,7 @@ class Model(DartsModel):
         nb = nx*ny*nz
         nb_res = nx*ny*7
         base_dir = Path(__file__).resolve().parent
-        perm_file = base_dir / "PERM90_ECL.INC"
+        perm_file = base_dir / self.perm_file_name
 
         permx_res = load_single_keyword(str(perm_file), "PERMX", nb_res)
         permy_res = load_single_keyword(str(perm_file), "PERMY", nb_res)
@@ -234,15 +235,15 @@ class Model(DartsModel):
         
         boundary_factor = 2000
         base_vol = float(dx * dy * dz)
-        v_big = 1e20
+        v_big = boundary_factor * base_vol
 
         self.level0.boundary_volumes = {
-            "xy_minus": v_big,
-            "xy_plus": v_big,
-            "yz_minus": v_big,
-            "yz_plus": v_big,
-            "xz_minus": v_big,
-            "xz_plus": v_big,
+            "xy_minus": 1e20,
+            "xy_plus": 1e20,
+            "yz_minus": None,
+            "yz_plus": None,
+            "xz_minus": None,
+            "xz_plus": None,
         }
 
 
@@ -586,7 +587,7 @@ class Model(DartsModel):
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-                                     min_t=273.15, max_t=373.15+200)
+                                     min_t=273.15+10, max_t=373.15+200)
 
 
         property_container.output_props = {
@@ -659,13 +660,13 @@ class Model(DartsModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                            is_inj=True, target=1.0368e7, inj_composition=inj_composition, inj_temp=314.15)
+                                            is_inj=True, target=4.32e6, inj_composition=inj_composition, inj_temp=313.15)
                 
             else:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                 #                                is_inj=False, target=1400000.)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                            is_inj=False, target=150.)
+                                            is_inj=False, target=190.)
 
   
 
