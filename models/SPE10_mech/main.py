@@ -283,8 +283,8 @@ if __name__ == '__main__':
     report_step = 365.25 / 4
 
     # short run
-    #sim_time = 90 # days
-    #report_step = sim_time  # days
+    sim_time = 30 # days
+    report_step = sim_time  # days
 
     run(model_folder=mesh, physics_type=physics_type, generate_mesh=generate_mesh, wells_type=wells_type, decouple_geomech=decouple_geomech, report_step=report_step, sim_time=sim_time)
 
