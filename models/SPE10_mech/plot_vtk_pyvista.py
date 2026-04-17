@@ -44,55 +44,55 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
     plot_config_list = []
     component_index = None
 
-    arr_name = "ux"; tensor = False; arr_name_plot = 'u_x,m';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
-    
-    arr_name = "uy"; tensor = False; arr_name_plot = 'u_y,m';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    arr_name = "ux"; tensor = False; arr_name_plot = 'u_x,m'; scale = 1.0
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
-    arr_name = "uz"; tensor = False; arr_name_plot = 'u_z,m';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
-    
-    arr_name = "temperature"; tensor = False; arr_name_plot = 'temperature,K';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
-    
-    arr_name = "pressure"; tensor = False; arr_name_plot = 'pressure,bars'; 
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
-    
-    arr_name = "delta_temperature"; tensor = False; arr_name_plot = 'delta_temperature,K';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
-    
-    arr_name = "delta_pressure"; tensor = False; arr_name_plot = 'delta_pressure,bars'; 
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    arr_name = "uy"; tensor = False; arr_name_plot = 'u_y,m'; scale = 1.0
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
-    arr_name = 'delta_eff_stress'; tensor = True; component_index = 2; arr_name_plot = 'delta_eff_stress_ZZ,bars';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    arr_name = "uz"; tensor = False; arr_name_plot = 'u_z,m'; scale = 1.0
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
-    arr_name = 'delta_eff_stress'; tensor = True; component_index = 0; arr_name_plot = 'delta_eff_stress_XX,bars';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    arr_name = "temperature"; tensor = False; arr_name_plot = 'temperature,K'; scale = 1.0
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
-    arr_name = 'delta_eff_stress'; tensor = True; component_index = 1; arr_name_plot = 'delta_eff_stress_YY,bars';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    arr_name = "pressure"; tensor = False; arr_name_plot = 'pressure,MPa'; scale = 0.1
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
-    arr_name = 'delta_tot_stress'; tensor = True; component_index = 2; arr_name_plot = 'delta_tot_stress_ZZ,bars';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    arr_name = "delta_temperature"; tensor = False; arr_name_plot = 'delta_temperature,K'; scale = 1.0
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
-    arr_name = 'delta_tot_stress'; tensor = True; component_index = 0; arr_name_plot = 'delta_tot_stress_XX,bars';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    arr_name = "delta_pressure"; tensor = False; arr_name_plot = 'delta_pressure,MPa'; scale = 0.1
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
-    arr_name = 'delta_tot_stress'; tensor = True; component_index = 1; arr_name_plot = 'delta_tot_stress_YY,bars';
-    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index))
+    arr_name = 'delta_eff_stress'; tensor = True; component_index = 2; arr_name_plot = 'delta_eff_stress_ZZ,MPa'; scale = 0.1
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
+
+    arr_name = 'delta_eff_stress'; tensor = True; component_index = 0; arr_name_plot = 'delta_eff_stress_XX,MPa'; scale = 0.1
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
+
+    arr_name = 'delta_eff_stress'; tensor = True; component_index = 1; arr_name_plot = 'delta_eff_stress_YY,MPa'; scale = 0.1
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
+
+    arr_name = 'delta_tot_stress'; tensor = True; component_index = 2; arr_name_plot = 'delta_tot_stress_ZZ,MPa'; scale = 0.1
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
+
+    arr_name = 'delta_tot_stress'; tensor = True; component_index = 0; arr_name_plot = 'delta_tot_stress_XX,MPa'; scale = 0.1
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
+
+    arr_name = 'delta_tot_stress'; tensor = True; component_index = 1; arr_name_plot = 'delta_tot_stress_YY,MPa'; scale = 0.1
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
     rsv_xy_plot_bnd = 5000. # m.
 
     for plot_config in plot_config_list:
-        arr_name, tensor, arr_name_plot, contour, component_index = plot_config
+        arr_name, tensor, arr_name_plot, contour, component_index, scale = plot_config
 
         if arr_name not in block.array_names: # skip temperature if not thermal model
             print('Warning: ', arr_name, 'not found in point data')
             continue
         
-        print('Plotting: ', arr_name)
+        print('Plotting from vtk: ', arr_name, 'component_index', component_index)
         block.set_active_scalars(None)
         if not tensor:
             block.set_active_scalars(arr_name, preference='point')
@@ -108,9 +108,9 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
                     block.bounds[4], block.bounds[5]], invert=False)
 
         if tensor:
-            slice_plane[arr_name_plot] = slice_plane[arr_name][:,component_index]
+            slice_plane[arr_name_plot] = slice_plane[arr_name][:,component_index] * scale
         else:
-            slice_plane[arr_name_plot] = slice_plane[arr_name]
+            slice_plane[arr_name_plot] = slice_plane[arr_name] * scale
 
         plotter = pv.Plotter(off_screen=True) # save without showing the GUI window
 
@@ -126,7 +126,7 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
         #n_levels = 100
         #cmap = plt.get_cmap("viridis", n_levels)
 
-        plotter.add_mesh(slice_plane, show_edges=False,
+        plotter.add_mesh(slice_plane, scalars=arr_name_plot, show_edges=False,
                          scalar_bar_args={'vertical': True, 'position_y': 0.25, 'height': 0.5,
                                           'title': ''})
 
@@ -172,7 +172,7 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
                             xtitle='X, m.', ytitle='', ztitle='Z, m.',
                             show_yaxis=False, n_xlabels=9, n_zlabels=6,
                             font_size=12, fmt='%d')
-        #plotter.add_text(arr_name_plot, position='upper_edge', font_size=8)  # title
+        plotter.add_text(arr_name_plot, position=(0.5, 0.93), font_size=8, viewport=True)  # title
         plotter.show(screenshot=os.path.join(output_dir_plots, arr_name_plot + "_slice.png"))
         plotter.close()
         
@@ -195,9 +195,9 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
         
         # reshape to 2D
         if tensor:
-            values_2d = structured_resample[arr_name][:,component_index].reshape(res_x, res_z)
+            values_2d = structured_resample[arr_name][:,component_index].reshape(res_x, res_z) * scale
         else:
-            values_2d = structured_resample[arr_name].reshape(res_x, res_z)
+            values_2d = structured_resample[arr_name].reshape(res_x, res_z) * scale
         
         # Get the X and Z coordinates as 2D arrays (matching the values)
         x_coords = structured_resample.points[:, 0].reshape(res_x, res_z)
@@ -245,7 +245,7 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
                     block_t = mesh_t[0] if isinstance(mesh_t, pv.MultiBlock) else mesh_t
                     sampled = block_t.sample_over_line(pointa=p0, pointb=p1, resolution=sample_resolution)
                     z = sampled.points[:, 2]
-                    values = sampled.point_data[arr_name]
+                    values = sampled.point_data[arr_name] * scale
                     t_days = reader.time_values[t_idx]
                     t_label = f't={t_days:.0f} d'
                     if len(values.shape) > 1:  # tensor: plot all components, label by component+time
@@ -280,8 +280,8 @@ if __name__ == "__main__":
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
     
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
-    output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
+    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
     
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_42_42_90')
     #output_dir = r'\\wsl.localhost\Ubuntu-24.04\root\projects\open-darts_dev_debug\models\SPE10_mech\results\sol_cpp_single_phase_inj_42_42_66'

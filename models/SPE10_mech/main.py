@@ -270,13 +270,13 @@ if __name__ == '__main__':
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
 
-    #physics_type='single_phase'
-    physics_type='single_phase_thermal'
+    physics_type='single_phase'
+    #physics_type='single_phase_thermal'
     
     #wells_type='none'
     #wells_type='prod'
-    #wells_type='inj'
-    wells_type='doublet'
+    wells_type='inj'
+    #wells_type='doublet'
 
     n_years = 30
     sim_time = 365.25 * n_years

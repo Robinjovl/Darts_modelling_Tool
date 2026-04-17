@@ -181,6 +181,9 @@ class Model(THMCModel):
         eps_perf = 1 # [m]
         perf_depth_start = self.idata.other.rsv_top + eps_perf
         perf_depth_end =  self.idata.other.rsv_bottom - eps_perf
+
+        # as the perf is single, put it to the middle depth of the rsv
+        perf_depth_start = (self.idata.other.rsv_top + self.idata.other.rsv_bottom)*0.5
         
         # 50 - to put into the cell center as (0,0) is a boundary between two cells
         self.idata.other.prod_well_coords = [50. - shift, 50., perf_depth_start, perf_depth_end] # X, Y, Z1, Z2

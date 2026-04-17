@@ -77,6 +77,13 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     g.young *= bars2mpa
     g.thermal_expansion = m.idata.rock.th_expn_orig
     g.biot = m.idata.rock.biot
+    
+    # plot THM solution
+    from plot_vtk_pyvista import plot_vtk_pyvista
+    model_folder=case
+    m.output_directory = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
+    plot_vtk_pyvista(m.output_directory, tstep_to_plot=0)  # initial
+    plot_vtk_pyvista(m.output_directory, tstep_to_plot=-1) # last
 
     # read THM solution from vtk
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
@@ -460,8 +467,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 arr_layer = arr[:, :, layer]
             else:
                 arr_layer = arr
-            cs = plt.contourf(points_x, points_y, arr_layer, levels=10)
+            vmin, vmax = arr_layer.min(), arr_layer.max()
+            cs = plt.contourf(points_x, points_y, arr_layer, levels=10, vmin=vmin, vmax=vmax)
             plt.colorbar(cs)
+            #plt.colorbar(cs, extend='neither').set_ticks([vmin, vmax])
             plt.gca().set_aspect('equal')
             plt.xlabel('X, m.')
             if slice == 'XY':
@@ -470,7 +479,10 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 plt.ylabel('Depth, m.')
                 plt.gca().invert_yaxis()
             plt.title(arr_name)
-            plt.savefig(os.path.join(output_folder, arr_name + '_contour.png'))
+            fig_fname = arr_name + '_contour.png'
+            fig_path = os.path.join(output_folder, fig_fname)
+            print(f'Saving {fig_fname}, min={arr_layer.min():.4g}, max={arr_layer.max():.4g}')
+            plt.savefig(fig_path)
             plt.close()
 
             
@@ -494,7 +506,35 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.savefig(os.path.join(output_folder, arr_name + '_imshow.png'))
             plt.close()
 
-    
+    def save_html_prx_vs_thm(base_names, output_folder, filename='proxy_vs_thm_2d.html'):
+        html_rows = []
+        for b in base_names:
+            prx_file  = f'{b}_prx_contour.png'
+            thm_file  = f'{b}_thm_contour.png'
+            diff_file = f'{b}_diff_contour.png'
+            html_rows.append(f'''
+  <tr>
+    <td style="text-align:center"><b>{b}_prx</b><br><img src="{prx_file}" style="max-width:100%"></td>
+    <td style="text-align:center"><b>{b}_thm</b><br><img src="{thm_file}" style="max-width:100%"></td>
+    <td style="text-align:center"><b>{b}_diff</b><br><img src="{diff_file}" style="max-width:100%"></td>
+  </tr>''')
+        html = f'''<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Proxy vs THM 2D slices</title></head>
+<body>
+<h2>Proxy vs THM 2D slices (XZ)</h2>
+<table border="1" cellspacing="4" cellpadding="4">
+  <tr><th>Proxy</th><th>THM</th><th>Difference (THM - Proxy)</th></tr>
+{''.join(html_rows)}
+</table>
+</body>
+</html>'''
+        html_path = os.path.join(output_folder, filename)
+        with open(html_path, 'w') as f:
+            f.write(html)
+        print(f'Saved HTML report: {html_path}')
+
+
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
     #points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift a bit to make it at the cell centers by XY
@@ -503,7 +543,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
     #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
     
-    if False: # evaluate along the wells
+    if True: # evaluate along the wells
         if wells_type in ['prod', 'doublet']:
             points_xy['prod_well'] = m.idata.other.prod_well_coords[:2]  # -2 to skip z coord
         if wells_type in ['inj', 'doublet']:
@@ -511,10 +551,14 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     # compute with proxy in 3D volume
     if True:
-        points_x = np.arange(-1050, 1050, 10.)  # only internal XY part
+        points_x = np.arange(-1050, 1050, 50.)  # only internal XY part
         points_y = np.array([0.])
         #points_z = np.hstack([np.arange(1000, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 3000, 200)])
-        points_z = np.arange(1900, 2500, 5.)
+        points_z = np.arange(1900, 2500, 15.)
+        
+        points_x = np.unique(g.centroids[:, 0])
+        points_z = np.unique(g.centroids[:, 2])
+        
         points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
         
         print('plotting 2D slices, n_points =', points_x.size * points_y.size * points_z.size)
@@ -527,7 +571,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         dp = dp.reshape((p_nx, p_ny, p_nz)) 
         array_dict = {'dp':dp[:,0,:].transpose()}
         plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
-        plot_imshow(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
+        #plot_imshow(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
         
         if True: # run proxy and save PKLs
             ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
@@ -575,24 +619,25 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                       'szz_total_prx':szz_total_prx[:,0,:].transpose()
                       }
         plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
-        plot_imshow(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
-        
-        # plot 1D plots at different X-layers to check the strain computation
-        if False:
-            j = 10
-            for i in range(9,12):
-                plt.plot(points_z, ux_prx[i,j,:], label='prx_'+str(i), marker='.')
-                ux_thm = []
-                for p_z in points_z:
-                    p = points_x[i], points_y[j], p_z
-                    ux_thm.append(get_thm_displs(p)[0])
-                plt.plot(points_z, ux_thm, label='thm_'+str(i), linestyle='--', marker='.')
-                
-            plt.gca().invert_yaxis()
-            plt.legend()
-            plt.grid()
-            plt.savefig(os.path.join(folder, 'Ux_by_depth.png'))
-            plt.close()
+        #plot_imshow(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
+
+        # THM 2D plots on the same grid
+        thm_raw = {'ux_thm': ux_last, 'uz_thm': uz_last,
+                   'sxx_thm': delta_Sxx_last, 'szz_thm': delta_Szz_last,
+                   'sxx_total_thm': delta_total_Sxx_last, 'szz_total_thm': delta_total_Szz_last}
+        thm_interp = get_thm_by_interp(thm_raw, points[1, :], points[0, :], points[2, :], method='nearest')
+        array_dict_thm = {k: v.reshape((p_nx, p_ny, p_nz))[:, 0, :].transpose()
+                          for k, v in thm_interp.items()}
+        plot_contour(array_dict_thm, points_x, points_z, output_folder=folder, slice='XZ')
+
+        # THM - Proxy difference 2D plots
+        base_names = ['ux', 'uz', 'sxx', 'szz', 'sxx_total', 'szz_total']
+        array_dict_diff = {f'{b}_diff': array_dict_thm[f'{b}_thm'] - array_dict[f'{b}_prx']
+                           for b in base_names}
+        plot_contour(array_dict_diff, points_x, points_z, output_folder=folder, slice='XZ')
+
+        save_html_prx_vs_thm(base_names, output_folder=folder)
+
 
     for k in points_xy.keys():
         point_xy = points_xy[k]
@@ -703,8 +748,8 @@ if __name__ == '__main__':
 
     physics_types_list = []
     
-    #thermal = False
-    thermal = True
+    thermal = False
+    #thermal = True
     
     if not thermal:
         physics_types_list += ['single_phase']
@@ -728,13 +773,13 @@ if __name__ == '__main__':
 
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
-
-    # short run
-    #sim_time = 90 # days
-    #report_step = sim_time  # days
-    
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    #timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    
+    # short run
+    sim_time = 30 # days
+    report_step = sim_time  # days
+    timestep = 1
     
     #run_thm = True
     run_thm = False
