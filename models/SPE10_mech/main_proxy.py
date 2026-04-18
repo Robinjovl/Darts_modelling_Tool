@@ -79,11 +79,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     g.biot = m.idata.rock.biot
     
     # plot THM solution
-    from plot_vtk_pyvista import plot_vtk_pyvista
-    model_folder=case
-    m.output_directory = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
-    plot_vtk_pyvista(m.output_directory, tstep_to_plot=0)  # initial
-    plot_vtk_pyvista(m.output_directory, tstep_to_plot=-1) # last
+    if False:
+        from plot_vtk_pyvista import plot_vtk_pyvista
+        model_folder=case
+        m.output_directory = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
+        plot_vtk_pyvista(m.output_directory, tstep_to_plot=0)  # initial
+        plot_vtk_pyvista(m.output_directory, tstep_to_plot=-1) # last
 
     # read THM solution from vtk
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
@@ -460,15 +461,22 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                 plt.close(fig)
             
 
-    def plot_contour(array_dict, points_x, points_y, output_folder, layer=0, slice='XY'):
+    def plot_contour(array_dict, points_x, points_y, output_folder, layer=0, slice='XY', vlims=None):
         # plot contours XY plane, 1 layer by z
+        # vlims: optional dict {arr_name: (vmin, vmax)} to fix colorbar range
         for arr_name, arr in array_dict.items():
             if len(arr.shape) == 3:
                 arr_layer = arr[:, :, layer]
             else:
                 arr_layer = arr
-            vmin, vmax = arr_layer.min(), arr_layer.max()
-            cs = plt.contourf(points_x, points_y, arr_layer, levels=10, vmin=vmin, vmax=vmax)
+            if vlims is not None and arr_name in vlims:
+                vmin, vmax = vlims[arr_name]
+            else:
+                vmin, vmax = arr_layer.min(), arr_layer.max()
+            levels = np.linspace(vmin, vmax, 6)
+            if vmin < 0 < vmax:
+                levels = np.sort(np.unique(np.append(levels, 0.)))
+            cs = plt.contourf(points_x, points_y, np.ma.masked_invalid(arr_layer), levels=levels, vmin=vmin, vmax=vmax)
             plt.colorbar(cs)
             #plt.colorbar(cs, extend='neither').set_ticks([vmin, vmax])
             plt.gca().set_aspect('equal')
@@ -509,14 +517,16 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     def save_html_prx_vs_thm(base_names, output_folder, filename='proxy_vs_thm_2d.html'):
         html_rows = []
         for b in base_names:
-            prx_file  = f'{b}_prx_contour.png'
-            thm_file  = f'{b}_thm_contour.png'
-            diff_file = f'{b}_diff_contour.png'
+            prx_file   = f'{b}_prx_contour.png'
+            thm_file   = f'{b}_thm_contour.png'
+            diff_file  = f'{b}_diff_contour.png'
+            rdiff_file = f'{b}_rdiff_contour.png'
             html_rows.append(f'''
   <tr>
     <td style="text-align:center"><b>{b}_prx</b><br><img src="{prx_file}" style="max-width:100%"></td>
     <td style="text-align:center"><b>{b}_thm</b><br><img src="{thm_file}" style="max-width:100%"></td>
     <td style="text-align:center"><b>{b}_diff</b><br><img src="{diff_file}" style="max-width:100%"></td>
+    <!--<td style="text-align:center"><b>{b}_rdiff,%</b><br><img src="{rdiff_file}" style="max-width:100%"></td>-->
   </tr>''')
         html = f'''<!DOCTYPE html>
 <html>
@@ -524,7 +534,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 <body>
 <h2>Proxy vs THM 2D slices (XZ)</h2>
 <table border="1" cellspacing="4" cellpadding="4">
-  <tr><th>Proxy</th><th>THM</th><th>Difference (THM - Proxy)</th></tr>
+  <tr><th>Proxy</th><th>THM</th><th>Difference (THM - Proxy)</th><!--<th>Relative diff., %</th>--></tr>
 {''.join(html_rows)}
 </table>
 </body>
@@ -618,8 +628,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                       #'syy_total_prx':syy_total_prx[:,0,:].transpose(), 
                       'szz_total_prx':szz_total_prx[:,0,:].transpose()
                       }
-        plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
-        #plot_imshow(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
+        shared_cbar = True  # use same colorbar min/max for prx and thm plots of the same variable
 
         # THM 2D plots on the same grid
         thm_raw = {'ux_thm': ux_last, 'uz_thm': uz_last,
@@ -628,13 +637,45 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         thm_interp = get_thm_by_interp(thm_raw, points[1, :], points[0, :], points[2, :], method='nearest')
         array_dict_thm = {k: v.reshape((p_nx, p_ny, p_nz))[:, 0, :].transpose()
                           for k, v in thm_interp.items()}
-        plot_contour(array_dict_thm, points_x, points_z, output_folder=folder, slice='XZ')
+
+        base_names = ['ux', 'uz', 'sxx', 'szz', 'sxx_total', 'szz_total']
+        if shared_cbar:
+            vlims_prx = {f'{b}_prx': (min(array_dict[f'{b}_prx'].min(),   array_dict_thm[f'{b}_thm'].min()),
+                                      max(array_dict[f'{b}_prx'].max(),   array_dict_thm[f'{b}_thm'].max()))
+                         for b in base_names}
+            vlims_thm = {f'{b}_thm': vlims_prx[f'{b}_prx'] for b in base_names}
+        else:
+            vlims_prx = vlims_thm = None
+
+        plot_contour(array_dict, points_x, points_z, output_folder=folder, slice='XZ', vlims=vlims_prx)
+        #plot_imshow(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
+
+        plot_contour(array_dict_thm, points_x, points_z, output_folder=folder, slice='XZ', vlims=vlims_thm)
 
         # THM - Proxy difference 2D plots
-        base_names = ['ux', 'uz', 'sxx', 'szz', 'sxx_total', 'szz_total']
-        array_dict_diff = {f'{b}_diff': array_dict_thm[f'{b}_thm'] - array_dict[f'{b}_prx']
-                           for b in base_names}
+        diff_clip = 0.1  # nullify stress differences larger than this value as they affect the axis range but located in very small vicinity 
+        stress_names = ['sxx', 'szz', 'sxx_total', 'szz_total']
+        array_dict_diff = {}
+        for b in base_names:
+            d = array_dict_thm[f'{b}_thm'] - array_dict[f'{b}_prx']
+            if b in stress_names:
+                d = np.where(np.abs(d) <= diff_clip, d, 0.)
+            #rd = np.where(np.abs(array_dict_thm[f'{b}_thm']) > 0, (d / np.abs(array_dict_thm[f'{b}_thm'])) * 100., 0.)                
+            array_dict_diff[f'{b}_diff'] = d
+            #array_dict_diff[f'{b}_rdiff'] = rd
         plot_contour(array_dict_diff, points_x, points_z, output_folder=folder, slice='XZ')
+
+        if False:
+            print('Relative difference THM vs Proxy (% of |THM|):')
+            for b in base_names:
+                thm_arr = array_dict_thm[f'{b}_thm'].ravel()
+                diff_arr = array_dict_diff[f'{b}_diff'].ravel()
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    rel = np.where(np.abs(thm_arr) > 0, np.abs(diff_arr / thm_arr) * 100., np.nan)
+                n_total = np.sum(~np.isnan(rel))
+                for thr in [1., 5., 10.]:
+                    n_over = np.sum(rel > thr)
+                    print(f'  {b}: >{thr:.0f}%: {n_over}/{n_total} ({100.*n_over/n_total if n_total>0 else 0:.1f}%)')
 
         save_html_prx_vs_thm(base_names, output_folder=folder)
 
@@ -748,8 +789,8 @@ if __name__ == '__main__':
 
     physics_types_list = []
     
-    thermal = False
-    #thermal = True
+    #thermal = False
+    thermal = True
     
     if not thermal:
         physics_types_list += ['single_phase']
@@ -774,12 +815,12 @@ if __name__ == '__main__':
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    #timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
     
     # short run
-    sim_time = 30 # days
-    report_step = sim_time  # days
-    timestep = 1
+    #sim_time = 30 # days
+    #report_step = sim_time  # days
+    #timestep = 1
     
     #run_thm = True
     run_thm = False
