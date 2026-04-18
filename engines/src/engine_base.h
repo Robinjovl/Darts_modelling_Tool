@@ -8,8 +8,20 @@
 
 #include "globals.h"
 #include "conn_mesh.h"
-#include "interpolator_base.hpp"
-#include "pybind11/py_globals.h"
+#include "evaluator_iface.h"
+
+#include <pybind11/numpy.h>
+namespace py = pybind11;
+
+template <typename T>
+inline py::array_t<T> get_raw_array(T* arr, size_t size) {
+  return py::array_t<T>(
+    { size },
+    { sizeof(T) },
+    arr,
+    py::capsule(arr, [](void* /*f*/) {})
+  );
+}
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/data_types.hpp"
@@ -47,7 +59,6 @@ using namespace opendarts::linear_solvers;
 #endif
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -206,7 +217,9 @@ public:
 	  // maximum values
 	  std::fill_n(max_row_values_inv.data(), n_blocks * N_VARS, 0.0);
 
+#ifdef _OPENMP
 	  #pragma omp parallel for
+#endif
 	  for (index_t i = 0; i < n_blocks; i++)
 	  {
 		index_t csr_start = rows[i];
@@ -243,7 +256,9 @@ public:
 	  }
 
 	  // scaling
+#ifdef _OPENMP
 	  #pragma omp parallel for
+#endif
 	  for (index_t i = 0; i < n_blocks; i++)
 	  {
 		index_t csr_start = rows[i];
@@ -736,6 +751,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			else
 			{
+			  // N_VARS == 1: CPR collapses to pure AMG, still needs the GMRES outer solver
+			  linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			  linear_solver->set_prec(new linsolv_bos_amg<1>);
 			  linear_solver_type_str = "GPU_GMRES_AMG";
 			}
@@ -797,6 +814,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			else
 			{
+			  // N_VARS == 1: CPR collapses to pure AMGX, still needs the GMRES outer solver
+			  linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			  linear_solver->set_prec(new linsolv_amgx<1>);
 			  linear_solver_type_str = "GPU_GMRES_AMGX";
 			}

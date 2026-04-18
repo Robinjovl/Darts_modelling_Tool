@@ -11,6 +11,7 @@ from functools import total_ordering
 import numpy as np
 
 from darts.engines import *
+from darts.interpolators import *
 from darts.physics.base.operators_base import ThermalVarOperator, WellControlOperators
 
 
@@ -88,14 +89,14 @@ class PhysicsBase:
         :param n_ops: Number of operators
         :type n_ops: int
         :param axes_min, axes_max: Minimum, maximum of each OBL axis
-        :type axes_min, axes_max: :class:`darts.engines.value_vector`
+        :type axes_min, axes_max: :class:`darts.interpolators.value_vector`
         :param n_axes_points: Number of OBL points along axes
         :type n_axes_points: index_vector
         :param timer: Timer object
         :param sim_eps: Epsilon composition for simulation that solution should remain away from OBL bounds
                         (in engine, min_sim_z = min_axis_z + sim_eps, max_sim_z = max_axis_z - sim_eps)
         :type sim_eps: float
-        :type cache: :class:`darts.engines.timer_node`
+        :type cache: :class:`darts.interpolators.timer_node`
         :param cache: Switch to cache operator values
         :type cache: bool
         """
@@ -599,7 +600,7 @@ class PhysicsBase:
         Create interpolator object according to specified parameters
 
         :param evaluator: State operators to be interpolated. Evaluator object is used to generate supporting points
-        :type evaluator: darts.engines.operator_set_evaluator_iface
+        :type evaluator: darts.interpolators.operator_set_evaluator_iface
         :param timer_name: Name of timer object
         :type timer_name: str
         :param n_ops: Number of operators
@@ -688,12 +689,12 @@ class PhysicsBase:
                     )
             except (ValueError, NameError) as err:
                 # Try to find a templatized interpolator with the same name pattern
-                # but with the closest possible higher n_ops available in darts.engines.
+                # but with the closest possible higher n_ops available in darts.interpolators.
                 try:
                     import importlib
                     import re
 
-                    engines_module = importlib.import_module("darts.engines")
+                    engines_module = importlib.import_module("darts.interpolators")
                     base_prefix = itor_name.rsplit('_', 1)[0]
                     pattern = rf"^{re.escape(base_prefix)}_(\d+)$"
                     # Find candidates with higher n_ops

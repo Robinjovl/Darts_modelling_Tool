@@ -28,7 +28,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -242,6 +241,8 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 

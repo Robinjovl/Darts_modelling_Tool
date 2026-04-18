@@ -11,7 +11,8 @@
 
 #include "engine_nc_nl_cpu.hpp"
 #include "conn_mesh.h"
-#include "mech/matrix.h"
+#include "matrix.h"
+
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
@@ -29,7 +30,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -248,6 +248,8 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 
@@ -483,7 +485,7 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_avgmpfa(value_t dt, std::vecto
 	index_t end = n_blocks;
 #endif //_OPENMP
 
-		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, upwd_jac_idx;
+		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, upwd_jac_idx = 0;
 		value_t buf, flux;
 		value_t mu[MATRIX];
 		value_t CFL_in[NC], CFL_out[NC];
@@ -686,7 +688,7 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_nltpfa(value_t dt, std::vector
 	index_t end = n_blocks;
 #endif //_OPENMP
 
-		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, conn_st, upwd_jac_idx, r_counter, cell_p_st_id;
+		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, conn_st, upwd_jac_idx = 0, r_counter, cell_p_st_id = 0;
 		value_t buf;
 		value_t flux, mu[MATRIX], R[MATRIX], dR[MATRIX][MATRIX], dmu[MATRIX][MATRIX][MATRIX];
 		value_t CFL_in[NC], CFL_out[NC];

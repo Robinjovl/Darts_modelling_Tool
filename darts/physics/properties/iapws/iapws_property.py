@@ -13,7 +13,7 @@ from iapws.iapws97 import (
 )
 from scipy.optimize import newton
 
-from darts.engines import property_evaluator_iface
+from darts.interpolators import property_evaluator_iface
 
 
 class water_density_property_evaluator(property_evaluator_iface):

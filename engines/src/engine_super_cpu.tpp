@@ -27,7 +27,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -172,7 +171,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     value_t CFL_in[NC], CFL_out[NC];
     value_t CFL_max_local = 0;
     value_t phase_presence_mult;
-    index_t cell_conn_idx, cell_conn_num;
+    index_t cell_conn_idx = 0, cell_conn_num = 0;
     std::array<value_t, NP> phase_fluxes;
 
     // fluxes for output

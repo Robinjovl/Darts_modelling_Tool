@@ -15,13 +15,13 @@ from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
     ms_well,
     ms_well_vector,
-    op_vector,
     sim_params,
     timer_node,
     value_vector,
 )
 from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
+from darts.interpolators import op_vector
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
