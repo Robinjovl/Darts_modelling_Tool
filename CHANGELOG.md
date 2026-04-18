@@ -31,6 +31,7 @@
   {- Before: init.solve() -}\
   {+ Now:    init.solve_up_and_downwards() +}
   \
+- Extracted interpolators into a standalone `darts.interpolators` Python module / shared library, decoupled from `darts.engines` at link time (header-only coupling via `interpolation_config.h`). Template instantiations split across multiple translation units to enable parallel compilation and cut per-TU memory (full build down to ~6 min on multi-core; valgrind job pre-builds at `-j NT/2` to avoid OOM). Interpolator tests moved to `tests/interpolators/`. Breaking change: interpolator types are no longer exposed under `darts.engines` — import from `darts.interpolators` ([!301](https://gitlab.com/open-darts/open-darts/-/merge_requests/301))
 
 
 # 1.4.0 [17-02-2026]
