@@ -12,6 +12,7 @@ docker-image-builder:
     # Add space-separated paths here to extend the hash scope.
     DOCKER_HASH_FILES: >-
       ${CI_PROJECT_DIR}/.cicd/build-linux/Dockerfile
+      ${CI_PROJECT_DIR}/.cicd/build-linux/Toolchain.cmake
       ${CI_PROJECT_DIR}/.cicd/jobs/build-images.yml
   before_script:
     # Set up registry auth for Kaniko (use username/password fields, not base64 auth)
