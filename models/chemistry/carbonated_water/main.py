@@ -1,4 +1,4 @@
-import os
+import os, signal, sys
 os.environ["OMP_NUM_THREADS"] = "4"
 import shutil
 from model import Model
@@ -50,127 +50,131 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         if output:
             if domain == '1D': return plot_profiles(m, output_folder=output_folder)
             else: m.output.output_to_vtk(ith_step=ith_step)
+    # to report timers upon receiving SIGTERM signal
+    def _term(signum, frame):
+        raise SystemExit(128 + signum)
+    signal.signal(signal.SIGTERM, _term)
+    try:
+        m.n_good_ts = n_good_ts
+        m.ni_dt_increase_cutoff = ni_dt_increase_cutoff
+        m.ni_dt_decrease_cutoff = ni_dt_decrease_cutoff
 
-    m.n_good_ts = n_good_ts
-    m.ni_dt_increase_cutoff = ni_dt_increase_cutoff
-    m.ni_dt_decrease_cutoff = ni_dt_decrease_cutoff
-
-    # intialization without injection
-    if minerals == ['calcite']:
-        init_days = 0.1
-        num_time_iterations = 7
-    elif set(minerals) == set(['calcite', 'dolomite']):
-        init_days = 20.0
-        num_time_iterations = 7
-    else:
-        init_days = 150.0
-        num_time_iterations = 3
-
-    rate = m.inj_rate
-    m.inj_rate = 0.0
-    m.data_ts.dt_max = 0.05
-    m.run(days=init_days)
-
-    # injection
-    m.inj_rate = rate
-    m.physics.engine.t = 0.0
-    ith_step = 0
-    m.data_ts.dt_max = max_ts
-    if domain == '1D':
-        m.data_ts.dt_first = 1.e-6
-        m.data_ts.dt_mult = 1.5
-        fig_paths = []
-        fig_paths.append(plot(m))
-        m.run(days=0.002, restart_dt=max_ts)
-        fig_paths.append(plot(m))
-        m.run(days=0.008, restart_dt=max_ts)
-        fig_paths.append(plot(m))
-        m.run(days=0.010, restart_dt=max_ts)
-        fig_paths.append(plot(m))
-        m.run(days=0.02, restart_dt=max_ts)
-        fig_paths.append(plot(m))
-        # m.data_ts.dt_max *= 3
-        m.data_ts.first_ts = m.data_ts.dt_max
-        m.run(days=0.1, restart_dt=max_ts)
-        # m.data_ts.dt_max *= 4
-        m.run(days=0.86)
-        fig_paths.append(plot(m))
-        # m.data_ts.dt_max *= 5
-        m.data_ts.first_ts = m.data_ts.dt_max
-
-        for i in range(num_time_iterations):
-            dt = 2.0
-            m.run(days=dt)
-            if i < 1:
-                # m.data_ts.dt_max *= 1.5
-                m.data_ts.first_ts = m.data_ts.dt_max
-            fig_paths.append(plot(m))
-
-        # if output:
-        #     animate_1d(output_folder=output_folder, fig_paths=fig_paths)
-    elif domain == '2D':
-        plot(m=m, ith_step=ith_step)
-        ith_step += 1
-
-        if report_timesteps is None:
-            report_timesteps = np.array([0.001, 0.001, 0.001, 0.002, 0.005,
-                                                0.01, 0.01, 0.02, 0.05,
-                                                0.1, 0.1, 0.2]) * 1e-4 / m.inj_rate
-            default_run = True
+        # intialization without injection
+        if minerals == ['calcite']:
+            init_days = 0.1
+            num_time_iterations = 7
+        elif set(minerals) == set(['calcite', 'dolomite']):
+            init_days = 20.0
+            num_time_iterations = 7
         else:
-            default_run = False
+            init_days = 150.0
+            num_time_iterations = 3
 
-        m.data_ts.dt_first = m.prev_dt = min(1.e-6 * 1e-3 / m.inj_rate, m.data_ts.dt_max)
-        m.data_ts.dt_mult = 1.5
-        for rts in report_timesteps:
-            m.run(days=rts, restart_dt=m.prev_dt)
+        rate = m.inj_rate
+        m.inj_rate = 0.0
+        m.data_ts.dt_max = 0.05
+        m.run(days=init_days)
+
+        # injection
+        m.inj_rate = rate
+        m.physics.engine.t = 0.0
+        ith_step = 0
+        m.data_ts.dt_max = max_ts
+        if domain == '1D':
+            m.data_ts.dt_first = 1.e-6
+            m.data_ts.dt_mult = 1.5
+            fig_paths = []
+            fig_paths.append(plot(m))
+            m.run(days=0.002, restart_dt=max_ts)
+            fig_paths.append(plot(m))
+            m.run(days=0.008, restart_dt=max_ts)
+            fig_paths.append(plot(m))
+            m.run(days=0.010, restart_dt=max_ts)
+            fig_paths.append(plot(m))
+            m.run(days=0.02, restart_dt=max_ts)
+            fig_paths.append(plot(m))
+            # m.data_ts.dt_max *= 3
+            m.data_ts.first_ts = m.data_ts.dt_max
+            m.run(days=0.1, restart_dt=max_ts)
+            # m.data_ts.dt_max *= 4
+            m.run(days=0.86)
+            fig_paths.append(plot(m))
+            # m.data_ts.dt_max *= 5
+            m.data_ts.first_ts = m.data_ts.dt_max
+
+            for i in range(num_time_iterations):
+                dt = 2.0
+                m.run(days=dt)
+                if i < 1:
+                    # m.data_ts.dt_max *= 1.5
+                    m.data_ts.first_ts = m.data_ts.dt_max
+                fig_paths.append(plot(m))
+
+            # if output:
+            #     animate_1d(output_folder=output_folder, fig_paths=fig_paths)
+        elif domain in ('2D', '3D'):
             plot(m=m, ith_step=ith_step)
             ith_step += 1
 
-        if default_run:
+            if report_timesteps is None:
+                if domain == '2D':
+                    report_timesteps = np.array([0.001, 0.001, 0.001, 0.002, 0.005,
+                                                0.01, 0.01, 0.02, 0.05,
+                                                0.1, 0.1, 0.2]) * 1e-4 / m.inj_rate
+                    n_fine = 3
+                    dt_max_bump = 1.0
+                else:  # 3D
+                    report_timesteps = np.array([0.001, 0.001, 0.001, 0.002, 0.005,
+                                                0.01, 0.01, 0.02, 0.05,
+                                                0.1, 0.1, 0.2]) * 0.0016128 / m.inj_rate
+                    n_fine = 3
+                    dt_max_bump = 30.0
+                default_run = True
+            else:
+                report_timesteps = np.asarray(report_timesteps)
+                n_fine = len(report_timesteps)
+                dt_max_bump = 1.0
+                default_run = False
+
+            m.data_ts.dt_first = m.prev_dt = min(1.e-6 * 1e-3 / m.inj_rate, m.data_ts.dt_max)
+            m.data_ts.dt_mult = 1.5
             ts_after_bt = 0
-            while ts_after_bt < 5:
-                m.run(days=report_timesteps.max(), restart_dt=m.prev_dt)
+            max_snapshots_after_bt = 5
+            for i, rts in enumerate(report_timesteps):
+                if i == n_fine and dt_max_bump != 1.0:
+                    m.data_ts.dt_max *= dt_max_bump
+                    m.data_ts.first_ts = m.data_ts.dt_max
+                m.run(days=rts, restart_dt=m.prev_dt)
                 plot(m=m, ith_step=ith_step)
                 ith_step += 1
 
-                if m.reservoir.wh_propagation_ratio > 0.999:
+                if default_run and m.reservoir.wh_propagation_ratio > 0.999:
                     ts_after_bt += 1
+                    if ts_after_bt >= max_snapshots_after_bt:
+                        break
 
-    elif domain == '3D':
-        m.data_ts.dt_mult = 1.5
-        plot(m=m, ith_step=ith_step)
-        ith_step += 1
-        m.run(days=0.001, restart_dt=max_ts)
-        plot(m=m, ith_step=ith_step)
-        ith_step += 1
-        m.data_ts.dt_max *= 20
-        m.data_ts.first_ts = m.data_ts.dt_max
-        m.run(days=0.001)
-        plot(m=m, ith_step=ith_step)
-        ith_step += 1
-        m.run(days=0.001)
-        plot(m=m, ith_step=ith_step)
-        ith_step += 1
+            if default_run:
+                while ts_after_bt < max_snapshots_after_bt:
+                    m.run(days=report_timesteps.max(), restart_dt=m.prev_dt)
+                    plot(m=m, ith_step=ith_step)
+                    ith_step += 1
 
-        for i in range(15):
-            dt = 0.4
-            m.run(days=dt)
-            if i < 1:
-                m.data_ts.dt_max *= 1.5
-                m.data_ts.first_ts = m.data_ts.dt_max
-            plot(m=m, ith_step=ith_step)
-            ith_step += 1
+                    if m.reservoir.wh_propagation_ratio > 0.999:
+                        ts_after_bt += 1
 
-    # Print some statistics
-    print('\nNegative composition occurrence:', m.physics.reservoir_operators[0].counter, '\n')
-
-    m.print_timers()
-    m.print_stat()
-
-    # copy files to save configuration
-    # shutil.copy('main.py', os.path.join(output_folder, 'main.py'))
-    # shutil.copy('model.py', os.path.join(output_folder, 'model.py'))
+    finally:
+        # Print some statistics
+        print('\nNegative composition occurrence:', m.physics.reservoir_operators[0].counter, '\n')
+        m.print_timers()
+        m.print_stat()
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+        # copy files to save configuration
+        # shutil.copy('main.py', os.path.join(output_folder, 'main.py'))
+        # shutil.copy('model.py', os.path.join(output_folder, 'model.py'))
 
 
 def get_output_folder(args: dict):

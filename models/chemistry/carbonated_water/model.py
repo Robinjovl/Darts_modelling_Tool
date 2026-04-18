@@ -55,7 +55,10 @@ class MyOutput(Output):
         self.variable_units[op.property.components_name[op.property.fc_mask][-1]] = ''
 
     def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[np.ndarray, dict]:
-        timesteps = [timestep] if timestep is not None else [0]
+        # PVD timestep= attribute must be the physical simulation time, not the
+        # reporting-step index ParaView currently sees (0, 1, 2 ...).
+        engine_t = getattr(getattr(self.physics, 'engine', None), 't', None)
+        timesteps = np.array([float(engine_t) if engine_t is not None else 0.0])
         if output_properties is None:
             prop_names = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
         else:
@@ -200,15 +203,22 @@ class Model(CICDModel):
         self.phases = {gas: 0, liq: 1}
         phase_name = [list(self.phases.keys())[list(self.phases.values()).index(id)] for id in range(len(self.phases))]
 
+        if self.domain == '3D':
+            p_obl_max = self.pressure_init + 50
+            n_obl_pressure = 1001
+        else:
+            p_obl_max = self.pressure_init + 5
+            n_obl_pressure = 201
         if set(self.minerals) == {'calcite'}:
             # purely for initialization
             self.components = ['H2O', 'H+', 'OH-', 'CO2', 'HCO3-', 'CO3-2', 'CaCO3', 'Ca+2', 'CaOH+', 'CaHCO3+', 'Solid_CaCO3']
             self.elements = ['Solid_CaCO3', 'Ca', 'C', 'O', 'H']
             self.fc_mask = np.array([False, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Ca': 40.078, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
-            self.n_points = list(self.n_obl_mult * np.array([201, 201, 101, 101, 101], dtype=np.intp))
+
+            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 101, 101, 101], dtype=np.intp))
             self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.3]
-            self.axes_max = [self.pressure_init + 5] + [1 - self.obl_min, 0.03, 0.03, 0.37]
+            self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.03, 0.03, 0.37]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                                [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
@@ -228,13 +238,13 @@ class Model(CICDModel):
             self.fc_mask = np.array([False, False, True, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Solid_CaMg(CO3)2': 184.401,
                     'Ca': 40.078, 'Mg': 24.305, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
-            self.n_points = list(self.n_obl_mult * np.array([101, 201, 201, 101, 101, 101, 101], dtype=np.intp))
+            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.01, 0.01, 0.02, 0.37]
+                self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.01, 0.01, 0.02, 0.37]
             else:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.25]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.01, 0.01, 0.1, 0.37]
+                self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.01, 0.01, 0.1, 0.37]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],    # Solid_CaCO3
                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],    # Solid_CaMg(CO3)2
@@ -258,13 +268,13 @@ class Model(CICDModel):
             self.fc_mask = np.array([False, False, False, True, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Solid_CaMg(CO3)2': 184.401, 'Solid_MgCO3': 84.31,
                     'Ca': 40.078, 'Mg': 24.305, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
-            self.n_points = list(self.n_obl_mult * np.array([101, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
+            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.02, 0.37]
+                self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.02, 0.37]
             else:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.25]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.1, 0.37]
+                self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.1, 0.37]
 
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],    # Solid_CaCO3
