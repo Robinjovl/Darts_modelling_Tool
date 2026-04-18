@@ -1,5 +1,5 @@
 #include "mech/pm_discretizer.hpp"
-#include "mech/matrix.h"
+#include "matrix.h"
 #include <iostream>
 #include <unordered_set>
 #include <assert.h>
@@ -45,7 +45,7 @@ pm_discretizer::pm_discretizer() : W(9, 6)
 	NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION = true;
 	min_alpha_stabilization = 1.e-2;
 }
-pm_discretizer::~pm_discretizer() 
+pm_discretizer::~pm_discretizer()
 {
 }
 pm_discretizer::Gradients pm_discretizer::merge_stencils(const vector<index_t>& st1, const Matrix& m1, const vector<index_t>& st2, const Matrix& m2)
@@ -55,7 +55,7 @@ pm_discretizer::Gradients pm_discretizer::merge_stencils(const vector<index_t>& 
 	MERGE_BLOCK_SIZE = m1.M / ND;
 	auto& pre_grad = pre_merged_grad[MERGE_BLOCK_SIZE];
 	std::fill_n(&pre_grad.values[0], pre_grad.values.size(), 0.0);
-	pre_grad(0, { (size_t)pre_grad.M, (size_t)(MERGE_BLOCK_SIZE * st1.size()) }, { (size_t)pre_grad.N, 1 }) = 
+	pre_grad(0, { (size_t)pre_grad.M, (size_t)(MERGE_BLOCK_SIZE * st1.size()) }, { (size_t)pre_grad.N, 1 }) =
 		m1(0, { (size_t)m1.M, (size_t)(MERGE_BLOCK_SIZE * st1.size()) }, { (size_t)m1.N, 1 });
 
 	for (counter = 0; counter < st2.size(); counter++)
@@ -92,7 +92,7 @@ Approximation& pm_discretizer::merge_approximations(const Approximation& flux1, 
 	}
 	res.f.values = flux1.f.values + flux2.f.values;
 	res.f_biot.values = flux1.f_biot.values + flux2.f_biot.values;
-	
+
 	return res;
 }
 Matrix pm_discretizer::calc_grad_prev(const index_t cell_id) const
@@ -187,9 +187,9 @@ Matrix pm_discretizer::get_ub_prev(const Face& face) const
 	auto At = (at * I3 + bt / r1 * T1);
 	const value_t Ap = 1.0 / (ap + bp / r1 / visc * lam1);
 	auto res = At.inv();
-	if (!res) 
-	{ 
-		cout << "Inversion failed!\n";	exit(-1); 
+	if (!res)
+	{
+		cout << "Inversion failed!\n";	exit(-1);
 	}
 	const auto L = An * At;
 	const value_t gamma = 1.0 / (n.transpose() * L * n).values[0];
@@ -312,7 +312,7 @@ void pm_discretizer::init(const index_t _n_matrix, const index_t _n_fracs, vecto
 	inner.resize(n_cells);
 	grad.resize(n_cells);
 	if (diffs.size()) grad_d.resize(n_cells);
-		
+
 	size_t n_cur_faces;
 	n_faces = 0;
 	nb_faces = bc.size();
@@ -344,7 +344,7 @@ void pm_discretizer::init(const index_t _n_matrix, const index_t _n_fracs, vecto
 		cur_grad.mat.values.resize(BLOCK_SIZE * ND * BLOCK_SIZE * MAX_STENCIL);
 		cur_grad.rhs.values.resize(BLOCK_SIZE * ND);
 
-		if (diffs.size()) 
+		if (diffs.size())
 		{
 			auto& cur_grad = grad_d[cell_id];
 			//cur_grad.stencil.reserve(MAX_STENCIL);
@@ -379,7 +379,7 @@ void pm_discretizer::init(const index_t _n_matrix, const index_t _n_fracs, vecto
 		pre_Ad[fn] = Matrix(fn, ND);
 		pre_restd[fn] = Matrix(fn, 1);
 		pre_rhs_multd[fn] = Matrix(fn, MAX_STENCIL);
-		
+
 		pre_frac_grad_mult[fn] = Matrix(BLOCK_SIZE, fn * BLOCK_SIZE);
 		pre_Wsvd[fn] = Matrix(fn * BLOCK_SIZE, fn * BLOCK_SIZE);
 		pre_w_svd[fn] = Matrix(fn * BLOCK_SIZE, 1);
@@ -405,7 +405,7 @@ void pm_discretizer::init(const index_t _n_matrix, const index_t _n_fracs, vecto
 	pre_merged_flux.resize(MAX_FLUXES_NUM);
 	for (index_t k = 0; k < MAX_FLUXES_NUM; k++)
 	{
-		// Darcy's, elastic fluxes and Biot's fluxes 
+		// Darcy's, elastic fluxes and Biot's fluxes
 		auto& flux = fluxes[k];
 		flux.a = Matrix(BLOCK_SIZE, MAX_STENCIL * BLOCK_SIZE);
 		flux.f = Matrix(BLOCK_SIZE, 1);
@@ -681,7 +681,7 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 
 				const int& cell_id1 = face.cell_id1;
 				const int& cell_id2 = face.cell_id2;
-				const auto& c1 = cell_centers[cell_id1];	
+				const auto& c1 = cell_centers[cell_id1];
 				const auto& c2 = cell_centers[cell_id2];
 				n = (face.n.transpose() * (c2 - c1)).values[0] > 0 ? face.n : -face.n;
 				P = I3 - outer_product(n, n.transpose());
@@ -725,14 +725,14 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 					R1(3, 0) = -(B1n.transpose() * get_u_face_prev(face.c - c1, cell_id1)).values[0];
 					R2(3, 0) = -(B2n.transpose() * get_u_face_prev(face.c - c2, cell_id2)).values[0];
 				}
-				Q1(0, { 3, 3 }, { 4, 1 }) = -cur.T1.values;			
-				Q1(3, 3) = -lam1 * dt / visc;		
+				Q1(0, { 3, 3 }, { 4, 1 }) = -cur.T1.values;
+				Q1(3, 3) = -lam1 * dt / visc;
 				Q1 += r1 * A1;
-				Q2(0, { 3, 3 }, { 4, 1 }) = -cur.T2.values;			
-				Q2(3, 3) = -lam2 * dt / visc;		
+				Q2(0, { 3, 3 }, { 4, 1 }) = -cur.T2.values;
+				Q2(3, 3) = -lam2 * dt / visc;
 				Q2 -= r2 * A2;
-				auto& Th1 = cur.Th1;	
-				auto& Th2 = cur.Th2;	
+				auto& Th1 = cur.Th1;
+				auto& Th2 = cur.Th2;
 				Th1(0, { 3, 9 }, { 12, 1 }) = -cur.G1.values;
 				Th2(0, { 3, 9 }, { 12, 1 }) = -cur.G2.values;
 				Th1(45, { 3 }, { 1 }) = -dt / visc * gam1.transpose().values;
@@ -752,7 +752,7 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 					A(4 * face_id * 4 * ND, {ND, ND * ND}, {4 * ND, 1}) = -(r2 * (cur.G1 - cur.G2) * make_block_diagonal(I3 - outer_product(n, n.transpose()), ND) +
 						(r2 * cur.T1 + r1 * cur.T2) * make_block_diagonal(n.transpose(), ND)).values;
 					A(4 * face_id * 4 * ND, { ND, ND * ND }, { 4 * ND, 1 }) += (-cur.T2 * make_block_diagonal((y2 - y1).transpose(), ND)).values;
-					A(4 * face_id * 4 * ND + ND * ND, { ND, ND }, { 4 * ND, 1 }) += r2 * ((outer_product(B1n, ((face.c - y1) - r1 / lam1 * gam1).transpose()) - 
+					A(4 * face_id * 4 * ND + ND * ND, { ND, ND }, { 4 * ND, 1 }) += r2 * ((outer_product(B1n, ((face.c - y1) - r1 / lam1 * gam1).transpose()) -
 																							outer_product(B2n, ((face.c - y2) - r2 / lam2 * gam2).transpose())) *
 																								(I3 - outer_product(n, n.transpose()))).values;
 
@@ -767,7 +767,7 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 					else { id = st.size(); st.push_back(cell_id2); }
 					rhs_mult(BLOCK_SIZE * face_id * rhs_mult.N + BLOCK_SIZE * id, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += -cur.T2.values;
 					rhs_mult(BLOCK_SIZE * face_id * rhs_mult.N + BLOCK_SIZE * id, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += r2 * B2n.values;
-					
+
 					// flow
 					//rhs_mult((BLOCK_SIZE * face_id + ND) * rhs_mult.N, { (size_t)rhs_mult.N }, { 1 }) = 0.0;
 					A((BLOCK_SIZE * face_id + ND) * A.N, { BLOCK_SIZE * ND }, { 1 }) = 0.0;
@@ -827,7 +827,7 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 				cur.c_stab2 = (B2nn.transpose() * C2 * B2nn).values[0] / r2 / cur.beta_stab2 / cur.beta_stab2;
 				//cur.alpha_min_stab1 = (sqrt((k_stab1 - c_stab1) * (k_stab1 - c_stab1) + 4 * cur.beta_stab1 * cur.beta_stab1 / dt) - (k_stab1 + c_stab1)) / (2 * cur.beta_stab1);
 				//cur.alpha_min_stab2 = (sqrt((k_stab2 - c_stab2) * (k_stab2 - c_stab2) + 4 * cur.beta_stab2 * cur.beta_stab2 / dt) - (k_stab2 + c_stab2)) / (2 * cur.beta_stab2);
-				
+
 				cur.S1(0, { ND, ND }, { 4, 1 }) = outer_product(B1n, B1n.transpose()).values / cur.beta_stab1;
 				cur.S1(ND, ND) = cur.beta_stab1;
 				// cur.S1.values *= std::max(cur.alpha_min_stab1, 1.0);
@@ -839,8 +839,8 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 			else if (face.type == BORDER)
 			{
 				const auto& b = bc[face.face_id2];
-				const auto& an = b(0, 0);			const auto& bn = b(1, 0);			 
-				const auto& at = b(2, 0);			const auto& bt = b(3, 0);			
+				const auto& an = b(0, 0);			const auto& bn = b(1, 0);
+				const auto& at = b(2, 0);			const auto& bt = b(3, 0);
 				const auto& ap = b(4, 0);			const auto& bp = b(5, 0);
 				// Skip if pure neumann
 				if (!NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION && an == 0.0 && at == 0.0)	continue;
@@ -869,9 +869,9 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 				At = (at * I3 + bt / r1 * T1);
 				Ap = 1.0 / (ap + bp / r1 / visc * lam1);
 				res = At.inv();
-				if (!res) 
-				{ 
-					cout << "Inversion failed!\n";	exit(-1); 
+				if (!res)
+				{
+					cout << "Inversion failed!\n";	exit(-1);
 				}
 				L = An * At;
 				gamma = 1.0 / (n.transpose() * L * n).values[0];
@@ -879,10 +879,10 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 				gamma_nnt_mult = gamma_nnt * (bn * I3 - bt * L);
 				mult_p = (bt * I3 + gamma_nnt_mult) * B1n;
 				// Filling mechanics equations
-				A(4 * face_id * 4 * ND, 
-					{ ND, 3 * ND }, 
-					{ 4 * ND, 1 }) = (at * make_block_diagonal((face.c - c1).transpose(), ND) + 
-										bt * nblock_t * C1 + 
+				A(4 * face_id * 4 * ND,
+					{ ND, 3 * ND },
+					{ 4 * ND, 1 }) = (at * make_block_diagonal((face.c - c1).transpose(), ND) +
+										bt * nblock_t * C1 +
 										gamma_nnt_mult * (G1 + T1 / r1 *
 											make_block_diagonal( (y1 - face.c).transpose(), ND ))).values;
 				A(4 * face_id * 4 * ND + 3 * ND,
@@ -946,7 +946,7 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 				if (res1.first) { id1 = res1.second; }
 				else { id1 = st.size(); st.push_back(frac_id); }
 				rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id1,
-						{ BLOCK_SIZE, BLOCK_SIZE }, 
+						{ BLOCK_SIZE, BLOCK_SIZE },
 						{ (size_t)rhs_mult.N, 1 }) += -sign * (cur.Q2 + cur.r2 * cur.A1).values;
 				// add gap gradient
 				const auto& frac_grad = grad[frac_id];
@@ -962,18 +962,18 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 					rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id,
 						{ BLOCK_SIZE, BLOCK_SIZE },
 						{ (size_t)rhs_mult.N, 1 }) -= frac_grad_mult(	st_id * BLOCK_SIZE,
-																		{ BLOCK_SIZE, BLOCK_SIZE }, 
+																		{ BLOCK_SIZE, BLOCK_SIZE },
 																		{ (size_t)frac_grad_mult.N, 1});
 				}
 				// no discontinuity in pressure
 				rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = 0.0;
-				
+
 				// pressure condition
 				K1n = pm_discretizer::darcy_constant * perms[cell_id1] * n;
 				K2n = pm_discretizer::darcy_constant * perms[frac_id] * n;
 				r2_frac = frac_apers[frac_id - n_matrix] / 2;
 				lam2 = (n.transpose() * K2n)(0, 0);
-				
+
 				// remove previous numbers
 				A((BLOCK_SIZE * face_id1 + ND) * A.N, { BLOCK_SIZE * ND}, { 1 }) = 0.0;
 				rhs_mult((BLOCK_SIZE * face_id1 + ND) * rhs_mult.N, { (size_t)rhs_mult.N }, { 1 }) = 0.0;
@@ -983,7 +983,7 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 				{
 					A((BLOCK_SIZE* face_id1 + ND) * A.N + ND * ND, { ND }, { 1 }) = K1n.values;
 					rest(BLOCK_SIZE* face_id1 + ND, 0) = (grav_vec * K1n).values[0];
-				} 
+				}
 				else
 				{
 					A((BLOCK_SIZE * face_id1 + ND) * A.N + ND * ND, { ND }, { 1 }) = (c2 - c1 + r2_frac / lam2 * (K1n - K2n)).values;
@@ -1002,9 +1002,9 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 				//face_id++;
 			}
 		}
-		
+
 		// scaling of equations for pressure gradients for better condition number
-		const value_t PRESSURE_CONDITION_MULTIPLIER = (stfs[cell_id].values[0] + stfs[cell_id].values[7] + stfs[cell_id].values[14]) / 3 / 
+		const value_t PRESSURE_CONDITION_MULTIPLIER = (stfs[cell_id].values[0] + stfs[cell_id].values[7] + stfs[cell_id].values[14]) / 3 /
 					(pm_discretizer::darcy_constant * (perms[cell_id].values[0] + perms[cell_id].values[4] + perms[cell_id].values[8]) / 3);
 		for (index_t ii = ND; ii < A.M; ii += BLOCK_SIZE)
 		{
@@ -1052,11 +1052,11 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 		}
 
 		res = sq_mat.inv();
-		if (!res) 
-		{ 
-			cout << "Inversion failed!\n";	
+		if (!res)
+		{
+			cout << "Inversion failed!\n";
 			//sq_mat.write_in_file("sq_mat_" + std::to_string(cell_id) + ".txt");
-			exit(-1); 
+			exit(-1);
 		}
 		if (sq_mat.is_nan())
 		{
@@ -1109,7 +1109,7 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 		//if (grad_p_depends_on_displacements)
 		//	printf("Pressure gradients in cell %d depend on displacements!\n", cell_id);
 	}
-	
+
 	printf("Pressure gradients depend on displacements with a max coefficient: %.3e\n", max_dgrad_p_du);
 
 	printf("Gradient reconstruction was done!\n");
@@ -1581,12 +1581,12 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 //			cur_grad.mat = sq_mat * A.transpose() * cur_rhs;
 //			cur_grad.rhs = sq_mat * A.transpose() * rest;
 //		}
-//	
+//
 //	}
 //
 //	// Calculate cell-based gradients
 //	value_t n_nodes_per_cell;
-//	Gradients g;	g.stencil.reserve(MAX_STENCIL);	g.mat = Matrix(BLOCK_SIZE * ND, MAX_STENCIL * BLOCK_SIZE);	
+//	Gradients g;	g.stencil.reserve(MAX_STENCIL);	g.mat = Matrix(BLOCK_SIZE * ND, MAX_STENCIL * BLOCK_SIZE);
 //
 //	for (cell_id = 0; cell_id < n_matrix; cell_id++)
 //	{
@@ -1907,7 +1907,7 @@ void pm_discretizer::reconstruct_gradients_thermal_per_cell(value_t dt)
 				G1 = nblock_t * C1 * tblock;
 				// Permeability decomposition
 				K1n = pm_discretizer::darcy_constant * perms[cell_id1] * n;
-				D1n = pm_discretizer::heat_cond_constant * diffs[cell_id1] * n;		
+				D1n = pm_discretizer::heat_cond_constant * diffs[cell_id1] * n;
 				lam1 = (n.transpose() * K1n)(0, 0);
 				gam1 = K1n - lam1 * n;
 				// Extra 'boundary' stuff
@@ -2057,7 +2057,7 @@ void pm_discretizer::reconstruct_gradients_thermal_per_cell(value_t dt)
 		cur_grad.stencil = st;
 		cur_grad.mat = sq_mat * A.transpose() * cur_rhs;
 		cur_grad.rhs = sq_mat * A.transpose() * rest;
-		
+
 		// Heat conduction
 		sq_matd = Ad.transpose() * Ad;
 		res = sq_matd.inv();
@@ -2095,7 +2095,7 @@ void pm_discretizer::reconstruct_gradients_thermal_per_cell(value_t dt)
 	Matrix C1(ND*ND, ND*ND), T1(ND, ND), G1(ND, ND*ND), T1inv(ND, ND);
 	Matrix P(ND, ND), nblock(ND*ND, ND), nblock_t(ND, ND*ND), tblock(ND*ND, ND*ND);
 	Matrix n(ND, 1), K1n(ND, 1), gam1(ND, 1), B1n(ND, 1);
-	Matrix y1(ND, 1), An(ND, ND), At(ND, ND), 
+	Matrix y1(ND, 1), An(ND, ND), At(ND, ND),
 		L(ND, ND), gamma_nnt(ND, ND), gamma_nnt_mult(ND, ND), coef(ND, ND), mult_p(ND, 1), mult_u(ND, ND), gu_coef(ND, ND * ND);
 	size_t n_cur_faces;
 	Matrix tmp(BLOCK_SIZE, ND * BLOCK_SIZE);
@@ -2123,12 +2123,12 @@ void pm_discretizer::reconstruct_gradients_thermal_per_cell(value_t dt)
 				coef1 = cur.r1 * cur.Q2 * det;
 				coef2 = cur.r2 * cur.Q1 * det;
 				grad_coef = (Q * make_block_diagonal((cur.y1 - cur.y2).transpose(), BLOCK_SIZE) +
-									coef1 * cur.Th1 + coef2 * cur.Th2) * 
+									coef1 * cur.Th1 + coef2 * cur.Th2) *
 									make_block_diagonal(P, BLOCK_SIZE);
 				//grad_coef.values[std::abs(grad_coef.values) < EQUALITY_TOLERANCE] = 0.0;
 				const auto& g1 = grad[face.cell_id1];
 				const auto& g2 = grad[face.cell_id2];
-				g = merge_stencils(g1.stencil, 0.5 * g1.mat, g2.stencil, 0.5 * g2.mat); 
+				g = merge_stencils(g1.stencil, 0.5 * g1.mat, g2.stencil, 0.5 * g2.mat);
 				a = grad_coef * g.mat;
 				f = grad_coef * (g1.rhs + g2.rhs) / 2.0 + coef1 * cur.R1 + coef2 * cur.R2;
 
@@ -2188,7 +2188,7 @@ void pm_discretizer::reconstruct_gradients_thermal_per_cell(value_t dt)
 				mult_u = At * (bt * I3 + gamma_nnt * (bn * I3 - bt * L));
 				gu_coef = T1 / r1 * make_block_diagonal((y1 - face.c).transpose(), ND) + G1;
 				// Gradient
-				g = grad[face.cell_id1]; 
+				g = grad[face.cell_id1];
 
 				// Filling mechanics equations
 				tmp(0, { ND, ND * ND }, { (size_t)tmp.N, 1 }) = -(coef * gu_coef).values;
@@ -2198,10 +2198,10 @@ void pm_discretizer::reconstruct_gradients_thermal_per_cell(value_t dt)
 				// Filling flow equation
 				tmp(ND * tmp.N, { ND * ND }, { 1 }) = -(mult_p.transpose() * mult_u * gu_coef).values;
 				tmp(ND * tmp.N + ND * ND, { ND }, { 1 }) = (-dt / visc * Ap * ap * (lam1 / r1 * (y1 - face.c) + gam1) -
-															(mult_p.transpose() * (mult_u * mult_p)).values[0] * Ap * bp / visc * 
+															(mult_p.transpose() * (mult_u * mult_p)).values[0] * Ap * bp / visc *
 															(lam1 / r1 * (y1 - face.c) + gam1) ).values;
 				const auto ub_prev = get_ub_prev(face);
-				f(ND, 0) = -dt / visc * Ap * (- ap * (grav_vec * K1n).values[0]) - 
+				f(ND, 0) = -dt / visc * Ap * (- ap * (grav_vec * K1n).values[0]) -
 								(mult_p.transpose() * ub_prev).values[0] +
 							Ap * (bp / visc * (grav_vec * K1n).values[0]) * (mult_p.transpose() * (mult_u * mult_p)).values[0];
 
@@ -2528,10 +2528,10 @@ void pm_discretizer::calc_contact_flux_new(value_t dt, const Face& face, Approxi
 	coef2 = cur.r2 * cur.T1 * det;
 	coef_biot = (biots[face.cell_id1] * n).transpose() * det;
 	value_t r11 = cur.r1 - frac_apers[fault.cell_id2 - n_matrix] / 2.0;
-	grad_coef(0, { ND, ND * ND }, { (size_t)grad_coef.N, 1 }) = (T * make_block_diagonal((cur.y2 - cur.y1).transpose(), ND) - 
+	grad_coef(0, { ND, ND * ND }, { (size_t)grad_coef.N, 1 }) = (T * make_block_diagonal((cur.y2 - cur.y1).transpose(), ND) -
 																	 coef1 * cur.G1 - coef2 * cur.G2).values;
 	biot_grad_coef(ND * ND * BLOCK_SIZE, { ND * ND }, { 1 }) = (coef_biot * (
-			r11 * (cur.T2 * make_block_diagonal((cur.y1 - cur.y2).transpose(), ND) + cur.r2 * cur.G2) + 
+			r11 * (cur.T2 * make_block_diagonal((cur.y1 - cur.y2).transpose(), ND) + cur.r2 * cur.G2) +
 			(cur.r1 * cur.T2 + cur.r2 * cur.T1) * make_block_diagonal((face.c - cur.y1).transpose(), ND))).values;
 	const auto& g1 = grad[face.cell_id1];
 	//const auto& g2 = grad[face.cell_id2];
@@ -2784,12 +2784,12 @@ void pm_discretizer::calc_matrix_flux(value_t dt, const Face& face, Approximatio
 		lam1 = (n.transpose() * diffs[face.cell_id1] * n).values[0];		gam1 = diffs[face.cell_id1] * n - lam1 * n;
 		lam2 = (n.transpose() * diffs[face.cell_id2] * n).values[0];		gam2 = diffs[face.cell_id2] * n - lam2 * n;
 		lam_av = lam1 * lam2 / (cur.r1 * lam2 + cur.r2 * lam1);
-		
+
 		const auto& g1d = grad_d[face.cell_id1];
 		const auto& g2d = grad_d[face.cell_id2];
 		g = merge_stencils(g1.stencil, 0.5 * g1d.mat, g2.stencil, 0.5 * g2d.mat);
 
-		flux_th_cond.a(0, { 1, (size_t)g.mat.N }, { (size_t)flux_th_cond.a.N, 1 }) = 
+		flux_th_cond.a(0, { 1, (size_t)g.mat.N }, { (size_t)flux_th_cond.a.N, 1 }) =
 		(((lam1 * lam2 * (cur.y1 - cur.y2) + lam1 * cur.r2 * gam2 + lam2 * cur.r1 * gam1) / (cur.r1 * lam2 + cur.r2 * lam1)).transpose() * g.mat).values;
 		flux_th_cond.a(0, id1) -= lam_av;
 		flux_th_cond.a(0, id2) += lam_av;
@@ -2797,7 +2797,7 @@ void pm_discretizer::calc_matrix_flux(value_t dt, const Face& face, Approximatio
 }
 void pm_discretizer::calc_matrix_flux_stabilized(value_t dt, const Face& face, Approximation& flux)
 {
-	Matrix det(BLOCK_SIZE, BLOCK_SIZE), det_ad(BLOCK_SIZE, BLOCK_SIZE), coef1(BLOCK_SIZE, BLOCK_SIZE), coef2(BLOCK_SIZE, BLOCK_SIZE), 
+	Matrix det(BLOCK_SIZE, BLOCK_SIZE), det_ad(BLOCK_SIZE, BLOCK_SIZE), coef1(BLOCK_SIZE, BLOCK_SIZE), coef2(BLOCK_SIZE, BLOCK_SIZE),
 		coef1_ad(BLOCK_SIZE, BLOCK_SIZE), coef2_ad(BLOCK_SIZE, BLOCK_SIZE),
 		grad_coef(BLOCK_SIZE, ND * BLOCK_SIZE),	biot_grad_coef(BLOCK_SIZE, ND * BLOCK_SIZE),
 		biot_flow_buf(BLOCK_SIZE, BLOCK_SIZE), M1p(BLOCK_SIZE, BLOCK_SIZE), M1m(BLOCK_SIZE, BLOCK_SIZE), M2p(BLOCK_SIZE, BLOCK_SIZE), M2m(BLOCK_SIZE, BLOCK_SIZE),
@@ -2821,7 +2821,7 @@ void pm_discretizer::calc_matrix_flux_stabilized(value_t dt, const Face& face, A
 	M1m.values = M1p.values;
 	M1m(0, { ND, ND }, { BLOCK_SIZE, 1 }) = -outer_product(b1n, b1n.transpose()).values / xi1 / 2.0;
 	M1m(ND, ND) = -xi1 / 2.0;
-	
+
 	//M1m.values *= 2.0;
 	//fill_n(std::begin(M1p.values), M1p.values.size(), 0.0);
 
@@ -2834,7 +2834,7 @@ void pm_discretizer::calc_matrix_flux_stabilized(value_t dt, const Face& face, A
 	M2m.values = M2p.values;
 	M2m(0, { ND, ND }, { BLOCK_SIZE, 1 }) = -outer_product(b2n, b2n.transpose()).values / xi2 / 2.0;
 	M2m(ND, ND) = -xi2 / 2.0;
-	
+
 	//M2p.values *= 2.0;
 	//fill_n(std::begin(M2m.values), M2m.values.size(), 0.0);
 
@@ -2862,7 +2862,7 @@ void pm_discretizer::calc_matrix_flux_stabilized(value_t dt, const Face& face, A
 	biot_flow_buf = M1p * det_ad;
 	biot_grad_coef = biot_flow_buf * (cur.r1 * cur.r2 * (cur.Th2 - cur.Th1) +
 		coef1_ad * make_block_diagonal((face.c - cur.y1).transpose(), BLOCK_SIZE) +
-		coef2_ad * make_block_diagonal((face.c - cur.y2).transpose(), BLOCK_SIZE)) + 
+		coef2_ad * make_block_diagonal((face.c - cur.y2).transpose(), BLOCK_SIZE)) +
 		M1m * make_block_diagonal((face.c - cur.y1).transpose(), BLOCK_SIZE);
 
 	g = merge_stencils(g1.stencil, 0.5 * g1.mat, g2.stencil, 0.5 * g2.mat);
@@ -2878,7 +2878,7 @@ void pm_discretizer::calc_matrix_flux_stabilized(value_t dt, const Face& face, A
 	flux.a_biot(0, { BLOCK_SIZE, (size_t)g.mat.N }, { (size_t)flux.a_biot.N, 1 }) += ((I4 - cur.r1 * cur.r2 * biot_flow_buf) * cur.r1 * M1m *
 																make_block_diagonal(n.transpose(), BLOCK_SIZE) * g.mat).values;
 	flux.f_biot += (I4 - cur.r1 * cur.r2 * biot_flow_buf) * cur.r1 * M1m * make_block_diagonal(n.transpose(), BLOCK_SIZE) * g.rhs;
-	
+
 	g = merge_stencils(g.stencil, pre_merged_grad[BLOCK_SIZE], g2.stencil, g2.mat);
 	flux.a_biot(0, { BLOCK_SIZE, (size_t)g.mat.N }, { (size_t)flux.a_biot.N, 1 }) += (-cur.r1 * cur.r2 * biot_flow_buf * cur.r2 * M2p *
 																make_block_diagonal(n.transpose(), BLOCK_SIZE) * g.mat).values;
@@ -2906,7 +2906,7 @@ void pm_discretizer::calc_matrix_flux_stabilized(value_t dt, const Face& face, A
 }
 void pm_discretizer::calc_matrix_flux_stabilized_new(value_t dt, const Face& face, Approximation& flux)
 {
-	Matrix det(BLOCK_SIZE, BLOCK_SIZE), det_stab(BLOCK_SIZE, BLOCK_SIZE), coef1(BLOCK_SIZE, BLOCK_SIZE), coef2(BLOCK_SIZE, BLOCK_SIZE), 
+	Matrix det(BLOCK_SIZE, BLOCK_SIZE), det_stab(BLOCK_SIZE, BLOCK_SIZE), coef1(BLOCK_SIZE, BLOCK_SIZE), coef2(BLOCK_SIZE, BLOCK_SIZE),
 		grad_coef(BLOCK_SIZE, ND * BLOCK_SIZE), grad_coef1(BLOCK_SIZE, ND * BLOCK_SIZE), grad_coef2(BLOCK_SIZE, ND * BLOCK_SIZE),
 		coef_stab1(BLOCK_SIZE, BLOCK_SIZE), coef_stab2(BLOCK_SIZE, BLOCK_SIZE),
 		M1(BLOCK_SIZE, BLOCK_SIZE), M2(BLOCK_SIZE, BLOCK_SIZE), biot_flow_buf(BLOCK_SIZE, BLOCK_SIZE), nblock_t(BLOCK_SIZE, BLOCK_SIZE * ND),
@@ -3137,7 +3137,7 @@ void pm_discretizer::calc_fault_fault(value_t dt, const Face& face, Approximatio
 
 	flux.a.values *= (r2 * frac_apers[cell_id1 - n_matrix] + r1 * frac_apers[cell_id2 - n_matrix]) / (r1 + r2) * face.area;
 	flux.f.values *= (r2 * frac_apers[cell_id1 - n_matrix] + r1 * frac_apers[cell_id2 - n_matrix]) / (r1 + r2) * face.area;
-	
+
 	flux.stencil = g.stencil;
 
 	if (face.is_impermeable)
@@ -3592,7 +3592,7 @@ void pm_discretizer::calc_avg_matrix_flux(value_t dt, const Face& face, Approxim
 	fill_n(std::begin(flux.a_biot.values), flux.a_biot.values.size(), 0.0);
 	flux.a(0, { BLOCK_SIZE, (size_t)g.mat.N }, { (size_t)flux.a_biot.N, 1 }) = (w1 * grad_coef1 * g1g.mat + w2 * grad_coef2 * g2g.mat).values;
 	flux.a_biot(0, { BLOCK_SIZE, (size_t)g.mat.N }, { (size_t)flux.a_biot.N, 1 }) = (w1 * biot_grad_coef1 * g1g.mat + w2 * biot_grad_coef2 * g2g.mat).values;
-	
+
 	// Rest of advection terms
 	res1 = findInVector(g.stencil, cell_id1);
 	if (res1.first) { id1 = res1.second; }
@@ -3606,10 +3606,8 @@ void pm_discretizer::calc_avg_matrix_flux(value_t dt, const Face& face, Approxim
 	flux.a_biot(BLOCK_SIZE * id1 + ND, { ND, 1 }, { (size_t)flux.a_biot.N, 1 }) += (Matrix(w2(0, { ND, ND }, { (size_t)w2.N, 1 }), ND, ND) * B2n).values;
 	flux.a_biot(ND * flux.a_biot.N + BLOCK_SIZE * id1, { ND }, { 1 }) += (Matrix(w2(0, { ND, ND }, { (size_t)w2.N, 1 }), ND, ND) * B2n).values;
 
-	// Free terms 
+	// Free terms
 	flux.f = w1 * grad_coef1 * g1.rhs + w2 * grad_coef2 * g2.rhs;
 	flux.f(ND, 0) += w1(ND, ND) * dt / visc * (grav_vec * K1n).values[0] + w2(ND, ND) * dt / visc * (grav_vec * K2n).values[0];
 	flux.f_biot = w1 * biot_grad_coef1 * g1.rhs + w2 * biot_grad_coef2 * g2.rhs;
 }
-
-

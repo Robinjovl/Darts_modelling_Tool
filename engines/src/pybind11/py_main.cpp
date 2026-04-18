@@ -22,15 +22,6 @@ void pybind_engine_super_elastic_cpu(py::module &);
 void pybind_engine_super_gpu(py::module &);
 void pybind_well_controls(py::module &);
 void pybind_ms_well(py::module &);
-void pybind_evaluator_iface(py::module &);
-void pybind_operator_set_from_files(py::module &);
-
-void pybind_operator_set_interpolator_rates(py::module &);
-void pybind_operator_set_interpolator_super(py::module &);
-void pybind_operator_set_interpolator_pze_gra(py::module &);
-void pybind_operator_set_interpolator_pz_cap_gra(py::module &);
-void pybind_operator_set_interpolator_super_elastic(py::module &);
-
 class ms_well;
 class operator_set_gradient_evaluator_iface;
 
@@ -54,6 +45,18 @@ py::array to_numpy(std::vector<T>& vec)
 PYBIND11_MODULE(engines, m)
 {
   m.doc() = "Delft Advanced Research Terra Simulator";
+
+  // Import darts.interpolators so that evaluator interface types
+  // (operator_set_gradient_evaluator_iface, op_vector, etc.) are registered
+  // in pybind11's global type map before engines uses them.
+  try {
+    py::module_::import("darts.interpolators");
+  } catch (const py::error_already_set&) {
+    throw std::runtime_error(
+      "darts.engines requires darts.interpolators to be importable "
+      "(shared pybind11 types are registered there). "
+      "Reinstall open-darts: pip install --force-reinstall open-darts");
+  }
   //auto m1 = m.def_submodule("engines", "Collection of DARTS simulators based on OBL approach");
   py::bind_vector<std::vector<index_t>>(m, "index_vector", py::module_local(true), py::buffer_protocol())
       .def(py::pickle(
@@ -179,8 +182,14 @@ PYBIND11_MODULE(engines, m)
 
 
   py::bind_vector<std::vector<ms_well *>>(m, "ms_well_vector");
-  py::bind_vector<std::vector<operator_set_gradient_evaluator_iface *>>(m, "op_vector");
-  py::bind_map<std::map<std::string, timer_node>>(m, "timer_map");
+
+  // Re-export interpolator types for backward compatibility with
+  // `from darts.engines import op_vector / evaluator_iface / ...`
+  auto interp = py::module_::import("darts.interpolators");
+  m.attr("op_vector") = interp.attr("op_vector");
+  m.attr("operator_set_gradient_evaluator_iface") = interp.attr("operator_set_gradient_evaluator_iface");
+  m.attr("operator_set_evaluator_iface") = interp.attr("operator_set_evaluator_iface");
+  m.attr("property_evaluator_iface") = interp.attr("property_evaluator_iface");
 
   pybind_pm_discretizer(m);
   pybind_mesh_conn(m);
@@ -198,12 +207,6 @@ PYBIND11_MODULE(engines, m)
 
   pybind_well_controls(m);
   pybind_ms_well(m);
-  pybind_evaluator_iface(m);
-
-  pybind_operator_set_interpolator_rates(m);
-  pybind_operator_set_interpolator_super(m);
-  pybind_operator_set_interpolator_pze_gra(m);
-  pybind_operator_set_interpolator_pz_cap_gra(m);
 
 #ifdef WITH_GPU
   pybind_engine_nc_cg_gpu(m);

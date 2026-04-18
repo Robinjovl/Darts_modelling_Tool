@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.engines import operator_set_evaluator_iface, value_vector
+from darts.interpolators import operator_set_evaluator_iface, value_vector
 from darts.physics.base.property_base import PropertyBase
 
 
@@ -316,9 +316,9 @@ class PropertyOperators(OperatorsBase):
         The user-specified properties are stored in the `values` object.
 
         :param state: Vector of state variables [pres, comp_0, ..., comp_N-1, (temp)]
-        :type state: darts.engines.value_vector
+        :type state: darts.interpolators.value_vector
         :param values: Vector for storage of operator values
-        :type values: darts.engines.value_vector
+        :type values: darts.interpolators.value_vector
         """
         # Check if extrapolation needs to be applied
         if super().apply_extrapolation(state, values):
