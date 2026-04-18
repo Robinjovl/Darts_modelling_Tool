@@ -11,7 +11,7 @@
 
 #include "engine_nc_nl_cpu.hpp"
 #include "conn_mesh.h"
-#include "mech/matrix.h"
+#include "matrix.h"
 
 
 #ifdef OPENDARTS_LINEAR_SOLVERS

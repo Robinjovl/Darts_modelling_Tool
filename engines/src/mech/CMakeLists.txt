@@ -19,7 +19,6 @@ set(OD_ENGINES_MECHANICS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/contact.h
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_elastic_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_elastic_cpu.tpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/matrix.h
 )
 
 # Define the engines_mechanics library
