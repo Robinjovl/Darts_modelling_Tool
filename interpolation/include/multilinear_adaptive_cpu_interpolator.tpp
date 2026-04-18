@@ -184,7 +184,9 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::mat
   // Build dense temporary vector of (index, payload) pairs
   std::vector<std::pair<index_t, hypercube_data_t>> new_hc_entries(missing_hc.size());
 
+#ifdef _OPENMP
 #pragma omp parallel for schedule(static)
+#endif
   for (int h = 0; h < static_cast<int>(missing_hc.size()); ++h)
   {
     hypercube_points_index_t pts;
@@ -230,7 +232,9 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
 
   std::vector<index_t> hc_idxs(n_cells);
 
+#ifdef _OPENMP
 #pragma omp parallel for schedule(static)
+#endif
   for (int p = 0; p < static_cast<int>(n_cells); p++)
   {
     index_t offset = points_idxs[p];
@@ -282,12 +286,16 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
   static const uint32_t N_VERTS = (1 << N_DIMS);
   static const size_t workspace_size = (2 * N_VERTS - 1) * N_OPS;
 
+#ifdef _OPENMP
 #pragma omp parallel
+#endif
   {
     // Thread-local workspace: allocated once per thread, reused across all cells
     std::vector<value_t> workspace(workspace_size);
 
+#ifdef _OPENMP
 #pragma omp for schedule(static)
+#endif
     for (int p = 0; p < static_cast<int>(n_cells); p++)
     {
       index_t offset = points_idxs[p];
