@@ -191,9 +191,9 @@ def save_dfm_well_props(
                     pd.DataFrame(
                         list(zip(*ts_primary_vars_and_phases_props, strict=False)),
                         columns=[
-                            "Pressure",
+                            "pressure",
                             "Overall mole fractions",
-                            "Temperature",
+                            "temperature",
                             "xG",
                             "xL",
                             "sG",
@@ -234,9 +234,9 @@ def save_dfm_well_props(
                     pd.DataFrame(
                         list(zip(*ts_primary_vars_and_phases_props, strict=False)),
                         columns=[
-                            "Pressure",
+                            "pressure",
                             "Overall mole fractions",
-                            "Temperature",
+                            "temperature",
                             "xG",
                             "xL_a",
                             "xL_a",

@@ -69,7 +69,7 @@ def plot_line_graphs(
     plt.figure(figsize=(12, 6))
 
     for ts_counter in list_of_time_steps:
-        pressure_profile = data_frame["Pressure"][
+        pressure_profile = data_frame["pressure"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
         ]
         # plt.plot(pressure_profile, list(range(num_segments)), label=ts_counter)
@@ -176,7 +176,7 @@ def plot_line_graphs(
 
         for ts_counter in list_of_time_steps:
             temp_profile = (
-                data_frame["Temperature"][
+                data_frame["temperature"][
                     ts_counter * num_segments : (ts_counter + 1) * num_segments
                 ]
                 - 273.15
@@ -217,7 +217,7 @@ def plot_line_graphs(
 
         plt.close()
 
-    # %% Gas saturation profile
+    # %% Gas volume fraction profile
 
     # Update figure counter for name of the saved figure
     figure_counter += 1
@@ -237,17 +237,17 @@ def plot_line_graphs(
     # Set the y-axis ticks
     plt.gca().yaxis.set_major_locator(MultipleLocator(1))
 
-    plt.xlabel("Gas saturation [-]", fontsize=14)
+    plt.xlabel("Gas volume fraction [-]", fontsize=14)
     plt.ylabel("Segment index", fontsize=14)
 
     plt.title(
-        "Gas saturation profile/profiles along the wellbore",
+        "Gas volume fraction profile/profiles along the wellbore",
         fontsize=14,
         fontweight="bold",
     )
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas saturation.png")
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas volume fraction.png")
     plt.savefig(file_address)
     if show_plot:
         plt.show()

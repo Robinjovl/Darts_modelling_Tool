@@ -71,12 +71,12 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         "miuL",
     ]
     if prop_name == "pressure":
-        prop_name_in_well_output = "Pressure"
-        prop_name_in_reservoir_output = "pressure"
+        prop_name_in_well_output = prop_name
+        prop_name_in_reservoir_output = prop_name
         xlabel = "Pressure [bar]"
     elif prop_name == "temperature":
-        prop_name_in_well_output = "Temperature"
-        prop_name_in_reservoir_output = "temperature"
+        prop_name_in_well_output = prop_name
+        prop_name_in_reservoir_output = prop_name
         xlabel = "Temperature [\u00b0C]"
     elif prop_name == "sL":
         prop_name_in_well_output = "sL"
@@ -336,12 +336,12 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
 
     assert prop_name in ["pressure", "temperature", "sL"]
     if prop_name == "pressure":
-        prop_name_in_well_output = "Pressure"
-        prop_name_in_reservoir_output = "pressure"
+        prop_name_in_well_output = prop_name
+        prop_name_in_reservoir_output = prop_name
         xlabel = "Pressure [bar]"
     elif prop_name == "temperature":
-        prop_name_in_well_output = "Temperature"
-        prop_name_in_reservoir_output = "temperature"
+        prop_name_in_well_output = prop_name
+        prop_name_in_reservoir_output = prop_name
         xlabel = "Temperature [\u00b0C]"
     elif prop_name == "sL":
         prop_name_in_well_output = "sL"

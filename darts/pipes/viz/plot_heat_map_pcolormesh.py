@@ -128,7 +128,7 @@ def plot_heat_map_pcolormesh(
 
     # Fill the pressure matrix
     for ts_counter in time_step_idx_range:
-        p = data_frame["Pressure"][
+        p = data_frame["pressure"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
         ]
         p_matrix[:, ts_counter] = p
@@ -253,7 +253,7 @@ def plot_heat_map_pcolormesh(
         # Fill the temperature matrix
         for ts_counter in time_step_idx_range:
             T = (
-                data_frame["Temperature"][
+                data_frame["temperature"][
                     ts_counter * num_segments : (ts_counter + 1) * num_segments
                 ]
                 - 273.15
@@ -305,14 +305,14 @@ def plot_heat_map_pcolormesh(
 
         plt.close(fig)
 
-    # %% Gas saturation profile
+    # %% Gas volume fraction profile
 
     # Update figure counter for name of the saved figure
     figure_counter += 1
-    # Initialize the gas saturation matrix
+    # Initialize the gas volume fraction matrix
     sG_matrix = np.zeros((num_segments, num_selected_ts))
 
-    # Fill the gas saturation matrix
+    # Fill the gas volume fraction matrix
     for ts_counter in time_step_idx_range:
         sG = data_frame["sG"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -343,20 +343,20 @@ def plot_heat_map_pcolormesh(
     # Add title
     if with_title:
         ax.set_title(
-            "Gas saturation profile along the wellbore over time",
+            "Gas volume fraction profile along the wellbore over time",
             fontsize=font_size,
             fontweight="bold",
         )
 
-    # Add a colorbar to show the gas saturation values
+    # Add a colorbar to show the gas volume fraction values
     cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label("Gas saturation [-]", fontsize=font_size)
+    cbar.set_label("Gas volume fraction [-]", fontsize=font_size)
     cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
     plt.tight_layout()
     file_address = os.path.join(
         main_dir,
-        f"{figure_counter}- Gas saturation.{save_as}",
+        f"{figure_counter}- Gas volume fraction.{save_as}",
     )
     plt.savefig(file_address)
     if show_plot:
@@ -364,15 +364,15 @@ def plot_heat_map_pcolormesh(
 
     plt.close(fig)
 
-    # %% Liquid L_a saturation profile
+    # %% Liquid L_a volume fraction profile
 
     if pc.nph == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
-        # Initialize the liquid L_a saturation matrix
+        # Initialize the liquid L_a volume fraction matrix
         sL_a_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_a saturation matrix
+        # Fill the liquid L_a volume fraction matrix
         for ts_counter in time_step_idx_range:
             sL_a = data_frame["sL_a"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -403,20 +403,20 @@ def plot_heat_map_pcolormesh(
         # Add title
         if with_title:
             ax.set_title(
-                "Liquid L_a saturation profile along the wellbore over time",
+                "Liquid L_a volume fraction profile along the wellbore over time",
                 fontsize=font_size,
                 fontweight="bold",
             )
 
-        # Add a colorbar to show the liquid L_a saturation values
+        # Add a colorbar to show the liquid L_a volume fraction values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label("Liquid L_a saturation [-]", fontsize=font_size)
+        cbar.set_label("Liquid L_a volume fraction [-]", fontsize=font_size)
         cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- Liquid L_a saturation.{save_as}",
+            f"{figure_counter}- Liquid L_a volume fraction.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -424,15 +424,15 @@ def plot_heat_map_pcolormesh(
 
         plt.close(fig)
 
-    # %% Liquid L_b saturation profile
+    # %% Liquid L_b volume fraction profile
 
     if pc.nph == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
-        # Initialize the liquid L_b saturation matrix
+        # Initialize the liquid L_b volume fraction matrix
         sL_b_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_b saturation matrix
+        # Fill the liquid L_b volume fraction matrix
         for ts_counter in time_step_idx_range:
             sL_b = data_frame["sL_b"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -463,20 +463,20 @@ def plot_heat_map_pcolormesh(
         # Add title
         if with_title:
             ax.set_title(
-                "Liquid L_b saturation profile along the wellbore over time",
+                "Liquid L_b volume fraction profile along the wellbore over time",
                 fontsize=font_size,
                 fontweight="bold",
             )
 
-        # Add a colorbar to show the liquid L_b saturation values
+        # Add a colorbar to show the liquid L_b volume fraction values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label("Liquid L_b saturation [-]", fontsize=font_size)
+        cbar.set_label("Liquid L_b volume fraction [-]", fontsize=font_size)
         cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- Liquid L_b saturation.{save_as}",
+            f"{figure_counter}- Liquid L_b volume fraction.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:

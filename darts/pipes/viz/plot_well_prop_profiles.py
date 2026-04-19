@@ -128,7 +128,7 @@ def plot_well_prop_profiles(
     plt.figure(figsize=(10, 6))
 
     for idx, report_index in enumerate(report_indices):
-        pressure = data_frame["Pressure"][
+        pressure = data_frame["pressure"][
             report_index * num_segments : (report_index + 1) * num_segments
         ]
         color = colors[idx]  # Assign color from the colormap
@@ -249,7 +249,7 @@ def plot_well_prop_profiles(
     plt.figure(figsize=(10, 6))
 
     for idx, report_index in enumerate(report_indices):
-        temp = data_frame["Temperature"][
+        temp = data_frame["temperature"][
             report_index * num_segments : (report_index + 1) * num_segments
         ]
         color = colors[idx]  # Assign color from the colormap
@@ -301,7 +301,7 @@ def plot_well_prop_profiles(
 
     plt.close()
 
-    # %% Gas saturation
+    # %% Gas volume fraction
     # Create a figure and a single set of axes
     plt.figure(figsize=(10, 6))
 
@@ -322,7 +322,7 @@ def plot_well_prop_profiles(
         )
 
     # Add labels, title, and grid
-    plt.xlabel("Gas saturation [-]", fontsize=font_size_labels, labelpad=10)
+    plt.xlabel("Gas volume fraction [-]", fontsize=font_size_labels, labelpad=10)
     # plt.ylabel("Segment index [-]", fontsize=font_size_labels, labelpad=10)
     plt.ylabel("Well segment depth [m]", fontsize=font_size_labels, labelpad=10)
     plt.yticks(fontsize=font_size_ticks)
