@@ -55,10 +55,7 @@ class MyOutput(Output):
         self.variable_units[op.property.components_name[op.property.fc_mask][-1]] = ''
 
     def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[np.ndarray, dict]:
-        # PVD timestep= attribute must be the physical simulation time, not the
-        # reporting-step index ParaView currently sees (0, 1, 2 ...).
-        engine_t = getattr(getattr(self.physics, 'engine', None), 't', None)
-        timesteps = np.array([float(engine_t) if engine_t is not None else 0.0])
+        timesteps = [timestep] if timestep is not None else [0]
         if output_properties is None:
             prop_names = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
         else:
@@ -204,7 +201,7 @@ class Model(CICDModel):
         phase_name = [list(self.phases.keys())[list(self.phases.values()).index(id)] for id in range(len(self.phases))]
 
         if self.domain == '3D':
-            p_obl_max = self.pressure_init + 50
+            p_obl_max = self.pressure_init + 70
             n_obl_pressure = 1001
         else:
             p_obl_max = self.pressure_init + 5

@@ -243,8 +243,23 @@ if __name__ == '__main__':
     #                 report_timesteps=6 * [5e-6])
 
     # 3D
-    # run_simulation(domain='3D', max_ts=2.e-3, output=False,
-    #                mesh_filename='input/core_13k.msh', poro_filename='input/core_13k_0.02.txt')
+    case = '195k' # '60k' # '195k'
+    minerals = ['calcite']
+    n_obl_mult = 3
+    co2_injection = 0.1
+    max_ts = 2.e-3
+    platform = 'cpu'
+    flash='phreeqc' # 'phreeqc' # 'reaktoro'
+    database = 'phreeqc' # 'phreeqc' # 'pitzer' # 'supcrtbl'
+    of = f'output_3D_{case}_' + f'{platform}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}_{flash}_{database}'
+    # run_simulation(domain='3D',
+    #                n_obl_mult=n_obl_mult,
+    #                max_ts=max_ts, output=True,
+    #                flash=flash, database=database,
+    #                output_folder=of,
+    #                platform=platform,
+    #                mesh_filename=f'input/core_{case}.msh',
+    #                poro_filename=f'input/core_{case}_0.01.txt')
     # run_simulation(domain='3D', max_ts=1.e-3, output=True,
     #                mesh_filename='input/core_60k.msh', poro_filename='input/core_60k_0.01.txt')
     # run_simulation(domain='3D', max_ts=8.e-4, output=True, perm_poro='power_8',
