@@ -239,7 +239,7 @@ def save_dfm_well_props(
                             "temperature",
                             "xG",
                             "xL_a",
-                            "xL_a",
+                            "xL_b",
                             "sG",
                             "sL_a",
                             "sL_b",
