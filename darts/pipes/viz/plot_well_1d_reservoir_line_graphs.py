@@ -61,15 +61,23 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         "Number of report step labels must be equal to number of report step times!"
     )
 
-    assert prop_name in [
+    avail_props = [
         "pressure",
         "temperature",
-        "sL",
+        "sG",
         "rhoG",
         "rhoL",
         "miuG",
         "miuL",
     ]
+    if coupled_model.physics.nph == 2:
+        avail_props.append("sL")
+    elif coupled_model.physics.nph == 3:
+        avail_props.extend(["sL_a", "sL_b"])
+    assert prop_name in avail_props, (
+        f"Entered prop_name '{prop_name}' is not in the list of available properties!"
+    )
+
     if prop_name == "pressure":
         prop_name_in_well_output = prop_name
         prop_name_in_reservoir_output = prop_name
@@ -78,10 +86,22 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         prop_name_in_well_output = prop_name
         prop_name_in_reservoir_output = prop_name
         xlabel = "Temperature [\u00b0C]"
+    elif prop_name == "sG":
+        prop_name_in_well_output = prop_name
+        prop_name_in_reservoir_output = prop_name
+        xlabel = "Gas volume fraction [-]"
     elif prop_name == "sL":
         prop_name_in_well_output = "sL"
         prop_name_in_reservoir_output = "sat_LCO2"
         xlabel = "Liquid volume fraction [-]"
+    elif prop_name == "sL_a":
+        prop_name_in_well_output = prop_name
+        prop_name_in_reservoir_output = prop_name
+        xlabel = "Liquid L_a volume fraction [-]"
+    elif prop_name == "sL_b":
+        prop_name_in_well_output = prop_name
+        prop_name_in_reservoir_output = prop_name
+        xlabel = "Liquid L_b volume fraction [-]"
     elif prop_name == "rhoG":
         prop_name_in_well_output = "rhoG"
         prop_name_in_reservoir_output = "rho_gas"
