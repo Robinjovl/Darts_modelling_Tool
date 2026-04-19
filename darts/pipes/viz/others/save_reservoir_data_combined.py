@@ -1,6 +1,6 @@
 """
 This script reads vtk files using ParaView and then saves the cell data of all the vtk files to a combined csv file.
-Note that the name of the vtk files must start with "solution"
+Note that the name of the vtk files must start with "solution_ts"
 """
 
 from pathlib import Path
@@ -14,7 +14,7 @@ from paraview.vtk.numpy_interface import dataset_adapter as dsa
 folder = Path(".")  # current directory
 all_frames = []  # collect DataFrames here
 
-for vtk_path in sorted(folder.glob("solution*.vtk")):
+for vtk_path in sorted(folder.glob("solution_ts*.vtk")):
     print(f"Processing {vtk_path}")
 
     data = OpenDataFile(str(vtk_path))
@@ -45,8 +45,8 @@ for vtk_path in sorted(folder.glob("solution*.vtk")):
         else:
             data_dict[name] = arr
 
-    # Add timestep number (from file name "solutionX.vtk")
-    timestep = int(vtk_path.stem.replace("solution", ""))
+    # Add timestep number (from file name "solution_tsX.vtk")
+    timestep = int(vtk_path.stem.replace("solution_ts", ""))
     data_dict["Timestep"] = np.full(len(data_dict["CellID"]), timestep, dtype=np.int64)
 
     df = pd.DataFrame(data_dict)
