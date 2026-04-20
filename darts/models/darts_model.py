@@ -689,10 +689,10 @@ class DartsModel:
 
             self.physics.engine.newton_residual_last_dt = (
                 # self.physics.engine.calc_newton_residual()
-                self.calc_residual()
+                self.calc_residual_norm()
             )  # calc norm of residual
 
-            # print("{:.4e}".format(self.calc_residual()),
+            # print("{:.4e}".format(self.calc_residual_norm()),
             #       "{:.4e}".format(self.physics.engine.newton_residual_last_dt))
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
@@ -710,7 +710,7 @@ class DartsModel:
 
             self.physics.engine.well_residual_last_dt = (
                 # self.physics.engine.calc_well_residual()
-                self.calc_residual(is_well=True)
+                self.calc_residual_norm(is_well=True)
             )
             residual_history.append(
                 (
@@ -1027,7 +1027,7 @@ class DartsModel:
         rhs += self.set_rhs_flux(t) * dt
         return
 
-    def calc_residual(self, ntype: str = "L2", is_well: bool = False):
+    def calc_residual_norm(self, ntype: str = "L2", is_well: bool = False):
         """
         Calculate norm of RHS vector
         """
