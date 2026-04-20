@@ -687,18 +687,10 @@ class DartsModel:
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
 
-            if not self.has_dfm_well:
-                self.physics.engine.newton_residual_last_dt = (
-                    # self.physics.engine.calc_newton_residual()
-                    self.calc_residual()
-                )  # calc norm of residual
-            elif self.has_dfm_well:
-                # Method is either 1 or 2
-                self.physics.engine.newton_residual_last_dt = (
-                    self.physics.engine.calc_coupled_well_reservoir_residual(
-                        self.data_ts.coupled_well_res_norm_method
-                    )
-                )
+            self.physics.engine.newton_residual_last_dt = (
+                # self.physics.engine.calc_newton_residual()
+                self.calc_residual()
+            )  # calc norm of residual
 
             # print("{:.4e}".format(self.calc_residual()),
             #       "{:.4e}".format(self.physics.engine.newton_residual_last_dt))
