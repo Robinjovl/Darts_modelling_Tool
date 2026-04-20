@@ -189,21 +189,21 @@ class UnstructReservoir(ReservoirBase):
         """
         well = self.get_well(well_name)
 
-        perf_indices = np.array(well.perforations, dtype=int)
-        # res_cell_idx has index=1 in perforation element: (well_block, res_cell_idx, well_index, well_indexD)
-        perf_indices = perf_indices[:, 1] if len(well.perforations) > 0 else []
-        if res_cell_idx in perf_indices:
+        perforations = np.array(well.perforations, dtype=int)
+        # res_cell_idx has index=1 in the perforation tuple: (well_block, res_cell_idx, well_index, well_indexD)
+        res_indices = perforations[:, 1] if len(well.perforations) > 0 else []
+        if res_cell_idx in res_indices:
             print(
                 "There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!"
             )
             exit()
 
-        #  update well depth
-        perf_indices = np.append(perf_indices, res_cell_idx).astype(
+        # update wellhead and well body depths
+        res_indices = np.append(res_indices, res_cell_idx).astype(
             int
         )  # add current cell to previous perforation list
         # set well depth to the top perforation depth
-        well.well_head_depth = np.array(self.mesh.depth, copy=False)[perf_indices].min()
+        well.well_head_depth = np.array(self.mesh.depth, copy=False)[res_indices].min()
         well.well_body_depth = well.well_head_depth
 
         if well_index is None or well_indexD is None:

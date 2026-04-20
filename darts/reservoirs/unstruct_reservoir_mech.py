@@ -36,9 +36,9 @@ from darts.input.input_data import InputData
 
 
 class bound_cond:
-    '''
+    """
     General representation of boundary condition: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-    '''
+    """
 
     def __init__(self):
         # flow
@@ -128,13 +128,13 @@ def set_domain_tags(
     fracture_tags=None,
     frac_bnd_tags=None,
 ):
-    '''
+    """
     :param matrix_tag: list of integers
     :param bnd_tags: list of integers
     :param fracture_tag: list of integers
     :param frac_bnd_tag: list of integers
     :return: dictionary of sets containing integer tags for each element type; dictionary of tags for 6 boundaries
-    '''
+    """
     if frac_bnd_tags is None:
         frac_bnd_tags = []
     if fracture_tags is None:
@@ -155,11 +155,11 @@ def E_nu_from_Vp_Vs(density, Vp, Vs):
 
 
 def get_lambda_mu(E, nu):
-    '''
+    """
     :param E: Young modulus [bars]
     :param nu: Poisson ratio
     :return: lambda and mu coefficitents for Stiffness matrix
-    '''
+    """
     lam = E * nu / (1 + nu) / (1 - 2 * nu)
     mu = E / 2.0 / (1 + nu)
     return lam, mu
@@ -229,9 +229,9 @@ class UnstructReservoirMech:
     # TODO: create a py wrapper reservoir class UnstructReservoirCPP for C++ discretizer (flow only, MPFA)
     # TODO: create an abstract  class UnstructReservoirBase for existing Python class and UnstructReservoirCPP
     # TODO: add cache of discretizer, recompute if something changed (done locally in displaced_fault model)
-    '''
+    """
     Class for Poroelasticity/ThermoPoroElasticity coupled model
-    '''
+    """
 
     def __init__(
         self,
@@ -347,14 +347,14 @@ class UnstructReservoirMech:
                     fourier_tran[:] = self.fourier_tran
 
     def apply_geomechanics_mode(self, physics=None, mode: int = 0):
-        '''
+        """
         :param physics: None if mode is 0 or 1
         :param mode:
             0 - nullify biot terms,
             1 - nullify biot and flow terms,
             2 - nullify biot and flow terms and set physics.engine.geomechanics_mode array to 1
         :return:
-        '''
+        """
         if self.discretizer_name == 'pm_discretizer':
             np.array(self.mesh.block_m, copy=False)
             np.array(self.mesh.block_p, copy=False)
@@ -545,14 +545,14 @@ class UnstructReservoirMech:
             self.f[:] = self.unstr_discr.f
 
     def set_pzt_bounds(self, p, z=None, t=None):
-        '''
+        """
         # sets boundary values of pressures, (inflow) fractions at boundaries, and temperatures
         # should be called after conn_mesh initialization
         :param p: pressure values, bars
         :param z: composition values TODO: implement
         :param t: temperatures values, degrees
         :return: None
-        '''
+        """
         self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
         self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
         if self.discretizer_name == 'mech_discretizer':
@@ -565,9 +565,9 @@ class UnstructReservoirMech:
             self.pz_bounds[:] = p
 
     def set_bounds(self, p_z_t):
-        '''
+        """
         :param p_z_t: array of boundary values: pressure, compositions, temperature
-        '''
+        """
         self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
         self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
         self.pz_bounds[:] = p_z_t
@@ -759,9 +759,9 @@ class UnstructReservoirMech:
         gravity_coeff: float = None,
         gravity_direction: str = 'z+',
     ):
-        '''
+        """
         sets gravity vector in discretizer
-        '''
+        """
         if gravity_on:
             from scipy.constants import gravitational_constant
 
@@ -867,10 +867,10 @@ class UnstructReservoirMech:
                             exit(1)
 
     def init_heterogeneous_properties(self):
-        '''
+        """
         set matrix poperties using self.props[tag]
         :return:
-        '''
+        """
         if self.discretizer_name == 'mech_discretizer':
             self.porosity = np.zeros(self.n_matrix + self.n_fracs)
             self.cs = np.zeros(self.n_matrix + self.n_fracs)
@@ -1162,21 +1162,24 @@ class UnstructReservoirMech:
             #     assert((abs(sum[:3,:3]) < 1.E-10).all())
         f.close()
 
-    def add_well(self, name, depth):
+    def add_well(self, well_name: str):
         """
-        Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
-        :param name:
-        :param depth:
-        :return:
+        Function to create an ms_well object and add it to the list of wells
+
+        :param well_name: Well name
+        :type well_name: str
         """
         well = ms_well()
-        well.name = name
-        well.segment_volume = 0.0785 * 40  # 2.5 * pi * 0.15**2 / 4
-        well.well_head_depth = depth
-        well.well_body_depth = depth
+        well.name = well_name
+        well.ms_type = ms_well.MS_Type.EPM
+
         well.well_transmissibility = 1e5
+        well.segment_volume = 0.0785 * 40  # 2.5 * pi * 0.15**2 / 4
+        well.well_head_depth = 0
+        well.well_body_depth = 0
         well.segment_depth_increment = 1
         self.wells.append(well)
+
         return 0
 
     def get_well(self, well_name: str):
@@ -1194,11 +1197,9 @@ class UnstructReservoirMech:
         self,
         well_name: str,
         res_cell_idx: int,
-        well_seg_idx: int = None,
         well_diameter: float = 0.3048,
         well_index: float = None,
         well_indexD: float = None,
-        segment_direction: str = "z_axis",
         skin: float = 0.0,
         ms_epm: bool = False,
         verbose: bool = False,
@@ -1206,27 +1207,40 @@ class UnstructReservoirMech:
         """
         Function to add a perforation to the well
 
-        :param well_seg_idx: Currently, this is only used for struct_reservoir.
+        :param well_name: Name of well to add perforation to
+        :type well_name: str
         :param res_cell_idx: Index of reservoir cell to be perforated
-        :type res_cell_idx: Reservoir cell index for the unstructured reservoir grid must be an integer.
+        :type res_cell_idx: int
+        :param well_diameter: Internal diameter of the wellbore
+        :type well_diameter: float
+        :param well_index: Well index, default is calculated inside
+        :type well_index: float
+        :param well_indexD: Thermal well index, default is calculated inside
+        :type well_indexD: float
+        :param skin: Skin factor
+        :type skin: float
+        :param ms_epm: Whether the EPM well model uses a separate well segment per perforation or not (a single well segment for all perforations).
+        :type ms_epm: bool
+        :param verbose: Switch to set verbose level
+        :type verbose: bool
         """
         well = self.get_well(well_name)
 
-        perf_indices = np.array(well.perforations, dtype=int)
-        # res_cell_idx has index=1 in perforation element: (well_block, res_cell_idx, well_index, well_indexD)
-        perf_indices = perf_indices[:, 1] if len(well.perforations) > 0 else []
-        if res_cell_idx in perf_indices:
+        perforations = np.array(well.perforations, dtype=int)
+        # res_cell_idx has index=1 in the perforation tuple: (well_block, res_cell_idx, well_index, well_indexD)
+        res_indices = perforations[:, 1] if len(well.perforations) > 0 else []
+        if res_cell_idx in res_indices:
             print(
                 "There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!"
             )
             exit()
 
-        #  update well depth
-        perf_indices = np.append(perf_indices, res_cell_idx).astype(
+        # update wellhead and well body depths
+        res_indices = np.append(res_indices, res_cell_idx).astype(
             int
         )  # add current cell to previous perforation list
         # set well depth to the top perforation depth
-        well.well_head_depth = np.array(self.mesh.depth, copy=False)[perf_indices].min()
+        well.well_head_depth = np.array(self.mesh.depth, copy=False)[res_indices].min()
         well.well_body_depth = well.well_head_depth
 
         if well_index is None or well_indexD is None:
@@ -2118,10 +2132,10 @@ class UnstructReservoirMech:
             plt.close(self.fig)
 
     def get_frac_apers(self, idata: InputData):
-        '''
+        """
         :param idata: InputData
         :return: numpy array of fracture apertures, size = number of fractures; None if no fractures
-        '''
+        """
         frac_apers = None
         if hasattr(idata.other, 'frac_apers'):
             if np.isscalar(idata.other.frac_apers):  # one value for all fractures
@@ -2133,14 +2147,14 @@ class UnstructReservoirMech:
         return frac_apers
 
     def init_fractures(self, idata: InputData):
-        '''
+        """
         Initializes fractures in the unstructured discretizer:
         1.Appends data to: self.pm.cell_centers, self.pm.frac_apers, self.pm.faces, self.mesh.fault_normals, self.pm.perms
         self.pm.biots, self.p_init
         2. Initialize contacts
         :param idata: InputData (frac apertures, perm, biot, initial_pressure)
         :return:
-        '''
+        """
         frac_apers = self.get_frac_apers(idata)
         if self.discretizer_name == 'pm_discretizer':
             # fracture
@@ -2225,11 +2239,11 @@ class UnstructReservoirMech:
             )
 
     def calc_slip_areas(self, engine):
-        '''
+        """
         Calculates the ratio of slip area to the total fracture area and returns a list of these ratios for each fracture
         :param engine:
         :return:
-        '''
+        """
         slip_areas = []
         if self.discretizer_name == 'pm_discretizer':
             full_area = 0.0
