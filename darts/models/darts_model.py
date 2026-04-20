@@ -38,8 +38,8 @@ class DataTS:
         self.dt_min = 1e-12  # minimal allowed timestep [days]
         self.dt_mult = 2.0  # timestep multiplier, affects the next timestep choice
         self.dt_max = 10.0  # maximal allowed timestep [days]
-        self.newton_tol = 1e-2  # newton solver residual
-        self.newton_tol_wel_mult = 100.0  # used to compute the newton solver residual for wells = tol_res * tol_wel_mult
+        self.newton_tol = 1e-2  # tolerance for newton solver residual
+        self.newton_tol_wel_mult = 100.0  # used to compute the tolerance for the newton solver residual of EPM wells = tol_res * tol_wel_mult
         self.newton_tol_stationary = 1e-3  # tolerance for stationary point detection in the newton solver (by residual)
         self.newton_max_iter = 20  # maximum newton iterations allowed
         self.linear_tol = 1e-5
@@ -395,6 +395,7 @@ class DartsModel:
         newton_type=None,
         newton_params=None,
         line_search: bool = False,
+        newton_tol_wel_mult: float = 100,
         coupled_well_res_norm_method: int = 1,
     ):
         """
@@ -418,6 +419,8 @@ class DartsModel:
         :type it_linear: int
         :param newton_type:
         :param newton_params:
+        :param newton_tol_wel_mult: Multiplier used to compute the tolerance for the newton solver residual of wells = tol_res * tol_wel_mult
+        :type newton_tol_wel_mult: float
         :param coupled_well_res_norm_method: Method of norm evaluation of residuals for the coupled well-reservoir model
         :type coupled_well_res_norm_method: int
         """
@@ -455,6 +458,8 @@ class DartsModel:
         self.data_ts.linear_max_iter = (
             it_linear if it_linear is not None else self.data_ts.linear_max_iter
         )
+
+        self.data_ts.newton_tol_wel_mult = newton_tol_wel_mult
 
         assert coupled_well_res_norm_method in [1, 2], (
             "Method number for calculating the norm of coupled "
@@ -687,10 +692,19 @@ class DartsModel:
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
 
-            self.physics.engine.newton_residual_last_dt = (
-                # self.physics.engine.calc_newton_residual()
-                self.calc_residual_norm()
-            )  # calc norm of residual
+            # Compute norm of reservoir (+ DFM well) residuals
+            if not self.has_dfm_well:
+                self.physics.engine.newton_residual_last_dt = (
+                    # self.physics.engine.calc_newton_residual()
+                    self.calc_residual_norm()
+                )
+            elif self.has_dfm_well:
+                # Method is either 1 or 2
+                self.physics.engine.newton_residual_last_dt = (
+                    self.physics.engine.calc_coupled_well_reservoir_residual(
+                        self.data_ts.coupled_well_res_norm_method
+                    )
+                )
 
             # print("{:.4e}".format(self.calc_residual_norm()),
             #       "{:.4e}".format(self.physics.engine.newton_residual_last_dt))
@@ -708,10 +722,16 @@ class DartsModel:
                     print("Stationary point detected!")
                 break
 
-            self.physics.engine.well_residual_last_dt = (
-                # self.physics.engine.calc_well_residual()
-                self.calc_residual_norm(is_well=True)
-            )
+            # Compute norm of EPM well residuals
+            if not self.has_dfm_well:
+                self.physics.engine.well_residual_last_dt = self.calc_residual_norm(
+                    is_well=True
+                )
+            elif self.has_dfm_well:
+                self.physics.engine.well_residual_last_dt = (
+                    self.physics.engine.calc_well_residual()
+                )
+
             residual_history.append(
                 (
                     self.physics.engine.newton_residual_last_dt,  # matrix residual
