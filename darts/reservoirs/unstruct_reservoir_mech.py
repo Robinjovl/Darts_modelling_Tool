@@ -1177,7 +1177,9 @@ class UnstructReservoirMech:
         well.segment_volume = 0.0785 * 40  # 2.5 * pi * 0.15**2 / 4
         well.well_head_depth = 0
         well.well_body_depth = 0
-        well.segment_depth_increment = 1
+        # Since segment_volume is hard-coded, well_body_depth will is not used.
+        well.segment_depth_increment = 0
+
         self.wells.append(well)
 
         return 0
