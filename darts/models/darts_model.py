@@ -1040,8 +1040,10 @@ class DartsModel:
         nb_tot = self.reservoir.mesh.n_blocks
         n_vars = self.physics.n_vars
         n_ops = self.physics.n_ops
+
         res = 0
 
+        # Predefine index ranges
         for c in range(n_vars):
             if is_well:
                 irhs = slice(nb_res * n_vars + c, nb_tot * n_vars, n_vars)
@@ -1052,23 +1054,17 @@ class DartsModel:
                 iops = slice(c, nb_res * n_ops, n_ops)
                 ires = slice(0, nb_res)
 
-            match ntype:
-                case "L2":
-                    res = max(
-                        res,
-                        np.sqrt(
-                            np.sum(rhs[irhs] ** 2)
-                            / np.sum((volume[ires] * poro[ires] * ops[iops]) ** 2)
-                        ),
-                    )
-                case "Linf":
-                    for _c in range(n_vars):
-                        denom = volume[ires] * poro[ires] * ops[iops]
-                        denom[denom < 1e-4] = 1e4
-                        res = max(res, np.max(np.abs(rhs[irhs]) / denom))
-                case _:
-                    print("Not recognized type of norm: ", ntype)
-                    res = 1e10
+            denom = volume[ires] * poro[ires] * ops[iops]
+
+            if ntype == "L2":
+                val = np.sqrt(np.sum(rhs[irhs] ** 2) / np.sum(denom**2))
+            elif ntype == "Linf":
+                safe_denom = np.where(denom < 1e-4, 1e4, denom)
+                val = np.max(np.abs(rhs[irhs]) / safe_denom)
+            else:
+                raise ValueError(f"Unknown norm type: {ntype}")
+
+            res = max(res, val)
 
         return res
 
