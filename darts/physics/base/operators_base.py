@@ -181,7 +181,7 @@ class WellControlOperators(OperatorsBase):
         self.n_ops = 2 + self.nph * 4
 
         if is_dfm_well:
-            # For the EPM well, the flow factor is phase saturation
+            # For the DFM well, the flow factor is phase saturation
             self.get_rate_factor = lambda: self.property.sat[self.property.ph]
         else:
             # For the EPM well, the flow factor is phase mobility
