@@ -1179,22 +1179,82 @@ class UnstructReservoirMech:
         self.wells.append(well)
         return 0
 
-    def add_perforation(self, well, res_cell_idx: int, well_index: float):
+    def get_well(self, well_name: str):
+        """
+        Find well by name
+
+        :param well_name: Well name
+        :returns: :class:`ms_well` object
+        """
+        for w in self.wells:
+            if w.name == well_name:
+                return w
+
+    def add_perforation(
+        self,
+        well_name: str,
+        res_cell_idx: int,
+        well_seg_idx: int = None,
+        well_diameter: float = 0.3048,
+        well_index: float = None,
+        well_indexD: float = None,
+        segment_direction: str = "z_axis",
+        skin: float = 0.0,
+        ms_epm: bool = False,
+        verbose: bool = False,
+    ):
         """
         Function to add a perforation to the well
 
-        :param well: data object which contains data of the desired well
-        :param res_cell_idx: index of reservoir cell to be perforated
-        :type res_cell_idx: int
-        :param well_index: well index (productivity index)
-        :type well_index: float
-        :return:
+        :param well_seg_idx: Currently, this is only used for struct_reservoir.
+        :param res_cell_idx: Index of reservoir cell to be perforated
+        :type res_cell_idx: Reservoir cell index for the unstructured reservoir grid must be an integer.
         """
-        well_block = 0
+        well = self.get_well(well_name)
+
+        perf_indices = np.array(well.perforations, dtype=int)
+        # res_cell_idx has index=1 in perforation element: (well_block, res_cell_idx, well_index, well_indexD)
+        perf_indices = perf_indices[:, 1] if len(well.perforations) > 0 else []
+        if res_cell_idx in perf_indices:
+            print(
+                "There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!"
+            )
+            exit()
+
+        #  update well depth
+        perf_indices = np.append(perf_indices, res_cell_idx).astype(
+            int
+        )  # add current cell to previous perforation list
+        # set well depth to the top perforation depth
+        well.well_head_depth = np.array(self.mesh.depth, copy=False)[perf_indices].min()
+        well.well_body_depth = well.well_head_depth
+
+        if well_index is None or well_indexD is None:
+            # calculate well index and get local index of reservoir block
+            wi, wid = self.discretizer.calc_equivalent_well_index(
+                res_cell_idx, well_diameter, skin
+            )
+            well_index = wi if well_index is None else well_index
+            well_indexD = wid if well_indexD is None else well_indexD
+
+        assert well_index >= 0
+        assert well_indexD >= 0
+
+        # set well segment index (well block) equal to index of perforation layer
+        if ms_epm:
+            well_block = len(well.perforations)
+        else:
+            well_block = 0
+
         well.perforations = well.perforations + [
-            (well_block, res_cell_idx, well_index, 0.0)
+            (well_block, res_cell_idx, well_index, well_indexD)
         ]
-        return 0
+
+        if verbose:
+            print(
+                f'Added perforation for well {well.name} to block {res_cell_idx:d} with WI={well_index:f}, WID={well_indexD:f}'
+            )
+        return
 
     def get_props_over_output(self, property_array, ith_step, engine):
         if self.discretizer_name == 'mech_discretizer':
