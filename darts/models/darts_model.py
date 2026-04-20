@@ -1031,10 +1031,11 @@ class DartsModel:
         """
         Calculate norm of RHS vector
         """
-        rhs = np.array(self.physics.engine.RHS, copy=False)
-        volume = np.array(self.reservoir.mesh.volume, copy=False)
-        poro = np.array(self.reservoir.mesh.poro, copy=False)
-        ops = np.array(self.physics.engine.op_vals_arr, copy=False)
+        rhs = np.asarray(self.physics.engine.RHS)
+        volume = np.asarray(self.reservoir.mesh.volume)
+        poro = np.asarray(self.reservoir.mesh.poro)
+        ops = np.asarray(self.physics.engine.op_vals_arr)
+
         nb_res = self.reservoir.mesh.n_res_blocks
         nb_tot = self.reservoir.mesh.n_blocks
         n_vars = self.physics.n_vars
