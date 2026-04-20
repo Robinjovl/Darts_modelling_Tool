@@ -736,6 +736,7 @@ class DartsModel:
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
+        self._linear_solver_rc_last = 0
         self.timer.node["simulation"].start()
 
         residual_history = []
@@ -845,7 +846,14 @@ class DartsModel:
                         )
                 else:
                     # compile-tyme C++ linear solvers
-                    self.physics.engine.solve_linear_equation()
+                    rc = self.physics.engine.solve_linear_equation()
+                    if rc != 0:
+                        # Abort the Newton loop on a failed linear solve so that
+                        # post_newtonloop sees linear_solver_error_last_dt != 0
+                        # and returns converged=0 without burning the full
+                        # max_newt budget on stale dX updates.
+                        self._linear_solver_rc_last = rc
+                        break
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()

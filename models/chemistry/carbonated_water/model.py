@@ -202,7 +202,7 @@ class Model(CICDModel):
 
         if self.domain == '3D':
             p_obl_max = self.pressure_init + 70
-            n_obl_pressure = 1001
+            n_obl_pressure = 2001
         else:
             p_obl_max = self.pressure_init + 5
             n_obl_pressure = 201
@@ -215,7 +215,7 @@ class Model(CICDModel):
 
             self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 101, 101, 101], dtype=np.intp))
             self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.3]
-            self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.03, 0.03, 0.37]
+            self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.04, 0.04, 0.39]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                                [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
@@ -723,18 +723,24 @@ class Model(CICDModel):
                     )
                     self.output.well_cfl.append(self.physics.engine.CFL_max)
             else:
-                dt /= data_ts.dt_mult
+                if getattr(self, '_linear_solver_rc_last', 0) != 0:
+                    dt /= 10.0
+                    n_bad_steps += 2
+                else:
+                    dt /= data_ts.dt_mult
+                    n_bad_steps += 1
                 n_good_steps = 0
-                n_bad_steps += 1
 
                 if n_bad_steps > 1:
                     data_ts.dt_max /= 2.
                     n_bad_steps = 0
 
                 if verbose:
-                    print("Cut timestep to %2.10f" % dt)
-                assert dt > data_ts.dt_min, ('Stop simulation. Reason: reached min. timestep '
-                                                 + str(data_ts.dt_min) + ' dt=' + str(dt))
+                    print("Cut timestep to %2.10f (solver rc=%d)"
+                          % (dt, getattr(self, '_linear_solver_rc_last', 0)))
+                if dt <= data_ts.dt_min:
+                    raise RuntimeError('Stop simulation. Reason: reached min. timestep '
+                                       + str(data_ts.dt_min) + ' dt=' + str(dt))
 
         # update current engine time
         self.physics.engine.t = stop_time

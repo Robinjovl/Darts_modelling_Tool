@@ -6,6 +6,21 @@ from darts.engines import redirect_darts_output
 import numpy as np
 from visualization import plot_profiles, plot_new_profiles, animate_1d
 
+
+def build_report_timesteps(segments):
+    """Build a per-step dt array from (upper_cum, n_steps) segments.
+
+    Each segment [lower, upper] is divided into n_steps equal substeps.
+    lower is 0 for the first segment, and the previous upper thereafter.
+    """
+    dts = []
+    lower = 0.0
+    for upper, n in segments:
+        dts.extend([(upper - lower) / n] * n)
+        lower = upper
+    return np.array(dts)
+
+
 def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str = None, poro_filename: str = None,
                    output: bool = False, interpolator: str = 'multilinear', minerals: list = ['calcite'],
                    kinetic_mechanisms: list = ['acidic', 'neutral', 'carbonate'], output_folder: str = None,
@@ -117,17 +132,25 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             ith_step += 1
 
             if report_timesteps is None:
+                # (upper_cum, n_steps) — extra refinement applied only in [1e-2, 1e-1]
+                segments = [
+                    (0.001, 2),
+                    (0.005, 2),
+                    (0.010, 2),
+                    (0.030, 8),   # refined (was 4)
+                    (0.050, 4),   # refined (was 2)
+                    (0.100, 4),   # refined (was 2)
+                    (0.300, 4),
+                    (0.500, 2),
+                ]
+                base = build_report_timesteps(segments)
                 if domain == '2D':
-                    report_timesteps = np.array([0.001, 0.001, 0.001, 0.002, 0.005,
-                                                0.01, 0.01, 0.02, 0.05,
-                                                0.1, 0.1, 0.2]) * 1e-4 / m.inj_rate
-                    n_fine = 3
+                    report_timesteps = base * 1e-4 / m.inj_rate
+                    n_fine = 6
                     dt_max_bump = 1.0
                 else:  # 3D
-                    report_timesteps = np.array([0.001, 0.001, 0.001, 0.002, 0.005,
-                                                0.01, 0.01, 0.02, 0.05,
-                                                0.1, 0.1, 0.2]) * 0.0016128 / m.inj_rate
-                    n_fine = 3
+                    report_timesteps = base * 0.0016128 / m.inj_rate
+                    n_fine = 6
                     dt_max_bump = 30.0
                 default_run = True
             else:
