@@ -143,12 +143,11 @@ class THMCModel(DartsModel):
         # create physics
         if self.idata.type_mech == 'thermoporoelasticity':
             property_container.enthalpy_ev = dict(
-                [('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))]
+                [('wat', EnthalpyBasic(hcap=self.idata.fluid.heat_capacity, tref=0.0))]
             )
-            property_container.rock_energy_ev = EnthalpyBasic(
-                hcap=1.0, tref=0.0
-            )  # TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+            property_container.conductivity_ev = dict(
+                [('wat', ConstFunc(self.idata.fluid.thermal_conductivity))]
+            )
 
             thermal = True
             state_spec = (

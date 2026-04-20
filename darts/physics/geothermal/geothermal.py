@@ -100,6 +100,8 @@ class GeothermalPropertiesBase(PropertyBase):
     nph = 2
 
     def __init__(self):
+        self.components_name = ["H2O"]
+        self.phases_name = ["water", "steam"]
         self.Mw = np.zeros(self.nc)
         self.nu = np.zeros(self.nph)
         self.x = np.zeros((self.nph, self.nc))
@@ -159,8 +161,8 @@ class GeothermalIAPWSFluidProps(FluidProps):
     def __init__(self):
         super().__init__()
 
-        self.components = ['water']
-        self.phases = ["water", "steam"]
+        self.components_name = ['water']
+        self.phases_name = ["water", "steam"]
         self.temperature_ev = iapws_temperature_evaluator()  # Create temperature object
         self.enthalpy_ev = {
             'water': iapws_water_enthalpy_evaluator(),
@@ -189,7 +191,7 @@ class GeothermalIAPWSFluidProps(FluidProps):
 class GeothermalPHProperties(GeothermalPropertiesBase):
     def __init__(self):
         super().__init__()
-        self.phases = ["water", "steam"]
+        self.phases_name = ["water", "steam"]
 
     def run_flash(self, pressure, enthalpy):
         _ = self.flash_ev.evaluate(pressure, enthalpy)

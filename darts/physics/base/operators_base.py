@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.engines import operator_set_evaluator_iface, value_vector
+from darts.interpolators import operator_set_evaluator_iface, value_vector
 from darts.physics.base.property_base import PropertyBase
 
 
@@ -55,6 +55,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         zc = np.append(state[1 : self.nc], 1 - np.sum(state[1 : self.nc]))
 
         if len(zc) > 2 and zc[-1] < 0.99 * self.eps_z and self.extrapolation_flag:
+            # TODO: Fix second condition, this is problematic for small eps_z values (~1e-14)
             self.extrapolate(state, values)
             return True
         else:
@@ -221,7 +222,9 @@ class WellControlOperators(OperatorsBase):
                 * mobility
             )
 
-        # Store P, T and composition of current state
+        # Store pressure (P) and temperature (T) of the current state for a generic state specification.
+        # This is needed when pressure or temperature is not part of the state variables
+        # (e.g., volume instead of pressure, or enthalpy instead of temperature).
         idx += self.nph
         values_np[idx + 0] = state[0]
         values_np[idx + 1] = self.property.temperature
@@ -229,9 +232,9 @@ class WellControlOperators(OperatorsBase):
         return 0
 
 
-class WellInitOperators(OperatorsBase):
+class ThermalVarOperator(OperatorsBase):
     """
-    WellInitOperators initialize the well BHP/BHT for generic state specification
+    ThermalVarOperator gives the thermal variable for generic state specification
     """
 
     def __init__(
@@ -243,11 +246,11 @@ class WellInitOperators(OperatorsBase):
         dz: float = None,
     ):
         """
-        Constructor of WellInitOperators class
+        Constructor of ThermalVarOperator class
 
         :param property_container: Property container of type PropertyBase
         :param thermal: Switch to indicate if energy conservation equation is there
-        :param is_pt: Switch to indicate if state specification is P/PT or PH
+        :param is_pt: Switch to indicate if state specification is P, PT, or PH
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
@@ -313,9 +316,9 @@ class PropertyOperators(OperatorsBase):
         The user-specified properties are stored in the `values` object.
 
         :param state: Vector of state variables [pres, comp_0, ..., comp_N-1, (temp)]
-        :type state: darts.engines.value_vector
+        :type state: darts.interpolators.value_vector
         :param values: Vector for storage of operator values
-        :type values: darts.engines.value_vector
+        :type values: darts.interpolators.value_vector
         """
         # Check if extrapolation needs to be applied
         if super().apply_extrapolation(state, values):

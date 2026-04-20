@@ -17,7 +17,7 @@ pip install open-darts
 
 Models that rely on PHREEQC/Reaktoro chemistry backends need the optional third-party stack. Activate the Conda environment you use for development, install Reaktoro via `conda install -c conda-forge reaktoro` (see the [official guide](https://reaktoro.org/installation/installation-using-conda.html)), and invoke `./helper_scripts/build_darts_cmake.sh -p` (or the `.bat` variant on Windows) to build the accompanying iPHREEQC libraries.
 
-openDARTS is available for Python 3.9 to 3.12 for x86_64 architecture both for Linux and Windows.
+The recent version of openDARTS is available for Python 3.10 to 3.13 for x86_64 architecture both for Linux and Windows.
 
 To build openDARTS please check the [instructions in our wiki](https://gitlab.com/open-darts/open-darts/-/wikis/Build-instructions).
 

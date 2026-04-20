@@ -102,7 +102,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
             "Indices of perforated segments must be smaller than the number of well segments!"
         )
 
-        self.segments_lengths = pipe_geometry.segments_lengths
+        self.segment_lengths = pipe_geometry.segment_lengths
 
         self.q_lateral_heat = []
 
@@ -147,7 +147,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
             # For constant overall heat transfer coefficient
             # I should see if U is based on ID or OD of the pipe. I think it's based on ID.
             self.q_lateral_heat = (
-                (2 * np.pi * self.segments_lengths)
+                (2 * np.pi * self.segment_lengths)
                 * self.Ui
                 * (self.T_earth - T_segments)
                 / f_t
@@ -160,7 +160,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
                 2
                 * np.pi
                 * self.K_earth
-                * self.segments_lengths
+                * self.segment_lengths
                 * (self.T_earth - T_segments)
                 / (f_t + self.K_earth / (r_to * U_to))
             )
@@ -214,7 +214,7 @@ def add_numerical_well_lateral_heat_transfer(
         "Well radius must be a float; otherwise, it's not supported!"
     )
     well_perimeter = 2 * np.pi * well_geometry.pipe_IR
-    A = well_perimeter * well_geometry.segments_lengths
+    A = well_perimeter * well_geometry.segment_lengths
     assert isinstance(well_wall_thickness, float), (
         "Well wall thickness must be a float; otherwise, it's not supported!"
     )
@@ -300,7 +300,7 @@ def add_numerical_well_lateral_heat_transfer(
 #             "Pipe radius must be a float; otherwise, it's not supported!"
 #         )
 #         pipe_perimeter = 2 * np.pi * pipe_geometry.pipe_IR
-#         A = pipe_perimeter * pipe_geometry.segments_lengths
+#         A = pipe_perimeter * pipe_geometry.segment_lengths
 #         assert isinstance(pipe_wall_thickness, float), (
 #             "Pipe wall thickness must be a float; otherwise, it's not supported!"
 #         )

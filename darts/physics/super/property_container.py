@@ -81,6 +81,7 @@ class PropertyContainer(PropertyBase):
 
         # passing arguments
         self.x = np.zeros((self.np_fl, self.nc_fl))
+        self.x_mass = np.zeros((self.np_fl, self.nc_fl))
         self.dens = np.zeros(self.nph)
         self.dens_m = np.zeros(self.nph)
         self.sat = np.zeros(self.nph)
@@ -110,7 +111,8 @@ class PropertyContainer(PropertyBase):
 
     def get_state(self, state):
         """
-        Get tuple of (pressure, temperature, [z0, ... zn-1]) at current OBL point (state)
+        Get tuple of (pressure, state_spec_2 (temperature/enthalpy/entropy),
+                      [z0, ... zn-1]) at current OBL point (state)
         If isothermal, temperature returns initial temperature.
         If solids are present, the modified variables zc* sum to 1 and correspond to saturation for the solid components.
         To obtain mole fractions of the fluid components, one needs to normalize zc* for the fluid components.
@@ -126,11 +128,11 @@ class PropertyContainer(PropertyBase):
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:
-            temperature = vec_state_as_np[-1]
+            state_spec_2 = vec_state_as_np[-1]
         else:
-            temperature = self.temperature
+            state_spec_2 = self.temperature
 
-        return pressure, temperature, zc
+        return pressure, state_spec_2, zc
 
     def comp_out_of_bounds(self, vec_composition):
         # Check if composition sum is above 1 or element comp below 0, i.e. if point is unphysical:
@@ -177,17 +179,12 @@ class PropertyContainer(PropertyBase):
         self.ph = self.run_flash(
             pressure, temperature, zc, evaluate_PT=evaluate_PT_from_PHflash
         )
-        self.temperature = (
-            temperature
-            if evaluate_PT_from_PHflash
-            else self.flash_ev.get_flash_results().temperature
-        )
 
         for j in self.ph:
             M = np.sum(self.Mw * self.x[j][:])
             self.dens_m[j] = (
                 self.density_ev[self.phases_name[j]].evaluate(
-                    pressure, self.temperature, self.x[j, :]
+                    pressure, temperature, self.x[j, :]
                 )
                 / M
             )
@@ -210,7 +207,7 @@ class PropertyContainer(PropertyBase):
 
         return enthalpy
 
-    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = False):
+    def run_flash(self, pressure, state_spec_2, zc, evaluate_PT: bool = False):
         # Normalize fluid compositions
         zc_norm = (
             zc if not self.ns else zc[: self.nc_fl] / (1.0 - np.sum(zc[self.nc_fl :]))
@@ -219,18 +216,22 @@ class PropertyContainer(PropertyBase):
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
         if evaluate_PT:
             # In case of PH-formulation, PT flashes are required for calculating initial distribution
-            error_output = self.flash_ev.evaluate_PT(pressure, temperature, zc_norm)
+            error_output = self.flash_ev.evaluate(
+                pressure, state_spec_2, zc_norm, evaluate_PT=True
+            )
             flash_results = self.flash_ev.get_flash_results(evaluate_PT=True)
+            self.temperature = state_spec_2
         else:
-            error_output = self.flash_ev.evaluate(pressure, temperature, zc_norm)
+            error_output = self.flash_ev.evaluate(pressure, state_spec_2, zc_norm)
             flash_results = self.flash_ev.get_flash_results()
+            self.temperature = flash_results.temperature
 
         self.nu = np.array(flash_results.nu)
 
         try:
             self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
         except ValueError as e:
-            print(e.args[0], pressure, temperature, zc)
+            print(e.args[0], pressure, state_spec_2, zc)
             error_output += 1
 
         # Set present phase idxs
@@ -260,19 +261,19 @@ class PropertyContainer(PropertyBase):
         :type state: value_vector
         """
         # Composition vector and pressure from state:
-        pressure, temperature, zc = self.get_state(state)
+        pressure, state_spec_2, zc = self.get_state(state)
 
         self.clean_arrays()
 
         # Run flash
         self.ph = self.run_flash(
-            pressure, temperature, zc, evaluate_PT=self.evaluate_PT_bool
+            pressure, state_spec_2, zc, evaluate_PT=self.evaluate_PT_bool
         )
         self.pressure = pressure
-        self.temperature = (
-            self.flash_ev.get_flash_results().temperature
-            if not isinstance(self.flash_ev, int)
-            else self.temperature
+        assert self.pressure is not None, (
+            "PropertyContainer does not specify self.pressure, should be set to "
+            "pressure in case of pressure-based flash, "
+            "self.flash.pressure in case of volume-based flash"
         )
         assert self.temperature is not None, (
             "PropertyContainer does not specify self.temperature, should be set to "
@@ -284,14 +285,19 @@ class PropertyContainer(PropertyBase):
             M = np.sum(self.Mw[: self.nc_fl] * self.x[j][: self.nc_fl])
 
             self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
-                pressure, self.temperature, self.x[j, :]
+                self.pressure, self.temperature, self.x[j, :]
             )  # output in [kg/m3]
             self.dens_m[j] = (
                 self.dens[j] / M
             )  # molar density [kg/m3]/[kg/kmol]=[kmol/m3]
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
-                pressure, self.temperature, self.x[j, :], self.dens[j]
+                self.pressure, self.temperature, self.x[j, :], self.dens[j]
             )  # output in [cp]
+
+            self.x_mass[j, :] = (self.x[j, : self.nc_fl] * self.Mw[: self.nc_fl]) / sum(
+                self.x[j, : self.nc_fl] * self.Mw[: self.nc_fl]
+            )
+
         self.compute_saturation(self.ph)
 
         self.pc = self.capillary_pressure_ev.evaluate(self.sat)
@@ -303,11 +309,13 @@ class PropertyContainer(PropertyBase):
             idx = self.np_fl + j
             self.sat[idx] = zc[self.nc_fl + j]
             self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
-                pressure, self.temperature
+                self.pressure, self.temperature
             )
             self.dens_m[idx] = self.dens[idx] / self.Mw[self.nc_fl + j]
 
-        self.mass_source = self.evaluate_mass_source(pressure, self.temperature, zc)
+        self.mass_source = self.evaluate_mass_source(
+            self.pressure, self.temperature, zc
+        )
 
         return
 
@@ -318,21 +326,18 @@ class PropertyContainer(PropertyBase):
         :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
         :type state: value_vector
         """
-        # Composition vector and pressure from state:
-        pressure, temperature, zc = self.get_state(state)
-
         for j in self.ph:
             self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(
-                pressure, self.temperature, self.x[j, :]
+                self.pressure, self.temperature, self.x[j, :]
             )  # kJ/kmol
             self.cond[j] = self.conductivity_ev[self.phases_name[j]].evaluate(
-                pressure, self.temperature, self.x[j, :], self.dens[j]
+                self.pressure, self.temperature, self.x[j, :], self.dens[j]
             )
 
         for j in range(self.ns):
             idx = self.np_fl + j
             self.enthalpy[idx] = self.enthalpy_ev[self.phases_name[idx]].evaluate(
-                pressure, self.temperature, self.x[0, :]
+                self.pressure, self.temperature, self.x[0, :]
             )
             self.cond[idx] = self.conductivity_ev[self.phases_name[idx]].evaluate()
 
@@ -343,23 +348,24 @@ class PropertyContainer(PropertyBase):
 
         for _, reaction in self.kinetic_rate_ev.items():
             self.energy_source += reaction.evaluate_enthalpy(
-                pressure, self.temperature, self.x, self.sat[-1]
+                self.pressure, self.temperature, self.x, self.sat[-1]
             )
 
         return
 
     def evaluate_at_cond(self, state):
         # Composition vector and pressure from state:
-        pressure, temperature, zc = self.get_state(state)
+        pressure, state_spec_2, zc = self.get_state(state)
 
-        ph = self.run_flash(pressure, temperature, zc)
-        self.temperature = self.flash_ev.get_flash_results().temperature
+        ph = self.run_flash(
+            pressure, state_spec_2, zc, evaluate_PT=self.evaluate_PT_bool
+        )
 
         for j in ph:
             M = np.sum(self.Mw * self.x[j][:])  # molar weight of mixture
             self.dens_m[j] = (
                 self.density_ev[self.phases_name[j]].evaluate(
-                    pressure, self.temperature, self.x[j][:]
+                    self.pressure, self.temperature, self.x[j][:]
                 )
                 / M
             )

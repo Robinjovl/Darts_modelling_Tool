@@ -226,9 +226,9 @@ void engine_base_gpu::apply_local_chop_correction(std::vector<value_t> &X, std::
     new_z[nc - 1] = 1.0;
     for (int j = 0; j < nc - 1; j++)
     {
-      old_z[j] = X[i * n_vars + j + z_var];
+      old_z[j] = X[i * n_vars + j + z_var_idx];
       old_z[nc - 1] -= old_z[j];
-      new_z[j] = old_z[j] - dX[i * n_vars + j + z_var];
+      new_z[j] = old_z[j] - dX[i * n_vars + j + z_var_idx];
       new_z[nc - 1] -= new_z[j];
     }
 
@@ -244,7 +244,7 @@ void engine_base_gpu::apply_local_chop_correction(std::vector<value_t> &X, std::
     if (ratio < 1.0) // perform chopping if ratio is below 1.0
     {
       n_corrected++;
-      for (int j = z_var; j < z_var + nc - 1; j++)
+      for (int j = z_var_idx; j < z_var_idx + nc - 1; j++)
       {
         dX[i * n_vars + j] *= ratio;
       }
@@ -316,6 +316,7 @@ int engine_base_gpu::test_assembly(int n_times, int kernel_number, int dump_jaco
          timer->node["jacobian assembly"].node["interpolation"].get_timer_gpu() / n_times,
          timer->node["jacobian assembly"].node["kernel"].get_timer_gpu() / n_times);
   //printf ("Average assembly kernel: %e sec\n", timer->node["test_assembly"].get_timer_gpu() / n_times);
+  return 0;
 }
 
 int engine_base_gpu::test_spmv(int n_times, int kernel_number, int dump_result)

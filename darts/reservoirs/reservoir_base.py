@@ -14,13 +14,14 @@ class ReservoirBase:
     """
 
     mesh: conn_mesh
-    wells: ms_well_vector = []
+    wells: list[ms_well]
 
     def __init__(self, timer: timer_node, cache: bool = False):
         # Initialize timer for initialization and caching
         self.timer = timer.node["initialization"]
 
         self.cache = cache
+        self.mesh = None
         self.wells = []
 
         self.poro, self.permx, self.permy, self.permz = [], [], [], []
@@ -43,7 +44,7 @@ class ReservoirBase:
         It calls discretize() to generate mesh object and adds the wells with perforations to the mesh.
         """
         # if block is used to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
-        if not hasattr(self, "mesh"):
+        if self.mesh is None:
             self.mesh = self.discretize(verbose)
         return
 
@@ -116,7 +117,9 @@ class ReservoirBase:
             assert well_geometry is None, (
                 "For EPM, well_geometry must not be specified!"
             )
-            # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
+            # Large well trans for EPM well model
+            well.well_transmissibility = 1e5
+            # First put only area in segment_volume to be multiplied by segment length later. segment_volume is the volume of
             # the segment in front of the reservoir cell which is perforated.
             well.segment_volume = pi / 4 * well_diameter**2
             # will be updated in add_perforation

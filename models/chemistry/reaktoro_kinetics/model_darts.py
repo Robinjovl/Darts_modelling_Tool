@@ -32,12 +32,12 @@ from reaktoro import (
 class MyOutput(Output):
     def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder: str, sol_filename: str,
                  well_filename: str, save_initial: bool, all_phase_props: bool, precision: str, compression: str,
-                 verbose: bool):
+                 compression_level : int, verbose: bool):
 
         super().__init__(timer=timer, reservoir=reservoir, physics=physics, op_list=op_list, params=params,
                          output_folder=output_folder, sol_filename=sol_filename, well_filename=well_filename,
                          save_initial=save_initial, all_phase_props=all_phase_props, precision=precision,
-                         compression=compression, verbose=verbose)
+                         compression=compression, compression_level=compression_level, verbose=verbose)
 
         # prepare arrays for evaluation of properties
         n_prop_ops = self.physics.n_property_itor_ops
@@ -243,7 +243,7 @@ class Model(CICDModel):
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,
-                   precision : str = 'd', compression : str = 'gzip', verbose : bool = False):
+                   precision : str = 'd', compression : str = 'gzip', compression_level = 0, verbose : bool = False):
         self.output_folder = output_folder
         self.sol_filename  = sol_filename
         self.well_filename = well_filename
@@ -251,7 +251,8 @@ class Model(CICDModel):
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
 
         self.output = MyOutput(self.timer, self.reservoir, self.physics, self.op_list, self.params, self.output_folder,
-                               self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
+                               self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression,
+                               compression_level, verbose)
 
     def set_initial_conditions(self):
         input_distribution = {'pressure': self.pressure_init,

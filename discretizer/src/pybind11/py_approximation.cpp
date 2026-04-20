@@ -44,13 +44,13 @@ template <VarName... Names>
 struct VarNameHelper;
 
 template <VarName V>
-struct VarNameHelper<V> 
+struct VarNameHelper<V>
 {
   static inline const std::string value = std::string(var_to_string(V));
 };
 
 template <VarName First, VarName... Rest>
-struct VarNameHelper<First, Rest...> 
+struct VarNameHelper<First, Rest...>
 {
   static inline const std::string value = std::string(var_to_string(First)) + VarNameHelper<Rest...>::value;
 };
@@ -89,7 +89,7 @@ struct linear_approximation_exposer
 	  .def(py::pickle(
 		[](const std::vector<LinearApproximation<VarNames...>>& ap) { // __getstate__
 		  py::tuple t(ap.size());
-		  for (int i = 0; i < ap.size(); i++)
+		  for (size_t i = 0; i < ap.size(); i++)
 			t[i] = ap[i];
 
 		  return t;
@@ -97,7 +97,7 @@ struct linear_approximation_exposer
 		[](py::tuple t) { // __setstate__
 		  std::vector<LinearApproximation<VarNames...>> ap(t.size());
 
-		  for (int i = 0; i < ap.size(); i++)
+		  for (size_t i = 0; i < ap.size(); i++)
 			ap[i] = t[i].cast<LinearApproximation<VarNames...>>();
 
 		  return ap;

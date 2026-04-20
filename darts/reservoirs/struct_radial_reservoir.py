@@ -320,28 +320,13 @@ class StructRadialReservoir(StructReservoir):
         self.output_points[:, 1] = points[:, 0] * np.sin(points[:, 1])
         self.output_cells = cells
 
-    def populate_data_for_radial_vtk_output(self, data):
+    def populate_data_for_radial_vtk_output(self, data, prop_names: list):
         new_data = {}
-        _n_cells = self.reservoir.mesh.n_res_blocks
-        for prop, val in data.items():
+        for ith_prop, prop in enumerate(prop_names):
             # populate r-z data to all angles
-            new_data[prop] = np.tile(val, self.reservoir.nphi)
+            new_data[prop] = np.tile(data[ith_prop, :], self.nphi)
 
         return new_data
-
-    def get_unknowns_for_radial_vtk_output(self):
-        X = np.array(self.physics.engine.X, copy=False)
-
-        # prepare data
-        data = {}
-        n_cells = self.reservoir.mesh.n_res_blocks
-        for i, var in enumerate(self.physics.vars):
-            # write r-z data
-            data[var] = X[i : self.physics.n_vars * n_cells : self.physics.n_vars]
-            # populate r-z data to all angles
-            data[var] = np.tile(data[var], self.reservoir.nphi)
-
-        return data
 
     def output_to_vtk(
         self,
@@ -351,19 +336,16 @@ class StructRadialReservoir(StructReservoir):
         prop_names: list,
         data: dict,
     ):
-        import os
-
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+        data = self.populate_data_for_radial_vtk_output(data, prop_names)
 
         geometries = ['hexahedron']
         cell_data = {prop: [[] for geometry in geometries] for prop in prop_names}
         for prop in prop_names:
-            cell_data[prop][0] += data[prop][0].tolist()
+            cell_data[prop][0] += data[prop].tolist()
 
         import meshio
 
         mesh = meshio.Mesh(
             points=self.output_points, cells=self.output_cells, cell_data=cell_data
         )
-        meshio.write(f"{output_directory:s}/solution{ith_step:d}.vtk", mesh)
+        meshio.write(f"{output_directory:s}/solution_ts{ith_step:d}.vtk", mesh)

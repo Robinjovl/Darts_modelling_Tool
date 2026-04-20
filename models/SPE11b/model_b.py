@@ -99,9 +99,8 @@ class Model(DartsModel):
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4, tol_newton=1e-3,
                             it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
         self.params.newton_params[0] = 0.05
-        self.data_ts.eta = np.ones(self.physics.n_vars)
-        self.params.nonlinear_norm_type = self.params.LINF  # linf if you use m.set_rhs() for injection
-
+        # self.data_ts.eta = np.ones(self.physics.n_vars)
+        self.params.nonlinear_norm_type = self.params.L2  # linf if you use m.set_rhs() for injection
 
         """Define the reservoir and wells """
         well_centers = {
@@ -115,6 +114,7 @@ class Model(DartsModel):
                                                 layers_to_regions=layers_to_regions,
                                                     model_specs=specs, well_centers=well_centers)
         else:
+            # homogeneous permeability field for SPE11 physics
             from fluidflower_str_b_homo import FluidFlowerStruct
             self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
                                                 layers_to_regions=layers_to_regions,
@@ -229,22 +229,30 @@ class Model(DartsModel):
         }
 
         # Fluid components, ions and solid
-        comp_data = CompData(self.components, setprops=True)
-        nc, ni = comp_data.nc, comp_data.ni
-        # len(components)
-        flash_params = FlashParams(comp_data)
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
-                               AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
-                               AQEoS.CompType.ion: AQEoS.Jager2003
-                               })
-        flash_params.add_eos("PR", pr)
-        flash_params.add_eos("AQ", aq)
-        flash_params.eos_order = ["PR", "AQ"]
+        from dartsflash.libflash import EoS
+        from dartsflash.components import CompData
+        from dartsflash.mixtures import DARTSFlash, VLAq
+        # Fluid components, ions and solid
+        components = ["H2O", "CO2"]
+        self.components = components
         phases = ["V", "Aq"]
+        comp_data = CompData(components, setprops=True)
+        nc = len(components)
 
-        # Flash-related parameters
-        # flash_params.split_switch_tol = 1e-3
+        """ Define flash """
+        flash_ev = VLAq(comp_data, hybrid=True)
+        flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE],
+                            trial_comps=[InitialGuess.Yi.Wilson],
+                            stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
+                            )
+        flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+        pr = flash_ev.eos["VL"]
+        aq = flash_ev.eos["Aq"]
+
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash, eos_order=["VL", "Aq"],
+                            t_min=270., t_max=500., t_init=300.,
+                            # pxflash_switch_ttol=1e-3, near_zero_px=1e-2,
+                            )
 
         if temperature is None:  # if None, then thermal=True
             thermal = True
@@ -255,13 +263,14 @@ class Model(DartsModel):
 
         pres_in = 210 # (pressure at depth of well 1 will be 300 bar)
         min_t = 273.15 if temperature is None else None
-        max_t = 373.15 + 100 if temperature is None else None
+        max_t = 373.15 if temperature is None else None
         self.physics = Compositional(self.components, phases, timer=self.timer,
                                      n_points=n_points, min_p=200, max_p=450,
                                      min_z=0., max_z=1., epsilon_z=self.zero/10, min_t=min_t, max_t=max_t,
                                      state_spec = state_spec,
+                                     extrapolation_flag = False,
                                      cache=False)
-        self.physics.n_axes_points[0] = 101  # sets OBL points for pressure
+        self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
 
         dispersivity = 10.
         self.physics.dispersivity = {}
@@ -272,7 +281,7 @@ class Model(DartsModel):
             property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
                                                    eps_z=self.zero / 10, temperature=temperature)
 
-            property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
+            property_container.flash_ev = flash_ev
             property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw)),
                                                   ('Aq', Garcia2001(self.components)), ])
             property_container.viscosity_ev = dict([('V', Fenghour1998()),
@@ -384,7 +393,7 @@ class Model(DartsModel):
             copy_data_to_device(self.reservoir.mesh.op_num, op_num_d)
 
     def set_initial_conditions(self):
-        if 0:
+        if 1:
             pres_in = 212
             input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
 
@@ -396,12 +405,19 @@ class Model(DartsModel):
                     self.input_distribution[self.components[i]] = [self.zero, self.zero]
 
             if self.specs['temperature'] is None:
-                self.input_distribution["temperature"] = [313.4, 342.9]
+                bot_cell = self.reservoir.bot_cells[0]
+                T_spec_bot = 273.15 + 70 - self.reservoir.centroids[bot_cell, 2] * 0.025
+
+                top_cell = self.reservoir.top_cells[0]
+                T_spec_top = 273.15 + 70 - self.reservoir.centroids[top_cell, 2] * 0.025
+
+                self.input_distribution["temperature"] = [T_spec_top, T_spec_bot]
 
             self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
                                                                  input_depth=input_depths,
                                                                  input_distribution=self.input_distribution)
-        else:
+
+        if 0:
             self.temp = lambda depth: 273.15 + 70. - depth * 0.025
 
             depths = np.asarray(self.reservoir.mesh.depth)
@@ -538,99 +554,99 @@ class Model(DartsModel):
             self.physics.engine.X[target_cell] = T_spec_top
         return
 
-    def run(self, days: float = None, restart_dt: float = 0., save_well_data: bool = True, save_well_data_after_run: bool = False,
-            save_reservoir_data: bool = True, verbose: bool = True):
-
-        days = days if days is not None else self.runtime
-        data_ts = self.data_ts
-
-        # get current engine time
-        t = self.physics.engine.t
-        stop_time = t + days
-
-        # same logic as in engine.run
-        if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
-            dt = data_ts.dt_first
-        elif restart_dt > 0.:
-            dt = restart_dt
-        else:
-            dt = min(self.prev_dt * data_ts.dt_mult, days, data_ts.dt_max)
-
-        self.prev_dt = dt
-
-        ts = 0
-
-        nc = self.physics.n_vars
-        nb = self.reservoir.mesh.n_res_blocks
-        max_dx = np.zeros(nc)
-
-        if np.fabs(data_ts.dt_mult - 1) < 1e-10:
-            omega = 0.
-        else:
-            omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
-
-        while t < stop_time:
-            xn = np.array(self.physics.engine.Xn, copy=True)[:nb * nc]  # need to copy since Xn will be updated Xn = X
-            converged = self.run_timestep(dt, t, verbose)
-
-            if converged:
-                t += dt
-                self.physics.engine.t = t
-                ts += 1
-
-                x = np.array(self.physics.engine.X, copy=False)[:nb * nc]
-                dt_mult_new = data_ts.dt_mult # current multiplier
-                for i in range(nc):
-                    # propose new multiplier based on change of solution
-                    max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
-                    mult = ((1 + omega) * data_ts.eta[i]) / (max_dx[i] + omega * data_ts.eta[i])
-                    if mult < dt_mult_new: # if the proposed multiplier is smaller than the specified maximum timestep
-                        dt_mult_new = mult # the new multiplier = proposed multiplier
-
-                if verbose:
-                    print("# %d \tT = %.3g\tDT = %.2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tmax_dX=%4s"
-                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
-                             dt_mult_new, np.round(max_dx, 3)))
-
-                dt = min(dt * dt_mult_new, data_ts.dt_max) # define the new timestep according to the new multiplier
-
-                if np.fabs(t + dt - stop_time) < data_ts.dt_min:
-                    dt = stop_time - t
-
-                if t + dt > stop_time:
-                    dt = stop_time - t
-                else:
-                    self.prev_dt = dt
-
-                # save well data at every converged time step
-                if save_well_data and save_well_data_after_run is False:
-                    self.output.save_data_to_h5(kind='well')
-
-            else:
-                dt /= data_ts.dt_mult
-                if verbose:
-                    print("Cut timestep to %2.10f" % dt)
-                assert dt > data_ts.dt_min, ('Stop simulation. Reason: reached min. timestep '
-                                             + str(data_ts.dt_min) + ' dt=' + str(dt))
-
-        # update current engine time
-        self.physics.engine.t = stop_time
-
-        # save well data after run
-        if save_well_data and save_well_data_after_run is True:
-            self.output.save_data_to_h5(kind='well')
-
-        # save solution vector
-        if save_reservoir_data:
-            self.output.save_data_to_h5(kind='reservoir')
-
-        if verbose:
-            print("TS = %d(%d), NI = %d(%d), LI = %d(%d)"
-                  % (self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
-                     self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
-                     self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
-
-        return 0
+    # def run(self, days: float = None, restart_dt: float = 0., save_well_data: bool = True, save_well_data_after_run: bool = False,
+    #         save_reservoir_data: bool = True, verbose: bool = True):
+    #
+    #     days = days if days is not None else self.runtime
+    #     data_ts = self.data_ts
+    #
+    #     # get current engine time
+    #     t = self.physics.engine.t
+    #     stop_time = t + days
+    #
+    #     # same logic as in engine.run
+    #     if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
+    #         dt = data_ts.dt_first
+    #     elif restart_dt > 0.:
+    #         dt = restart_dt
+    #     else:
+    #         dt = min(self.prev_dt * data_ts.dt_mult, days, data_ts.dt_max)
+    #
+    #     self.prev_dt = dt
+    #
+    #     ts = 0
+    #
+    #     nc = self.physics.n_vars
+    #     nb = self.reservoir.mesh.n_res_blocks
+    #     max_dx = np.zeros(nc)
+    #
+    #     if np.fabs(data_ts.dt_mult - 1) < 1e-10:
+    #         omega = 0.
+    #     else:
+    #         omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
+    #
+    #     while t < stop_time:
+    #         xn = np.array(self.physics.engine.Xn, copy=True)[:nb * nc]  # need to copy since Xn will be updated Xn = X
+    #         converged = self.run_timestep(dt, t, verbose)
+    #
+    #         if converged:
+    #             t += dt
+    #             self.physics.engine.t = t
+    #             ts += 1
+    #
+    #             x = np.array(self.physics.engine.X, copy=False)[:nb * nc]
+    #             dt_mult_new = data_ts.dt_mult # current multiplier
+    #             for i in range(nc):
+    #                 # propose new multiplier based on change of solution
+    #                 max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
+    #                 mult = ((1 + omega) * data_ts.eta[i]) / (max_dx[i] + omega * data_ts.eta[i])
+    #                 if mult < dt_mult_new: # if the proposed multiplier is smaller than the specified maximum timestep
+    #                     dt_mult_new = mult # the new multiplier = proposed multiplier
+    #
+    #             if verbose:
+    #                 print("# %d \tT = %.3g\tDT = %.2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tmax_dX=%4s"
+    #                       % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
+    #                          dt_mult_new, np.round(max_dx, 3)))
+    #
+    #             dt = min(dt * dt_mult_new, data_ts.dt_max) # define the new timestep according to the new multiplier
+    #
+    #             if np.fabs(t + dt - stop_time) < data_ts.dt_min:
+    #                 dt = stop_time - t
+    #
+    #             if t + dt > stop_time:
+    #                 dt = stop_time - t
+    #             else:
+    #                 self.prev_dt = dt
+    #
+    #             # save well data at every converged time step
+    #             if save_well_data and save_well_data_after_run is False:
+    #                 self.output.save_data_to_h5(kind='well')
+    #
+    #         else:
+    #             dt /= data_ts.dt_mult
+    #             if verbose:
+    #                 print("Cut timestep to %2.10f" % dt)
+    #             assert dt > data_ts.dt_min, ('Stop simulation. Reason: reached min. timestep '
+    #                                          + str(data_ts.dt_min) + ' dt=' + str(dt))
+    #
+    #     # update current engine time
+    #     self.physics.engine.t = stop_time
+    #
+    #     # save well data after run
+    #     if save_well_data and save_well_data_after_run is True:
+    #         self.output.save_data_to_h5(kind='well')
+    #
+    #     # save solution vector
+    #     if save_reservoir_data:
+    #         self.output.save_data_to_h5(kind='reservoir')
+    #
+    #     if verbose:
+    #         print("TS = %d(%d), NI = %d(%d), LI = %d(%d)"
+    #               % (self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
+    #                  self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
+    #                  self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
+    #
+    #     return 0
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         max_newt = self.data_ts.newton_max_iter
@@ -643,7 +659,7 @@ class Model(DartsModel):
             if self.platform == 'gpu':
                 copy_data_to_host(self.physics.engine.X, self.physics.engine.get_X_d())
 
-            if self.physics.thermal:
+            if self.physics.thermal and self.specs['RHS'] is True:
                 self.set_top_bot_temp()
 
             if self.platform == 'gpu':
@@ -853,112 +869,77 @@ class Model(DartsModel):
         for id_key in ['SN']:
             for phase_idx, phase_name in enumerate(self.physics.phases):
                 for comp_idx, comp_name in enumerate(self.components):
+                    face_centroids_x = (self.centroids[self.ids_cells_list[id_key][:, 0], 0] + self.centroids[
+                        self.ids_cells_list[id_key][:, 1], 0]) / 2
+                    face_centroids_z = (self.centroids[self.ids_cells_list[id_key][:, 0], 2] + self.centroids[
+                        self.ids_cells_list[id_key][:, 1], 2]) / 2
 
-                    if 0:
-                        # Get coordinates of start and end points
-                        start = self.centroids[ids_cells_list[id_key][:, 0]]  # shape (n_edges, 3)
-                        end = self.centroids[ids_cells_list[id_key][:, 1]]
-
-                        # Choose 2D plane: x-z
-                        x_start, z_start = start[:, 0], start[:, 2]
-                        if 'N' in id_key:
-                            x_dir = end[:, 0] - start[:, 0]
-                            z_dir = field
-                        else:
-                            x_dir = field
-                            z_dir = end[:, 2] - start[:, 2]
-
-                        # Plot the quiver plot
-                        plt.figure(figsize=(10, 6), dpi=200)
-                        plt.quiver(
-                            x_start, z_start,  # origins
-                            x_dir, z_dir,  # directions
-                            angles='xy',
-                            scale_units='xy',
-                            scale=1,
-                            color='blue',
-                            width=0.0025
-                        )
-                        # plt.xlabel("X")
-                        # plt.ylabel("Z")
-                        plt.title(
-                            f"Diffusion Flux for {component_name} in {phase_name}, in the {id_key} direction")
-                        plt.grid(True)
-                        plt.show()
-
+                    # Determine shape and indexing logic
+                    if id_key in {'SN', 'NS'}:
+                        shape = (nz - 1, nx)
+                        index_fn = lambda i, j: i + j * (nz - 1)
+                    elif id_key in {'EW', 'WE'}:
+                        shape = (nz, nx - 1)
+                        index_fn = lambda i, j: j + i * (nx - 1)
                     else:
+                        raise ValueError(f"Unsupported id_key: {id_key}")
 
-                        face_centroids_x = (self.centroids[self.ids_cells_list[id_key][:, 0], 0] + self.centroids[
-                            self.ids_cells_list[id_key][:, 1], 0]) / 2
-                        face_centroids_z = (self.centroids[self.ids_cells_list[id_key][:, 0], 2] + self.centroids[
-                            self.ids_cells_list[id_key][:, 1], 2]) / 2
+                    temp_x, temp_z = np.zeros(shape), np.zeros(shape)
+                    diff_flux = np.zeros(shape)
+                    darcy_flux = np.zeros(shape)
+                    disp_flux = np.zeros(shape)
 
-                        # Determine shape and indexing logic
-                        if id_key in {'SN', 'NS'}:
-                            shape = (nz - 1, nx)
-                            index_fn = lambda i, j: i + j * (nz - 1)
-                        elif id_key in {'EW', 'WE'}:
-                            shape = (nz, nx - 1)
-                            index_fn = lambda i, j: j + i * (nx - 1)
-                        else:
-                            raise ValueError(f"Unsupported id_key: {id_key}")
+                    for i in range(shape[0]):
+                        for j in range(shape[1]):
+                            idx = index_fn(i, j)
+                            temp_x[i, j] = face_centroids_x[idx]
+                            temp_z[i, j] = face_centroids_z[idx]
+                            diff_flux[i, j] = property_array[f'diff_fluxes_{phase_name}_{comp_name}_{id_key}'][0, idx]
+                            darcy_flux[i, j] = property_array[f'darcy_fluxes_{phase_name}_{comp_name}_{id_key}'][0, idx]
+                            disp_flux[i, j] = property_array[f'disp_fluxes_{phase_name}_{comp_name}_{id_key}'][0, idx]
 
-                        temp_x, temp_z = np.zeros(shape), np.zeros(shape)
-                        diff_flux = np.zeros(shape)
-                        darcy_flux = np.zeros(shape)
-                        disp_flux = np.zeros(shape)
+                            xi = property_array[f'x_{phase_name}_{comp_name}']
 
-                        for i in range(shape[0]):
-                            for j in range(shape[1]):
-                                idx = index_fn(i, j)
-                                temp_x[i, j] = face_centroids_x[idx]
-                                temp_z[i, j] = face_centroids_z[idx]
-                                diff_flux[i, j] = property_array[f'diff_fluxes_{phase_name}_{comp_name}_{id_key}'][idx]
-                                darcy_flux[i, j] = property_array[f'darcy_fluxes_{phase_name}_{comp_name}_{id_key}'][idx]
-                                disp_flux[i, j] = property_array[f'disp_fluxes_{phase_name}_{comp_name}_{id_key}'][idx]
+                    plt.figure(dpi = 100, figsize=(8, 8))
+                    plt.suptitle(f"{comp_name}, {phase_name}, in the {id_key} direction @ {time_vector[0]} days")
+                    plt.subplot(5, 1, 1)
+                    c = plt.pcolor(self.centroids[:, 0].reshape(nz, nx), self.centroids[:, 2].reshape(nz, nx), xi.reshape(nz, nx), cmap='coolwarm')
+                    plt.colorbar(c, label = f'x_{phase_name}_{comp_name}')
+                    plt.ylabel('z [m]')
 
-                                xi = property_array[f'x_{phase_name}_{comp_name}']
+                    plt.subplot(5, 1, 2)
+                    # pc1 = plt.scatter(face_centroids_x, face_centroids_z, c=property_array[f'diff_fluxes_{phase_name}_{comp_idx}_{id_key}'], s=1, cmap='coolwarm')
+                    pc1 = plt.pcolor(temp_x, temp_z, diff_flux, vmin = -np.max(np.abs(diff_flux)), vmax = np.max(np.abs(diff_flux)), cmap='coolwarm')
+                    plt.colorbar(pc1, aspect = 10, label="Diffusion Flux")
+                    plt.ylim(0, 1200); plt.xlim(0, 8400)
+                    plt.ylabel('z [m]')
 
-                        plt.figure(dpi = 100, figsize=(8, 8))
-                        plt.suptitle(f"{comp_name}, {phase_name}, in the {id_key} direction @ {time_vector[0]} days")
-                        plt.subplot(5, 1, 1)
-                        c = plt.pcolor(self.centroids[:, 0].reshape(nz, nx), self.centroids[:, 2].reshape(nz, nx), xi.reshape(nz, nx), cmap='coolwarm')
-                        plt.colorbar(c, label = f'x_{phase_name}_{comp_name}')
-                        plt.ylabel('z [m]')
+                    plt.subplot(5, 1, 3)
+                    # pc2 = plt.scatter(self.centroids[:, 0], self.centroids[:, 2], c = property_array[f'vel_{phase_name}'], s=1, cmap='coolwarm')
+                    velocity = property_array[f'vel_{phase_name}'][0, :].reshape(nz, nx)
+                    pc2 = plt.pcolor(self.centroids[:, 0].reshape(nz, nx), self.centroids[:, 2].reshape(nz, nx), velocity, cmap='coolwarm')
+                    plt.colorbar(pc2, aspect = 10, label="Velocities")
+                    plt.ylim(0, 1200); plt.xlim(0, 8400)
+                    plt.ylabel('z [m]')
 
-                        plt.subplot(5, 1, 2)
-                        # pc1 = plt.scatter(face_centroids_x, face_centroids_z, c=property_array[f'diff_fluxes_{phase_name}_{comp_idx}_{id_key}'], s=1, cmap='coolwarm')
-                        pc1 = plt.pcolor(temp_x, temp_z, diff_flux, vmin = -np.max(np.abs(diff_flux)), vmax = np.max(np.abs(diff_flux)), cmap='coolwarm')
-                        plt.colorbar(pc1, aspect = 10, label="Diffusion Flux")
-                        plt.ylim(0, 1200); plt.xlim(0, 8400)
-                        plt.ylabel('z [m]')
+                    plt.subplot(5, 1, 4)
+                    # pc3 = plt.scatter(face_centroids_x, face_centroids_z, c = property_array[f'disp_fluxes_{phase_name}_{comp_idx}_{id_key}'], s=1, cmap='coolwarm')
+                    pc3 = plt.pcolor(temp_x, temp_z, disp_flux, vmin = -np.max(np.abs(disp_flux)), vmax = np.max(np.abs(disp_flux)), cmap='coolwarm')
+                    plt.colorbar(pc3, aspect = 10, label="Disp Flux")
+                    plt.ylim(0, 1200); plt.xlim(0, 8400)
+                    plt.ylabel('z [m]')
 
-                        plt.subplot(5, 1, 3)
-                        # pc2 = plt.scatter(self.centroids[:, 0], self.centroids[:, 2], c = property_array[f'vel_{phase_name}'], s=1, cmap='coolwarm')
-                        velocity = property_array[f'vel_{phase_name}'].reshape(nz, nx)
-                        pc2 = plt.pcolor(self.centroids[:, 0].reshape(nz, nx), self.centroids[:, 2].reshape(nz, nx), velocity, cmap='coolwarm')
-                        plt.colorbar(pc2, aspect = 10, label="Velocities")
-                        plt.ylim(0, 1200); plt.xlim(0, 8400)
-                        plt.ylabel('z [m]')
+                    plt.subplot(5, 1, 5)
+                    # pc4 = plt.scatter(face_centroids_x, face_centroids_z, c = property_array[f'darcy_fluxes_{phase_name}_{comp_idx}_{id_key}'] , s=1, cmap='coolwarm')
+                    pc4 = plt.pcolor(temp_x, temp_z, darcy_flux, vmin = -np.max(np.abs(darcy_flux)), vmax = np.max(np.abs(darcy_flux)), cmap='coolwarm')
+                    plt.colorbar(pc4, aspect = 10, label="Darcy Flux")
+                    plt.ylim(0, 1200); plt.xlim(0, 8400)
+                    plt.xlabel('x [m]')
+                    plt.ylabel('z [m]')
 
-                        plt.subplot(5, 1, 4)
-                        # pc3 = plt.scatter(face_centroids_x, face_centroids_z, c = property_array[f'disp_fluxes_{phase_name}_{comp_idx}_{id_key}'], s=1, cmap='coolwarm')
-                        pc3 = plt.pcolor(temp_x, temp_z, disp_flux, vmin = -np.max(np.abs(disp_flux)), vmax = np.max(np.abs(disp_flux)), cmap='coolwarm')
-                        plt.colorbar(pc3, aspect = 10, label="Disp Flux")
-                        plt.ylim(0, 1200); plt.xlim(0, 8400)
-                        plt.ylabel('z [m]')
-
-                        plt.subplot(5, 1, 5)
-                        # pc4 = plt.scatter(face_centroids_x, face_centroids_z, c = property_array[f'darcy_fluxes_{phase_name}_{comp_idx}_{id_key}'] , s=1, cmap='coolwarm')
-                        pc4 = plt.pcolor(temp_x, temp_z, darcy_flux, vmin = -np.max(np.abs(darcy_flux)), vmax = np.max(np.abs(darcy_flux)), cmap='coolwarm')
-                        plt.colorbar(pc4, aspect = 10, label="Darcy Flux")
-                        plt.ylim(0, 1200); plt.xlim(0, 8400)
-                        plt.xlabel('x [m]')
-                        plt.ylabel('z [m]')
-
-                        plt.tight_layout()
-                        plt.savefig(os.path.join(figure_folder, f'fluxes_{id_key}_{phase_name}_{comp_name}_at_ts_{ts}.png'))
-                        plt.close()
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(figure_folder, f'fluxes_{id_key}_{phase_name}_{comp_name}_at_ts_{ts}.png'))
+                    plt.close()
 
     def plot_properties(self, property_array, time_vector, ts):
         for i, name in enumerate(property_array.keys()):

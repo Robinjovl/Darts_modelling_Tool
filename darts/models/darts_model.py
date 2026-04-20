@@ -2,12 +2,9 @@ import os
 import warnings
 from math import fabs
 
-# import h5py
 import numpy as np
 
 from darts.models.output import Output
-from darts.physics.base.physics_base import PhysicsBase
-from darts.reservoirs.reservoir_base import ReservoirBase
 
 try:
     from darts.engines import copy_data_to_device
@@ -18,13 +15,13 @@ from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
     ms_well,
     ms_well_vector,
-    op_vector,
     sim_params,
     timer_node,
     value_vector,
 )
 from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
+from darts.interpolators import op_vector
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
@@ -68,20 +65,20 @@ class DartsModel:
     This is a base class for creating a model in DARTS.
     A model is composed of a :class:`Reservoir` object and a :class:`Physics` object.
     Initialization and communication between these two objects takes place through the Model object
+
+    :ivar reservoir: Reservoir object
+    :type reservoir: :class:`ReservoirBase`
+    :ivar physics: Physics object
+    :type physics: :class:`PhysicsBase`
+    :ivar timer: Timer object
+    :type timer: :class:`darts.engines.timer_node`
+    :ivar params: Object to set simulation parameters
+    :type params: :class:`darts.engines.sim_params`
     """
 
     def __init__(self):
         """
         Initialize DartsModel class.
-
-        :ivar reservoir: Reservoir object
-        :type reservoir: :class:`ReservoirBase`
-        :ivar physics: Physics object
-        :type physics: :class:`PhysicsBase`
-        :ivar timer: Timer object
-        :type timer: :class:`darts.engines.timer_node`
-        :ivar params: Object to set simulation parameters
-        :type params: :class:`darts.engines.sim_params`
         """
         # print out build information
         engines_pbi()
@@ -89,8 +86,11 @@ class DartsModel:
         package_pbi()
 
         # Create member variables reservoir and physics
-        self.reservoir: ReservoirBase = None
-        self.physics: PhysicsBase = None
+        self.reservoir = None
+        self.physics = None
+
+        # Create member variable wells (it is needed only for DFM wells)
+        self.wells = None
 
         # Create time_node object for time record
         self.timer = timer_node()
@@ -102,7 +102,6 @@ class DartsModel:
         self.timer.node["simulation"] = timer_node()
 
         self.timer.node["newton update"] = timer_node()
-        self.timer.node["vtk_output"] = timer_node()
         self.timer.node["output"] = timer_node()
 
         # Create timer.node called "initialization" to record initialization time
@@ -113,6 +112,10 @@ class DartsModel:
 
         # Create sim_params object to set simulation parameters
         self.params = sim_params()
+
+        self.time = []
+        self.n_newton_iters = []
+        self.time_step_size = []
 
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
@@ -165,6 +168,9 @@ class DartsModel:
             self.timer.node["simulation"].node["dfm_well_velocity_calculation"] = (
                 timer_node()
             )
+        else:
+            # If there are no DFM wells, no Python well objects are needed.
+            self.wells = None
 
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
@@ -176,6 +182,7 @@ class DartsModel:
             itor_mode=itor_mode,
             itor_type=itor_type,
             is_barycentric=is_barycentric,
+            n_solid=n_solid,
         )
         if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
@@ -188,10 +195,6 @@ class DartsModel:
         self.set_op_list()
         self.set_boundary_conditions()
         self.set_well_controls()
-
-        # for separate mineral fraction in reactive flow formulations
-        if n_solid is not None:
-            self.physics.engine.n_solid = n_solid
 
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
@@ -218,32 +221,32 @@ class DartsModel:
             self.reservoir.mesh,
             ms_well_vector(self.reservoir.wells),
             op_vector(self.op_list),
+            self.physics.thermal_var_itor,
             self.params,
             self.timer.node["simulation"],
         )
 
-    def load_restart_data(self, reservoir_filename: str, timestep: int = -1):
+    def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
         Beware that loading restart data resets the engine.
 
-        :param reservoir_filename: Path to the restart file containing reservoir block data.
-        :type reservoir_filename: str
-        :param timestep: The timestep to load from the file (default: -1 for the last timestep)
-        :type timestep: int
+        :param reservoir_filepath: Path to the restart file containing reservoir block data.
+        :type reservoir_filepath: str
+        :param ts_idx: The timestep index to load from the file (default: -1 for the last timestep)
+        :type ts_idx: int
         """
-
         # check if the files with data exist
         if not os.path.exists(
-            reservoir_filename
-        ):  # or not os.path.exists(well_filename):
+            reservoir_filepath
+        ):  # or not os.path.exists(well_filepath):
             raise FileNotFoundError(
-                f"The restart file does not exist: {reservoir_filename}"
+                f"The restart file does not exist: {reservoir_filepath}"
             )
 
         # Read data from the file
         time_res, reservoir_cell_id, Xres, var_names = self.output.read_specific_data(
-            reservoir_filename, timestep
+            reservoir_filepath, ts_idx
         )
 
         # load data as initial conditions
@@ -258,7 +261,7 @@ class DartsModel:
         self.physics.engine.t = time_res[0]
 
         # save initial conditions to *.h5 file
-        print(rf'Restarting model from {reservoir_filename} at day {time_res[0]}.')
+        print(rf'Restarting model from {reservoir_filepath} at day {time_res[0]}.')
         self.output.save_data_to_h5(kind='reservoir')
 
         return
@@ -272,18 +275,21 @@ class DartsModel:
         all_phase_props: bool = False,
         precision: str = "d",
         compression: str = "gzip",
+        compression_level: int = 0,
         verbose: bool = False,
     ):
         """
         Function to initialize output class
 
-        : param output_folder: folder for h5 output files
-        : param sol_filename: filename of output file
-        : param save_inital:
-        : param all_phase_props: Boolean to output all phase properties
-        : param precision: data precision of saved data ('s' single precision, 'd' double precision)
-        : param compression: default 'gzip'
-        : param verbose:
+        :param output_folder: directory for all output files, images etc.
+        :param sol_filename: filename for saving reservoir blocks data.
+        :param well_filename: filename for saving well block data.
+        :param save_initial: boolean flag to save initial conditions to *.h5, default is True.
+        :param all_phase_props: Boolean flag to enable evaluation of all phase properties with property interpolators.
+        :param precision: data precision of saved data ('s' single precision, 'd' double precision).
+        :param compression: default 'gzip'.
+        :param compression_level: 0 (no compression, fast) and 9 (maximum compression, slow), default is 1.
+        :param verbose: boolean flag to enable verbose mode.
         """
 
         self.output_folder = output_folder
@@ -296,19 +302,22 @@ class DartsModel:
             save_initial = False
 
         self.output = Output(
-            self.timer,
-            self.reservoir,
-            self.physics,
-            self.op_list,
-            self.params,
-            self.output_folder,
-            self.sol_filename,
-            self.well_filename,
-            save_initial,
-            all_phase_props,
-            precision,
-            compression,
-            verbose,
+            timer=self.timer,
+            reservoir=self.reservoir,
+            physics=self.physics,
+            op_list=self.op_list,
+            params=self.params,
+            output_folder=self.output_folder,
+            sol_filename=self.sol_filename,
+            well_filename=self.well_filename,
+            save_initial=save_initial,
+            all_phase_props=all_phase_props,
+            precision=precision,
+            compression=compression,
+            compression_level=compression_level,
+            verbose=verbose,
+            wells=self.wells,
+            has_dfm_well=self.has_dfm_well,
         )
 
         return
@@ -471,7 +480,6 @@ class DartsModel:
             ):  # it's not needed to copy it to params for PETSC option
                 self.params.linear_type = self.data_ts.linear_type
 
-
     def run(
         self,
         days: float = None,
@@ -492,8 +500,9 @@ class DartsModel:
         :type verbose: bool
         :param save_well_data: if True save states of well blocks at every time step to 'well_data.h5', default is True
         :type save_well_data: bool
-        :param save_solution_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
-        :type save_solution_data: bool
+        :param save_well_data_after_run: Switch to save well data only after runtime of `days`
+        :param save_reservoir_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
+        :type save_reservoir_data: bool
         """
         assert hasattr(self, 'output'), (
             "self.output does not exist, please call m.set_output() after m.init()"
@@ -503,8 +512,6 @@ class DartsModel:
         assert days > 0, "Time must be a positive value!"
 
         data_ts = self.data_ts
-
-        self.output.save_well_after_run = save_well_data_after_run
 
         if save_well_data_after_run:
             if not hasattr(self, "_well_output_configured"):
@@ -516,6 +523,8 @@ class DartsModel:
             self.output.well_time_labels = []
             self.output.well_data = []
             self.output.well_cfl = []
+
+            save_well_data = False
 
         # get current engine time
         t = self.physics.engine.t
@@ -531,8 +540,6 @@ class DartsModel:
 
         self.prev_dt = dt
 
-        ts_counter = 0
-
         nc = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
         max_dx = np.zeros(nc)
@@ -540,14 +547,14 @@ class DartsModel:
         if np.fabs(data_ts.dt_mult - 1) < 1e-10:
             omega = 0.0
         else:
-            omega = 1 / (
-                data_ts.dt_mult - 1
-            )  # inversion assuming mult = (1 + omega) / omega
+            # inversion assuming mult = (1 + omega) / omega
+            omega = 1 / (data_ts.dt_mult - 1)
+
+        ts_counter = 0
 
         while t < stop_time:
-            xn = np.array(self.physics.engine.Xn, copy=True)[
-                : nb * nc
-            ]  # need to copy since Xn will be updated Xn = X
+            # need to copy since Xn will be updated Xn = X
+            xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
             converged = self.run_timestep(dt, t, verbose)
 
             if converged:
@@ -582,10 +589,12 @@ class DartsModel:
                 else:
                     self.prev_dt = dt
 
-                # save well data at every converged time step
-                if save_well_data and save_well_data_after_run is False:
+                if save_well_data:
+                    # save well data at every converged time step
                     self.output.save_data_to_h5(kind="well")
-                else:
+
+                if save_well_data_after_run:
+                    # store well data to save later
                     self.output.well_time_labels.append(self.physics.engine.t)
                     X = np.array(self.physics.engine.X, copy=False)
 
@@ -611,7 +620,7 @@ class DartsModel:
         self.physics.engine.t = stop_time
 
         # save well data after run
-        if save_well_data and save_well_data_after_run is True:
+        if save_well_data_after_run:
             path = os.path.join(self.output_folder, self.well_filename)
 
             self.output.timer.start()
@@ -678,13 +687,11 @@ class DartsModel:
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
 
-
             if not self.has_dfm_well:
                 self.physics.engine.newton_residual_last_dt = (
-                    #self.physics.engine.calc_newton_residual()
+                    # self.physics.engine.calc_newton_residual()
                     self.calc_residual_python()
                 )  # calc norm of residual
-            # TODO Function line_search is not updated for the coupled model.
             elif self.has_dfm_well:
                 # Method is either 1 or 2
                 self.physics.engine.newton_residual_last_dt = (
@@ -710,7 +717,7 @@ class DartsModel:
                 break
 
             self.physics.engine.well_residual_last_dt = (
-                #self.physics.engine.calc_well_residual()
+                # self.physics.engine.calc_well_residual()
                 self.calc_residual_python(is_well=True)
             )
             residual_history.append(
@@ -756,9 +763,8 @@ class DartsModel:
                         print("Stationary point detected!")
                     break
             else:
-                if (
-                    type(self.data_ts.linear_type) is linear_solver_types
-                ):  # solvers via Python interface
+                if isinstance(self.data_ts.linear_type, linear_solver_types):
+                    # solvers via Python interface
                     if self.data_ts.linear_type in [
                         linear_solver_types.CPU_PETSC_CPR,
                         linear_solver_types.CPU_PETSC_FS,
@@ -770,13 +776,19 @@ class DartsModel:
                         raise Exception(
                             "Unknown linear solver type", self.data_ts.linear_type
                         )
-                else:  # compile-tyme C++ linear solvers
+                else:
+                    # compile-tyme C++ linear solvers
                     self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
+
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
+
+        self.time.append(t)
+        self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
+        self.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
         return converged
@@ -1052,16 +1064,17 @@ class DartsModel:
             match ntype:
                 case "L2":
                     res = max(
-                        res, np.sqrt(np.sum(rhs[irhs]**2) / np.sum((volume[ires] * poro[ires] * acc[iops])**2)
-                                    )
+                        res,
+                        np.sqrt(
+                            np.sum(rhs[irhs] ** 2)
+                            / np.sum((volume[ires] * poro[ires] * acc[iops]) ** 2)
+                        ),
                     )
                 case "Linf":
-                    for c in range(ne):
+                    for _c in range(ne):
                         denom = volume[ires] * poro[ires] * acc[iops]
                         denom[denom < 1e-4] = 1e4
-                        res = max(
-                            res, np.max(np.abs(rhs[irhs]) / denom)
-                        )
+                        res = max(res, np.max(np.abs(rhs[irhs]) / denom))
                 case _:
                     print("Not recognized type of norm: ", ntype)
                     res = 1e10

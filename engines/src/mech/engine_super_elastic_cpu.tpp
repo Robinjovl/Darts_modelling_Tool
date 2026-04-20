@@ -11,6 +11,7 @@
 #include "mech/engine_super_elastic_cpu.hpp"
 #include "conn_mesh.h"
 
+
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
@@ -27,7 +28,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -43,6 +43,7 @@ const uint8_t engine_super_elastic_cpu<NC, NP, THERMAL>::BC2U[5] = { U_BC_VAR, U
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                                        operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                             sim_params *params_, timer_node *timer_)
 {
   newton_update_coefficient = 1.0;
@@ -54,7 +55,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vecto
   gravity = {0.0, 0.0, 0.0};
   discr = nullptr;
 
-  init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+  init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
   this->expose_jacobian();
 
   return 0;
@@ -63,6 +64,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vecto
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	operator_set_gradient_evaluator_iface* thermal_var_etor_,
 	sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
@@ -72,6 +74,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 
@@ -118,9 +121,11 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			break;
 		}
 #ifdef _WIN32
-#if 0 // can be enabled if amgdll.dll is available \
-	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
-		case sim_params::CPU_GMRES_CPR_AMG1R5:
+#if 0
+		  // Can be enabled if amgdll.dll is available.
+		  // Since we compile PIC code, we cannot link the existing static library,
+		  // which was compiled without the fPIC flag.
+			case sim_params::CPU_GMRES_CPR_AMG1R5:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
@@ -277,6 +282,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 
@@ -284,18 +291,18 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
-	z_var = get_z_var();
+	z_var_idx = get_z_var_idx();
 	if (NC_ > 1)
 	{
 		if (params->log_transform == 0)
 		{
-			min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
-			max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+			min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+			max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
 		}
 		else if (params->log_transform == 1)
 		{
-			min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
-			max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+			min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+			max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
 		}
 		min_sim_z = min_axis_z + params->sim_eps;
 		max_sim_z = max_axis_z - params->sim_eps;

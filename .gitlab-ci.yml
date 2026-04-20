@@ -13,17 +13,47 @@ stages:
     - ingest
 
 include:
+  - local: '.cicd/jobs/build-linux-gpu.yml'
   - local: '.cicd/jobs/pre-commit.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  - local: '.cicd/jobs/cleanup-windows.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/build-images.yml'
   - local: '.cicd/jobs/build-linux.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/build-windows.yml'
-  - local: '.cicd/jobs/build-linux-gpu.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/build-linux-valgrind.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/test-linux.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/test-windows.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/test-linux-gpu.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/valgrind-check.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   # - local: '.cicd/jobs/vtune-profile.yml'
+    # rules:
+    # - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/upload-wheels.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/deploy.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  # - local: '.cicd/jobs/darts-models.yml'
+  #   rules:
+  #     - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/gitingest.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"

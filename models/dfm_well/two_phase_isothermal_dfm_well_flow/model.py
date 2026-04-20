@@ -79,7 +79,7 @@ class Model(CICDModel):
         from dartsflash.components import CompData
         from dartsflash.mixtures import DARTSFlash, VLAq
         components_names = ['CO2', 'H2O']
-        phases_names = ['gas', 'aqueous']
+        phases_names = ['G', 'L']   # G is the CO2-rich phase and L is the aqueous phase
         comp_data = CompData(components_names, setprops=True)
         epsilon = self.zero / 10
 
@@ -109,16 +109,16 @@ class Model(CICDModel):
                             eos_order=["VL", "Aq"], nf_initial_guess=[InitialGuess.Henry_VA])
         property_container.flash_ev = flash_ev
 
-        property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw)),
-                                              ('aqueous', Garcia2001(components_names)),
+        property_container.density_ev = dict([('G', EoSDensity(eos=pr, Mw=comp_data.Mw)),
+                                              ('L', Garcia2001(components_names)),
                                               ])
 
-        property_container.viscosity_ev = dict([('gas', Fenghour1998()),
-                                                ('aqueous', Islam2012(components_names)),
+        property_container.viscosity_ev = dict([('G', Fenghour1998()),
+                                                ('L', Islam2012(components_names)),
                                                 ])
 
-        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas", swc=0, sgr=0)),
-                                               ('aqueous', PhaseRelPerm("oil", swc=0, sgr=0))])
+        property_container.rel_perm_ev = dict([('G', PhaseRelPerm("gas", swc=0, sgr=0)),
+                                               ('L', PhaseRelPerm("oil", swc=0, sgr=0))])
 
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
 
@@ -126,12 +126,13 @@ class Model(CICDModel):
         self.physics.add_property_region(property_container)
 
         property_container.output_props = {}
+        property_container.output_props['temperature'] = lambda: property_container.temperature
         for j, ph in enumerate(phases_names):
-            property_container.output_props['rho_' + ph] = lambda jj=j: property_container.dens[jj]
-            property_container.output_props['miu_' + ph] = lambda jj=j: property_container.mu[jj]
-            property_container.output_props['enth_' + ph] = lambda jj=j: property_container.enthalpy[jj]
+            property_container.output_props['s' + ph] = lambda jj=j: property_container.sat[jj]
+            property_container.output_props['rho' + ph] = lambda jj=j: property_container.dens[jj]
+            property_container.output_props['miu' + ph] = lambda jj=j: property_container.mu[jj]
             for i, comp in enumerate(components_names):
-                property_container.output_props[comp + '_in_' + ph] = lambda jj=j, ii=i: property_container.x[jj, ii]
+                property_container.output_props[f'x{comp}_in_{ph}_mass'] = lambda jj=j, ii=i: property_container.x_mass[jj, ii]
 
         return
 
@@ -154,7 +155,7 @@ class Model(CICDModel):
         pipe_head_pressure = 7.4449351367  # bar
         pipe_head_segment_index = 0  # index starts from zero
 
-        initial_conditions_dict = {'phases_names': ['aqueous'], 'phases_compositions': [[1e-10, 1 - 1e-10]],
+        initial_conditions_dict = {'phases_names': ['L'], 'phases_compositions': [[1e-10, 1 - 1e-10]],
                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe and pipe_intervals are TVD
 
         well_1_initial_conditions = SingleAmbientTemperature(well_1_name, well_1_geometry, self.physics,
@@ -170,12 +171,15 @@ class Model(CICDModel):
         inj_phase_comp = np.array([0.99, 0.01])
         inj_fluid_props = {"composition": inj_phase_comp}
 
-        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx, inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props)
+        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
+                                  inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
+                                  verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
         source_sinks = {"RampUpRate1": ramp_up_rate}
 
         # %% Store well props
-        self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions, source_sinks=source_sinks)}
+        self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
+                                 source_sinks=source_sinks, verbose=verbose)}
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
@@ -186,7 +190,8 @@ class Model(CICDModel):
         self.reservoir.discretizer.len_cell_xdir[0, 0, 0] = 50.0
         self.reservoir.discretizer.len_cell_ydir[0, 0, 0] = 50.0
         self.reservoir.discretizer.len_cell_zdir[0, 0, 0] = 50.0
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
+                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
@@ -205,36 +210,3 @@ class Model(CICDModel):
         rhs_flux[well_head_start_idx:well_head_start_idx + self.physics.n_vars:] = - inj_rates
 
         return rhs_flux
-
-    def populate_data_for_radial_vtk_output(self, data):
-        new_data = {}
-        n_cells = self.reservoir.mesh.n_res_blocks
-        for prop, val in data.items():
-            # populate r-z data to all angles
-            new_data[prop] = np.tile(val, self.reservoir.nphi)
-
-        return new_data
-
-    def output_to_vtk(self, ith_step: int = None, output_directory: str = None, output_properties: list = None):
-        if output_directory is None:
-            output_directory = self.output_folder
-
-        timestep, output_data = self.output.output_properties(output_properties=output_properties, timestep=ith_step)
-
-        data = self.populate_data_for_radial_vtk_output(output_data)
-        self.reservoir.output_to_vtk(output_directory=output_directory, data=data, ith_step=ith_step, t=timestep,
-                                     prop_names=list(output_data.keys()))
-
-    def get_unknowns_for_radial_vtk_output(self):
-        X = np.array(self.physics.engine.X, copy=False)
-
-        # prepare data
-        data = {}
-        n_cells = self.reservoir.mesh.n_res_blocks
-        for i, var in enumerate(self.physics.vars):
-            # write r-z data
-            data[var] = X[i:self.physics.n_vars * n_cells:self.physics.n_vars]
-            # populate r-z data to all angles
-            data[var] = np.tile(data[var], self.reservoir.nphi)
-
-        return data

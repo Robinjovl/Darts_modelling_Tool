@@ -28,7 +28,7 @@ namespace mesh
 		index_t num_of_nodes;
 		// number of elements
 		index_t num_of_elements;
-		
+
 		// array of elements
 		std::vector<Elem> elems;
 		// array of volumes for 3D, areas for 2D, lengths for 1D
@@ -79,10 +79,10 @@ namespace mesh
 		std::vector<index_t> adj_matrix_cols;
 		// vector of offsets for the adjacency matrix
 		std::vector<index_t> adj_matrix_offset;
-		
+
 		// elem ids for each elem type
 		std::unordered_map<ElemType, std::vector<index_t>> elem_type_map;
-		
+
 		// conn ids for each conn type
 		std::unordered_map<ConnType, std::vector<index_t>> conn_type_map;
 
@@ -159,15 +159,15 @@ namespace mesh
 		// arr - array with length number of active cells
 		// num_of_cells - number of all cells
 		template <typename T>
-		void write_array_to_file(const std::string filename,
-		        const std::string keyword,
-		        const std::vector<T> &arr, const std::vector<int> &actnum,
+			void write_array_to_file(const std::string filename,
+			        const std::string keyword,
+			        const std::vector<T> &arr, const std::vector<int> &actnum_values,
 		        const int num_of_cells,
 		        const double multiplier,
 		        const bool append) const
 		{
 		        std::cout << "Writing array " << keyword << " to file " << filename << "\n";
-		
+
 		        std::ofstream f;
 		        if (append)
 		          f.open(filename, std::ios_base::app);
@@ -179,7 +179,7 @@ namespace mesh
 						int inactive_value = 0;  // value for inactive cells
 
 		        for (int i = 0, j = 0; i < num_of_cells; i++) {
-		                if (actnum.empty() || actnum[i])
+		                if (actnum_values.empty() || actnum_values[i])
 		                f << arr[j++] * multiplier << " ";
 		                else
 		                        f << inactive_value << " ";
@@ -199,7 +199,7 @@ namespace mesh
 
 		std::vector<int> cpg_elems_nodes(
 			const int _number_of_nodes,
-			const int number_of_cells,// number of active cells 
+			const int number_of_cells,// number of active cells
 			const int number_of_faces,
 			const std::vector<double>& node_coords,
 			const std::vector<int>& face_nodes,
@@ -212,7 +212,7 @@ namespace mesh
 
 		void cpg_cell_props(
 			const int _number_of_nodes,
-			const int num_of_cells,// number of active cells 
+			const int num_of_cells,// number of active cells
 			const int number_of_faces,
 			const std::vector<double>& cell_volumes,
 			const std::vector<double>& cell_centroids,
@@ -224,7 +224,7 @@ namespace mesh
 			const std::vector<int>& face_order);
 
 		void cpg_connections(
-			const int num_of_cells,// number of active cells 
+			const int num_of_cells,// number of active cells
 			const int number_of_faces,
 			const std::vector<double>& node_coords,
 			const std::vector<int>& face_nodes,

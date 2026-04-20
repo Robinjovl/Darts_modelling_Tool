@@ -81,7 +81,7 @@ class UnstructReservoir(ReservoirBase):
             permy=self.permy,
             permz=self.permz,
             frac_aper=self.frac_aper,
-            cache=False,
+            cache=self.cache,
         )
 
         if self.frac_aper is not None and self.sh_max is not None:
@@ -103,7 +103,7 @@ class UnstructReservoir(ReservoirBase):
 
         # Perform discretization:
         cell_m, cell_p, tran, tran_thermal = (
-            self.discretizer.calc_connections_all_cells()
+            self.discretizer.calc_connections_all_cells(cache=self.cache)
         )
 
         # Initialize mesh using built connection list
@@ -255,6 +255,7 @@ class UnstructReservoir(ReservoirBase):
         """
         Method to initialize objects required for output of unstructured reservoir into `.vtk` format.
         This method can also export the mesh properties, e.g. porosity, permeability, etc.
+        Matrix and fracture cells are written to separate VTK files.
 
         :param output_directory: Path for output
         :type output_directory: str
@@ -263,6 +264,7 @@ class UnstructReservoir(ReservoirBase):
         """
 
         self.vtk_filenames_and_times = {}
+        self.vtk_filenames_and_times_frac = {}
 
         self.vtk_initialized = True
         self.discretizer.find_vtk_output_cells()
@@ -285,105 +287,80 @@ class UnstructReservoir(ReservoirBase):
             matrix_props['center_x'] = self.discretizer.centroid_all_cells[:, 0]
             matrix_props['center_y'] = self.discretizer.centroid_all_cells[:, 1]
             matrix_props['center_z'] = self.discretizer.centroid_all_cells[:, 2]
-            frac_props = (
-                self.frac_property_array
-            )  # filled in output.py by checking array's dimensions
 
-            # Create empty lists for each geometry type - {**{}} operator merges dictionaries
-            output_nodes = (
-                self.discretizer.vtk_output_nodes_to_cells["matrix"]
-                if not self.discretizer.frac_cells_tot
-                else {
-                    **self.discretizer.vtk_output_nodes_to_cells["fracture"],
-                    **self.discretizer.vtk_output_nodes_to_cells["matrix"],
-                }
-            )
-            output_idxs = self.discretizer.vtk_output_cell_idxs
-            geometries = output_nodes.keys()
-            props = (
-                {**matrix_props, **frac_props}.keys()
-                if self.discretizer.frac_cells_tot
-                else matrix_props.keys()
-            )
-            cell_data = {key: [[] for geometry in geometries] for key in props}
-
-            # Loop over matrix cell properties
+            # --- Matrix mesh file ---
+            mat_nodes = self.discretizer.vtk_output_nodes_to_cells["matrix"]
+            mat_idxs = self.discretizer.vtk_output_cell_idxs["matrix"]
+            n_frac = self.discretizer.frac_cells_tot
+            mat_cell_data = {key: [] for key in matrix_props}
             for prop, data in matrix_props.items():
-                ith_geometry = 0
-
-                # Fill fracture cells with zeros
-                for _geometry, cell_idxs in output_idxs['fracture'].items():
-                    cell_data[prop][ith_geometry] += [0.0] * len(cell_idxs)
-                    ith_geometry += 1
-                # Fill matrix cells with data
-                for _geometry, cell_idxs in output_idxs['matrix'].items():
+                for _geometry, cell_idxs in mat_idxs.items():
                     if np.isscalar(data):
                         if type(data) is int:
-                            cell_data[prop][ith_geometry] += (
-                                data * np.ones(len(cell_idxs))
-                            ).tolist()
+                            mat_cell_data[prop].append(
+                                (data * np.ones(len(cell_idxs))).tolist()
+                            )
                         elif type(data) is float:
-                            cell_data[prop][ith_geometry] += (
-                                data * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)
-                            ).tolist()
-                    else:
-                        cell_data[prop][ith_geometry] += data[cell_idxs].tolist()
-                    ith_geometry += 1
-
-            # Loop over fracture cell properties
-            if self.discretizer.frac_cells_tot:
-                for prop, data in frac_props.items():
-                    ith_geometry = 0
-
-                    # Fill fracture cells with data
-                    for _geometry, cell_idxs in output_idxs['fracture'].items():
-                        if np.isscalar(data):
-                            if type(data) is int:
-                                cell_data[prop][ith_geometry] += (
-                                    data * np.ones(len(cell_idxs))
-                                ).tolist()
-                            elif type(data) is float:
-                                cell_data[prop][ith_geometry] += (
+                            mat_cell_data[prop].append(
+                                (
                                     data
                                     * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)
                                 ).tolist()
+                            )
+                    else:
+                        # cell_idxs are solution-vector indices [frac..frac+mat-1].
+                        # Combined (frac+mat) arrays (volume, depth, centroid) are
+                        # indexed directly. Matrix-only arrays (poro, permx, …) have
+                        # length mat_cells_tot and need 0-based local indices.
+                        if len(data) == self.discretizer.mat_cells_tot:
+                            local_idxs = np.array(cell_idxs) - n_frac
                         else:
-                            cell_data[prop][ith_geometry] += data.flatten()[
-                                cell_idxs
-                            ].tolist()
-                        ith_geometry += 1
-                    # Fill matrix cells with zeros
-                    for _geometry, cell_idxs in output_idxs['matrix'].items():
-                        cell_data[prop][ith_geometry] += [0.0] * len(cell_idxs)
-                        ith_geometry += 1
-
-            # Distinguish fracture cells from matrix cells
-            cell_data["matrix_cell_bool"] = [[] for geometry in geometries]
-            ith_geometry = 0
-            for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-                'fracture'
-            ].items():
-                cell_data["matrix_cell_bool"][ith_geometry] += np.zeros(
-                    len(cell_idxs)
-                ).tolist()  # fill fracture cells with zeros
-                ith_geometry += 1
-            for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-                'matrix'
-            ].items():
-                cell_data["matrix_cell_bool"][ith_geometry] += np.ones(
-                    len(cell_idxs)
-                ).tolist()  # fill matrix cells with ones
-                ith_geometry += 1
-
-            mesh = meshio.Mesh(
-                points=self.discretizer.mesh_data.points,  # list of point coordinates
-                cells=output_nodes,  # list of cell geometries and idxs for reporting
-                # Each item in cell data must match the cells array
-                cell_data=cell_data,
-            )
+                            local_idxs = cell_idxs
+                        mat_cell_data[prop].append(data[local_idxs].tolist())
 
             print('Writing mesh data to VTK file')
-            meshio.write(f"{output_directory:s}/mesh.vtk", mesh)
+            meshio.write(
+                f"{output_directory:s}/mesh.vtk",
+                meshio.Mesh(
+                    points=self.discretizer.mesh_data.points,
+                    cells=mat_nodes,
+                    cell_data=mat_cell_data,
+                ),
+            )
+
+            # --- Fracture mesh file ---
+            if self.discretizer.frac_cells_tot:
+                frac_props = self.frac_property_array  # filled in output.py
+                frac_nodes = self.discretizer.vtk_output_nodes_to_cells["fracture"]
+                frac_idxs = self.discretizer.vtk_output_cell_idxs["fracture"]
+                frac_cell_data = {key: [] for key in frac_props}
+                for prop, data in frac_props.items():
+                    for _geometry, cell_idxs in frac_idxs.items():
+                        if np.isscalar(data):
+                            if type(data) is int:
+                                frac_cell_data[prop].append(
+                                    (data * np.ones(len(cell_idxs))).tolist()
+                                )
+                            elif type(data) is float:
+                                frac_cell_data[prop].append(
+                                    (
+                                        data
+                                        * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)
+                                    ).tolist()
+                                )
+                        else:
+                            frac_cell_data[prop].append(
+                                data.flatten()[cell_idxs].tolist()
+                            )
+
+                meshio.write(
+                    f"{output_directory:s}/mesh_frac.vtk",
+                    meshio.Mesh(
+                        points=self.discretizer.mesh_data.points,
+                        cells=frac_nodes,
+                        cell_data=frac_cell_data,
+                    ),
+                )
 
     def output_to_vtk(
         self,
@@ -394,7 +371,8 @@ class UnstructReservoir(ReservoirBase):
         data: dict,
     ):
         """
-        Function to export results of unstructured reservoir at timestamp t into `.vtk` format.
+        Function to export reservoir results of unstructured reservoir at timestamp t into `.vtk` format.
+        Matrix and fracture cells are written to separate VTK files.
 
         :param ith_step: i'th reporting step
         :type ith_step: int
@@ -417,100 +395,72 @@ class UnstructReservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory, export_grid_data=True)
 
-        # Create empty lists for each geometry type - {**{}} operator merges dictionaries
-        output_nodes = (
-            self.discretizer.vtk_output_nodes_to_cells["matrix"]
-            if not self.discretizer.frac_cells_tot
-            else {
-                **self.discretizer.vtk_output_nodes_to_cells["fracture"],
-                **self.discretizer.vtk_output_nodes_to_cells["matrix"],
-            }
-        )
-        output_idxs = (
-            self.discretizer.vtk_output_cell_idxs["matrix"]
-            if not self.discretizer.frac_cells_tot
-            else {
-                **self.discretizer.vtk_output_cell_idxs["fracture"],
-                **self.discretizer.vtk_output_cell_idxs["matrix"],
-            }
-        )
-        geometries = output_nodes.keys()
-
-        prop_names_ = {**prop_names, **{k: k for k in self.frac_property_array.keys()}}
-        cell_data = {
-            prop_names_[prop]: [[] for geometry in geometries] for prop in prop_names_
-        }
-
-        # Distinguish fracture cells from matrix cells
-        cell_data["matrix_cell_bool"] = [[] for geometry in geometries]
-        ith_geometry = 0
-        for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-            'fracture'
-        ].items():
-            cell_data["matrix_cell_bool"][ith_geometry] += np.zeros(
-                len(cell_idxs)
-            ).tolist()  # fill fracture cells with zeros
-            ith_geometry += 1
-
-        for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-            'matrix'
-        ].items():
-            cell_data["matrix_cell_bool"][ith_geometry] += np.ones(
-                len(cell_idxs)
-            ).tolist()  # fill matrix cells with ones
-            ith_geometry += 1
-
-        vtk_file_name = output_directory + f'/solution_ts{ith_step}' + ".vtu"
-
-        # Loop over output properties
-        for i, prop in enumerate(prop_names):
-            # Loop over fracture and matrix cells (in that order)
-            for ith_geometry, (_geometry, cell_idxs) in enumerate(output_idxs.items()):
-                cell_data[prop_names[prop]][ith_geometry] = data[i][cell_idxs]
-
-        # Loop over fracture cell properties
-        if self.discretizer.frac_cells_tot:
-            for prop, data in frac_props.items():
-                ith_geometry = 0
-
-                # Fill fracture cells with data
-                for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-                    'fracture'
-                ].items():
-                    if np.isscalar(data):
-                        if type(data) is int:
-                            cell_data[prop][ith_geometry] += (
-                                data * np.ones(len(cell_idxs))
-                            ).tolist()
-                        elif type(data) is float:
-                            cell_data[prop][ith_geometry] += (
-                                data * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)
-                            ).tolist()
-                    else:
-                        cell_data[prop][ith_geometry] += data.flatten()[
-                            cell_idxs
-                        ].tolist()
-                    ith_geometry += 1
-                # Fill matrix cells with zeros
-                for _geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-                    'matrix'
-                ].items():
-                    cell_data[prop][ith_geometry] += [0.0] * len(cell_idxs)
-                    ith_geometry += 1
-
-        # Temporarily store mesh_data in copy:
-        mesh = meshio.Mesh(
-            points=self.discretizer.mesh_data.points,  # list of point coordinates
-            cells=output_nodes,  # list of cell geometries and idxs for reporting
-            # Each item in cell data must match the cells array
-            cell_data=cell_data,
-        )
-
         print(f'Writing data to VTK file for {ith_step:d}-th reporting step')
-        meshio.write(vtk_file_name, mesh)
 
-        self.vtk_filenames_and_times[vtk_file_name] = t
+        # --- Matrix file ---
+        mat_nodes = self.discretizer.vtk_output_nodes_to_cells["matrix"]
+        mat_idxs = self.discretizer.vtk_output_cell_idxs["matrix"]
+        mat_cell_data = {prop_names[prop]: [] for prop in prop_names}
+        for i, prop in enumerate(prop_names):
+            for _geometry, cell_idxs in mat_idxs.items():
+                mat_cell_data[prop_names[prop]].append(data[i][cell_idxs])
+
+        vtk_mat_file = output_directory + f'/solution_ts{ith_step}.vtu'
+        meshio.write(
+            vtk_mat_file,
+            meshio.Mesh(
+                points=self.discretizer.mesh_data.points,
+                cells=mat_nodes,
+                cell_data=mat_cell_data,
+            ),
+        )
+        self.vtk_filenames_and_times[vtk_mat_file] = t
         vtk_group = VtkGroup(os.path.join(output_directory, "solution"))
-        for fname, t in self.vtk_filenames_and_times.items():
-            vtk_group.addFile(fname, t)
+        for fname, sim_t in self.vtk_filenames_and_times.items():
+            vtk_group.addFile(fname, sim_t)
         vtk_group.save()
+
+        # --- Fracture file ---
+        if self.discretizer.frac_cells_tot:
+            frac_nodes = self.discretizer.vtk_output_nodes_to_cells["fracture"]
+            frac_idxs = self.discretizer.vtk_output_cell_idxs["fracture"]
+
+            # simulation props for fracture cells
+            frac_cell_data = {prop_names[prop]: [] for prop in prop_names}
+            for i, prop in enumerate(prop_names):
+                for _geometry, cell_idxs in frac_idxs.items():
+                    frac_cell_data[prop_names[prop]].append(data[i][cell_idxs])
+
+            # static fracture-specific properties
+            for prop, fdata in frac_props.items():
+                frac_cell_data[prop] = []
+                for _geometry, cell_idxs in frac_idxs.items():
+                    if np.isscalar(fdata):
+                        if type(fdata) is int:
+                            frac_cell_data[prop].append(
+                                (fdata * np.ones(len(cell_idxs))).tolist()
+                            )
+                        elif type(fdata) is float:
+                            frac_cell_data[prop].append(
+                                (
+                                    fdata
+                                    * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)
+                                ).tolist()
+                            )
+                    else:
+                        frac_cell_data[prop].append(fdata.flatten()[cell_idxs].tolist())
+
+            vtk_frac_file = output_directory + f'/solution_frac_ts{ith_step}.vtu'
+            meshio.write(
+                vtk_frac_file,
+                meshio.Mesh(
+                    points=self.discretizer.mesh_data.points,
+                    cells=frac_nodes,
+                    cell_data=frac_cell_data,
+                ),
+            )
+            self.vtk_filenames_and_times_frac[vtk_frac_file] = t
+            vtk_group_frac = VtkGroup(os.path.join(output_directory, "solution_frac"))
+            for fname, sim_t in self.vtk_filenames_and_times_frac.items():
+                vtk_group_frac.addFile(fname, sim_t)
+            vtk_group_frac.save()

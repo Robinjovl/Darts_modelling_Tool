@@ -8,15 +8,15 @@ from matplotlib.colors import BoundaryNorm
 from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
 def plot_heat_map_contourf(
-    primary_vars_and_phase_props_file_address: str,
-    h5_well_data: dict,
+    well_name: str,
     coupled_model: DartsModel,
     min_ts_idx: int = 0,
     max_ts_idx: int = None,
-    x_axis: str = "simulation_time",
+    x_axis: str = "simulated_time",
     y_axis: str = "segments_MD",
     cmap_color: str = "jet",
     save_as: str = 'pdf',
@@ -34,11 +34,10 @@ def plot_heat_map_contourf(
     with_logarithmic_x_axis: bool = False,
 ):
     """
-    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of well segments are stored
-    :type primary_vars_and_phase_props_file_address: str
-    :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
-    :type h5_well_data: dict
+    Plot property profiles over time using contourf for the specified well
+
+    :param well_name: Name of the well the properties of which will be plotted
+    :type well_name: str
     :param coupled_model: An instance of DartsModel
     :type coupled_model: DartsModel
     :param min_ts_idx: If specified, the heat map will be shown from the specified minimum time step index. If not
@@ -47,7 +46,7 @@ def plot_heat_map_contourf(
     :param max_ts_idx: If specified, the heat map will be shown until the specified maximum time step index. If not
     specified, the heat map will be shown till the last time step.
     :type max_ts_idx: int
-    :param x_axis: "simulation_time" or "time_step_index"
+    :param x_axis: "simulated_time" or "time_step_index"
     :type x_axis: str
     :param y_axis: "segments_MD" or "segments_TVD" or "segment_index"
     :param save_as: The extension of the image files that will be saved
@@ -77,32 +76,39 @@ def plot_heat_map_contourf(
     :param with_logarithmic_x_axis: Whether or not to have the logarithmic x-axis
     :type with_logarithmic_x_axis: bool
     """
-    main_dir = os.path.join(coupled_model.output_folder, 'heat_maps_contourf')
+    output_folder_name = f'heat_maps_contourf_{well_name}'
+    main_dir = os.path.join(coupled_model.output_folder, output_folder_name)
 
-    # Reset_directory
+    # Reset directory
     if os.path.exists(main_dir):
         shutil.rmtree(main_dir)
     os.makedirs(main_dir)
 
-    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
-    # and assigns it to well_geom.
-    well_geom = next(iter(coupled_model.wells.values())).geometry
+    # Well HDF5 file is used here to get the time step sizes
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
 
+    # Get well geometry info
+    well_geom = coupled_model.wells[well_name].geometry
     segments_MD = well_geom.z
     interfaces_MD = well_geom.z_interfaces
     if y_axis == "segments_TVD":
         segments_TVD = well_geom.TVD_segments
         interfaces_TVD = well_geom.TVD_interfaces
+    num_segments = well_geom.num_segments
+    num_interfaces = well_geom.num_interfaces
 
-    # Get components names
+    # Get physics info
     pc = coupled_model.physics.property_containers[0]
     components_names = pc.components_name
     num_components = len(components_names)
-    num_segments = well_geom.num_segments
-    num_interfaces = num_segments - 1
 
     # Load primary vars and phase props
-    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
+    well_props_file_path = os.path.join(
+        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
+    )
+    data_frame = pd.read_pickle(well_props_file_path)
+
     num_ts = int(
         len(data_frame["sG"]) / num_segments
     )  # Initial conditions of sG is not stored.
@@ -118,12 +124,11 @@ def plot_heat_map_contourf(
         f"min_ts_idx is equal to or larger than max_ts_idx, which is {max_ts_idx}!"
     )
 
-    if x_axis == "simulation_time":
-        simulation_time = (
-            h5_well_data["dynamic"]["time"] * 24 * 60 * 60
-        )  # convert days to seconds
+    if x_axis == "simulated_time":
+        # Convert days to seconds
+        simulated_time = h5_well_dict["dynamic"]["time"] * 24 * 60 * 60
         # Apply the user-specified time-step index range
-        simulation_time = simulation_time[min_ts_idx:max_ts_idx]
+        simulated_time = simulated_time[min_ts_idx:max_ts_idx]
 
     time_step_idx_range = range(min_ts_idx, max_ts_idx)
     num_selected_ts = len(time_step_idx_range)
@@ -131,9 +136,9 @@ def plot_heat_map_contourf(
     if x_axis == "time_step_index":
         x = time_step_idx_range
         x_label = 'Time step [-]'
-    elif x_axis == "simulation_time":
-        x = simulation_time
-        x_label = 'Simulation time [second]'
+    elif x_axis == "simulated_time":
+        x = simulated_time
+        x_label = 'Simulated time [second]'
 
     if y_axis == "segment_index":
         y_segments = range(num_segments)
@@ -225,10 +230,12 @@ def plot_heat_map_contourf(
         )
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Pressure." + save_as)
+    file_address = os.path.join(main_dir, f"{figure_counter}- Pressure.{save_as}")
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)
 
     # %% Overall mole fraction profiles
 
@@ -326,12 +333,13 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- {components_names[comp_idx]} overall mole fraction."
-            + save_as,
+            f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Temperature profile
 
@@ -416,11 +424,14 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Temperature." + save_as
+            main_dir,
+            f"{figure_counter}- Temperature.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Gas saturation profile
 
@@ -500,11 +511,14 @@ def plot_heat_map_contourf(
 
     plt.tight_layout()
     file_address = os.path.join(
-        main_dir, f"{figure_counter}- Gas saturation." + save_as
+        main_dir,
+        f"{figure_counter}- Gas saturation.{save_as}",
     )
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)
 
     # %% Liquid L_a saturation profile
 
@@ -588,11 +602,13 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             coupled_model.output_folder,
-            f"{figure_counter}- Liquid L_a saturation." + save_as,
+            f"{figure_counter}- Liquid L_a saturation.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Liquid L_b saturation profile
 
@@ -675,11 +691,14 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_b saturation." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_b saturation.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Profile/profiles of components mole fractions in the gaseous phase
 
@@ -773,12 +792,13 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- {comp_name} mole fraction in the gaseous phase."
-            + save_as,
+            f"{figure_counter}- {comp_name} mole fraction in the gaseous phase.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Profile/profiles of components mole fractions in the liquid phase
 
@@ -880,12 +900,13 @@ def plot_heat_map_contourf(
             plt.tight_layout()
             file_address = os.path.join(
                 main_dir,
-                f"{figure_counter}- {comp_name} mole fraction in the liquid phase."
-                + save_as,
+                f"{figure_counter}- {comp_name} mole fraction in the liquid phase.{save_as}",
             )
             plt.savefig(file_address)
             if show_plot:
                 plt.show()
+
+            plt.close(fig)
 
         # %% Profile/profiles of components mole fractions in the liquid phase L_a
 
@@ -988,12 +1009,13 @@ def plot_heat_map_contourf(
                 plt.tight_layout()
                 file_address = os.path.join(
                     main_dir,
-                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a."
-                    + save_as,
+                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a.{save_as}",
                 )
                 plt.savefig(file_address)
                 if show_plot:
                     plt.show()
+
+                plt.close(fig)
 
         # %% Profile/profiles of components mole fractions in the liquid phase L_b
 
@@ -1096,12 +1118,13 @@ def plot_heat_map_contourf(
                 plt.tight_layout()
                 file_address = os.path.join(
                     main_dir,
-                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b."
-                    + save_as,
+                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b.{save_as}",
                 )
                 plt.savefig(file_address)
                 if show_plot:
                     plt.show()
+
+                plt.close(fig)
 
     # %% Gas density profile
 
@@ -1183,10 +1206,12 @@ def plot_heat_map_contourf(
         )
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas density." + save_as)
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas density.{save_as}")
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)
 
     # %% Liquid density profile
 
@@ -1272,11 +1297,14 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid density." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid density.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Liquid L_a density profile
 
@@ -1372,11 +1400,14 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_a density." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_a density.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Liquid L_b density profile
 
@@ -1472,11 +1503,14 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_b density." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_b density.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Gas viscosity profile
 
@@ -1558,10 +1592,12 @@ def plot_heat_map_contourf(
         )
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity." + save_as)
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity.{save_as}")
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)
 
     # %% Liquid viscosity profile
 
@@ -1647,11 +1683,14 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid viscosity." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid viscosity.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Liquid L_a viscosity profile
 
@@ -1747,11 +1786,14 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_a viscosity." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_a viscosity.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Liquid L_b viscosity profile
 
@@ -1847,11 +1889,14 @@ def plot_heat_map_contourf(
 
         plt.tight_layout()
         file_address = os.path.join(
-            main_dir, f"{figure_counter}- Liquid L_b viscosity." + save_as
+            main_dir,
+            f"{figure_counter}- Liquid L_b viscosity.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
             plt.show()
+
+        plt.close(fig)
 
     # %% Gas velocity profile
 
@@ -1929,10 +1974,12 @@ def plot_heat_map_contourf(
         )
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity." + save_as)
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity.{save_as}")
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)
 
     # %% Liquid velocity profile
 
@@ -2011,8 +2058,11 @@ def plot_heat_map_contourf(
 
     plt.tight_layout()
     file_address = os.path.join(
-        main_dir, f"{figure_counter}- Liquid velocity." + save_as
+        main_dir,
+        f"{figure_counter}- Liquid velocity.{save_as}",
     )
     plt.savefig(file_address)
     if show_plot:
         plt.show()
+
+    plt.close(fig)

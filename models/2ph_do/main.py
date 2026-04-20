@@ -63,6 +63,14 @@ if __name__ == '__main__':
 
         # compute and save well time data
         time_data_dict = n.output.store_well_time_data(save_output_files=True)
+        n.output.plot_well_time_data(
+            # phase_molar_rates = False,
+            # phase_mass_rates = False,
+            phase_volumetric_rates = True,
+            # component_molar_rates = False,
+            # component_mass_rates  = False,
+            # advective_heat_rates = False,
+                )
 
     else:
         # n.load_restart_data()
