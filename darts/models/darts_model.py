@@ -690,7 +690,7 @@ class DartsModel:
             if not self.has_dfm_well:
                 self.physics.engine.newton_residual_last_dt = (
                     # self.physics.engine.calc_newton_residual()
-                    self.calc_residual_python()
+                    self.calc_residual()
                 )  # calc norm of residual
             elif self.has_dfm_well:
                 # Method is either 1 or 2
@@ -700,7 +700,7 @@ class DartsModel:
                     )
                 )
 
-            # print("{:.4e}".format(self.calc_residual_python()),
+            # print("{:.4e}".format(self.calc_residual()),
             #       "{:.4e}".format(self.physics.engine.newton_residual_last_dt))
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
@@ -718,7 +718,7 @@ class DartsModel:
 
             self.physics.engine.well_residual_last_dt = (
                 # self.physics.engine.calc_well_residual()
-                self.calc_residual_python(is_well=True)
+                self.calc_residual(is_well=True)
             )
             residual_history.append(
                 (
@@ -1035,31 +1035,29 @@ class DartsModel:
         rhs += self.set_rhs_flux(t) * dt
         return
 
-    def calc_residual_python(self, ntype="L2", is_well=False):
+    def calc_residual(self, ntype: str = "L2", is_well: bool = False):
         """
-        Function to calculate norm of RHS vector.
-
-        :param ntype: string
+        Calculate norm of RHS vector
         """
         rhs = np.array(self.physics.engine.RHS, copy=False)
         volume = np.array(self.reservoir.mesh.volume, copy=False)
         poro = np.array(self.reservoir.mesh.poro, copy=False)
-        acc = np.array(self.physics.engine.op_vals_arr, copy=False)
-        nb = self.reservoir.n
-        nt = len(volume)
-        ne = self.physics.n_vars
-        no = self.physics.n_ops
+        ops = np.array(self.physics.engine.op_vals_arr, copy=False)
+        nb_res = self.reservoir.mesh.n_res_blocks
+        nb_tot = self.reservoir.mesh.n_blocks
+        n_vars = self.physics.n_vars
+        n_ops = self.physics.n_ops
         res = 0
 
-        for c in range(ne):
+        for c in range(n_vars):
             if is_well:
-                irhs = slice(nb * ne + c, nt * ne, ne)
-                iops = slice(nb * no + c, nt * no, no)
-                ires = slice(nb, nt)
+                irhs = slice(nb_res * n_vars + c, nb_tot * n_vars, n_vars)
+                iops = slice(nb_res * n_ops + c, nb_tot * n_ops, n_ops)
+                ires = slice(nb_res, nb_tot)
             else:
-                irhs = slice(c, nb * ne, ne)
-                iops = slice(c, nb * no, no)
-                ires = slice(0, nb)
+                irhs = slice(c, nb_res * n_vars, n_vars)
+                iops = slice(c, nb_res * n_ops, n_ops)
+                ires = slice(0, nb_res)
 
             match ntype:
                 case "L2":
@@ -1067,12 +1065,12 @@ class DartsModel:
                         res,
                         np.sqrt(
                             np.sum(rhs[irhs] ** 2)
-                            / np.sum((volume[ires] * poro[ires] * acc[iops]) ** 2)
+                            / np.sum((volume[ires] * poro[ires] * ops[iops]) ** 2)
                         ),
                     )
                 case "Linf":
-                    for _c in range(ne):
-                        denom = volume[ires] * poro[ires] * acc[iops]
+                    for _c in range(n_vars):
+                        denom = volume[ires] * poro[ires] * ops[iops]
                         denom[denom < 1e-4] = 1e4
                         res = max(res, np.max(np.abs(rhs[irhs]) / denom))
                 case _:
