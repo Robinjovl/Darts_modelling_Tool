@@ -3,8 +3,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
 from darts.models.cicd_model import DartsModel
 from darts.engines import well_control_iface
 from darts.reservoirs.struct_reservoir import StructReservoir
@@ -339,7 +337,17 @@ def compute_eff_tran_for_one_lgr_layer(
     )
     redirect_darts_output("upscaling_2d.log")
     effective_2d_model.init(platform='cpu')
-    effective_2d_model.set_output(output_folder="local_upscaling_tmp")
+    # code for batch tasks to avoid output collision. Each task writes to its own tmp folder, and the main process can gather results after all tasks are done.
+    job_id = os.environ.get("SLURM_JOB_ID", "nojid")
+    task_id = os.environ.get("SLURM_ARRAY_TASK_ID", "notaskid")
+    pid = os.getpid()
+    tmp_root = Path("tmp_upscaling_results")
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    tmp_dir = tmp_root / f"tmp_upscaling_{job_id}_{task_id}_{pid}"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    effective_2d_model.set_output(output_folder=str(tmp_dir))
+
     for dt in range(n_steps):
         effective_2d_model.run(run_days)
         
@@ -653,145 +661,3 @@ class PatchEffectiveTransAnalyzer:
             "faces": detail,
             "summary_df": pd.DataFrame(rows),
         }
-
-
-# ============================================================
-# Run + plot
-# ============================================================
-
-def plot_effective_trans_history(df, save_dir):
-    os.makedirs(save_dir, exist_ok=True)
-
-    plt.figure(figsize=(8, 5), dpi=150)
-    for side in ["left", "right", "up", "down"]:
-        dfi = df[df["side"] == side]
-        plt.plot(dfi["time_day"], dfi["T_eff_avglink"], label=side)
-
-    plt.xlabel("time [day]")
-    plt.ylabel("effective transmissibility")
-    plt.title("Interface effective transmissibility vs time")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "effective_trans_vs_time.png"))
-    plt.close()
-
-def get_reservoir_average_pressure(model):
-    n_res = model.reservoir.mesh.n_res_blocks
-    n_vars = len(model.physics.vars)
-
-    X = np.asarray(model.physics.engine.X, dtype=float)
-    P = X.reshape((-1, n_vars))[:n_res, 0]
-
-    poro = np.array(model.reservoir.mesh.poro, copy=False)[:n_res]
-    volume = np.array(model.reservoir.mesh.volume, copy=False)[:n_res]
-    pv = poro * volume
-    return float(np.sum(P * pv) / np.sum(pv))
-
-def plot_pressure_history(pressure_hist, save_dir):
-    os.makedirs(save_dir, exist_ok=True)
-
-    # -------- plot 1: BHP and reservoir average pressure --------
-    plt.figure(figsize=(8, 5), dpi=150)
-    plt.plot(pressure_hist["time_day"], pressure_hist["bhp_bar"], label="Injector BHP")
-    plt.plot(pressure_hist["time_day"], pressure_hist["avg_pressure"], label="Reservoir average pressure")
-
-    plt.xlabel("time [day]")
-    plt.ylabel("pressure [bar]")
-    plt.title("Injector BHP and reservoir average pressure")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "bhp_and_reservoir_avg_pressure.png"))
-    plt.close()
-
-    # -------- plot 2: pressure difference only --------
-    plt.figure(figsize=(8, 5), dpi=150)
-    plt.plot(pressure_hist["time_day"], pressure_hist["delta_p"])
-
-    plt.xlabel("time [day]")
-    plt.ylabel("BHP - Pavg [bar]")
-    plt.title("Pressure difference for stabilization check")
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "bhp_minus_pavg_vs_time.png"))
-    plt.close()
-
-
-def run_case():
-    output_dir = "flow_upscaling_example"
-    fig_dir = os.path.join(output_dir, "figures")
-    os.makedirs(fig_dir, exist_ok=True)
-
-    perm_file = Path(r"E:\repo_2\open-darts\LGR_kairan\Egg model\Heter_model\PERM1_ECL.INC")
-
-    model = FlowUpscalingExampleModel(
-        perm_file=str(perm_file),
-        egg_center_ij_1b=(46, 30),
-    )
-
-    model.init(platform="cpu")
-    model.set_output(output_folder=output_dir)
-
-    analyzer = PatchEffectiveTransAnalyzer(
-        model=model,
-        nx=25,
-        ny=25,
-        nz=1,
-        patch_size=5,
-        patch_center_1b=(13, 13),
-        n_nb_cols=5,
-    )
-
-    Nt = 50
-    Dt = 365.0
-
-    rows = []
-    time_point = []
-    avg_pre = []
-
-   
-
-    for _ in range(Nt):
-        model.run(Dt)
-        t_end = float(model.physics.engine.t)
-        time_point.append(t_end)
-        avg_pre.append(get_reservoir_average_pressure(model))
-
-        res = analyzer.all_faces(k0=0, mobility_mode="interface_avg")
-        dfi = res["summary_df"].copy()
-        dfi["time_day"] = float(model.physics.engine.t)
-        rows.append(dfi)
-
-        print(dfi)
-    avg_pre_df = pd.DataFrame({
-        "time_day": time_point,
-        "avg_pressure": avg_pre,
-    }).sort_values("time_day").reset_index(drop=True)
-    time_data_dict = model.output.store_well_time_data(save_output_files=True)
-    time_data_df = pd.DataFrame.from_dict(time_data_dict)
-    bhp_df = time_data_df[["time", "well_I1_BHP"]].copy()
-    bhp_df = bhp_df.rename(columns={
-        "time":"time_day",
-        "well_I1_BHP":"bhp_bar",
-    })
-    bhp_df = bhp_df.sort_values("time_day").reset_index(drop=True)
-
-    pressure_hist = pd.merge_asof(
-        avg_pre_df, bhp_df, on="time_day", direction="nearest", tolerance=1e-6,
-    )
-    pressure_hist["delta_p"] = pressure_hist["bhp_bar"] - pressure_hist["avg_pressure"]
-
-    pressure_hist.to_excel(
-    os.path.join(output_dir, "pressure_stabilization_history.xlsx"),
-    index=False,
-)
-
-    plot_pressure_history(pressure_hist, fig_dir)
-
-    hist = pd.concat(rows, axis=0, ignore_index=True)
-    hist.to_excel(os.path.join(output_dir, "effective_trans_history.xlsx"), index=False)
-    plot_effective_trans_history(hist, fig_dir)
-
-    print(f"Saved results to: {output_dir}")
-
-
-if __name__ == "__main__":
-    run_case()
