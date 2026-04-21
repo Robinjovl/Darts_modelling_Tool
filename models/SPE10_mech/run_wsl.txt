@@ -1,0 +1,5 @@
+
+source ~/miniconda3/bin/activate
+conda activate dev310
+cd ~/projects/open-darts_dev_debug/models/SPE10_mech
+python main.py
