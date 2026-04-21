@@ -4,7 +4,9 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 import darts.engines as darts_engines
+import darts.interpolators as darts_interpolators
 from darts.engines import *
+from darts.interpolators import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
     ThermalVarOperator,
@@ -360,7 +362,7 @@ class Compositional(PhysicsBase):
         itor_name = f"{algorithm}_{mode}_{platform}_interpolator_i_{precision}_{n_dims:d}_{n_ops:d}"
         itor = None
         try:
-            itor_cls = getattr(darts_engines, itor_name)
+            itor_cls = getattr(darts_interpolators, itor_name)
             if algorithm == "linear":
                 itor = itor_cls(
                     evaluator, n_axes_points, axes_min, axes_max, is_barycentric
@@ -375,7 +377,7 @@ class Compositional(PhysicsBase):
                 itor_name = itor_name.replace("interpolator_i", "interpolator_l")
             else:
                 itor_name = itor_name.replace("interpolator_i", "interpolator_ll")
-            itor_cls = getattr(darts_engines, itor_name)
+            itor_cls = getattr(darts_interpolators, itor_name)
             if algorithm == "linear":
                 itor = itor_cls(
                     evaluator, n_axes_points, axes_min, axes_max, is_barycentric
