@@ -563,12 +563,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
     # compute with proxy in 3D volume
     if True:
-        #points_x = np.arange(-1050, 1050, 50.)  # only internal XY part
-        #points_y = np.array([0.])
-        ##points_z = np.hstack([np.arange(1000, 2000, 200), np.arange(2100, 2200, 10), np.arange(2300, 3000, 200)])
-        #points_z = np.arange(1900, 2500, 15.)
-        
         points_x = np.unique(g.centroids[:, 0])
+        points_y = np.array([0.])
         points_z = np.unique(g.centroids[:, 2])
         points_x = points_x[reduce(np.logical_and, [points_x > -5000., points_x < 5000.])]
         points_z = points_z[reduce(np.logical_and, [points_z > 1400., points_z < 3400.])]
