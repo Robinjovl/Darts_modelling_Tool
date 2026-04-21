@@ -1,12 +1,12 @@
 import os
 import numpy as np
 import pandas as pd
+import argparse
 
-
-from Homo_model.lgr_homo_egg import Model
+from Heter_model.coarse_heter_egg import Model
 from darts.engines import value_vector, redirect_darts_output
 from darts.physics.base.operators_base import PropertyOperators as props
-from output import get_physics_field, plot_xy_plane, plot_xz_section, plot_well_time_data_2, plot_average_res_pressure
+from drawing import get_physics_field, plot_xy_plane, plot_xz_section, plot_well_time_data_2, plot_average_res_pressure
 from Auxiliary_functions import calculate_total_co2_in_reservoir_single_phase, LGRInterfaceTransAnalyzer, FineEffectiveTransAnalyzer
 
 def make_cfg_lgr():
@@ -76,30 +76,50 @@ def cal_average_res_pre(m):
 
     pv = poro * volume
     return float(np.sum(P * pv) / np.sum(pv))
+# def parse_args():
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("--perm-file", type=str, required=True,
+#                         help="Permeability include file name, e.g. PERM1_ECL.INC")
+#     parser.add_argument("--output-dir", type=str, required=True,
+#                         help="Output directory for this run")
+#     parser.add_argument("--use-lgr", action="store_true",
+#                         help="Use LGR model")
+#     parser.add_argument("--nt", type=int, default=50)
+#     parser.add_argument("--dt", type=float, default=365.0)
+#     return parser.parse_args()
 
-USE_LGR = True
-Fine = False
 
-Nt = 50
-Dt = 365
-output_dir = "output_lgr_homo_nocalibrate"
-FIG_DIR = os.path.join(output_dir, "figures")
-SECTION_DIR = os.path.join(FIG_DIR, "sections")
-WELL_DIR = os.path.join(FIG_DIR, "well_time_plots")
-os.makedirs(SECTION_DIR, exist_ok=True)
-os.makedirs(WELL_DIR, exist_ok=True)
 
 if __name__ == '__main__':
+    # args = parse_args()
+    # Perm_file_name = args.perm_file
+    # output_dir = args.output_dir
+    # Nt = args.nt
+    # Dt = args.dt
+    # USE_LGR = args.use_lgr
+    Perm_file_name = "PERM1_ECL.INC"
+    output_dir = "output_coarse_limited_rate"
+    Nt = 50
+    Dt = 365.0
+    USE_LGR = False
+    Fine = False
+
+    FIG_DIR = os.path.join(output_dir, "figures")
+    SECTION_DIR = os.path.join(FIG_DIR, "sections")
+    WELL_DIR = os.path.join(FIG_DIR, "well_time_plots")
+    os.makedirs(SECTION_DIR, exist_ok=True)
+    os.makedirs(WELL_DIR, exist_ok=True)
+
     if USE_LGR:
         cfg = make_cfg_lgr()
-        darts_model = Model(cfg)
+        darts_model = Model(cfg, perm_file_name=Perm_file_name)
     else:
-        darts_model = Model()
-   
-
-    redirect_darts_output('run.log')
+        darts_model = Model(perm_file_name=Perm_file_name)
+    
+    redirect_darts_output(os.path.join(output_dir, "run.log"))
     darts_model.init(platform="cpu")
-    darts_model.set_output(output_folder='output_lgr_homo_nocalibrate')
+
+    darts_model.set_output(output_folder=output_dir)
 
     # summarize_patch_boundary_T(darts_model, "lgr0")
     # summarize_patch_boundary_T(darts_model, "lgr1")
@@ -148,7 +168,7 @@ if __name__ == '__main__':
             title=f"permeability kx", logscale=True, 
         )
             plot_xy_plane(
-                darts_model, darts_model.reservoir.kx, depth=2035, use_lgr=USE_LGR,
+                darts_model, darts_model.reservoir.kx, depth=2005, use_lgr=USE_LGR,
                 savepath=os.path.join(SECTION_DIR, f"section_kx_xy_middle.png"),
                 title=f"permeability kx", logscale=True, 
             )
@@ -160,9 +180,19 @@ if __name__ == '__main__':
             title=f"permeability kx", logscale=True, edgecolor="none", linewidth=0.0
         )
         plot_xy_plane(
-            darts_model, darts_model.reservoir.global_data["permx"].reshape(-1, order="F"), depth=2035, use_lgr=USE_LGR,
+            darts_model, darts_model.reservoir.global_data["permx"].reshape(-1, order="F"), depth=2005, use_lgr=USE_LGR,
             savepath=os.path.join(SECTION_DIR, f"section_kx_xy_middle.png"),
             title=f"permeability kx ", logscale=True,
+        )
+        plot_xz_section(
+            darts_model, darts_model.reservoir.global_data["permy"].reshape(-1, order="F"), use_lgr=USE_LGR, zmin=1990, zmax=2080,
+            savepath=os.path.join(SECTION_DIR, f"section_ky_xz.png"),
+            title=f"permeability ky", logscale=True, edgecolor="none", linewidth=0.0
+        )
+        plot_xy_plane(
+            darts_model, darts_model.reservoir.global_data["permy"].reshape(-1, order="F"), depth=2005, use_lgr=USE_LGR,
+            savepath=os.path.join(SECTION_DIR, f"section_ky_xy_middle.png"),
+            title=f"permeability ky ", logscale=True,
         )
 
     # pressure
@@ -177,7 +207,7 @@ if __name__ == '__main__':
             
 
             plot_xy_plane(
-                darts_model, prim0[k], depth=2035, use_lgr=USE_LGR,
+                darts_model, prim0[k], depth=2005, use_lgr=USE_LGR,
                 savepath=os.path.join(SECTION_DIR, f"section_P_xy_middle.png"),
                 title=f"{k} (initial)", logscale=False, edgecolor="none", linewidth=0.0
             )
@@ -209,7 +239,7 @@ if __name__ == '__main__':
             )
             
             plot_xy_plane(
-                darts_model, prim0[k], depth=2035, use_lgr=USE_LGR,
+                darts_model, prim0[k], depth=2005, use_lgr=USE_LGR,
                 savepath=os.path.join(SECTION_DIR, f"section_T_xy_middle.png"),
                 title=f"{k} (initial)", logscale=False, edgecolor="none", linewidth=0.0
             )
@@ -241,12 +271,12 @@ if __name__ == '__main__':
                 rhoG = property_array["rhoG"][0,:]
         
                 plot_xy_plane(
-                    darts_model, muG, depth=2035, use_lgr=USE_LGR,
+                    darts_model, muG, depth=2005, use_lgr=USE_LGR,
                     savepath=os.path.join(SECTION_DIR, f"section_muG_xy_{t_end}_middle.png"),
                     title=f"muG", logscale=False, edgecolor="none", linewidth=0.0
                 )
                 plot_xy_plane(
-                    darts_model, rhoG, depth=2035, use_lgr=USE_LGR,
+                    darts_model, rhoG, depth=2005, use_lgr=USE_LGR,
                     savepath=os.path.join(SECTION_DIR, f"section_rhoG_xy_{t_end}_middle.png"),
                     title=f"rhoG", logscale=False, edgecolor="none", linewidth=0.0
                 )
@@ -269,7 +299,7 @@ if __name__ == '__main__':
                                         logscale=False, edgecolor="none", linewidth=0.0)
                         
                         plot_xy_plane(
-                                    darts_model, prim[k], depth=2035, use_lgr=USE_LGR,
+                                    darts_model, prim[k], depth=2005, use_lgr=USE_LGR,
                                     savepath=os.path.join(SECTION_DIR, f"section_P_xy_{t_end}_middle.png"),
                                     title=k, logscale=False, edgecolor="none", linewidth=0.0
                                 )
@@ -284,7 +314,7 @@ if __name__ == '__main__':
                                         logscale=False,
                                         vmin=0, vmax=1)   
                         plot_xy_plane(
-                                    darts_model, prim[k] - 1e-8, depth=2035, use_lgr=USE_LGR,
+                                    darts_model, prim[k] - 1e-8, depth=2005, use_lgr=USE_LGR,
                                     savepath=os.path.join(SECTION_DIR, f"section_CO2_xy_{t_end}_middle.png"),
                                     title="CO2_delta", logscale=False, vmin=0, vmax=1
                                 )
@@ -299,13 +329,14 @@ if __name__ == '__main__':
                         
                         
                         plot_xy_plane(
-                                    darts_model, prim[k], depth=2035, use_lgr=USE_LGR,
+                                    darts_model, prim[k], depth=2005, use_lgr=USE_LGR,
                                     savepath=os.path.join(SECTION_DIR, f"section_T_xy_{t_end}_middle.png"),
                                     title=k, logscale=False,vmin=Tmin, vmax=Tmax, edgecolor="none", linewidth=0.0
                                 )
                         break
         
         # compute well time data
+       
         time_data_dict = darts_model.output.store_well_time_data(save_output_files=True)
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
 
