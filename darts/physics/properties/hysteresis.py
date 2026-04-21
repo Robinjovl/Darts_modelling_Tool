@@ -29,7 +29,7 @@ class KilloughLandModel:
         # sgr = self.residual_gas_saturation(sg_max)
         sgr = sg_max / 2
         if sg < sgr:
-            return float(np.clip(sgr*2,0.0, 1.0))
+            return float(np.clip(sgr * 2, 0.0, 1.0))
         return sg_max
 
 
@@ -229,7 +229,7 @@ class KilloughRelPermTable(_LookupTableMixin, _KilloughRelPermBase):
     def _make_scanning_interp(self, sg_max: float):
         sg_max = min(float(sg_max), self.sg_max_limit)
         # sgr = self.history_model.residual_gas_saturation(sg_max)
-        sgr = sg_max/2
+        sgr = sg_max / 2
         if abs(sg_max - sgr) < 1e-12:
             self._scan_cache[sg_max] = self.kr_interpolator
             return self.kr_interpolator
@@ -296,7 +296,9 @@ class _KilloughCapillaryPressureBase:
 
         # sgr = self.history_model.residual_gas_saturation(Sg_max)
         sgr = Sg_max / 2
-        numerator = 1.0 / (1.0 - sg - (1.0 - Sg_max) + self.epsilon) - 1.0 / self.epsilon
+        numerator = (
+            1.0 / (1.0 - sg - (1.0 - Sg_max) + self.epsilon) - 1.0 / self.epsilon
+        )
         denominator = (
             1.0 / ((1.0 - sgr) - (1.0 - Sg_max) + self.epsilon) - 1.0 / self.epsilon
         )
@@ -355,9 +357,7 @@ class KilloughCapillaryPressureTable(_LookupTableMixin, _KilloughCapillaryPressu
             fill_value=(self.pc_im[0], self.pc_im[-1]),
         )
         zero_im = np.where(np.isclose(self.pc_im, 0.0))[0]
-        self.sgci_max = (
-            self.sat_im[zero_im[-1]] if len(zero_im) > 0 else self.sat_im[0]
-        )
+        self.sgci_max = self.sat_im[zero_im[-1]] if len(zero_im) > 0 else self.sat_im[0]
 
     def evaluate_drainage(self, sg: float) -> float:
         return float(self.pc_drainage(sg)) * 1e-5

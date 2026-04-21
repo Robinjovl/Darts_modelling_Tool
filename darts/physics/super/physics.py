@@ -185,8 +185,12 @@ class Compositional(PhysicsBase):
             for label in self.history_labels
         }
         self.history_defaults = dict(history_defaults or {})
-        self.history_axes_min = list(history_axes_min or [0.0] * len(self.history_labels))
-        self.history_axes_max = list(history_axes_max or [1.0] * len(self.history_labels))
+        self.history_axes_min = list(
+            history_axes_min or [0.0] * len(self.history_labels)
+        )
+        self.history_axes_max = list(
+            history_axes_max or [1.0] * len(self.history_labels)
+        )
         self.history_n_axes_points = list(
             history_n_axes_points or [n_points] * len(self.history_labels)
         )
@@ -217,7 +221,9 @@ class Compositional(PhysicsBase):
         attr = self.history_field_names[label]
         if np.isscalar(values):
             if n_blocks is None:
-                raise ValueError("n_blocks must be provided when setting scalar history")
+                raise ValueError(
+                    "n_blocks must be provided when setting scalar history"
+                )
             values = np.full(n_blocks, values, dtype=float)
         values = np.asarray(values, dtype=float)
         setattr(self.engine, attr, value_vector(values.tolist()))
@@ -272,7 +278,9 @@ class Compositional(PhysicsBase):
     ):
         """Extend OBL axes with history dimensions then delegate to base class."""
         self._extend_axes_with_history()
-        super().set_interpolators(platform, itor_type, itor_mode, itor_precision, is_barycentric)
+        super().set_interpolators(
+            platform, itor_type, itor_mode, itor_precision, is_barycentric
+        )
 
     def init_physics(
         self,
@@ -360,7 +368,10 @@ class Compositional(PhysicsBase):
             else:
                 itor = itor_cls(evaluator, n_axes_points, axes_min, axes_max)
         except (AttributeError, ValueError):
-            if np.prod(np.array(n_axes_points), dtype=np.float64) < np.iinfo(np.int64).max:
+            if (
+                np.prod(np.array(n_axes_points), dtype=np.float64)
+                < np.iinfo(np.int64).max
+            ):
                 itor_name = itor_name.replace("interpolator_i", "interpolator_l")
             else:
                 itor_name = itor_name.replace("interpolator_i", "interpolator_ll")
