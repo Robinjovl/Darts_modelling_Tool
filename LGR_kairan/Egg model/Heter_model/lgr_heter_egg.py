@@ -36,7 +36,7 @@ class Model(DartsModel):
         self.set_reservoir()
         self.zero = 1e-8
         self.set_physics()
-        
+
 
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=30, runtime=1000,
                             tol_newton=1e-3, tol_linear=1e-3,
@@ -47,17 +47,17 @@ class Model(DartsModel):
     def define_lgr(self):
         lgrs = self.cfg["lgrs"]
         return lgrs
-    
+
     def build_well_completion(self):
         return self.cfg["wells"]
-    
+
     def convert_ijk_to_gindex_1based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
         """
         Convert (i,j,k) in 1-based to global index in 0-based
         """
         g_index_0based = (k_1based - 1) * nx * ny + (j_1based - 1) * nx + (i_1based - 1)
         return g_index_0based
-    
+
     def ijk0_to_lin(self, i0: int, j0: int, k0: int, nx: int, ny: int) -> int:
         """Convert 0-based (i,j,k) to linear index"""
         return k0 * nx * ny + j0 * nx + i0
@@ -68,7 +68,7 @@ class Model(DartsModel):
             g = self.convert_ijk_to_gindex_1based(i_c, j_c, k_c, nx0, ny0)
             actnum0[g] = 0  # deactivate the coarse cell that will be refined
         return actnum0
-    
+
      # build cell center coordinates for visualization
     def build_cell_center(self):
         """
@@ -79,11 +79,11 @@ class Model(DartsModel):
         x = np.empty(n, dtype=float)
         y = np.empty(n, dtype=float)
         z = np.asarray(self.reservoir.depth, dtype = float).copy()
-        # level 0 
+        # level 0
         self.level0.discretize()
         disc0 = self.level0.discretizer
         l2g0 = np.asarray(disc0.local_to_global, dtype=int)
-        
+
         n0 = len(l2g0)
         nx0= int(self.level0.nx)
         ny0= int(self.level0.ny)
@@ -96,14 +96,14 @@ class Model(DartsModel):
             i = global_id % nx0
             x[local_id] = (i + 0.5) * dx0
             y[local_id] = (j + 0.5) * dy0
-            
+
         # lgr blocks
         meta = self.lgr_meta
         for name in meta['lgr_orders']:
             offset = meta['lgr_offsets'][name]
             cfg = self.lgrs[name]['lgr_coords_in_parent_grid']
             i_start, j_start = cfg['i_range'][0], cfg['j_range'][0] # 1-based
-            k1, k2 = cfg['k_range'] 
+            k1, k2 = cfg['k_range']
             nk = k2 - k1 + 1
             rx, ry, rz = cfg['refine']
 
@@ -122,7 +122,7 @@ class Model(DartsModel):
             x_centers_local = x0 + np.cumsum(dx_vec) - 0.5 * dx_vec
             y_centers_local = y0 + np.cumsum(dy_vec) - 0.5 * dy_vec
 
-           
+
             for kk in range(nk):
                 for jj in range(ry):
                     for ii in range(rx):
@@ -130,13 +130,13 @@ class Model(DartsModel):
                         global_id = offset + base_fine + jj*rx + ii
                         x[global_id] = x_centers_local[ii]
                         y[global_id] = y_centers_local[jj]
-                        
+
 
         self.reservoir.cell_center_x = x
         self.reservoir.cell_center_y = y
         self.reservoir.cell_center_z = z
         return x,y,z
-    
+
     def set_reservoir(self):
         # set heterogeneous egg model
         self.lgrs = self.define_lgr()
@@ -149,13 +149,13 @@ class Model(DartsModel):
         permx_res = load_single_keyword(str(perm_file), "PERMX", nb_res)
         permy_res = load_single_keyword(str(perm_file), "PERMY", nb_res)
         permz_res = load_single_keyword(str(perm_file), "PERMZ", nb_res)
-    
+
         dx = 30
         dy = 30
         dz = 10
 
-        burden = self.cfg["burden"] 
-       
+        burden = self.cfg["burden"]
+
 
         poro_burden = burden["poro_burden"]
         perm_burden = burden["perm_burden"]
@@ -176,9 +176,9 @@ class Model(DartsModel):
             i1, i2 = cfg['lgr_coords_in_parent_grid']['i_range']
             j1, j2 = cfg['lgr_coords_in_parent_grid']['j_range']
             k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
-            assert i1 == i2 and j1 == j2, "This script only assume column LGR"  
+            assert i1 == i2 and j1 == j2, "This script only assume column LGR"
             for k in range(k1, k2 + 1):
-                refined_cells_ijk.append( (i1, j1, k) )  
+                refined_cells_ijk.append( (i1, j1, k) )
 
         self.refined_cells_ijk = refined_cells_ijk
 
@@ -205,7 +205,7 @@ class Model(DartsModel):
         permx_res = np.asarray(permx_res, dtype=float).reshape(nx * ny * nz_res, order="F")
         permy_res = np.asarray(permy_res, dtype=float).reshape(nx * ny * nz_res, order="F")
         permz_res = np.asarray(permz_res, dtype=float).reshape(nx * ny * nz_res, order="F")
-        
+
         assert len(permx_res) == nb_res, f"PERMX length {len(permx_res)} != {nb_res}"
         assert len(permy_res) == nb_res, f"PERMY length {len(permy_res)} != {nb_res}"
         assert len(permz_res) == nb_res, f"PERMZ length {len(permz_res)} != {nb_res}"
@@ -222,7 +222,7 @@ class Model(DartsModel):
         hcap0_full[mask_over] = hcap_over
         hcap0_full[mask_res] = 2200
         hcap0_full[mask_under] = hcap_under
-        
+
         poro0_full[mask_res] = 0.2
 
 
@@ -232,7 +232,7 @@ class Model(DartsModel):
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full, depth=None, start_z=1990,
                                       hcap=hcap0_full, rcond=rcon0_full, actnum=actnum0)
 
-        
+
         boundary_factor = 2000
         base_vol = float(dx * dy * dz)
         v_big = boundary_factor * base_vol
@@ -276,7 +276,7 @@ class Model(DartsModel):
             permy_f = np.empty((nx1, ny1, nz1), dtype=float)
             permz_f = np.empty((nx1, ny1, nz1), dtype=float)
             for kk, k in enumerate(range(k1, k2+1)):
-                pk = k - 1 
+                pk = k - 1
                 permx_f[:,:,kk] = self.level0.global_data['permx'][ip,jp,pk]
                 permy_f[:,:,kk] = self.level0.global_data['permy'][ip,jp,pk]
                 permz_f[:,:,kk] = self.level0.global_data['permz'][ip,jp,pk]
@@ -294,10 +294,10 @@ class Model(DartsModel):
                 hcap=2200,
             )
 
-            # 1) lateral imaginary grid 
-            nx_im = nx1 + 2 
+            # 1) lateral imaginary grid
+            nx_im = nx1 + 2
             ny_im = ny1 + 2
-            nz_im = nk 
+            nz_im = nk
             dx_imag_vec = np.r_[dx, dx_vec, dx].astype(float)
             dy_imag_vec = np.r_[dy, dy_vec, dy].astype(float)
             dx_imag = np.broadcast_to(dx_imag_vec[:, None, None], (nx_im, ny_im, nz_im)).copy()
@@ -307,7 +307,7 @@ class Model(DartsModel):
             permy_im = np.empty((nx_im, ny_im, nz_im), dtype=float)
             permz_im = np.empty((nx_im, ny_im, nz_im), dtype=float)
             poro_im = np.full((nx_im, ny_im, nz_im), 0.2, dtype=float)
-           
+
             # Find the properties of the refined cells in the parent grid to assign to the LGR grid and imaginary grids
             for kk, k in enumerate(range(k1, k2 + 1)):
                 pk = k - 1 # 0-based
@@ -315,60 +315,60 @@ class Model(DartsModel):
                 permx_im[1:-1, 1:-1, kk] = self.level0.global_data['permx'][ip, jp, pk]
                 permy_im[1:-1, 1:-1, kk] = self.level0.global_data['permy'][ip, jp, pk]
                 permz_im[1:-1, 1:-1, kk] = self.level0.global_data['permz'][ip, jp, pk]
-               
-              
+
+
 
                 # left halo
                 permx_im[0,    1:-1, kk] = self.level0.global_data['permx'][ip-1, jp,   pk]
                 permy_im[0,    1:-1, kk] = self.level0.global_data['permy'][ip-1, jp,   pk]
                 permz_im[0,    1:-1, kk] = self.level0.global_data['permz'][ip-1, jp,   pk]
-           
-                
+
+
                 # right halo
                 permx_im[-1,   1:-1, kk] = self.level0.global_data['permx'][ip+1, jp,   pk]
                 permy_im[-1,   1:-1, kk] = self.level0.global_data['permy'][ip+1, jp,   pk]
                 permz_im[-1,   1:-1, kk] = self.level0.global_data['permz'][ip+1, jp,   pk]
-           
-               
+
+
 
                 # upper halo (j-1)
                 permx_im[1:-1, 0,    kk] = self.level0.global_data['permx'][ip,   jp-1, pk]
                 permy_im[1:-1, 0,    kk] = self.level0.global_data['permy'][ip,   jp-1, pk]
                 permz_im[1:-1, 0,    kk] = self.level0.global_data['permz'][ip,   jp-1, pk]
-            
-               
+
+
 
                 # lower halo (j+1)
                 permx_im[1:-1, -1,   kk] = self.level0.global_data['permx'][ip,   jp+1, pk]
                 permy_im[1:-1, -1,   kk] = self.level0.global_data['permy'][ip,   jp+1, pk]
                 permz_im[1:-1, -1,   kk] = self.level0.global_data['permz'][ip,   jp+1, pk]
 
-                
+
                 # corners
                 permx_im[0,  0,  kk] = self.level0.global_data['permx'][ip-1, jp-1, pk]
                 permy_im[0,  0,  kk] = self.level0.global_data['permy'][ip-1, jp-1, pk]
                 permz_im[0,  0,  kk] = self.level0.global_data['permz'][ip-1, jp-1, pk]
 
-               
+
                 permx_im[0, -1,  kk] = self.level0.global_data['permx'][ip-1, jp+1, pk]
                 permy_im[0, -1,  kk] = self.level0.global_data['permy'][ip-1, jp+1, pk]
                 permz_im[0, -1,  kk] = self.level0.global_data['permz'][ip-1, jp+1, pk]
 
-             
+
                 permx_im[-1, 0,  kk] = self.level0.global_data['permx'][ip+1, jp-1, pk]
                 permy_im[-1, 0,  kk] = self.level0.global_data['permy'][ip+1, jp-1, pk]
                 permz_im[-1, 0,  kk] = self.level0.global_data['permz'][ip+1, jp-1, pk]
 
-                
+
                 permx_im[-1, -1, kk] = self.level0.global_data['permx'][ip+1, jp+1, pk]
                 permy_im[-1, -1, kk] = self.level0.global_data['permy'][ip+1, jp+1, pk]
                 permz_im[-1, -1, kk] = self.level0.global_data['permz'][ip+1, jp+1, pk]
 
-                
+
             self.level1_imag[name] = StructReservoir(self.timer, nx=nx1+2, ny=ny1+2, nz=nz1, dx=dx_imag, dy=dy_imag, dz=dz_imag,
                                         permx=permx_im, permy=permy_im, permz=permz_im, poro=poro_im, depth= None, start_z=2000, rcond=500, hcap=2200)
 
-           
+
             # top vertical imaginary grid for overburden connection(5,5,2)
             dx_top = np.broadcast_to(dx_vec[:, None, None], (nx1, ny1, 2)).copy()
             dy_top = np.broadcast_to(dy_vec[None, :, None], (nx1, ny1, 2)).copy()
@@ -377,7 +377,7 @@ class Model(DartsModel):
             permx_top = np.empty((nx1, ny1, 2), dtype=float)
             permy_top = np.empty((nx1, ny1, 2), dtype=float)
             permz_top = np.empty((nx1, ny1, 2), dtype=float)
-            
+
             rcond_top = np.empty((nx1, ny1, 2), dtype=float)
             hcap_top  = np.empty((nx1, ny1, 2), dtype=float)
 
@@ -388,14 +388,14 @@ class Model(DartsModel):
             permx_top[:, :, 0] = self.level0.global_data['permx'][ip, jp, pk_over]
             permy_top[:, :, 0] = self.level0.global_data['permy'][ip, jp, pk_over]
             permz_top[:, :, 0] = self.level0.global_data['permz'][ip, jp, pk_over]
-      
+
             rcond_top[:, :, 0] = self.cfg["burden"]["rcond_over"]
             hcap_top[:, :, 0]  = self.cfg["burden"]["hcap_over"]
 
             permx_top[:, :, 1] = self.level0.global_data['permx'][ip, jp, pk_top_res]
             permy_top[:, :, 1] = self.level0.global_data['permy'][ip, jp, pk_top_res]
             permz_top[:, :, 1] = self.level0.global_data['permz'][ip, jp, pk_top_res]
-           
+
             rcond_top[:, :, 1] = 500
             hcap_top[:, :, 1]  = 2200
             self.level1_imag_z_top[name] = StructReservoir(
@@ -413,7 +413,7 @@ class Model(DartsModel):
             # 3) BOTTOM VERTICAL IMAGINARY GRID: (5, 5, 2)
             # layer 0 = reservoir bottom fine layer
             # layer 1 = underburden coarse layer
-           
+
             dx_bot = np.broadcast_to(dx_vec[:, None, None], (nx1, ny1, 2)).copy()
             dy_bot = np.broadcast_to(dy_vec[None, :, None], (nx1, ny1, 2)).copy()
             dz_bot = np.full((nx1, ny1, 2), dz, dtype=float)
@@ -453,7 +453,7 @@ class Model(DartsModel):
                 rcond=rcond_bot,
                 hcap=hcap_bot
             )
-            
+
         cm_all, cp_all, T_all, T_all_therm, meta = assemble_lgr_connections(self)
         self.lgr_meta = meta
 
@@ -465,7 +465,7 @@ class Model(DartsModel):
         dx0_arr = disc0.convert_to_flat_array(self.level0.global_data['dx'], 'dx')[l2g0]
         dy0_arr = disc0.convert_to_flat_array(self.level0.global_data['dy'], 'dy')[l2g0]
         dz0_arr = disc0.convert_to_flat_array(self.level0.global_data['dz'], 'dz')[l2g0]
-        
+
         depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
         volume0_arr = np.array(self.level0.volume, copy=False).astype(float) # self.level0.volume is already filtered
 
@@ -475,7 +475,7 @@ class Model(DartsModel):
         ky0_arr = ky0_full[l2g0]
         kz0_arr = kz0_full[l2g0]
         poro0_arr = poro0_full[l2g0]
-        
+
 
         dx_list = [dx0_arr]; dy_list = [dy0_arr]; dz_list = [dz0_arr]
         kx_list = [kx0_arr]; ky_list = [ky0_arr]; kz_list = [kz0_arr]
@@ -536,7 +536,7 @@ class Model(DartsModel):
                                         ky=ky,
                                         kz=kz,
                                         )
-        
+
         self.build_cell_center()
         return
 
@@ -554,40 +554,41 @@ class Model(DartsModel):
             lgr_name = cfg["lgr"]
             per_from = cfg["k_from"]
             per_to = cfg["k_to"]
-            
-            for k in range(per_from -1, per_to):  
+
+            for k in range(per_from -1, per_to):
                 rx,ry,_ = self.lgrs[lgr_name]['lgr_coords_in_parent_grid']['refine']
                 inj_local = center_2d + k * (rx * ry)
                 inj_global = inj_local + self.lgr_meta['lgr_offsets'][comp[wname]["lgr"]]
                 self.reservoir.add_perforation(wname, cell_index=inj_global,ms_epm=True)
-  
+
     """single phase- single component model"""
     def set_physics(self):
         components = ['CO2']
-        
+
         self.components = components
         comp_data = CompData(components, setprops=True)
         pr = CubicEoS(comp_data, CubicEoS.PR)
-       
+
         self.zero = 1e-12
+        epsilon = self.zero / 10
         phases = ['CO2_rich']
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=self.zero, Mw=comp_data.Mw)
+        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon, Mw=comp_data.Mw)
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('CO2_rich', EoSDensity(eos=pr,Mw=comp_data.Mw))])
         property_container.viscosity_ev = dict([('CO2_rich', Fenghour1998())])
-        
+
         property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(eos=pr))])
         property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)) ])
-      
+
 
         """ Activate physics """
         thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-                                     min_t=273.15+10, max_t=373.15+200)
+                                     epsilon_z=epsilon, min_t=273.15+10, max_t=373.15+200)
 
 
         property_container.output_props = {
@@ -596,7 +597,7 @@ class Model(DartsModel):
              "muG": lambda: property_container.mu[0],
             }
 
-        self.physics.add_property_region(property_container) 
+        self.physics.add_property_region(property_container)
 
         return
 
@@ -612,10 +613,10 @@ class Model(DartsModel):
     #     self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
     #                                  n_points=400, min_p=1, max_p=1000, min_z=epsilon, max_z=1-epsilon,
     #                                  min_t=273.15, max_t=373.15+200)
-        
+
     #     property_container = PropertyContainer(phases_name=phases, components_name=components,
     #                                            Mw=comp_data.Mw, min_z=epsilon,rock_comp=0)
-        
+
     #     """Define flash"""
     #     pr = CubicEoS(comp_data, CubicEoS.PR)
 
@@ -623,7 +624,7 @@ class Model(DartsModel):
         # input_distribution = {self.physics.vars[0]: 200, # pressure
         #                       self.physics.vars[1]: 353.15 # temperature
         #                       }
-        # return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, 
+        # return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
         #                                                       input_distribution=input_distribution)
 
         depths = np.asarray(self.reservoir.mesh.depth)
@@ -633,26 +634,27 @@ class Model(DartsModel):
         depths = np.linspace(min_depth,max_depth,nb)
 
         init = Initialize(self.physics)
-   
+
         primary_specs = {}
         for comp in self.physics.components[:-1]:
-            primary_specs[comp] = np.ones(nb) 
-        
-        boundary_state = {"pressure" :200}  
+            primary_specs[comp] = 1.0
+
+        boundary_state = {"pressure" :200}
         for comp in self.physics.components[:-1]:
-            boundary_state[comp] = float(primary_specs[comp])
+            boundary_state[comp] = primary_specs[comp]
         boundary_state["temperature"] = 80 +273.15
 
         dTdh = 40/1000 #k/m
-        
-        X = init.solve(depth_bottom=max_depth, depth_top= min_depth,depth_known=2000, nb=nb,
-                       boundary_state=boundary_state,primary_specs=primary_specs,secondary_specs=None, dTdh=dTdh).reshape((nb, self.physics.n_vars))
-       
+
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
+                                        boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
+                                        dTdh=dTdh)
+
         self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
                                                              input_depth= init.depths,
                                                             input_distribution={v:X[:,i] for i, v in enumerate(self.physics.vars)})
         return
-    
+
 
 
     def set_well_controls(self):
@@ -661,21 +663,21 @@ class Model(DartsModel):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                                             is_inj=True, target=4.32e6, inj_composition=inj_composition, inj_temp=313.15)
-                
+
             else:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                 #                                is_inj=False, target=1400000.)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                             is_inj=False, target=190.)
 
-  
 
-# Simplified property evaluation for single-phase model` 
+
+# Simplified property evaluation for single-phase model`
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z, Mw):
+    def __init__(self, phases_name, components_name, eps_z, Mw):
         # Call base class constructor
         nc = len(components_name)
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
 
     def evaluate(self, state):
         """
@@ -687,7 +689,7 @@ class ModelProperties(PropertyContainer):
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
-     
+
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))

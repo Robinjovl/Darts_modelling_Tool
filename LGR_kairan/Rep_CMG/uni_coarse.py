@@ -22,7 +22,7 @@ from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, Spivey2004, Garcia2001
 
-from darts.physics.properties.viscosity import Fenghour1998, Islam2012  
+from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from dartsflash.libflash import NegativeFlash
@@ -37,7 +37,7 @@ class WatRelPerm:
         super().__init__()
         self.pvt = pvt
         self.SGAF = get_table_keyword(self.pvt, 'SGAF')
-    
+
     def evaluate(self, wat_sat):
         gas_index = 0
         krwg_index = 2
@@ -67,7 +67,7 @@ class GasRelPerm:
             krg = Table.LinearInterP(self.SGAF, gas_sat, gas_index, krg_index)
 
         return krg
-    
+
 class Garcia2001(Spivey2004):
     """
     Correlation for brine density with dissolved CO2: Garcia (2001) - Density of aqueous solutions of CO2
@@ -115,14 +115,14 @@ class TableKFlash(Flash):
             df_p = df[df["P_bar"] == p].sort_values("T_K")
             self.K_co2_table[i, :] = df_p["K_CO2"].values
             self.K_h2o_table[i, :] = df_p["K_H2O"].values
-        
+
     def evaluate(self, pressure, temperature, zc):
         self.K_values = self.get_k_values(pressure, temperature)
         self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
         self.temperature = temperature
 
         return 0
-    
+
     def get_k_values(self, pressure, temperature):
         p = pressure
         t = temperature
@@ -171,7 +171,7 @@ class TableKFlash(Flash):
             kco2 = kco2_00 * (1 - wp) + kco2_10 * wp
             kh2o = kh2o_00 * (1 - wp) + kh2o_10 * wp
             return np.array([kco2, kh2o])
-        
+
         wp = (p - p0) / (p1 - p0)
         wt = (t - t0) / (t1 - t0)
 
@@ -210,7 +210,7 @@ class Model(DartsModel):
         x = np.empty(n, dtype=float)
         y = np.empty(n, dtype=float)
         z = np.asarray(self.reservoir.global_data["depth"], dtype = float).copy()
-        # level 0 
+        # level 0
         nx0= int(self.reservoir.nx)
         ny0= int(self.reservoir.ny)
         nz0= int(self.reservoir.nz)
@@ -227,7 +227,7 @@ class Model(DartsModel):
         self.reservoir.cell_center_y = y
         self.reservoir.cell_center_z = z
         return x,y,z
-        
+
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -239,12 +239,12 @@ class Model(DartsModel):
         self.zero = 1e-8
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=2, runtime=1000, 
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=2, runtime=1000,
                             tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
         self.timer.node["initialization"].stop()
-    
+
     def set_reservoir(self):
 
         nx0, ny0 = 80, 80 # global grid size
@@ -283,7 +283,7 @@ class Model(DartsModel):
         rcon0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
         hcap0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
         poro0_full = np.full(nx0 * ny0 * nz0, poro_burden, dtype=float)
-  
+
         mask_over = k_index0 < nz_over
         mask_res  = (k_index0 >= nz_over) & (k_index0 < nz_over + nz_res)
         mask_under = k_index0 >= (nz_over + nz_res)
@@ -300,7 +300,7 @@ class Model(DartsModel):
         poro0_full[mask_res] = poro0
 
         self.reservoir = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
-                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
+                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None,
                                       start_z=0, rcond=rcon0_full, hcap=hcap0_full,)
         boundary_factor = 2000
         base_vol = float(dx0 * dy0 * dz_res)
@@ -318,26 +318,26 @@ class Model(DartsModel):
         self.build_cell_center()
         return
 
-   
+
     def set_wells(self):
         self.reservoir.add_well("I1")
-        for k in range(self.nz_over, self.nz_over + self.nz_res):         
+        for k in range(self.nz_over, self.nz_over + self.nz_res):
             self.reservoir.add_perforation("I1", res_cell_idx=(41,41,k), ms_epm=False)
 
         self.reservoir.add_well("P1")
-        for k in range(self.nz_over, self.nz_over + 5):         
+        for k in range(self.nz_over, self.nz_over + 5):
             self.reservoir.add_perforation("P1", res_cell_idx=(36,46,k), ms_epm=False)
         self.reservoir.add_well("P2")
-        for k in range(self.nz_over, self.nz_over + 5):         
+        for k in range(self.nz_over, self.nz_over + 5):
             self.reservoir.add_perforation("P2", res_cell_idx=(46,46,k), ms_epm=False)
         self.reservoir.add_well("P3")
-        for k in range(self.nz_over, self.nz_over + 5):         
+        for k in range(self.nz_over, self.nz_over + 5):
             self.reservoir.add_perforation("P3", res_cell_idx=(36,36,k), ms_epm=False)
         self.reservoir.add_well("P4")
-        for k in range(self.nz_over, self.nz_over + 5):         
+        for k in range(self.nz_over, self.nz_over + 5):
             self.reservoir.add_perforation("P4", res_cell_idx=(46,36,k), ms_epm=False)
-     
-  
+
+
 
     def set_physics(self):
         components = ['CO2', 'H2O']
@@ -396,7 +396,7 @@ class Model(DartsModel):
             "muAq": lambda: property_container.mu[1],
             }
 
-        self.physics.add_property_region(property_container) 
+        self.physics.add_property_region(property_container)
 
         return
 
@@ -408,28 +408,29 @@ class Model(DartsModel):
         depths = np.linspace(min_depth,max_depth,nb)
 
         init = Initialize(self.physics)
-   
+
         primary_specs = {}
         for comp in self.physics.components[:-1]:
-            primary_specs[comp] = np.ones(nb) * self.zero
-        
-        boundary_state = {"pressure" :195}  
+            primary_specs[comp] = self.zero
+
+        boundary_state = {"pressure" :195}
         for comp in self.physics.components[:-1]:
-            boundary_state[comp] = float(primary_specs[comp][0])
+            boundary_state[comp] = primary_specs[comp]
         boundary_state["temperature"] = 80 +273.15
 
         dTdh = 40/1000 #k/m
-        
-        X = init.solve(depth_bottom=max_depth, depth_top= min_depth,depth_known=2000, nb=nb,
-                       boundary_state=boundary_state,primary_specs=primary_specs,secondary_specs=None, dTdh=dTdh).reshape((nb, self.physics.n_vars))
- 
+
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
+                                        boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
+                                        dTdh=dTdh)
+
         self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
                                                              input_depth= init.depths,
                                                             input_distribution={v:X[:,i] for i, v in enumerate(self.physics.vars)})
         return
 
     def set_well_controls(self):
-       
+
         inj_composition = [1.0 - self.zero]  # pure CO2 injection
         for i, w in enumerate(self.reservoir.wells):
             if "I" in w.name:
@@ -453,16 +454,10 @@ class Model(DartsModel):
                         )
             if "W" in w.name:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                                  is_inj=True, target=0, 
+                                                  is_inj=True, target=0,
                                                   inj_composition=[self.zero], phase_name="aqueous", inj_temp=288.15)
             if "P" in w.name:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                                                is_inj=False, target=0
                                                ,phase_name="aqueous"
                                                )
-           
-               
-
-
-
-   

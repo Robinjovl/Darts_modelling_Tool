@@ -199,12 +199,13 @@ class Model(DartsModel):
         pr = CubicEoS(comp_data, CubicEoS.PR)
 
         self.zero = 1e-12
+        epsilon = self.zero / 10
         phases = ["CO2_rich"]
 
         property_container = ModelProperties(
             phases_name=phases,
             components_name=components,
-            min_z=self.zero,
+            eps_z=epsilon,
             Mw=comp_data.Mw,
         )
 
@@ -231,6 +232,7 @@ class Model(DartsModel):
             max_p=1000,
             min_z=self.zero / 10,
             max_z=1 - self.zero / 10,
+            epsilon_z=epsilon,
             min_t=273.15 + 10,
             max_t=373.15 + 200,
         )
@@ -254,25 +256,18 @@ class Model(DartsModel):
 
         primary_specs = {}
         for comp in self.physics.components[:-1]:
-            primary_specs[comp] = np.ones(nb)
+            primary_specs[comp] = 1.0
 
         boundary_state = {"pressure": 200}
         for comp in self.physics.components[:-1]:
-            boundary_state[comp] = float(primary_specs[comp][0])
+            boundary_state[comp] = primary_specs[comp]
         boundary_state["temperature"] = 80 + 273.15
 
         dTdh = 40 / 1000
 
-        X = init.solve(
-            depth_bottom=max_depth,
-            depth_top=min_depth,
-            depth_known=2000,
-            nb=nb,
-            boundary_state=boundary_state,
-            primary_specs=primary_specs,
-            secondary_specs=None,
-            dTdh=dTdh,
-        ).reshape((nb, self.physics.n_vars))
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
+                                        boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
+                                        dTdh=dTdh)
 
         self.physics.set_initial_conditions_from_depth_table(
             mesh=self.reservoir.mesh,
@@ -303,8 +298,8 @@ class Model(DartsModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z, Mw):
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
+    def __init__(self, phases_name, components_name, eps_z, Mw):
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
 
     def evaluate(self, state):
         vec_state_as_np = np.asarray(state)

@@ -21,8 +21,8 @@ from darts.tools.keyword_file_tools import load_single_keyword
 from darts.engines import redirect_darts_output
 
 class SinglePhaseCO2Properties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z, Mw):
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
+    def __init__(self, phases_name, components_name, eps_z, Mw):
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
 
     def evaluate(self, state):
         state_np = np.asarray(state, dtype=float)
@@ -105,7 +105,7 @@ class FlowUpscalingModel(DartsModel):
     - permeability comes from a 5 x 5 coarse Egg patch, piecewise prolonged to 25 x 25
     """
 
-    def __init__(self, kx_patch_c, ky_patch_c, kz_patch_c, 
+    def __init__(self, kx_patch_c, ky_patch_c, kz_patch_c,
                  refine=(5, 5), dx_parent=30.0, dy_parent=30.0, dz_parent=10.0,
                  start_z=1990.0, poro=0.2, rcond=500.0, hcap=2200.0):
         super().__init__()
@@ -209,6 +209,7 @@ class FlowUpscalingModel(DartsModel):
     def set_physics(self):
         components = ["CO2"]
         phases = ["CO2_rich"]
+        epsilon = self.zero / 10
 
         comp_data = CompData(components, setprops=True)
         pr = CubicEoS(comp_data, CubicEoS.PR)
@@ -216,7 +217,7 @@ class FlowUpscalingModel(DartsModel):
         pc = SinglePhaseCO2Properties(
             phases_name=phases,
             components_name=components,
-            min_z=self.zero,
+            eps_z=epsilon,
             Mw=comp_data.Mw,
         )
 
@@ -235,6 +236,7 @@ class FlowUpscalingModel(DartsModel):
             max_p=1000.0,
             min_z=self.zero / 10.0,
             max_z=1.0 - self.zero / 10.0,
+            epsilon_z=epsilon,
             min_t=273.15,
             max_t=573.15,
         )
@@ -257,16 +259,9 @@ class FlowUpscalingModel(DartsModel):
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = np.ones(int(self.reservoir.nz))
 
-        X = init.solve(
-            depth_bottom=max_depth,
-            depth_top=min_depth,
-            depth_known=self.start_z,
-            nb=int(self.reservoir.nz),
-            boundary_state=boundary_state,
-            primary_specs=primary_specs,
-            secondary_specs=None,
-            dTdh=40.0 / 1000.0,
-        ).reshape((int(self.reservoir.nz), self.physics.n_vars))
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=self.start_z,
+                                        boundary_state=boundary_state, primary_specs=primary_specs, nb=int(self.reservoir.nz),
+                                        dTdh=40.0 / 1000.0)
 
         self.physics.set_initial_conditions_from_depth_table(
             mesh=self.reservoir.mesh,
@@ -324,8 +319,8 @@ def compute_eff_tran_for_one_lgr_layer(
         dz_parent=float(model.level0.global_data["dz"][0,0,0]),
         start_z=float(model.level0.global_data["start_z"]) + k_1b * float(model.level0.global_data["dz"][0,0,0]),
         poro=float(model.level1[lgr_name].global_data["poro"][0,0,0]),
-    ) 
-    
+    )
+
     analyzer = PatchEffectiveTransAnalyzer(
         model=effective_2d_model,
         nx=effective_2d_model.nx,
@@ -350,19 +345,19 @@ def compute_eff_tran_for_one_lgr_layer(
 
     for dt in range(n_steps):
         effective_2d_model.run(run_days)
-        
+
     res = analyzer.all_faces(k0=0, mobility_mode=mobility_mode)
     df = res["summary_df"].copy()
 
     out = {}
     for _, row in df.iterrows():
         out[row["side"]] = float(row["T_eff_avglink"])
-    
+
     return{
         'lgr_name': lgr_name,
         'k_1b': k_1b,
         'T_eff_avglink': out,
-        "summary_df": df,  
+        "summary_df": df,
         "effective_2d_model": effective_2d_model,
     }
 
@@ -441,7 +436,7 @@ class PatchEffectiveTransAnalyzer:
             raise ValueError("patch_size must be odd.")
         if self.n_nb_cols < 1:
             raise ValueError("n_nb_cols must be >= 1.")
-        
+
     def lin_index(self, i0, j0, k0):
         return i0 + j0 * self.nx + k0 * self.nx * self.ny
 

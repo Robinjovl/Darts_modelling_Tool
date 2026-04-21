@@ -18,7 +18,7 @@ from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, Garcia2001
 from darts.reservoirs.reservoir_base import ReservoirBase
-from darts.physics.properties.viscosity import Fenghour1998, Islam2012  
+from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from dartsflash.libflash import NegativeFlash
@@ -46,7 +46,7 @@ class Model(DartsModel):
         x = np.empty(n, dtype=float)
         y = np.empty(n, dtype=float)
         z = np.asarray(self.reservoir.global_data["depth"], dtype = float).copy()
-        # level 0 
+        # level 0
         nx0= int(self.reservoir.nx)
         ny0= int(self.reservoir.ny)
         nz0= int(self.reservoir.nz)
@@ -63,7 +63,7 @@ class Model(DartsModel):
         self.reservoir.cell_center_y = y
         self.reservoir.cell_center_z = z
         return x,y,z
-        
+
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -75,12 +75,12 @@ class Model(DartsModel):
         self.zero = 1e-8
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=1000, 
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=1000,
                             tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
         self.timer.node["initialization"].stop()
-    
+
     def set_reservoir(self):
 
         nx0, ny0 = 80, 80 # global grid size
@@ -119,7 +119,7 @@ class Model(DartsModel):
         rcon0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
         hcap0_full = np.empty(nx0 * ny0 * nz0, dtype=float)
         poro0_full = np.full(nx0 * ny0 * nz0, poro_burden, dtype=float)
-  
+
         mask_over = k_index0 < nz_over
         mask_res  = (k_index0 >= nz_over) & (k_index0 < nz_over + nz_res)
         mask_under = k_index0 >= (nz_over + nz_res)
@@ -136,7 +136,7 @@ class Model(DartsModel):
         poro0_full[mask_res] = poro0
 
         self.reservoir = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
-                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
+                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None,
                                       start_z=0, rcond=rcon0_full, hcap=hcap0_full,)
         boundary_factor = 2000
         base_vol = float(dx0 * dy0 * dz_res)
@@ -154,16 +154,16 @@ class Model(DartsModel):
         self.build_cell_center()
         return
 
-   
+
     def set_wells(self):
         self.reservoir.add_well("I1")
-        for k in range(self.nz_over, self.nz_over + self.nz_res):         
+        for k in range(self.nz_over, self.nz_over + self.nz_res):
             self.reservoir.add_perforation("I1", res_cell_idx=(20,40,k))
 
         self.reservoir.add_well("P1")
-        for k in range(self.nz_over, self.nz_over + self.nz_res):         
+        for k in range(self.nz_over, self.nz_over + self.nz_res):
             self.reservoir.add_perforation("P1", res_cell_idx=(60,40,k))
-  
+
 
     def set_physics(self):
         """Physical properties"""
@@ -204,7 +204,7 @@ class Model(DartsModel):
         property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)),
                                                    ('aqueous', ConstFunc(180.)), ])
 
-      
+
 
         """ Activate physics """
         thermal = True
@@ -221,7 +221,7 @@ class Model(DartsModel):
             "rhoAq": lambda: property_container.dens[1],
             }
 
-        self.physics.add_property_region(property_container) 
+        self.physics.add_property_region(property_container)
 
         return
 
@@ -230,7 +230,7 @@ class Model(DartsModel):
         #                       self.physics.vars[1]: self.zero, # z_CO2
         #                       self.physics.vars[2]: 353.15 # temperature
         #                       }
-        # return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, 
+        # return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
         #                                                       input_distribution=input_distribution)
 
         depths = np.asarray(self.reservoir.mesh.depth)
@@ -240,20 +240,21 @@ class Model(DartsModel):
         depths = np.linspace(min_depth,max_depth,nb)
 
         init = Initialize(self.physics)
-   
+
         primary_specs = {}
         for comp in self.physics.components[:-1]:
-            primary_specs[comp] = np.ones(nb) * self.zero
-        
-        boundary_state = {"pressure" :195}  
+            primary_specs[comp] = self.zero
+
+        boundary_state = {"pressure" :195}
         for comp in self.physics.components[:-1]:
-            boundary_state[comp] = float(primary_specs[comp][0])
+            boundary_state[comp] = primary_specs[comp]
         boundary_state["temperature"] = 80 +273.15
 
         dTdh = 40/1000 #k/m
         # need to be fixed, currently reference T/P was set at the top of the overburden, which is wrong
-        X = init.solve(depth_bottom=max_depth, depth_top= min_depth,depth_known=2000, nb=nb,
-                       boundary_state=boundary_state,primary_specs=primary_specs,secondary_specs=None, dTdh=dTdh).reshape((nb, self.physics.n_vars))
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
+                                        boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
+                                        dTdh=dTdh)
         # input_distribution = {self.physics.vars[0]: 131, # pressure
         #                       self.physics.vars[1]: self.zero, # z_CO2
         #                       self.physics.vars[2]: 353.15 # temperature
@@ -262,7 +263,7 @@ class Model(DartsModel):
                                                              input_depth= init.depths,
                                                             input_distribution={v:X[:,i] for i, v in enumerate(self.physics.vars)})
         return
-    
+
         # self.reservoir.mesh.volume[0:3] = 1e20
 
     def set_well_controls(self):
@@ -278,7 +279,3 @@ class Model(DartsModel):
                 #                                is_inj=False, target=1400000.)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=102.)
-
-
-
-   

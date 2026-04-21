@@ -101,8 +101,8 @@ def build_patch_perm_from_egg(
 # ============================================================
 
 class SinglePhaseCO2Properties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z, Mw):
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
+    def __init__(self, phases_name, components_name, eps_z, Mw):
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
 
     def evaluate(self, state):
         state_np = np.asarray(state, dtype=float)
@@ -248,6 +248,7 @@ class FlowUpscalingExampleModel(DartsModel):
     def set_physics(self):
         components = ["CO2"]
         phases = ["CO2_rich"]
+        epsilon = self.zero / 10
 
         comp_data = CompData(components, setprops=True)
         pr = CubicEoS(comp_data, CubicEoS.PR)
@@ -255,7 +256,7 @@ class FlowUpscalingExampleModel(DartsModel):
         pc = SinglePhaseCO2Properties(
             phases_name=phases,
             components_name=components,
-            min_z=self.zero,
+            eps_z=epsilon,
             Mw=comp_data.Mw,
         )
 
@@ -280,6 +281,7 @@ class FlowUpscalingExampleModel(DartsModel):
             max_p=1000.0,
             min_z=self.zero / 10.0,
             max_z=1.0 - self.zero / 10.0,
+            epsilon_z=epsilon,
             min_t=273.15,
             max_t=573.15,
         )
@@ -302,16 +304,9 @@ class FlowUpscalingExampleModel(DartsModel):
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = np.ones(int(self.reservoir.nz))
 
-        X = init.solve(
-            depth_bottom=max_depth,
-            depth_top=min_depth,
-            depth_known=1990.0,
-            nb=int(self.reservoir.nz),
-            boundary_state=boundary_state,
-            primary_specs=primary_specs,
-            secondary_specs=None,
-            dTdh=40.0 / 1000.0,
-        ).reshape((int(self.reservoir.nz), self.physics.n_vars))
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=1990.0,
+                                        boundary_state=boundary_state, primary_specs=primary_specs, nb=int(self.reservoir.nz),
+                                        dTdh=40.0 / 1000.0)
 
         self.physics.set_initial_conditions_from_depth_table(
             mesh=self.reservoir.mesh,
@@ -680,7 +675,7 @@ def run_case():
     time_point = []
     avg_pre = []
 
-   
+
 
     for _ in range(Nt):
         model.run(Dt)

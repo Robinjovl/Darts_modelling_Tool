@@ -22,7 +22,7 @@ from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, Spivey2004, Garcia2001
 
-from darts.physics.properties.viscosity import Fenghour1998, Islam2012  
+from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from dartsflash.libflash import NegativeFlash
@@ -37,7 +37,7 @@ class WatRelPerm:
         super().__init__()
         self.pvt = pvt
         self.SGAF = get_table_keyword(self.pvt, 'SGAF')
-    
+
     def evaluate(self, wat_sat):
         gas_index = 0
         krwg_index = 2
@@ -67,7 +67,7 @@ class GasRelPerm:
             krg = Table.LinearInterP(self.SGAF, gas_sat, gas_index, krg_index)
 
         return krg
-    
+
 class Garcia2001(Spivey2004):
     """
     Correlation for brine density with dissolved CO2: Garcia (2001) - Density of aqueous solutions of CO2
@@ -115,14 +115,14 @@ class TableKFlash(Flash):
             df_p = df[df["P_bar"] == p].sort_values("T_K")
             self.K_co2_table[i, :] = df_p["K_CO2"].values
             self.K_h2o_table[i, :] = df_p["K_H2O"].values
-        
+
     def evaluate(self, pressure, temperature, zc):
         self.K_values = self.get_k_values(pressure, temperature)
         self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
         self.temperature = temperature
 
         return 0
-    
+
     def get_k_values(self, pressure, temperature):
         p = pressure
         t = temperature
@@ -171,7 +171,7 @@ class TableKFlash(Flash):
             kco2 = kco2_00 * (1 - wp) + kco2_10 * wp
             kh2o = kh2o_00 * (1 - wp) + kh2o_10 * wp
             return np.array([kco2, kh2o])
-        
+
         wp = (p - p0) / (p1 - p0)
         wt = (t - t0) / (t1 - t0)
 
@@ -203,9 +203,9 @@ class Model(DartsModel):
         self.set_reservoir()
         self.zero = 1e-8
         self.set_physics()
-        
 
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=2, runtime=1000, 
+
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=2, runtime=1000,
                             tol_newton=1e-3, tol_linear=1e-3,
                             it_newton=10, it_linear=50)
 
@@ -220,17 +220,17 @@ class Model(DartsModel):
         lgrs = self.cfg["lgrs"]
 
         return lgrs
-    
+
     def build_well_completion(self):
         return self.cfg["wells"]
-    
+
     def convert_ijk_to_gindex_1based(self, i_1based: int, j_1based: int, k_1based:int, nx:int, ny:int) -> int:
         """
         Convert (i,j,k) in 1-based to global index in 0-based
         """
         g_index_0based = (k_1based - 1) * nx * ny + (j_1based - 1) * nx + (i_1based - 1)
         return g_index_0based
-    
+
     def ijk0_to_lin(self, i0: int, j0: int, k0: int, nx: int, ny: int) -> int:
         """Convert 0-based (i,j,k) to linear index"""
         return k0 * nx * ny + j0 * nx + i0
@@ -243,12 +243,12 @@ class Model(DartsModel):
         return actnum0
 
     def auto_image_grid_dx_dy(self, dx_parent, dy_parent, rx, ry):
-       
+
         dx_image = np.r_[dx_parent, np.full(rx, dx_parent/rx), dx_parent]
         dy_image = np.r_[dy_parent, np.full(ry, dy_parent/ry), dy_parent]
 
         return dx_image, dy_image
-    
+
      # build cell center coordinates for visualization
     def build_cell_center(self):
         if not hasattr(self, 'reservoir') or self.reservoir is None:
@@ -257,11 +257,11 @@ class Model(DartsModel):
         x = np.empty(n, dtype=float)
         y = np.empty(n, dtype=float)
         z = np.asarray(self.reservoir.depth, dtype = float).copy()
-        # level 0 
+        # level 0
         self.level0.discretize()
         disc0 = self.level0.discretizer
         l2g0 = np.asarray(disc0.local_to_global, dtype=int)
-        
+
         n0 = len(l2g0)
         nx0= int(self.level0.nx)
         ny0= int(self.level0.ny)
@@ -274,7 +274,7 @@ class Model(DartsModel):
             i = global_id % nx0
             x[local_id] = (i + 0.5) * dx0
             y[local_id] = (j + 0.5) * dy0
-            
+
         # lgr blocks
         meta = self.lgr_meta
         for name in meta['lgr_orders']:
@@ -304,7 +304,7 @@ class Model(DartsModel):
         self.reservoir.cell_center_y = y
         self.reservoir.cell_center_z = z
         return x,y,z
-    
+
     def set_reservoir(self):
         self.lgrs = self.build_lgr_definition()
         grid = self.cfg["grid"]
@@ -330,9 +330,9 @@ class Model(DartsModel):
             i1, i2 = cfg['lgr_coords_in_parent_grid']['i_range']
             j1, j2 = cfg['lgr_coords_in_parent_grid']['j_range']
             k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
-            assert i1 == i2 and j1 == j2, "This script only assume column LGR"  
+            assert i1 == i2 and j1 == j2, "This script only assume column LGR"
             for k in range(k1, k2 + 1):
-                refined_cells_ijk.append( (i1, j1, k) )  
+                refined_cells_ijk.append( (i1, j1, k) )
 
         self.refined_cells_ijk = refined_cells_ijk
 
@@ -344,12 +344,12 @@ class Model(DartsModel):
         ky0_full = np.full(nx0 * ny0 * nz0, permy0, dtype=float)
         kz0_full = np.full(nx0 * ny0 * nz0, permz0, dtype=float)
 
-        rcon0_full = np.full(nx0 * ny0 * nz0, rcond_res, dtype=float) 
+        rcon0_full = np.full(nx0 * ny0 * nz0, rcond_res, dtype=float)
         hcap0_full = np.full(nx0 * ny0 * nz0, hcap_res, dtype=float)
         poro0_full = np.full(nx0 * ny0 * nz0, poro0, dtype=float)
 
         self.level0 = StructReservoir(self.timer, nx=nx0, ny=ny0, nz=nz0, dx=dx0, dy=dy0, dz=dz0_layers,
-                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None, 
+                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None,
                                       start_z=2000,actnum=actnum0, rcond=rcon0_full, hcap=hcap0_full,)
         boundary_factor = 2000
         base_vol = float(dx0 * dy0 * dz_res)
@@ -369,7 +369,7 @@ class Model(DartsModel):
         self.level1 = {}
         self.level1_imag = {}
         self.level1_imag_z = {}
-        
+
         for name, cfg in self.lgrs.items():
             rx, ry, rz = cfg['lgr_coords_in_parent_grid']['refine']
             k1, k2 = cfg['lgr_coords_in_parent_grid']['k_range']
@@ -389,7 +389,7 @@ class Model(DartsModel):
             self.level1_imag[name] = StructReservoir(self.timer, nx=rx+2, ny=ry+2, nz=1, dx=dx_imag, dy=dy_imag, dz=dz_res,
                                         permx=permx0, permy=permy0, permz=permz0, poro=poro0, depth= None, start_z=reservoir_top,rcond=rcond_res, hcap=hcap_res,)
 
-            
+
         cm_all, cp_all, T_all, T_all_therm, meta = assemble_lgr_connections_eclipse(self)
         self.lgr_meta = meta
 
@@ -401,7 +401,7 @@ class Model(DartsModel):
         dx0_arr = disc0.convert_to_flat_array(self.level0.global_data['dx'], 'dx')[l2g0]
         dy0_arr = disc0.convert_to_flat_array(self.level0.global_data['dy'], 'dy')[l2g0]
         dz0_arr = disc0.convert_to_flat_array(self.level0.global_data['dz'], 'dz')[l2g0]
-        
+
         depth0_arr = disc0.convert_to_flat_array(self.level0.global_data['depth'], 'depth')[l2g0]
         volume0_arr = np.array(self.level0.volume, copy=False).astype(float) # self.level0.volume is already filtered
 
@@ -411,7 +411,7 @@ class Model(DartsModel):
         ky0_arr = ky0_full[l2g0]
         kz0_arr = kz0_full[l2g0]
         poro0_arr = poro0_full[l2g0]
-        
+
 
         dx_list = [dx0_arr]; dy_list = [dy0_arr]; dz_list = [dz0_arr]
         kx_list = [kx0_arr]; ky_list = [ky0_arr]; kz_list = [kz0_arr]
@@ -467,7 +467,7 @@ class Model(DartsModel):
                                         ky=ky,
                                         kz=kz,
                                         )
-        
+
         self.build_cell_center()
         return
 
@@ -475,7 +475,7 @@ class Model(DartsModel):
 
     def set_wells(self):
         wells= self.cfg["wells"]
-        
+
         for key, value in wells.items():
             self.reservoir.add_well(key)
         center_2d = self.lgr_meta['well_local_center']
@@ -484,27 +484,27 @@ class Model(DartsModel):
             lgr_name = cfg["lgr"]
             per_from = cfg["k_from"]
             per_to = cfg["k_to"]
-            
-            for k in range(per_from -1, per_to):  
+
+            for k in range(per_from -1, per_to):
                 rx,ry,_ = self.lgrs[lgr_name]['lgr_coords_in_parent_grid']['refine']
                 inj_local = center_2d + k * (rx * ry)
                 inj_global = inj_local + self.lgr_meta['lgr_offsets'][comp[wname]["lgr"]]
                 self.reservoir.add_perforation(wname, cell_index=inj_global, ms_epm=False)
-       
+
         wat_wells = self.cfg["water_inj"]
         for key, value in wat_wells.items():
             self.reservoir.add_well(key)
-        # add four water injectors 
+        # add four water injectors
         for wname, cfg in wat_wells.items():
             k_from = cfg["k_from"]
             k_to = cfg["k_to"]
             i0 = cfg["i0"]
             j0 = cfg["j0"]
             for k in range(k_from , k_to + 1):
-                id0 = self.convert_ijk_to_gindex_1based(i0, j0, k, self.level0.nx, self.level0.ny) 
+                id0 = self.convert_ijk_to_gindex_1based(i0, j0, k, self.level0.nx, self.level0.ny)
                 idx_global = self.level0.discretizer.global_to_local[id0]
                 self.reservoir.add_perforation(wname, cell_index=idx_global, ms_epm=False)
-  
+
 
     def set_physics(self):
         components = ['CO2', 'H2O']
@@ -563,7 +563,7 @@ class Model(DartsModel):
             "muAq": lambda: property_container.mu[1],
             }
 
-        self.physics.add_property_region(property_container) 
+        self.physics.add_property_region(property_container)
 
         return
 
@@ -575,20 +575,21 @@ class Model(DartsModel):
         depths = np.linspace(min_depth,max_depth,nb)
 
         init = Initialize(self.physics)
-   
+
         primary_specs = {}
         for comp in self.physics.components[:-1]:
-            primary_specs[comp] = np.ones(nb) * self.zero
-        
-        boundary_state = {"pressure" :195}  
+            primary_specs[comp] = self.zero
+
+        boundary_state = {"pressure" :195}
         for comp in self.physics.components[:-1]:
-            boundary_state[comp] = float(primary_specs[comp][0])
+            boundary_state[comp] = primary_specs[comp]
         boundary_state["temperature"] = 80 +273.15
 
         dTdh = 40/1000 #k/m
-        
-        X = init.solve(depth_bottom=2200, depth_top= 2000,depth_known=2000, nb=nb,
-                       boundary_state=boundary_state,primary_specs=primary_specs,secondary_specs=None, dTdh=dTdh).reshape((nb, self.physics.n_vars))
+
+        X = init.solve_up_and_downwards(depth_bottom=2200, depth_top=2000, depth_known=2000,
+                                        boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
+                                        dTdh=dTdh)
 
         self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
                                                              input_depth= init.depths,
@@ -597,7 +598,7 @@ class Model(DartsModel):
 
 
     def set_well_controls(self):
-       
+
         inj_composition = [1.0 - self.zero]  # pure CO2 injection
         for i, w in enumerate(self.reservoir.wells):
             if "I" in w.name:
@@ -621,13 +622,10 @@ class Model(DartsModel):
                         )
             if "W" in w.name:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                                  is_inj=True, target=0, 
+                                                  is_inj=True, target=0,
                                                   inj_composition=[self.zero], phase_name="aqueous", inj_temp=288.15)
             if "P" in w.name:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                                                is_inj=False, target=0
                                                ,phase_name="aqueous"
                                                )
-
-
-
