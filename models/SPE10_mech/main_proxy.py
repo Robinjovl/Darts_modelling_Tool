@@ -487,7 +487,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             elif slice == 'XZ':
                 plt.ylabel('Depth, m.')
                 plt.gca().invert_yaxis()
-            plt.title(arr_name)
+            parts = arr_name.split(' - ', 1)
+            plt.title('\n'.join(parts) if len(parts) > 1 else arr_name)
             fig_fname = arr_name + '_contour.png'
             fig_fname = fig_fname.replace(' ', '_')
             fig_path = os.path.join(output_folder, fig_fname)
@@ -516,35 +517,128 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             plt.savefig(os.path.join(output_folder, arr_name + '_imshow.png'))
             plt.close()
 
-    def save_html_prx_vs_thm(base_names, output_folder, filename='proxy_vs_thm_2d.html'):
+    def save_html_prx_vs_thm(base_names, output_folder, filename='proxy_vs_thm_2d.html',
+                              locs=None, modes_1d=None, suffix_1d='all'):
+        # dp + dt contours at the top
+        contour_cells = []
+        for fname, title in [('dp_contour.png', '&#916;P contour (XZ)'), ('dt_contour.png', '&#916;T contour (XZ)')]:
+            if os.path.exists(os.path.join(output_folder, fname)):
+                contour_cells.append(f'<td style="text-align:center"><b>{title}</b><br>'
+                                     f'<img src="{fname}" style="max-width:100%"></td>')
+        contour_html = ''
+        if contour_cells:
+            contour_html = (f'<h2>&#916;P / &#916;T contours (XZ slice)</h2>'
+                            f'<table><tr>{"".join(contour_cells)}</tr></table>')
+
+        # 2D proxy vs THM table
         html_rows = []
         for b in base_names:
-            prx_file   = f'{b} - Proxy_contour.png'.replace(' ', '_')
-            thm_file   = f'{b} - THM_contour.png'.replace(' ', '_')
-            diff_file  = f'{b} - Difference_contour.png'.replace(' ', '_')
-            rdiff_file = f'{b} - Relative Difference_contour.png'.replace(' ', '_')
+            prx_file  = f'{b} - Proxy_contour.png'.replace(' ', '_')
+            thm_file  = f'{b} - THM_contour.png'.replace(' ', '_')
+            diff_file = f'{b} - Difference_contour.png'.replace(' ', '_')
             html_rows.append(f'''
               <tr>
                 <td style="text-align:center"><img src="{prx_file}" style="max-width:100%"></td>
                 <td style="text-align:center"><img src="{thm_file}" style="max-width:100%"></td>
                 <td style="text-align:center"><img src="{diff_file}" style="max-width:100%"></td>
-                <!--<td style="text-align:center"><img src="{rdiff_file}" style="max-width:100%"></td>-->
               </tr>''')
-            html = f'''<!DOCTYPE html>
-            <html>
-            <head><meta charset="utf-8"><title>Proxy vs THM 2D slices</title></head>
-            <body>
-            <h2>Proxy vs THM 2D slices (XZ)</h2>
-            <table border="1" cellspacing="4" cellpadding="4">
-              <tr><th>Proxy</th><th>THM</th><th>Difference (THM - Proxy)</th><!--<th>Relative diff., %</th>--></tr>
-            {''.join(html_rows)}
-            </table>
-            </body>
-            </html>'''
+
+        # 1D plots: rows=modes, columns=locations in fixed order
+        col_order = ['(250,250)', 'inj_well', 'prod_well']
+        active_locs = [l for l in col_order if locs and l in locs]
+        plots_1d_html = ''
+        if active_locs and modes_1d:
+            th_locs = ''.join(f'<th>{l}</th>' for l in active_locs)
+            rows_1d = []
+            for mode in modes_1d:
+                cells = []
+                for loc in active_locs:
+                    plot_file = f'{mode}_{loc}_{suffix_1d}.png'
+                    if os.path.exists(os.path.join(output_folder, plot_file)):
+                        cells.append(f'<td style="text-align:center">'
+                                     f'<img src="{plot_file}" style="max-width:100%"></td>')
+                    else:
+                        cells.append('<td style="text-align:center;color:gray">N/A</td>')
+                rows_1d.append(f'<tr><td style="white-space:nowrap"><b>{mode}</b></td>{"".join(cells)}</tr>')
+            plots_1d_html = f'''
+        <h2>1D vertical profiles</h2>
+        <table border="1" cellspacing="4" cellpadding="4" style="width:100%">
+          <tr><th>Mode</th>{th_locs}</tr>
+          {''.join(rows_1d)}
+        </table>'''
+        
+        html = f'''<!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><title>Proxy vs THM Report</title></head>
+        <body>
+        {contour_html}
+        <h2>Proxy vs THM 2D slices (XZ)</h2>
+        <table border="1" cellspacing="4" cellpadding="4">
+          <tr><th>Proxy</th><th>THM</th><th>Difference (THM - Proxy)</th></tr>
+          {''.join(html_rows)}
+        </table>
+        {plots_1d_html}
+        </body>
+        </html>'''
         html_path = os.path.join(output_folder, filename)
         with open(html_path, 'w') as f:
             f.write(html)
         print(f'Saved HTML report: {html_path}')
+
+    def save_pdf_report(base_names, output_folder, filename='proxy_vs_thm_report.pdf',
+                        locs=None, modes_1d=None, suffix_1d='all'):
+        from matplotlib.backends.backend_pdf import PdfPages
+        import matplotlib.image as mpimg
+
+        def load_img(img_name):
+            if not img_name:
+                return None
+            img_path = os.path.join(output_folder, img_name)
+            return mpimg.imread(img_path) if os.path.exists(img_path) else None
+
+        def add_ncol_page(pdf, names_labels, row_title='', col_fontsize=9, title_fontsize=10):
+            # names_labels: list of (img_name, col_title); missing files are skipped
+            loaded = [(load_img(n), lbl) for n, lbl in names_labels]
+            loaded = [(im, lbl) for im, lbl in loaded if im is not None]
+            if not loaded:
+                return
+            n = len(loaded)
+            fig, axes = plt.subplots(1, n, figsize=(7 * n, 6))
+            if n == 1:
+                axes = [axes]
+            for ax, (im, lbl) in zip(axes, loaded):
+                ax.imshow(im)
+                ax.axis('off')
+                ax.set_title(lbl, fontsize=col_fontsize)
+            if row_title:
+                fig.suptitle(row_title, fontsize=title_fontsize, fontweight='bold')
+            fig.tight_layout()
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close(fig)
+
+        col_order = ['(250,250)', 'inj_well', 'prod_well']
+        active_locs = [l for l in col_order if locs and l in locs]
+
+        pdf_path = os.path.join(output_folder, filename)
+        with PdfPages(pdf_path) as pdf:
+            # dp + dt contours
+            add_ncol_page(pdf,
+                [('dp_contour.png', 'ΔP contour (XZ)'), ('dt_contour.png', 'ΔT contour (XZ)')],
+                row_title='ΔP / ΔT contours (XZ slice)', col_fontsize=7, title_fontsize=8)
+            # 2D proxy vs THM: 3 columns per page
+            for b in base_names:
+                add_ncol_page(pdf,
+                    [(f'{b} - Proxy_contour.png'.replace(' ', '_'), 'Proxy'),
+                     (f'{b} - THM_contour.png'.replace(' ', '_'), 'THM'),
+                     (f'{b} - Difference_contour.png'.replace(' ', '_'), 'Difference (THM-Proxy)')],
+                    row_title=b, col_fontsize=7, title_fontsize=8)
+            # 1D profiles: one page per mode, columns = locations
+            if active_locs and modes_1d:
+                for mode in modes_1d:
+                    add_ncol_page(pdf,
+                        [(f'{mode}_{loc}_{suffix_1d}.png', loc) for loc in active_locs],
+                        row_title=mode)
+        print(f'Saved PDF report: {pdf_path}')
 
 
     points_xy = dict()
@@ -577,9 +671,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         points[0, :], points[1, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
         
         dp = gd((g.centroids[:, 1], g.centroids[:, 0], g.centroids[:, 2]), \
-            delta_pressure, (points[1, :], points[0, :], points[2, :]), method='nearest', fill_value=0.)
-        dp = dp.reshape((p_nx, p_ny, p_nz)) 
-        array_dict = {'dp':dp[:,0,:].transpose()}
+            delta_pressure, (points[1, :], points[0, :], points[2, :]), method='nearest', fill_value=0.).reshape((p_nx, p_ny, p_nz)) 
+        array_dict = {'Pressure change, MPa':dp[:,0,:].transpose()}
+        if thermal:
+            dt = gd((g.centroids[:, 1], g.centroids[:, 0], g.centroids[:, 2]), \
+                delta_temperature, (points[1, :], points[0, :], points[2, :]), method='nearest', fill_value=0.).reshape((p_nx, p_ny, p_nz)) 
+            array_dict.update({'Temperature change, K':dt[:,0,:].transpose()})
         plot_contour(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
         #plot_imshow(array_dict, points_x, points_z, output_folder=folder, slice = 'XZ')
         
@@ -682,7 +779,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                     n_over = np.sum(rel > thr)
                     print(f'  {b}: >{thr:.0f}%: {n_over}/{n_total} ({100.*n_over/n_total if n_total>0 else 0:.1f}%)')
 
-        save_html_prx_vs_thm(base_names, output_folder=folder)
+        pass  # HTML/PDF reports are saved after 1D plots are generated (see below)
 
 
     for k in points_xy.keys():
@@ -726,6 +823,11 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             points_rsv[1, :] = point_xy[0]            
             points_rsv[2, :] = z_range_rsv
             compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=folder, modes=modes)
+
+    save_html_prx_vs_thm(base_names, output_folder=folder,
+                         locs=list(points_xy.keys()), modes_1d=modes, suffix_1d='all')
+    save_pdf_report(base_names, output_folder=folder,
+                    locs=list(points_xy.keys()), modes_1d=modes, suffix_1d='all')
 
     # print vert displs and stresses change at a point
     if True:
@@ -780,10 +882,10 @@ if __name__ == '__main__':
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
     #case = '34_34_57'  # z 0 - 5 km
-    #case = '34_34_66'  # z 0 - 5 km 
+    case = '34_34_66'  # z 0 - 5 km 
     #case = '42_42_66'  # z 0 - 5 km 
     #case = '34_34_90'  # z 0 - 5 km more refined around rsv
-    case = '42_42_90'  # z 0 - 5 km more refined around rsv
+    #case = '42_42_90'  # z 0 - 5 km more refined around rsv
     #case='34_35_57' # perm_frac
     
     #case = '34_34_15'
@@ -794,8 +896,8 @@ if __name__ == '__main__':
 
     physics_types_list = []
     
-    thermal = False
-    #thermal = True
+    #thermal = False
+    thermal = True
     
     if not thermal:
         physics_types_list += ['single_phase']

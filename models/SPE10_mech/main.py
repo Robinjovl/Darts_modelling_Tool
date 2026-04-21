@@ -189,7 +189,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     m.print_timers()
     m.print_stat()
-    print(ith_step, 'timesteps', 't=', m.physics.engine.t)
+    print(m.output_directory, ith_step, 'timesteps', 't=', m.physics.engine.t)
     
     #time_data_dict = m.output.store_well_time_data(save_output_files=True)
     #m.output.plot_well_time_data(phase_volumetric_rates=True)
@@ -266,25 +266,34 @@ if __name__ == '__main__':
     #mesh='34_34_57' # rsv 2100-2200
     mesh='34_34_66' # rsv 2000-2400
     #mesh='34_35_57'  # perm_frac
-    
+
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
 
-    physics_type='single_phase'
-    #physics_type='single_phase_thermal'
-    
-    #wells_type='none'
-    #wells_type='prod'
-    wells_type='inj'
-    #wells_type='doublet'
+    thermal = False
+    #thermal = True
 
-    n_years = 30
+    if not thermal:
+        physics_type = 'single_phase'
+    else:
+        physics_type = 'single_phase_thermal'
+
+    if not thermal:
+        wells_type = 'inj'
+    else:
+        wells_type = 'doublet'
+
+    if not thermal:
+        n_years = 1
+    else:
+        n_years = 30
+
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
 
     # short run
-    sim_time = 30 # days
-    report_step = sim_time  # days
+    #sim_time = 30 # days
+    #report_step = sim_time  # days
 
     run(model_folder=mesh, physics_type=physics_type, generate_mesh=generate_mesh, wells_type=wells_type, decouple_geomech=decouple_geomech, report_step=report_step, sim_time=sim_time)
 
