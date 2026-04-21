@@ -731,7 +731,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
                    'Vertical effective stress change, MPa - THM': delta_Szz_last,
                    'Horizontal total stress change (XX), MPa - THM': delta_total_Sxx_last, 
                    'Vertical total stress change, MPa - THM': delta_total_Szz_last}
-        thm_interp = get_thm_by_interp(thm_raw, points[1, :], points[0, :], points[2, :], method='nearest')
+        thm_interp = get_thm_by_interp(thm_raw, points[1, :], points[0, :], points[2, :], method='nearest') # nearest is better here as eval points are centroids
         array_dict_thm = {k: v.reshape((p_nx, p_ny, p_nz))[:, 0, :].transpose()
                           for k, v in thm_interp.items()}
 
@@ -896,8 +896,8 @@ if __name__ == '__main__':
 
     physics_types_list = []
     
-    #thermal = False
-    thermal = True
+    thermal = False
+    #thermal = True
     
     if not thermal:
         physics_types_list += ['single_phase']
