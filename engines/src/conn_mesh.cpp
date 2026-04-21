@@ -5,6 +5,7 @@
 #include <iostream>
 #include <algorithm>
 #include <numeric>
+#include <type_traits>
 #include <stdlib.h>
 #include <assert.h>
 
@@ -28,6 +29,11 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   n_blocks = n_res_blocks;
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
+
+  // All the connections in the connection list until now are reservoir connections, so
+  // one_way_is_dfm_conn is set to false for all reservoir connections in the following line.
+  // This list can be updated when using the method conn_mesh::add_conn.
+  one_way_is_dfm_conn.insert(one_way_is_dfm_conn.end(), n_one_way_conns_res, false);
 
   poro.resize(n_res_blocks);
   volume.resize(n_res_blocks);
@@ -525,14 +531,14 @@ conn_mesh::init_pme_mech_discretizer(
 }
 
 int
-conn_mesh::add_conn(index_t block_m, index_t block_p, value_t trans, value_t transD, bool is_dfm_conn)
+conn_mesh::add_conn(index_t block_m, index_t block_p, value_t trans, value_t transD, bool is_dfm_conn_)
 {
   one_way_block_m.push_back (block_m);
   one_way_block_p.push_back (block_p);
   one_way_tran.push_back (trans);
   if (one_way_tranD.size())
     one_way_tranD.push_back (transD);
-  one_way_is_dfm_conn.push_back(is_dfm_conn);
+  one_way_is_dfm_conn.push_back(is_dfm_conn_);
 
   n_conns++;
   return 0;
@@ -862,7 +868,10 @@ conn_mesh::reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::v
 
     for (index_t j = 0; j < n_conns / 2; ++j)
     {
-      two_way_values[one_way_to_conn_index_forward[j]] = -one_way_values[j]; // m->p
+      if constexpr (std::is_same_v<T, bool>)
+        two_way_values[one_way_to_conn_index_forward[j]] = one_way_values[j]; // m->p: bool flags are direction-independent
+      else
+        two_way_values[one_way_to_conn_index_forward[j]] = -one_way_values[j]; // m->p
       two_way_values[one_way_to_conn_index_reverse[j]] = one_way_values[j];  // p->m
     }
   }
@@ -1886,60 +1895,56 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   n_perfs = 0;
   n_res_conns = n_conns;
 
-  // All the connections in the connection list until now are reservoir connections, so
-  // one_way_is_dfm_conn is set to false for all reservoir connections in the following line.
-  // This list is updated when using the method conn_mesh::add_conn.
-  one_way_is_dfm_conn.insert(one_way_is_dfm_conn.end(), n_res_conns, false);
-
   //  Add well connections
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
-    wells[iw]->well_head_idx = well_head_idx; // wellhead (topmost well segment)
-    wells[iw]->well_body_idx = well_head_idx + 1; // well body (segment right below the wellhead)
+	  wells[iw]->well_head_idx = well_head_idx; // wellhead (topmost well segment)
+	  wells[iw]->well_body_idx = well_head_idx + 1; // well body (segment right below the wellhead)
 
-    index_t n_segments = 0;
-    // Add connections between well segments and reservoir
-    for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
-    {
-      index_t i_w, i_r;
-      value_t wi, wid;
-      std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
-      add_conn(i_w + well_head_idx + 1, i_r, wi, wid, false);
-      n_perfs++;
-      n_segments = max(n_segments, i_w + 1);
-    }
-	// This if-block can affect the number of segments if the well is of the DFM type and there is or are unperforated segments below the lowermost perforated segment of the well.
-	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
-	{
-		n_segments = max(n_segments, wells[iw]->num_segments - 1);
-	}
+	  index_t n_segments = 0;
+	  // Add connections between well segments and reservoir
+	  for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
+	  {
+		  index_t i_w, i_r;
+		  value_t wi, wid;
+		  std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
+		  add_conn(i_w + well_head_idx + 1, i_r, wi, wid, false);
+		  n_perfs++;
+		  n_segments = max(n_segments, i_w + 1);
+	  }
+	  // This if-block can affect the number of segments if the well is of the DFM type and there is or are unperforated segments below the lowermost perforated segment of the well.
+	  if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	  {
+		  n_segments = max(n_segments, wells[iw]->num_segments - 1);
+	  }
 
-	// Add connection between well segments
-	bool is_dfm_well;
-	index_t n_seg_conns;
-	if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
-	{
-		is_dfm_well = false;
-		n_seg_conns = n_segments;
-	}
-	else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
-	{
-		is_dfm_well = true;
-		n_seg_conns = wells[iw]->num_segments - 1;
-	}
-	for (index_t seg = 0; seg < n_seg_conns; ++seg)
-	{
-		add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0, is_dfm_well);
-	}
+	  // Add connection between well segments
+	  bool is_dfm_well;
+	  index_t n_seg_conns;
+	  if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
+	  {
+		  is_dfm_well = false;
+		  n_seg_conns = n_segments;
+	  }
+	  else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	  {
+		  is_dfm_well = true;
+		  n_seg_conns = wells[iw]->num_segments - 1;
+	  }
+	  for (index_t seg = 0; seg < n_seg_conns; ++seg)
+	  {
+		  add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0, is_dfm_well);
+	  }
 
-	// Add connection between DFM well segments and reservoir cells for lateral heat transfer (for heat conduction only)
-	if (wells[iw]->ms_type == ms_well::MS_Type::DFM && wells[iw]->with_lateral_heat_transfer)
-	{
-		add_connection_for_lateral_heat_exchange_for_dfm(wells[iw]);
-	}
+	  // Add connection between DFM well segments and reservoir cells for lateral heat transfer (for heat conduction only)
+	  if (wells[iw]->ms_type == ms_well::MS_Type::DFM && wells[iw]->with_lateral_heat_transfer)
+	  {
+		  add_connection_for_lateral_heat_exchange_for_dfm(wells[iw]);
+	  }
 
-    well_head_idx += n_segments + 1;
-    wells[iw]->n_segments = n_segments;
+	  well_head_idx += n_segments + 1;
+	  wells[iw]->n_segments = n_segments;
+	  wells[iw]->well_bottom_idx = wells[iw]->well_head_idx + wells[iw]->n_segments;
   }
 
   // Store index of connection between wellhead and the lower segment (i.e., wellhead connection)
@@ -1998,8 +2003,8 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 				  int w_i = well_head_idx + p;
 				  // copy properties for the well blocks from the reservoir blocks
 				  rock_cond[w_i] = rock_cond[r_i];
-				  // depth of well segments
-				  depth[well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+				  // Align depth of perforated well segment with reservoir block
+				  depth[w_i] = depth[r_i];
 			  }
 		  }
 	  }
@@ -2010,12 +2015,11 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 		  std::fill(poro.begin() + well_head_idx, poro.begin() + well_head_idx + wells[iw]->num_segments, 1);
 		  std::fill(op_num.begin() + well_head_idx, op_num.begin() + well_head_idx + wells[iw]->num_segments, 0);
 		  std::fill(heat_capacity.begin() + well_head_idx, heat_capacity.begin() + well_head_idx + wells[iw]->num_segments, 0);
-		  // The following lines are not applied to DFM wells yet.
-		  //for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
-		  //{
-		  //	mob_multiplier[well_head_idx * 2 + p * 2] = 1;
-		  //	mob_multiplier[well_head_idx * 2 + p * 2 + 1] = 1;
-		  //}
+		  for (index_t p = 0; p < wells[iw]->num_segments; p++)
+		  {
+			  mob_multiplier[well_head_idx * 2 + p * 2] = 1;
+			  mob_multiplier[well_head_idx * 2 + p * 2 + 1] = 1;
+		  }
 	  }
   }
 
@@ -2170,23 +2174,25 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 
 	for (index_t iw = 0; iw < wells.size(); iw++)
 	{
+		const index_t well_head_idx = wells[iw]->well_head_idx;
+
 		// depth of the well head block - well controls work at this depth
-		depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
+		depth[well_head_idx] = wells[iw]->well_head_depth;
 		for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
 		{
-			volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
-			poro[wells[iw]->well_head_idx + p] = 1;
+			volume[well_head_idx + p] = wells[iw]->segment_volume;
+			poro[well_head_idx + p] = 1;
 			if (th_poro.size())
-			  th_poro[wells[iw]->well_head_idx + p] = 0;
-			op_num[wells[iw]->well_head_idx + p] = 0;
-			heat_capacity[wells[iw]->well_head_idx + p] = 0;
-			rock_cond[wells[iw]->well_head_idx + p] = 0;
+			  th_poro[well_head_idx + p] = 0;
+			op_num[well_head_idx + p] = 0;
+			heat_capacity[well_head_idx + p] = 0;
+			rock_cond[well_head_idx + p] = 0;
 			if (p > 0)
 			{
 				int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
-				int w_i = wells[iw]->well_head_idx + p;
-				// depth of well segments
-				depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+				int w_i = well_head_idx + p;
+				// Align depth of perforated well segment with reservoir block
+				depth[w_i] = depth[r_i];
 			}
 		}
 	}

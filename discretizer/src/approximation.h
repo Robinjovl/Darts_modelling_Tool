@@ -1,6 +1,7 @@
 #ifndef APPROXIMATION_H_
 #define APPROXIMATION_H_
 
+
 #include <type_traits>
 #include <array>
 #include "mesh/mesh.h"
@@ -12,12 +13,12 @@ namespace dis
   using mesh::Matrix;
   using mesh::ND;
 
-  // variable's names we perform approxiamtion over: 
-  // 'Uvar' - vector of three displacements, 
-  // 'Pvar' - pressure 
+  // variable's names we perform approxiamtion over:
+  // 'Uvar' - vector of three displacements,
+  // 'Pvar' - pressure
   // 'Tvar' - temperature
   enum VarName { Uvar, Pvar, Tvar };
-  
+
   template <VarName Var> constexpr index_t var_block_size = 0;
   template <> constexpr index_t var_block_size<Uvar> = 3; // number of veriables for the displacements (ux, uy, uz)
   template <> constexpr index_t var_block_size<Pvar> = 1; // number of veriables for the pressure (p)
@@ -80,7 +81,7 @@ namespace dis
 
       std::vector<index_t> old_stencil(stencil);
       Matrix old_a(a);
-      for (index_t i = 0; i < stencil.size(); i++)
+      for (size_t i = 0; i < stencil.size(); i++)
       {
         stencil[i] = old_stencil[sorted_ids[i]];
 
@@ -102,7 +103,7 @@ namespace dis
     }
   };
 
-  // utilities for compile-time estimate of the type of approximation 
+  // utilities for compile-time estimate of the type of approximation
   // merged from two approximations of different types
   template <VarName...>
   struct TypeList {};
@@ -117,13 +118,13 @@ namespace dis
   struct AddIfNotPresent;
 
   template <VarName V, VarName... Items>
-  struct AddIfNotPresent<V, TypeList<Items...>, true> 
+  struct AddIfNotPresent<V, TypeList<Items...>, true>
   {
     using type = TypeList<Items...>;
   };
 
   template <VarName V, VarName... Items>
-  struct AddIfNotPresent<V, TypeList<Items...>, false> 
+  struct AddIfNotPresent<V, TypeList<Items...>, false>
   {
     using type = TypeList<Items..., V>;
   };
@@ -132,13 +133,13 @@ namespace dis
   struct MergeTypeLists;
 
   template <VarName... Items1>
-  struct MergeTypeLists<TypeList<Items1...>, TypeList<>> 
+  struct MergeTypeLists<TypeList<Items1...>, TypeList<>>
   {
     using type = TypeList<Items1...>;
   };
 
   template <VarName... Items1, VarName First, VarName... Rest>
-  struct MergeTypeLists<TypeList<Items1...>, TypeList<First, Rest...>> 
+  struct MergeTypeLists<TypeList<Items1...>, TypeList<First, Rest...>>
   {
     using NewList = typename AddIfNotPresent<First, TypeList<Items1...>, Contains<First, TypeList<Items1...>>::value>::type;
     using type = typename MergeTypeLists<NewList, TypeList<Rest...>>::type;
@@ -148,7 +149,7 @@ namespace dis
   struct ExtractTypes;
 
   template<VarName... Vs>
-  struct ExtractTypes<TypeList<Vs...>> 
+  struct ExtractTypes<TypeList<Vs...>>
   {
     using type = LinearApproximation<Vs...>;
   };
@@ -161,8 +162,8 @@ namespace dis
   struct IndexOf<V, TypeList<Others...>> {
     static constexpr int value = [] {
       constexpr std::array<VarName, sizeof...(Others)> arr = { Others... };
-      for (int i = 0; i < sizeof...(Others); ++i) {
-        if (arr[i] == V) return i;
+      for (size_t i = 0; i < sizeof...(Others); ++i) {
+        if (arr[i] == V) return static_cast<int>(i);
       }
       return -1;
     }();
@@ -189,36 +190,36 @@ namespace dis
   }
 
   // merge stencils
-  static void merge_stencils(const std::vector<index_t>& st1, const std::vector<index_t>& st2, std::vector<index_t>& st)
+  [[maybe_unused]] static inline void merge_stencils(const std::vector<index_t>& st1, const std::vector<index_t>& st2, std::vector<index_t>& st)
   {
-    index_t i = 0, j = 0;
+    size_t i = 0, j = 0;
 
     while (i != st1.size() && j != st2.size())
     {
-      if (st1[i] == st2[j]) 
+      if (st1[i] == st2[j])
       {
         st.push_back(st1[i]);
         i++; j++;
       }
-      else if (st1[i] < st2[j]) 
+      else if (st1[i] < st2[j])
       {
         st.push_back(st1[i]);
         i++;
       }
-      else 
+      else
       {
         st.push_back(st2[j]);
         j++;
       }
     }
 
-    while (i < st1.size()) 
+    while (i < st1.size())
     {
       st.push_back(st1[i]);
       i++;
     }
 
-    while (j < st2.size()) 
+    while (j < st2.size())
     {
       st.push_back(st2[j]);
       j++;
@@ -231,7 +232,7 @@ namespace dis
   {
     // check if approximations are of the same size
     assert(ap1.a.M == ap2.a.M);
-    
+
     // calculate output type
     using MergedType = typename MergeTypeLists<TypeList<VarNames1...>, TypeList<VarNames2...>>::type;
     using ResultType = typename ExtractTypes<MergedType>::type;
@@ -260,7 +261,7 @@ namespace dis
 
     constexpr auto var_sizes2 = std::array{ var_block_size<VarNames2>... };
 
-    index_t i = 0, j = 0, k = 0;
+    size_t i = 0, j = 0, k = 0;
     while (i != ap1.stencil.size() && j != ap2.stencil.size())
     {
       if (ap1.stencil[i] == ap2.stencil[j])
@@ -382,5 +383,6 @@ namespace dis
     return res;
   }
 }
+
 
 #endif /* APPROXIMATION_H_ */

@@ -28,7 +28,7 @@ class RockProps:
 
         if type_hydr == 'thermal':  # thermal properties
             self.heat_capacity = None  # [kJ/m3/K]
-            self.conductivity = None  # thermal conductivity [kJ/m/day/K]
+            self.thermal_conductivity = None  # [kJ/m/day/K]
 
         if type_mech != 'none':  # geomechanical properties
             self.E = None  # Young modulus [bars]
@@ -61,6 +61,8 @@ class FluidProps:
         self.density = None  # Density at reference conditions, #TODO units
         self.viscosity = None  # TODO units
         self.Mw = None  # molar weight, [g/mol]
+        self.heat_capacity = None  # [kJ/kmol/K] - different unit than used for rock
+        self.thermal_conductivity = None  # [kJ/m/day/K] - the same unit as for rock
 
 
 class InitialSolution:
@@ -453,6 +455,7 @@ class OBLParams:
         self.max_t = None
         self.min_z = None
         self.max_z = None
+        self.epsilon_z = None
 
 
 class Simulation:

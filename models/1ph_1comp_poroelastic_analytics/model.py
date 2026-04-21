@@ -48,9 +48,12 @@ class Model(THMCModel):
 
         self.idata.other.case_name = self.case
 
-        self.idata.rock.density = 2650.
-        self.idata.fluid.Mw = 18.015
-        self.idata.fluid.density = self.idata.fluid.Mw  #TODO check
+        self.idata.rock.density = 2650.  # kg/m3
+        self.idata.fluid.Mw = 18.015  # kg/kmol molar density (water)
+        self.idata.fluid.density = self.idata.fluid.Mw
+        self.idata.fluid.heat_capacity = 167.2 # [kJ/kg/K] the same as for the rock
+        self.idata.fluid.heat_capacity *= self.idata.fluid.Mw / self.idata.fluid.density  # convert from [kJ/m3/K] to [kJ/kmol/K]
+        self.idata.fluid.thermal_conductivity = 0. # it is not used in the mech. engines
 
         self.bc_type = bound_cond()  # get predefined constants for boundary conditions
         NO_FLOW = self.bc_type.NO_FLOW  # short name
@@ -190,7 +193,7 @@ class Model(THMCModel):
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
             self.idata.rock.th_expn = 9.0 * 1.E-7  # [1/K]
             self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu) # # Couchy book formula 4.19a, 4.21a
-            self.idata.rock.conductivity = 0.836 * 86400.0 # [kJ/m/day/K]
+            self.idata.rock.thermal_conductivity = 0.836 * 86400.0 # [kJ/m/day/K]
             self.idata.rock.heat_capacity = 167.2 # [kJ/m3/K]
             self.idata.rock.th_expn_poro = 0.0   # mechanical term in porosity update
             self.idata.fluid.compressibility = 0.0
@@ -243,11 +246,12 @@ class Model(THMCModel):
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
+        self.idata.obl.epsilon_z = 1e-10
         self.idata.obl.min_p = -5.
         self.idata.obl.max_p = 500.
         self.idata.obl.min_t = -10.
         self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
+        self.idata.obl.min_z = 0.
+        self.idata.obl.max_z = 1.
 
         super().set_input_data()  # check

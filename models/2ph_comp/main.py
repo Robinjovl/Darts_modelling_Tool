@@ -45,6 +45,8 @@ def plot_sol(n):
 
 
 if __name__ == '__main__':
+
+    redirect_darts_output('run.log')
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
@@ -62,7 +64,7 @@ if __name__ == '__main__':
         time_data_dict = n.output.store_well_time_data(save_output_files=True)
 
         # plot well time data
-        n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])
+        n.output.plot_well_time_data(phase_volumetric_rates=True)
 
     else:
         # n.load_restart_data()

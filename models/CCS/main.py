@@ -1,60 +1,53 @@
 import numpy as np
 import pandas as pd
 import os
-from darts.engines import value_vector, redirect_darts_output
+from darts.engines import redirect_darts_output
 from model import Model
 
-import matplotlib.pyplot as plt
+
 redirect_darts_output('binary.log')
 
-
-filename = 'out'
-
-# define the model
-m = Model()
-# init the model
+m = Model(logspace=True)
 m.init()
-# set the output
-m.set_output(verbose = True)
+m.set_output()
 
-x = np.cumsum(m.x_axes)
-y = np.linspace(m.reservoir.nz*2+1, 0, m.reservoir.nz)
-X, Y = np.meshgrid(x, y)
+data_dt = None
 
-properties = m.physics.vars + m.physics.property_operators[0].props_name
-print_props = m.physics.vars + ['satV', 'xCO2', 'yH2O']
-timesteps, output = m.output.output_properties(output_properties=print_props, timestep=0)
-nv = m.physics.n_vars
+timesteps = [1.e-3, 0.92, 2.-1e-3, 8., 55., 300.] + [365] * 9
+max_ts = [1e-3, 0.01, 0.02, 0.5, 1., 5.] + [20] * 9
 
-fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
-for i, ith_prop in enumerate(print_props):
-    if m.reservoir.nz > 1:
-        prop = axs[i].pcolormesh(X, Y, output[ith_prop].reshape(m.reservoir.nz, m.reservoir.nx))
-        plt.colorbar(prop, ax=axs[i])
+for j, ts in enumerate(timesteps[:2]):
+
+    m.data_ts.dt_mult = 2
+    m.data_ts.dt_max = max_ts[j]
+    m.data_ts.eta[-1] = 100
+
+    if data_dt is not None:
+        data_dt.dt_max = max_ts[j]
+        m.run(data_dt, ts)
     else:
-        axs[i].plot(output[ith_prop])
-    axs[i].set_title(ith_prop)
+        # m.set_sim_params(max_ts=max_ts[j])
+        m.run(ts)
 
-plt.savefig('step0.png', format='png')
+""" Define output """
+props = ['satV', 'rho_g']
+output_props = ['pressure'] + props if not m.physics.thermal else ['pressure', 'temperature'] + props
+# output_props += ['y' + comp for comp in m.components[2:]]
+lims = {'pressure': [m.p_init, m.p_init+5], 'temperature': [m.t_inj - 30., m.t_init + 10.], 'satV': [1-m.swc, 1.]}
+lims.update({'satLCO2': [0., 1.]})
+# lims = None
+aspect = 'equal'  # 'equal', 'auto' or float
+cmap = 'RdBu_r'
+logx = True
 
-for t in range(2):
-    m.run(200)
+# Output to xarray and plot with plt
+m.output.output_to_plt(sol_filepath=m.output.sol_filepath,  # if not provided, it will plot last timestep from engine
+                       output_properties=output_props, lims=lims, plot_zeros=False,
+                       aspect_ratio=aspect, logx=logx, cmap=cmap)
+m.output.output_to_vtk(output_properties=output_props)
 
-    timesteps, output = m.output.output_properties(output_properties=print_props, timestep=t+1)
-
-    fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
-    for i, ith_prop in enumerate(print_props):
-        if m.reservoir.nz > 1:
-            prop = axs[i].pcolormesh(X, Y, output[ith_prop].reshape(m.reservoir.nz, m.reservoir.nx))
-            plt.colorbar(prop, ax=axs[i])
-        else:
-            axs[i].plot(output[ith_prop])
-        axs[i].set_title(ith_prop + str(t+1))
-
-    plt.savefig('step' + str(t+1) + '.png', format='png')
-
-    # compute and save well time data in m.output_folder
-    time_data_dict = m.output.store_well_time_data()
+# compute and save well time data in m.output.output_folder
+m.output.store_well_time_data(save_output_files=True)
 
 m.print_timers()
 m.print_stat()

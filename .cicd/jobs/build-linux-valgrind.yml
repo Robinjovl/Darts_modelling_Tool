@@ -1,7 +1,7 @@
 include:
   - local: '.cicd/jobs/build-linux-base.yml'
 
-build-linux-3.10-valgrind:
+build-linux-valgrind:
     stage: build
     tags:
         - linux
@@ -13,9 +13,8 @@ build-linux-3.10-valgrind:
         - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-linux
     variables:
-        PY_VER: '3.10'
-        PY_SUF: 'cp310-cp310'
         ODLS: '-a'
+        PY_VER: "$DEFAULT_PY_VER"
     script:
         - echo ">>> Starting debug build (valgrind instrumentation) <<<"
         - ./helper_scripts/build_darts_cmake.sh -c -w -m -j 8 -v $ODLS -p

@@ -65,9 +65,9 @@ class Model(DartsModel):
 
     def set_wells(self):
         self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 200.,
@@ -105,7 +105,7 @@ class ModelProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
@@ -119,7 +119,7 @@ class ModelProperties(PropertyContainer):
 
         # molar weight of mixture
         M = np.sum(self.x[j, :] * self.Mw)
-        self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure)  # output in [kg/m3]
+        self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure)  # output in [kg/m3]
         self.dens_m[j] = self.dens[j] / M
         self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(self.temperature)  # output in [cp]
 

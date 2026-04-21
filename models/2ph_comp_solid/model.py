@@ -39,14 +39,14 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        well_type = ms_well.MS_Type.EPM
-        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_well("I1")
         self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
-        self.reservoir.add_well("P1", well_type)
+        self.reservoir.add_well("P1")
         self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         self.zero = 1e-12
+        epsilon = 1e-13
 
         components = ['CO2', 'Ions', 'H2O', 'CaCO3']
         phases = ['gas', 'wat', 'sol']
@@ -73,7 +73,7 @@ class Model(CICDModel):
         """Physical properties"""
         # Create property containers:
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, nc_sol=1, np_sol=1,
-                                               temperature=1., rock_comp=1e-7, min_z=self.zero / 10)
+                                               temperature=1., rock_comp=1e-7, eps_z=epsilon)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
@@ -93,7 +93,8 @@ class Model(CICDModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=101, min_p=1, max_p=1000, min_z=self.zero / 10, max_z=1 - self.zero / 10)
+                                     n_points=101, min_p=1, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return

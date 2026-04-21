@@ -11,6 +11,7 @@
 #include "engine_super_mp_cpu.hpp"
 #include "conn_mesh.h"
 
+
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
@@ -27,13 +28,13 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_mp_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                                        operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                             sim_params *params_, timer_node *timer_)
 {
 
@@ -53,14 +54,14 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_
 
 
 
-	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 
 	return 0;
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
-	std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params_, timer_node *timer_)
+	std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
 	struct tm *timeinfo;
@@ -69,6 +70,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 
@@ -115,9 +117,11 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			break;
 		}
 #ifndef __linux__
-#if 0 // can be enabled if amgdll.dll is available \
-	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
-		case sim_params::CPU_GMRES_CPR_AMG1R5:
+#if 0
+		  // Can be enabled if amgdll.dll is available.
+		  // Since we compile PIC code, we cannot link the existing static library,
+		  // which was compiled without the fPIC flag.
+			case sim_params::CPU_GMRES_CPR_AMG1R5:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
@@ -256,6 +260,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 
@@ -263,7 +269,19 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
-	z_var = get_z_var();
+	z_var_idx = get_z_var_idx();
+	if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
+	}
+	min_sim_z = min_axis_z + params->sim_eps;
+	max_sim_z = max_axis_z - params->sim_eps;
 
 	X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
 	PV.resize(mesh->n_blocks);
@@ -278,6 +296,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
 
 	X_init = mesh->initial_state;
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 	Xn = X = X_init;
 	for (index_t i = 0; i < mesh->n_blocks; i++)
@@ -367,28 +387,6 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (params->log_transform == 0)
-	{
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	}
-	else if (params->log_transform == 1)
-	{
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
-	}
-
-
-
-
-
-
-
-
-
-
 
 	// for adjoint method------------------------------------------
 

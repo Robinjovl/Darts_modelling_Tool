@@ -5,7 +5,7 @@ from darts.physics.base.operators_base import OperatorsBase
 
 class OperatorsGeothermal(OperatorsBase):
     def __init__(self, property_container, thermal: bool = True):
-        super().__init__(property_container, thermal)
+        super().__init__(property_container, thermal, extrapolation_flag=False)
 
 
 class acc_flux_custom_iapws_evaluator_python(OperatorsGeothermal):

@@ -88,7 +88,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             # compute additional properties only for the first and for the last timestep:
             output_properties = output_properties_full if ith_step in [0, n_timesteps] else output_properties_main
             #print('timestep', ith_step, 'output_properties:', output_properties)
-            timesteps, property_array = m.output.output_properties(output_properties=output_properties, timestep=ith_step, engine=False)
+            timesteps, property_array = m.output.output_properties(output_properties=output_properties, ts_idx=ith_step, engine=False)
             if ith_step == 0:
                 centers_x, centers_y, centers_z = m.reservoir.get_centers()
                 property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})

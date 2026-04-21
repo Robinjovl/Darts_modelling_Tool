@@ -39,9 +39,9 @@ class Model_therm(CICDModel):
 
     def set_wells(self):
         self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         """Physical properties"""
@@ -118,6 +118,7 @@ class ModelProperties(PropertyContainer):
 
         zc_r = zc[:-1] / (1 - zc[-1])
         self.flash_ev.evaluate(pressure, temperature, zc_r)
+        self.temperature = temperature
         flash_results = self.flash_ev.get_flash_results()
         nu = np.array(flash_results.nu)
         xr = np.array(flash_results.X).reshape(self.nph-1, self.nc-1)
