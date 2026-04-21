@@ -1,16 +1,16 @@
 import warnings
+from collections.abc import Iterable
 
 import numpy as np
 from scipy.interpolate import interp1d
 
-import darts.engines as darts_engines
 from darts.engines import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
     ThermalVarOperator,
     WellControlOperators,
 )
-from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.base.physics_base import HistoryField, PhysicsBase
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators
 
 
@@ -45,13 +45,7 @@ class Compositional(PhysicsBase):
         axes_min=None,
         axes_max=None,
         n_axes_points=None,
-        history_labels: list | None = None,
-        history_axes_min: list | None = None,
-        history_axes_max: list | None = None,
-        history_n_axes_points: list | None = None,
-        history_field_names: dict | None = None,
-        history_defaults: dict | None = None,
-        hysteresis_enabled: bool = False,
+        history_fields: Iterable[HistoryField] | None = None,
     ):
         """
         This is the constructor of the Compositional Physics class.
@@ -90,6 +84,11 @@ class Compositional(PhysicsBase):
         :type axes_max: (optional) list or np.ndarray
         :param n_axes_points: (optional) Number of points over OBL axes
         :type n_axes_points: (optional) list or np.ndarray
+        :param history_fields: (optional) List of :class:`HistoryField` descriptors declaring
+                               auxiliary OBL axes (e.g. ``sg_max`` for Killough hysteresis).
+                               Fields with ``n_axis_points=None`` inherit ``n_points``. Pass
+                               ``None`` or an empty list for standard drainage-only behaviour.
+        :type history_fields: Iterable[HistoryField] or None
         """
         # Define nc, nph and (iso)thermal
         nc = len(components)
@@ -165,6 +164,21 @@ class Compositional(PhysicsBase):
             "OBL axes/solution vector in engine"
         )
 
+        # Fill in per-field defaults (mostly n_axis_points falling back to n_points) so that
+        # callers can pass HistoryField(label="sg_max") without repeating axis resolution.
+        resolved_history_fields = [
+            HistoryField(
+                label=h.label,
+                axis_min=h.axis_min,
+                axis_max=h.axis_max,
+                n_axis_points=(
+                    h.n_axis_points if h.n_axis_points is not None else n_points
+                ),
+                default=h.default,
+            )
+            for h in (history_fields or [])
+        ]
+
         # Call PhysicsBase constructor
         super().__init__(
             state_spec=state_spec,
@@ -178,214 +192,8 @@ class Compositional(PhysicsBase):
             n_axes_points=n_axes_points,
             timer=timer,
             cache=cache,
+            history_fields=resolved_history_fields,
         )
-        self.history_labels = list(history_labels or [])
-        self.history_field_names = {
-            label: (history_field_names or {}).get(label, label)
-            for label in self.history_labels
-        }
-        self.history_defaults = dict(history_defaults or {})
-        self.history_axes_min = list(
-            history_axes_min or [0.0] * len(self.history_labels)
-        )
-        self.history_axes_max = list(
-            history_axes_max or [1.0] * len(self.history_labels)
-        )
-        self.history_n_axes_points = list(
-            history_n_axes_points or [n_points] * len(self.history_labels)
-        )
-        self.hysteresis_enabled = hysteresis_enabled
-
-        assert len(self.history_axes_min) == len(self.history_labels)
-        assert len(self.history_axes_max) == len(self.history_labels)
-        assert len(self.history_n_axes_points) == len(self.history_labels)
-
-    def get_interpolator_state_labels(self):
-        return list(self.vars) + list(self.history_labels)
-
-    def get_interpolator_state_size(self):
-        return len(self.get_interpolator_state_labels())
-
-    def get_history_default(self, label):
-        return self.history_defaults.get(label, 0.0)
-
-    def get_engine_history_array(self, label, n_blocks=None):
-        attr = self.history_field_names[label]
-        history = getattr(self.engine, attr)
-        history_np = np.asarray(history, copy=False)
-        if n_blocks is None:
-            return history_np
-        return history_np[:n_blocks]
-
-    def set_engine_history_array(self, label, values, n_blocks=None):
-        attr = self.history_field_names[label]
-        if np.isscalar(values):
-            if n_blocks is None:
-                raise ValueError(
-                    "n_blocks must be provided when setting scalar history"
-                )
-            values = np.full(n_blocks, values, dtype=float)
-        values = np.asarray(values, dtype=float)
-        setattr(self.engine, attr, value_vector(values.tolist()))
-
-    def get_engine_interpolator_state(self, n_blocks=None):
-        if n_blocks is None:
-            n_blocks = np.asarray(self.engine.X, copy=False).size // self.n_vars
-        if not self.history_labels:
-            return np.array(self.engine.X[: self.n_vars * n_blocks], copy=True)
-
-        state_size = self.get_interpolator_state_size()
-        if hasattr(self.engine, "Xop"):
-            xop = np.asarray(self.engine.Xop, copy=False)
-            if xop.size >= state_size * n_blocks:
-                return np.array(xop[: state_size * n_blocks], copy=True)
-
-        primary_state = np.asarray(self.engine.X, copy=False)[
-            : self.n_vars * n_blocks
-        ].reshape(n_blocks, self.n_vars)
-        history_cols = [
-            self.get_engine_history_array(label, n_blocks=n_blocks).reshape(n_blocks, 1)
-            for label in self.history_labels
-        ]
-        return np.hstack([primary_state] + history_cols).reshape(-1)
-
-    def _extend_axes_with_history(self):
-        """Save primary OBL axes and append history dimensions (e.g. sg_max).
-
-        Called from set_interpolators() before creating any itor objects so
-        that create_interpolator() can distinguish between primary axes (used
-        for well / property interpolators) and extended axes (used for
-        reservoir interpolators that include history fields).
-        """
-        self.primary_axes_min = value_vector(self.axes_min)
-        self.primary_axes_max = value_vector(self.axes_max)
-        self.primary_n_axes_points = index_vector(self.n_axes_points)
-
-        if self.history_labels:
-            self.axes_min = value_vector(list(self.axes_min) + self.history_axes_min)
-            self.axes_max = value_vector(list(self.axes_max) + self.history_axes_max)
-            self.n_axes_points = index_vector(
-                list(self.n_axes_points) + self.history_n_axes_points
-            )
-
-    def set_interpolators(
-        self,
-        platform: str = "cpu",
-        itor_type: str = "multilinear",
-        itor_mode: str = "adaptive",
-        itor_precision: str = "d",
-        is_barycentric: bool = False,
-    ):
-        """Extend OBL axes with history dimensions then delegate to base class."""
-        self._extend_axes_with_history()
-        super().set_interpolators(
-            platform, itor_type, itor_mode, itor_precision, is_barycentric
-        )
-
-    def init_physics(
-        self,
-        discr_type: str = "tpfa",
-        platform: str = "cpu",
-        itor_type: str = "multilinear",
-        itor_mode: str = "adaptive",
-        itor_precision: str = "d",
-        verbose: bool = False,
-        is_barycentric: bool = False,
-        n_solid: int = None,
-    ):
-        # Base class handles: determine_obl_bounds, set_engine, set_state_spec,
-        # set_operators, set_interpolators (which is overridden above to extend axes).
-        super().init_physics(
-            discr_type=discr_type,
-            platform=platform,
-            itor_type=itor_type,
-            itor_mode=itor_mode,
-            itor_precision=itor_precision,
-            verbose=verbose,
-            is_barycentric=is_barycentric,
-            n_solid=n_solid,
-        )
-        if self.hysteresis_enabled and hasattr(self.engine, "hysteresis_enabled"):
-            self.engine.hysteresis_enabled = True
-
-    def init_wells(self, wells):
-        super().init_wells(wells)
-        if self.hysteresis_enabled:
-            for well in wells:
-                if hasattr(well, "hysteresis_enabled"):
-                    well.hysteresis_enabled = True
-                if hasattr(well, "control"):
-                    well.control.hysteresis_enabled = True
-                if hasattr(well, "constraint"):
-                    well.constraint.hysteresis_enabled = True
-
-    def create_interpolator(
-        self,
-        evaluator: operator_set_evaluator_iface,
-        axes_min: value_vector,
-        axes_max: value_vector,
-        timer_name: str,
-        n_ops: int,
-        algorithm: str = "multilinear",
-        mode: str = "adaptive",
-        platform: str = "cpu",
-        precision: str = "d",
-        region: str = "",
-        is_barycentric: bool = False,
-    ):
-        if axes_min is None:
-            axes_min = self.axes_min
-        if axes_max is None:
-            axes_max = self.axes_max
-
-        n_axes_points = (
-            self.primary_n_axes_points
-            if hasattr(self, "primary_n_axes_points")
-            and len(axes_min) == len(self.primary_n_axes_points)
-            else self.n_axes_points
-        )
-        n_dims = len(n_axes_points)
-        assert len(axes_min) == n_dims
-        assert len(axes_max) == n_dims
-        expected_dims = (
-            len(self.vars)
-            if hasattr(self, "primary_n_axes_points")
-            and len(axes_min) == len(self.primary_n_axes_points)
-            else self.get_interpolator_state_size()
-        )
-        assert n_dims == expected_dims
-        for n_p in n_axes_points:
-            assert n_p > 1
-
-        itor_name = f"{algorithm}_{mode}_{platform}_interpolator_i_{precision}_{n_dims:d}_{n_ops:d}"
-        itor = None
-        try:
-            itor_cls = getattr(darts_engines, itor_name)
-            if algorithm == "linear":
-                itor = itor_cls(
-                    evaluator, n_axes_points, axes_min, axes_max, is_barycentric
-                )
-            else:
-                itor = itor_cls(evaluator, n_axes_points, axes_min, axes_max)
-        except (AttributeError, ValueError):
-            if (
-                np.prod(np.array(n_axes_points), dtype=np.float64)
-                < np.iinfo(np.int64).max
-            ):
-                itor_name = itor_name.replace("interpolator_i", "interpolator_l")
-            else:
-                itor_name = itor_name.replace("interpolator_i", "interpolator_ll")
-            itor_cls = getattr(darts_engines, itor_name)
-            if algorithm == "linear":
-                itor = itor_cls(
-                    evaluator, n_axes_points, axes_min, axes_max, is_barycentric
-                )
-            else:
-                itor = itor_cls(evaluator, n_axes_points, axes_min, axes_max)
-
-        self.create_itor_timers(itor, timer_name)
-        itor.init()
-        return itor, n_ops
 
     def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):
         """

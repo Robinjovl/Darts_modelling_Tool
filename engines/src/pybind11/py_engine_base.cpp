@@ -50,9 +50,10 @@ void pybind_engine_base (py::module &m)
 	   .def_readwrite("darcy_velocities", &engine_base::darcy_velocities) \
 	   .def_readwrite("molar_weights", &engine_base::molar_weights) \
 	   .def_readwrite("dispersivity", &engine_base::dispersivity) \
-	   .def_readwrite("sg_max", &engine_base::sg_max) \
+	   .def_readwrite("Xhis", &engine_base::Xhis) \
 	   .def_readwrite("Xop", &engine_base::Xop) \
-	   .def_readwrite("xop_ders_arr", &engine_base::xop_ders_arr) \
+	   .def_readwrite("op_ders_arr_ext", &engine_base::op_ders_arr_ext) \
+	   .def_readwrite("n_his_runtime", &engine_base::n_his_runtime) \
 	   .def_readwrite("newton_update_coefficient", &engine_base::newton_update_coefficient) \
 	   .def_readwrite("e_dim", &engine_base::e_dim) \
 	   .def_readwrite("p_dim", &engine_base::p_dim) \
@@ -161,7 +162,10 @@ void pybind_engine_base (py::module &m)
 	   .def_readwrite("flux_multiplier", &engine_base::flux_multiplier) \
 
 	   .def_readwrite("observation_rate_type", &engine_base::observation_rate_type) \
-	   .def_readwrite("hysteresis_enabled", &engine_base::hysteresis_enabled);
+	   .def("get_n_vars", &engine_base::get_n_vars) \
+	   .def("get_n_ops", &engine_base::get_n_ops) \
+	   .def("get_n_state", &engine_base::get_n_state) \
+	   .def("get_n_his", &engine_base::get_n_his);
 
 	   py::enum_<engine_base::StateSpecification>(cls, "StateSpecification")
 		   .value("P", engine_base::StateSpecification::P)

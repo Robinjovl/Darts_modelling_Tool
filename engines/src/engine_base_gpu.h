@@ -442,6 +442,16 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   op_vals_arr.resize(n_ops * mesh->n_blocks);
   //op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);
 
+  // Keep newton_to_obl consistent with the CPU init_base: default to identity so Python code
+  // that reads engine.newton_to_obl sees a meaningful vector on GPU engines too. GPU engines
+  // do not call build_Xop (no hysteresis on GPU yet), so this is bookkeeping-only for now.
+  if (newton_to_obl.size() < (size_t)N_VARS)
+  {
+    newton_to_obl.resize(N_VARS);
+    for (uint8_t v = 0; v < N_VARS; v++)
+      newton_to_obl[v] = v;
+  }
+
   jac_wells.resize(2 * n_vars * n_vars * wells.size());
   jac_well_head_idxs.resize(wells.size());
 

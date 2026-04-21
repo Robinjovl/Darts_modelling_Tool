@@ -134,7 +134,9 @@ public:
     std::vector<value_t> state;
     std::vector<value_t> state_neighbour;
     std::vector<value_t> rates;
-    bool hysteresis_enabled = false;  // opt-in flag: set to true to enable Killough/Land hysteresis
+    // History values appended to the well state when the physics uses OBL history variables
+    // (analogous to mesh->Xhis_bounds for boundary cells). Empty unless history axes are active.
+    std::vector<value_t> Xhis_well_default;
     int n_vars;
     int n_ops;
     int n_segments = -1;

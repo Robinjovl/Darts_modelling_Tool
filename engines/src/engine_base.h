@@ -136,6 +136,22 @@ public:
 	// get the number of solid/mineral species
 	virtual uint8_t get_n_solid() const { return n_solid; };
 
+	// Number of per-cell history variables fed to OBL interpolation but not part of the Newton
+	// system (e.g. trapped/max-gas saturation for Killough hysteresis). Python sets this before
+	// engine.init() via `engine.n_his_runtime = k`; 0 disables the Xop / Xhis code paths.
+	uint8_t n_his_runtime = 0;
+
+	virtual uint8_t get_n_his() const { return n_his_runtime; };
+
+	// get the dimension of the OBL interpolation state: Newton unknowns + history variables
+	virtual uint8_t get_n_state() const { return get_n_vars() + get_n_his(); };
+
+	// Maps the first n_vars entries of Xop (per cell) onto indices of the Newton unknowns X.
+	// Defaults to identity [0..n_vars-1] in init_base when empty. Engines that expose only a
+	// subset of Newton unknowns to OBL (e.g. mechanical engines projecting to pressure) may
+	// override this to decouple the OBL axis order from the Newton unknown order.
+	std::vector<uint8_t> newton_to_obl;
+
 	// initialization
 	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_) = 0;
 
@@ -178,11 +194,6 @@ public:
 
 	virtual void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
 
-	virtual void extract_Xop();
-	virtual void extract_xop_ders();
-
-	bool hysteresis_enabled = false;  // opt-in flag: default OFF, activates sg_max axis in OBL interpolation
-
 	virtual int apply_newton_update(value_t dt);
 
 	// Here we make the same thing as inside interpolation, but during Newton update
@@ -194,6 +205,16 @@ public:
 	virtual int print_timestep(value_t time, value_t deltat);
 
 	int print_header();
+
+	// Build Xop = [X | Xhis] for reservoir + boundary cells when n_his > 0. No-op otherwise.
+	// mesh->Xhis_bounds supplies the history values to use at boundary cells.
+	void build_Xop();
+
+	// After interpolating into op_ders_arr_ext (sized by n_state), copy the first n_vars derivative
+	// columns into op_ders_arr (the Newton-sized buffer) so the assembly kernels can consume it
+	// with the standard compile-time N_VARS stride. Derivatives w.r.t. history are dropped, which is
+	// correct because history values are not Newton unknowns.
+	void project_xop_ders();
 
 	/// @brief report for one newton iteration
 	virtual int assemble_linear_system(value_t deltat);
@@ -384,9 +405,11 @@ public:
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
 	std::vector<value_t> dispersivity;		// [n_regions * NP * NC] dispersion coefficients
-	std::vector<value_t> sg_max;			// [n_blocks] maximum gas saturations for hysteresis in capillary curves
-	std::vector<value_t> Xop;				// [n_blocks * (n_vars+1)] extended state vector with sg_max for hysteresis interpolation
-	std::vector<value_t> xop_ders_arr;		// [n_blocks * n_ops * (n_vars+1)] extended derivatives array for hysteresis
+	// History variables: per-cell quantities that feed OBL interpolation but are not Newton unknowns.
+	// Advanced in Python after each converged timestep (e.g. max gas saturation for Killough hysteresis).
+	std::vector<value_t> Xhis;				// [(n_blocks + n_bounds) * n_his] history values (reservoir cells then boundary cells)
+	std::vector<value_t> Xop;				// [(n_blocks + n_bounds) * n_state] extended state vector fed to interpolator; empty unless n_his > 0
+	std::vector<value_t> op_ders_arr_ext;	// [(n_blocks + n_bounds) * n_ops * n_state] scratch for interpolator derivative output when n_his > 0
 
 	// rates, bhps, FIPs, etc
 	std::unordered_map<std::string, std::vector<value_t>> time_data_report;
@@ -939,6 +962,30 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	op_vals_arr.resize(n_ops * mesh->n_blocks);
 	op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);
 
+	// Default the Newton→OBL axis map to identity unless an engine or the Python side has
+	// already populated it. This keeps build_Xop's reservoir loop behaviour unchanged for all
+	// engines that don't need selective projection (i.e. everything except mechanical today).
+	if (newton_to_obl.size() < (size_t)N_VARS)
+	{
+		newton_to_obl.resize(N_VARS);
+		for (uint8_t v = 0; v < N_VARS; v++)
+			newton_to_obl[v] = v;
+	}
+
+	// History buffers: allocated only if the engine reports n_his > 0 (see engine_base::get_n_his).
+	// Xhis stores per-cell history values for reservoir cells followed by boundary cells; boundary
+	// entries are seeded from mesh->Xhis_bounds by build_Xop.
+	const uint8_t n_his = get_n_his();
+	if (n_his > 0)
+	{
+		const uint8_t n_state = get_n_state();
+		const index_t n_total = mesh->n_blocks + mesh->n_bounds;
+		if (Xhis.size() < (size_t)n_total * n_his)
+			Xhis.assign((size_t)n_total * n_his, 0.0);
+		Xop.resize((size_t)n_total * n_state);
+		op_ders_arr_ext.resize((size_t)n_total * n_ops * n_state);
+	}
+
 	t = 0;
 
 	time(&rawtime);
@@ -1013,12 +1060,12 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		block_idxs[op_region].emplace_back(idx++);
 	}
 
-	if (hysteresis_enabled)
+	if (get_n_his() > 0)
 	{
-		extract_Xop();
+		build_Xop();
 		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
-			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, xop_ders_arr);
-		extract_xop_ders();
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+		project_xop_ders();
 	}
 	else
 	{

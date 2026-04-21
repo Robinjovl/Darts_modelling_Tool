@@ -116,7 +116,6 @@ class DartsModel:
         self.time = []
         self.n_newton_iters = []
         self.time_step_size = []
-        self.history_enabled = False
 
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
@@ -201,8 +200,8 @@ class DartsModel:
         self.restart = restart
         if restart is False:
             self.set_initial_conditions()
-            self.initialize_history_fields()
             self.reset()
+            self.initialize_history_fields()
         self.data_ts.print()
         if (
             self.params.linear_type == sim_params.linear_solver_t.cpu_superlu
@@ -229,24 +228,46 @@ class DartsModel:
         )
 
     def initialize_history_fields(self):
-        if (
-            not hasattr(self.physics, "history_labels")
-            or not self.physics.history_labels
-        ):
+        """Seed ``engine.Xhis`` with the per-field default value for every reservoir cell.
+
+        No-op when the physics has no ``history_fields`` configured (the engine then also has
+        ``n_his_runtime == 0`` and no ``Xhis`` buffer). Called by :meth:`init` right after
+        :meth:`reset`, which is where the C++ engine allocates ``Xhis``.
+
+        :returns: None
+        """
+        if not getattr(self.physics, "history_fields", None):
             return
 
         n_blocks = self.reservoir.mesh.n_blocks
-        for label in self.physics.history_labels:
+        for field in self.physics.history_fields:
             self.physics.set_engine_history_array(
-                label,
-                self.physics.get_history_default(label),
+                field.label,
+                field.default,
                 n_blocks=n_blocks,
             )
 
     def after_converged_timestep(self):
+        """Hook called after each converged Newton timestep. Advances history fields by default.
+
+        Subclasses that override this should call ``super().after_converged_timestep()`` to
+        preserve the history-field update. The base implementation simply delegates to
+        :meth:`update_history_fields_after_timestep`.
+
+        :returns: None
+        """
         self.update_history_fields_after_timestep()
 
     def update_history_fields_after_timestep(self):
+        """User hook to advance OBL history variables (e.g. ``sg_max``) between timesteps.
+
+        The base implementation is a no-op. Subclasses backing a hysteretic physics should
+        override this to read the current Newton state, compute the updated history value
+        per cell, and write it back via :meth:`PhysicsBase.set_engine_history_array` (or by
+        mutating the underlying ``engine.Xhis`` vector directly).
+
+        :returns: None
+        """
         return
 
     def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):

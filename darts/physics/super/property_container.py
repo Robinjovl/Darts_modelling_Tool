@@ -4,6 +4,10 @@ from darts.engines import value_vector
 from darts.physics.base.property_base import PropertyBase
 from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator
 from darts.physics.properties.flash import Flash
+from darts.physics.properties.hysteresis import (
+    HistoryAwareCapPressure,
+    HistoryAwareRelPerm,
+)
 
 
 class PropertyContainer(PropertyBase):
@@ -18,19 +22,34 @@ class PropertyContainer(PropertyBase):
         rock_comp: float = 1e-6,
         rate_ann_mat=None,
         temperature: float = None,
+        n_his: int = 0,
     ):
         """
         This is the PropertyContainer class for the Compositional engine.
 
         :param phases_name: List of phases
+        :type phases_name: list[str]
         :param components_name: List of components
+        :type components_name: list[str]
         :param Mw: List of molecular weights [g/mol]
+        :type Mw: list[float]
         :param nc_sol: Number of solid components, default is 0
+        :type nc_sol: int
         :param np_sol: Number of solid phases, default is 0
+        :type np_sol: int
         :param eps_z: Minimum bound of component mole fractions in OBL grid, default is 1e-11
+        :type eps_z: float
         :param rock_comp: Rock compressibility, default is 1e-6
+        :type rock_comp: float
         :param rate_ann_mat: Rate annihilation matrix, optional
+        :type rate_ann_mat: numpy.ndarray, optional
         :param temperature: Constant temperature for isothermal simulation, default is None (thermal)
+        :type temperature: float, optional
+        :param n_his: Number of OBL history variables (e.g. ``sg_max``) appended to the state
+                      after the primary Newton unknowns. ``0`` disables history-aware dispatch
+                      and matches legacy behaviour; set by :class:`PhysicsBase` through
+                      ``add_property_region``
+        :type n_his: int
         """
         # This class contains all the property evaluators required for simulation
         self.components_name = components_name
@@ -48,6 +67,9 @@ class PropertyContainer(PropertyBase):
 
         self.Mw = Mw
         self.eps_z = eps_z
+        # Number of OBL history variables (e.g. sg_max) appended to the state vector after
+        # the primary Newton unknowns. 0 disables history-aware dispatch entirely.
+        self.n_his = int(n_his)
 
         if temperature:  # constant T specified
             self.thermal = False
@@ -128,11 +150,9 @@ class PropertyContainer(PropertyBase):
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:
-            # History fields (e.g. sg_max) are appended after primary state vars.
-            # Primary thermal state: [P, z_0..z_{nc-2}, T] = nc+1 elements.
-            # If extra fields are present, T sits at [-2] rather than [-1].
-            has_history = len(vec_state_as_np) > self.nc + 1
-            state_spec_2 = vec_state_as_np[-2] if has_history else vec_state_as_np[-1]
+            # Primary thermal state: [P, z_0..z_{nc-2}, T] = nc+1 elements. If n_his history
+            # variables are appended, T sits at nc (end of primary block), not at [-1].
+            state_spec_2 = vec_state_as_np[self.nc]
         else:
             state_spec_2 = self.temperature
 
@@ -304,20 +324,16 @@ class PropertyContainer(PropertyBase):
 
         self.compute_saturation(self.ph)
 
-        # Extract history field (e.g. sg_max) if appended to state by the physics.
-        # Primary state length: nc vars for isothermal, nc+1 for thermal.
-        # If state is longer, the last element is the history field (e.g. sg_max).
-        vec_state = np.asarray(state)
-        n_primary = self.nc + (1 if self.thermal else 0)
-        sg_max = float(vec_state[-1]) if len(vec_state) > n_primary else None
+        # Single history variable is supported for now (sg_max). Read it from the tail of the
+        # state vector whenever the physics configured one.
+        sg_max = float(np.asarray(state)[-1]) if self.n_his else None
 
-        # Evaluate capillary pressure — supports both a single evaluator and a
-        # per-phase dict.  When the evaluator declares supports_history=True and
-        # sg_max is available, it is forwarded so hysteretic scanning curves are used.
+        # Evaluate capillary pressure — supports both a single evaluator and a per-phase dict.
+        # HistoryAwareCapPressure evaluators receive sg_max; everyone else is called with sat only.
         if isinstance(self.capillary_pressure_ev, dict):
             for j in self.ph:
                 pc_ev = self.capillary_pressure_ev[self.phases_name[j]]
-                if sg_max is not None and getattr(pc_ev, "supports_history", False):
+                if sg_max is not None and isinstance(pc_ev, HistoryAwareCapPressure):
                     self.pc[j] = pc_ev.evaluate(self.sat[j], sg_max)
                 else:
                     self.pc[j] = pc_ev.evaluate(self.sat[j])
@@ -326,7 +342,7 @@ class PropertyContainer(PropertyBase):
 
         for j in self.ph:
             kr_ev = self.rel_perm_ev[self.phases_name[j]]
-            if sg_max is not None and getattr(kr_ev, "supports_history", False):
+            if sg_max is not None and isinstance(kr_ev, HistoryAwareRelPerm):
                 self.kr[j] = kr_ev.evaluate(self.sat[j], sg_max)
             else:
                 self.kr[j] = kr_ev.evaluate(self.sat[j])

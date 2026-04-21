@@ -7,6 +7,7 @@ import numpy as np
 
 from darts.engines import value_vector
 from darts.models.darts_model import DartsModel
+from darts.physics.base.physics_base import HistoryField, PhysicsBase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import ConstantK
@@ -231,28 +232,14 @@ class Model(DartsModel):
         self.lookup_file = lookup_file
         phases = ["Aq", "V"]
         comp_data = CompData(components, setprops=True)
-        # history_kwargs activates hysteresis support in the physics engine.
-        # When hys=False these kwargs are omitted, so sg_max is never appended
-        # to the interpolation state and all evaluators use pure drainage curves
-        # (sg_max defaults to 0 in KilloughRelPermTable / KilloughCapillaryPressureTable).
-        history_kwargs = {}
-        if self.hys:
-            history_kwargs = {
-                "history_labels": ["sg_max"],
-                "history_axes_min": [0.0],
-                "history_axes_max": [1.0],
-                "history_n_axes_points": [n_points],
-                "history_defaults": {"sg_max": 0.0},
-                "hysteresis_enabled": True,
-            }
 
         axes_min = [1.0, zero / 10.0]
         axes_max = [500.0, 1.0 - zero / 10.0]
         n_axes_points = [n_points, n_points]
         state_spec = (
-            Compositional.StateSpecification.PT
+            PhysicsBase.StateSpecification.PT
             if thermal
-            else Compositional.StateSpecification.P
+            else PhysicsBase.StateSpecification.P
         )
         if thermal:
             temp_min = min(273.15, temperature, self.injection_temperature)
@@ -260,6 +247,14 @@ class Model(DartsModel):
             axes_min.append(temp_min)
             axes_max.append(temp_max)
             n_axes_points.append(max(3, int(temperature_points)))
+
+        # sg_max history is only declared when hysteresis is enabled. Without it the OBL state
+        # stays at the primary vars and the Killough evaluators fall back to pure drainage.
+        history_fields = (
+            [HistoryField(label="sg_max", axis_min=0.0, axis_max=1.0, n_axis_points=n_points, default=0.0)]
+            if self.hys
+            else []
+        )
 
         self.physics = Compositional(
             components,
@@ -276,7 +271,7 @@ class Model(DartsModel):
             axes_min=axes_min,
             axes_max=axes_max,
             n_axes_points=n_axes_points,
-            **history_kwargs,
+            history_fields=history_fields,
         )
 
         for region, params in corey_regions.items():
@@ -391,8 +386,9 @@ class Model(DartsModel):
         m_co2 = 44.01
         m_h2o = 18.0
         x = np.asarray(self.physics.engine.X)
+        history_labels = [h.label for h in self.physics.history_fields]
         sg_max = None
-        if "sg_max" in getattr(self.physics, "history_labels", []):
+        if "sg_max" in history_labels:
             sg_max = self.physics.get_engine_history_array(
                 "sg_max",
                 n_blocks=self.reservoir.mesh.n_blocks,
@@ -419,7 +415,8 @@ class Model(DartsModel):
         return rhs_flux
 
     def update_history_fields_after_timestep(self) -> None:
-        if not self.hys or "sg_max" not in getattr(self.physics, "history_labels", []):
+        history_labels = [h.label for h in self.physics.history_fields]
+        if not self.hys or "sg_max" not in history_labels:
             return
 
         n_res_blocks = self.reservoir.mesh.n_res_blocks

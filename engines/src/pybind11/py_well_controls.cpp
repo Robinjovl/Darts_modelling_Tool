@@ -9,7 +9,7 @@ namespace py = pybind11;
 #if 1
 class py_well_control_iface : public well_control_iface {
 public:
- 
+
   /* Inherit the constructors */
   using well_control_iface::well_control_iface;
 
@@ -42,7 +42,7 @@ public:
   //     dt,                           /* Argument(s) */
   //     well_head_idx,
   //     n_block_size,
-	//   N_VARS, 
+	//   N_VARS,
 	//   P_VAR,
   //     X
   //   );
@@ -77,7 +77,7 @@ public:
   //     set_rate_control,         /* Name of function in C++ (must match Python name) */
   //     control_type_,            /* Argument(s) */
   //     phase_idx_,
-  //     well_control_spec_,      
+  //     well_control_spec_,
   //   );
   // }
 
@@ -95,7 +95,7 @@ void pybind_well_controls(py::module &m)
     .def("set_rate_control", &well_control_iface::set_rate_control)
     .def("get_well_control_type_str", &well_control_iface::get_well_control_type_str)
     .def("get_well_control_type", &well_control_iface::get_well_control_type)
-    .def_readwrite("hysteresis_enabled", &well_control_iface::hysteresis_enabled);
+    .def_readwrite("Xhis_well_default", &well_control_iface::Xhis_well_default);
 
   py::enum_<well_control_iface::WellControlType>(well_control_iface, "WellControlType")
     .value("NONE", well_control_iface::WellControlType::NONE)

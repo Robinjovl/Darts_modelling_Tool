@@ -1,35 +1,122 @@
 from __future__ import annotations
 
+import abc
+from collections import OrderedDict
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.interpolate import interp1d
 
 
+class HistoryAwareRelPerm(abc.ABC):
+    """Abstract base for relative-permeability evaluators that consume an OBL history variable.
+
+    :class:`~darts.physics.super.property_container.PropertyContainer` uses
+    ``isinstance(..., HistoryAwareRelPerm)`` to decide whether to forward the history value
+    (e.g. ``sg_max``) from the OBL state into :meth:`evaluate`. Plain evaluators without this
+    base class are called with saturation only.
+    """
+
+    @abc.abstractmethod
+    def evaluate(self, sat, sg_max: float = 0.0) -> float:
+        """Return relative permeability at a given saturation and history value.
+
+        :param sat: Phase saturation in ``[0, 1]``
+        :type sat: float
+        :param sg_max: Historical maximum gas saturation for scanning curves
+        :type sg_max: float
+        :returns: Relative permeability value
+        :rtype: float
+        """
+
+
+class HistoryAwareCapPressure(abc.ABC):
+    """Abstract base for capillary-pressure evaluators that consume an OBL history variable.
+
+    Dispatch contract mirrors :class:`HistoryAwareRelPerm`: the property container checks
+    ``isinstance(..., HistoryAwareCapPressure)`` to decide whether to pass ``sg_max``.
+    """
+
+    @abc.abstractmethod
+    def evaluate(self, sat, sg_max: float = 0.0) -> float:
+        """Return capillary pressure at a given saturation and history value.
+
+        :param sat: Phase saturation in ``[0, 1]``
+        :type sat: float
+        :param sg_max: Historical maximum gas saturation for scanning curves
+        :type sg_max: float
+        :returns: Capillary pressure value, in the caller's unit convention
+        :rtype: float
+        """
+
+
 @dataclass
 class KilloughLandModel:
+    """Killough-Land trapping model for gas hysteresis in the water/gas system.
+
+    Provides the residual (trapped) gas saturation as a function of the historical maximum gas
+    saturation, and advances the state variable ``sg_max`` after each converged timestep. The
+    Land constant ``C = 1/sgrmax - 1/(1 - swc)`` is computed from connate water and maximum
+    residual gas; see Killough (1976), "Reservoir simulation with history-dependent saturation
+    functions".
+
+    :ivar swc: Connate water saturation (dimensionless)
+    :type swc: float
+    :ivar sgrmax: Maximum residual gas saturation when ``sg_max = 1 - swc`` (dimensionless)
+    :type sgrmax: float
+    :ivar epsilon: Small regulariser guarding divisions in derived evaluators
+    :type epsilon: float
+    """
+
     swc: float
     sgrmax: float
     epsilon: float = 1e-12
 
     @property
     def land_constant(self) -> float:
+        """Killough-Land trapping constant ``C = 1/sgrmax - 1/(1 - swc)``.
+
+        :returns: Land constant used to compute residual gas saturation
+        :rtype: float
+        """
         return 1.0 / self.sgrmax - 1.0 / (1.0 - self.swc)
 
     def residual_gas_saturation(self, sg_max: float) -> float:
+        """Trapped gas saturation for a given historical maximum.
+
+        Uses the standard Killough-Land form
+        ``sgr = sg_max / (1 + C * sg_max)`` after clipping ``sg_max`` to ``[0, 1 - swc]``.
+
+        :param sg_max: Historical maximum gas saturation (dimensionless)
+        :type sg_max: float
+        :returns: Trapped gas saturation in ``[0, sgrmax]``
+        :rtype: float
+        """
         sg_max = float(np.clip(sg_max, 0.0, 1.0 - self.swc))
         return sg_max / (1.0 + self.land_constant * sg_max)
 
     def update_sg_max(self, sg: float, sg_max: float) -> float:
+        """Advance ``sg_max`` given the current gas saturation.
+
+        Three cases: (i) ``sg >= sg_max`` — drainage, lift the historical maximum to ``sg``;
+        (ii) ``sg < sgr(sg_max)`` — imbibition past trapping, clip to residual; (iii) otherwise
+        the historical maximum is preserved.
+
+        :param sg: Current gas saturation
+        :type sg: float
+        :param sg_max: Previous historical maximum gas saturation
+        :type sg_max: float
+        :returns: Updated historical maximum gas saturation, in ``[0, 1]``
+        :rtype: float
+        """
         sg = float(np.clip(sg, 0.0, 1.0))
         sg_max = float(np.clip(sg_max, 0.0, 1.0))
         if sg >= sg_max:
             return sg
 
-        # sgr = self.residual_gas_saturation(sg_max)
-        sgr = sg_max / 2
+        sgr = self.residual_gas_saturation(sg_max)
         if sg < sgr:
-            return float(np.clip(sgr * 2, 0.0, 1.0))
+            return float(np.clip(sgr, 0.0, 1.0))
         return sg_max
 
 
@@ -119,10 +206,24 @@ class _LookupTableMixin:
         return np.asarray(sat_list, dtype=float), np.asarray(value_list, dtype=float)
 
 
-class _KilloughRelPermBase:
-    supports_history = True
+class _KilloughRelPermBase(HistoryAwareRelPerm):
+    """Shared plumbing for Killough relative-permeability evaluators.
+
+    Subclasses implement the drainage curve and the scanning curves; this base dispatches
+    between them based on whether the current saturation exceeds ``sg_max`` (drainage path)
+    or lies below it (imbibition path with hysteretic scanning curves). Water phase always
+    uses the drainage curve.
+    """
 
     def __init__(self, corey, phase: str):
+        """Bind a Corey parameter object and build the underlying Land model.
+
+        :param corey: Corey parameter container exposing at least ``swc`` and ``sgrmax``
+        :type corey: Any
+        :param phase: Phase label; handled aliases: ``"aq"``, ``"water"``, ``"w"`` for water,
+                      anything else is treated as the non-wetting phase
+        :type phase: str
+        """
         self.phase = phase.lower()
         self.corey = corey
         self.history_model = KilloughLandModel(
@@ -130,27 +231,65 @@ class _KilloughRelPermBase:
             sgrmax=corey.sgrmax,
         )
 
-    def evaluate(self, sat, Sg_max=0, sg_max=None):
-        if sg_max is not None:
-            Sg_max = sg_max
+    def evaluate(self, sat, sg_max: float = 0.0):
+        """Return relative permeability, dispatching between drainage and scanning curves.
 
+        :param sat: Phase saturation in ``[0, 1]``
+        :type sat: float
+        :param sg_max: Historical maximum gas saturation; ignored on the water phase
+        :type sg_max: float
+        :returns: Relative permeability value
+        :rtype: float
+        """
         sat = float(sat)
         if self.phase in {"aq", "water", "w"}:
             return float(self.evaluate_drainage(sat))
 
-        if sat >= Sg_max:
+        if sat >= sg_max:
             return float(self.evaluate_drainage(sat))
-        return float(self.evaluate_scanning(sat, Sg_max))
+        return float(self.evaluate_scanning(sat, sg_max))
 
     def evaluate_drainage(self, sat: float) -> float:
+        """Return the drainage (primary, non-hysteretic) relative permeability.
+
+        :param sat: Phase saturation
+        :type sat: float
+        :returns: Drainage relative permeability
+        :rtype: float
+        :raises NotImplementedError: Concrete subclass must provide the model
+        """
         raise NotImplementedError
 
     def evaluate_scanning(self, sat: float, sg_max: float) -> float:
+        """Return the imbibition scanning-curve relative permeability.
+
+        :param sat: Phase saturation
+        :type sat: float
+        :param sg_max: Historical maximum gas saturation that anchors the scanning curve
+        :type sg_max: float
+        :returns: Scanning-curve relative permeability
+        :rtype: float
+        :raises NotImplementedError: Concrete subclass must provide the model
+        """
         raise NotImplementedError
 
 
 class KilloughRelPermCorey(_KilloughRelPermBase):
+    """Analytical Killough-Corey relative permeability with hysteretic scanning curves.
+
+    Drainage is the standard Corey form parameterised by ``krwe``, ``krge``, ``nw``, ``ng``;
+    scanning follows Killough (1976) Eqn. 4 with ``a`` as the shape exponent.
+    """
+
     def __init__(self, corey, phase: str):
+        """Instantiate the Corey-form evaluator.
+
+        :param corey: Corey parameter container; expected to expose ``swc``, ``sgrmax``, ``sgc``,
+                      ``krwe``, ``krge``, ``nw``, ``ng`` and ``a``
+        :type corey: Any
+        :param phase: Phase label, see :meth:`_KilloughRelPermBase.__init__`
+        :type phase: str
+        """
         super().__init__(corey, phase)
         self.land_constant = self.history_model.land_constant
 
@@ -177,7 +316,26 @@ class KilloughRelPermCorey(_KilloughRelPermBase):
 
 
 class KilloughRelPermTable(_LookupTableMixin, _KilloughRelPermBase):
+    """Table-driven Killough relative permeability with cached scanning interpolants.
+
+    Drainage / imbibition / scanning curves are read from a single lookup file split into
+    named sections. Scanning interpolants are built lazily per unique ``sg_max`` and cached
+    in a bounded LRU to keep memory finite on long runs.
+    """
+
     def __init__(self, corey, phase: str, lookup_file: str = "LookupTable.txt"):
+        """Load drainage and imbibition tables and prepare the scanning-curve cache.
+
+        :param corey: Corey parameter container; expected to expose ``swc``, ``sgrmax``,
+                      ``wetting_type``, ``nowetting_d`` (drainage section) and
+                      ``nowetting_i`` (imbibition section)
+        :type corey: Any
+        :param phase: Phase label, see :meth:`_KilloughRelPermBase.__init__`
+        :type phase: str
+        :param lookup_file: Path to the lookup-table file with the named sections referenced
+                            through ``corey``
+        :type lookup_file: str
+        """
         super().__init__(corey, phase)
         self.kind = "linear"
         table_section = (
@@ -221,17 +379,38 @@ class KilloughRelPermTable(_LookupTableMixin, _KilloughRelPermBase):
         self.sat_im = self.sat_im[idx]
         self.kr_im = self.kr_im[idx]
         self.sgci_max = self.sat_im[1]
-        self._scan_cache = {}
+        # Bounded LRU cache over the sg_max -> scanning-interpolator mapping.
+        # Without a bound, cells freely populate new sg_max keys each Newton step
+        # and memory grows without limit.
+        self._scan_cache: OrderedDict[float, interp1d] = OrderedDict()
+        self._scan_cache_max = 1024
 
     def evaluate_drainage(self, sat: float) -> float:
+        """Return the drainage relative permeability from the primary lookup interpolator.
+
+        :param sat: Phase saturation, in the axis convention of the loaded section
+        :type sat: float
+        :returns: Drainage relative permeability value
+        :rtype: float
+        """
         return float(self.kr_interpolator(sat))
 
     def _make_scanning_interp(self, sg_max: float):
+        """Build and cache the scanning-curve interpolator for a given ``sg_max``.
+
+        Constructs a piecewise interpolant that blends the imbibition table (rescaled to
+        ``[sgr, sg_max]``) with the drainage tail above ``sg_max``. Degenerate cases where
+        ``sg_max == sgr`` fall back to the drainage interpolator.
+
+        :param sg_max: Historical maximum gas saturation, clipped to the table limit
+        :type sg_max: float
+        :returns: One-dimensional interpolator mapping gas saturation to relative permeability
+        :rtype: scipy.interpolate.interp1d
+        """
         sg_max = min(float(sg_max), self.sg_max_limit)
-        # sgr = self.history_model.residual_gas_saturation(sg_max)
-        sgr = sg_max / 2
+        sgr = self.history_model.residual_gas_saturation(sg_max)
         if abs(sg_max - sgr) < 1e-12:
-            self._scan_cache[sg_max] = self.kr_interpolator
+            self._cache_put(sg_max, self.kr_interpolator)
             return self.kr_interpolator
 
         s1 = np.linspace(sgr, sg_max, 1000)
@@ -255,20 +434,61 @@ class KilloughRelPermTable(_LookupTableMixin, _KilloughRelPermBase):
             bounds_error=False,
             fill_value=(krs[0], krs[-1]),
         )
-        self._scan_cache[sg_max] = interp
+        self._cache_put(sg_max, interp)
         return interp
 
+    def _cache_put(self, key: float, value) -> None:
+        """Insert or refresh an entry in the bounded LRU scanning-interpolant cache.
+
+        :param key: Cache key — the ``sg_max`` value that anchors the interpolator
+        :type key: float
+        :param value: Interpolator produced by :meth:`_make_scanning_interp`
+        :type value: scipy.interpolate.interp1d
+        :returns: None
+        """
+        cache = self._scan_cache
+        if key in cache:
+            cache.move_to_end(key)
+        cache[key] = value
+        while len(cache) > self._scan_cache_max:
+            cache.popitem(last=False)
+
     def evaluate_scanning(self, sat: float, sg_max: float) -> float:
+        """Return scanning-curve relative permeability, building the interpolator on first use.
+
+        :param sat: Gas saturation at which to evaluate the scanning curve
+        :type sat: float
+        :param sg_max: Historical maximum gas saturation anchoring the scanning curve
+        :type sg_max: float
+        :returns: Relative permeability along the scanning curve at ``sat``
+        :rtype: float
+        """
         interp = self._scan_cache.get(sg_max)
         if interp is None:
             interp = self._make_scanning_interp(sg_max)
+        else:
+            self._scan_cache.move_to_end(sg_max)
         return float(interp(sat))
 
 
-class _KilloughCapillaryPressureBase:
-    supports_history = True
+class _KilloughCapillaryPressureBase(HistoryAwareCapPressure):
+    """Shared plumbing for Killough capillary-pressure evaluators.
+
+    Subclasses provide the drainage and imbibition curves; this base blends them with a
+    Killough-form weighting that collapses to the drainage curve when ``sg >= sg_max`` and
+    tends to imbibition as ``sg`` approaches the residual gas saturation.
+    """
 
     def __init__(self, corey, phase: str, epsilon: float = 0.1):
+        """Bind Corey parameters and instantiate the underlying Land model.
+
+        :param corey: Corey parameter container; expected to expose ``swc`` and ``sgrmax``
+        :type corey: Any
+        :param phase: Phase label; capillary pressure is returned as zero for the gas phase
+        :type phase: str
+        :param epsilon: Regularisation constant in the Killough blending weights
+        :type epsilon: float
+        """
         self.phase = phase.lower()
         self.corey = corey
         self.epsilon = epsilon
@@ -278,29 +498,35 @@ class _KilloughCapillaryPressureBase:
             epsilon=epsilon,
         )
 
-    def evaluate(self, sat, Sg_max=0, sg_max=None):
-        if sg_max is not None:
-            Sg_max = sg_max
+    def evaluate(self, sat, sg_max: float = 0.0):
+        """Return capillary pressure with Killough scanning behaviour.
 
+        Gas-phase calls short-circuit to zero; water-phase calls blend drainage and
+        imbibition curves according to the current ``sg`` and the historical ``sg_max``.
+
+        :param sat: Wetting-phase saturation
+        :type sat: float
+        :param sg_max: Historical maximum gas saturation
+        :type sg_max: float
+        :returns: Capillary pressure in the caller's unit convention
+        :rtype: float
+        """
         if self.phase in {"gas", "v"}:
             return 0.0
 
         sg = float(np.clip(1.0 - sat, 0.0, self.sg_max_limit))
         pc_dr = self.evaluate_drainage(sg)
-        if Sg_max is None:
+
+        sg_max = float(np.clip(sg_max, 0.0, self.sg_max_limit))
+        if sg >= sg_max:
             return pc_dr
 
-        Sg_max = float(np.clip(Sg_max, 0.0, self.sg_max_limit))
-        if sg >= Sg_max:
-            return pc_dr
-
-        # sgr = self.history_model.residual_gas_saturation(Sg_max)
-        sgr = Sg_max / 2
+        sgr = self.history_model.residual_gas_saturation(sg_max)
         numerator = (
-            1.0 / (1.0 - sg - (1.0 - Sg_max) + self.epsilon) - 1.0 / self.epsilon
+            1.0 / (1.0 - sg - (1.0 - sg_max) + self.epsilon) - 1.0 / self.epsilon
         )
         denominator = (
-            1.0 / ((1.0 - sgr) - (1.0 - Sg_max) + self.epsilon) - 1.0 / self.epsilon
+            1.0 / ((1.0 - sgr) - (1.0 - sg_max) + self.epsilon) - 1.0 / self.epsilon
         )
         fraction = numerator / denominator if abs(denominator) > 0 else 0.0
         fraction = float(np.clip(fraction, 0.0, 1.0))
@@ -308,13 +534,36 @@ class _KilloughCapillaryPressureBase:
         return pc_dr + fraction * (pc_im - pc_dr)
 
     def evaluate_drainage(self, sg: float) -> float:
+        """Return capillary pressure on the drainage (primary) curve.
+
+        :param sg: Gas saturation
+        :type sg: float
+        :returns: Drainage capillary pressure
+        :rtype: float
+        :raises NotImplementedError: Concrete subclass must provide the model
+        """
         raise NotImplementedError
 
     def evaluate_imbibition(self, sg: float) -> float:
+        """Return capillary pressure on the imbibition curve.
+
+        :param sg: Gas saturation
+        :type sg: float
+        :returns: Imbibition capillary pressure
+        :rtype: float
+        :raises NotImplementedError: Concrete subclass must provide the model
+        """
         raise NotImplementedError
 
 
 class KilloughCapillaryPressureTable(_LookupTableMixin, _KilloughCapillaryPressureBase):
+    """Table-driven Killough capillary pressure with drainage + imbibition sections.
+
+    Both curves are read from the same lookup file, with residual gas saturation derived
+    from the Land model. Pressure values are returned in bars (the loaded values are in Pa
+    and scaled by 1e-5).
+    """
+
     def __init__(
         self,
         corey,
@@ -322,6 +571,18 @@ class KilloughCapillaryPressureTable(_LookupTableMixin, _KilloughCapillaryPressu
         lookup_file: str = "LookupTable.txt",
         epsilon: float = 0.1,
     ):
+        """Load drainage and imbibition capillary-pressure tables.
+
+        :param corey: Corey parameter container; expected to expose ``swc``, ``sgrmax``,
+                      ``Pc_drainage_section`` and ``Pc_imbibition_section``
+        :type corey: Any
+        :param phase: Phase label, see :meth:`_KilloughCapillaryPressureBase.__init__`
+        :type phase: str
+        :param lookup_file: Path to the lookup-table file containing the two sections
+        :type lookup_file: str
+        :param epsilon: Regularisation constant propagated to the Land model
+        :type epsilon: float
+        """
         super().__init__(corey, phase, epsilon=epsilon)
 
         sat_dr, pc_dr = self.load_lookup_table(
@@ -360,9 +621,23 @@ class KilloughCapillaryPressureTable(_LookupTableMixin, _KilloughCapillaryPressu
         self.sgci_max = self.sat_im[zero_im[-1]] if len(zero_im) > 0 else self.sat_im[0]
 
     def evaluate_drainage(self, sg: float) -> float:
+        """Evaluate the drainage capillary-pressure interpolator.
+
+        :param sg: Gas saturation
+        :type sg: float
+        :returns: Drainage capillary pressure in bar (Pa value scaled by 1e-5)
+        :rtype: float
+        """
         return float(self.pc_drainage(sg)) * 1e-5
 
     def evaluate_imbibition(self, sg: float) -> float:
+        """Evaluate the imbibition capillary-pressure interpolator.
+
+        :param sg: Gas saturation
+        :type sg: float
+        :returns: Imbibition capillary pressure in bar (Pa value scaled by 1e-5)
+        :rtype: float
+        """
         return float(self.pc_imbibition(sg)) * 1e-5
 
 
@@ -371,6 +646,8 @@ KilloughRelPerm = KilloughRelPermTable
 KilloughCapillaryPressure = KilloughCapillaryPressureTable
 
 __all__ = [
+    "HistoryAwareRelPerm",
+    "HistoryAwareCapPressure",
     "KilloughLandModel",
     "KilloughRelPerm",
     "KilloughRelPermCorey",
