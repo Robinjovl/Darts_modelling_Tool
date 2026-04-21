@@ -429,6 +429,42 @@ class Initialize:
 
         return X
 
+    def solve_up_and_downwards(
+        self,
+        depth_bottom: float,
+        depth_top: float,
+        depth_known: float,
+        boundary_state: dict,
+        primary_specs: dict = None,
+        secondary_specs: dict = None,
+        nb: int = 100,
+        dTdh: float = 0.03,
+    ):
+        Xi = [boundary_state['pressure']]
+        for c in self.physics.components[:-1]:
+            Xi += [boundary_state[c]]
+        if 'temperature' in boundary_state.keys():
+            Xi += [boundary_state['temperature']]
+
+        X0 = self.solve_state(Xi=Xi, specs=boundary_state)
+        # Initialize depth table
+        X, bc_idx = self.init_depth_table(
+            depth_bottom=depth_bottom,
+            depth_top=depth_top,
+            depth_known=depth_known,
+            X0=X0,
+            nb=nb,
+            dTdh=dTdh,
+        )
+        # Solve vertical equilibrium
+        X = self.solve(
+            X=X, bc_idx=bc_idx, specs=primary_specs, downward=False
+        )  # solve above
+        X = self.solve(
+            X=X, bc_idx=bc_idx, specs=primary_specs, downward=True
+        )  # solve below
+        return X
+
     def solve_region(
         self,
         X: np.ndarray,

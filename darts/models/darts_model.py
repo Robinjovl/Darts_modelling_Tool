@@ -13,16 +13,15 @@ except ImportError:
 
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
-    index_vector,
     ms_well,
     ms_well_vector,
-    op_vector,
     sim_params,
     timer_node,
     value_vector,
 )
 from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
+from darts.interpolators import op_vector
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
@@ -230,7 +229,10 @@ class DartsModel:
         )
 
     def initialize_history_fields(self):
-        if not hasattr(self.physics, "history_labels") or not self.physics.history_labels:
+        if (
+            not hasattr(self.physics, "history_labels")
+            or not self.physics.history_labels
+        ):
             return
 
         n_blocks = self.reservoir.mesh.n_blocks
