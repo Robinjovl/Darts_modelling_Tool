@@ -3,7 +3,6 @@ import warnings
 import numpy as np
 from scipy.interpolate import interp1d
 
-import darts.engines as darts_engines
 import darts.interpolators as darts_interpolators
 from darts.engines import *
 from darts.interpolators import *
