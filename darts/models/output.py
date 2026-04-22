@@ -2182,6 +2182,50 @@ class Output:
             time_data_dict[f"well_{well.name}_BHP"] = BHP
             time_data_dict[f"well_{well.name}_BHT"] = BHT
 
+    @staticmethod
+    def get_gravity_and_capillary_pressure_ops(
+        physics,
+        reservoir_operator,
+        reservoir_ops: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Return phase density and capillary-pressure operators for well-rate upwinding.
+
+        Super/chemistry-style operators expose explicit gravity and capillary-pressure
+        operator offsets. The geothermal engine stores molar density in its density
+        operator slice and has no capillary-pressure operator, so convert molar density
+        to mass density to match the phase-potential term used by the engine.
+        """
+        pc = physics.property_containers[0]
+
+        if hasattr(reservoir_operator, "GRAV_OP"):
+            grav_start = reservoir_operator.GRAV_OP
+            grav = reservoir_ops[:, grav_start : grav_start + pc.nph]
+
+            if hasattr(reservoir_operator, "PC_OP"):
+                pc_start = reservoir_operator.PC_OP
+                capillary = reservoir_ops[:, pc_start : pc_start + pc.nph]
+            else:
+                capillary = np.zeros_like(grav)
+            return grav, capillary
+
+        if isinstance(physics, Geothermal):
+            if hasattr(reservoir_operator, "DENS_OP"):
+                dens_start = reservoir_operator.DENS_OP
+            else:
+                dens_start = pc.nc + pc.nc * pc.nph + pc.nph + 2
+
+            molar_density = reservoir_ops[:, dens_start : dens_start + pc.nph]
+            phase_mw = np.asarray(pc.Mw)[0]
+            grav = molar_density * phase_mw
+            capillary = np.zeros_like(grav)
+            return grav, capillary
+
+        raise AttributeError(
+            "Reservoir operators must expose GRAV_OP/PC_OP or a supported "
+            "engine-specific density layout for well-rate upwinding."
+        )
+
     def calc_rates_at_conns(
         self,
         h5_well_data: dict,
@@ -2278,20 +2322,16 @@ class Output:
         dp = p[:, cell_p] - p[:, cell_m]
 
         reservoir_operator = physics.reservoir_operators[0]
-        grav_start = reservoir_operator.GRAV_OP
-        pc_start = reservoir_operator.PC_OP
-        grav_m = reservoir_ops_m[:, grav_start : grav_start + pc.nph].reshape(
-            n_ts, n_conns, pc.nph
+        grav_m, pc_m = self.get_gravity_and_capillary_pressure_ops(
+            physics, reservoir_operator, reservoir_ops_m
         )
-        grav_p = reservoir_ops_p[:, grav_start : grav_start + pc.nph].reshape(
-            n_ts, n_conns, pc.nph
+        grav_p, pc_p = self.get_gravity_and_capillary_pressure_ops(
+            physics, reservoir_operator, reservoir_ops_p
         )
-        pc_m = reservoir_ops_m[:, pc_start : pc_start + pc.nph].reshape(
-            n_ts, n_conns, pc.nph
-        )
-        pc_p = reservoir_ops_p[:, pc_start : pc_start + pc.nph].reshape(
-            n_ts, n_conns, pc.nph
-        )
+        grav_m = grav_m.reshape(n_ts, n_conns, pc.nph)
+        grav_p = grav_p.reshape(n_ts, n_conns, pc.nph)
+        pc_m = pc_m.reshape(n_ts, n_conns, pc.nph)
+        pc_p = pc_p.reshape(n_ts, n_conns, pc.nph)
 
         grav_coef = h5_well_data["static"]["grav_coef"]
         grav_coef = np.asarray(grav_coef)[conn_idxs][None, :, None]
