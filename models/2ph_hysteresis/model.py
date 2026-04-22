@@ -4,22 +4,23 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-
 from darts.engines import value_vector
-from darts.models.darts_model import DartsModel
+from dartsflash.components import CompData
+
+from darts.models.cicd_model import CICDModel
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.hysteresis import (
-    KilloughLandModel as K,
     KilloughCapillaryPressureTable,
     KilloughRelPermTable,
+)
+from darts.physics.properties.hysteresis import (
+    KilloughLandModel as K,
 )
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
-from dartsflash.components import CompData
-from dartsflash.libflash import AQEoS, CubicEoS, FlashParams
 
 
 @dataclass
@@ -66,9 +67,10 @@ def default_corey_regions() -> dict[int, Corey]:
     return {0: Corey(**base)}
 
 
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self, hys: bool = True):
         super().__init__()
+        self.timer.node["initialization"].start()
         self.hys = hys
         self.thermal = False
         self.prod = True
@@ -84,6 +86,38 @@ class Model(DartsModel):
         self.lookup_file = str(Path(__file__).with_name("LookupTable.txt"))
         self.corey = default_corey_regions()
         self.initial_z_h2o = 1.0 - self.zero
+        self.stop_injection_after_days = 400.0
+        self.start_injection_h2o_days = 800.0
+        self.water_injection_rate = 1.728
+        self.co2_injection_rate = 6.4
+
+        self.setup_case(
+            nx=100,
+            n_points=1000,
+            temperature=self.temperature,
+            thermal=False,
+            producer_bhp=self.producer_bhp,
+            injection_rate=self.co2_injection_rate,
+            initial_z_h2o=self.initial_z_h2o,
+            injection_stream={"H2O": self.zero, "CO2": 1.0 - self.zero},
+            components=list(self.components),
+            corey_regions=self.corey,
+            stop_injection_after_days=self.stop_injection_after_days,
+            start_injection_h2o_days=self.start_injection_h2o_days,
+            water_injection_rate=self.water_injection_rate,
+        )
+        self.set_sim_params(
+            first_ts=1e-4,
+            mult_ts=1.5,
+            max_ts=1.0,
+            runtime=1000.0,
+            tol_newton=1e-3,
+            tol_linear=1e-3,
+            it_newton=16,
+            it_linear=20,
+        )
+        self.data_ts.eta[-1] = 0.05
+        self.timer.node["initialization"].stop()
 
     def setup_case(
         self,
@@ -100,6 +134,9 @@ class Model(DartsModel):
         components: list[str] | None = None,
         corey_regions: dict[int, Corey] | None = None,
         logscale: bool = False,
+        stop_injection_after_days: float | None = 400.0,
+        start_injection_h2o_days: float | None = 800.0,
+        water_injection_rate: float = 1.728,
     ) -> None:
         self.zero = zero
         self.thermal = thermal
@@ -112,10 +149,12 @@ class Model(DartsModel):
         self.components = list(components or ["H2O", "CO2"])
         self.corey = corey_regions or default_corey_regions()
         self.initial_z_h2o = (
-            float(initial_z_h2o)
-            if initial_z_h2o is not None
-            else 1.0 - zero
+            float(initial_z_h2o) if initial_z_h2o is not None else 1.0 - zero
         )
+        self.stop_injection_after_days = stop_injection_after_days
+        self.start_injection_h2o_days = start_injection_h2o_days
+        self.water_injection_rate = water_injection_rate
+        self.co2_injection_rate = injection_rate
 
         self.set_reservoir(
             nx=nx,
@@ -126,14 +165,15 @@ class Model(DartsModel):
             n_points=n_points,
             components=self.components,
             temperature=temperature,
-            thermal = thermal,
+            thermal=thermal,
             temperature_points=self.temperature_points,
         )
         self.inj_stream = self.build_injection_stream(
             injection_stream=injection_stream,
             zero=zero,
         )
-        self.inj_rate = [0.0,injection_rate ]
+        self.inj_rate = [0.0, injection_rate]
+        self.update_injection_schedule(time=0.0)
         self.p_prod = producer_bhp
 
     def build_injection_stream(
@@ -294,12 +334,12 @@ class Model(DartsModel):
                 zero,
             )
             property_container.density_ev = {
-                'V': ConstFunc(800.),
-                'Aq': ConstFunc(1000.)
+                'V': ConstFunc(800.0),
+                'Aq': ConstFunc(1000.0),
             }
             property_container.viscosity_ev = {
                 'V': ConstFunc(6.4e-2),
-                'Aq': ConstFunc(0.47)
+                'Aq': ConstFunc(0.47),
             }
             property_container.rel_perm_ev = {
                 "V": KilloughRelPermTable(params, "gas"),
@@ -325,7 +365,7 @@ class Model(DartsModel):
 
             property_container.enthalpy_ev = {
                 'Aq': EnthalpyBasic(hcap=4.18),
-                'V': EnthalpyBasic(hcap=0.035)
+                'V': EnthalpyBasic(hcap=0.035),
             }
             conductivity = 1.0 if thermal else 0.0
             property_container.conductivity_ev = {
@@ -337,14 +377,26 @@ class Model(DartsModel):
             property_container.output_props = {
                 "sat_Aq": lambda ii=region: self.physics.property_containers[ii].sat[0],
                 "sat_V": lambda ii=region: self.physics.property_containers[ii].sat[1],
-                "dens_Aq": lambda ii=region: self.physics.property_containers[ii].dens[0],
-                "dens_V": lambda ii=region: self.physics.property_containers[ii].dens[1],
+                "dens_Aq": lambda ii=region: self.physics.property_containers[ii].dens[
+                    0
+                ],
+                "dens_V": lambda ii=region: self.physics.property_containers[ii].dens[
+                    1
+                ],
                 "mu_Aq": lambda ii=region: self.physics.property_containers[ii].mu[0],
                 "mu_V": lambda ii=region: self.physics.property_containers[ii].mu[1],
-                "x_Aq_H2O": lambda ii=region: self.physics.property_containers[ii].x[0, 0],
-                "x_Aq_CO2": lambda ii=region: self.physics.property_containers[ii].x[0, 1],
-                "x_V_H2O": lambda ii=region: self.physics.property_containers[ii].x[1, 0],
-                "x_V_CO2": lambda ii=region: self.physics.property_containers[ii].x[1, 1],
+                "x_Aq_H2O": lambda ii=region: self.physics.property_containers[ii].x[
+                    0, 0
+                ],
+                "x_Aq_CO2": lambda ii=region: self.physics.property_containers[ii].x[
+                    0, 1
+                ],
+                "x_V_H2O": lambda ii=region: self.physics.property_containers[ii].x[
+                    1, 0
+                ],
+                "x_V_CO2": lambda ii=region: self.physics.property_containers[ii].x[
+                    1, 1
+                ],
                 "kr_Aq": lambda ii=region: self.physics.property_containers[ii].kr[0],
                 "kr_V": lambda ii=region: self.physics.property_containers[ii].kr[1],
                 "pc_Aq": lambda ii=region: self.physics.property_containers[ii].pc[0],
@@ -418,6 +470,35 @@ class Model(DartsModel):
 
         return rhs_flux
 
+    def update_injection_schedule(self, time: float | None = None) -> None:
+        current_time = 0.0 if time is None else float(time)
+        if (
+            time is None
+            and hasattr(self, "physics")
+            and hasattr(self.physics, "engine")
+        ):
+            current_time = float(self.physics.engine.t)
+
+        self.inj_rate[0] = 0.0
+        self.inj_rate[1] = self.co2_injection_rate
+
+        if (
+            self.start_injection_h2o_days is not None
+            and current_time >= self.start_injection_h2o_days
+        ):
+            self.inj_rate[0] = self.water_injection_rate
+            self.inj_rate[1] = 0.0
+        elif (
+            self.stop_injection_after_days is not None
+            and current_time >= self.stop_injection_after_days
+        ):
+            self.inj_rate[0] = 0.0
+            self.inj_rate[1] = 0.0
+
+    def after_converged_timestep(self):
+        self.update_injection_schedule()
+        super().after_converged_timestep()
+
     def update_history_fields_after_timestep(self) -> None:
         if not self.hys or "sg_max" not in getattr(self.physics, "history_labels", []):
             return
@@ -454,7 +535,9 @@ class Model(DartsModel):
         return float(np.sum(volume * poro))
 
     def vtk_output_properties(self) -> list[str]:
-        output_properties = list(self.physics.property_containers[0].output_props.keys())
+        output_properties = list(
+            self.physics.property_containers[0].output_props.keys()
+        )
         output_properties.extend(self.physics.vars)
         if self.hys:
             output_properties.append("sg_max")
