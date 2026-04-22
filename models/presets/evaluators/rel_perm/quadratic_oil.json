@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "name": "quadratic_oil",
+    "description": "Brooks-Corey-style quadratic oil rel-perm: kro_end=1, n=2, residual gas saturation 0.05.",
+    "references": [],
+    "tags": ["oil", "rel-perm", "brooks-corey", "quadratic"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "phase_rel_perm",
+    "phase": "oil",
+    "swc": 0.0,
+    "sgr": 0.05,
+    "kre": 1.0,
+    "n": 2.0
+  }
+}

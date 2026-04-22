@@ -1,17 +1,40 @@
+from typing import Annotated, Any
+
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
 from darts.engines import value_vector
 from darts.physics.base.property_base import PropertyBase
 from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator
+from darts.physics.properties.evaluator_base import (
+    EvaluatorBase,
+    EvaluatorConfigBase,
+    dispatch_evaluator_config,
+    materialize_evaluator,
+)
 from darts.physics.properties.flash import Flash
+
+# Shorthand for a config field that accepts a live evaluator instance, an
+# EvaluatorConfigBase, or a dict with ``kind``.  Evaluators are not fully
+# constructed at validation time; materialization happens in
+# ``PropertyContainer.from_config`` where construction context (``nc``, ``Mw``)
+# is available.
+_EvalSlot = Annotated[
+    SerializeAsAny[EvaluatorBase | EvaluatorConfigBase],
+    dispatch_evaluator_config,
+]
 
 
 class PropertyContainerConfig(BaseModel):
     """Pydantic configuration for PropertyContainer construction.
 
-    Fields mirror ``PropertyContainer.__init__`` parameters.
+    Mirrors ``PropertyContainer.__init__`` parameters plus declarative
+    evaluator slots (flash, density_ev, viscosity_ev, rel_perm_ev, …).  The
+    slots accept either a live evaluator instance (Python workflows) or a
+    Config / dict with a ``kind`` discriminator (JSON workflows).
     """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     phases_name: list[str] | None = None
     components_name: list[str] | None = None
@@ -28,6 +51,21 @@ class PropertyContainerConfig(BaseModel):
     nc_sol: int | None = None
     np_sol: int | None = None
     rock_comp: float | None = None
+
+    # Declarative evaluator slots.  Each holds either an EvaluatorBase
+    # instance or an EvaluatorConfigBase (validated from dicts with ``kind``).
+    flash_ev: _EvalSlot | None = None
+    density_ev: dict[str, _EvalSlot] = Field(default_factory=dict)
+    viscosity_ev: dict[str, _EvalSlot] = Field(default_factory=dict)
+    enthalpy_ev: dict[str, _EvalSlot] = Field(default_factory=dict)
+    conductivity_ev: dict[str, _EvalSlot] = Field(default_factory=dict)
+    rel_perm_ev: dict[str, _EvalSlot] = Field(default_factory=dict)
+    capillary_pressure_ev: _EvalSlot | None = None
+    rock_compr_ev: _EvalSlot | None = None
+    rock_density_ev: _EvalSlot | None = None
+    kinetic_rate_ev: dict[str, _EvalSlot] = Field(default_factory=dict)
+    energy_source_ev: list[_EvalSlot] = Field(default_factory=list)
+    diffusion_ev: dict[str, _EvalSlot] = Field(default_factory=dict)
 
 
 class PropertyContainer(PropertyBase):
@@ -135,7 +173,13 @@ class PropertyContainer(PropertyBase):
 
     @classmethod
     def from_config(cls, config: PropertyContainerConfig) -> "PropertyContainer":
-        """Construct a PropertyContainer from a validated config object."""
+        """Construct a PropertyContainer from a validated config object and
+        install any declared evaluators onto the instance.
+
+        Evaluator slots on ``config`` may hold either live instances or
+        :class:`EvaluatorConfigBase` subclasses; the latter are materialised
+        here via :func:`materialize_evaluator`.
+        """
         eps_z = config.eps_z if config.eps_z is not None else config.min_z
         kwargs: dict = dict(
             phases_name=config.phases_name,
@@ -150,7 +194,56 @@ class PropertyContainer(PropertyBase):
             kwargs["np_sol"] = config.np_sol
         if config.rock_comp is not None:
             kwargs["rock_comp"] = config.rock_comp
-        return cls(**kwargs)
+        instance = cls(**kwargs)
+        instance._install_config_evaluators(config)
+        return instance
+
+    def _install_config_evaluators(self, config: "PropertyContainerConfig") -> None:
+        """Materialise evaluator slots from ``config`` onto ``self``.
+
+        Called by :meth:`from_config` after base construction.  Slots left
+        ``None`` / empty on the config keep the defaults established in
+        ``__init__``.
+        """
+        nc = len(config.components_name) if config.components_name else self.nc
+
+        def _mat(v: Any) -> Any:
+            return materialize_evaluator(v, EvaluatorBase, nc=nc)
+
+        if config.flash_ev is not None:
+            self.flash_ev = _mat(config.flash_ev)
+        for ph, ev in config.density_ev.items():
+            self.density_ev[ph] = _mat(ev)
+        for ph, ev in config.viscosity_ev.items():
+            self.viscosity_ev[ph] = _mat(ev)
+        for ph, ev in config.enthalpy_ev.items():
+            self.enthalpy_ev[ph] = _mat(ev)
+        for ph, ev in config.conductivity_ev.items():
+            self.conductivity_ev[ph] = _mat(ev)
+        if config.rel_perm_ev:
+            ordered = [None] * self.np_fl
+            for ph_name, ev in config.rel_perm_ev.items():
+                try:
+                    idx = self.phases_name.index(ph_name)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"rel_perm_ev phase '{ph_name}' not in phases_name "
+                        f"{self.phases_name}"
+                    ) from exc
+                ordered[idx] = _mat(ev)
+            self.rel_perm_ev = [ev for ev in ordered if ev is not None]
+        if config.capillary_pressure_ev is not None:
+            self.capillary_pressure_ev = _mat(config.capillary_pressure_ev)
+        if config.rock_compr_ev is not None:
+            self.rock_compr_ev = _mat(config.rock_compr_ev)
+        if config.rock_density_ev is not None:
+            self.rock_density_ev = _mat(config.rock_density_ev)
+        for name, ev in config.kinetic_rate_ev.items():
+            self.kinetic_rate_ev[name] = _mat(ev)
+        if config.energy_source_ev:
+            self.energy_source_ev = [_mat(ev) for ev in config.energy_source_ev]
+        for ph, ev in config.diffusion_ev.items():
+            self.diffusion_ev[ph] = _mat(ev)
 
     def get_state(self, state):
         """

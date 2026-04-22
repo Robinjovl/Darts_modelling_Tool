@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "name": "van_genuchten_2ph",
+    "description": "Van Genuchten two-phase capillary pressure (default lambda=3.3e-6, n=4.367), commonly used for CO2-brine caprock screening.",
+    "references": [
+      "Van Genuchten (1980) — Soil Sci. Soc. Am. J., 44(5)"
+    ],
+    "tags": ["capillary-pressure", "van-genuchten", "two-phase", "co2-storage"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "capillary_pressure_vg",
+    "nph": 2,
+    "p_entry": 0.0,
+    "swc": 0.2,
+    "labda": 3.3e-06,
+    "n": 4.367
+  }
+}

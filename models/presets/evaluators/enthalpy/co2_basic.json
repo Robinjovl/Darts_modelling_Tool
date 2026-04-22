@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "name": "co2_basic",
+    "description": "Constant heat-capacity CO2 enthalpy: hcap=0.020 kJ/(mol·K), reference T=273.15 K.",
+    "references": [],
+    "tags": ["co2", "enthalpy", "constant-cp"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "enthalpy_basic",
+    "tref": 273.15,
+    "hcap": 0.020
+  }
+}

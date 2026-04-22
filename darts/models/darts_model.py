@@ -24,7 +24,7 @@ from darts.engines import (
     value_vector,
 )
 from darts.engines import print_build_info as engines_pbi
-from darts.input.input_data import linear_solver_types
+from darts.models.solver_types import linear_solver_types
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
@@ -136,8 +136,65 @@ class WellControlsConfig(BaseModel):
     )
 
 
+class WellControlScheduleEntry(BaseModel):
+    """Declarative time-keyed entry in a well's control schedule.
+
+    Replaces the legacy ``list[tuple[float, WellControl]]`` pattern on
+    ``idata.well_data.wells[name].controls`` with a typed, extra-forbidden
+    Pydantic model.  ``DartsModel.set_well_controls_idata`` iterates the
+    schedule and advances a per-well cursor tracked in the model instance
+    rather than on the config.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"time": 0.0, "kind": "bhp_prod", "bhp": 50.0},
+                {
+                    "time": 100.0,
+                    "kind": "rate_inj",
+                    "rate": 500.0,
+                    "rate_type": "MOLAR_RATE",
+                    "inj_composition": [1.0, 0.0],
+                },
+            ]
+        },
+    )
+
+    time: float = Field(ge=0, description="Activation time [days]")
+    kind: Literal["bhp_prod", "bhp_inj", "rate_prod", "rate_inj"] = Field(
+        description="Control kind — prod/inj × bhp/rate"
+    )
+    bhp: float | None = Field(
+        None, ge=0, description="Bottom-hole pressure [bar] (bhp_* kinds)"
+    )
+    rate: float | None = Field(None, ge=0, description="Target rate (rate_* kinds)")
+    bhp_constraint: float | None = Field(
+        None, ge=0, description="Optional BHP constraint alongside rate control"
+    )
+    rate_type: (
+        Literal["MOLAR_RATE", "MASS_RATE", "VOLUMETRIC_RATE", "ADVECTIVE_HEAT_RATE"]
+        | None
+    ) = Field(None, description="Rate control type (rate_* kinds)")
+    phase_name: str | None = Field(
+        None, description="Phase name for rate-controlled injectors/producers"
+    )
+    inj_composition: list[float] | None = Field(
+        None, description="Injector composition (length nc or nc-1)"
+    )
+    inj_temperature: float | None = Field(
+        None, gt=0, description="Injector temperature [K] (thermal only)"
+    )
+
+
 class WellConfig(BaseModel):
-    """Well specification with perforations and optional controls."""
+    """Well specification with perforations and optional controls.
+
+    ``controls`` may be either a flat :class:`WellControlsConfig` (single
+    snapshot, convenience) or a full ``schedule`` list of
+    :class:`WellControlScheduleEntry` for timed control changes.
+    """
 
     model_config = ConfigDict(
         extra="forbid",
@@ -160,6 +217,13 @@ class WellConfig(BaseModel):
         None,
         description=(
             "Per-well controls that override top-level well_controls defaults"
+        ),
+    )
+    schedule: list[WellControlScheduleEntry] | None = Field(
+        None,
+        description=(
+            "Timed control schedule; first entry applies at t=0, subsequent "
+            "entries activate when the simulation time passes their ``time``"
         ),
     )
 
@@ -216,6 +280,33 @@ class OutputConfig(BaseModel):
         None, description="Output precision (s=single, d=double)"
     )
     save_initial: bool | None = Field(None, description="Save initial state to output")
+
+
+class ExtensionsConfig(BaseModel):
+    """Typed escape hatch for model-specific state that doesn't belong in
+    core configs.
+
+    Replaces free-form ``idata.geom``, ``idata.stress``, ``idata.other.*``
+    attribute assignment observed in the fracture-network / mechanics
+    examples.  Each field holds an opaque dict for now; promote to a
+    concrete submodel once the shape stabilises.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    geom: dict[str, Any] | None = Field(
+        None, description="Mesh / fracture-network geometry parameters"
+    )
+    stress: dict[str, Any] | None = Field(
+        None, description="In-situ stress state parameters"
+    )
+    fracture: dict[str, Any] | None = Field(
+        None,
+        description="Fracture aperture / permeability / friction parameters",
+    )
+    other: dict[str, Any] | None = Field(
+        None, description="Arbitrary model-specific attributes (legacy idata.other)"
+    )
 
 
 class DataTS:
@@ -672,6 +763,46 @@ class DartsModel:
             ):  # it's not needed to copy it to params for PETSC option
                 self.params.linear_type = self.data_ts.linear_type
 
+    def configure(self, config: Any) -> None:
+        """Store a :class:`ModelConfig` on the model and apply the portions
+        that are safe to apply immediately (sim params, output, extensions).
+
+        Single-entry replacement for the legacy pair ``set_input_data()`` +
+        the family of ``set_*_from_*`` setters.  Lifecycle-dependent parts
+        (wells — need reservoir; initial conditions — need physics) are
+        NOT applied here; the model's lifecycle hooks
+        (:meth:`set_wells`, :meth:`set_initial_conditions`,
+        :meth:`set_well_controls`) are expected to read from
+        ``self.config`` (alias of ``self._model_config``) and call the
+        corresponding ``_from_dict`` helpers themselves.
+
+        :param config: validated aggregate configuration
+        :type config: darts.api.model_config.ModelConfig
+        """
+        self._model_config = config
+        self.config = config  # convenience alias for model scripts
+        if getattr(config, "extensions", None) is not None:
+            self.extensions = config.extensions
+        # Schedule + flat-controls lookup cache for set_well_controls_idata.
+        wells = getattr(config, "wells", None)
+        if wells is not None:
+            self._well_schedule_by_name = {
+                w.name: w.schedule for w in wells.wells if w.schedule
+            }
+            self._well_flat_controls_by_name = {
+                w.name: w.controls for w in wells.wells if w.controls
+            }
+        if getattr(config, "sim_params", None) is not None:
+            self.set_sim_params_from_config(config.sim_params)
+        if getattr(config, "output", None) is not None:
+            out = config.output
+            if out.folder is not None:
+                self.output_folder = out.folder
+            if out.save_initial is not None:
+                self.save_initial_solution = out.save_initial
+            if out.precision is not None:
+                self.output_precision = out.precision
+
     def set_sim_params_from_config(self, config: SimParamsConfig) -> None:
         """Apply simulation parameters from a validated config object.
 
@@ -698,11 +829,12 @@ class DartsModel:
         if config.line_search is not None:
             kwargs["line_search"] = config.line_search
 
-        # Map newton_type string → engine enum
+        # Map newton_type string → engine enum.  "default" means "leave the
+        # engine's built-in default newton solver" — do NOT forward the
+        # string to the C++ bindings (which expect ``newton_solver_t`` enum).
         if config.newton_type == "newton_local_chop":
             kwargs["newton_type"] = sim_params.newton_local_chop
-        elif config.newton_type is not None:
-            kwargs["newton_type"] = config.newton_type
+        # Any other value (including ``"default"``) is intentionally ignored.
 
         self.set_sim_params(**kwargs)
 
@@ -1613,21 +1745,22 @@ class DartsModel:
         """
         from darts.engines import well_control_iface
 
-        # store next control index for each well in idata.well_data.wells_next_control_idx
-        if not hasattr(self.idata.well_data, "wells_next_control_idx"):
-            self.idata.well_data.wells_next_control_idx = dict()
-            for w in self.reservoir.wells:
-                self.idata.well_data.wells_next_control_idx[w.name] = 0
+        # Solver-loop runtime state: track per-well cursor into the schedule.
+        # Kept on DartsModel (not on idata) so the config stays read-only.
+        if not hasattr(self, "_well_control_cursor"):
+            self._well_control_cursor: dict[str, int] = {}
+        for w in self.reservoir.wells:
+            self._well_control_cursor.setdefault(w.name, 0)
 
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
             wctrl = None
-            start_idx = self.idata.well_data.wells_next_control_idx[w.name]
+            start_idx = self._well_control_cursor[w.name]
             for wctrl_t in self.idata.well_data.wells[w.name].controls[start_idx:]:
                 # if the simulation time passed the well control change time and the control is not already set
                 if wctrl_t[0] <= time:
                     wctrl = wctrl_t[1]
-                    self.idata.well_data.wells_next_control_idx[w.name] += 1
+                    self._well_control_cursor[w.name] += 1
                     break
             if wctrl is None:  # no control is defined for the current timestep
                 continue

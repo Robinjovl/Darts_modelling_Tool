@@ -2,10 +2,16 @@ import os
 import sys
 import warnings
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 
 import darts
+from darts.physics.properties.evaluator_base import (
+    EvaluatorBase,
+    EvaluatorConfigBase,
+    register_evaluator,
+)
 
 try:
     from phreeqpy.iphreeqc.phreeqc_dll import IPhreeqc
@@ -14,6 +20,20 @@ except ImportError:
 
 # Databases directory co-located with this module
 _DEFAULT_DB_DIR = Path(__file__).parent / 'databases'
+
+
+class PhreeqcFlashConfig(EvaluatorConfigBase):
+    """Configuration for PHREEQC-based Flash evaluator."""
+
+    kind: Literal["phreeqc_flash"] = "phreeqc_flash"
+    min_z: float
+    minerals: list[str]
+    components: list[str]
+    temperature: float | None = None
+    gas_species: list[str] = ["CO2(g)", "H2O(g)"]
+    tolerance: float = 1e-10
+    database_filename: str = "phreeqc.dat"
+    backup_database_filename: str = "pitzer.dat"
 
 
 def _resolve_phreeqc_db_path(db_spec: str | os.PathLike) -> str:
@@ -39,7 +59,7 @@ def _resolve_phreeqc_db_path(db_spec: str | os.PathLike) -> str:
     return str(candidate)
 
 
-class Flash:
+class Flash(EvaluatorBase):
     """
     Calculates chemical and vapour-liquid equilibrium using PHREEQC.
 
@@ -82,6 +102,12 @@ class Flash:
         :param database_filename: path to PHREEQC database file for primary engine
         :param backup_database_filename: path to database file as a backup for primary database
         """
+        # Preserve raw construction args for round-trip serialization
+        self._init_temperature_K = temperature
+        self._init_gas_species = list(gas_species)
+        self._init_database_filename = database_filename
+        self._init_backup_database_filename = backup_database_filename
+
         self.minerals = minerals
         self.components = components
         self.n_fluid = len(self.components)
@@ -529,3 +555,47 @@ class Flash:
             count = int(count_str) if count_str else 1
             stoich[el] = stoich.get(el, 0) + count
         return stoich
+
+    def to_config(self) -> PhreeqcFlashConfig:
+        """Build Config explicitly because the constructor mutates several
+        fields before storage (``self.temperature`` holds the Celsius-converted
+        value when the flash is isothermal). Original construction args are
+        preserved on ``self._init_*`` attributes for round-tripping.
+
+        :return: serialized config
+        :rtype: PhreeqcFlashConfig
+        """
+        return PhreeqcFlashConfig(
+            min_z=self.min_z,
+            minerals=list(self.minerals),
+            components=list(self.components),
+            temperature=self._init_temperature_K,
+            gas_species=list(self._init_gas_species),
+            tolerance=self.tolerance,
+            database_filename=self._init_database_filename,
+            backup_database_filename=self._init_backup_database_filename,
+        )
+
+    @classmethod
+    def from_config(cls, config: PhreeqcFlashConfig) -> "Flash":
+        """Build instance explicitly to mirror :meth:`to_config` and to expand
+        the Config into the kwargs accepted by ``__init__``.
+
+        :param config: validated config
+        :type config: PhreeqcFlashConfig
+        :return: PHREEQC Flash instance
+        :rtype: Flash
+        """
+        return cls(
+            min_z=config.min_z,
+            minerals=list(config.minerals),
+            components=list(config.components),
+            temperature=config.temperature,
+            gas_species=list(config.gas_species),
+            tolerance=config.tolerance,
+            database_filename=config.database_filename,
+            backup_database_filename=config.backup_database_filename,
+        )
+
+
+register_evaluator("phreeqc_flash", Flash, PhreeqcFlashConfig)

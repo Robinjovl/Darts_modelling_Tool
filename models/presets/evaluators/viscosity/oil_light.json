@@ -1,0 +1,13 @@
+{
+  "_meta": {
+    "name": "oil_light",
+    "description": "Constant light-oil viscosity ~ 2 cp, suitable for screening light-oil black-oil cases.",
+    "references": [],
+    "tags": ["oil", "viscosity", "constant", "light-oil"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "const_func",
+    "value": 2.0
+  }
+}

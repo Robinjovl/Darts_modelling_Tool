@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "name": "constant_k_co2_brine",
+    "description": "Two-phase constant-K flash for CO2-H2O at moderate reservoir conditions (T~50C, P~100 bar).",
+    "references": [
+      "Spycher & Pruess (2005) — Geochim. Cosmochim. Acta, 69(13)"
+    ],
+    "tags": ["co2", "brine", "flash", "constant-k", "two-phase"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "constant_k",
+    "K": [10.0, 1.0e-3],
+    "epsilon": 1e-8
+  }
+}

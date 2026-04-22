@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "name": "long_storage_simulation",
+    "description": "Long-horizon CO2-storage simulation parameters with line-search and local-chop Newton: 0.1 d initial step, x2 multiplier, max 365 d, runtime 100 years.",
+    "references": [],
+    "tags": ["sim-params", "long-term", "co2-storage", "line-search"],
+    "version": "1"
+  },
+  "config": {
+    "first_ts": 0.1,
+    "mult_ts": 2.0,
+    "max_ts": 365.0,
+    "runtime": 36500.0,
+    "tol_newton": 0.01,
+    "tol_linear": 0.001,
+    "it_newton": 12,
+    "it_linear": 60,
+    "newton_type": "newton_local_chop",
+    "line_search": true
+  }
+}

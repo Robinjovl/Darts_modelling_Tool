@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "name": "standard_compaction",
+    "description": "Linear rock compaction with reference pressure 1 bar and rock compressibility 1.45e-5 1/bar (typical sandstone reservoir).",
+    "references": [],
+    "tags": ["rock", "compaction", "compressibility"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "rock_compaction",
+    "pref": 1.0,
+    "compres": 1.45e-05
+  }
+}

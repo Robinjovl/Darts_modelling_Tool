@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "name": "quadratic_water",
+    "description": "Brooks-Corey-style quadratic water rel-perm: krw_end=1, n=2, irreducible water saturation 0.2.",
+    "references": [],
+    "tags": ["water", "rel-perm", "brooks-corey", "quadratic"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "phase_rel_perm",
+    "phase": "wat",
+    "swc": 0.2,
+    "sgr": 0.0,
+    "kre": 1.0,
+    "n": 2.0
+  }
+}

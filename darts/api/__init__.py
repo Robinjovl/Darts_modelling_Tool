@@ -35,6 +35,25 @@ from darts.api.introspection import (
     list_capabilities_dict,
 )
 from darts.api.model_adapter import JsonModelAdapter, MCPModelAdapter, ModelAdapter
+from darts.api.model_config import (
+    ModelConfig,
+    PhysicsConfig,
+    load_model_config,
+)
+from darts.api.presets import (
+    Preset,
+    PresetMeta,
+    iter_presets,
+    list_presets,
+    load_preset,
+    load_preset_config,
+    load_preset_dir,
+    register_preset,
+    register_preset_directory_binding,
+)
+from darts.api.presets import (
+    docs as preset_docs,
+)
 from darts.api.schemas import (
     CPGReservoirSpec,
     DataRef,
@@ -93,4 +112,17 @@ __all__ = [
     "validate_model_spec_dict",
     "validate_patch_model_spec_dict",
     "load_entry_point_plugins",
+    "Preset",
+    "PresetMeta",
+    "iter_presets",
+    "list_presets",
+    "load_preset",
+    "load_preset_config",
+    "load_preset_dir",
+    "preset_docs",
+    "register_preset",
+    "register_preset_directory_binding",
+    "ModelConfig",
+    "PhysicsConfig",
+    "load_model_config",
 ]

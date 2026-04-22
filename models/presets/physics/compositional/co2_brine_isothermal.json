@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "name": "co2_brine_isothermal",
+    "description": "Isothermal CO2-brine compositional physics on a 200-point P-only OBL grid (1-300 bar) — typical caprock/storage screening.",
+    "references": [],
+    "tags": ["physics", "compositional", "co2", "brine", "isothermal", "co2-storage"],
+    "version": "1"
+  },
+  "config": {
+    "state_spec": "P",
+    "n_points": 200,
+    "min_p": 1.0,
+    "max_p": 300.0,
+    "min_z": 1e-9,
+    "max_z": 0.999999,
+    "epsilon_z": 1e-9,
+    "extrapolation_flag": false,
+    "components": ["CO2", "C1", "H2O"],
+    "phases": ["gas", "oil"]
+  }
+}

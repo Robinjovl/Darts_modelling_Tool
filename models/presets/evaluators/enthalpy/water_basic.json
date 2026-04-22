@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "name": "water_basic",
+    "description": "Constant heat-capacity water enthalpy: hcap=0.0357 kJ/(mol·K) (~75.3 J/(mol·K)), reference T=273.15 K.",
+    "references": [],
+    "tags": ["water", "enthalpy", "constant-cp"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "enthalpy_basic",
+    "tref": 273.15,
+    "hcap": 0.0357
+  }
+}

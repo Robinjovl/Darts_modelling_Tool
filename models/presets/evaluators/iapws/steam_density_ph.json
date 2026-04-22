@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "name": "steam_density_ph",
+    "description": "IAPWS-IF97 steam density evaluator in P-h thermodynamic system (parameter-free).",
+    "references": [
+      "IAPWS-IF97 — Industrial Formulation 1997 for the Thermodynamic Properties of Water and Steam"
+    ],
+    "tags": ["iapws", "steam", "density", "p-h", "geothermal"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "iapws_steam_density"
+  }
+}

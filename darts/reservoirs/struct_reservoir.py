@@ -121,7 +121,47 @@ class StructReservoirConfig(BaseModel):
         default=None, description="Layered overrides for per-cell properties"
     )
 
+    # --- Geomechanics fields ----------------------------------------------
+    type_mech: Literal["none", "poroelasticity", "thermoporoelasticity"] = Field(
+        default="none",
+        description="Mechanical coupling type",
+    )
+    E: ScalarOrArray | None = Field(default=None, description="Young's modulus [bar]")
+    nu: ScalarOrArray | None = Field(default=None, description="Poisson ratio [-]")
+    stiffness: list[list[float]] | None = Field(
+        default=None, description="6x6 stiffness tensor (overrides E/nu when given)"
+    )
+    biot: ScalarOrArray | None = Field(default=None, description="Biot coefficient [-]")
+    th_expn: ScalarOrArray | None = Field(
+        default=None,
+        description="Thermal expansion coefficient [1/K] "
+        "(required when type_mech=='thermoporoelasticity')",
+    )
+    th_expn_poro: ScalarOrArray | None = Field(
+        default=None,
+        description="Pore thermal expansion coefficient [1/K]",
+    )
+
     _PROPERTY_FIELDS = ("dx", "dy", "dz", "permx", "permy", "permz", "poro")
+
+    def _assert_geomech_complete(self) -> None:
+        """Raise if geomech fields are incomplete for the declared coupling.
+
+        Mirrors the ad-hoc ``InputData.check()`` logic the old god-struct
+        enforced: when ``type_mech != 'none'``, a stiffness tensor OR the
+        pair ``(E, nu)`` must be provided.
+        """
+        if self.type_mech == "none":
+            return
+        has_stiffness = self.stiffness is not None
+        has_e_nu = self.E is not None and self.nu is not None
+        if not (has_stiffness or has_e_nu):
+            raise ValueError(
+                f"type_mech={self.type_mech!r} requires either 'stiffness' "
+                f"OR both 'E' and 'nu'"
+            )
+        if self.type_mech == "thermoporoelasticity" and self.th_expn is None:
+            raise ValueError("type_mech='thermoporoelasticity' requires 'th_expn'")
 
     def _assert_buildable(self) -> None:
         """Raise if required property fields are missing for construction.
@@ -281,9 +321,23 @@ class StructReservoir(ReservoirBase):
         :returns: Fully constructed StructReservoir instance.
         """
         config._assert_buildable()
+        config._assert_geomech_complete()
+        # Geomech fields are read back from the StructReservoirConfig by
+        # the mech physics layer, not passed to StructReservoir.__init__.
+        _GEOMECH_EXCLUDE = {
+            "type",
+            "layers",
+            "type_mech",
+            "E",
+            "nu",
+            "stiffness",
+            "biot",
+            "th_expn",
+            "th_expn_poro",
+        }
         kwargs = {
             k: v
-            for k, v in config.model_dump(exclude={"type", "layers"}).items()
+            for k, v in config.model_dump(exclude=_GEOMECH_EXCLUDE).items()
             if v is not None
         }
 

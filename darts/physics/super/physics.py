@@ -22,6 +22,10 @@ class CompositionalConfig(BaseModel):
     ``components``, ``phases``, and ``timer`` which are provided separately).
     """
 
+    kind: Literal["compositional"] = Field(
+        default="compositional",
+        description="Physics discriminator for ModelConfig.physics union",
+    )
     state_spec: Literal["P", "PT", "PH"] = "P"
     n_points: int = Field(200, ge=2)
     min_p: float = Field(1.0, ge=0)
@@ -32,6 +36,15 @@ class CompositionalConfig(BaseModel):
     min_t: float | None = Field(None, ge=0)
     max_t: float | None = Field(None, ge=0)
     extrapolation_flag: bool = False
+    components: list[str] | None = Field(
+        default=None,
+        description="Component names; ModelConfig-driven build passes these "
+        "to Compositional(..., components=...). Python path may set via __init__.",
+    )
+    phases: list[str] | None = Field(
+        default=None,
+        description="Phase names; same semantics as ``components``.",
+    )
 
 
 class Compositional(PhysicsBase):

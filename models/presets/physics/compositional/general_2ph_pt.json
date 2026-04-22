@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "name": "general_2ph_pt",
+    "description": "Generic two-phase compositional physics in P-T mode (1-400 bar, 273.15-450 K) with extrapolation enabled — suitable for thermal CO2 / hydrocarbon screening.",
+    "references": [],
+    "tags": ["physics", "compositional", "two-phase", "pt", "thermal"],
+    "version": "1"
+  },
+  "config": {
+    "state_spec": "PT",
+    "n_points": 200,
+    "min_p": 1.0,
+    "max_p": 400.0,
+    "min_z": 1e-9,
+    "max_z": 0.999999,
+    "epsilon_z": 1e-9,
+    "min_t": 273.15,
+    "max_t": 450.0,
+    "extrapolation_flag": true
+  }
+}

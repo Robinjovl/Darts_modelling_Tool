@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "name": "fast_explicit_screening",
+    "description": "Aggressive small-timestep parameters for fast screening runs: 0.001 d initial step, x2 multiplier, max 1 d, loose Newton tolerance.",
+    "references": [],
+    "tags": ["sim-params", "fast", "screening"],
+    "version": "1"
+  },
+  "config": {
+    "first_ts": 0.001,
+    "mult_ts": 2.0,
+    "max_ts": 1.0,
+    "runtime": 100.0,
+    "tol_newton": 0.05,
+    "tol_linear": 0.005,
+    "it_newton": 8,
+    "it_linear": 40
+  }
+}
