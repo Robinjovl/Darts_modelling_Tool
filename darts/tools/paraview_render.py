@@ -383,11 +383,23 @@ class ParaViewMultiViewRenderer:
 
         self.video_enabled = bool(video_enabled)
         self.video_filename = video_filename
-        self.video_format = video_format.lower().strip()
+        # Env-var override so site-wide configuration (e.g. ``.env`` loaded by
+        # the MCP server) can force a uniform output format without every
+        # caller having to pass it.  Caller-supplied non-default values
+        # still win.
+        env_format = os.environ.get("DARTS_PARAVIEW_VIDEO_FORMAT")
+        if env_format and video_format == "ogv":
+            self.video_format = env_format.lower().strip()
+        else:
+            self.video_format = video_format.lower().strip()
         self.video_length_sec = float(max(0.1, video_length_sec))
         self.video_fps = int(video_fps) if video_fps is not None else None
         self.video_quality = int(video_quality)
-        self.ffmpeg_executable = ffmpeg_executable
+        # Same env-var idea for the ffmpeg binary so conda envs that don't
+        # ship ffmpeg on PATH can still point at a usable one.
+        self.ffmpeg_executable = ffmpeg_executable or os.environ.get(
+            "DARTS_PARAVIEW_FFMPEG"
+        )
 
         self.pvpython_executable = pvpython_executable
         self.verbose = bool(verbose)

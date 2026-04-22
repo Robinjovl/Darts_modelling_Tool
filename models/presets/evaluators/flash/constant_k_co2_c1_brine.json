@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "name": "constant_k_co2_c1_brine",
+    "description": "Three-component (CO2-C1-H2O) two-phase constant-K flash used by the 2ph_comp demo. K = [4, 2, 0.1] (CO2, C1, H2O).",
+    "references": [],
+    "tags": ["co2", "c1", "brine", "flash", "constant-k", "two-phase"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "constant_k",
+    "K": [4.0, 2.0, 0.1],
+    "epsilon": 1e-8
+  }
+}

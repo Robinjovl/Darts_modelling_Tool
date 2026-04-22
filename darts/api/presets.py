@@ -73,12 +73,19 @@ class Preset:
     :param source_path: file path the preset was loaded from (``None`` for
         runtime-registered presets)
     :type source_path: pathlib.Path | None
+    :param property_regions: optional ``property_regions`` payload carried
+        alongside ``config`` (e.g. on physics presets that want to ship a
+        full evaluator stack rather than requiring the caller to supply
+        ``property_regions`` separately).  ``$preset`` refs inside this
+        payload are resolved during load.
+    :type property_regions: list[dict] | None
     """
 
     qualified_name: str
     meta: PresetMeta
     config: BaseModel
     source_path: Path | None = field(default=None)
+    property_regions: list[dict[str, Any]] | None = field(default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -268,11 +275,30 @@ def _load_preset_from_file(
     raw_config = _resolve_preset_refs(raw["config"], (*_seen, qualified_name))
     config_cls = _config_class_for(qualified_name, raw_config)
     config = config_cls.model_validate(raw_config)
+
+    # Optional property_regions payload alongside ``config`` (physics
+    # presets that ship a full evaluator stack).  We resolve ``$preset``
+    # refs inside it but deliberately don't Pydantic-validate here — that
+    # happens downstream when the consuming Config (e.g. PhysicsSpec)
+    # validates the merged payload.
+    property_regions: list[dict[str, Any]] | None = None
+    if "property_regions" in raw:
+        resolved = _resolve_preset_refs(
+            raw["property_regions"], (*_seen, qualified_name)
+        )
+        if not isinstance(resolved, list):
+            raise ValueError(
+                f"Preset '{qualified_name}': 'property_regions' must be a JSON "
+                f"list; got {type(resolved).__name__}"
+            )
+        property_regions = resolved
+
     preset = Preset(
         qualified_name=qualified_name,
         meta=meta,
         config=config,
         source_path=path,
+        property_regions=property_regions,
     )
     _PRESET_REGISTRY[qualified_name] = preset
     return preset
