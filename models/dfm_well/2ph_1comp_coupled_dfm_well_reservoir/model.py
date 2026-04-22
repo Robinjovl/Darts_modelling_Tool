@@ -237,7 +237,8 @@ class Model(CICDModel):
         # Get inj_fluid_molar_potential_energy
         inj_segment_idx = self.wells["I1"].source_sinks["RampUpRate1"].segment_idx
         inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[self.reservoir.mesh.n_res_blocks + inj_segment_idx]
-        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * self.physics.property_containers[0].Mw[0]
+        Mw_avg = np.sum(self.physics.property_containers[0].Mw * inj_comp)
+        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * Mw_avg
         inj_fluid_energy = inj_fluid_molar_enthalpy + inj_fluid_molar_potential_energy
 
         inj_energy_rate = inj_rate * inj_fluid_energy
