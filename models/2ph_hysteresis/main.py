@@ -18,14 +18,14 @@ DEFAULT_INJECTION_COMPOSITION = {"H2O": 1e-12, "CO2": 1.0 - 1e-12}
 @dataclass
 class CaseConfig:
     # Physics switches
-    hysteresis: bool = False
+    hysteresis: bool = True
     components: tuple[str, str] = DEFAULT_COMPONENTS
     temperature: float = DEFAULT_TEMPERATURE
     thermal: bool = False
 
     # Grid / OBL interpolation
     nx: int = 100
-    n_points: int = 10000
+    n_points: int = 1000
 
     # Initial / boundary conditions
     producer_bhp: float = DEFAULT_PRODUCER_BHP
@@ -132,7 +132,6 @@ def run_case(config: CaseConfig) -> Model:
     for step in range(1, n_steps + 1):
         model.run(
             config.report_step_days,
-            save_solution_data=False,
             save_well_data=False,
             verbose=config.verbose,
         )
