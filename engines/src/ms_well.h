@@ -134,6 +134,7 @@ public:
     std::vector<value_t> state;
     std::vector<value_t> state_neighbour;
     std::vector<value_t> rates;
+    bool hysteresis_enabled = false;  // opt-in flag: set to true to enable Killough/Land hysteresis
     int n_vars;
     int n_ops;
     int n_segments = -1;

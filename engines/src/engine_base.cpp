@@ -2010,6 +2010,50 @@ void engine_base::apply_thermal_var_correction(std::vector<value_t>& X, std::vec
 	// Hook method: The classes that need this method will override it (e.g., engine_super_cpu)
 }
 
+void engine_base::extract_Xop()
+{
+	// Base implementation: build extended state vector Xop by appending sg_max per cell
+	// Used for hysteresis support; override in derived classes if needed
+	const uint8_t nc = get_n_comps();
+	const uint8_t z_var = get_z_var_idx();
+	const uint8_t n_vars_ = get_n_vars();
+	const uint8_t n_ops_ = get_n_ops();
+	const uint8_t p_var = 0;
+	const int state_size = n_vars_ + 1;
+	if (Xop.size() < mesh->n_blocks * state_size)
+	{
+		Xop.resize(mesh->n_blocks * state_size);
+		xop_ders_arr.resize(mesh->n_blocks * n_ops_ * state_size);
+	}
+	// Ensure sg_max is initialized (default to 0 = pure drainage if not yet set)
+	if (sg_max.size() < (size_t)mesh->n_blocks)
+		sg_max.assign(mesh->n_blocks, 0.0);
+	for (index_t i = 0; i < mesh->n_blocks; i++)
+	{
+		Xop[i * state_size] = X[i * n_vars_ + p_var];
+		for (uint8_t c = 0; c < nc - 1; c++)
+			Xop[i * state_size + c + 1] = X[i * n_vars_ + z_var + c];
+		Xop[i * state_size + state_size - 1] = sg_max[i];
+	}
+	if (n_vars_ > nc)
+		for (index_t i = 0; i < mesh->n_blocks; i++)
+			Xop[i * state_size + nc] = X[i * n_vars_ + nc];
+}
+
+void engine_base::extract_xop_ders()
+{
+	// Base implementation: map extended derivatives back to standard op_ders_arr, dropping sg_max column
+	const uint8_t n_ops_ = get_n_ops();
+	const uint8_t n_vars_ = get_n_vars();
+	const int state_size = n_vars_ + 1;
+	const index_t n_block0 = n_ops_ * n_vars_;
+	const index_t n_block1 = n_ops_ * state_size;
+	for (index_t i = 0; i < mesh->n_blocks; i++)
+		for (index_t op = 0; op < n_ops_; op++)
+			for (index_t v = 0; v < n_vars_; v++)
+				op_ders_arr[i * n_block0 + op * n_vars_ + v] = xop_ders_arr[i * n_block1 + op * state_size + v];
+}
+
 void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
 {
 	// Apply normalization of compositions X
@@ -2963,11 +3007,25 @@ int engine_base::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start();
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	if (hysteresis_enabled)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
-		if (result < 0)
-			return 0;
+		extract_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, xop_ders_arr);
+			if (result < 0)
+				return 0;
+		}
+		extract_xop_ders();
+	}
+	else
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+			if (result < 0)
+				return 0;
+		}
 	}
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();

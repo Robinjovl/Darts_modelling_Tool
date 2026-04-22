@@ -90,6 +90,56 @@ std::string well_control_iface::get_well_control_target_str()
 	}
 }
 
+void well_control_iface::extract_Xopw(std::vector<value_t>& X)
+{
+	// Build extended well state vector Xopw by appending sgw_max (=1 for wells, hysteresis always on drainage branch)
+	const uint8_t nc = n_comps;
+	const uint8_t z_var = nc - 1;
+	const uint8_t p_var = 0;
+	const int state_size = n_vars + 1;
+	const int n_block = static_cast<int>(X.size()) / n_vars;
+
+	sgw_max.resize(n_block);
+	std::fill(sgw_max.begin(), sgw_max.end(), value_t(1));
+
+	if (static_cast<int>(Xopw.size()) < n_block * state_size)
+	{
+		Xopw.resize(n_block * state_size);
+		xopw_ders_arr.resize(n_block * n_ops * state_size);
+	}
+
+	for (index_t i = 0; i < n_block; i++)
+	{
+		Xopw[i * state_size] = X[i * n_vars + p_var];
+		for (uint8_t c = 0; c < nc - 1; c++)
+		{
+			Xopw[i * state_size + c + 1] = X[i * n_vars + z_var + c];
+		}
+		Xopw[i * state_size + state_size - 1] = sgw_max[i];
+	}
+
+	if (n_vars > nc)
+	{
+		for (index_t i = 0; i < n_block; i++)
+		{
+			Xopw[i * state_size + nc] = X[i * n_vars + nc];
+		}
+	}
+}
+
+void well_control_iface::extract_xopw_ders()
+{
+	// Map extended well derivatives back to standard well_control_ops_derivs, dropping sgw_max column
+	const int state_size = n_vars + 1;
+	const index_t n_block0 = n_ops * n_vars;
+	const index_t n_block1 = n_ops * state_size;
+
+	for (index_t i = 0; i < static_cast<index_t>(block_idx.size()); i++)
+		for (index_t op = 0; op < n_ops; op++)
+			for (index_t v = 0; v < n_vars; v++)
+				well_control_ops_derivs[i * n_block0 + op * n_vars + v] = xopw_ders_arr[i * n_block1 + op * state_size + v];
+}
+
 int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t* jacobian_row, std::vector<value_t>& RHS)
 {
@@ -108,8 +158,23 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	if (this->control_type == WellControlType::BHP)
 	{
 		// If BHP controlled - pressure constraint
-		state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
-		well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
+		if (hysteresis_enabled)
+		{
+			// Hysteresis: use extended state Xopw (n_vars+1, sg_max=1 for wells)
+			extract_Xopw(X);
+			xopw_ders_arr.resize(n_ops * (n_vars + 1));
+			state.assign(Xopw.begin() + (well_head_idx + 0) * (n_block_size + 1) + P_VAR,
+			             Xopw.begin() + (well_head_idx + 0) * (n_block_size + 1) + P_VAR + n_vars + 1);
+			well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, xopw_ders_arr);
+			extract_xopw_ders();
+		}
+		else
+		{
+			// Standard: use normal state (n_vars)
+			state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR,
+			             X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
+			well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
+		}
 
 		index_t pres_op_idx = WellControlType::NUMBER_OF_RATE_TYPES * n_phases;
 		RHS_well_head[0] = well_control_ops[pres_op_idx] - this->target;
@@ -123,8 +188,23 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	else
 	{
 		// If rate controlled, find the pressure difference and calculate rate
-		state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_vars);
-		well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
+		if (hysteresis_enabled)
+		{
+			// Hysteresis: use extended state Xopw (n_vars+1, sg_max=1 for wells)
+			extract_Xopw(X);
+			xopw_ders_arr.resize(n_ops * (n_vars + 1));
+			state.assign(Xopw.begin() + (well_head_idx + 0) * (n_block_size + 1) + P_VAR,
+			             Xopw.begin() + (well_head_idx + 0) * (n_block_size + 1) + P_VAR + n_vars + 1);
+			well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, xopw_ders_arr);
+			extract_xopw_ders();
+		}
+		else
+		{
+			// Standard: use normal state (n_vars)
+			state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR,
+			             X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_vars);
+			well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
+		}
 		value_t p_diff = X_well_head[0] - X_well_body[0];
 		index_t rate_op_idx = this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
 

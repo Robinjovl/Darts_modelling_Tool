@@ -116,6 +116,7 @@ class DartsModel:
         self.time = []
         self.n_newton_iters = []
         self.time_step_size = []
+        self.history_enabled = False
 
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
@@ -200,6 +201,7 @@ class DartsModel:
         self.restart = restart
         if restart is False:
             self.set_initial_conditions()
+            self.initialize_history_fields()
             self.reset()
         self.data_ts.print()
         if (
@@ -225,6 +227,27 @@ class DartsModel:
             self.params,
             self.timer.node["simulation"],
         )
+
+    def initialize_history_fields(self):
+        if (
+            not hasattr(self.physics, "history_labels")
+            or not self.physics.history_labels
+        ):
+            return
+
+        n_blocks = self.reservoir.mesh.n_blocks
+        for label in self.physics.history_labels:
+            self.physics.set_engine_history_array(
+                label,
+                self.physics.get_history_default(label),
+                n_blocks=n_blocks,
+            )
+
+    def after_converged_timestep(self):
+        self.update_history_fields_after_timestep()
+
+    def update_history_fields_after_timestep(self):
+        return
 
     def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
         """
@@ -520,6 +543,7 @@ class DartsModel:
             if converged:
                 t += dt
                 ts += 1
+                self.after_converged_timestep()
                 if verbose:
                     print(
                         f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}"
@@ -633,6 +657,7 @@ class DartsModel:
                 t += dt
                 self.physics.engine.t = t
                 ts_counter += 1
+                self.after_converged_timestep()
 
                 x = np.array(self.physics.engine.X, copy=False)[: nb * nc]
                 dt_mult_new = data_ts.dt_mult

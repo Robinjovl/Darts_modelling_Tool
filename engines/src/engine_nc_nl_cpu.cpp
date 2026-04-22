@@ -366,8 +366,17 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	}
 
 	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	if (hysteresis_enabled)
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, xop_ders_arr);
+		extract_xop_ders();
+	}
+	else
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	}
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();
@@ -418,11 +427,24 @@ int engine_nc_nl_cpu<NC>::assemble_linear_system(value_t deltat)
 	timer->node["jacobian assembly"].node["interpolation"].start();
 
 	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	if (hysteresis_enabled)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
-		if (result < 0)
-			return 0;
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, xop_ders_arr);
+			if (result < 0)
+				return 0;
+		}
+		extract_xop_ders();
+	}
+	else
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+			if (result < 0)
+				return 0;
+		}
 	}
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();
@@ -1017,14 +1039,53 @@ int engine_nc_nl_cpu<NC>::solve_linear_equation()
 template <uint8_t NC>
 void engine_nc_nl_cpu<NC>::extract_Xop()
 {
-	if (Xop.size() < (mesh->n_blocks + mesh->n_bounds) * NC_)
+	if (!hysteresis_enabled)
 	{
-		Xop.resize((mesh->n_blocks + mesh->n_bounds) * NC_);
-	}
+		// Standard path: n_vars per cell, no sg_max axis
+		if (Xop.size() < (mesh->n_blocks + mesh->n_bounds) * NC_)
+		{
+			Xop.resize((mesh->n_blocks + mesh->n_bounds) * NC_);
+		}
 
-	// copy unknown variables
-	std::copy(X.begin(), X.end(), Xop.begin());
-	std::copy(mesh->pz_bounds.begin(), mesh->pz_bounds.end(), Xop.begin() + N_VARS * mesh->n_blocks);
+		// copy unknown variables
+		std::copy(X.begin(), X.end(), Xop.begin());
+		std::copy(mesh->pz_bounds.begin(), mesh->pz_bounds.end(), Xop.begin() + N_VARS * mesh->n_blocks);
+	}
+	else
+	{
+		// Hysteresis path: n_vars+1 per cell, sg_max appended as last element
+		const int dims = NC_ + 1;
+		const index_t n_total = (index_t)(mesh->n_blocks + mesh->n_bounds);
+		if (Xop.size() < (size_t)(n_total * dims))
+		{
+			Xop.resize(n_total * dims);
+		}
+		const uint8_t n_ops_ = get_n_ops();
+		if (xop_ders_arr.size() < (size_t)(n_total * n_ops_ * dims))
+		{
+			xop_ders_arr.resize(n_total * n_ops_ * dims, 0.0);
+		}
+
+		// Reservoir blocks: copy n_vars primary unknowns and append sg_max
+		for (index_t i = 0; i < (index_t)mesh->n_blocks; i++)
+		{
+			for (int v = 0; v < NC_; v++)
+				Xop[i * dims + v] = X[i * NC_ + v];
+			Xop[i * dims + NC_] = sg_max[i];
+		}
+
+		// Boundary blocks: copy pz_bounds vars and append sg_max = 1.0 (drainage branch)
+		if (mesh->n_bounds > 0)
+		{
+			const index_t n_bnd_vars = (index_t)(mesh->pz_bounds.size() / mesh->n_bounds);
+			for (index_t b = 0; b < (index_t)mesh->n_bounds; b++)
+			{
+				for (index_t v = 0; v < n_bnd_vars && v < (index_t)NC_; v++)
+					Xop[(mesh->n_blocks + b) * dims + v] = mesh->pz_bounds[b * n_bnd_vars + v];
+				Xop[(mesh->n_blocks + b) * dims + NC_] = 1.0;  // boundaries always on drainage branch
+			}
+		}
+	}
 }
 
 template <uint8_t NC>
