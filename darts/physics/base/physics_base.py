@@ -193,6 +193,45 @@ class PhysicsBase:
         """
         return self.n_vars + self.n_his
 
+    def get_interpolator_axes(
+        self,
+    ) -> tuple[value_vector, value_vector, index_vector]:
+        """Return the ``(axes_min, axes_max, n_axes_points)`` triple that OBL interpolators
+        running on the full OBL state ``[X | Xhis]`` should be built on.
+
+        When ``history_fields`` is empty this is identical to ``(self.axes_min, self.axes_max,
+        self.n_axes_points)``. When non-empty the primary axes are extended with one axis per
+        history field (using ``n_axes_points[0]`` as the default axis resolution). The result
+        is cached on ``self._extended_axes_*`` so callers (``set_interpolators`` and
+        :mod:`darts.output`) see identical bounds.
+
+        :returns: ``(axes_min, axes_max, n_axes_points)`` suitable for :meth:`create_interpolator`
+        :rtype: tuple[value_vector, value_vector, index_vector]
+        """
+        if not self.history_fields:
+            return self.axes_min, self.axes_max, self.n_axes_points
+        if self._extended_axes_min is None:
+            h_min = [h.axis_min for h in self.history_fields]
+            h_max = [h.axis_max for h in self.history_fields]
+            h_npts = [
+                (
+                    h.n_axis_points
+                    if h.n_axis_points is not None
+                    else self.n_axes_points[0]
+                )
+                for h in self.history_fields
+            ]
+            self._extended_axes_min = value_vector(list(self.axes_min) + h_min)
+            self._extended_axes_max = value_vector(list(self.axes_max) + h_max)
+            self._extended_n_axes_points = index_vector(
+                list(self.n_axes_points) + h_npts
+            )
+        return (
+            self._extended_axes_min,
+            self._extended_axes_max,
+            self._extended_n_axes_points,
+        )
+
     def get_interpolator_state_labels(self) -> list:
         """Return axis labels used by the OBL interpolators, in storage order.
 
@@ -401,9 +440,12 @@ class PhysicsBase:
         """
         # Tell the property container how many OBL history variables the physics appends
         # to the state vector so that it can locate primary vars correctly (e.g. temperature
-        # at position [nc] rather than [-1] when sg_max is appended).
+        # at position [nc] rather than [-1] when sg_max is appended), and pass the ordered
+        # labels so it can expose {label: value} to history-aware evaluators.
         if hasattr(property_container, "n_his"):
             property_container.n_his = self.n_his
+        if hasattr(property_container, "history_labels"):
+            property_container.history_labels = [h.label for h in self.history_fields]
         self.property_containers[region] = property_container
         self.regions.append(region)
         return
@@ -464,29 +506,9 @@ class PhysicsBase:
         """
         # When history fields are configured, the reservoir / well / well-control interpolators
         # run on the extended axes set (primary OBL axes + one axis per history field).
-        if self.history_fields:
-            h_min = [h.axis_min for h in self.history_fields]
-            h_max = [h.axis_max for h in self.history_fields]
-            h_npts = [
-                (
-                    h.n_axis_points
-                    if h.n_axis_points is not None
-                    else self.n_axes_points[0]
-                )
-                for h in self.history_fields
-            ]
-            self._extended_axes_min = value_vector(list(self.axes_min) + h_min)
-            self._extended_axes_max = value_vector(list(self.axes_max) + h_max)
-            self._extended_n_axes_points = index_vector(
-                list(self.n_axes_points) + h_npts
-            )
-            acc_axes_min = self._extended_axes_min
-            acc_axes_max = self._extended_axes_max
-            acc_n_pts = self._extended_n_axes_points
-        else:
-            acc_axes_min = self.axes_min
-            acc_axes_max = self.axes_max
-            acc_n_pts = self.n_axes_points
+        # get_interpolator_axes caches the extension on self._extended_axes_* so the output path
+        # (Output.set_phase_properties) can reuse the same bounds.
+        acc_axes_min, acc_axes_max, acc_n_pts = self.get_interpolator_axes()
 
         self.acc_flux_itor = {}
         self.property_itor = {}
@@ -747,6 +769,29 @@ class PhysicsBase:
                                    and each entry is scalar or array of length equal to number of cells
         """
         pass
+
+    def populate_mesh_history_defaults(self, mesh) -> None:
+        """Allocate and fill ``mesh.Xhis_bounds`` from ``history_fields`` defaults.
+
+        The engine's ``build_Xop`` reads boundary-cell history values from ``mesh.Xhis_bounds``
+        and falls back to zero when the buffer is empty. This helper writes the configured
+        ``HistoryField.default`` for each field into every boundary cell so engines that use
+        non-zero defaults (MPFA / mechanical paths with boundary cells) behave correctly.
+        No-op when ``history_fields`` is empty or ``mesh.n_bounds == 0``.
+
+        :param mesh: Connection mesh the engine will run on
+        :type mesh: darts.engines.conn_mesh
+        :returns: None
+        """
+        if not self.history_fields:
+            return
+        n_bounds = int(getattr(mesh, "n_bounds", 0))
+        if n_bounds <= 0:
+            return
+        defaults = np.array([h.default for h in self.history_fields], dtype=float)
+        # cell-major layout: [(h_0, h_1, ..., h_{n_his-1}) for cell 0, cell 1, ...]
+        flat = np.tile(defaults, n_bounds)
+        mesh.Xhis_bounds = value_vector(flat.tolist())
 
     def init_wells(self, wells):
         """

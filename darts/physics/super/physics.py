@@ -356,6 +356,8 @@ class Compositional(PhysicsBase):
             values = np.resize(np.asarray(values), mesh.n_res_blocks)
             np.asarray(mesh.initial_state)[ith_var :: self.n_vars] = values
 
+        self.populate_mesh_history_defaults(mesh)
+
     def set_initial_conditions_from_array(
         self, mesh: conn_mesh, input_distribution: dict
     ):
@@ -453,6 +455,11 @@ class Compositional(PhysicsBase):
                 if np.isscalar(input_distribution[self.vars[c + 1]])
                 else input_distribution[self.vars[c + 1]][:]
             )
+
+        # Broadcast HistoryField.default values into mesh.Xhis_bounds so boundary cells
+        # (MPFA / mech engines with n_bounds > 0) start from the configured default instead
+        # of the engine's zero fallback in build_Xop.
+        self.populate_mesh_history_defaults(mesh)
 
     def evaluate_flash(
         self,

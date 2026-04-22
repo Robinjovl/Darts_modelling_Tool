@@ -268,7 +268,6 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	n_vars = get_n_vars();
 	n_ops = get_n_ops();
 	nc = get_n_comps();
-	const uint8_t n_state = get_n_state();
 	z_var_idx = get_z_var_idx();
 	if (params->log_transform == 0)
 	{
@@ -307,7 +306,31 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	}
 
 	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
-	op_ders_arr.resize(n_ops * n_state * (mesh->n_blocks + mesh->n_bounds));
+	op_ders_arr.resize(n_ops * n_vars * (mesh->n_blocks + mesh->n_bounds));
+
+	// Newton→OBL axis map defaults to identity so engine_base::build_Xop can assume the
+	// mapping is always populated after init. Mirrors the TPFA engine_base::init_base logic.
+	if (newton_to_obl.size() < (size_t)N_VARS)
+	{
+		newton_to_obl.resize(N_VARS);
+		for (uint8_t v = 0; v < N_VARS; v++)
+			newton_to_obl[v] = v;
+	}
+
+	// History buffers: only allocated when the physics has declared history fields
+	// (n_his_runtime > 0). Xop / op_ders_arr_ext are the extended-state scratch arrays
+	// that engine_base::build_Xop / project_xop_ders operate on; Xhis holds per-cell
+	// history values, with boundary cells seeded from mesh->Xhis_bounds.
+	const uint8_t n_his = get_n_his();
+	if (n_his > 0)
+	{
+		const uint8_t n_state_ext = get_n_state();
+		const index_t n_total = mesh->n_blocks + mesh->n_bounds;
+		if (Xhis.size() < (size_t)n_total * n_his)
+			Xhis.assign((size_t)n_total * n_his, 0.0);
+		Xop.resize((size_t)n_total * n_state_ext);
+		op_ders_arr_ext.resize((size_t)n_total * n_ops * n_state_ext);
+	}
 
 	t = 0;
 
@@ -380,9 +403,22 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		block_idxs[mesh->op_num[0]].emplace_back(idx++);
 	}
 
-	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	// Route through build_Xop / project_xop_ders when history fields are configured so the
+	// interpolator sees the extended state; fall back to the primary-width extract_Xop path
+	// for engines without hysteresis.
+	if (get_n_his() > 0)
+	{
+		build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+		project_xop_ders();
+	}
+	else
+	{
+		extract_Xop();
+		for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	}
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();
@@ -502,7 +538,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		index_t n_ops = 1;  // here '1' is to distinguish the size of the customized operator with the ordinary operator
 
 		op_vals_arr_customized.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));   // [1 * (n_blocks+n_bounds)] array of values of operators
-		op_ders_arr_customized.resize(n_ops * n_state * (mesh->n_blocks + mesh->n_bounds));   // [1 * n_state * (n_blocks+n_bounds)] array of dedrivatives of operators
+		op_ders_arr_customized.resize(n_ops * this->n_vars * (mesh->n_blocks + mesh->n_bounds));   // [n_ops * n_vars * (n_blocks+n_bounds)] array of derivatives of operators
 
 		// create a block list for the customized operator
 		customize_block_idxs.resize(acc_flux_op_set_list.size());
@@ -1500,12 +1536,26 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start();
 
-	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	if (get_n_his() > 0)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
-		if (result < 0)
-			return 0;
+		build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+			if (result < 0)
+				return 0;
+		}
+		project_xop_ders();
+	}
+	else
+	{
+		extract_Xop();
+		for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+			if (result < 0)
+				return 0;
+		}
 	}
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();

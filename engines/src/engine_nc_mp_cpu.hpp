@@ -64,8 +64,9 @@ public:
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
-  /// @brief vector of variables in the current timestep provided for operator evaluation
-  std::vector<value_t> Xop;
+  // Primary-width Xop builder for the no-history path. Writes engine_base::Xop
+  // (layout [X | pz_bounds], n_vars-wide). Under n_his > 0 we call engine_base::build_Xop
+  // instead, which lays out the extended [X | Xhis | pz_bounds | Xhis_bounds] state.
   void extract_Xop();
 
 public:

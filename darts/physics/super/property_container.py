@@ -70,6 +70,13 @@ class PropertyContainer(PropertyBase):
         # Number of OBL history variables (e.g. sg_max) appended to the state vector after
         # the primary Newton unknowns. 0 disables history-aware dispatch entirely.
         self.n_his = int(n_his)
+        # Ordered labels for the appended history variables (populated by PhysicsBase.add_property_region).
+        # When present and non-empty, evaluate() extracts one trailing scalar per label and passes
+        # them as kwargs to HistoryAware* evaluators.
+        self.history_labels: list[str] = []
+        # Last extracted {label: value} map; refreshed on every evaluate() call. Evaluators that
+        # consume more than one history variable can read this directly.
+        self.history_values: dict[str, float] = {}
 
         if temperature:  # constant T specified
             self.thermal = False
@@ -324,17 +331,31 @@ class PropertyContainer(PropertyBase):
 
         self.compute_saturation(self.ph)
 
-        # Single history variable is supported for now (sg_max). Read it from the tail of the
-        # state vector whenever the physics configured one.
-        sg_max = float(np.asarray(state)[-1]) if self.n_his else None
+        # Extract every appended history variable by label, preserving the physics-declared
+        # order. history_labels is populated by PhysicsBase.add_property_region; when it's
+        # empty but n_his > 0 we fall back to the legacy single-trailing-scalar layout and
+        # assume the sole variable is named "sg_max".
+        if self.n_his:
+            tail = np.asarray(state)[-self.n_his :]
+            labels = (
+                self.history_labels
+                if len(self.history_labels) == self.n_his
+                else ["sg_max"]
+            )
+            self.history_values = {
+                label: float(tail[k]) for k, label in enumerate(labels)
+            }
+        else:
+            self.history_values = {}
 
-        # Evaluate capillary pressure — supports both a single evaluator and a per-phase dict.
-        # HistoryAwareCapPressure evaluators receive sg_max; everyone else is called with sat only.
+        # Dispatch to history-aware evaluators: unpack {label: value} as kwargs so concrete
+        # evaluators can accept any subset of history variables by name (e.g. sg_max=...).
+        # Plain evaluators without the mixin are called with sat only, unchanged.
         if isinstance(self.capillary_pressure_ev, dict):
             for j in self.ph:
                 pc_ev = self.capillary_pressure_ev[self.phases_name[j]]
-                if sg_max is not None and isinstance(pc_ev, HistoryAwareCapPressure):
-                    self.pc[j] = pc_ev.evaluate(self.sat[j], sg_max)
+                if self.history_values and isinstance(pc_ev, HistoryAwareCapPressure):
+                    self.pc[j] = pc_ev.evaluate(self.sat[j], **self.history_values)
                 else:
                     self.pc[j] = pc_ev.evaluate(self.sat[j])
         else:
@@ -342,8 +363,8 @@ class PropertyContainer(PropertyBase):
 
         for j in self.ph:
             kr_ev = self.rel_perm_ev[self.phases_name[j]]
-            if sg_max is not None and isinstance(kr_ev, HistoryAwareRelPerm):
-                self.kr[j] = kr_ev.evaluate(self.sat[j], sg_max)
+            if self.history_values and isinstance(kr_ev, HistoryAwareRelPerm):
+                self.kr[j] = kr_ev.evaluate(self.sat[j], **self.history_values)
             else:
                 self.kr[j] = kr_ev.evaluate(self.sat[j])
 

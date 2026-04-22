@@ -293,16 +293,40 @@ class DartsModel:
             reservoir_filepath, ts_idx
         )
 
-        # load data as initial conditions
+        # Split columns: primary Newton unknowns (self.physics.vars) go through
+        # set_initial_conditions_from_array; OBL history columns (self.physics.history_fields)
+        # go through set_engine_history_array so sg_max and friends survive restart.
+        primary_names = list(self.physics.vars)
+        history_labels = set()
+        if hasattr(self.physics, "history_fields"):
+            history_labels = {h.label for h in self.physics.history_fields}
+
         initial_values = {}
+        history_values = {}
         for i, name in enumerate(var_names):
-            initial_values[name] = Xres[:, :, i].flatten()
+            key = name.decode() if isinstance(name, bytes) else name
+            col = Xres[:, :, i].flatten()
+            if key in primary_names:
+                initial_values[key] = col
+            elif key in history_labels:
+                history_values[key] = col
+            else:
+                initial_values[key] = col  # unknown key: preserve legacy routing
         self.physics.set_initial_conditions_from_array(
             mesh=self.reservoir.mesh, input_distribution=initial_values
         )
 
         self.reset()
         self.physics.engine.t = time_res[0]
+
+        # Push the restored history columns into engine.Xhis. reset() has already allocated
+        # the buffer, so set_engine_history_array only needs to overwrite its contents.
+        for label, values in history_values.items():
+            self.physics.set_engine_history_array(
+                label,
+                values,
+                n_blocks=self.reservoir.mesh.n_res_blocks,
+            )
 
         # save initial conditions to *.h5 file
         print(rf'Restarting model from {reservoir_filepath} at day {time_res[0]}.')

@@ -9,42 +9,47 @@ from scipy.interpolate import interp1d
 
 
 class HistoryAwareRelPerm(abc.ABC):
-    """Abstract base for relative-permeability evaluators that consume an OBL history variable.
+    """Abstract base for relative-permeability evaluators that consume OBL history variables.
 
     :class:`~darts.physics.super.property_container.PropertyContainer` uses
-    ``isinstance(..., HistoryAwareRelPerm)`` to decide whether to forward the history value
-    (e.g. ``sg_max``) from the OBL state into :meth:`evaluate`. Plain evaluators without this
-    base class are called with saturation only.
+    ``isinstance(..., HistoryAwareRelPerm)`` to decide whether to forward history values from
+    the OBL state. All history variables the physics declared in ``history_fields`` are
+    unpacked as keyword arguments into :meth:`evaluate`, so concrete subclasses can pick the
+    ones they care about (e.g. ``sg_max=...``) and ignore the rest via ``**_``. Plain
+    evaluators without this base class are called with saturation only.
     """
 
     @abc.abstractmethod
-    def evaluate(self, sat, sg_max: float = 0.0) -> float:
-        """Return relative permeability at a given saturation and history value.
+    def evaluate(self, sat, **history: float) -> float:
+        """Return relative permeability at a given saturation and history state.
 
         :param sat: Phase saturation in ``[0, 1]``
         :type sat: float
-        :param sg_max: Historical maximum gas saturation for scanning curves
-        :type sg_max: float
+        :param history: Per-label history values extracted from the OBL state (e.g.
+                        ``sg_max=0.42``). Subclasses should name the kwargs they consume;
+                        extras should be accepted via ``**_`` to stay forward-compatible.
+        :type history: dict[str, float]
         :returns: Relative permeability value
         :rtype: float
         """
 
 
 class HistoryAwareCapPressure(abc.ABC):
-    """Abstract base for capillary-pressure evaluators that consume an OBL history variable.
+    """Abstract base for capillary-pressure evaluators that consume OBL history variables.
 
-    Dispatch contract mirrors :class:`HistoryAwareRelPerm`: the property container checks
-    ``isinstance(..., HistoryAwareCapPressure)`` to decide whether to pass ``sg_max``.
+    Dispatch contract mirrors :class:`HistoryAwareRelPerm`: the property container unpacks
+    ``{label: value}`` for every declared history field as kwargs to :meth:`evaluate`.
     """
 
     @abc.abstractmethod
-    def evaluate(self, sat, sg_max: float = 0.0) -> float:
-        """Return capillary pressure at a given saturation and history value.
+    def evaluate(self, sat, **history: float) -> float:
+        """Return capillary pressure at a given saturation and history state.
 
         :param sat: Phase saturation in ``[0, 1]``
         :type sat: float
-        :param sg_max: Historical maximum gas saturation for scanning curves
-        :type sg_max: float
+        :param history: Per-label history values from the OBL state (see
+                        :meth:`HistoryAwareRelPerm.evaluate`).
+        :type history: dict[str, float]
         :returns: Capillary pressure value, in the caller's unit convention
         :rtype: float
         """
@@ -231,8 +236,13 @@ class _KilloughRelPermBase(HistoryAwareRelPerm):
             sgrmax=corey.sgrmax,
         )
 
-    def evaluate(self, sat, sg_max: float = 0.0):
+    def evaluate(self, sat, sg_max: float = 0.0, **_):
         """Return relative permeability, dispatching between drainage and scanning curves.
+
+        Accepts any extra history kwargs the physics may declare via ``history_fields`` (they
+        are swallowed by ``**_``) so the generic
+        :class:`~darts.physics.super.property_container.PropertyContainer` dispatch stays
+        forward-compatible.
 
         :param sat: Phase saturation in ``[0, 1]``
         :type sat: float
@@ -498,11 +508,12 @@ class _KilloughCapillaryPressureBase(HistoryAwareCapPressure):
             epsilon=epsilon,
         )
 
-    def evaluate(self, sat, sg_max: float = 0.0):
+    def evaluate(self, sat, sg_max: float = 0.0, **_):
         """Return capillary pressure with Killough scanning behaviour.
 
         Gas-phase calls short-circuit to zero; water-phase calls blend drainage and
         imbibition curves according to the current ``sg`` and the historical ``sg_max``.
+        Extra history kwargs declared by the physics are accepted and ignored via ``**_``.
 
         :param sat: Wetting-phase saturation
         :type sat: float

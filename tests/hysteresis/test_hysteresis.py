@@ -139,22 +139,43 @@ def test_history_aware_abstract() -> bool:
 
 
 def test_property_container_dispatch() -> bool:
-    """PropertyContainer passes sg_max to HistoryAwareRelPerm and omits it for plain evaluators."""
+    """PropertyContainer extracts all history vars and unpacks them as kwargs to HistoryAware
+    evaluators; plain evaluators are called with sat only."""
     from darts.physics.super.property_container import PropertyContainer
 
-    captured: dict = {"aware": None, "plain": None}
+    captured: dict = {"aware": None, "plain": None, "multi": None}
 
     class AwareKr(HistoryAwareRelPerm):
-        def evaluate(self, sat, sg_max: float = 0.0) -> float:
+        def evaluate(self, sat, sg_max: float = 0.0, **_) -> float:
             captured["aware"] = (float(sat), float(sg_max))
             return 0.5
+
+    class MultiHistAwareKr(HistoryAwareRelPerm):
+        def evaluate(self, sat, sg_max: float = 0.0, sw_min: float = 0.0, **_) -> float:
+            captured["multi"] = (float(sat), float(sg_max), float(sw_min))
+            return 0.25
 
     class PlainKr:
         def evaluate(self, sat) -> float:
             captured["plain"] = float(sat)
             return 0.7
 
-    # Minimal container: 1 phase, 1 component — just enough to exercise dispatch
+    # Mirror the real dispatch tail of PropertyContainer.evaluate for the kr branch.
+    def dispatch_kr(pc, kr_ev, sat, tail_state):
+        if pc.n_his:
+            tail = np.asarray(tail_state)[-pc.n_his :]
+            labels = (
+                pc.history_labels if len(pc.history_labels) == pc.n_his else ["sg_max"]
+            )
+            pc.history_values = {
+                label: float(tail[k]) for k, label in enumerate(labels)
+            }
+        else:
+            pc.history_values = {}
+        if pc.history_values and isinstance(kr_ev, HistoryAwareRelPerm):
+            return kr_ev.evaluate(sat, **pc.history_values)
+        return kr_ev.evaluate(sat)
+
     pc = PropertyContainer(
         phases_name=["V"],
         components_name=["C"],
@@ -162,41 +183,37 @@ def test_property_container_dispatch() -> bool:
         temperature=300.0,
         n_his=1,
     )
-    pc.ph = np.array([0])
+    pc.history_labels = ["sg_max"]
     pc.sat = np.array([0.42])
 
-    # HistoryAware branch: sg_max should be forwarded
-    pc.rel_perm_ev = {"V": AwareKr()}
-    pc.kr = np.zeros(1)
-    sg_max = 0.33
-    state = np.array([250.0, 0.5, sg_max])  # pressure, z0, sg_max
-    # Manually invoke the kr dispatch block (mirror of PropertyContainer.evaluate tail)
-    from darts.physics.properties.hysteresis import (
-        HistoryAwareCapPressure,  # noqa: F401
-    )
-
-    for j in pc.ph:
-        kr_ev = pc.rel_perm_ev[pc.phases_name[j]]
-        sg_max_arg = float(state[-1]) if pc.n_his else None
-        if sg_max_arg is not None and isinstance(kr_ev, HistoryAwareRelPerm):
-            pc.kr[j] = kr_ev.evaluate(pc.sat[j], sg_max_arg)
-        else:
-            pc.kr[j] = kr_ev.evaluate(pc.sat[j])
-    if captured["aware"] != (0.42, 0.33) or abs(pc.kr[0] - 0.5) > 1e-14:
+    # Single-history HistoryAware branch
+    result = dispatch_kr(pc, AwareKr(), pc.sat[0], [250.0, 0.5, 0.33])
+    if captured["aware"] != (0.42, 0.33) or abs(result - 0.5) > 1e-14:
+        return _report("test_property_container_dispatch", False)
+    if pc.history_values != {"sg_max": 0.33}:
         return _report("test_property_container_dispatch", False)
 
-    # Plain evaluator branch: sg_max must NOT be forwarded
-    pc.rel_perm_ev = {"V": PlainKr()}
-    pc.kr = np.zeros(1)
+    # Plain evaluator branch: history MUST NOT be forwarded
+    result = dispatch_kr(pc, PlainKr(), pc.sat[0], [250.0, 0.5, 0.33])
+    if captured["plain"] != 0.42 or abs(result - 0.7) > 1e-14:
+        return _report("test_property_container_dispatch", False)
+
+    # Multi-history dispatch: two history variables unpack as kwargs, container exposes the
+    # full {label: value} map, and an evaluator that names a subset still works.
+    pc.n_his = 2
+    pc.history_labels = ["sg_max", "sw_min"]
     captured["aware"] = None
-    for j in pc.ph:
-        kr_ev = pc.rel_perm_ev[pc.phases_name[j]]
-        sg_max_arg = float(state[-1]) if pc.n_his else None
-        if sg_max_arg is not None and isinstance(kr_ev, HistoryAwareRelPerm):
-            pc.kr[j] = kr_ev.evaluate(pc.sat[j], sg_max_arg)
-        else:
-            pc.kr[j] = kr_ev.evaluate(pc.sat[j])
-    if captured["plain"] != 0.42 or abs(pc.kr[0] - 0.7) > 1e-14:
+    captured["multi"] = None
+    result = dispatch_kr(pc, MultiHistAwareKr(), pc.sat[0], [250.0, 0.5, 0.33, 0.12])
+    if captured["multi"] != (0.42, 0.33, 0.12) or abs(result - 0.25) > 1e-14:
+        return _report("test_property_container_dispatch", False)
+    if pc.history_values != {"sg_max": 0.33, "sw_min": 0.12}:
+        return _report("test_property_container_dispatch", False)
+
+    # Extra history kwarg on a single-hist-aware evaluator: AwareKr swallows sw_min via **_
+    captured["aware"] = None
+    result = dispatch_kr(pc, AwareKr(), pc.sat[0], [250.0, 0.5, 0.33, 0.12])
+    if captured["aware"] != (0.42, 0.33):
         return _report("test_property_container_dispatch", False)
 
     return _report("test_property_container_dispatch", True)

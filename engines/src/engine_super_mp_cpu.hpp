@@ -83,7 +83,8 @@ public:
   uint8_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_comps() const override { return NC; };
   uint8_t get_z_var_idx() const override { return Z_VAR; };
-  uint8_t get_n_state() const { return N_STATE; };
+  // engine_base::get_n_state() = n_vars + n_his; do not shadow with the primary-only
+  // N_STATE — that would break build_Xop's layout under hysteresis.
 
   engine_super_mp_cpu()
   {
@@ -109,8 +110,9 @@ public:
 
   int init_jacobian_structure_mpfa(csr_matrix_base *jacobian);
 
-  /// @brief vector of variables in the current timestep provided for operator evaluation
-  std::vector<value_t> Xop;
+  // Primary-width Xop builder for the no-history path. Writes engine_base::Xop
+  // (layout [X | pz_bounds], n_vars-wide). Under n_his > 0 we call engine_base::build_Xop
+  // instead, which lays out the extended [X | Xhis | pz_bounds | Xhis_bounds] state.
   void extract_Xop();
 
   // vector of fluxes for every unknown per connection, assembled in jacobian assembly
