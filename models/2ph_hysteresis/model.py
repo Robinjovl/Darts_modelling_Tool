@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from darts.engines import value_vector
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 from darts.physics.base.physics_base import HistoryField, PhysicsBase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.enthalpy import EnthalpyBasic
@@ -67,9 +67,10 @@ def default_corey_regions() -> dict[int, Corey]:
     return {0: Corey(**base)}
 
 
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self, hys: bool = True):
         super().__init__()
+        self.timer.node["initialization"].start()
         self.hys = hys
         self.thermal = False
         self.prod = True
@@ -85,6 +86,38 @@ class Model(DartsModel):
         self.lookup_file = str(Path(__file__).with_name("LookupTable.txt"))
         self.corey = default_corey_regions()
         self.initial_z_h2o = 1.0 - self.zero
+        self.stop_injection_after_days = 400.0
+        self.start_injection_h2o_days = 800.0
+        self.water_injection_rate = 1.728
+        self.co2_injection_rate = 6.4
+
+        self.setup_case(
+            nx=100,
+            n_points=1000,
+            temperature=self.temperature,
+            thermal=False,
+            producer_bhp=self.producer_bhp,
+            injection_rate=self.co2_injection_rate,
+            initial_z_h2o=self.initial_z_h2o,
+            injection_stream={"H2O": self.zero, "CO2": 1.0 - self.zero},
+            components=list(self.components),
+            corey_regions=self.corey,
+            stop_injection_after_days=self.stop_injection_after_days,
+            start_injection_h2o_days=self.start_injection_h2o_days,
+            water_injection_rate=self.water_injection_rate,
+        )
+        self.set_sim_params(
+            first_ts=1e-4,
+            mult_ts=1.5,
+            max_ts=1.0,
+            runtime=1000.0,
+            tol_newton=1e-3,
+            tol_linear=1e-3,
+            it_newton=16,
+            it_linear=20,
+        )
+        self.data_ts.eta[-1] = 0.05
+        self.timer.node["initialization"].stop()
 
     def setup_case(
         self,
@@ -101,6 +134,9 @@ class Model(DartsModel):
         components: list[str] | None = None,
         corey_regions: dict[int, Corey] | None = None,
         logscale: bool = False,
+        stop_injection_after_days: float | None = 400.0,
+        start_injection_h2o_days: float | None = 800.0,
+        water_injection_rate: float = 1.728,
     ) -> None:
         self.zero = zero
         self.thermal = thermal
@@ -117,6 +153,10 @@ class Model(DartsModel):
             if initial_z_h2o is not None
             else 1.0 - zero
         )
+        self.stop_injection_after_days = stop_injection_after_days
+        self.start_injection_h2o_days = start_injection_h2o_days
+        self.water_injection_rate = water_injection_rate
+        self.co2_injection_rate = injection_rate
 
         self.set_reservoir(
             nx=nx,
@@ -134,7 +174,8 @@ class Model(DartsModel):
             injection_stream=injection_stream,
             zero=zero,
         )
-        self.inj_rate = [0.0,injection_rate ]
+        self.inj_rate = [0.0, injection_rate]
+        self.update_injection_schedule(time=0.0)
         self.p_prod = producer_bhp
 
     def build_injection_stream(
@@ -413,6 +454,31 @@ class Model(DartsModel):
             rhs_flux[h2o_idx] -= n_h2o
 
         return rhs_flux
+
+    def update_injection_schedule(self, time: float | None = None) -> None:
+        current_time = 0.0 if time is None else float(time)
+        if time is None and hasattr(self, "physics") and hasattr(self.physics, "engine"):
+            current_time = float(self.physics.engine.t)
+
+        self.inj_rate[0] = 0.0
+        self.inj_rate[1] = self.co2_injection_rate
+
+        if (
+            self.start_injection_h2o_days is not None
+            and current_time >= self.start_injection_h2o_days
+        ):
+            self.inj_rate[0] = self.water_injection_rate
+            self.inj_rate[1] = 0.0
+        elif (
+            self.stop_injection_after_days is not None
+            and current_time >= self.stop_injection_after_days
+        ):
+            self.inj_rate[0] = 0.0
+            self.inj_rate[1] = 0.0
+
+    def after_converged_timestep(self):
+        self.update_injection_schedule()
+        super().after_converged_timestep()
 
     def update_history_fields_after_timestep(self) -> None:
         history_labels = [h.label for h in self.physics.history_fields]
