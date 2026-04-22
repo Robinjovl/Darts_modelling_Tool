@@ -29,13 +29,17 @@ class Model(CICDModel):
 
     def set_reservoir(self):
         nx = 1000
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=10, dz=10,
-                                         permx=100, permy=100, permz=10, poro=0.3, depth=1000)
+        layer_depths = np.array([0, 10, 20, 30, 40])
+
+        depths = np.repeat(layer_depths, nx)
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=5, dx=1, dy=10, dz=100,
+                                         permx=100, permy=100, permz=10, poro=0.3, depth=depths)
         return
 
     def set_wells(self):
         self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
+        for p in range(1, self.reservoir.nz + 1):
+            self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, p))
         self.reservoir.add_well("P1")
         self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
