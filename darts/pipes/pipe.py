@@ -862,48 +862,64 @@ class Pipe:
 
                 pipe_internal_A = self.geometry.pipe_internal_A
 
-                # The props of the fluid of the segment on which the constant mass rate source is defined are used.
-                sG0_source = sG0[segment_idx_source]
-                rhoG0_source = rhoG0[segment_idx_source]
-                rhoL0_source = rhoL0[segment_idx_source]
-
-                if sG0_source == 0:
-                    vG0_source = 0
-                    liquid_mass_fraction0 = 1
-                    liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                    vL0_source = (
-                        liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
+                # If UpstreamMassNode is used, which calculates boundary momentum using the properties of the boundary itself:
+                if hasattr(sink_source, "get_boundary_momentum_flux"):
+                    delta_at_bc_interface0 = sink_source.get_boundary_momentum_flux(
+                        pc, pipe_internal_A, rate_source
                     )
-                elif sG0_source == 1:
-                    vL0_source = 0
-                    gas_mass_fraction0 = 1
-                    gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                    vG0_source = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
-                elif 0 < sG0_source < 1:
-                    gas_mass_fraction0 = (
-                        sG0_source
-                        * rhoG0_source
-                        / (sG0_source * rhoG0_source + (1 - sG0_source) * rhoL0_source)
-                    )
-                    gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                    vG0_source = (
-                        gas_mass_rate0 / rhoG0_source / (pipe_internal_A * sG0_source)
-                    )
-
-                    liquid_mass_fraction0 = 1 - gas_mass_fraction0
-                    liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                    vL0_source = (
-                        liquid_mass_rate0
-                        / rhoL0_source
-                        / (pipe_internal_A * (1 - sG0_source))
-                    )
+                # If RampUpRate is used:
                 else:
-                    raise Exception("sG0_source is out of correct range (from 0 to 1)!")
+                    # The props of the fluid of the segment on which the constant mass rate source is defined are used.
+                    sG0_source = sG0[segment_idx_source]
+                    rhoG0_source = rhoG0[segment_idx_source]
+                    rhoL0_source = rhoL0[segment_idx_source]
 
-                delta_at_bc_interface0 = pipe_internal_A * (
-                    rhoG0_source * sG0_source * vG0_source**2
-                    + rhoL0_source * (1 - sG0_source) * vL0_source**2
-                )
+                    if sG0_source == 0:
+                        vG0_source = 0
+                        liquid_mass_fraction0 = 1
+                        liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
+                        vL0_source = (
+                            liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
+                        )
+                    elif sG0_source == 1:
+                        vL0_source = 0
+                        gas_mass_fraction0 = 1
+                        gas_mass_rate0 = mass_rate * gas_mass_fraction0
+                        vG0_source = (
+                            gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
+                        )
+                    elif 0 < sG0_source < 1:
+                        gas_mass_fraction0 = (
+                            sG0_source
+                            * rhoG0_source
+                            / (
+                                sG0_source * rhoG0_source
+                                + (1 - sG0_source) * rhoL0_source
+                            )
+                        )
+                        gas_mass_rate0 = mass_rate * gas_mass_fraction0
+                        vG0_source = (
+                            gas_mass_rate0
+                            / rhoG0_source
+                            / (pipe_internal_A * sG0_source)
+                        )
+
+                        liquid_mass_fraction0 = 1 - gas_mass_fraction0
+                        liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
+                        vL0_source = (
+                            liquid_mass_rate0
+                            / rhoL0_source
+                            / (pipe_internal_A * (1 - sG0_source))
+                        )
+                    else:
+                        raise Exception(
+                            "sG0_source is out of correct range (from 0 to 1)!"
+                        )
+
+                    delta_at_bc_interface0 = pipe_internal_A * (
+                        rhoG0_source * sG0_source * vG0_source**2
+                        + rhoL0_source * (1 - sG0_source) * vL0_source**2
+                    )
 
                 if segment_idx_source == 0:
                     momentum_at_first_last_exterfaces[0] = delta_at_bc_interface0
