@@ -43,6 +43,7 @@ public:
   template <uint8_t N_VARS>
   int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                 operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_);
+  int evaluate_operators_d();
 
   // newton loop
   virtual int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override = 0;
@@ -91,6 +92,7 @@ public:
 
   // linear system
   value_t *X_d, *Xn_d, *dX_d, *RHS_d;      // [N_VARS * n_blocks] arrays for solution, previous timestep solution, update, and right hand side
+  value_t *Xop_d = nullptr;                // [(N_VARS + n_his) * n_blocks] extended OBL state for history-aware interpolation
   value_t *RHS_wells_d;                    // [N_VARS * n_blocks] temporary device storage for RHS_wells copied async from host while main assembly is done
   std::vector<value_t> jac_wells;          // [n_wells * 2 * N_VARS * N_VARS ] temporary host storage for well equations
   value_t *jac_wells_d;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary device storage for well equations
@@ -98,9 +100,10 @@ public:
   index_t *jac_well_head_idxs_d;           // [n_wells] device storage for well head indexes in jacobian values array
 
   // interpolation
-  value_t *op_vals_arr_d;   // [N_OPS * n_blocks] array of values of operators
-  value_t *op_ders_arr_d;   // [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
-  value_t *op_vals_arr_n_d; // [N_OPS * n_blocks] array of values of operators from the last timestep
+  value_t *op_vals_arr_d;          // [N_OPS * n_blocks] array of values of operators
+  value_t *op_ders_arr_d;          // [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
+  value_t *op_ders_arr_ext_d = nullptr; // [N_OPS * (N_VARS + n_his) * n_blocks] extended derivative scratch
+  value_t *op_vals_arr_n_d;        // [N_OPS * n_blocks] array of values of operators from the last timestep
 
   std::vector<index_t *> block_idxs_d; // [N_OP_NUM][?] vector of arrays of block indexes corresponding to given operator set
 
@@ -440,16 +443,26 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 	new_z_fl.resize(nc - n_solid);
 
   op_vals_arr.resize(n_ops * mesh->n_blocks);
-  //op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);
+  op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);
 
   // Keep newton_to_obl consistent with the CPU init_base: default to identity so Python code
-  // that reads engine.newton_to_obl sees a meaningful vector on GPU engines too. GPU engines
-  // do not call build_Xop (no hysteresis on GPU yet), so this is bookkeeping-only for now.
+  // that reads engine.newton_to_obl sees a meaningful vector on GPU engines too.
   if (newton_to_obl.size() < (size_t)N_VARS)
   {
     newton_to_obl.resize(N_VARS);
     for (uint8_t v = 0; v < N_VARS; v++)
       newton_to_obl[v] = v;
+  }
+
+  const uint8_t n_his = get_n_his();
+  if (n_his > 0)
+  {
+    const uint8_t n_state = get_n_state();
+    const index_t n_total = mesh->n_blocks + mesh->n_bounds;
+    if (Xhis.size() < (size_t)n_total * n_his)
+      Xhis.assign((size_t)n_total * n_his, 0.0);
+    Xop.resize((size_t)n_total * n_state);
+    op_ders_arr_ext.resize((size_t)n_total * n_ops * n_state);
   }
 
   jac_wells.resize(2 * n_vars * n_vars * wells.size());
@@ -471,6 +484,11 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   allocate_device_data(op_vals_arr, &op_vals_arr_d);
   allocate_device_data(op_vals_arr, &op_vals_arr_n_d);
   allocate_device_data(&op_ders_arr_d, n_ops * n_vars * mesh->n_blocks);
+  if (n_his > 0)
+  {
+    allocate_device_data(Xop, &Xop_d);
+    allocate_device_data(op_ders_arr_ext, &op_ders_arr_ext_d);
+  }
 
   // *** initialize host data ***
   X_init = mesh->initial_state;
@@ -568,8 +586,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   }
 
   // interpolate initial values
-  for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-    acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
+  evaluate_operators_d();
   copy_data_within_device(op_vals_arr_n_d, op_vals_arr_d, op_vals_arr.size());
 
   copy_data_to_device(PV, PV_d);
