@@ -280,7 +280,7 @@ class OrificeValveGeometryModel(ValveGeometryModel):
     def __init__(
         self,
         diameter: float = None,
-        discharge_coefficient: float = 1.0,
+        discharge_coefficient: float = 0.84,
         opening: float = 1.0,
         flow_coefficient: float = 1.0,
     ):
@@ -396,23 +396,40 @@ class RecoveryModel(ABC):
     def name(self) -> str:
         pass
 
+    @property
+    @abstractmethod
+    def tuning(self) -> float:
+        pass
+
     def validate(self, valve_geometry: str):
         return
 
 
 class NoRecoveryModel(RecoveryModel):
+    def __init__(self, tuning: float = 1.0):
+        self._tuning = float(tuning)
+
     @property
     def name(self) -> str:
         return "OFF"
 
+    @property
+    def tuning(self) -> float:
+        return self._tuning
+
 
 class UnsupportedRecoveryModel(RecoveryModel):
-    def __init__(self, recovery: str):
+    def __init__(self, recovery: str, tuning: float = 1.0):
         self._name = recovery.upper()
+        self._tuning = float(tuning)
 
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def tuning(self) -> float:
+        return self._tuning
 
     def validate(self, valve_geometry: str):
         raise NotImplementedError(
@@ -548,7 +565,7 @@ class FullEquilibriumModel(EquilibriumModel):
 def build_valve_geometry_model(
     valve_geometry: str,
     diameter: float = None,
-    discharge_coefficient: float = 1.0,
+    discharge_coefficient: float = 0.84,
     opening: float = 1.0,
     flow_coefficient: float = 1.0,
 ) -> ValveGeometryModel:
@@ -585,11 +602,16 @@ def build_equilibrium_model(
     )
 
 
-def build_recovery_model(recovery: str) -> RecoveryModel:
+def build_recovery_model(
+    recovery: str,
+    recovery_tuning: float = 1.0,
+) -> RecoveryModel:
     recovery = recovery.upper()
+    if not 0.0 <= recovery_tuning <= 1.0:
+        raise ValueError("recovery_tuning must be between 0 and 1.")
     if recovery == "OFF":
-        return NoRecoveryModel()
-    return UnsupportedRecoveryModel(recovery)
+        return NoRecoveryModel(tuning=recovery_tuning)
+    return UnsupportedRecoveryModel(recovery, tuning=recovery_tuning)
 
 
 def build_slip_model(slip_model: str) -> SlipModel:
@@ -665,6 +687,16 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
 
     Only the ORIFICE geometry and NOSLIP / OFF recovery path are implemented
     presently, but new models can be added without rewriting the boundary node.
+
+    The API exposes OLGA-style choke inputs explicitly:
+      - discharge_coefficient ~= CD
+      - gas_liquid_sizing_ratio ~= CF
+      - recovery_tuning ~= CR
+
+    Only CD affects the current diameter-based ORIFICE implementation directly.
+    CF is stored for future valve-table / gas-sizing support, and CR is stored
+    on the recovery model but does not affect flow unless a recovery model is
+    implemented for the selected valve geometry.
     """
 
     _SEC_PER_DAY = 24.0 * 60.0 * 60.0
@@ -686,18 +718,41 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
         valve_geometry: str = "ORIFICE",
         equilibrium_model: str = "FROZEN",
         diameter: float = None,
-        discharge_coefficient: float = 1.0,
+        discharge_coefficient: float = 0.84,
         opening: float = 1.0,
         flow_coefficient: float = 1.0,
+        gas_liquid_sizing_ratio: float = 1.0,
         thermal_phase_equilibrium: bool = False,
         recovery: str = "OFF",
+        recovery_tuning: float = 1.0,
         slip_model: str = "NOSLIP",
         initial_downstream_pressure: float = None,
         max_molar_rate: float = None,
         verbose: bool = False,
     ):
+        """
+        :param valve_geometry: Valve geometry used in the choke model:
+                               - ORIFICE: Orifice type with no spatial extension, vena contracta appears behind the valve.
+                               - BEAN: Bean type with spatial extension, vena contracta appears inside the valve.
+        :param equilibrium_model: Equilibrium model used in the choke model:
+                                  - FROZEN: No mass transfer
+                                  - HENRYFAUSKE: Partial equilibrium
+                                  - EQUILIBRIUM: Gas/liquid equilibrium
+        :param diameter: Maximum valve diameter. If NNOZZLE is defined, nozzle diameter for each nozzle group.
+        :param discharge_coefficient: Discharge coefficient
+        :param opening: Opening in diameter
+        :param gas_liquid_sizing_ratio: Ratio between gas and liquid sizing coefficients
+        :param thermal_phase_equilibrium: If set to True, thermal equilibrium between gas and liquid is assumed;
+                                          otherwise, the gas is expanded isentropical while the liquid is isothermal.
+                                          Only used for HYDROVALVE and STANDINGVALVE.
+        :param recovery: Enable/disable the pressure recovery downstream valve. Only used for HYDROVALVE and STANDINGVALVE.
+        :param recovery_tuning: 1 gives maximum recovery and 0 gives zero recovery
+        :param slip_model: Slip model for choke throat. Only used for HYDROVALVE and STANDINGVALVE.
+        """
         if max_molar_rate is not None and max_molar_rate <= 0.0:
             raise ValueError("max_molar_rate must be positive when specified.")
+        if gas_liquid_sizing_ratio <= 0.0:
+            raise ValueError("gas_liquid_sizing_ratio must be positive.")
 
         super().__init__(
             pipe_name=pipe_name,
@@ -745,7 +800,10 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
             equilibrium_model=equilibrium_model,
             thermal_phase_equilibrium=thermal_phase_equilibrium,
         )
-        recovery_model = build_recovery_model(recovery)
+        recovery_model = build_recovery_model(
+            recovery,
+            recovery_tuning=recovery_tuning,
+        )
         slip_model_obj = build_slip_model(slip_model)
 
         self.choke_model = ChokeModel(
@@ -771,7 +829,11 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
         self.valve_geometry = self.choke_model.valve_geometry_model.valve_geometry
         self.equilibrium_model = self.choke_model.equilibrium_model.name
         self.recovery = self.choke_model.recovery_model.name
+        self.recovery_tuning = self.choke_model.recovery_model.tuning
         self.slip_model = self.choke_model.slip_model.name
+        self.discharge_coefficient = float(discharge_coefficient)
+        self.flow_coefficient = float(flow_coefficient)
+        self.gas_liquid_sizing_ratio = float(gas_liquid_sizing_ratio)
         self.thermal_phase_equilibrium = bool(thermal_phase_equilibrium)
         self.current_discharge_molar_enthalpy = self.inj_fluid_props["molar_enthalpy"]
 

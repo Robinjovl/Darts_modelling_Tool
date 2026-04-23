@@ -18,6 +18,9 @@ from model import Model
 RUNTIME_DAY = 10 / 24 / 60
 RATE_TOL_KG_S = 1e-4
 MAX_CHOKE_SIZE_ITERS = 4
+OLGA_CD = 0.84
+OLGA_CF = 26.8465
+OLGA_CR = 1.0
 MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCEL_PATH = os.path.join(
     MODEL_DIR,
@@ -29,6 +32,9 @@ def build_model(choke_diameter_m: float = None) -> Model:
     coupled_model = Model(
         inlet_boundary_kind="pressure_node_choke",
         inlet_choke_diameter=choke_diameter_m,
+        inlet_choke_discharge_coefficient=OLGA_CD,
+        inlet_choke_gas_liquid_sizing_ratio=OLGA_CF,
+        inlet_choke_recovery_tuning=OLGA_CR,
     )
     coupled_model.reservoir.grav_acceleration_for_spe = 9.80665
     return coupled_model
@@ -165,6 +171,13 @@ print(
     f"diameter={final_node.diameter:.9f} m, "
     f"target_rate={final_node.target_mass_rate_kg_s:.6f} kg/s, "
     f"final_rate={final_node.last_mass_rate_kg_s:.6f} kg/s"
+)
+print(
+    "Configured choke inputs: "
+    f"CD={final_node.discharge_coefficient:.4f}, "
+    f"CF={final_node.gas_liquid_sizing_ratio:.4f}, "
+    f"CR={final_node.recovery_tuning:.4f}, "
+    f"RECOVERY={final_node.recovery}"
 )
 print(
     "Comparison against OLGA (top 19 segments only): "

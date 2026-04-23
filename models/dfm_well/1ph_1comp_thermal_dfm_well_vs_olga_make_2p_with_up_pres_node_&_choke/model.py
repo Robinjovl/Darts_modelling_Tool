@@ -30,11 +30,13 @@ class Model(CICDModel):
         inlet_choke_valve_geometry: str = "ORIFICE",
         inlet_choke_equilibrium_model: str = "FROZEN",
         inlet_choke_diameter: float = None,
-        inlet_choke_discharge_coefficient: float = 1.0,
+        inlet_choke_discharge_coefficient: float = 0.84,
         inlet_choke_opening: float = 1.0,
         inlet_choke_flow_coefficient: float = 1.0,
+        inlet_choke_gas_liquid_sizing_ratio: float = 26.8465,
         inlet_choke_thermal_phase_equilibrium: bool = False,
         inlet_choke_recovery: str = "OFF",
+        inlet_choke_recovery_tuning: float = 1.0,
         inlet_choke_slip_model: str = "NOSLIP",
     ):
         # Call base class constructor
@@ -52,10 +54,14 @@ class Model(CICDModel):
         self.inlet_choke_discharge_coefficient = inlet_choke_discharge_coefficient
         self.inlet_choke_opening = inlet_choke_opening
         self.inlet_choke_flow_coefficient = inlet_choke_flow_coefficient
+        self.inlet_choke_gas_liquid_sizing_ratio = (
+            inlet_choke_gas_liquid_sizing_ratio
+        )
         self.inlet_choke_thermal_phase_equilibrium = (
             inlet_choke_thermal_phase_equilibrium
         )
         self.inlet_choke_recovery = inlet_choke_recovery
+        self.inlet_choke_recovery_tuning = inlet_choke_recovery_tuning
         self.inlet_choke_slip_model = inlet_choke_slip_model
 
         # self.live_plot_config.enable_well_res_profiles = True
@@ -254,8 +260,10 @@ class Model(CICDModel):
                 discharge_coefficient=self.inlet_choke_discharge_coefficient,
                 opening=self.inlet_choke_opening,
                 flow_coefficient=self.inlet_choke_flow_coefficient,
+                gas_liquid_sizing_ratio=self.inlet_choke_gas_liquid_sizing_ratio,
                 thermal_phase_equilibrium=self.inlet_choke_thermal_phase_equilibrium,
                 recovery=self.inlet_choke_recovery,
+                recovery_tuning=self.inlet_choke_recovery_tuning,
                 slip_model=self.inlet_choke_slip_model,
                 initial_downstream_pressure=pipe_head_pressure,
                 verbose=verbose,
