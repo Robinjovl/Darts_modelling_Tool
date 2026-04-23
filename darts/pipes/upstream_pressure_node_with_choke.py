@@ -574,6 +574,29 @@ class ValveGeometryModel(ABC):
     def effective_area(self) -> float:
         pass
 
+    @property
+    @abstractmethod
+    def throat_area(self) -> float:
+        pass
+
+    @abstractmethod
+    def inlet_to_throat_denominator(
+        self,
+        upstream_inv_momentum_density: float,
+        throat_inv_momentum_density: float,
+        upstream_area: float,
+    ) -> float:
+        pass
+
+    @abstractmethod
+    def throat_to_downstream_acceleration_term(
+        self,
+        throat_inv_momentum_density: float,
+        downstream_inv_momentum_density: float,
+        downstream_area: float,
+    ) -> float:
+        pass
+
     @abstractmethod
     def mass_rate_kg_s(
         self,
@@ -645,13 +668,33 @@ class OrificeValveGeometryModel(ValveGeometryModel):
         return math.pi * self._diameter**2 / 4.0
 
     @property
+    def throat_area(self) -> float:
+        return self.flow_coefficient * self.opening * self.choke_area
+
+    @property
     def effective_area(self) -> float:
+        return self.discharge_coefficient * self.throat_area
+
+    def inlet_to_throat_denominator(
+        self,
+        upstream_inv_momentum_density: float,
+        throat_inv_momentum_density: float,
+        upstream_area: float,
+    ) -> float:
+        return (throat_inv_momentum_density / self.effective_area) ** 2 - (
+            upstream_inv_momentum_density / upstream_area
+        ) ** 2
+
+    def throat_to_downstream_acceleration_term(
+        self,
+        throat_inv_momentum_density: float,
+        downstream_inv_momentum_density: float,
+        downstream_area: float,
+    ) -> float:
         return (
-            self.flow_coefficient
-            * self.discharge_coefficient
-            * self.opening
-            * self.choke_area
-        )
+            throat_inv_momentum_density / self.effective_area
+            - downstream_inv_momentum_density / downstream_area
+        ) / downstream_area
 
     def mass_rate_kg_s(
         self,
@@ -718,6 +761,40 @@ class OrificeValveGeometryModel(ValveGeometryModel):
         return self._diameter * math.sqrt(target_mass_rate_kg_s / actual_mass_rate_kg_s)
 
 
+class BeanValveGeometryModel(OrificeValveGeometryModel):
+    @property
+    def valve_geometry(self) -> str:
+        return "BEAN"
+
+    def inlet_to_throat_denominator(
+        self,
+        upstream_inv_momentum_density: float,
+        throat_inv_momentum_density: float,
+        upstream_area: float,
+    ) -> float:
+        contraction_recovery = (
+            2.0
+            * (1.0 / self.discharge_coefficient - 1.0)
+            * (throat_inv_momentum_density / self.throat_area) ** 2
+        )
+        return (
+            (throat_inv_momentum_density / self.effective_area) ** 2
+            - (upstream_inv_momentum_density / upstream_area) ** 2
+            + contraction_recovery
+        )
+
+    def throat_to_downstream_acceleration_term(
+        self,
+        throat_inv_momentum_density: float,
+        downstream_inv_momentum_density: float,
+        downstream_area: float,
+    ) -> float:
+        return (
+            throat_inv_momentum_density / self.throat_area
+            - downstream_inv_momentum_density / downstream_area
+        ) / downstream_area
+
+
 class RecoveryModel(ABC):
     @property
     @abstractmethod
@@ -729,8 +806,20 @@ class RecoveryModel(ABC):
     def tuning(self) -> float:
         pass
 
+    @property
+    def uses_downstream_recovery(self) -> bool:
+        return False
+
     def validate(self, valve_geometry: str):
         return
+
+    @abstractmethod
+    def predicted_downstream_pressure(
+        self,
+        throat_pressure: float,
+        ideal_pressure_recovery_bar: float,
+    ) -> float:
+        pass
 
 
 class NoRecoveryModel(RecoveryModel):
@@ -745,9 +834,16 @@ class NoRecoveryModel(RecoveryModel):
     def tuning(self) -> float:
         return self._tuning
 
+    def predicted_downstream_pressure(
+        self,
+        throat_pressure: float,
+        ideal_pressure_recovery_bar: float,
+    ) -> float:
+        return float(throat_pressure)
 
-class UnsupportedRecoveryModel(RecoveryModel):
-    def __init__(self, recovery: str, tuning: float = 1.0):
+
+class DownstreamRecoveryModel(RecoveryModel):
+    def __init__(self, recovery: str = "ON", tuning: float = 1.0):
         self._name = recovery.upper()
         self._tuning = float(tuning)
 
@@ -759,10 +855,17 @@ class UnsupportedRecoveryModel(RecoveryModel):
     def tuning(self) -> float:
         return self._tuning
 
-    def validate(self, valve_geometry: str):
-        raise NotImplementedError(
-            f"RECOVERY={self._name!r} is not implemented yet for valve_geometry={valve_geometry!r}."
-        )
+    @property
+    def uses_downstream_recovery(self) -> bool:
+        return self._tuning > 0.0
+
+    def predicted_downstream_pressure(
+        self,
+        throat_pressure: float,
+        ideal_pressure_recovery_bar: float,
+    ) -> float:
+        pressure_rise_bar = max(float(ideal_pressure_recovery_bar), 0.0)
+        return float(throat_pressure + self._tuning * pressure_rise_bar)
 
 
 class SlipModel(ABC):
@@ -1013,6 +1116,13 @@ def build_valve_geometry_model(
             opening=opening,
             flow_coefficient=flow_coefficient,
         )
+    if valve_geometry == "BEAN":
+        return BeanValveGeometryModel(
+            diameter=diameter,
+            discharge_coefficient=discharge_coefficient,
+            opening=opening,
+            flow_coefficient=flow_coefficient,
+        )
     raise NotImplementedError(
         f"VALVEGEOMETRY={valve_geometry!r} is not implemented yet."
     )
@@ -1047,7 +1157,9 @@ def build_recovery_model(
         raise ValueError("recovery_tuning must be between 0 and 1.")
     if recovery == "OFF":
         return NoRecoveryModel(tuning=recovery_tuning)
-    return UnsupportedRecoveryModel(recovery, tuning=recovery_tuning)
+    if recovery == "ON":
+        return DownstreamRecoveryModel(recovery, tuning=recovery_tuning)
+    raise NotImplementedError(f"RECOVERY={recovery!r} is not implemented yet.")
 
 
 def build_slip_model(slip_model: str) -> SlipModel:
@@ -1073,6 +1185,7 @@ class ChokeModel:
         equilibrium_model: EquilibriumModel,
         recovery_model: RecoveryModel,
         slip_model: SlipModel,
+        upstream_area: float,
         downstream_area: float,
     ):
         self.helper = helper
@@ -1081,12 +1194,15 @@ class ChokeModel:
         self.equilibrium_model = equilibrium_model
         self.recovery_model = recovery_model
         self.slip_model = slip_model
+        self.upstream_area = float(upstream_area)
         self.downstream_area = float(downstream_area)
 
         self.recovery_model.validate(self.valve_geometry_model.valve_geometry)
         self.slip_model.validate(self.equilibrium_model.name)
         self.equilibrium_model.validate(self.slip_model.name)
 
+        if self.upstream_area <= 0.0:
+            raise ValueError("upstream_area must be positive.")
         if self.downstream_area <= 0.0:
             raise ValueError("downstream_area must be positive.")
 
@@ -1132,23 +1248,27 @@ class ChokeModel:
         throat_pressure: float,
         cache: dict[float, ChokeFlowState],
     ) -> float:
+        upstream_state = self._flow_state(self.boundary_state.pressure, cache)
         throat_state = self._flow_state(throat_pressure, cache)
         integral_term = self._integrate_inverse_momentum_density(
             throat_pressure,
             cache,
         )
+        denominator = self.valve_geometry_model.inlet_to_throat_denominator(
+            upstream_state.inv_momentum_density,
+            throat_state.inv_momentum_density,
+            self.upstream_area,
+        )
         if (
             not np.isfinite(integral_term)
             or integral_term <= 0.0
+            or not np.isfinite(denominator)
+            or denominator <= 0.0
             or not np.isfinite(throat_state.inv_momentum_density)
             or throat_state.inv_momentum_density <= 0.0
         ):
             return 0.0
-        return (
-            self.valve_geometry_model.effective_area
-            * math.sqrt(2.0 * integral_term)
-            / throat_state.inv_momentum_density
-        )
+        return math.sqrt(2.0 * integral_term / denominator)
 
     def _predicted_downstream_pressure(
         self,
@@ -1159,16 +1279,19 @@ class ChokeModel:
         throat_state = self._flow_state(throat_pressure, cache)
         downstream_state = self._flow_state(target_downstream_pressure, cache)
         mass_rate = self._mass_rate_from_throat_pressure(throat_pressure, cache)
-        recovery_term = (
+        recovery_term_bar = (
             mass_rate**2
-            * (
-                throat_state.inv_momentum_density
-                / self.valve_geometry_model.effective_area
-                - downstream_state.inv_momentum_density / self.downstream_area
+            * self.valve_geometry_model.throat_to_downstream_acceleration_term(
+                throat_state.inv_momentum_density,
+                downstream_state.inv_momentum_density,
+                self.downstream_area,
             )
-            / self.downstream_area
+            / 1e5
         )
-        return float(throat_pressure + recovery_term / 1e5)
+        return self.recovery_model.predicted_downstream_pressure(
+            throat_pressure,
+            recovery_term_bar,
+        )
 
     def _find_subcritical_throat_pressure(
         self,
@@ -1176,7 +1299,7 @@ class ChokeModel:
         cache: dict[float, ChokeFlowState],
     ) -> float | None:
         upper = min(
-            downstream_pressure * (1.0 - self._PRESSURE_EPS_BAR),
+            downstream_pressure,
             self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR),
         )
         lower = min(self._MIN_PRESSURE_BAR, 0.5 * upper)
@@ -1238,19 +1361,38 @@ class ChokeModel:
 
     def evaluate(self, downstream_pressure: float) -> ChokeEvaluationResult:
         cache: dict[float, ChokeFlowState] = {}
-        throat_pressure = self._find_subcritical_throat_pressure(
-            downstream_pressure,
-            cache,
-        )
-        if throat_pressure is None:
-            throat_pressure, mass_rate_kg_s = self._critical_solution(cache)
-            flow_regime = "critical"
+        if not self.recovery_model.uses_downstream_recovery:
+            critical_throat_pressure, critical_mass_rate_kg_s = self._critical_solution(
+                cache
+            )
+            if downstream_pressure >= critical_throat_pressure:
+                throat_pressure = min(
+                    downstream_pressure,
+                    self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR),
+                )
+                mass_rate_kg_s = self._mass_rate_from_throat_pressure(
+                    throat_pressure,
+                    cache,
+                )
+                flow_regime = "subcritical"
+            else:
+                throat_pressure = critical_throat_pressure
+                mass_rate_kg_s = critical_mass_rate_kg_s
+                flow_regime = "critical"
         else:
-            mass_rate_kg_s = self._mass_rate_from_throat_pressure(
-                throat_pressure,
+            throat_pressure = self._find_subcritical_throat_pressure(
+                downstream_pressure,
                 cache,
             )
-            flow_regime = "subcritical"
+            if throat_pressure is None:
+                throat_pressure, mass_rate_kg_s = self._critical_solution(cache)
+                flow_regime = "critical"
+            else:
+                mass_rate_kg_s = self._mass_rate_from_throat_pressure(
+                    throat_pressure,
+                    cache,
+                )
+                flow_regime = "subcritical"
 
         discharge_state = self._flow_state(
             downstream_pressure,
@@ -1279,18 +1421,17 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
       - recovery model
       - slip model
 
-    Only the ORIFICE geometry and NOSLIP / OFF recovery path are implemented
-    presently, but new models can be added without rewriting the boundary node.
+    ORIFICE / BEAN geometries and OFF / ON recovery paths are implemented
+    presently, and new models can be added without rewriting the boundary node.
 
     The API exposes OLGA-style choke inputs explicitly:
       - discharge_coefficient ~= CD
       - gas_liquid_sizing_ratio ~= CF
       - recovery_tuning ~= CR
 
-    Only CD affects the current diameter-based ORIFICE implementation directly.
-    CF is stored for future valve-table / gas-sizing support, and CR is stored
-    on the recovery model but does not affect flow unless a recovery model is
-    implemented for the selected valve geometry.
+    CD affects the Hydrovalve contraction area directly. CF is stored for future
+    valve-table / gas-sizing support. CR scales the downstream pressure-recovery
+    term when RECOVERY='ON'.
     """
 
     _SEC_PER_DAY = 24.0 * 60.0 * 60.0
@@ -1320,6 +1461,7 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
         recovery: str = "OFF",
         recovery_tuning: float = 1.0,
         slip_model: str = "NOSLIP",
+        upstream_area: float = None,
         initial_downstream_pressure: float = None,
         max_molar_rate: float = None,
         verbose: bool = False,
@@ -1369,6 +1511,8 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
         self.last_mass_rate_kg_s = None
         self.last_throat_pressure = None
         self.last_flow_regime = None
+        if upstream_area is None:
+            upstream_area = pipe_geom.pipe_internal_A
 
         helper = ChokePhysicsHelper(self.physics)
         boundary_state = ChokeBoundaryState(
@@ -1409,6 +1553,7 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
             equilibrium_model=equilibrium_model_obj,
             recovery_model=recovery_model,
             slip_model=slip_model_obj,
+            upstream_area=upstream_area,
             downstream_area=pipe_geom.pipe_internal_A,
         )
 
