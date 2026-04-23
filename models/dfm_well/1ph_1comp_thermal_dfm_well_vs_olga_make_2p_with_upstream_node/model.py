@@ -162,7 +162,7 @@ class Model(CICDModel):
         temp_grad = 0.025  # deg C/meter
         pipe_head_segment_index = 0  # index starts from zero
 
-        initial_conditions_dict = {'phases_names': ['L'], 'phases_compositions': [[1]],
+        initial_conditions_dict = {'phases_names': ['G'], 'phases_compositions': [[1]],
                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe and pipe_intervals are TVD
 
         well_1_initial_conditions = LinearAmbientTemperature(well_1_name, well_1_geometry, self.physics,
