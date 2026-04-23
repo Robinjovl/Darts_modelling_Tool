@@ -99,7 +99,7 @@ class KilloughLandModel:
         """
         sg_max = float(np.clip(sg_max, 0.0, 1.0 - self.swc))
         return sg_max / (1.0 + self.land_constant * sg_max)
-    
+
     def dissolution_feedback_sgmax(self, sgr_new: float) -> float:
         """CO2 dissolution feedback on sgr and then on sgmax"""
         sgr_new = float(np.clip(sgr_new, 0.0, 1.0 - self.swc))
