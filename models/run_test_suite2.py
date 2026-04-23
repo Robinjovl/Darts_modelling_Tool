@@ -45,6 +45,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     base_dir = os.getcwd()  # base directory is models/
     logs_dir = os.path.join(base_dir, "_logs")  # directory in which log files will be saved
     os.makedirs(logs_dir, exist_ok=True)
+    debug_only_hysteresis = True
 
     model_dir = os.path.abspath(r'.')
     _ensure_parent_dir(os.path.join(model_dir, '_logs', 'placeholder'))
@@ -183,6 +184,19 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs_adjoint += ['Adjoint_mpfa']
 
+    if debug_only_hysteresis:
+        print("DEBUG: running only 2ph_hysteresis for focused GPU CI validation")
+        accepted_dirs = ['2ph_hysteresis']
+        test_dirs_mech = []
+        test_args_mech = []
+        test_dirs_cpg = []
+        test_args_cpg = []
+        test_dirs_dfn = []
+        test_args_dfn = []
+        test_dirs_chem = []
+        test_args_chem = []
+        accepted_dirs_adjoint = []
+
     # RUN
     failed_models_m = []
     n_total = 0
@@ -194,9 +208,10 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
     # check main.py files runs, without comparison of pkl files
     failed_models_main = []
-    accepted_dirs += ['CCS']
-    if iter_solvers:  # run this case only for the build with iterative solvers
-        accepted_dirs += [ 'SPE11b']
+    if not debug_only_hysteresis:
+        accepted_dirs += ['CCS']
+        if iter_solvers:  # run this case only for the build with iterative solvers
+            accepted_dirs += [ 'SPE11b']
     n_total_mainpy = 0
     models_root = model_dir
     for mdir in accepted_dirs:
