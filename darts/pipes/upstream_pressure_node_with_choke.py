@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from dartsflash.libflash import EoS
-from scipy.optimize import brentq
+from scipy.optimize import brentq, minimize_scalar
 
 from darts.engines import value_vector
 from darts.pipes.upstream_mass_node import UpstreamMassNode
@@ -24,6 +24,36 @@ class ChokeBoundaryState:
 class ChokeEvaluationResult:
     mass_rate_kg_s: float
     discharge_molar_enthalpy: float
+    throat_pressure: float
+    flow_regime: str
+    discharge_density: float
+    discharge_inv_momentum_density: float
+    discharge_gas_mass_fraction: float
+
+
+@dataclass(frozen=True)
+class ChokeFlowState:
+    pressure: float
+    temperature: float
+    molar_enthalpy: float
+    gas_mass_fraction: float
+    inv_momentum_density: float
+    density: float
+    gas_density: float
+    liquid_density: float
+
+
+@dataclass(frozen=True)
+class EquilibriumPhaseState:
+    pressure: float
+    temperature: float
+    gas_mass_fraction: float
+    gas_density: float
+    liquid_density: float
+    gas_molar_enthalpy: float
+    liquid_molar_enthalpy: float
+    gas_phase_composition: np.ndarray | None
+    liquid_phase_composition: np.ndarray | None
 
 
 class ChokePhysicsHelper:
@@ -145,11 +175,291 @@ class ChokePhysicsHelper:
     def clamp_enthalpy(self, molar_enthalpy: float) -> float:
         return float(np.clip(molar_enthalpy, *self._H_BOUNDS))
 
-    def solve_single_phase_isentropic_enthalpy(
+    def evaluate_phase_enthalpy(
+        self,
+        phase_name: str,
+        pressure: float,
+        temperature: float,
+        composition,
+    ) -> float:
+        return float(
+            self.pc.enthalpy_ev[phase_name].evaluate(
+                pressure,
+                temperature,
+                composition,
+            )
+        )
+
+    def solve_phase_temperature_from_enthalpy(
+        self,
+        phase_name: str,
+        pressure: float,
+        composition,
+        molar_enthalpy: float,
+    ) -> float:
+        def enthalpy_residual(temperature: float) -> float:
+            return (
+                self.evaluate_phase_enthalpy(
+                    phase_name,
+                    pressure,
+                    temperature,
+                    composition,
+                )
+                - molar_enthalpy
+            )
+
+        bracket = self.find_bracket(
+            np.linspace(self._MIN_T_K, self._MAX_T_K, 32),
+            enthalpy_residual,
+        )
+        if bracket is None:
+            return float(np.clip(self._MAX_T_K, self._MIN_T_K, self._MAX_T_K))
+        if bracket[0] == bracket[1]:
+            return bracket[0]
+        return float(brentq(enthalpy_residual, bracket[0], bracket[1]))
+
+    def build_single_phase_flow_state(
+        self,
+        phase_name: str,
+        pressure: float,
+        temperature: float,
+        composition,
+        molar_enthalpy: float = None,
+    ) -> ChokeFlowState:
+        density = self.evaluate_phase_density(
+            phase_name,
+            pressure,
+            temperature,
+            composition,
+        )
+        if not np.isfinite(density) or density <= 0.0:
+            raise ValueError("single-phase density must be finite and positive.")
+
+        enthalpy = (
+            self.evaluate_phase_enthalpy(
+                phase_name,
+                pressure,
+                temperature,
+                composition,
+            )
+            if molar_enthalpy is None
+            else float(molar_enthalpy)
+        )
+        gas_mass_fraction = 1.0 if phase_name == "G" else 0.0
+        return ChokeFlowState(
+            pressure=float(pressure),
+            temperature=float(temperature),
+            molar_enthalpy=float(enthalpy),
+            gas_mass_fraction=gas_mass_fraction,
+            inv_momentum_density=1.0 / density,
+            density=density,
+            gas_density=density if phase_name == "G" else np.nan,
+            liquid_density=density if phase_name == "L" else np.nan,
+        )
+
+    def evaluate_equilibrium_phase_state(
+        self,
+        pressure: float,
+        molar_enthalpy: float,
+        composition,
+    ) -> EquilibriumPhaseState:
+        state = self.build_ph_state(pressure, molar_enthalpy, composition)
+        self.pc.evaluate(state)
+        self.pc.evaluate_thermal(state)
+
+        gas_density = np.nan
+        liquid_density = np.nan
+        gas_saturation = 0.0
+        liquid_saturation = 0.0
+        gas_phase_composition = None
+        liquid_phase_composition = None
+        gas_molar_enthalpy = np.nan
+        liquid_molar_enthalpy = np.nan
+        temperature = float(self.pc.temperature)
+
+        if "G" in self.physics.phases:
+            gas_idx = self.physics.phases.index("G")
+            gas_density = float(self.pc.dens[gas_idx])
+            gas_saturation = float(self.pc.sat[gas_idx])
+            gas_phase_composition = np.asarray(self.pc.x[gas_idx], dtype=float)
+            if np.isfinite(gas_density) and gas_density > 0.0 and gas_saturation > 0.0:
+                gas_molar_enthalpy = self.evaluate_phase_enthalpy(
+                    "G",
+                    pressure,
+                    temperature,
+                    gas_phase_composition,
+                )
+        if "L" in self.physics.phases:
+            liquid_idx = self.physics.phases.index("L")
+            liquid_density = float(self.pc.dens[liquid_idx])
+            liquid_saturation = float(self.pc.sat[liquid_idx])
+            liquid_phase_composition = np.asarray(self.pc.x[liquid_idx], dtype=float)
+            if (
+                np.isfinite(liquid_density)
+                and liquid_density > 0.0
+                and liquid_saturation > 0.0
+            ):
+                liquid_molar_enthalpy = self.evaluate_phase_enthalpy(
+                    "L",
+                    pressure,
+                    temperature,
+                    liquid_phase_composition,
+                )
+
+        gas_mass = 0.0
+        liquid_mass = 0.0
+        if np.isfinite(gas_density) and gas_density > 0.0 and gas_saturation > 0.0:
+            gas_mass = gas_saturation * gas_density
+        if (
+            np.isfinite(liquid_density)
+            and liquid_density > 0.0
+            and liquid_saturation > 0.0
+        ):
+            liquid_mass = liquid_saturation * liquid_density
+
+        total_mass = gas_mass + liquid_mass
+        gas_mass_fraction = gas_mass / total_mass if total_mass > 0.0 else 0.0
+        return EquilibriumPhaseState(
+            pressure=float(pressure),
+            temperature=temperature,
+            gas_mass_fraction=float(gas_mass_fraction),
+            gas_density=float(gas_density) if np.isfinite(gas_density) else np.nan,
+            liquid_density=float(liquid_density)
+            if np.isfinite(liquid_density)
+            else np.nan,
+            gas_molar_enthalpy=float(gas_molar_enthalpy)
+            if np.isfinite(gas_molar_enthalpy)
+            else np.nan,
+            liquid_molar_enthalpy=float(liquid_molar_enthalpy)
+            if np.isfinite(liquid_molar_enthalpy)
+            else np.nan,
+            gas_phase_composition=gas_phase_composition,
+            liquid_phase_composition=liquid_phase_composition,
+        )
+
+    def _phase_mw_kg_per_kmol(self, composition) -> float:
+        return float(
+            np.dot(np.asarray(composition, dtype=float), np.asarray(self.pc.Mw))
+        )
+
+    def build_mixed_flow_state(
+        self,
+        pressure: float,
+        temperature: float,
+        gas_mass_fraction: float,
+        gas_density: float,
+        liquid_density: float,
+        gas_molar_enthalpy: float,
+        liquid_molar_enthalpy: float,
+        gas_phase_composition,
+        liquid_phase_composition,
+    ) -> ChokeFlowState:
+        gas_mass_fraction = float(np.clip(gas_mass_fraction, 0.0, 1.0))
+        liquid_mass_fraction = 1.0 - gas_mass_fraction
+
+        if gas_mass_fraction <= 0.0:
+            if not np.isfinite(liquid_density) or liquid_density <= 0.0:
+                raise ValueError(
+                    "liquid_density must be positive for a liquid-only state."
+                )
+            return ChokeFlowState(
+                pressure=float(pressure),
+                temperature=float(temperature),
+                molar_enthalpy=float(liquid_molar_enthalpy),
+                gas_mass_fraction=0.0,
+                inv_momentum_density=1.0 / liquid_density,
+                density=float(liquid_density),
+                gas_density=np.nan,
+                liquid_density=float(liquid_density),
+            )
+        if gas_mass_fraction >= 1.0:
+            if not np.isfinite(gas_density) or gas_density <= 0.0:
+                raise ValueError("gas_density must be positive for a gas-only state.")
+            return ChokeFlowState(
+                pressure=float(pressure),
+                temperature=float(temperature),
+                molar_enthalpy=float(gas_molar_enthalpy),
+                gas_mass_fraction=1.0,
+                inv_momentum_density=1.0 / gas_density,
+                density=float(gas_density),
+                gas_density=float(gas_density),
+                liquid_density=np.nan,
+            )
+
+        if (
+            not np.isfinite(gas_density)
+            or gas_density <= 0.0
+            or not np.isfinite(liquid_density)
+            or liquid_density <= 0.0
+        ):
+            raise ValueError(
+                "both gas_density and liquid_density must be positive for a mixed state."
+            )
+
+        gas_mw = self._phase_mw_kg_per_kmol(gas_phase_composition)
+        liquid_mw = self._phase_mw_kg_per_kmol(liquid_phase_composition)
+        if gas_mw <= 0.0 or liquid_mw <= 0.0:
+            raise ValueError("phase molecular weights must be positive.")
+
+        gas_mass_specific_h = gas_molar_enthalpy / gas_mw
+        liquid_mass_specific_h = liquid_molar_enthalpy / liquid_mw
+        mixture_mass_specific_h = (
+            gas_mass_fraction * gas_mass_specific_h
+            + liquid_mass_fraction * liquid_mass_specific_h
+        )
+        inv_moles_per_kg = gas_mass_fraction / gas_mw + liquid_mass_fraction / liquid_mw
+        if inv_moles_per_kg <= 0.0:
+            raise ValueError("mixture molar density in mass space must be positive.")
+        mixture_mw = 1.0 / inv_moles_per_kg
+        mixture_molar_enthalpy = mixture_mass_specific_h * mixture_mw
+
+        inv_momentum_density = (
+            gas_mass_fraction / gas_density + liquid_mass_fraction / liquid_density
+        )
+        density = 1.0 / inv_momentum_density
+        return ChokeFlowState(
+            pressure=float(pressure),
+            temperature=float(temperature),
+            molar_enthalpy=float(mixture_molar_enthalpy),
+            gas_mass_fraction=gas_mass_fraction,
+            inv_momentum_density=float(inv_momentum_density),
+            density=float(density),
+            gas_density=float(gas_density),
+            liquid_density=float(liquid_density),
+        )
+
+    def build_equilibrium_flow_state(
+        self,
+        pressure: float,
+        molar_enthalpy: float,
+        composition,
+    ) -> ChokeFlowState:
+        phase_state = self.evaluate_equilibrium_phase_state(
+            pressure,
+            molar_enthalpy,
+            composition,
+        )
+        return self.build_mixed_flow_state(
+            pressure=pressure,
+            temperature=phase_state.temperature,
+            gas_mass_fraction=phase_state.gas_mass_fraction,
+            gas_density=phase_state.gas_density,
+            liquid_density=phase_state.liquid_density,
+            gas_molar_enthalpy=phase_state.gas_molar_enthalpy,
+            liquid_molar_enthalpy=phase_state.liquid_molar_enthalpy,
+            gas_phase_composition=phase_state.gas_phase_composition
+            if phase_state.gas_phase_composition is not None
+            else composition,
+            liquid_phase_composition=phase_state.liquid_phase_composition
+            if phase_state.liquid_phase_composition is not None
+            else composition,
+        )
+
+    def solve_single_phase_isentropic_state(
         self,
         boundary_state: ChokeBoundaryState,
         downstream_pressure: float,
-    ) -> float:
+    ) -> tuple[float, float]:
         phase_name = boundary_state.phase_name
         root_flag = self.phase_root_flag(phase_name)
 
@@ -169,21 +479,39 @@ class ChokePhysicsHelper:
             entropy_residual,
         )
         if bracket is None:
-            return self.clamp_enthalpy(boundary_state.molar_enthalpy)
+            return (
+                float(boundary_state.temperature),
+                self.clamp_enthalpy(boundary_state.molar_enthalpy),
+            )
 
         if bracket[0] == bracket[1]:
             temperature = bracket[0]
         else:
             temperature = brentq(entropy_residual, bracket[0], bracket[1])
 
-        molar_enthalpy = self.pc.enthalpy_ev[phase_name].evaluate(
+        molar_enthalpy = self.evaluate_phase_enthalpy(
+            phase_name,
             downstream_pressure,
             temperature,
             boundary_state.composition,
         )
         if not np.isfinite(molar_enthalpy):
-            return self.clamp_enthalpy(boundary_state.molar_enthalpy)
-        return self.clamp_enthalpy(molar_enthalpy)
+            return (
+                float(temperature),
+                self.clamp_enthalpy(boundary_state.molar_enthalpy),
+            )
+        return float(temperature), self.clamp_enthalpy(molar_enthalpy)
+
+    def solve_single_phase_isentropic_enthalpy(
+        self,
+        boundary_state: ChokeBoundaryState,
+        downstream_pressure: float,
+    ) -> float:
+        _, molar_enthalpy = self.solve_single_phase_isentropic_state(
+            boundary_state,
+            downstream_pressure,
+        )
+        return molar_enthalpy
 
     def solve_equilibrium_isentropic_enthalpy(
         self,
@@ -474,13 +802,25 @@ class EquilibriumModel(ABC):
         return
 
     @abstractmethod
+    def flow_state(
+        self,
+        helper: ChokePhysicsHelper,
+        boundary_state: ChokeBoundaryState,
+        pressure: float,
+    ) -> ChokeFlowState:
+        pass
+
     def discharge_molar_enthalpy(
         self,
         helper: ChokePhysicsHelper,
         boundary_state: ChokeBoundaryState,
         downstream_pressure: float,
     ) -> float:
-        pass
+        return self.flow_state(
+            helper,
+            boundary_state,
+            downstream_pressure,
+        ).molar_enthalpy
 
 
 class FrozenEquilibriumModel(EquilibriumModel):
@@ -491,24 +831,50 @@ class FrozenEquilibriumModel(EquilibriumModel):
     def name(self) -> str:
         return "FROZEN"
 
-    def discharge_molar_enthalpy(
+    def flow_state(
         self,
         helper: ChokePhysicsHelper,
         boundary_state: ChokeBoundaryState,
-        downstream_pressure: float,
-    ) -> float:
+        pressure: float,
+    ) -> ChokeFlowState:
         # OLGA default FROZEN behavior keeps liquid properties tied to the upstream
-        # state. Gas is expanded isentropically. If thermal phase equilibrium is
-        # enabled, use the phase-frozen isentropic path for either phase.
+        # liquid state. Gas is expanded isentropically. If thermal phase
+        # equilibrium is enabled, the phase still remains frozen, but follows an
+        # isentropic path.
         if boundary_state.phase_name == "L" and not self.thermal_phase_equilibrium:
-            return helper.clamp_enthalpy(boundary_state.molar_enthalpy)
-        return helper.solve_single_phase_isentropic_enthalpy(
+            upstream_liquid_state = helper.build_single_phase_flow_state(
+                phase_name="L",
+                pressure=boundary_state.pressure,
+                temperature=boundary_state.temperature,
+                composition=boundary_state.composition,
+                molar_enthalpy=boundary_state.molar_enthalpy,
+            )
+            return ChokeFlowState(
+                pressure=float(pressure),
+                temperature=float(boundary_state.temperature),
+                molar_enthalpy=float(boundary_state.molar_enthalpy),
+                gas_mass_fraction=0.0,
+                inv_momentum_density=upstream_liquid_state.inv_momentum_density,
+                density=upstream_liquid_state.density,
+                gas_density=np.nan,
+                liquid_density=upstream_liquid_state.density,
+            )
+        temperature, molar_enthalpy = helper.solve_single_phase_isentropic_state(
             boundary_state,
-            downstream_pressure,
+            pressure,
+        )
+        return helper.build_single_phase_flow_state(
+            phase_name=boundary_state.phase_name,
+            pressure=pressure,
+            temperature=temperature,
+            composition=boundary_state.composition,
+            molar_enthalpy=molar_enthalpy,
         )
 
 
 class HenryFauskeEquilibriumModel(EquilibriumModel):
+    _XE_REF = 0.14
+
     def __init__(self, thermal_phase_equilibrium: bool = False):
         self.thermal_phase_equilibrium = bool(thermal_phase_equilibrium)
         self._frozen = FrozenEquilibriumModel(
@@ -519,24 +885,89 @@ class HenryFauskeEquilibriumModel(EquilibriumModel):
     def name(self) -> str:
         return "HENRYFAUSKE"
 
-    def discharge_molar_enthalpy(
+    def flow_state(
         self,
         helper: ChokePhysicsHelper,
         boundary_state: ChokeBoundaryState,
-        downstream_pressure: float,
-    ) -> float:
-        # TODO: replace this blend with the full Henry-Fauske throat gas-fraction
-        # correction from the OLGA / Henry-Fauske equations.
-        h_frozen = self._frozen.discharge_molar_enthalpy(
+        pressure: float,
+    ) -> ChokeFlowState:
+        # Henry-Fauske keeps the frozen phase-path thermodynamics but corrects the
+        # throat gas fraction toward the equilibrium flash. OLGA documents this
+        # as a delayed flashing model with N = min(x_eq / 0.14, 1) for the
+        # metastable mass-transfer correction.
+        frozen_state = self._frozen.flow_state(
             helper,
             boundary_state,
-            downstream_pressure,
+            pressure,
         )
-        h_eq = helper.solve_equilibrium_isentropic_enthalpy(
-            boundary_state,
-            downstream_pressure,
+        h_eq = helper.solve_equilibrium_isentropic_enthalpy(boundary_state, pressure)
+        eq_phase_state = helper.evaluate_equilibrium_phase_state(
+            pressure=pressure,
+            molar_enthalpy=h_eq,
+            composition=boundary_state.composition,
         )
-        return helper.clamp_enthalpy(0.5 * (h_frozen + h_eq))
+
+        x0 = 1.0 if boundary_state.phase_name == "G" else 0.0
+        x_eq = float(np.clip(eq_phase_state.gas_mass_fraction, 0.0, 1.0))
+        if x_eq <= x0 + 1e-12:
+            return frozen_state
+
+        n_hf = min(x_eq / self._XE_REF, 1.0)
+        x_hf = float(np.clip(x0 + n_hf * (x_eq - x0), 0.0, 1.0))
+        if x_hf <= 1e-12:
+            return frozen_state
+
+        if (
+            not np.isfinite(eq_phase_state.gas_density)
+            or eq_phase_state.gas_density <= 0.0
+        ):
+            return frozen_state
+
+        if self.thermal_phase_equilibrium:
+            liquid_density = eq_phase_state.liquid_density
+            liquid_molar_enthalpy = eq_phase_state.liquid_molar_enthalpy
+            liquid_temperature = eq_phase_state.temperature
+            liquid_phase_composition = (
+                eq_phase_state.liquid_phase_composition
+                if eq_phase_state.liquid_phase_composition is not None
+                else boundary_state.composition
+            )
+        else:
+            liquid_density = frozen_state.liquid_density
+            liquid_molar_enthalpy = frozen_state.molar_enthalpy
+            liquid_temperature = frozen_state.temperature
+            liquid_phase_composition = boundary_state.composition
+
+        if not np.isfinite(liquid_density) or liquid_density <= 0.0:
+            return helper.build_single_phase_flow_state(
+                phase_name="G",
+                pressure=pressure,
+                temperature=eq_phase_state.temperature,
+                composition=eq_phase_state.gas_phase_composition
+                if eq_phase_state.gas_phase_composition is not None
+                else boundary_state.composition,
+                molar_enthalpy=eq_phase_state.gas_molar_enthalpy,
+            )
+
+        gas_phase_composition = (
+            eq_phase_state.gas_phase_composition
+            if eq_phase_state.gas_phase_composition is not None
+            else boundary_state.composition
+        )
+        mixture_temperature = (
+            x_hf * eq_phase_state.temperature + (1.0 - x_hf) * liquid_temperature
+        )
+        return helper.build_mixed_flow_state(
+            pressure=pressure,
+            temperature=mixture_temperature,
+            gas_mass_fraction=x_hf,
+            gas_density=eq_phase_state.gas_density,
+            liquid_density=liquid_density,
+            gas_molar_enthalpy=eq_phase_state.gas_molar_enthalpy,
+            liquid_molar_enthalpy=liquid_molar_enthalpy,
+            gas_phase_composition=gas_phase_composition,
+            liquid_phase_composition=liquid_phase_composition,
+        )
 
 
 class FullEquilibriumModel(EquilibriumModel):
@@ -550,15 +981,20 @@ class FullEquilibriumModel(EquilibriumModel):
                 "EQUILIBRIUMMODEL='EQUILIBRIUM' cannot be combined with a slip model."
             )
 
-    def discharge_molar_enthalpy(
+    def flow_state(
         self,
         helper: ChokePhysicsHelper,
         boundary_state: ChokeBoundaryState,
-        downstream_pressure: float,
-    ) -> float:
-        return helper.solve_equilibrium_isentropic_enthalpy(
+        pressure: float,
+    ) -> ChokeFlowState:
+        molar_enthalpy = helper.solve_equilibrium_isentropic_enthalpy(
             boundary_state,
-            downstream_pressure,
+            pressure,
+        )
+        return helper.build_equilibrium_flow_state(
+            pressure=pressure,
+            molar_enthalpy=molar_enthalpy,
+            composition=boundary_state.composition,
         )
 
 
@@ -624,6 +1060,11 @@ def build_slip_model(slip_model: str) -> SlipModel:
 
 
 class ChokeModel:
+    _PRESSURE_EPS_BAR = 1e-6
+    _MIN_PRESSURE_BAR = 1e-3
+    _INTEGRATION_POINTS = 8
+    _ROOT_SCAN_POINTS = 24
+
     def __init__(
         self,
         helper: ChokePhysicsHelper,
@@ -632,6 +1073,7 @@ class ChokeModel:
         equilibrium_model: EquilibriumModel,
         recovery_model: RecoveryModel,
         slip_model: SlipModel,
+        downstream_area: float,
     ):
         self.helper = helper
         self.boundary_state = boundary_state
@@ -639,10 +1081,148 @@ class ChokeModel:
         self.equilibrium_model = equilibrium_model
         self.recovery_model = recovery_model
         self.slip_model = slip_model
+        self.downstream_area = float(downstream_area)
 
         self.recovery_model.validate(self.valve_geometry_model.valve_geometry)
         self.slip_model.validate(self.equilibrium_model.name)
         self.equilibrium_model.validate(self.slip_model.name)
+
+        if self.downstream_area <= 0.0:
+            raise ValueError("downstream_area must be positive.")
+
+    def _state_cache_key(self, pressure: float) -> float:
+        return round(float(pressure), 8)
+
+    def _flow_state(
+        self,
+        pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> ChokeFlowState:
+        key = self._state_cache_key(pressure)
+        if key not in cache:
+            cache[key] = self.equilibrium_model.flow_state(
+                self.helper,
+                self.boundary_state,
+                float(pressure),
+            )
+        return cache[key]
+
+    def _integrate_inverse_momentum_density(
+        self,
+        throat_pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float:
+        upstream_pressure = self.boundary_state.pressure
+        if throat_pressure >= upstream_pressure:
+            return 0.0
+
+        pressures = np.linspace(
+            throat_pressure,
+            upstream_pressure,
+            self._INTEGRATION_POINTS,
+        )
+        inv_rho_m = np.asarray(
+            [self._flow_state(p, cache).inv_momentum_density for p in pressures],
+            dtype=float,
+        )
+        return float(np.trapz(inv_rho_m, pressures * 1e5))
+
+    def _mass_rate_from_throat_pressure(
+        self,
+        throat_pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float:
+        throat_state = self._flow_state(throat_pressure, cache)
+        integral_term = self._integrate_inverse_momentum_density(
+            throat_pressure,
+            cache,
+        )
+        if (
+            not np.isfinite(integral_term)
+            or integral_term <= 0.0
+            or not np.isfinite(throat_state.inv_momentum_density)
+            or throat_state.inv_momentum_density <= 0.0
+        ):
+            return 0.0
+        return (
+            self.valve_geometry_model.effective_area
+            * math.sqrt(2.0 * integral_term)
+            / throat_state.inv_momentum_density
+        )
+
+    def _predicted_downstream_pressure(
+        self,
+        throat_pressure: float,
+        target_downstream_pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float:
+        throat_state = self._flow_state(throat_pressure, cache)
+        downstream_state = self._flow_state(target_downstream_pressure, cache)
+        mass_rate = self._mass_rate_from_throat_pressure(throat_pressure, cache)
+        recovery_term = (
+            mass_rate**2
+            * (
+                throat_state.inv_momentum_density
+                / self.valve_geometry_model.effective_area
+                - downstream_state.inv_momentum_density / self.downstream_area
+            )
+            / self.downstream_area
+        )
+        return float(throat_pressure + recovery_term / 1e5)
+
+    def _find_subcritical_throat_pressure(
+        self,
+        downstream_pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float | None:
+        upper = min(
+            downstream_pressure * (1.0 - self._PRESSURE_EPS_BAR),
+            self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR),
+        )
+        lower = min(self._MIN_PRESSURE_BAR, 0.5 * upper)
+        if upper <= lower:
+            return None
+
+        def residual(throat_pressure: float) -> float:
+            return (
+                self._predicted_downstream_pressure(
+                    throat_pressure,
+                    downstream_pressure,
+                    cache,
+                )
+                - downstream_pressure
+            )
+
+        samples = np.linspace(lower, upper, self._ROOT_SCAN_POINTS)
+        bracket = self.helper.find_bracket(samples, residual)
+        if bracket is None:
+            return None
+        if bracket[0] == bracket[1]:
+            return bracket[0]
+        return float(brentq(residual, bracket[0], bracket[1]))
+
+    def _critical_solution(
+        self,
+        cache: dict[float, ChokeFlowState],
+    ) -> tuple[float, float]:
+        upper = self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR)
+        lower = min(self._MIN_PRESSURE_BAR, 0.5 * upper)
+        if upper <= lower:
+            return lower, 0.0
+
+        def objective(throat_pressure: float) -> float:
+            return -self._mass_rate_from_throat_pressure(throat_pressure, cache)
+
+        optimum = minimize_scalar(
+            objective,
+            bounds=(lower, upper),
+            method="bounded",
+        )
+        throat_pressure = float(optimum.x)
+        return throat_pressure, self._mass_rate_from_throat_pressure(
+            throat_pressure,
+            cache,
+        )
 
     def size_diameter_from_target_rate(
         self,
@@ -657,19 +1237,33 @@ class ChokeModel:
         )
 
     def evaluate(self, downstream_pressure: float) -> ChokeEvaluationResult:
-        mass_rate_kg_s = self.valve_geometry_model.mass_rate_kg_s(
-            self.helper,
-            self.boundary_state,
+        cache: dict[float, ChokeFlowState] = {}
+        throat_pressure = self._find_subcritical_throat_pressure(
             downstream_pressure,
+            cache,
         )
-        discharge_molar_enthalpy = self.equilibrium_model.discharge_molar_enthalpy(
-            self.helper,
-            self.boundary_state,
+        if throat_pressure is None:
+            throat_pressure, mass_rate_kg_s = self._critical_solution(cache)
+            flow_regime = "critical"
+        else:
+            mass_rate_kg_s = self._mass_rate_from_throat_pressure(
+                throat_pressure,
+                cache,
+            )
+            flow_regime = "subcritical"
+
+        discharge_state = self._flow_state(
             downstream_pressure,
+            cache,
         )
         return ChokeEvaluationResult(
             mass_rate_kg_s=mass_rate_kg_s,
-            discharge_molar_enthalpy=discharge_molar_enthalpy,
+            discharge_molar_enthalpy=discharge_state.molar_enthalpy,
+            throat_pressure=float(throat_pressure),
+            flow_regime=flow_regime,
+            discharge_density=discharge_state.density,
+            discharge_inv_momentum_density=discharge_state.inv_momentum_density,
+            discharge_gas_mass_fraction=discharge_state.gas_mass_fraction,
         )
 
 
@@ -773,6 +1367,8 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
         self.max_molar_rate = max_molar_rate
         self.last_downstream_pressure = None
         self.last_mass_rate_kg_s = None
+        self.last_throat_pressure = None
+        self.last_flow_regime = None
 
         helper = ChokePhysicsHelper(self.physics)
         boundary_state = ChokeBoundaryState(
@@ -813,6 +1409,7 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
             equilibrium_model=equilibrium_model_obj,
             recovery_model=recovery_model,
             slip_model=slip_model_obj,
+            downstream_area=pipe_geom.pipe_internal_A,
         )
 
         if geometry_model.diameter is None:
@@ -836,6 +1433,9 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
         self.gas_liquid_sizing_ratio = float(gas_liquid_sizing_ratio)
         self.thermal_phase_equilibrium = bool(thermal_phase_equilibrium)
         self.current_discharge_molar_enthalpy = self.inj_fluid_props["molar_enthalpy"]
+        self.current_discharge_density = None
+        self.current_discharge_inv_momentum_density = None
+        self.current_discharge_gas_mass_fraction = None
 
         if self.ramp_up_period == 0.0:
             self.current_rate = target_molar_rate
@@ -887,6 +1487,36 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
         )
         return target_molar_rate * mw_avg / self._SEC_PER_DAY
 
+    def get_boundary_momentum_flux(
+        self,
+        property_container,
+        pipe_internal_area: float,
+        molar_rate: float = None,
+    ) -> float:
+        rate = self.current_rate if molar_rate is None else molar_rate
+        mw = np.asarray(property_container.Mw)
+        mass_rate = float(np.sum(rate * self.composition * mw) / self._SEC_PER_DAY)
+
+        if mass_rate == 0.0:
+            return 0.0
+
+        if (
+            self.current_discharge_inv_momentum_density is None
+            or not np.isfinite(self.current_discharge_inv_momentum_density)
+            or self.current_discharge_inv_momentum_density <= 0.0
+        ):
+            return super().get_boundary_momentum_flux(
+                property_container,
+                pipe_internal_area,
+                molar_rate=rate,
+            )
+
+        return (
+            mass_rate**2
+            * self.current_discharge_inv_momentum_density
+            / pipe_internal_area
+        )
+
     def update_current_molar_rate(self, simulation_time):
         engine_x = np.asarray(self.physics.engine.X)
         n_vars = self.physics.n_vars
@@ -914,3 +1544,12 @@ class UpstreamPressureNodeWithChoke(UpstreamMassNode):
         if self.max_molar_rate is not None:
             self.current_rate = min(self.current_rate, self.max_molar_rate)
         self.current_discharge_molar_enthalpy = choke_eval.discharge_molar_enthalpy
+        self.current_discharge_density = choke_eval.discharge_density
+        self.current_discharge_inv_momentum_density = (
+            choke_eval.discharge_inv_momentum_density
+        )
+        self.current_discharge_gas_mass_fraction = (
+            choke_eval.discharge_gas_mass_fraction
+        )
+        self.last_throat_pressure = choke_eval.throat_pressure
+        self.last_flow_regime = choke_eval.flow_regime

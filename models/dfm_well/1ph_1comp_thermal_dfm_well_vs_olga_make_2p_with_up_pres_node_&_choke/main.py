@@ -18,6 +18,7 @@ from model import Model
 RUNTIME_DAY = 10 / 24 / 60
 RATE_TOL_KG_S = 1e-4
 MAX_CHOKE_SIZE_ITERS = 4
+OLGA_EQUILIBRIUM_MODEL = "FROZEN"
 OLGA_CD = 0.84
 OLGA_CF = 26.8465
 OLGA_CR = 1.0
@@ -31,6 +32,7 @@ EXCEL_PATH = os.path.join(
 def build_model(choke_diameter_m: float = None) -> Model:
     coupled_model = Model(
         inlet_boundary_kind="pressure_node_choke",
+        inlet_choke_equilibrium_model=OLGA_EQUILIBRIUM_MODEL,
         inlet_choke_diameter=choke_diameter_m,
         inlet_choke_discharge_coefficient=OLGA_CD,
         inlet_choke_gas_liquid_sizing_ratio=OLGA_CF,
@@ -174,6 +176,7 @@ print(
 )
 print(
     "Configured choke inputs: "
+    f"EQUILIBRIUMMODEL={final_node.equilibrium_model}, "
     f"CD={final_node.discharge_coefficient:.4f}, "
     f"CF={final_node.gas_liquid_sizing_ratio:.4f}, "
     f"CR={final_node.recovery_tuning:.4f}, "
