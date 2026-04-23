@@ -99,6 +99,12 @@ class KilloughLandModel:
         """
         sg_max = float(np.clip(sg_max, 0.0, 1.0 - self.swc))
         return sg_max / (1.0 + self.land_constant * sg_max)
+    
+    def dissolution_feedback_sgmax(self, sgr_new: float) -> float:
+        """Trapped gas saturation for a given historical maximum.
+        """
+        sgr_new = float(np.clip(sgr_new, 0.0, 1.0 - self.swc))
+        return sgr_new / (1.0 - self.land_constant * sgr_new)
 
     def update_sg_max(self, sg: float, sg_max: float) -> float:
         """Advance ``sg_max`` given the current gas saturation.
@@ -121,7 +127,8 @@ class KilloughLandModel:
 
         sgr = self.residual_gas_saturation(sg_max)
         if sg < sgr:
-            return float(np.clip(sgr, 0.0, 1.0))
+            sg_max_new = self.dissolution_feedback_sgmax(sg)
+            return float(np.clip(sg_max_new, 0.0, 1.0))
         return sg_max
 
 
