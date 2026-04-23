@@ -101,8 +101,7 @@ class KilloughLandModel:
         return sg_max / (1.0 + self.land_constant * sg_max)
     
     def dissolution_feedback_sgmax(self, sgr_new: float) -> float:
-        """Trapped gas saturation for a given historical maximum.
-        """
+        """CO2 dissolution feedback on sgr and then on sgmax"""
         sgr_new = float(np.clip(sgr_new, 0.0, 1.0 - self.swc))
         return sgr_new / (1.0 - self.land_constant * sgr_new)
 
