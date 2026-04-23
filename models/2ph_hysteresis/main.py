@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from darts.engines import redirect_darts_output
@@ -162,6 +162,7 @@ def run_case(config: CaseConfig, platform: str = "cpu") -> Model:
         if config.plot_sg_snapshots
         else set()
     )
+    previous_day = 0.0
     for step in range(1, n_steps + 1):
         model.run(
             config.report_step_days,
@@ -170,11 +171,15 @@ def run_case(config: CaseConfig, platform: str = "cpu") -> Model:
         )
         update_schedule(model, config)
         current_day = float(model.physics.engine.t)
-        for snapshot_day in sorted(remaining_snapshot_days):
-            if abs(current_day - snapshot_day) < 1e-9:
-                save_sg_profile_figure(model, figure_dir, snapshot_day)
-                remaining_snapshot_days.remove(snapshot_day)
-                break
+        snapshot_days_due = [
+            day
+            for day in sorted(remaining_snapshot_days)
+            if previous_day < day <= current_day + 1e-9
+        ]
+        for snapshot_day in snapshot_days_due:
+            save_sg_profile_figure(model, figure_dir, snapshot_day)
+            remaining_snapshot_days.remove(snapshot_day)
+        previous_day = current_day
         if config.write_vtk:
             model.output.output_to_vtk(
                 ith_step=step,
@@ -187,14 +192,33 @@ def run_case(config: CaseConfig, platform: str = "cpu") -> Model:
     return model
 
 
-def main() -> None:
+def parse_cli_args(argv: list[str]) -> tuple[str, bool]:
     platform = "cpu"
-    if len(sys.argv) > 1:
-        platform = sys.argv[1]
-    if platform not in ["cpu", "gpu"]:
-        print("unknown platform specified", platform)
-        raise SystemExit(1)
-    run_case(CONFIG, platform=platform)
+    plot_sg_snapshots = CONFIG.plot_sg_snapshots
+    plot_flags = {"plot", "--plot", "--plot-sg", "--plot-sg-snapshots"}
+    no_plot_flags = {"noplot", "--no-plot", "--no-plot-sg"}
+
+    for arg in argv:
+        option = arg.lower()
+        if option in {"cpu", "gpu"}:
+            platform = option
+        elif option in plot_flags:
+            plot_sg_snapshots = True
+        elif option in no_plot_flags:
+            plot_sg_snapshots = False
+        else:
+            print(
+                "usage: python main.py [cpu|gpu] [plot|--plot-sg|--no-plot-sg]"
+            )
+            print("unknown option specified", arg)
+            raise SystemExit(1)
+    return platform, plot_sg_snapshots
+
+
+def main() -> None:
+    platform, plot_sg_snapshots = parse_cli_args(sys.argv[1:])
+    config = replace(CONFIG, plot_sg_snapshots=plot_sg_snapshots)
+    run_case(config, platform=platform)
 
 
 if __name__ == "__main__":
