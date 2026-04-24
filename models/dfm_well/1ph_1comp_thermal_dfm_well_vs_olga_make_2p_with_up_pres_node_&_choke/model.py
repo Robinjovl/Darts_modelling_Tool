@@ -1,7 +1,6 @@
 import numpy as np
 
 from darts.models.cicd_model import CICDModel
-from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, ms_well, value_vector, well_control_iface
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
@@ -21,6 +20,10 @@ from darts.pipes.upstream_pressure_node_with_choke import (
 )
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
+from darts.pipes.linear_dfm_well_ipr import (
+    LinearDFMWellIPR,
+    LinearDFMWellIPRConnection,
+)
 from darts.pipes.viz.plot_live import DartsModelWithLivePlots
 
 # class Model(DartsModelWithLivePlots):
@@ -112,7 +115,6 @@ class Model(CICDModel):
         self.bottom_boundary_mode = bottom_boundary_mode
         self.bottom_mass_ipr_kg_day_bar = float(bottom_mass_ipr_kg_day_bar)
         self.bottom_pressure_offset_bar = float(bottom_pressure_offset_bar)
-        self._bottom_boundary_csr_cache = None
 
         # self.live_plot_config.enable_well_res_profiles = True
         # self.live_plot_config.plot_till_this_res_cell = 0
@@ -438,6 +440,24 @@ class Model(CICDModel):
                 }
             )
         self.reservoir.add_perforation(**perforation_kwargs)
+        if self.bottom_boundary_mode == "python_linear_mass_ipr":
+            self.rhs_flux_hooks.append(
+                LinearDFMWellIPR(
+                    self,
+                    [
+                        LinearDFMWellIPRConnection(
+                            well_name=well_1_name,
+                            perforation_index=len(
+                                self.reservoir.get_well(well_1_name).perforations
+                            )
+                            - 1,
+                            rate_slope=self.bottom_mass_ipr_kg_day_bar,
+                            rate_type=ms_well.PI_Type.MASS,
+                            pressure_offset_bar=self.bottom_pressure_offset_bar,
+                        )
+                    ],
+                )
+            )
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
@@ -463,170 +483,6 @@ class Model(CICDModel):
         rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_rates
 
         return rhs_flux
-
-    def _state_overall_composition(self, state: np.ndarray) -> np.ndarray:
-        if self.physics.nc == 1:
-            return np.array([1.0], dtype=float)
-
-        zc = np.empty(self.physics.nc, dtype=float)
-        zc[:-1] = state[1 : self.physics.nc]
-        zc[-1] = 1.0 - np.sum(zc[:-1])
-        return zc
-
-    def _get_bottom_boundary_indices(self) -> tuple[int, int]:
-        well = self.reservoir.get_well("I1")
-        perf_segment_local, res_block_idx, _, _ = well.perforations[0]
-        well_block_idx = well.well_body_idx + perf_segment_local
-        return well_block_idx, res_block_idx
-
-    def _find_csr_block_position(self, row_block: int, col_block: int) -> int:
-        jac_rows = np.array(self.physics.engine.jac_rows, copy=False)
-        jac_cols = np.array(self.physics.engine.jac_cols, copy=False)
-        row_start = jac_rows[row_block]
-        row_end = jac_rows[row_block + 1]
-        off_pos = np.where(jac_cols[row_start:row_end] == col_block)[0]
-        if len(off_pos) == 0:
-            raise RuntimeError(
-                f"CSR block ({row_block}, {col_block}) was not found in the Jacobian pattern."
-            )
-        return int(row_start + off_pos[0])
-
-    def _get_bottom_boundary_csr_cache(self) -> dict:
-        if self._bottom_boundary_csr_cache is None:
-            well_block_idx, res_block_idx = self._get_bottom_boundary_indices()
-            jac_diags = np.array(self.physics.engine.jac_diags, copy=False)
-            self._bottom_boundary_csr_cache = {
-                "well_block_idx": well_block_idx,
-                "res_block_idx": res_block_idx,
-                "diag_well": int(jac_diags[well_block_idx]),
-                "diag_res": int(jac_diags[res_block_idx]),
-                "off_well_res": self._find_csr_block_position(
-                    well_block_idx, res_block_idx
-                ),
-                "off_res_well": self._find_csr_block_position(
-                    res_block_idx, well_block_idx
-                ),
-            }
-        return self._bottom_boundary_csr_cache
-
-    def _apply_python_linear_mass_ipr(self, dt: float) -> None:
-        cache = self._get_bottom_boundary_csr_cache()
-        n_vars = self.physics.n_vars
-        n_jac_block_size = n_vars * n_vars
-
-        well_block_idx = cache["well_block_idx"]
-        res_block_idx = cache["res_block_idx"]
-
-        rhs = np.array(self.physics.engine.RHS, copy=False)
-        jac_vals = np.array(self.physics.engine.jac_vals, copy=False)
-        X = np.array(self.physics.engine.X, copy=False)
-
-        well_state = X[well_block_idx * n_vars : (well_block_idx + 1) * n_vars]
-        res_state = X[res_block_idx * n_vars : (res_block_idx + 1) * n_vars]
-
-        pressure_drawdown_bar = (
-            well_state[0] - res_state[0] - self.bottom_pressure_offset_bar
-        )
-        mass_rate_kg_day = self.bottom_mass_ipr_kg_day_bar * pressure_drawdown_bar
-
-        if mass_rate_kg_day >= 0.0:
-            upstream_block_idx = well_block_idx
-            upstream_state = well_state
-        else:
-            upstream_block_idx = res_block_idx
-            upstream_state = res_state
-
-        zc_upstream = self._state_overall_composition(upstream_state)
-        mw_avg = float(
-            np.sum(self.physics.property_containers[0].Mw[: self.physics.nc] * zc_upstream)
-        )
-        molar_rate = mass_rate_kg_day / mw_avg
-        energy_rate = 0.0
-        if self.physics.thermal:
-            upstream_enthalpy = float(upstream_state[n_vars - 1])
-            upstream_specific_potential_energy = self.reservoir.mesh.cell_spe[
-                upstream_block_idx
-            ]
-            energy_rate = molar_rate * (
-                upstream_enthalpy + upstream_specific_potential_energy * mw_avg
-            )
-
-        well_base = well_block_idx * n_vars
-        res_base = res_block_idx * n_vars
-
-        # Positive molar_rate means well -> reservoir.
-        rhs[well_base + 0] += molar_rate * dt
-        rhs[res_base + 0] -= molar_rate * dt
-        if self.physics.thermal:
-            rhs[well_base + (n_vars - 1)] += energy_rate * dt
-            rhs[res_base + (n_vars - 1)] -= energy_rate * dt
-
-        dqmol_dp = self.bottom_mass_ipr_kg_day_bar / mw_avg
-
-        diag_well = cache["diag_well"]
-        diag_res = cache["diag_res"]
-        off_well_res = cache["off_well_res"]
-        off_res_well = cache["off_res_well"]
-
-        # Mass equation derivatives.
-        jac_vals[diag_well * n_jac_block_size + n_vars * 0 + 0] += dqmol_dp * dt
-        jac_vals[off_well_res * n_jac_block_size + n_vars * 0 + 0] -= dqmol_dp * dt
-        jac_vals[diag_res * n_jac_block_size + n_vars * 0 + 0] -= dqmol_dp * dt
-        jac_vals[off_res_well * n_jac_block_size + n_vars * 0 + 0] += dqmol_dp * dt
-
-        if not self.physics.thermal:
-            return
-
-        energy_eq = n_vars - 1
-        upstream_enthalpy = float(upstream_state[n_vars - 1])
-        upstream_specific_potential_energy = self.reservoir.mesh.cell_spe[
-            upstream_block_idx
-        ]
-        upstream_energy_molar = upstream_enthalpy + upstream_specific_potential_energy * mw_avg
-
-        # Pressure derivatives from q(p) * e_upstream.
-        jac_vals[
-            diag_well * n_jac_block_size + n_vars * energy_eq + 0
-        ] += dqmol_dp * upstream_energy_molar * dt
-        jac_vals[
-            off_well_res * n_jac_block_size + n_vars * energy_eq + 0
-        ] -= dqmol_dp * upstream_energy_molar * dt
-        jac_vals[
-            diag_res * n_jac_block_size + n_vars * energy_eq + 0
-        ] -= dqmol_dp * upstream_energy_molar * dt
-        jac_vals[
-            off_res_well * n_jac_block_size + n_vars * energy_eq + 0
-        ] += dqmol_dp * upstream_energy_molar * dt
-
-        # Enthalpy derivatives from q * h_upstream.
-        if upstream_block_idx == well_block_idx:
-            jac_vals[
-                diag_well * n_jac_block_size + n_vars * energy_eq + energy_eq
-            ] += molar_rate * dt
-            jac_vals[
-                diag_res * n_jac_block_size + n_vars * energy_eq + energy_eq
-            ] -= molar_rate * dt
-        else:
-            jac_vals[
-                off_well_res * n_jac_block_size + n_vars * energy_eq + energy_eq
-            ] += molar_rate * dt
-            jac_vals[
-                off_res_well * n_jac_block_size + n_vars * energy_eq + energy_eq
-            ] -= molar_rate * dt
-
-    def apply_rhs_flux(self, dt: float, t: float):
-        if (
-            type(self).set_rhs_flux is DartsModel.set_rhs_flux
-            and self.bottom_boundary_mode != "python_linear_mass_ipr"
-        ):
-            return
-
-        rhs = np.array(self.physics.engine.RHS, copy=False)
-        if type(self).set_rhs_flux is not DartsModel.set_rhs_flux:
-            rhs += self.set_rhs_flux(t) * dt
-
-        if self.bottom_boundary_mode == "python_linear_mass_ipr":
-            self._apply_python_linear_mass_ipr(dt)
 
     # def set_well_controls(self):
     #     inj_composition = []

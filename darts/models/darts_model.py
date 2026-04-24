@@ -91,6 +91,7 @@ class DartsModel:
 
         # Create member variable wells (it is needed only for DFM wells)
         self.wells = None
+        self.rhs_flux_hooks = []
 
         # Create time_node object for time record
         self.timer = timer_node()
@@ -1088,18 +1089,25 @@ class DartsModel:
         """
         Function to apply modifications to RHS vector.
 
-        If self.set_rhs_flux() is defined in Model, this function will add its values to rhs
+        If self.set_rhs_flux() is defined in Model, this function will add its values to rhs.
+        Additional Python-side RHS/Jacobian hooks can be registered in self.rhs_flux_hooks.
 
         :param dt: timestep [days]
         :type dt: float
         :param t: current time [days]
         :type t: float
         """
-        if type(self).set_rhs_flux is DartsModel.set_rhs_flux:
-            # If the function has not been overloaded, pass
+        if (
+            type(self).set_rhs_flux is DartsModel.set_rhs_flux
+            and not self.rhs_flux_hooks
+        ):
+            # If there is no user-defined RHS contribution and no Python hook, pass
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
-        rhs += self.set_rhs_flux(t) * dt
+        if type(self).set_rhs_flux is not DartsModel.set_rhs_flux:
+            rhs += self.set_rhs_flux(t) * dt
+        for hook in self.rhs_flux_hooks:
+            hook.apply(dt=dt, t=t)
         return
 
     def print_timers(self):
