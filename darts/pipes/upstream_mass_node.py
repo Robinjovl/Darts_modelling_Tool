@@ -24,21 +24,32 @@ class UpstreamMassNode(RampUpRate):
         target_molar_rate: float,
         ramp_up_period: float,
         composition,
-        pressure: float,
-        temperature: float,
-        phase_name: str,
+        pressure: float = None,
+        temperature: float = None,
+        phase_name: str = None,
+        molar_enthalpy: float = None,
+        inv_momentum_density: float = None,
         apply_pressure_boundary: bool = False,
         verbose: bool = False,
     ):
         if not physics.thermal:
             raise ValueError("UpstreamMassNode currently requires thermal physics.")
 
-        inj_fluid_props = {
-            "composition": composition,
-            "pressure": pressure,
-            "temperature": temperature,
-            "phase_name": phase_name,
-        }
+        inj_fluid_props = {"composition": composition}
+        if molar_enthalpy is None:
+            if pressure is None or temperature is None or phase_name is None:
+                raise ValueError(
+                    "pressure, temperature, and phase_name must be provided when molar_enthalpy is not specified."
+                )
+            inj_fluid_props.update(
+                {
+                    "pressure": pressure,
+                    "temperature": temperature,
+                    "phase_name": phase_name,
+                }
+            )
+        else:
+            inj_fluid_props["molar_enthalpy"] = float(molar_enthalpy)
 
         super().__init__(
             pipe_name=pipe_name,
@@ -52,6 +63,16 @@ class UpstreamMassNode(RampUpRate):
             inj_fluid_props=inj_fluid_props,
             verbose=False,
         )
+        if pressure is not None:
+            self.inj_fluid_props["pressure"] = float(pressure)
+        if temperature is not None:
+            self.inj_fluid_props["temperature"] = float(temperature)
+        if phase_name is not None:
+            self.inj_fluid_props["phase_name"] = phase_name
+
+        self.prescribed_inv_momentum_density = (
+            None if inv_momentum_density is None else float(inv_momentum_density)
+        )
         self.apply_pressure_boundary = apply_pressure_boundary
 
         if verbose:
@@ -61,15 +82,15 @@ class UpstreamMassNode(RampUpRate):
 
     @property
     def pressure(self) -> float:
-        return self.inj_fluid_props["pressure"]
+        return self.inj_fluid_props.get("pressure")
 
     @property
     def temperature(self) -> float:
-        return self.inj_fluid_props["temperature"]
+        return self.inj_fluid_props.get("temperature")
 
     @property
     def phase_name(self) -> str:
-        return self.inj_fluid_props["phase_name"]
+        return self.inj_fluid_props.get("phase_name")
 
     @property
     def composition(self) -> np.ndarray:
@@ -118,6 +139,11 @@ class UpstreamMassNode(RampUpRate):
 
         if mass_rate == 0.0:
             return 0.0
+
+        if self.prescribed_inv_momentum_density is not None:
+            return (
+                mass_rate**2 * self.prescribed_inv_momentum_density / pipe_internal_area
+            )
 
         if self.phase_name == "G":
             rho = property_container.density_ev["G"].evaluate(

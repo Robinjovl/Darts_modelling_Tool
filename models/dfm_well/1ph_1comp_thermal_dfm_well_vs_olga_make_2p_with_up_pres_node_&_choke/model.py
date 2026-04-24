@@ -1,6 +1,7 @@
 import numpy as np
 
 from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, ms_well, value_vector, well_control_iface
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
@@ -27,6 +28,11 @@ class Model(CICDModel):
     def __init__(
         self,
         inlet_boundary_kind: str = "upstream_mass_node",
+        use_inlet_source_term: bool = True,
+        forced_top_state_pressure: float = None,
+        forced_top_state_temperature: float = None,
+        forced_top_state_liquid_holdup: float = None,
+        top_segment_volume_multiplier: float = 1.0,
         inlet_choke_valve_geometry: str = "ORIFICE",
         inlet_choke_equilibrium_model: str = "FROZEN",
         inlet_choke_diameter: float = None,
@@ -38,6 +44,9 @@ class Model(CICDModel):
         inlet_choke_recovery: str = "OFF",
         inlet_choke_recovery_tuning: float = 1.0,
         inlet_choke_slip_model: str = "NOSLIP",
+        bottom_boundary_mode: str = "engine_pi",
+        bottom_mass_ipr_kg_day_bar: float = 1e5,
+        bottom_pressure_offset_bar: float = 0.0,
     ):
         # Call base class constructor
         super().__init__()
@@ -48,6 +57,38 @@ class Model(CICDModel):
                 "inlet_boundary_kind must be either 'upstream_mass_node' or 'pressure_node_choke'."
             )
         self.inlet_boundary_kind = inlet_boundary_kind
+        self.use_inlet_source_term = bool(use_inlet_source_term)
+        forced_top_state_specified = any(
+            value is not None
+            for value in (
+                forced_top_state_pressure,
+                forced_top_state_temperature,
+                forced_top_state_liquid_holdup,
+            )
+        )
+        if forced_top_state_specified and not all(
+            value is not None
+            for value in (
+                forced_top_state_pressure,
+                forced_top_state_temperature,
+                forced_top_state_liquid_holdup,
+            )
+        ):
+            raise ValueError(
+                "forced_top_state_pressure, forced_top_state_temperature, and forced_top_state_liquid_holdup must either all be provided or all be omitted."
+            )
+        if forced_top_state_specified and inlet_boundary_kind != "upstream_mass_node":
+            raise ValueError(
+                "A forced top-segment state currently requires inlet_boundary_kind='upstream_mass_node'."
+            )
+        if top_segment_volume_multiplier <= 0.0:
+            raise ValueError("top_segment_volume_multiplier must be positive.")
+        self.forced_top_state_pressure = forced_top_state_pressure
+        self.forced_top_state_temperature = forced_top_state_temperature
+        self.forced_top_state_liquid_holdup = forced_top_state_liquid_holdup
+        self.top_segment_volume_multiplier = float(top_segment_volume_multiplier)
+        self.forced_top_segment_enabled = forced_top_state_specified
+        self.forced_top_segment_state = None
         self.inlet_choke_valve_geometry = inlet_choke_valve_geometry
         self.inlet_choke_equilibrium_model = inlet_choke_equilibrium_model
         self.inlet_choke_diameter = inlet_choke_diameter
@@ -63,6 +104,15 @@ class Model(CICDModel):
         self.inlet_choke_recovery = inlet_choke_recovery
         self.inlet_choke_recovery_tuning = inlet_choke_recovery_tuning
         self.inlet_choke_slip_model = inlet_choke_slip_model
+        bottom_boundary_mode = bottom_boundary_mode.lower()
+        if bottom_boundary_mode not in ("engine_pi", "python_linear_mass_ipr"):
+            raise ValueError(
+                "bottom_boundary_mode must be either 'engine_pi' or 'python_linear_mass_ipr'."
+            )
+        self.bottom_boundary_mode = bottom_boundary_mode
+        self.bottom_mass_ipr_kg_day_bar = float(bottom_mass_ipr_kg_day_bar)
+        self.bottom_pressure_offset_bar = float(bottom_pressure_offset_bar)
+        self._bottom_boundary_csr_cache = None
 
         # self.live_plot_config.enable_well_res_profiles = True
         # self.live_plot_config.plot_till_this_res_cell = 0
@@ -109,6 +159,60 @@ class Model(CICDModel):
             "current_discharge_molar_enthalpy",
             mass_node.inj_fluid_props["molar_enthalpy"],
         )
+
+    def _build_forced_top_segment_state(self, composition: np.ndarray) -> dict | None:
+        if not self.forced_top_segment_enabled:
+            return None
+
+        pressure = float(self.forced_top_state_pressure)
+        temperature = float(self.forced_top_state_temperature)
+        liquid_holdup = float(self.forced_top_state_liquid_holdup)
+        if not 0.0 <= liquid_holdup <= 1.0:
+            raise ValueError("forced_top_state_liquid_holdup must be between 0 and 1.")
+
+        pc = self.physics.property_containers[0]
+        rho_l = float(pc.density_ev["L"].evaluate(pressure, temperature, composition))
+        rho_g = float(pc.density_ev["G"].evaluate(pressure, temperature, composition))
+        h_l = float(pc.enthalpy_ev["L"].evaluate(pressure, temperature, composition))
+        h_g = float(pc.enthalpy_ev["G"].evaluate(pressure, temperature, composition))
+
+        # Encode the OLGA top-segment PT + holdup target into the PH state and
+        # no-slip inlet momentum closure that DARTS actually consumes.
+        gas_holdup = 1.0 - liquid_holdup
+        mixture_density = liquid_holdup * rho_l + gas_holdup * rho_g
+        if mixture_density <= 0.0:
+            raise ValueError("Computed mixture density for the forced top state is not positive.")
+
+        gas_mass_fraction = gas_holdup * rho_g / mixture_density
+        liquid_mass_fraction = 1.0 - gas_mass_fraction
+        molar_enthalpy = liquid_mass_fraction * h_l + gas_mass_fraction * h_g
+
+        return {
+            "pressure": pressure,
+            "temperature": temperature,
+            "liquid_holdup": liquid_holdup,
+            "gas_holdup": gas_holdup,
+            "rho_l": rho_l,
+            "rho_g": rho_g,
+            "mixture_density": mixture_density,
+            "gas_mass_fraction": gas_mass_fraction,
+            "molar_enthalpy": molar_enthalpy,
+            "inv_momentum_density": 1.0 / mixture_density,
+        }
+
+    def _apply_forced_top_segment_initial_state(
+        self,
+        well_initial_conditions,
+        forced_state: dict | None,
+    ) -> None:
+        if forced_state is None:
+            return
+
+        well_initial_conditions.initial_conditions_vector[0] = forced_state["pressure"]
+        if self.physics.thermal:
+            well_initial_conditions.initial_conditions_vector[
+                self.physics.n_vars - 1
+            ] = forced_state["molar_enthalpy"]
 
     def set_initial_conditions(self):
         p_init_res = 5.88812   # from the pressure of the perforated segment of the wellbore
@@ -201,6 +305,8 @@ class Model(CICDModel):
         verbose = True
         well_1_geometry = PipeGeometry(well_1_name, well_1_segments_lengths, well_1_ID, well_1_inclination_angle,
                                        well_1_wall_roughness, verbose)
+        if self.top_segment_volume_multiplier != 1.0:
+            well_1_geometry.segment_volumes[0] *= self.top_segment_volume_multiplier
 
         # %% Set initial conditions in the pipe using LinearAmbientTemperature
         pipe_head_pressure = 5.0  # bar
@@ -224,52 +330,78 @@ class Model(CICDModel):
         inj_phase_name = "L"
         injected_fluid_pressure = 60.0
         injected_fluid_temperature = 10 + 273.15
+        forced_top_state = self._build_forced_top_segment_state(inj_phase_comp)
+        self.forced_top_segment_state = forced_top_state
 
-        if self.inlet_boundary_kind == "upstream_mass_node":
-            ramp_up_rate = UpstreamMassNode(
-                well_1_name,
-                well_1_geometry,
-                self.physics,
-                self.data_ts.dt_first,
-                inj_segment_idx,
-                target_inj_rate,
-                ramp_up_period,
-                inj_phase_comp,
-                injected_fluid_pressure,
-                injected_fluid_temperature,
-                inj_phase_name,
-                verbose=verbose,
-            )
-        else:
-            ramp_up_rate = UpstreamPressureNodeWithChoke(
-                well_1_name,
-                well_1_geometry,
-                self.reservoir,
-                self.physics,
-                self.data_ts.dt_first,
-                inj_segment_idx,
-                target_inj_rate,
-                ramp_up_period,
-                inj_phase_comp,
-                injected_fluid_pressure,
-                injected_fluid_temperature,
-                inj_phase_name,
-                valve_geometry=self.inlet_choke_valve_geometry,
-                equilibrium_model=self.inlet_choke_equilibrium_model,
-                diameter=self.inlet_choke_diameter,
-                discharge_coefficient=self.inlet_choke_discharge_coefficient,
-                opening=self.inlet_choke_opening,
-                flow_coefficient=self.inlet_choke_flow_coefficient,
-                gas_liquid_sizing_ratio=self.inlet_choke_gas_liquid_sizing_ratio,
-                thermal_phase_equilibrium=self.inlet_choke_thermal_phase_equilibrium,
-                recovery=self.inlet_choke_recovery,
-                recovery_tuning=self.inlet_choke_recovery_tuning,
-                slip_model=self.inlet_choke_slip_model,
-                initial_downstream_pressure=pipe_head_pressure,
-                verbose=verbose,
-            )
+        ramp_up_rate = None
+        if self.use_inlet_source_term:
+            if self.inlet_boundary_kind == "upstream_mass_node":
+                if forced_top_state is None:
+                    ramp_up_rate = UpstreamMassNode(
+                        well_1_name,
+                        well_1_geometry,
+                        self.physics,
+                        self.data_ts.dt_first,
+                        inj_segment_idx,
+                        target_inj_rate,
+                        ramp_up_period,
+                        inj_phase_comp,
+                        injected_fluid_pressure,
+                        injected_fluid_temperature,
+                        inj_phase_name,
+                        verbose=verbose,
+                    )
+                else:
+                    ramp_up_rate = UpstreamMassNode(
+                        well_1_name,
+                        well_1_geometry,
+                        self.physics,
+                        self.data_ts.dt_first,
+                        inj_segment_idx,
+                        target_inj_rate,
+                        ramp_up_period,
+                        inj_phase_comp,
+                        pressure=forced_top_state["pressure"],
+                        temperature=forced_top_state["temperature"],
+                        phase_name="MIX",
+                        molar_enthalpy=forced_top_state["molar_enthalpy"],
+                        inv_momentum_density=forced_top_state["inv_momentum_density"],
+                        verbose=verbose,
+                    )
+            else:
+                ramp_up_rate = UpstreamPressureNodeWithChoke(
+                    well_1_name,
+                    well_1_geometry,
+                    self.reservoir,
+                    self.physics,
+                    self.data_ts.dt_first,
+                    inj_segment_idx,
+                    target_inj_rate,
+                    ramp_up_period,
+                    inj_phase_comp,
+                    injected_fluid_pressure,
+                    injected_fluid_temperature,
+                    inj_phase_name,
+                    valve_geometry=self.inlet_choke_valve_geometry,
+                    equilibrium_model=self.inlet_choke_equilibrium_model,
+                    diameter=self.inlet_choke_diameter,
+                    discharge_coefficient=self.inlet_choke_discharge_coefficient,
+                    opening=self.inlet_choke_opening,
+                    flow_coefficient=self.inlet_choke_flow_coefficient,
+                    gas_liquid_sizing_ratio=self.inlet_choke_gas_liquid_sizing_ratio,
+                    thermal_phase_equilibrium=self.inlet_choke_thermal_phase_equilibrium,
+                    recovery=self.inlet_choke_recovery,
+                    recovery_tuning=self.inlet_choke_recovery_tuning,
+                    slip_model=self.inlet_choke_slip_model,
+                    initial_downstream_pressure=pipe_head_pressure,
+                    verbose=verbose,
+                )
+        self._apply_forced_top_segment_initial_state(
+            well_1_initial_conditions,
+            forced_top_state,
+        )
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
-        source_sinks = {"UpstreamMassNode1": ramp_up_rate}
+        source_sinks = {} if ramp_up_rate is None else {"UpstreamMassNode1": ramp_up_rate}
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
@@ -282,13 +414,36 @@ class Model(CICDModel):
         # Well with a single perforation
         well_1_perforated_segment = well_1_geometry.num_segments
 
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
-                                       well_diameter=well_1_geometry.pipe_ID,
-                                       pi=1e5,
-                                       pi_type=ms_well.PI_Type.MASS,
-                                       )
+        perforation_kwargs = {
+            "well_name": well_1_name,
+            "res_cell_idx": (1, 1, 1),
+            "well_seg_idx": well_1_perforated_segment,
+            "well_diameter": well_1_geometry.pipe_ID,
+        }
+        if self.bottom_boundary_mode == "engine_pi":
+            perforation_kwargs.update(
+                {
+                    "pi": self.bottom_mass_ipr_kg_day_bar,
+                    "pi_type": ms_well.PI_Type.MASS,
+                }
+            )
+        else:
+            # Keep the well-reservoir connection in the sparsity pattern, but
+            # disable the engine-side transmissibility and PI. The total-mass
+            # linear IPR is added later directly from Python to the RHS/Jacobian.
+            perforation_kwargs.update(
+                {
+                    "well_index": 0.0,
+                    "well_indexD": 0.0,
+                }
+            )
+        self.reservoir.add_perforation(**perforation_kwargs)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
+        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
+        if not self.wells["I1"].source_sinks:
+            return rhs_flux
+
         mass_node = self.wells["I1"].source_sinks["UpstreamMassNode1"]
         inj_segment_idx = mass_node.segment_idx
         specific_potential_energy = self.reservoir.mesh.cell_spe[
@@ -304,11 +459,174 @@ class Model(CICDModel):
         molar_energy = inj_h + specific_potential_energy * mw_avg
         inj_rates = np.append(component_rate, inj_rate * molar_energy)
 
-        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
         well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
         rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_rates
 
         return rhs_flux
+
+    def _state_overall_composition(self, state: np.ndarray) -> np.ndarray:
+        if self.physics.nc == 1:
+            return np.array([1.0], dtype=float)
+
+        zc = np.empty(self.physics.nc, dtype=float)
+        zc[:-1] = state[1 : self.physics.nc]
+        zc[-1] = 1.0 - np.sum(zc[:-1])
+        return zc
+
+    def _get_bottom_boundary_indices(self) -> tuple[int, int]:
+        well = self.reservoir.get_well("I1")
+        perf_segment_local, res_block_idx, _, _ = well.perforations[0]
+        well_block_idx = well.well_body_idx + perf_segment_local
+        return well_block_idx, res_block_idx
+
+    def _find_csr_block_position(self, row_block: int, col_block: int) -> int:
+        jac_rows = np.array(self.physics.engine.jac_rows, copy=False)
+        jac_cols = np.array(self.physics.engine.jac_cols, copy=False)
+        row_start = jac_rows[row_block]
+        row_end = jac_rows[row_block + 1]
+        off_pos = np.where(jac_cols[row_start:row_end] == col_block)[0]
+        if len(off_pos) == 0:
+            raise RuntimeError(
+                f"CSR block ({row_block}, {col_block}) was not found in the Jacobian pattern."
+            )
+        return int(row_start + off_pos[0])
+
+    def _get_bottom_boundary_csr_cache(self) -> dict:
+        if self._bottom_boundary_csr_cache is None:
+            well_block_idx, res_block_idx = self._get_bottom_boundary_indices()
+            jac_diags = np.array(self.physics.engine.jac_diags, copy=False)
+            self._bottom_boundary_csr_cache = {
+                "well_block_idx": well_block_idx,
+                "res_block_idx": res_block_idx,
+                "diag_well": int(jac_diags[well_block_idx]),
+                "diag_res": int(jac_diags[res_block_idx]),
+                "off_well_res": self._find_csr_block_position(
+                    well_block_idx, res_block_idx
+                ),
+                "off_res_well": self._find_csr_block_position(
+                    res_block_idx, well_block_idx
+                ),
+            }
+        return self._bottom_boundary_csr_cache
+
+    def _apply_python_linear_mass_ipr(self, dt: float) -> None:
+        cache = self._get_bottom_boundary_csr_cache()
+        n_vars = self.physics.n_vars
+        n_jac_block_size = n_vars * n_vars
+
+        well_block_idx = cache["well_block_idx"]
+        res_block_idx = cache["res_block_idx"]
+
+        rhs = np.array(self.physics.engine.RHS, copy=False)
+        jac_vals = np.array(self.physics.engine.jac_vals, copy=False)
+        X = np.array(self.physics.engine.X, copy=False)
+
+        well_state = X[well_block_idx * n_vars : (well_block_idx + 1) * n_vars]
+        res_state = X[res_block_idx * n_vars : (res_block_idx + 1) * n_vars]
+
+        pressure_drawdown_bar = (
+            well_state[0] - res_state[0] - self.bottom_pressure_offset_bar
+        )
+        mass_rate_kg_day = self.bottom_mass_ipr_kg_day_bar * pressure_drawdown_bar
+
+        if mass_rate_kg_day >= 0.0:
+            upstream_block_idx = well_block_idx
+            upstream_state = well_state
+        else:
+            upstream_block_idx = res_block_idx
+            upstream_state = res_state
+
+        zc_upstream = self._state_overall_composition(upstream_state)
+        mw_avg = float(
+            np.sum(self.physics.property_containers[0].Mw[: self.physics.nc] * zc_upstream)
+        )
+        molar_rate = mass_rate_kg_day / mw_avg
+        energy_rate = 0.0
+        if self.physics.thermal:
+            upstream_enthalpy = float(upstream_state[n_vars - 1])
+            upstream_specific_potential_energy = self.reservoir.mesh.cell_spe[
+                upstream_block_idx
+            ]
+            energy_rate = molar_rate * (
+                upstream_enthalpy + upstream_specific_potential_energy * mw_avg
+            )
+
+        well_base = well_block_idx * n_vars
+        res_base = res_block_idx * n_vars
+
+        # Positive molar_rate means well -> reservoir.
+        rhs[well_base + 0] += molar_rate * dt
+        rhs[res_base + 0] -= molar_rate * dt
+        if self.physics.thermal:
+            rhs[well_base + (n_vars - 1)] += energy_rate * dt
+            rhs[res_base + (n_vars - 1)] -= energy_rate * dt
+
+        dqmol_dp = self.bottom_mass_ipr_kg_day_bar / mw_avg
+
+        diag_well = cache["diag_well"]
+        diag_res = cache["diag_res"]
+        off_well_res = cache["off_well_res"]
+        off_res_well = cache["off_res_well"]
+
+        # Mass equation derivatives.
+        jac_vals[diag_well * n_jac_block_size + n_vars * 0 + 0] += dqmol_dp * dt
+        jac_vals[off_well_res * n_jac_block_size + n_vars * 0 + 0] -= dqmol_dp * dt
+        jac_vals[diag_res * n_jac_block_size + n_vars * 0 + 0] -= dqmol_dp * dt
+        jac_vals[off_res_well * n_jac_block_size + n_vars * 0 + 0] += dqmol_dp * dt
+
+        if not self.physics.thermal:
+            return
+
+        energy_eq = n_vars - 1
+        upstream_enthalpy = float(upstream_state[n_vars - 1])
+        upstream_specific_potential_energy = self.reservoir.mesh.cell_spe[
+            upstream_block_idx
+        ]
+        upstream_energy_molar = upstream_enthalpy + upstream_specific_potential_energy * mw_avg
+
+        # Pressure derivatives from q(p) * e_upstream.
+        jac_vals[
+            diag_well * n_jac_block_size + n_vars * energy_eq + 0
+        ] += dqmol_dp * upstream_energy_molar * dt
+        jac_vals[
+            off_well_res * n_jac_block_size + n_vars * energy_eq + 0
+        ] -= dqmol_dp * upstream_energy_molar * dt
+        jac_vals[
+            diag_res * n_jac_block_size + n_vars * energy_eq + 0
+        ] -= dqmol_dp * upstream_energy_molar * dt
+        jac_vals[
+            off_res_well * n_jac_block_size + n_vars * energy_eq + 0
+        ] += dqmol_dp * upstream_energy_molar * dt
+
+        # Enthalpy derivatives from q * h_upstream.
+        if upstream_block_idx == well_block_idx:
+            jac_vals[
+                diag_well * n_jac_block_size + n_vars * energy_eq + energy_eq
+            ] += molar_rate * dt
+            jac_vals[
+                diag_res * n_jac_block_size + n_vars * energy_eq + energy_eq
+            ] -= molar_rate * dt
+        else:
+            jac_vals[
+                off_well_res * n_jac_block_size + n_vars * energy_eq + energy_eq
+            ] += molar_rate * dt
+            jac_vals[
+                off_res_well * n_jac_block_size + n_vars * energy_eq + energy_eq
+            ] -= molar_rate * dt
+
+    def apply_rhs_flux(self, dt: float, t: float):
+        if (
+            type(self).set_rhs_flux is DartsModel.set_rhs_flux
+            and self.bottom_boundary_mode != "python_linear_mass_ipr"
+        ):
+            return
+
+        rhs = np.array(self.physics.engine.RHS, copy=False)
+        if type(self).set_rhs_flux is not DartsModel.set_rhs_flux:
+            rhs += self.set_rhs_flux(t) * dt
+
+        if self.bottom_boundary_mode == "python_linear_mass_ipr":
+            self._apply_python_linear_mass_ipr(dt)
 
     # def set_well_controls(self):
     #     inj_composition = []
