@@ -554,7 +554,9 @@ class Model(DartsModel):
             lgr_name = cfg["lgr"]
             per_from = cfg["k_from"]
             per_to = cfg["k_to"]
-
+            # note:
+            # k_from / k_to in cfg["wells"] are LOCAL layer indices inside the LGR subgrid,
+            # not global layer indices in the parent grid.
             for k in range(per_from -1, per_to):
                 rx,ry,_ = self.lgrs[lgr_name]['lgr_coords_in_parent_grid']['refine']
                 inj_local = center_2d + k * (rx * ry)
@@ -688,7 +690,7 @@ class ModelProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
 
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
@@ -703,9 +705,9 @@ class ModelProperties(PropertyContainer):
 
         # molar weight of mixture
         M = np.sum(self.x[j, :] * self.Mw)
-        self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, self.temperature,[1.0])  # output in [kg/m3]
+        self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure, self.temperature,[1.0])  # output in [kg/m3]
         self.dens_m[j] = self.dens[j] / M
-        self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure=pressure, temperature=self.temperature, x=[1.0],rho=self.dens[j])  # output in [cp]
+        self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure=self.pressure, temperature=self.temperature, x=[1.0],rho=self.dens[j])  # output in [cp]
 
         self.sat[j] = 1
         self.kr[j] = 1

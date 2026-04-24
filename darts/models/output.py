@@ -712,20 +712,21 @@ class Output:
 
         with h5py.File(sol_filepath, "w") as f:
             # add static data group
-            need_static = add_static_data or (
-                cell_ids.size == self.reservoir.mesh.n_res_blocks
-            )
-            static_group = f.require_group("static") if need_static else None
-            if cell_ids.size == self.reservoir.mesh.n_res_blocks:
-                cell_centers = self._get_output_cell_centers().astype(
-                    self.precision_map[self.precision], copy=False
-                )
-                static_group.create_dataset(
-                    "cell_centers",
-                    data=cell_centers,
-                    dtype=self.precision_map[self.precision],
-                )
+            # need_static = add_static_data or (
+            #     cell_ids.size == self.reservoir.mesh.n_res_blocks
+            # )
+            # static_group = f.require_group("static") if need_static else None
+            # if cell_ids.size == self.reservoir.mesh.n_res_blocks:
+            #     cell_centers = self._get_output_cell_centers().astype(
+            #         self.precision_map[self.precision], copy=False
+            #     )
+            #     static_group.create_dataset(
+            #         "cell_centers",
+            #         data=cell_centers,
+            #         dtype=self.precision_map[self.precision],
+            #     )
             if add_static_data:
+                static_group = f.create_group("static")
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
                 static_group.create_dataset("block_m", data=block_m)

@@ -1,5 +1,7 @@
 import numpy as np
-
+import os
+import meshio
+from pyevtk.vtk import VtkGroup
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.engines import(
     conn_mesh,
@@ -59,7 +61,7 @@ def assemble_lgr_connections(self):
     ff_T = np.concatenate(ff_T) if ff_T else np.array([], dtype=float)
     ff_Tt = np.concatenate(ff_Tt) if ff_Tt else np.array([], dtype=float)
 
-    
+
     # step 3: extract fine-coarse from imaginary grid
 
     fc_cm, fc_cp, fc_T, fc_Tt, fc_debug_df = build_flow_based_scaled_fc(
@@ -96,7 +98,7 @@ def assemble_lgr_connections(self):
     #     plane_size = rx * ry
     #     fine_global_offset = lgr_offsets[name]
 
-    #     # build per layer fine/ halo index map 
+    #     # build per layer fine/ halo index map
     #     fine_im_set = set()
     #     coarse_im_set = set()
     #     imag_fine_to_global = {} # this global means consider actnum and concatenate lgr to the end of level0
@@ -113,9 +115,9 @@ def assemble_lgr_connections(self):
 
     #         base_im = kk * nxy_im
     #         base_fine = kk * plane_size
-            
+
     #         # central fine cells in imaginary grid
-            
+
     #         for j in range(1, ry+1):
     #             for i in range(1, rx+1):
     #                 imag_idx = base_im + j*nxim + i # index of 5*5 grid
@@ -124,7 +126,7 @@ def assemble_lgr_connections(self):
 
     #                 imag_fine_to_global[imag_idx] = fine_global
     #                 fine_im_set.add(imag_idx)
-                    
+
     #         # halo cells
     #         for jj in range(1,ry+1):
     #             left_idx = base_im + jj*nxim + 0
@@ -167,7 +169,7 @@ def assemble_lgr_connections(self):
     #             fc_Tt.append(tt)
 
 
-    # step 4: extract overburden and underburden connections from imaginary grid   
+    # step 4: extract overburden and underburden connections from imaginary grid
     cm_burden, cp_burden, T_burden, Tt_burden = [], [], [], []
 
     for name in lgr_orders:
@@ -186,7 +188,7 @@ def assemble_lgr_connections(self):
         self.level1_imag_z_top[name].discretize()
         disc_top = self.level1_imag_z_top[name].discretizer
         cmi_top, cpi_top, Ti_top, Ti_top_therm = disc_top.calc_structured_discr()
-    
+
         over_coarse_local  = int(g2l0[self.convert_ijk_to_gindex_1based(ic, jc, k1-1,  self.level0.nx, self.level0.ny)])
         nx_im_top = self.level1_imag_z_top[name].nx
         ny_im_top = self.level1_imag_z_top[name].ny
@@ -234,13 +236,13 @@ def assemble_lgr_connections(self):
             else:
                 continue
             bot_fine_global = fine_global_offset + (nk - 1) * plane_size + fine_local_2d
-            
+
             cm_burden.append(under_coarse_local)
             cp_burden.append(bot_fine_global)
             T_burden.append(t)
             Tt_burden.append(tt)
 
-         
+
 
     # assemble all connections
     ## coarse-coarse connections
@@ -269,7 +271,7 @@ def assemble_lgr_connections(self):
     cp_all = np.concatenate(cp_parts)
     T_all = np.concatenate(T_parts)
     T_all_therm = np.concatenate(Tt_parts)
-    
+
     # only assume all LGRs have the same refine ratio and are centered in the parent grid, then the global index of local center is
     center_2d = (ry//2) * rx + (rx//2)
 
@@ -296,6 +298,7 @@ class LGRReservoir(ReservoirBase):
                  op_num=None, cache: bool= False):
 
         super().__init__(timer, cache)
+        self.vtk_initialized = False
         # connectivity
         self.cell_m = np.asarray(cell_m, dtype= int)
         self.cell_p = np.asarray(cell_p, dtype= int)
@@ -316,7 +319,7 @@ class LGRReservoir(ReservoirBase):
 
 
         self.n = self.poro.size
-        self.ndims = 3 
+        self.ndims = 3
         self.actnum = np.ones(self.n, dtype= bool)
         self.global_data = {}
 
@@ -421,7 +424,7 @@ class LGRReservoir(ReservoirBase):
         well_index = well_index * darcy_constant
         return well_index, well_indexD
 
-    
+
     def add_perforation(
         self,
         well_name: str,
@@ -437,7 +440,7 @@ class LGRReservoir(ReservoirBase):
         verbose: bool = False,
     ):
         well = self.get_well(well_name)
-        
+
         if well.ms_type == ms_well.MS_Type.EPM:
             assert well_seg_idx is None, (
                 "If the well is of the EPM type, well_seg_idx must not be specified!"
@@ -450,7 +453,7 @@ class LGRReservoir(ReservoirBase):
                 "DFM type wells are not supported in this method. "
                 "Only EPM multi-segment wells are supported."
             )
-            
+
         if well_index is None:
             well_index = wi
 
@@ -471,7 +474,7 @@ class LGRReservoir(ReservoirBase):
                     cell_index
                 ]
                 well.well_body_depth = well.well_head_depth
-                
+
                 # well.segment_depth_increment = self.discretizer.len_cell_zdir[
                 #     i - 1, j - 1, k - 1
                 # ]
@@ -485,7 +488,7 @@ class LGRReservoir(ReservoirBase):
                     np.array(self.mesh.depth, copy=False)[cell_index],
                 )
                 well.well_body_depth = well.well_head_depth
-        
+
 
         for p in well.perforations:
             if p[0] == well_block and p[1] == cell_index:
@@ -508,3 +511,206 @@ class LGRReservoir(ReservoirBase):
         assert well_indexD >= 0
 
         return
+
+    def init_vtk(self, output_directory: str, export_grid_data: bool = True):
+        """
+        Initialize VTK output for LGR reservoir.
+
+        The LGR reservoir is exported as an unstructured hexahedral VTU mesh,
+        because the final grid is not a single conforming structured tensor grid.
+        """
+        os.makedirs(output_directory, exist_ok=True)
+
+        self.vtk_initialized = True
+        self.vtk_filenames_and_times = {}
+
+        points, cells = self._build_lgr_vtk_geometry()
+        self._vtk_points = points
+        self._vtk_cells = cells
+
+        if export_grid_data:
+            static_data = self._build_lgr_static_cell_data()
+
+            mesh = meshio.Mesh(
+                points=points,
+                cells=[("hexahedron", cells)],
+                cell_data={key: [value] for key, value in static_data.items()},
+            )
+
+            meshio.write(os.path.join(output_directory, "mesh.vtu"), mesh)
+            print(f"Writing LGR mesh data to {os.path.join(output_directory, 'mesh.vtu')}")
+
+
+    def _build_lgr_vtk_geometry(self):
+        """
+        Build an unstructured hexahedral mesh from cell centers and cell dimensions.
+
+        Returns
+        -------
+        points : ndarray, shape (8*n_cells, 3)
+            VTK point coordinates.
+        cells : ndarray, shape (n_cells, 8)
+            Hexahedron connectivity.
+        """
+        x = np.asarray(self.cell_center_x, dtype=float)
+        y = np.asarray(self.cell_center_y, dtype=float)
+        z = np.asarray(self.cell_center_z, dtype=float)
+
+        dx = np.asarray(self.dx, dtype=float)
+        dy = np.asarray(self.dy, dtype=float)
+        dz = np.asarray(self.dz, dtype=float)
+
+        n = int(self.mesh.n_res_blocks)
+
+        if not (len(x) >= n and len(y) >= n and len(z) >= n):
+            raise ValueError(
+                f"LGR VTK geometry error: center arrays are shorter than n_res_blocks={n}."
+            )
+
+        if not (len(dx) >= n and len(dy) >= n and len(dz) >= n):
+            raise ValueError(
+                f"LGR VTK geometry error: dx/dy/dz arrays are shorter than n_res_blocks={n}."
+            )
+
+        points = np.empty((8 * n, 3), dtype=float)
+        cells = np.empty((n, 8), dtype=np.int64)
+
+        for c in range(n):
+            xm = x[c] - 0.5 * dx[c]
+            xp = x[c] + 0.5 * dx[c]
+            ym = y[c] - 0.5 * dy[c]
+            yp = y[c] + 0.5 * dy[c]
+            zm = z[c] - 0.5 * dz[c]
+            zp = z[c] + 0.5 * dz[c]
+
+            base = 8 * c
+
+            # Hexahedron point order:
+            # bottom face: 0-1-2-3
+            # top face:    4-5-6-7
+            points[base + 0] = [xm, ym, zm]
+            points[base + 1] = [xp, ym, zm]
+            points[base + 2] = [xp, yp, zm]
+            points[base + 3] = [xm, yp, zm]
+            points[base + 4] = [xm, ym, zp]
+            points[base + 5] = [xp, ym, zp]
+            points[base + 6] = [xp, yp, zp]
+            points[base + 7] = [xm, yp, zp]
+
+            cells[c] = np.arange(base, base + 8, dtype=np.int64)
+
+        return points, cells
+
+
+    def _build_lgr_static_cell_data(self):
+        """
+        Static cell data written to mesh.vtu.
+
+        This is mainly for debugging geometry and checking whether coarse/LGR cells
+        are placed correctly in ParaView.
+        """
+        n = int(self.mesh.n_res_blocks)
+
+        static_data = {
+            "cell_id": np.arange(n, dtype=np.int32),
+            "center_x": np.asarray(self.cell_center_x, dtype=float)[:n],
+            "center_y": np.asarray(self.cell_center_y, dtype=float)[:n],
+            "center_z": np.asarray(self.cell_center_z, dtype=float)[:n],
+            "dx": np.asarray(self.dx, dtype=float)[:n],
+            "dy": np.asarray(self.dy, dtype=float)[:n],
+            "dz": np.asarray(self.dz, dtype=float)[:n],
+            "poro": np.asarray(self.mesh.poro, dtype=float)[:n],
+            "volume": np.asarray(self.mesh.volume, dtype=float)[:n],
+            "depth": np.asarray(self.mesh.depth, dtype=float)[:n],
+            "op_num": np.asarray(self.mesh.op_num, dtype=np.int32)[:n],
+        }
+
+        # Optional properties if your LGRReservoir has them.
+        optional_names = {
+            "kx": "permx",
+            "ky": "permy",
+            "kz": "permz",
+            "rcond": "rcond",
+            "hcap": "hcap",
+        }
+
+        for attr_name, vtk_name in optional_names.items():
+            if hasattr(self, attr_name):
+                arr = np.asarray(getattr(self, attr_name), dtype=float)
+                if len(arr) >= n:
+                    static_data[vtk_name] = arr[:n]
+
+        # Useful visual classification: coarse vs refined cells.
+        # In your current LGR construction, fine cells usually have dx/dy smaller than max dx/dy.
+        dx = static_data["dx"]
+        dy = static_data["dy"]
+        max_dx = np.nanmax(dx)
+        max_dy = np.nanmax(dy)
+        static_data["is_lgr_cell"] = (
+            (~np.isclose(dx, max_dx)) | (~np.isclose(dy, max_dy))
+        ).astype(np.int32)
+
+        return static_data
+
+
+    def output_to_vtk(
+        self,
+        ith_step: int,
+        t: float,
+        output_directory: str,
+        prop_names: dict,
+        data,
+    ):
+        """
+        Export LGR simulation results to VTU.
+
+        This method is called by DARTS Output.output_to_vtk().
+        """
+        os.makedirs(output_directory, exist_ok=True)
+
+        if not getattr(self, "vtk_initialized", False):
+            self.init_vtk(output_directory, export_grid_data=True)
+
+        n = int(self.mesh.n_res_blocks)
+
+        cell_data = {}
+        for i, prop in enumerate(prop_names):
+            arr = np.asarray(data[i], dtype=float)
+
+            if arr.ndim != 1:
+                arr = arr.reshape(-1)
+
+            if len(arr) < n:
+                raise ValueError(
+                    f"VTK property '{prop}' has length {len(arr)}, "
+                    f"but n_res_blocks={n}."
+                )
+
+            cell_data[prop_names[prop]] = arr[:n]
+
+        # Add useful diagnostics at every timestep
+        cell_data["cell_id"] = np.arange(n, dtype=np.int32)
+        if hasattr(self, "dx") and hasattr(self, "dy"):
+            dx = np.asarray(self.dx, dtype=float)[:n]
+            dy = np.asarray(self.dy, dtype=float)[:n]
+            cell_data["is_lgr_cell"] = (
+                (~np.isclose(dx, np.nanmax(dx))) | (~np.isclose(dy, np.nanmax(dy)))
+            ).astype(np.int32)
+
+        vtk_file_name = os.path.join(output_directory, f"solution_ts{ith_step}.vtu")
+
+        mesh = meshio.Mesh(
+            points=self._vtk_points,
+            cells=[("hexahedron", self._vtk_cells)],
+            cell_data={key: [value] for key, value in cell_data.items()},
+        )
+
+        print(f"Writing LGR VTK file for reporting step {ith_step}: {vtk_file_name}")
+        meshio.write(vtk_file_name, mesh)
+
+        self.vtk_filenames_and_times[vtk_file_name] = float(t)
+
+        vtk_group = VtkGroup(os.path.join(output_directory, "solution"))
+        for fname, time in self.vtk_filenames_and_times.items():
+            vtk_group.addFile(fname, time)
+        vtk_group.save()

@@ -30,7 +30,62 @@ def calculate_total_co2_in_reservoir_single_phase(model):
     total_co2_mass_kg = total_co2_kmol * MW_CO2
     return total_co2_kmol, total_co2_mass_kg
 
+def get_true_reservoir_global_indices(model):
+    """
+    返回用于 average reservoir pressure 的全局 block indices:
+    - level0 中属于 reservoir 7 层的 coarse active cells
+    - 所有 LGR fine cells
+    """
+    # 确保 level0 已经离散
+    model.level0.discretize()
+    disc0 = model.level0.discretizer
 
+    # level0 active cell: local -> original global
+    l2g0 = np.asarray(disc0.local_to_global, dtype=int)
+
+    nx0 = int(model.level0.nx)
+    ny0 = int(model.level0.ny)
+
+    # 9 layers total: [0]=over, [1..7]=reservoir, [8]=under  (0-based)
+    coarse_res_local = []
+    for local_id, global_id in enumerate(l2g0):
+        k0 = global_id // (nx0 * ny0)   # 0-based layer index in original level0 grid
+        if 1 <= k0 <= 7:                # only reservoir layers
+            coarse_res_local.append(local_id)
+
+    coarse_res_local = np.asarray(coarse_res_local, dtype=int)
+
+    # append all LGR global indices
+    lgr_global = []
+    for name in model.lgr_meta["lgr_orders"]:
+        offset = model.lgr_meta["lgr_offsets"][name]
+        nloc = model.level1[name].n
+        lgr_global.extend(range(offset, offset + nloc))
+
+    lgr_global = np.asarray(lgr_global, dtype=int)
+
+    # level0 local ids are also the first part of final global ids
+    reservoir_global_ids = np.concatenate([coarse_res_local, lgr_global])
+
+    return np.sort(reservoir_global_ids)
+
+def cal_average_true_reservoir_pressure(model):
+    """
+    只对真实 reservoir blocks 计算 PV-weighted average pressure:
+    - coarse reservoir active cells in level0
+    - all appended LGR cells
+    """
+    ids = get_true_reservoir_global_indices(model)
+
+    n_vars = len(model.physics.vars)
+    X = np.asarray(model.physics.engine.X, dtype=float).reshape((-1, n_vars))
+
+    P = X[ids, 0]
+    poro = np.asarray(model.reservoir.mesh.poro, dtype=float)[ids]
+    volume = np.asarray(model.reservoir.mesh.volume, dtype=float)[ids]
+
+    pv = poro * volume
+    return float(np.sum(P * pv) / np.sum(pv))
 
 class LGRInterfaceTransAnalyzer:
     """

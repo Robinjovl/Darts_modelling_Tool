@@ -136,11 +136,12 @@ class Model(DartsModel):
     def set_reservoir(self):
         # set heterogeneous egg model
         self.lgrs = self.define_lgr()
-        (nx,ny,nz) = (self.cfg["reservoir"]["nx"], self.cfg["reservoir"]["ny"], self.cfg["reservoir"]["nz"]) # plus 2 layers of overburden and underburden, each has 1 layer, so total nz is 7+2=9
+        (nx,ny,nz) = (self.cfg["reservoir"]["nx"], self.cfg["reservoir"]["ny"], self.cfg["reservoir"]["nz"])
         nb = nx*ny*nz
 
         dx = self.cfg["reservoir"]["dx"]
         dy = self.cfg["reservoir"]["dy"]
+        # dz0 = np.array([10,70,10])
         dz = self.cfg["reservoir"]["dz"]
 
         burden = self.cfg["burden"]
@@ -154,6 +155,7 @@ class Model(DartsModel):
         # --- layer masks: 9 layers total = 1 overburden + 7 reservoir + 1 underburden ---
         nz_over = 1
         nz_res = 7
+        # nz_res = 1 # assume 1 layer reservoir
         nz_under = 1
 
         # update lgr k range after adding overburden layer
@@ -191,9 +193,9 @@ class Model(DartsModel):
         mask_under = k_index0 >= (nz_over + nz_res)
 
         # --- reshape Egg model permeability to reservoir part only ---
-        permx_res = 100
-        permy_res = 100
-        permz_res = 10
+        permx_res = 800
+        permy_res = 800
+        permz_res = 80
 
 
 
@@ -224,10 +226,10 @@ class Model(DartsModel):
         self.level0.boundary_volumes = {
             "xy_minus": v_big,
             "xy_plus": v_big,
-            "yz_minus": v_big,
-            "yz_plus": v_big,
-            "xz_minus": v_big,
-            "xz_plus": v_big,
+            "yz_minus": None,
+            "yz_plus": None,
+            "xz_minus": None,
+            "xz_plus": None,
         }
 
 
@@ -269,6 +271,7 @@ class Model(DartsModel):
                 permz_f[:,:,kk] = self.level0.global_data['permz'][ip,jp,pk]
 
             poro_f = np.ones((nx1, ny1, nz1), dtype=float) * 0.2
+
             self.level1[name] = StructReservoir(
                 self.timer,
                 nx=nx1, ny=ny1, nz=nz1,
@@ -541,7 +544,9 @@ class Model(DartsModel):
             lgr_name = cfg["lgr"]
             per_from = cfg["k_from"]
             per_to = cfg["k_to"]
-
+            # note:
+            # k_from / k_to in cfg["wells"] are LOCAL layer indices inside the LGR subgrid,
+            # not global layer indices in the parent grid.
             for k in range(per_from -1, per_to):
                 rx,ry,_ = self.lgrs[lgr_name]['lgr_coords_in_parent_grid']['refine']
                 inj_local = center_2d + k * (rx * ry)
@@ -649,13 +654,13 @@ class Model(DartsModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                            is_inj=True, target=1.0368e7, inj_composition=inj_composition, inj_temp=314.15)
+                                            is_inj=True, target=4.32e6, inj_composition=inj_composition, inj_temp=313.15)
 
             else:
                 # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                 #                                is_inj=False, target=1400000.)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                            is_inj=False, target=150.)
+                                            is_inj=False, target=190.)
 
 
 
@@ -676,7 +681,7 @@ class ModelProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
 
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
@@ -691,9 +696,9 @@ class ModelProperties(PropertyContainer):
 
         # molar weight of mixture
         M = np.sum(self.x[j, :] * self.Mw)
-        self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, self.temperature,[1.0])  # output in [kg/m3]
+        self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure, self.temperature,[1.0])  # output in [kg/m3]
         self.dens_m[j] = self.dens[j] / M
-        self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure=pressure, temperature=self.temperature, x=[1.0],rho=self.dens[j])  # output in [cp]
+        self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure=self.pressure, temperature=self.temperature, x=[1.0],rho=self.dens[j])  # output in [cp]
 
         self.sat[j] = 1
         self.kr[j] = 1

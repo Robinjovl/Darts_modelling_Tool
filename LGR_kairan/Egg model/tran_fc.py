@@ -26,7 +26,7 @@ class SinglePhaseCO2Properties(PropertyContainer):
 
     def evaluate(self, state):
         state_np = np.asarray(state, dtype=float)
-        pressure = state_np[0]
+        self.pressure = state_np[0]
         self.temperature = state_np[-1] if self.thermal else self.temperature
 
         zc = np.append(
@@ -43,12 +43,12 @@ class SinglePhaseCO2Properties(PropertyContainer):
         M = np.sum(self.x[j, :] * self.Mw)
 
         self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
-            pressure, self.temperature, [1.0]
+            self.pressure, self.temperature, [1.0]
         )
         self.dens_m[j] = self.dens[j] / M
 
         self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
-            pressure=pressure,
+            pressure=self.pressure,
             temperature=self.temperature,
             x=[1.0],
             rho=self.dens[j],
