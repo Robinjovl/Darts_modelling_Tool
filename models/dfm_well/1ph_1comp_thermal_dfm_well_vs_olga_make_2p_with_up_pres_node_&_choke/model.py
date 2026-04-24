@@ -108,9 +108,9 @@ class Model(CICDModel):
         self.inlet_choke_recovery_tuning = inlet_choke_recovery_tuning
         self.inlet_choke_slip_model = inlet_choke_slip_model
         bottom_boundary_mode = bottom_boundary_mode.lower()
-        if bottom_boundary_mode not in ("engine_pi", "python_linear_mass_ipr"):
+        if bottom_boundary_mode not in ("engine_pi", "olga_linear_ipr"):
             raise ValueError(
-                "bottom_boundary_mode must be either 'engine_pi' or 'python_linear_mass_ipr'."
+                "bottom_boundary_mode must be either 'engine_pi' or 'olga_linear_ipr'."
             )
         self.bottom_boundary_mode = bottom_boundary_mode
         self.bottom_mass_ipr_kg_day_bar = float(bottom_mass_ipr_kg_day_bar)
@@ -440,7 +440,7 @@ class Model(CICDModel):
                 }
             )
         self.reservoir.add_perforation(**perforation_kwargs)
-        if self.bottom_boundary_mode == "python_linear_mass_ipr":
+        if self.bottom_boundary_mode == "olga_linear_ipr":
             self.rhs_flux_hooks.append(
                 LinearDFMWellIPR(
                     self,

@@ -16,7 +16,7 @@ from model import Model
 
 RUNTIME_DAY = 10 / 24 / 60
 TOP_SEGMENT_VOLUME_MULTIPLIER = 1.0e6
-BOTTOM_BOUNDARY_MODE = "python_linear_mass_ipr"
+BOTTOM_BOUNDARY_MODE = "olga_linear_ipr"
 MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCEL_PATH = os.path.join(
     MODEL_DIR,
