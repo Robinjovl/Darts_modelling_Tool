@@ -24,23 +24,9 @@ from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
 
 class Model(CICDModel):
-    def __init__(
-        self,
-        bottom_boundary_mode: str = "olga_linear_ipr",
-        bottom_mass_ipr_kg_day_bar: float = 1e5,
-        bottom_pressure_offset_bar: float = 0.0,
-    ):
+    def __init__(self):
         # Call base class constructor
         super().__init__()
-
-        bottom_boundary_mode = bottom_boundary_mode.lower()
-        if bottom_boundary_mode not in ("engine_pi", "olga_linear_ipr"):
-            raise ValueError(
-                "bottom_boundary_mode must be either 'engine_pi' or 'olga_linear_ipr'."
-            )
-        self.bottom_boundary_mode = bottom_boundary_mode
-        self.bottom_mass_ipr_kg_day_bar = float(bottom_mass_ipr_kg_day_bar)
-        self.bottom_pressure_offset_bar = float(bottom_pressure_offset_bar)
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -188,47 +174,29 @@ class Model(CICDModel):
         # Well with a single perforation
         well_1_perforated_segment = well_1_geometry.num_segments
 
-        perforation_kwargs = {
-            "well_name": well_1_name,
-            "res_cell_idx": (1, 1, 1),
-            "well_seg_idx": well_1_perforated_segment,
-            "well_diameter": well_1_geometry.pipe_ID,
-        }
-        if self.bottom_boundary_mode == "engine_pi":
-            perforation_kwargs.update(
-                {
-                    "pi": self.bottom_mass_ipr_kg_day_bar,
-                    "pi_type": ms_well.PI_Type.MASS,
-                }
-            )
-        else:
-            perforation_kwargs.update(
-                {
-                    "well_index": 0.0,
-                    "well_indexD": 0.0,
-                }
-            )
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
+                                       well_diameter=well_1_geometry.pipe_ID,
+                                       well_index=0.0,
+                                       well_indexD=0.0,
+                                       )
 
-        self.reservoir.add_perforation(**perforation_kwargs)
-
-        if self.bottom_boundary_mode == "olga_linear_ipr":
-            self.rhs_flux_hooks.append(
-                LinearDFMWellIPR(
-                    self,
-                    [
-                        LinearDFMWellIPRConnection(
-                            well_name=well_1_name,
-                            perforation_index=len(
-                                self.reservoir.get_well(well_1_name).perforations
-                            )
-                            - 1,
-                            rate_slope=self.bottom_mass_ipr_kg_day_bar,
-                            rate_type=ms_well.PI_Type.MASS,
-                            pressure_offset_bar=self.bottom_pressure_offset_bar,
+        self.rhs_flux_hooks.append(
+            LinearDFMWellIPR(
+                self,
+                [
+                    LinearDFMWellIPRConnection(
+                        well_name=well_1_name,
+                        perforation_index=len(
+                            self.reservoir.get_well(well_1_name).perforations
                         )
-                    ],
-                )
+                        - 1,
+                        pi=1e5,
+                        pi_type=ms_well.PI_Type.MASS,
+                        ipr_pressure_offset=0.0,
+                    )
+                ],
             )
+        )
 
     def set_well_controls(self):
         inj_composition = []

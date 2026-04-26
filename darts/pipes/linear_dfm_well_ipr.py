@@ -10,9 +10,9 @@ from darts.physics.base.physics_base import PhysicsBase
 class LinearDFMWellIPRConnection:
     well_name: str
     perforation_index: int
-    rate_slope: float
-    rate_type: object = "mass"
-    pressure_offset_bar: float = 0.0
+    pi: float
+    pi_type: ms_well.PI_Type
+    ipr_pressure_offset: float = 0.0
     rate_intercept: float = 0.0
     label: str | None = None
 
@@ -24,7 +24,7 @@ class LinearDFMWellIPR:
     The contact law is
         q_total = A + B * (p_well - p_reservoir - dp_offset)
 
-    where q_total is interpreted according to rate_type:
+    where q_total is interpreted according to pi_type:
       - MASS: kg/day
       - MOLAR: kmol/day
       - VOLUMETRIC: m3/day
@@ -271,8 +271,8 @@ class LinearDFMWellIPR:
         thermal = bool(self.model.physics.thermal)
         energy_eq_idx = nc
 
-        total_rate = spec.rate_intercept + spec.rate_slope * (
-            well_state[0] - res_state[0] - spec.pressure_offset_bar
+        total_rate = spec.rate_intercept + spec.pi * (
+            well_state[0] - res_state[0] - spec.ipr_pressure_offset
         )
 
         if total_rate >= 0.0:
@@ -286,7 +286,7 @@ class LinearDFMWellIPR:
         mw_avg = self._mean_molecular_weight(overall_composition)
         molar_rate = self._convert_total_rate_to_molar_rate(
             total_rate=total_rate,
-            rate_type=spec.rate_type,
+            pi_type=spec.pi_type,
             upstream_state=upstream_state,
             overall_composition=overall_composition,
             mw_avg=mw_avg,
@@ -318,37 +318,29 @@ class LinearDFMWellIPR:
     def _convert_total_rate_to_molar_rate(
         self,
         total_rate: float,
-        rate_type,
+        pi_type,
         upstream_state: np.ndarray,
         overall_composition: np.ndarray,
         mw_avg: float,
     ) -> float:
-        rate_type = self._normalize_rate_type(rate_type)
-        if rate_type == ms_well.PI_Type.MOLAR:
+        pi_type = self._normalize_pi_type(pi_type)
+        if pi_type == ms_well.PI_Type.MOLAR:
             return total_rate
-        if rate_type == ms_well.PI_Type.MASS:
+        if pi_type == ms_well.PI_Type.MASS:
             return total_rate / mw_avg
-        if rate_type == ms_well.PI_Type.VOLUMETRIC:
+        if pi_type == ms_well.PI_Type.VOLUMETRIC:
             return total_rate * self._total_molar_density(upstream_state)
-        raise NotImplementedError(f"Unsupported PI type: {rate_type!r}")
+        raise NotImplementedError(f"Unsupported PI type: {pi_type!r}")
 
     @staticmethod
-    def _normalize_rate_type(rate_type):
-        if isinstance(rate_type, str):
-            key = rate_type.upper()
-            if key == "MOLAR":
-                return ms_well.PI_Type.MOLAR
-            if key == "MASS":
-                return ms_well.PI_Type.MASS
-            if key == "VOLUMETRIC":
-                return ms_well.PI_Type.VOLUMETRIC
-        if rate_type == ms_well.PI_Type.MOLAR:
+    def _normalize_pi_type(pi_type):
+        if pi_type == ms_well.PI_Type.MOLAR:
             return ms_well.PI_Type.MOLAR
-        if rate_type == ms_well.PI_Type.MASS:
+        if pi_type == ms_well.PI_Type.MASS:
             return ms_well.PI_Type.MASS
-        if rate_type == ms_well.PI_Type.VOLUMETRIC:
+        if pi_type == ms_well.PI_Type.VOLUMETRIC:
             return ms_well.PI_Type.VOLUMETRIC
-        raise ValueError(f"Unsupported PI type: {rate_type!r}")
+        raise ValueError(f"Unsupported PI type: {pi_type!r}")
 
     def _state_overall_composition(self, state: np.ndarray) -> np.ndarray:
         nc = self.model.physics.nc
