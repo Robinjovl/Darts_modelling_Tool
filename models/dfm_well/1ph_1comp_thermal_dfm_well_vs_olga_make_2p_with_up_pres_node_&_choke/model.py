@@ -14,7 +14,7 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
-from darts.pipes.upstream_mass_node import UpstreamMassNode
+from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 from darts.pipes.upstream_pressure_node_with_choke import (
     UpstreamPressureNodeWithChoke,
 )
@@ -30,7 +30,7 @@ from darts.pipes.viz.plot_live import DartsModelWithLivePlots
 class Model(CICDModel):
     def __init__(
         self,
-        inlet_boundary_kind: str = "upstream_mass_node",
+        inlet_boundary_kind: str = "upstream_ramp_up_rate",
         use_inlet_source_term: bool = True,
         forced_top_state_pressure: float = None,
         forced_top_state_temperature: float = None,
@@ -55,9 +55,9 @@ class Model(CICDModel):
         super().__init__()
 
         inlet_boundary_kind = inlet_boundary_kind.lower()
-        if inlet_boundary_kind not in ("upstream_mass_node", "pressure_node_choke"):
+        if inlet_boundary_kind not in ("upstream_ramp_up_rate", "pressure_node_choke"):
             raise ValueError(
-                "inlet_boundary_kind must be either 'upstream_mass_node' or 'pressure_node_choke'."
+                "inlet_boundary_kind must be either 'upstream_ramp_up_rate' or 'pressure_node_choke'."
             )
         self.inlet_boundary_kind = inlet_boundary_kind
         self.use_inlet_source_term = bool(use_inlet_source_term)
@@ -80,9 +80,9 @@ class Model(CICDModel):
             raise ValueError(
                 "forced_top_state_pressure, forced_top_state_temperature, and forced_top_state_liquid_holdup must either all be provided or all be omitted."
             )
-        if forced_top_state_specified and inlet_boundary_kind != "upstream_mass_node":
+        if forced_top_state_specified and inlet_boundary_kind != "upstream_ramp_up_rate":
             raise ValueError(
-                "A forced top-segment state currently requires inlet_boundary_kind='upstream_mass_node'."
+                "A forced top-segment state currently requires inlet_boundary_kind='upstream_ramp_up_rate'."
             )
         if top_segment_volume_multiplier <= 0.0:
             raise ValueError("top_segment_volume_multiplier must be positive.")
@@ -155,7 +155,7 @@ class Model(CICDModel):
 
         return
 
-    def _get_inlet_molar_enthalpy(self, mass_node: UpstreamMassNode) -> float:
+    def _get_inlet_molar_enthalpy(self, mass_node: UpstreamRampUpRate) -> float:
         return getattr(
             mass_node,
             "current_discharge_molar_enthalpy",
@@ -337,9 +337,9 @@ class Model(CICDModel):
 
         ramp_up_rate = None
         if self.use_inlet_source_term:
-            if self.inlet_boundary_kind == "upstream_mass_node":
+            if self.inlet_boundary_kind == "upstream_ramp_up_rate":
                 if forced_top_state is None:
-                    ramp_up_rate = UpstreamMassNode(
+                    ramp_up_rate = UpstreamRampUpRate(
                         well_1_name,
                         well_1_geometry,
                         self.physics,
@@ -354,7 +354,7 @@ class Model(CICDModel):
                         verbose=verbose,
                     )
                 else:
-                    ramp_up_rate = UpstreamMassNode(
+                    ramp_up_rate = UpstreamRampUpRate(
                         well_1_name,
                         well_1_geometry,
                         self.physics,
@@ -403,7 +403,7 @@ class Model(CICDModel):
             forced_top_state,
         )
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
-        source_sinks = {} if ramp_up_rate is None else {"UpstreamMassNode1": ramp_up_rate}
+        source_sinks = {} if ramp_up_rate is None else {"UpstreamRampUpRate1": ramp_up_rate}
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
@@ -464,7 +464,7 @@ class Model(CICDModel):
         if not self.wells["I1"].source_sinks:
             return rhs_flux
 
-        mass_node = self.wells["I1"].source_sinks["UpstreamMassNode1"]
+        mass_node = self.wells["I1"].source_sinks["UpstreamRampUpRate1"]
         inj_segment_idx = mass_node.segment_idx
         specific_potential_energy = self.reservoir.mesh.cell_spe[
             self.reservoir.mesh.n_res_blocks + inj_segment_idx

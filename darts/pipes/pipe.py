@@ -862,7 +862,7 @@ class Pipe:
 
                 pipe_internal_A = self.geometry.pipe_internal_A
 
-                # If UpstreamMassNode is used, which calculates boundary momentum using the properties of the boundary itself:
+                # If UpstreamRampUpRate is used, which calculates boundary momentum using the properties of the boundary itself:
                 if hasattr(sink_source, "get_boundary_momentum_flux"):
                     delta_at_bc_interface0 = sink_source.get_boundary_momentum_flux(
                         pc, pipe_internal_A, rate_source

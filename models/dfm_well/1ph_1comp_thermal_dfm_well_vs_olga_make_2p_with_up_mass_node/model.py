@@ -14,7 +14,7 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
-from darts.pipes.upstream_mass_node import UpstreamMassNode
+from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.viz.plot_live import DartsModelWithLivePlots
@@ -179,12 +179,12 @@ class Model(CICDModel):
         injected_fluid_pressure = 60.0
         injected_fluid_temperature = 10 + 273.15
 
-        ramp_up_rate = UpstreamMassNode(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first,
-                                        inj_segment_idx, target_inj_rate, ramp_up_period, inj_phase_comp,
-                                        injected_fluid_pressure, injected_fluid_temperature, inj_phase_name,
-                                        verbose=verbose)
+        ramp_up_rate = UpstreamRampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first,
+                                          inj_segment_idx, target_inj_rate, ramp_up_period, inj_phase_comp,
+                                          injected_fluid_pressure, injected_fluid_temperature, inj_phase_name,
+                                          verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
-        source_sinks = {"UpstreamMassNode1": ramp_up_rate}
+        source_sinks = {"UpstreamRampUpRate1": ramp_up_rate}
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
@@ -204,7 +204,7 @@ class Model(CICDModel):
                                        )
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
-        mass_node = self.wells["I1"].source_sinks["UpstreamMassNode1"]
+        mass_node = self.wells["I1"].source_sinks["UpstreamRampUpRate1"]
         inj_segment_idx = mass_node.segment_idx
         specific_potential_energy = self.reservoir.mesh.cell_spe[
             self.reservoir.mesh.n_res_blocks + inj_segment_idx

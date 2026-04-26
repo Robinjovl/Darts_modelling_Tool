@@ -7,7 +7,7 @@ from dartsflash.libflash import EoS
 from scipy.optimize import brentq, minimize_scalar
 
 from darts.engines import value_vector
-from darts.pipes.upstream_mass_node import UpstreamMassNode
+from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 
 
 @dataclass(frozen=True)
@@ -1409,7 +1409,7 @@ class ChokeModel:
         )
 
 
-class UpstreamPressureNodeWithChoke(UpstreamMassNode):
+class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
     """
     Upstream pressure/temperature source connected to the pipe through a choke.
 

@@ -6,7 +6,7 @@ from darts.pipes.ramp_up_rate import RampUpRate
 
 class UpstreamRampUpRate(RampUpRate):
     """
-    RampUpRate, but using the upstream properties to calculate boundary momentum.
+    The same as RampUpRate, but it uses the upstream properties to calculate boundary momentum.
 
     Unlike RampUpRate, which uses the properties of the pipe segment to calculate boundary momentum,
     this class uses the properties of the upstream node to calculate boundary momentum.
