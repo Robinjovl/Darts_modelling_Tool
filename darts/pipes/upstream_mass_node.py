@@ -4,14 +4,12 @@ from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.ramp_up_rate import RampUpRate
 
 
-class UpstreamMassNode(RampUpRate):
+class UpstreamRampUpRate(RampUpRate):
     """
-    Upstream source node for DFM pipe injection.
+    RampUpRate, but using the upstream properties to calculate boundary momentum.
 
-    The specified pressure and temperature define the thermodynamic state of the
-    injected stream. The pressure is not imposed as the pipe-segment pressure;
-    it is used as the upstream mass-node state for injected enthalpy and inlet
-    momentum.
+    Unlike RampUpRate, which uses the properties of the pipe segment to calculate boundary momentum,
+    this class uses the properties of the upstream node to calculate boundary momentum.
     """
 
     def __init__(
@@ -28,12 +26,15 @@ class UpstreamMassNode(RampUpRate):
         temperature: float = None,
         phase_name: str = None,
         molar_enthalpy: float = None,
-        inv_momentum_density: float = None,
-        apply_pressure_boundary: bool = False,
         verbose: bool = False,
     ):
+        """
+        In RampUpRate, if molar_enthalpy is provided, pressure, temperature, and phase_name must not be specified,
+        but in UpstreamRampUpRate, pressure, temperature, and phase_name must be specified all the time because
+        they are needed to calculate the boundary momentum.
+        """
         if not physics.thermal:
-            raise ValueError("UpstreamMassNode currently requires thermal physics.")
+            raise ValueError("UpstreamRampUpRate currently requires thermal physics.")
 
         inj_fluid_props = {"composition": composition}
         if molar_enthalpy is None:
@@ -70,14 +71,9 @@ class UpstreamMassNode(RampUpRate):
         if phase_name is not None:
             self.inj_fluid_props["phase_name"] = phase_name
 
-        self.prescribed_inv_momentum_density = (
-            None if inv_momentum_density is None else float(inv_momentum_density)
-        )
-        self.apply_pressure_boundary = apply_pressure_boundary
-
         if verbose:
             print(
-                f'** UpstreamMassNode for the segment index {segment_idx} of the pipe "{pipe_geom.pipe_name}" is defined!'
+                f'** UpstreamRampUpRate for the segment index {segment_idx} of the pipe "{pipe_geom.pipe_name}" is defined!'
             )
 
     @property
@@ -103,7 +99,7 @@ class UpstreamMassNode(RampUpRate):
         molar_rate: float = None,
     ) -> np.ndarray:
         """
-        Return source rates in open-DARTS equation order.
+        Return component and energy rates in open-DARTS equation order.
 
         Component rates are in kmol/day. Energy rate is in kJ/day and includes
         potential energy when a segment-specific potential energy is provided.
@@ -130,7 +126,7 @@ class UpstreamMassNode(RampUpRate):
         Return A * sum(rho_phase * saturation_phase * velocity_phase**2).
 
         This is the inlet momentum term used by the DFM pipe momentum equation.
-        It is evaluated from the upstream mass-node pressure/temperature, not
+        It is evaluated from the properties of the upstream node, not
         from the receiving pipe segment.
         """
         rate = self.current_rate if molar_rate is None else molar_rate
@@ -139,11 +135,6 @@ class UpstreamMassNode(RampUpRate):
 
         if mass_rate == 0.0:
             return 0.0
-
-        if self.prescribed_inv_momentum_density is not None:
-            return (
-                mass_rate**2 * self.prescribed_inv_momentum_density / pipe_internal_area
-            )
 
         if self.phase_name == "G":
             rho = property_container.density_ev["G"].evaluate(
@@ -158,5 +149,5 @@ class UpstreamMassNode(RampUpRate):
             return mass_rate**2 / (rho * pipe_internal_area)
 
         raise NotImplementedError(
-            "UpstreamMassNode inlet momentum currently supports phase_name 'G' or 'L'."
+            "UpstreamRampUpRate inlet momentum currently supports phase_name 'G' or 'L'."
         )
