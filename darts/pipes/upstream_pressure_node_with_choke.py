@@ -1597,6 +1597,16 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
         return self.choke_model.valve_geometry_model.diameter
 
     @property
+    def opening(self) -> float:
+        return self.choke_model.valve_geometry_model.opening
+
+    @opening.setter
+    def opening(self, value: float):
+        if value <= 0.0:
+            raise ValueError("opening must be positive.")
+        self.choke_model.valve_geometry_model.opening = float(value)
+
+    @property
     def choke_area(self) -> float:
         return self.choke_model.valve_geometry_model.choke_area
 
@@ -1608,7 +1618,7 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
     def target_mass_rate_kg_s(self) -> float:
         return self._target_mass_rate_kg_s(self.target_rate)
 
-    def suggest_diameter_for_target_mass_rate(
+    def suggest_opening_for_target_mass_rate(
         self,
         target_mass_rate_kg_s: float,
     ) -> float:
@@ -1616,15 +1626,14 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
             raise ValueError(
                 "last_mass_rate_kg_s is not available yet. Run the model first before rescaling the choke."
             )
-        return (
-            self.choke_model.valve_geometry_model.rescale_diameter_for_target_mass_rate(
-                self.last_mass_rate_kg_s,
-                target_mass_rate_kg_s,
-            )
-        )
+        if self.last_mass_rate_kg_s <= 0.0:
+            raise ValueError("actual_mass_rate_kg_s must be positive.")
+        if target_mass_rate_kg_s <= 0.0:
+            raise ValueError("target_mass_rate_kg_s must be positive.")
+        return self.opening * target_mass_rate_kg_s / self.last_mass_rate_kg_s
 
-    def suggest_diameter_for_target_rate(self) -> float:
-        return self.suggest_diameter_for_target_mass_rate(self.target_mass_rate_kg_s)
+    def suggest_opening_for_target_rate(self) -> float:
+        return self.suggest_opening_for_target_mass_rate(self.target_mass_rate_kg_s)
 
     def _target_mass_rate_kg_s(self, target_molar_rate: float) -> float:
         mw_avg = float(
