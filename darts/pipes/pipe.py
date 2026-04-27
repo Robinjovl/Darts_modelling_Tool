@@ -40,10 +40,23 @@ class AdjustmentFuncParams:
     lambdaa = 199.0  # lambdaa is used because lambda is a reserved keyword in Python
 
 
+@dataclass(frozen=True)
+class TangUnifiedDFParams:
+    A: float
+    B: float
+    a1: float
+    a2: float
+    N1: float
+    N2: float
+    N3: float
+    N4: float
+    m1: float
+    m2: float
+    m3: float
+
+
 class Pipe:
     g = 9.80665 * meter() / second() ** 2  # Gravitational acceleration
-    Cku = 142
-    Cw = 0.008
 
     adjustment_func_params = AdjustmentFuncParams()
 
@@ -55,6 +68,8 @@ class Pipe:
         reservoir,
         initial_conditions: SingleAmbientTemperature | LinearAmbientTemperature,
         source_sinks: dict = None,
+        drift_flux_model: str = "shi_t2well",
+        tang_parameter_set: str = "olgas",
         Cmax: float = 1.2,
         Fv: float = 1,
         prop_eval_method: str = "direct",
@@ -77,6 +92,13 @@ class Pipe:
         :type initial_conditions: SingleAmbientTemperature or LinearAmbientTemperature
         :param source_sinks: Dict containing sources or sinks for the momentum equation
         :type source_sinks: dict
+        :param drift_flux_model: Drift-flux closure to use:
+                                 - "shi_t2well" retains the historical Holmes/Shi/T2Well style closure
+                                 - "tang_2019" uses the unified all-inclination Tang et al. (2019) closure
+        :type drift_flux_model: str
+        :param tang_parameter_set: If tang_2019 is used as the drift-flux model, parameterization of the
+                                   Tang et al. (2019) unified model. Allowed values are "olgas" and "tuffp".
+        :type tang_parameter_set: str
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
                      could have a value between 1.0 and 1.5. It is set to:
                      --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
@@ -174,56 +196,110 @@ class Pipe:
             )
         self.source_sinks = source_sinks
 
-        self.Cmax = Cmax
-        self.B = 2 / Cmax - 1.0667
-        self.Fv = Fv
-
-        # I did not see anywhere to tell if I can use linear interp and extra here or not.
-        if Cmax == 1:
-            a1 = 0.06
-            a2 = 0.21
-            m0 = 1.85
-            n1 = 0.21
-            n2 = 0.95
-        elif 1 < Cmax < 1.2:
-            # Linear interpolation
-            a1 = 0.06
-            a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
-            m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
-            n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
-            n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
-        elif Cmax == 1.2:
-            a1 = 0.06
-            a2 = 0.12
-            m0 = 1.27
-            n1 = 0.24
-            n2 = 1.08
-        elif 1.2 < Cmax <= 1.5:
-            # Linear extrapolation
-            a1 = 0.06
-            a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
-            m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
-            n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
-            n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
-        else:
-            raise ValueError("Cmax value is out of the allowed range [1 to 1.5]")
-
-        if isinstance(pipe_geometry.inclination_angle_radian, float):
-            self.m = (
-                m0
-                * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
-                * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
-                * np.ones(pipe_geometry.num_interfaces)
-            )
-        elif isinstance(pipe_geometry.inclination_angle_radian, np.ndarray):
-            self.m = (
-                m0
-                * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
-                * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
+        self.drift_flux_model = drift_flux_model.lower()
+        if self.drift_flux_model not in ("shi_t2well", "tang_2019"):
+            raise ValueError(
+                "drift_flux_model must be either 'shi_t2well' or 'tang_2019'."
             )
 
-        self.a1 = a1
-        self.a2 = a2
+        tang_parameter_set = tang_parameter_set.lower()
+        if tang_parameter_set not in ("olgas", "tuffp"):
+            raise ValueError("tang_parameter_set must be either 'olgas' or 'tuffp'.")
+        self.tang_parameter_set = tang_parameter_set
+
+        self.Cku = 142
+        self.Cw = 0.008
+
+        if self.drift_flux_model == "shi_t2well":
+            # I did not see anywhere to tell if I can use linear interp and extra here or not.
+            if Cmax == 1:
+                a1 = 0.06
+                a2 = 0.21
+                m0 = 1.85
+                n1 = 0.21
+                n2 = 0.95
+            elif 1 < Cmax < 1.2:
+                # Linear interpolation
+                a1 = 0.06
+                a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
+                m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
+                n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
+                n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
+            elif Cmax == 1.2:
+                a1 = 0.06
+                a2 = 0.12
+                m0 = 1.27
+                n1 = 0.24
+                n2 = 1.08
+            elif 1.2 < Cmax <= 1.5:
+                # Linear extrapolation
+                a1 = 0.06
+                a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
+                m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
+                n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
+                n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
+            else:
+                raise ValueError("Cmax value is out of the allowed range [1 to 1.5]")
+
+            self.Fv = Fv
+            self.profile_A = Cmax
+            self.B = 2 / Cmax - 1.0667
+            if isinstance(pipe_geometry.inclination_angle_radian, float):
+                self.m = (
+                    m0
+                    * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
+                    * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
+                    * np.ones(pipe_geometry.num_interfaces)
+                )
+            elif isinstance(pipe_geometry.inclination_angle_radian, np.ndarray):
+                self.m = (
+                    m0
+                    * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
+                    * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
+                )
+            self.a1 = a1
+            self.a2 = a2
+            self.tang_df_params = None
+        elif self.drift_flux_model == "tang_2019":
+            if tang_parameter_set == "olgas":
+                self.tang_df_params = TangUnifiedDFParams(
+                    A=1.000,
+                    B=0.773,
+                    a1=0.591,
+                    a2=0.786,
+                    N1=1.968,
+                    N2=1.759,
+                    N3=0.574,
+                    N4=0.477,
+                    m1=1.000,
+                    m2=2.300,
+                    m3=1.000,
+                )
+            elif tang_parameter_set == "tuffp":
+                self.tang_df_params = TangUnifiedDFParams(
+                    A=1.088,
+                    B=0.833,
+                    a1=0.577,
+                    a2=0.769,
+                    N1=1.981,
+                    N2=1.759,
+                    N3=0.574,
+                    N4=0.477,
+                    m1=1.017,
+                    m2=2.303,
+                    m3=1.000,
+                )
+            self.profile_A = self.tang_df_params.A
+            self.B = self.tang_df_params.B
+            self.a1 = self.tang_df_params.a1
+            self.a2 = self.tang_df_params.a2
+            self.m = np.ones(pipe_geometry.num_interfaces)
+            if isinstance(pipe_geometry.inclination_angle_radian, float):
+                self.tang_theta = (
+                    pipe_geometry.inclination_angle_radian - math.pi / 2.0
+                ) * np.ones(pipe_geometry.num_interfaces)
+            else:
+                self.tang_theta = pipe_geometry.inclination_angle_radian - math.pi / 2.0
 
         self.g_cos_theta = self.g * np.cos(pipe_geometry.inclination_angle_radian)
         if isinstance(self.g_cos_theta, float):
@@ -1217,6 +1293,7 @@ class Pipe:
         [xG_mass0_face, xL_mass0_face, sG0_face, rhoG0_face, rhoL0_face, _, _] = (
             self.iter_phases_props0_face
         )
+        self.IFT_face_filtered = np.array([])
 
         mask = (sG0_face > 0) & (sG0_face < 1)
         at_least_one_true = any(mask)
@@ -1240,6 +1317,7 @@ class Pipe:
                     xG_mass0_face_filtered[i],
                     xL_mass0_face_filtered[i],
                 )
+            self.IFT_face_filtered = IFT0_face
 
             # self.Ku0_filtered = np.zeros(len(indices))
             # self.vC0_filtered = np.zeros(len(indices))
@@ -1265,12 +1343,15 @@ class Pipe:
                 * np.sqrt(rhoL0_face_filtered / rhoG0_face_filtered)
                 * self.vC0_filtered
             )
-            beta0 = np.maximum(
-                sG0_face_filtered, self.Fv * sG0_face_filtered * abs(vM0) / v_sgf0
-            )
+
+            if self.drift_flux_model == "shi_t2well":
+                flooding_fraction = self.Fv * sG0_face_filtered * abs(vM0) / v_sgf0
+            elif self.drift_flux_model == "tang_2019":
+                flooding_fraction = sG0_face_filtered * abs(vM0) / v_sgf0
+            beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
             beta0 = np.clip(beta0, 0, 1)  # beta0 is subject to limits 0 <= beta0 <= 1
-            eta0 = (beta0 - self.B) / (1 - self.B)  # B is calculated in the constructor
-            C00_filtered = self.Cmax / (1 + (self.Cmax - 1) * eta0**2)
+            eta0 = (beta0 - self.B) / (1 - self.B)
+            C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
 
             C00 = np.ones(num_interfaces)  # C00 all ones first
             self.C00 = np.ones(num_interfaces)
@@ -1294,7 +1375,7 @@ class Pipe:
         #     vD0 = np.zeros(num_interfaces)
         # else:
         if any(0 < sG < 1 for sG in self.iter_phases_props0_face[2]):
-            [_, _, sG0_face, rhoG0_face, rhoL0_face, _, _] = (
+            [_, _, sG0_face, rhoG0_face, rhoL0_face, _, miuL0_face] = (
                 self.iter_phases_props0_face
             )
             [_, vM0, _, _] = self.velocities0
@@ -1330,6 +1411,78 @@ class Pipe:
                     K0_filtered[index] = (
                         self.C00_filtered[index] * self.Ku0_filtered[index]
                     )
+
+            if self.drift_flux_model == "tang_2019":
+                eps = np.finfo(float).eps
+                safe_rhoG_face = np.maximum(rhoG0_face_filtered, eps)
+                safe_rhoL_face = np.maximum(rhoL0_face_filtered, eps)
+                safe_muL_face = np.maximum(miuL0_face[indices], eps)
+
+                tang_params = self.tang_df_params
+                theta_filtered = self.tang_theta[indices]
+
+                denominator_vd = (
+                    self.C00_filtered
+                    * sG0_face_filtered
+                    * np.sqrt(safe_rhoG_face / safe_rhoL_face)
+                    + 1
+                    - self.C00_filtered * sG0_face_filtered
+                )
+                vDv = (
+                    (1 - self.C00_filtered * sG0_face_filtered)
+                    * self.vC0_filtered
+                    * K0_filtered
+                    / np.maximum(denominator_vd, eps)
+                )
+
+                N_l = safe_muL_face / np.maximum(
+                    (safe_rhoL_face - safe_rhoG_face)
+                    * np.power(self.geometry.pipe_ID, 1.5)
+                    * math.sqrt(self.g),
+                    eps,
+                )
+                N_Eo = (
+                    self.g
+                    * (safe_rhoL_face - safe_rhoG_face)
+                    * (self.geometry.pipe_ID**2)
+                    / np.maximum(self.IFT_face_filtered, eps)
+                )
+                vDh = (
+                    np.sqrt(self.g * self.geometry.pipe_ID)
+                    * (
+                        tang_params.N1
+                        - tang_params.N2
+                        * (N_l**tang_params.N4)
+                        / np.maximum(
+                            N_Eo**tang_params.N3,
+                            eps,
+                        )
+                    )
+                    * sG0_face_filtered
+                    * (1 - sG0_face_filtered)
+                )
+
+                transition_argument = 50.0 * (
+                    np.sin(theta_filtered) + tang_params.m2 * vM0_filtered
+                )
+                transition = 1 - 2 / (
+                    1 + np.exp(np.clip(transition_argument, -700.0, 700.0))
+                )
+                Re_L = (
+                    np.abs(vM0_filtered)
+                    * safe_rhoL_face
+                    * self.geometry.pipe_ID
+                    / safe_muL_face
+                )
+                low_re_multiplier = (1 + 1000.0 / (Re_L + 1000.0)) ** tang_params.m3
+
+                vD_filtered = (
+                    tang_params.m1 * vDv * np.sin(theta_filtered)
+                    + transition * vDh * np.cos(theta_filtered)
+                ) * low_re_multiplier
+
+                self.vD0[indices] = vD_filtered
+                return
 
             # Calculate the adjustment function for the mist flow regime
             Xm1 = self.adjustment_func_params.Xm1
