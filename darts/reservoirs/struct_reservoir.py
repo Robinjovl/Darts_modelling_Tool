@@ -298,6 +298,7 @@ class StructReservoir(ReservoirBase):
             else:
                 well_block = 0
         elif well.ms_type == ms_well.MS_Type.DFM:
+            # Subtract 2 from the specified well_seg_idx because the index is 1-based here and DFM wells don't have the ghost cell.
             well_block = well_seg_idx - 2
 
         # add completion only if target block is active
