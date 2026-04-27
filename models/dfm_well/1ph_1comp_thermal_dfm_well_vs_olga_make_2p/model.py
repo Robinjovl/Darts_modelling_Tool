@@ -14,8 +14,12 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
-from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
+from darts.pipes.ramp_up_rate import RampUpRate
+from darts.pipes.linear_dfm_well_ipr import (
+    LinearDFMWellIPR,
+    LinearDFMWellIPRConnection,
+)
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.viz.plot_live import DartsModelWithLivePlots
 
@@ -173,7 +177,7 @@ class Model(CICDModel):
         #%% Add source/sink terms
         inj_segment_idx = 0
         inflow_or_outflow = "inflow"
-        target_inj_rate = 58895.98 / 30  # in kmol/day
+        target_inj_rate = 58895.98  # in kmol/day
         ramp_up_period = 0.0  # in day
 
         inj_phase_comp = np.array([1.])
@@ -204,9 +208,26 @@ class Model(CICDModel):
 
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
                                        well_diameter=well_1_geometry.pipe_ID,
-                                       pi=1e5,
-                                       pi_type=ms_well.PI_Type.MASS,
+                                       well_index=0.0,
+                                       well_indexD=0.0,
                                        )
+        self.rhs_flux_hooks.append(
+            LinearDFMWellIPR(
+                self,
+                [
+                    LinearDFMWellIPRConnection(
+                        well_name=well_1_name,
+                        perforation_index=len(
+                            self.reservoir.get_well(well_1_name).perforations
+                        )
+                        - 1,
+                        pi=1e5,
+                        pi_type=ms_well.PI_Type.MASS,
+                        ipr_pressure_offset=0.0,
+                    )
+                ],
+            )
+        )
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
