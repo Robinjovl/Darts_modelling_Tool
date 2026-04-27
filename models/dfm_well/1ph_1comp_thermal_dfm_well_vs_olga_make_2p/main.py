@@ -51,5 +51,5 @@ if 1:
 else:
     save_dfm_well_props('I1', coupled_model)
 
-    plot_heat_map_pcolormesh('I1', coupled_model)
-    plot_heat_map_contourf('I1', coupled_model)
+    plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
+    plot_heat_map_contourf('I1', coupled_model, show_plot=False)

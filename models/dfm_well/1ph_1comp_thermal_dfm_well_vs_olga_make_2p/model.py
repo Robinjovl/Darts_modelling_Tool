@@ -70,7 +70,6 @@ class Model(CICDModel):
 
     def set_initial_conditions(self):
         p_init_res = 5.88812   # from the pressure of the perforated segment of the wellbore
-        # p_init_res = 79.79812  # from the pressure of the perforated segment of the wellbore
         T_init_res = 321.90000   # from the temperature of the perforated segment of the wellbore
 
         input_distribution = {self.physics.vars[0]: p_init_res,
@@ -79,10 +78,8 @@ class Model(CICDModel):
         self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, input_distribution=input_distribution)
 
         for well in self.reservoir.wells:
-            # self.wells[well.name].initial_conditions.initial_conditions_vector[:2:] = [70.90588379, -12520.9]
             well.init_state = value_vector(self.wells[well.name].initial_conditions.initial_conditions_vector)
 
-        # self.reservoir.mesh.volume[self.reservoir.wells[0].well_head_idx] = 1e20
         return
 
     def set_physics(self):
@@ -162,7 +159,6 @@ class Model(CICDModel):
 
         # %% Set initial conditions in the pipe using LinearAmbientTemperature
         pipe_head_pressure = 5.0  # bar
-        # pipe_head_pressure = 60  # bar
         pipe_head_temperature = 298.15  # Kelvin
         temp_grad = 0.025  # deg C/meter
         pipe_head_segment_index = 0  # index starts from zero

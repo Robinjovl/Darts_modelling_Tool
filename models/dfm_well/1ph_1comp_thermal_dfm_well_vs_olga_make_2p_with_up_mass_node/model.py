@@ -14,8 +14,12 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
-from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 from darts.pipes.pipe import Pipe
+from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
+from darts.pipes.linear_dfm_well_ipr import (
+    LinearDFMWellIPR,
+    LinearDFMWellIPRConnection,
+)
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.viz.plot_live import DartsModelWithLivePlots
 
@@ -66,7 +70,6 @@ class Model(CICDModel):
 
     def set_initial_conditions(self):
         p_init_res = 5.88812   # from the pressure of the perforated segment of the wellbore
-        # p_init_res = 79.79812  # from the pressure of the perforated segment of the wellbore
         T_init_res = 321.90000   # from the temperature of the perforated segment of the wellbore
 
         input_distribution = {self.physics.vars[0]: p_init_res,
@@ -75,10 +78,8 @@ class Model(CICDModel):
         self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, input_distribution=input_distribution)
 
         for well in self.reservoir.wells:
-            # self.wells[well.name].initial_conditions.initial_conditions_vector[:2:] = [70.90588379, -12520.9]
             well.init_state = value_vector(self.wells[well.name].initial_conditions.initial_conditions_vector)
 
-        # self.reservoir.mesh.volume[self.reservoir.wells[0].well_head_idx] = 1e20
         return
 
     def set_physics(self):
@@ -171,11 +172,13 @@ class Model(CICDModel):
 
         #%% Add source/sink terms
         inj_segment_idx = 0
-        target_inj_rate = 58895.98 / 30  # in kmol/day
+        target_inj_rate = 58895.98  # in kmol/day
         ramp_up_period = 0.0  # in day
 
         inj_phase_comp = np.array([1.])
-        inj_phase_name = "L"
+        # There is no difference if the phase used in the following line for evaluating enthalpy is either G
+        # or L because for both the same EoSs are used.
+        inj_phase_name = "G"
         injected_fluid_pressure = 60.0
         injected_fluid_temperature = 10 + 273.15
 
@@ -199,9 +202,26 @@ class Model(CICDModel):
 
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
                                        well_diameter=well_1_geometry.pipe_ID,
-                                       pi=1e5,
-                                       pi_type=ms_well.PI_Type.MASS,
+                                       well_index=0.0,
+                                       well_indexD=0.0,
                                        )
+        self.rhs_flux_hooks.append(
+            LinearDFMWellIPR(
+                self,
+                [
+                    LinearDFMWellIPRConnection(
+                        well_name=well_1_name,
+                        perforation_index=len(
+                            self.reservoir.get_well(well_1_name).perforations
+                        )
+                        - 1,
+                        pi=1e5,
+                        pi_type=ms_well.PI_Type.MASS,
+                        ipr_pressure_offset=0.0,
+                    )
+                ],
+            )
+        )
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         mass_node = self.wells["I1"].source_sinks["UpstreamRampUpRate1"]
