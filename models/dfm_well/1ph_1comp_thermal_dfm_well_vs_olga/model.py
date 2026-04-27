@@ -14,13 +14,12 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
+from darts.pipes.pipe import Pipe
+from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.linear_dfm_well_ipr import (
     LinearDFMWellIPR,
     LinearDFMWellIPRConnection,
 )
-from darts.pipes.ramp_up_rate import RampUpRate
-from darts.pipes.pipe import Pipe
-from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
 
 class Model(CICDModel):

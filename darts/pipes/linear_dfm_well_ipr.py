@@ -13,15 +13,14 @@ class LinearDFMWellIPRConnection:
     pi: float
     pi_type: ms_well.PI_Type
     ipr_pressure_offset: float = 0.0
-    rate_intercept: float = 0.0
-    label: str | None = None
+    ipr_intercept: float = 0.0
 
 
 class LinearDFMWellIPR:
     """
-    Apply an exact linear total-rate IPR for DFM well perforations from Python.
+    Apply a linear total-rate IPR for DFM well perforations from Python.
 
-    The contact law is
+    The used linear IPR is
         q_total = A + B * (p_well - p_reservoir - dp_offset)
 
     where q_total is interpreted according to pi_type:
@@ -271,7 +270,7 @@ class LinearDFMWellIPR:
         thermal = bool(self.model.physics.thermal)
         energy_eq_idx = nc
 
-        total_rate = spec.rate_intercept + spec.pi * (
+        total_rate = spec.ipr_intercept + spec.pi * (
             well_state[0] - res_state[0] - spec.ipr_pressure_offset
         )
 
