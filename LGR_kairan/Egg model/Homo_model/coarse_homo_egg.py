@@ -148,11 +148,11 @@ class Model(DartsModel):
     def set_wells(self):
         self.reservoir.add_well("I1")
         for k in range(2, 9):
-            self.reservoir.add_perforation("I1", res_cell_idx=(30,30,k),ms_epm=True, well_diameter=0.1524)
+            self.reservoir.add_perforation("I1", res_cell_idx=(42,30,k),ms_epm=True, well_diameter=0.1524)
 
         self.reservoir.add_well("P1")
         for k in range(2, 9):
-            self.reservoir.add_perforation("P1", res_cell_idx=(14,46,k),ms_epm=True, well_diameter=0.1524)
+            self.reservoir.add_perforation("P1", res_cell_idx=(19,30,k),ms_epm=True, well_diameter=0.1524)
 
 
     def set_physics(self):
@@ -217,9 +217,9 @@ class Model(DartsModel):
         boundary_state = {"pressure" :200}
         for comp in self.physics.components[:-1]:
             boundary_state[comp] = float(primary_specs[comp])
-        boundary_state["temperature"] = 80 +273.15
+        boundary_state["temperature"] = 83 +273.15
 
-        dTdh = 40/1000 #k/m
+        dTdh = 34/1000 #k/m
 
         X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
@@ -235,12 +235,10 @@ class Model(DartsModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                            is_inj=True, target=1.0368e7, inj_composition=inj_composition, inj_temp=314.15)
+                                            is_inj=True, target=4.32e6, inj_composition=inj_composition, inj_temp=314.15)
             else:
-                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                #                                is_inj=False, target=1400000.)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                            is_inj=False, target=150.)
+                                               is_inj=False, target=190.)
 
 
 

@@ -177,7 +177,7 @@ class Model(DartsModel):
         for k in range(2, 9):
             self.reservoir.add_perforation(
                 "I1",
-                res_cell_idx=(46, 30, k),
+                res_cell_idx=(42, 30, k),
                 ms_epm=True,
                 well_diameter=0.1524,
             )
@@ -186,7 +186,7 @@ class Model(DartsModel):
         for k in range(2, 9):
             self.reservoir.add_perforation(
                 "P1",
-                res_cell_idx=(16, 30, k),
+                res_cell_idx=(19, 30, k),
                 ms_epm=True,
                 well_diameter=0.1524,
             )
@@ -261,9 +261,9 @@ class Model(DartsModel):
         boundary_state = {"pressure": 200}
         for comp in self.physics.components[:-1]:
             boundary_state[comp] = primary_specs[comp]
-        boundary_state["temperature"] = 80 + 273.15
+        boundary_state["temperature"] = 83 + 273.15
 
-        dTdh = 40 / 1000
+        dTdh = 34 / 1000
 
         X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,

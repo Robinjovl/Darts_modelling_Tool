@@ -2,6 +2,7 @@ import numpy as np
 import os
 import meshio
 from pyevtk.vtk import VtkGroup
+from types import SimpleNamespace
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.engines import(
     conn_mesh,
@@ -299,6 +300,7 @@ class LGRReservoir(ReservoirBase):
 
         super().__init__(timer, cache)
         self.vtk_initialized = False
+        self.discretizer = SimpleNamespace(frac_cells_tot=0)
         # connectivity
         self.cell_m = np.asarray(cell_m, dtype= int)
         self.cell_p = np.asarray(cell_p, dtype= int)
@@ -687,7 +689,25 @@ class LGRReservoir(ReservoirBase):
                 )
 
             cell_data[prop_names[prop]] = arr[:n]
+        cell_data["cell_id"] = np.arange(n, dtype=np.int32)
+        cell_data["depth"] = np.asarray(self.mesh.depth, dtype=float)[:n]
+        cell_data["poro"] = np.asarray(self.mesh.poro, dtype=float)[:n]
+        cell_data["volume"] = np.asarray(self.mesh.volume, dtype=float)[:n]
+        cell_data["dx"] = np.asarray(self.dx, dtype=float)[:n]
+        cell_data["dy"] = np.asarray(self.dy, dtype=float)[:n]
+        cell_data["dz"] = np.asarray(self.dz, dtype=float)[:n]
 
+        if hasattr(self, "kx"):
+            cell_data["permx"] = np.asarray(self.kx, dtype=float)[:n]
+        if hasattr(self, "ky"):
+            cell_data["permy"] = np.asarray(self.ky, dtype=float)[:n]
+        if hasattr(self, "kz"):
+            cell_data["permz"] = np.asarray(self.kz, dtype=float)[:n]
+        if hasattr(self, "rcond"):
+            cell_data["rcond"] = np.asarray(self.rcond, dtype=float)[:n]
+        if hasattr(self, "hcap"):
+            cell_data["hcap"] = np.asarray(self.hcap, dtype=float)[:n]
+            
         # Add useful diagnostics at every timestep
         cell_data["cell_id"] = np.arange(n, dtype=np.int32)
         if hasattr(self, "dx") and hasattr(self, "dy"):

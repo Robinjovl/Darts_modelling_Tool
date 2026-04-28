@@ -218,8 +218,8 @@ class Model(DartsModel):
         fx, fy, _ = self.refine
 
         # Coarse well locations from your heter/LGR setup
-        inj_i, inj_j =  228, 148
-        prod_i, prod_j = 78, 148
+        inj_i, inj_j = 208, 148
+        prod_i, prod_j = 93, 148
 
         self.reservoir.add_well("I1")
         for k in range(2, 9):
@@ -309,9 +309,9 @@ class Model(DartsModel):
         boundary_state = {"pressure": 200}
         for comp in self.physics.components[:-1]:
             boundary_state[comp] = primary_specs[comp]
-        boundary_state["temperature"] = 80 + 273.15
+        boundary_state["temperature"] = 83 + 273.15
 
-        dTdh = 40 / 1000  # K/m
+        dTdh = 34 / 1000  # K/m
 
         X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,

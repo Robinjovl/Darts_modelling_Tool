@@ -252,7 +252,7 @@ class FlowUpscalingModel(DartsModel):
 
         boundary_state = {
             "pressure": 200.0,          # bar
-            "temperature": 80.0 + 273.15,
+            "temperature": 83.0 + 273.15,
         }
 
         primary_specs = {}
@@ -261,7 +261,7 @@ class FlowUpscalingModel(DartsModel):
 
         X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=self.start_z,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=int(self.reservoir.nz),
-                                        dTdh=40.0 / 1000.0)
+                                        dTdh=34.0 / 1000.0)
 
         self.physics.set_initial_conditions_from_depth_table(
             mesh=self.reservoir.mesh,
