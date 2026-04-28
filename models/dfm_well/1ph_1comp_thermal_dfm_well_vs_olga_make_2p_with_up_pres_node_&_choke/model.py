@@ -199,6 +199,7 @@ class Model(CICDModel):
             injected_fluid_pressure,
             injected_fluid_temperature,
             inj_phase_name,
+            hydraulic_model="PERKINS",
             valve_geometry="ORIFICE",
             equilibrium_model="FROZEN",
             diameter=0.03,
@@ -207,10 +208,14 @@ class Model(CICDModel):
             flow_coefficient=1.0,
             gas_liquid_sizing_ratio=26.8465,
             thermal_phase_equilibrium=False,
-            recovery="OFF",
+            # The downstream pressure passed to the choke is the pressure of the
+            # top well segment. For the Perkins model this is best
+            # interpreted as recovered downstream pressure, not the minimum
+            # throat pressure inside the choke; RECOVERY='ON' estimates that
+            # throat pressure before deciding whether the flow is critical.
+            recovery="ON",
             recovery_tuning=1.0,
             slip_model="NOSLIP",
-            initial_downstream_pressure=pipe_head_pressure,
             verbose=verbose,
         )
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation

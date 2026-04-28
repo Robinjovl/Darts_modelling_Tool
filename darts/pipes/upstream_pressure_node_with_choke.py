@@ -994,6 +994,13 @@ class RecoveryModel(ABC):
     term to a predicted downstream pressure. ``ON`` applies a scalar tuning
     factor; it does not model detailed venturi or geometry-specific diffuser
     recovery.
+
+    Use ``OFF`` only when the downstream pressure supplied to the choke model is
+    intended to represent the throat or vena-contracta pressure itself. Use
+    ``ON`` when the downstream pressure is a pipe pressure after
+    the restriction, where part of the kinetic energy has already recovered as
+    static pressure. The Perkins hydraulic model has its own Perry-orifice
+    recovery relation for this ``ON`` case.
     """
 
     @property
@@ -1103,7 +1110,7 @@ class ChisholmSlipModel(SlipModel):
 
     def validate(self, equilibrium_model_name: str):
         raise NotImplementedError(
-            "SLIPMODEL='CHISHOLM' is not implemented yet in the DARTS choke boundary."
+            "SLIPMODEL='CHISHOLM' is not implemented yet in the open-DARTS choke boundary."
         )
 
 
@@ -1417,6 +1424,44 @@ def build_slip_model(slip_model: str) -> SlipModel:
     raise NotImplementedError(f"SLIPMODEL={slip_model!r} is not implemented yet.")
 
 
+def build_hydraulic_choke_model(
+    hydraulic_model: str,
+    helper: ChokePhysicsHelper,
+    boundary_state: ChokeBoundaryState,
+    valve_geometry_model: ValveGeometryModel,
+    equilibrium_model: EquilibriumModel,
+    recovery_model: RecoveryModel,
+    slip_model: SlipModel,
+    upstream_area: float,
+    downstream_area: float,
+) -> "ChokeModel":
+    """
+    Construct the hydraulic choke solver while keeping thermodynamic options shared.
+
+    ``OLGA_STYLE`` preserves the original integral pressure-drop implementation.
+    ``PERKINS`` switches only the critical/subcritical selection and downstream
+    pressure-recovery treatment to the Perkins method.
+    """
+    hydraulic_model = hydraulic_model.upper()
+    model_args = dict(
+        helper=helper,
+        boundary_state=boundary_state,
+        valve_geometry_model=valve_geometry_model,
+        equilibrium_model=equilibrium_model,
+        recovery_model=recovery_model,
+        slip_model=slip_model,
+        upstream_area=upstream_area,
+        downstream_area=downstream_area,
+    )
+    if hydraulic_model in ("OLGA", "OLGA_STYLE", "INTEGRAL"):
+        return ChokeModel(**model_args)
+    if hydraulic_model == "PERKINS":
+        return PerkinsChokeModel(**model_args)
+    raise NotImplementedError(
+        f"hydraulic_model={hydraulic_model!r} is not implemented yet."
+    )
+
+
 class ChokeModel:
     """
     Numerical choke solver coupling thermodynamics, geometry, and recovery.
@@ -1434,6 +1479,10 @@ class ChokeModel:
     _INTEGRATION_POINTS = 8
     _ROOT_SCAN_POINTS = 24
 
+    @property
+    def hydraulic_model(self) -> str:
+        return "OLGA_STYLE"
+
     def __init__(
         self,
         helper: ChokePhysicsHelper,
@@ -1445,6 +1494,21 @@ class ChokeModel:
         upstream_area: float,
         downstream_area: float,
     ):
+        """
+        :param helper: Adapter used to evaluate open-DARTS thermodynamic properties
+                       and isentropic states.
+        :param boundary_state: User-specified upstream pressure, temperature,
+                               phase, composition, enthalpy, and entropy.
+        :param valve_geometry_model: Geometry model that supplies choke area,
+                                     effective area, and acceleration terms.
+        :param equilibrium_model: Thermodynamic closure used along the pressure
+                                  path through the choke.
+        :param recovery_model: Downstream pressure-recovery option.
+        :param slip_model: Gas/liquid velocity model. Only NOSLIP is currently
+                           usable.
+        :param upstream_area: Flow area upstream of the choke, in m2.
+        :param downstream_area: Flow area downstream of the choke, in m2.
+        """
         self.helper = helper
         self.boundary_state = boundary_state
         self.valve_geometry_model = valve_geometry_model
@@ -1660,7 +1724,7 @@ class ChokeModel:
         """
         Evaluate mass rate and discharge state for the current pipe pressure.
 
-        The result is later converted to the molar source rate used by the DARTS
+        The result is later converted to the molar source rate used by the open-DARTS
         boundary. ``flow_regime`` reports whether the downstream pressure could
         be matched subcritically or whether the critical maximum-rate solution was
         selected.
@@ -1714,6 +1778,459 @@ class ChokeModel:
         )
 
 
+class PerkinsChokeModel(ChokeModel):
+    """
+    Perkins critical/subcritical choke model with open-DARTS thermodynamics.
+
+    Perkins derives the ideal mass rate from the steady adiabatic energy
+    equation for a homogeneous mixture and applies a discharge coefficient to
+    obtain the actual rate. This implementation evaluates Perkins Eq. A-28 in
+    SI units. The gas polytropic exponent is estimated from an open-DARTS
+    isentropic gas expansion at the upstream state; liquid is treated as
+    incompressible, consistent with Perkins' assumptions.
+
+    When ``RECOVERY='ON'``, the subcritical throat pressure is inferred from the
+    recovered downstream pressure with Perkins' Perry-orifice pressure recovery
+    relation,
+    ``p_throat = p_up - (p_up - p_downstream) / (1 - (d_choke / d_pipe)**1.85)``.
+    When recovery is disabled, the downstream pipe pressure is treated as the
+    throat pressure. Perkins Eq. A-30 is used to solve the critical pressure
+    ratio. If Eq. A-30 cannot be solved, the model raises an error instead of
+    substituting a different critical-flow criterion.
+    """
+
+    _PERRY_DIAMETER_RATIO_EXPONENT = 1.85
+    _POLYTROPIC_PRESSURE_STEP = 1e-3
+
+    @property
+    def hydraulic_model(self) -> str:
+        return "PERKINS"
+
+    def __init__(
+        self,
+        helper: ChokePhysicsHelper,
+        boundary_state: ChokeBoundaryState,
+        valve_geometry_model: ValveGeometryModel,
+        equilibrium_model: EquilibriumModel,
+        recovery_model: RecoveryModel,
+        slip_model: SlipModel,
+        upstream_area: float,
+        downstream_area: float,
+    ):
+        """
+        :param helper: Adapter used to evaluate open-DARTS thermodynamic properties
+                       and isentropic states.
+        :param boundary_state: User-specified upstream pressure, temperature,
+                               phase, composition, enthalpy, and entropy.
+        :param valve_geometry_model: Orifice geometry used by the Perkins
+                                     pressure-recovery and area terms.
+        :param equilibrium_model: Thermodynamic closure used along the
+                                  isentropic pressure path.
+        :param recovery_model: If ON, treats downstream pressure as recovered
+                               pipe pressure and estimates throat pressure using
+                               Perkins' Perry-orifice relation. If OFF,
+                               downstream pressure is treated as throat pressure.
+        :param slip_model: Gas/liquid velocity model. Only NOSLIP is currently
+                           usable.
+        :param upstream_area: Flow area upstream of the choke, in m2.
+        :param downstream_area: Flow area downstream of the choke, in m2.
+        """
+        super().__init__(
+            helper=helper,
+            boundary_state=boundary_state,
+            valve_geometry_model=valve_geometry_model,
+            equilibrium_model=equilibrium_model,
+            recovery_model=recovery_model,
+            slip_model=slip_model,
+            upstream_area=upstream_area,
+            downstream_area=downstream_area,
+        )
+        if self.valve_geometry_model.valve_geometry != "ORIFICE":
+            raise NotImplementedError(
+                "hydraulic_model='PERKINS' currently supports VALVEGEOMETRY='ORIFICE' only."
+            )
+        self._perkins_parameter_cache = None
+
+    def _estimate_gas_polytropic_exponent(self) -> float:
+        """
+        Estimate Perkins' gas exponent ``n`` from an isentropic gas expansion.
+
+        Perkins computes ``n`` from heat capacities. Those are not always exposed
+        by the open-DARTS property container, so this method evaluates the same
+        physical quantity from ``p v_g**n = constant`` over a small pressure step.
+        """
+        upstream_pressure = self.boundary_state.pressure
+        trial_pressure = upstream_pressure * (1.0 - self._POLYTROPIC_PRESSURE_STEP)
+        lower = self._lower_pressure_search_bound(upstream_pressure)
+        if lower is not None:
+            trial_pressure = max(trial_pressure, lower)
+        if trial_pressure >= upstream_pressure:
+            raise ValueError(
+                "Cannot estimate Perkins gas exponent inside pressure bounds."
+            )
+
+        gas_entropy = self.helper.evaluate_phase_entropy(
+            upstream_pressure,
+            self.boundary_state.temperature,
+            self.boundary_state.composition,
+            self.helper.phase_root_flag("G"),
+        )
+        gas_enthalpy = self.helper.evaluate_phase_enthalpy(
+            "G",
+            upstream_pressure,
+            self.boundary_state.temperature,
+            self.boundary_state.composition,
+        )
+        gas_boundary_state = ChokeBoundaryState(
+            pressure=upstream_pressure,
+            temperature=self.boundary_state.temperature,
+            composition=self.boundary_state.composition,
+            phase_name="G",
+            molar_enthalpy=gas_enthalpy,
+            molar_entropy=gas_entropy,
+        )
+        trial_temperature, _ = self.helper.solve_single_phase_isentropic_state(
+            gas_boundary_state,
+            trial_pressure,
+        )
+        upstream_gas_density = self.helper.evaluate_phase_density(
+            "G",
+            upstream_pressure,
+            self.boundary_state.temperature,
+            self.boundary_state.composition,
+        )
+        trial_gas_density = self.helper.evaluate_phase_density(
+            "G",
+            trial_pressure,
+            trial_temperature,
+            self.boundary_state.composition,
+        )
+        if upstream_gas_density <= 0.0 or trial_gas_density <= 0.0:
+            raise ValueError(
+                "Gas density must be positive to estimate Perkins exponent."
+            )
+
+        upstream_gas_specific_volume = 1.0 / upstream_gas_density
+        trial_gas_specific_volume = 1.0 / trial_gas_density
+        exponent = math.log(trial_pressure / upstream_pressure) / math.log(
+            upstream_gas_specific_volume / trial_gas_specific_volume
+        )
+        if not np.isfinite(exponent) or exponent <= 1.0:
+            raise ValueError(f"Invalid Perkins gas exponent: {exponent}.")
+        return float(exponent)
+
+    def _perkins_parameters(
+        self,
+        cache: dict[float, ChokeFlowState],
+    ) -> tuple[float, float, float, float, float]:
+        """
+        Return ``fg``, ``alpha1``, ``lambda``, ``n``, and upstream mixture volume.
+
+        Perkins defines ``fg`` as upstream gas mass fraction and ``alpha1`` as
+        the upstream liquid-volume contribution divided by total mixture specific
+        volume. The original paper contains separate oil and water terms; this
+        implementation uses the single liquid phase exposed by open-DARTS.
+        """
+        if self._perkins_parameter_cache is not None:
+            return self._perkins_parameter_cache
+
+        upstream_state = self._flow_state(self.boundary_state.pressure, cache)
+        gas_mass_fraction = float(np.clip(upstream_state.gas_mass_fraction, 0.0, 1.0))
+        liquid_mass_fraction = 1.0 - gas_mass_fraction
+        upstream_specific_volume = upstream_state.inv_momentum_density
+        if not np.isfinite(upstream_specific_volume) or upstream_specific_volume <= 0.0:
+            raise ValueError(
+                "Perkins model requires positive upstream specific volume."
+            )
+
+        liquid_volume_term = 0.0
+        if liquid_mass_fraction > 0.0:
+            if (
+                not np.isfinite(upstream_state.liquid_density)
+                or upstream_state.liquid_density <= 0.0
+            ):
+                raise ValueError(
+                    "Perkins model requires positive upstream liquid density."
+                )
+            liquid_volume_term = liquid_mass_fraction / upstream_state.liquid_density
+        alpha1 = liquid_volume_term / upstream_specific_volume
+
+        if gas_mass_fraction <= 1e-12:
+            polytropic_exponent = 1.0
+            lambda_perkins = 0.0
+        else:
+            polytropic_exponent = self._estimate_gas_polytropic_exponent()
+            lambda_perkins = (
+                gas_mass_fraction * polytropic_exponent / (polytropic_exponent - 1.0)
+            )
+
+        self._perkins_parameter_cache = (
+            gas_mass_fraction,
+            float(alpha1),
+            float(lambda_perkins),
+            float(polytropic_exponent),
+            float(upstream_specific_volume),
+        )
+        return self._perkins_parameter_cache
+
+    def _perkins_dimensionless_terms(
+        self,
+        pressure_ratio: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> tuple[float, float, float, float, float, float]:
+        """
+        Evaluate the reusable dimensionless groups in Perkins Eq. A-28/A-30.
+
+        :return: ``fg``, ``alpha1``, ``lambda``, ``n``, ``Y``, and ``D`` where
+                 ``Y`` is the numerator energy term and ``D`` is the finite
+                 upstream-area correction.
+        """
+        fg, alpha1, lambda_perkins, n, _ = self._perkins_parameters(cache)
+        pressure_ratio = float(pressure_ratio)
+        if not 0.0 < pressure_ratio < 1.0:
+            raise ValueError("Perkins pressure ratio must be between 0 and 1.")
+
+        gas_liquid_volume_ratio = fg * pressure_ratio ** (-1.0 / n) + alpha1
+        if gas_liquid_volume_ratio <= 0.0:
+            raise ValueError("Invalid Perkins gas/liquid volume-ratio term.")
+
+        area_ratio = self.valve_geometry_model.throat_area / self.upstream_area
+        velocity_ratio = (fg + alpha1) / gas_liquid_volume_ratio
+        denominator = 1.0 - area_ratio**2 * velocity_ratio**2
+        energy_term = lambda_perkins * (
+            1.0 - pressure_ratio ** ((n - 1.0) / n)
+        ) + alpha1 * (1.0 - pressure_ratio)
+        return fg, alpha1, lambda_perkins, n, energy_term, denominator
+
+    def _perkins_mass_rate_from_pressure(
+        self,
+        throat_pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float:
+        """
+        Compute actual mass rate from Perkins Eq. A-28.
+
+        The equation is evaluated in SI units, replacing the oilfield-unit
+        ``288 g_c`` factor by ``2``. The ideal isentropic rate is multiplied by
+        the discharge coefficient to obtain the actual rate.
+        """
+        upstream_pressure = self.boundary_state.pressure
+        if throat_pressure >= upstream_pressure:
+            return 0.0
+
+        pressure_ratio = throat_pressure / upstream_pressure
+        fg, alpha1, _, n, energy_term, denominator = self._perkins_dimensionless_terms(
+            pressure_ratio,
+            cache,
+        )
+        _, _, _, _, upstream_specific_volume = self._perkins_parameters(cache)
+        gas_liquid_volume_ratio = fg * pressure_ratio ** (-1.0 / n) + alpha1
+        if energy_term <= 0.0 or denominator <= 0.0 or gas_liquid_volume_ratio <= 0.0:
+            return 0.0
+
+        upstream_pressure_pa = upstream_pressure * 1e5
+        ideal_rate = self.valve_geometry_model.throat_area * math.sqrt(
+            2.0
+            * upstream_pressure_pa
+            / upstream_specific_volume
+            * energy_term
+            / (denominator * gas_liquid_volume_ratio**2)
+        )
+        return self.valve_geometry_model.discharge_coefficient * ideal_rate
+
+    def _mass_rate_from_throat_pressure(
+        self,
+        throat_pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float:
+        """Evaluate Perkins Eq. A-28 instead of the base integral rate equation."""
+        return self._perkins_mass_rate_from_pressure(throat_pressure, cache)
+
+    def _perkins_critical_residual(
+        self,
+        pressure_ratio: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float:
+        """
+        Perkins Eq. A-30 residual for the critical pressure ratio.
+
+        The residual is written as left-minus-right using the notation from the
+        paper. A zero residual is equivalent to ``dwi / dpr = 0`` for Eq. A-28.
+        """
+        fg, alpha1, lambda_perkins, n, energy_term, denominator = (
+            self._perkins_dimensionless_terms(pressure_ratio, cache)
+        )
+        if fg <= 1e-12:
+            return np.nan
+
+        area_ratio = self.valve_geometry_model.throat_area / self.upstream_area
+        gas_liquid_volume_ratio = fg * pressure_ratio ** (-1.0 / n) + alpha1
+        pressure_derivative_term = fg / n * pressure_ratio ** (-(1.0 + n) / n)
+        area_derivative_term = (
+            area_ratio**2
+            * fg
+            / n
+            * (fg + alpha1) ** 2
+            * pressure_ratio ** (-(1.0 + n) / n)
+            / gas_liquid_volume_ratio**2
+        )
+        left = (
+            2.0
+            * energy_term
+            * (denominator * pressure_derivative_term + area_derivative_term)
+        )
+        right = (
+            denominator
+            * gas_liquid_volume_ratio
+            * (lambda_perkins * (n - 1.0) / n * pressure_ratio ** (-1.0 / n) + alpha1)
+        )
+        return left - right
+
+    def _critical_solution(
+        self,
+        cache: dict[float, ChokeFlowState],
+    ) -> tuple[float, float] | None:
+        """
+        Solve Perkins Eq. A-30 for critical pressure ratio.
+
+        Pure-liquid flow has no gas-expansion critical root in Eq. A-30, so this
+        returns ``None`` and the caller evaluates the subcritical Perkins rate.
+        For gas or gas/liquid flow, failure to bracket Eq. A-30 is treated as an
+        error because no alternative critical-flow equation is introduced here.
+        """
+        upper_pressure = self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR)
+        lower_pressure = self._lower_pressure_search_bound(upper_pressure)
+        if lower_pressure is None:
+            return upper_pressure, 0.0
+
+        gas_mass_fraction, _, _, _, upstream_specific_volume = self._perkins_parameters(
+            cache
+        )
+        if gas_mass_fraction <= 1e-12:
+            return None
+        if upstream_specific_volume <= 0.0:
+            raise ValueError(
+                "Perkins model requires positive upstream specific volume."
+            )
+
+        lower_ratio = max(lower_pressure / self.boundary_state.pressure, 1e-8)
+        upper_ratio = upper_pressure / self.boundary_state.pressure
+
+        def residual(pressure_ratio: float) -> float:
+            return self._perkins_critical_residual(pressure_ratio, cache)
+
+        samples = np.linspace(lower_ratio, upper_ratio, self._ROOT_SCAN_POINTS)
+        bracket = self.helper.find_bracket(samples, residual)
+        if bracket is not None:
+            if bracket[0] == bracket[1]:
+                critical_ratio = bracket[0]
+            else:
+                critical_ratio = brentq(residual, bracket[0], bracket[1])
+            throat_pressure = float(critical_ratio * self.boundary_state.pressure)
+            return throat_pressure, self._perkins_mass_rate_from_pressure(
+                throat_pressure,
+                cache,
+            )
+
+        raise ValueError(
+            "Could not bracket Perkins Eq. A-30 for the critical pressure ratio. "
+            "No numerical-maximization fallback is used because it is not part of "
+            "the Perkins implementation."
+        )
+
+    def _perkins_subcritical_throat_pressure(
+        self,
+        recovered_downstream_pressure: float,
+    ) -> float:
+        """
+        Estimate the subcritical throat pressure from recovered downstream pressure.
+
+        Perkins uses this pressure-recovery correction because the measurable
+        downstream pressure is normally taken after turbulent recovery, not at the
+        vena contracta. The relation is only defined when the choke diameter is
+        smaller than the downstream pipe diameter.
+        """
+        upper = self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR)
+        if not self.recovery_model.uses_downstream_recovery:
+            return float(
+                np.clip(
+                    recovered_downstream_pressure,
+                    self._MIN_PRESSURE_BAR,
+                    upper,
+                )
+            )
+
+        diameter_ratio = math.sqrt(
+            self.valve_geometry_model.throat_area / self.downstream_area
+        )
+        if not 0.0 < diameter_ratio < 1.0:
+            raise ValueError(
+                "Perkins pressure recovery requires choke diameter smaller than "
+                "downstream pipe diameter."
+            )
+
+        recovery_denominator = 1.0 - diameter_ratio**self._PERRY_DIAMETER_RATIO_EXPONENT
+        if recovery_denominator <= 0.0:
+            raise ValueError("Invalid Perkins pressure-recovery denominator.")
+
+        throat_pressure = (
+            self.boundary_state.pressure
+            - (self.boundary_state.pressure - recovered_downstream_pressure)
+            / recovery_denominator
+        )
+        lower = self._lower_pressure_search_bound(upper)
+        if lower is None:
+            return upper
+        return float(np.clip(throat_pressure, lower, upper))
+
+    def evaluate(self, downstream_pressure: float) -> ChokeEvaluationResult:
+        """
+        Evaluate the Perkins flow regime and mass rate.
+
+        The critical throat pressure is determined first. If the inferred
+        subcritical throat pressure lies below that critical pressure, the flow is
+        choked and independent of the recovered downstream pressure. Otherwise
+        the inferred throat pressure is used directly in the mass-rate equation.
+        Pure-liquid flow has no Eq. A-30 gas-expansion root and is evaluated as
+        subcritical.
+        """
+        cache: dict[float, ChokeFlowState] = {}
+        subcritical_throat_pressure = self._perkins_subcritical_throat_pressure(
+            downstream_pressure
+        )
+        critical_solution = self._critical_solution(cache)
+
+        if (
+            critical_solution is not None
+            and critical_solution[0] > subcritical_throat_pressure
+        ):
+            critical_throat_pressure, critical_mass_rate_kg_s = critical_solution
+            throat_pressure = critical_throat_pressure
+            mass_rate_kg_s = critical_mass_rate_kg_s
+            flow_regime = "critical"
+        else:
+            throat_pressure = subcritical_throat_pressure
+            mass_rate_kg_s = self._mass_rate_from_throat_pressure(
+                throat_pressure,
+                cache,
+            )
+            flow_regime = "subcritical"
+
+        discharge_state = self._flow_state(
+            downstream_pressure,
+            cache,
+        )
+        return ChokeEvaluationResult(
+            mass_rate_kg_s=mass_rate_kg_s,
+            discharge_molar_enthalpy=discharge_state.molar_enthalpy,
+            throat_pressure=float(throat_pressure),
+            flow_regime=flow_regime,
+            discharge_density=discharge_state.density,
+            discharge_inv_momentum_density=discharge_state.inv_momentum_density,
+            discharge_gas_mass_fraction=discharge_state.gas_mass_fraction,
+        )
+
+
 class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
     """
     Upstream pressure/temperature source connected to the pipe through a choke.
@@ -1721,6 +2238,7 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
     The implementation is intentionally split into orthogonal model parts, following
     the OLGA choke documentation:
 
+      - hydraulic model
       - valve geometry
       - equilibrium model
       - recovery model
@@ -1731,7 +2249,8 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
     The implementation is a reduced OLGA-style model, not a feature-complete
     OLGA clone: CHISHOLM slip, valve-coefficient tables, multiple nozzles,
     venturi/standing-valve options, and the full Henry-Fauske derivative
-    equations are not implemented.
+    equations are not implemented. ``hydraulic_model='PERKINS'`` is available
+    for the Perkins energy-equation critical/subcritical choke method.
 
     The API exposes OLGA-style choke inputs explicitly:
       - discharge_coefficient ~= CD
@@ -1759,6 +2278,7 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
         pressure: float,
         temperature: float,
         phase_name: str,
+        hydraulic_model: str = "OLGA_STYLE",
         valve_geometry: str = "ORIFICE",
         equilibrium_model: str = "FROZEN",
         diameter: float = None,
@@ -1776,6 +2296,10 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
         verbose: bool = False,
     ):
         """
+        :param hydraulic_model: Hydraulic choke method:
+                                - OLGA_STYLE: Existing integral pressure-drop solver.
+                                - PERKINS: Perkins critical/subcritical method with
+                                  Perry-orifice recovery when RECOVERY='ON'.
         :param valve_geometry: Valve geometry used in the choke model:
                                - ORIFICE: Orifice type with no spatial extension, vena contracta appears behind the valve.
                                - BEAN: Bean type with spatial extension, vena contracta appears inside the valve.
@@ -1793,7 +2317,12 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
         :param thermal_phase_equilibrium: If set to True, thermal equilibrium between gas and liquid is assumed;
                                           otherwise, the gas is expanded isentropically while the liquid is isothermal.
                                           Used by FROZEN and HENRYFAUSKE closures.
-        :param recovery: Enable/disable simplified pressure recovery downstream of the throat.
+        :param recovery: Enable/disable downstream pressure recovery.
+                         Use ON when the downstream pressure is a recovered pipe
+                         pressure after the choke, as in a well
+                         segment pressure. Use OFF only when the downstream
+                         pressure should be interpreted as the throat pressure
+                         inside the choke.
         :param recovery_tuning: 1 gives maximum recovery and 0 gives zero recovery
         :param slip_model: Slip model for choke throat. Only NOSLIP is currently usable;
                            CHISHOLM is declared but raises NotImplementedError.
@@ -1859,7 +2388,8 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
         )
         slip_model_obj = build_slip_model(slip_model)
 
-        self.choke_model = ChokeModel(
+        self.choke_model = build_hydraulic_choke_model(
+            hydraulic_model=hydraulic_model,
             helper=helper,
             boundary_state=boundary_state,
             valve_geometry_model=geometry_model,
@@ -1881,6 +2411,7 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
                 initial_downstream_pressure,
             )
 
+        self.hydraulic_model = self.choke_model.hydraulic_model
         self.valve_geometry = self.choke_model.valve_geometry_model.valve_geometry
         self.equilibrium_model = self.choke_model.equilibrium_model.name
         self.recovery = self.choke_model.recovery_model.name
