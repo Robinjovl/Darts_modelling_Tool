@@ -12,6 +12,8 @@ from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 
 @dataclass(frozen=True)
 class ChokeBoundaryState:
+    """Thermodynamic state imposed upstream of the choke."""
+
     pressure: float
     temperature: float
     composition: np.ndarray
@@ -22,6 +24,8 @@ class ChokeBoundaryState:
 
 @dataclass(frozen=True)
 class ChokeEvaluationResult:
+    """Result of solving the choke at the current downstream pipe pressure."""
+
     mass_rate_kg_s: float
     discharge_molar_enthalpy: float
     throat_pressure: float
@@ -33,6 +37,16 @@ class ChokeEvaluationResult:
 
 @dataclass(frozen=True)
 class ChokeFlowState:
+    """
+    Local state used by the choke pressure-drop equations.
+
+    ``inv_momentum_density`` is the quantity integrated in the Bernoulli-like
+    inlet-to-throat pressure-drop expression. With the currently implemented
+    no-slip model it is the homogeneous mixture specific volume,
+    ``x_g / rho_g + (1 - x_g) / rho_l``. The OLGA Chisholm/slip correction is
+    intentionally not folded into this field until that model is implemented.
+    """
+
     pressure: float
     temperature: float
     molar_enthalpy: float
@@ -45,6 +59,8 @@ class ChokeFlowState:
 
 @dataclass(frozen=True)
 class EquilibriumPhaseState:
+    """Phase split returned by a PH flash at a trial choke pressure."""
+
     pressure: float
     temperature: float
     gas_mass_fraction: float
@@ -57,6 +73,17 @@ class EquilibriumPhaseState:
 
 
 class ChokePhysicsHelper:
+    """
+    Adapter between the choke equations and open-DARTS thermodynamic evaluators.
+
+    The choke solver repeatedly asks for states along an isentropic pressure
+    path from the upstream boundary to a trial throat/downstream pressure. This
+    helper centralizes those flash/property calls and bounds every scalar solve
+    by the active OBL axes. It is not an OLGA fluid package implementation: it
+    uses open-DARTS EOS/property evaluators directly and does not implement OLGA's
+    optional entropy-integration fallback for fluids without entropy tables.
+    """
+
     _TEMPERATURE_ROOT_SAMPLES = 32
     _ENTHALPY_ROOT_SAMPLES = 48
 
@@ -224,6 +251,14 @@ class ChokePhysicsHelper:
         molar_enthalpy: float,
         composition,
     ) -> float:
+        """
+        Estimate mixture entropy after a PH equilibrium flash.
+
+        This is a mass-weighted combination of phase entropies evaluated by the
+        EOS at the flashed temperature/compositions. It is sufficient for the
+        current isentropic-equilibrium root solve, but it is not OLGA's documented
+        fallback integration from enthalpy, mass fraction, and density.
+        """
         state = self.build_ph_state(pressure, molar_enthalpy, composition)
         self.pc.evaluate(state)
         self.pc.evaluate_thermal(state)
@@ -461,6 +496,14 @@ class ChokePhysicsHelper:
         gas_phase_composition,
         liquid_phase_composition,
     ) -> ChokeFlowState:
+        """
+        Build a homogeneous gas/liquid state from phase properties.
+
+        The returned momentum density assumes both phases move with the same
+        velocity. This matches NOSLIP and full-equilibrium assumptions. The OLGA
+        documentation's slip-ratio expression should be introduced here, or in a
+        dedicated slip model hook, when CHISHOLM support is implemented.
+        """
         gas_mass_fraction = float(np.clip(gas_mass_fraction, 0.0, 1.0))
         liquid_mass_fraction = 1.0 - gas_mass_fraction
 
@@ -567,6 +610,13 @@ class ChokePhysicsHelper:
         boundary_state: ChokeBoundaryState,
         downstream_pressure: float,
     ) -> tuple[float, float]:
+        """
+        Follow a single frozen phase along an isentropic pressure change.
+
+        OLGA's simplified model can use idealized gamma-based gas expansion.
+        Here the temperature is solved from the EOS entropy residual and the
+        phase enthalpy is then evaluated at that pressure/temperature.
+        """
         phase_name = boundary_state.phase_name
         root_flag = self.phase_root_flag(phase_name)
 
@@ -625,6 +675,13 @@ class ChokePhysicsHelper:
         boundary_state: ChokeBoundaryState,
         downstream_pressure: float,
     ) -> float:
+        """
+        Find the PH-flash enthalpy that preserves upstream mixture entropy.
+
+        If no robust entropy bracket is found, the model falls back to the frozen
+        single-phase isentropic enthalpy. This keeps the boundary stable but is a
+        simplification that should be validated for flashing cases.
+        """
         h_frozen = self.solve_single_phase_isentropic_enthalpy(
             boundary_state,
             downstream_pressure,
@@ -656,6 +713,17 @@ def eos_entropy(eos, pressure: float, temperature: float, composition) -> float:
 
 
 class ValveGeometryModel(ABC):
+    """
+    Geometry-specific area and momentum-balance terms.
+
+    The main choke solver computes the rate from an integrated compressible
+    pressure-drop relation. Geometry models only provide the effective areas and
+    denominator terms that distinguish ORIFICE from BEAN behavior. The
+    ``mass_rate_kg_s`` and sizing methods are lightweight incompressible-style
+    estimates used for initial diameter sizing, not for the production choke
+    solve in ``ChokeModel.evaluate``.
+    """
+
     @property
     @abstractmethod
     def valve_geometry(self) -> str:
@@ -733,6 +801,14 @@ class ValveGeometryModel(ABC):
 
 
 class OrificeValveGeometryModel(ValveGeometryModel):
+    """
+    Zero-length orifice geometry.
+
+    The effective throat area is ``CD * opening * flow_coefficient * area``.
+    OLGA valve-coefficient tables and multiple-nozzle aggregation are not
+    represented here; callers must pass the equivalent scalar opening/diameter.
+    """
+
     _PA_PER_BAR = 1e5
 
     def __init__(
@@ -869,6 +945,14 @@ class OrificeValveGeometryModel(ValveGeometryModel):
 
 
 class BeanValveGeometryModel(OrificeValveGeometryModel):
+    """
+    Bean geometry with a simple vena-contracta recovery correction.
+
+    This adds the contraction-recovery term used by the implemented pressure-drop
+    relation and uses the physical throat area for downstream acceleration. It is
+    still a reduced model, not a full OLGA valve-table or nozzle-group model.
+    """
+
     @property
     def valve_geometry(self) -> str:
         return "BEAN"
@@ -903,6 +987,15 @@ class BeanValveGeometryModel(OrificeValveGeometryModel):
 
 
 class RecoveryModel(ABC):
+    """
+    Downstream pressure-recovery policy.
+
+    Recovery maps the throat pressure plus an ideal acceleration-based recovery
+    term to a predicted downstream pressure. ``ON`` applies a scalar tuning
+    factor; it does not model detailed venturi or geometry-specific diffuser
+    recovery.
+    """
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -976,6 +1069,8 @@ class DownstreamRecoveryModel(RecoveryModel):
 
 
 class SlipModel(ABC):
+    """Validation hook for future slip models."""
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -986,12 +1081,22 @@ class SlipModel(ABC):
 
 
 class NoSlipModel(SlipModel):
+    """Homogeneous velocity assumption for gas and liquid."""
+
     @property
     def name(self) -> str:
         return "NOSLIP"
 
 
 class ChisholmSlipModel(SlipModel):
+    """
+    Placeholder for the OLGA Chisholm slip option.
+
+    The OLGA documentation includes a Chisholm slip relation for the momentum
+    density. That equation is not implemented yet, so selecting this model fails during
+    validation instead of silently using NOSLIP.
+    """
+
     @property
     def name(self) -> str:
         return "CHISHOLM"
@@ -1003,6 +1108,13 @@ class ChisholmSlipModel(SlipModel):
 
 
 class EquilibriumModel(ABC):
+    """
+    Thermodynamic closure used to evaluate states along the choke.
+
+    Each implementation returns a ``ChokeFlowState`` at a trial pressure. The
+    hydraulic solver is shared; only the pressure path and phase split differ.
+    """
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -1034,6 +1146,15 @@ class EquilibriumModel(ABC):
 
 
 class FrozenEquilibriumModel(EquilibriumModel):
+    """
+    Frozen-composition model.
+
+    For liquid without thermal phase equilibrium this keeps density and enthalpy
+    fixed at the user-specified upstream boundary pressure, temperature, and
+    composition. Gas, and thermal-equilibrium liquid, follow an EOS-based
+    isentropic path.
+    """
+
     def __init__(self, thermal_phase_equilibrium: bool = False):
         self.thermal_phase_equilibrium = bool(thermal_phase_equilibrium)
 
@@ -1083,6 +1204,16 @@ class FrozenEquilibriumModel(EquilibriumModel):
 
 
 class HenryFauskeEquilibriumModel(EquilibriumModel):
+    """
+    Approximate Henry-Fauske delayed-flashing model.
+
+    This implementation is intentionally partial. It starts from the FROZEN
+    state, computes an equilibrium PH flash at the same pressure, and moves the
+    gas mass fraction toward equilibrium using ``N = min(x_eq / 0.14, 1)``.
+    The pressure-derivative form described in the OLGA documentation is not
+    solved explicitly here.
+    """
+
     _XE_REF = 0.14
 
     def __init__(self, thermal_phase_equilibrium: bool = False):
@@ -1181,6 +1312,14 @@ class HenryFauskeEquilibriumModel(EquilibriumModel):
 
 
 class FullEquilibriumModel(EquilibriumModel):
+    """
+    Homogeneous full-equilibrium model.
+
+    The state is found from a PH equilibrium flash constrained to the upstream
+    entropy. Because the current momentum density is homogeneous, this model is
+    only valid with ``SLIPMODEL='NOSLIP'``.
+    """
+
     @property
     def name(self) -> str:
         return "EQUILIBRIUM"
@@ -1279,6 +1418,17 @@ def build_slip_model(slip_model: str) -> SlipModel:
 
 
 class ChokeModel:
+    """
+    Numerical choke solver coupling thermodynamics, geometry, and recovery.
+
+    The implemented hydraulic model follows the OLGA-style structure: integrate
+    inverse momentum density from throat to upstream pressure, use geometry
+    terms to convert that pressure drop into mass rate, then either match the
+    requested downstream pressure or choose the critical maximum-rate throat
+    pressure. Critical flow is found by numerical maximization, not by the
+    analytical derivative equation in the OLGA documentation.
+    """
+
     _PRESSURE_EPS_BAR = 1e-6
     _MIN_PRESSURE_BAR = 1e-3
     _INTEGRATION_POINTS = 8
@@ -1341,6 +1491,13 @@ class ChokeModel:
         throat_pressure: float,
         cache: dict[float, ChokeFlowState],
     ) -> float:
+        """
+        Integrate specific volume-like momentum term along the pressure path.
+
+        The integral is evaluated with a fixed trapezoid rule for robustness and
+        speed inside boundary updates. Increase ``_INTEGRATION_POINTS`` or replace
+        this with adaptive quadrature before relying on strongly flashing cases.
+        """
         upstream_pressure = self.boundary_state.pressure
         if throat_pressure >= upstream_pressure:
             return 0.0
@@ -1361,6 +1518,13 @@ class ChokeModel:
         throat_pressure: float,
         cache: dict[float, ChokeFlowState],
     ) -> float:
+        """
+        Compute mass rate for a candidate throat pressure.
+
+        A non-positive denominator means the current geometry/state combination
+        cannot produce a physical acceleration term for this trial pressure, so
+        the candidate contributes zero flow instead of failing the simulator.
+        """
         upstream_state = self._flow_state(self.boundary_state.pressure, cache)
         throat_state = self._flow_state(throat_pressure, cache)
         integral_term = self._integrate_inverse_momentum_density(
@@ -1389,6 +1553,12 @@ class ChokeModel:
         target_downstream_pressure: float,
         cache: dict[float, ChokeFlowState],
     ) -> float:
+        """
+        Predict downstream pressure produced by a trial throat pressure.
+
+        With RECOVERY='OFF' this collapses to the throat pressure. With recovery
+        enabled, the ideal acceleration recovery is scaled by ``recovery_tuning``.
+        """
         throat_state = self._flow_state(throat_pressure, cache)
         downstream_state = self._flow_state(target_downstream_pressure, cache)
         mass_rate = self._mass_rate_from_throat_pressure(throat_pressure, cache)
@@ -1411,6 +1581,13 @@ class ChokeModel:
         downstream_pressure: float,
         cache: dict[float, ChokeFlowState],
     ) -> float | None:
+        """
+        Solve for the throat pressure that exactly matches downstream pressure.
+
+        If no bracket is found, the caller treats the flow as critical. This is
+        deliberately conservative for boundary robustness, but it also means
+        poor thermodynamic brackets can force critical behavior.
+        """
         upper = min(
             downstream_pressure,
             self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR),
@@ -1441,6 +1618,13 @@ class ChokeModel:
         self,
         cache: dict[float, ChokeFlowState],
     ) -> tuple[float, float]:
+        """
+        Find the critical-flow point as the maximum mass rate over throat pressure.
+
+        This numerical optimization replaces the explicit derivative equation in
+        the OLGA documentation. It avoids deriving model-specific derivatives but
+        depends on smooth property evaluations and adequate pressure bounds.
+        """
         upper = self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR)
         lower = self._lower_pressure_search_bound(upper)
         if lower is None:
@@ -1473,6 +1657,14 @@ class ChokeModel:
         )
 
     def evaluate(self, downstream_pressure: float) -> ChokeEvaluationResult:
+        """
+        Evaluate mass rate and discharge state for the current pipe pressure.
+
+        The result is later converted to the molar source rate used by the DARTS
+        boundary. ``flow_regime`` reports whether the downstream pressure could
+        be matched subcritically or whether the critical maximum-rate solution was
+        selected.
+        """
         cache: dict[float, ChokeFlowState] = {}
         if not self.recovery_model.uses_downstream_recovery:
             critical_throat_pressure, critical_mass_rate_kg_s = self._critical_solution(
@@ -1536,15 +1728,19 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
 
     ORIFICE / BEAN geometries and OFF / ON recovery paths are implemented
     presently, and new models can be added without rewriting the boundary node.
+    The implementation is a reduced OLGA-style model, not a feature-complete
+    OLGA clone: CHISHOLM slip, valve-coefficient tables, multiple nozzles,
+    venturi/standing-valve options, and the full Henry-Fauske derivative
+    equations are not implemented.
 
     The API exposes OLGA-style choke inputs explicitly:
       - discharge_coefficient ~= CD
       - gas_liquid_sizing_ratio ~= CF
       - recovery_tuning ~= CR
 
-    CD affects the Hydrovalve contraction area directly. CF is stored for future
-    valve-table / gas-sizing support. CR scales the downstream pressure-recovery
-    term when RECOVERY='ON'.
+    CD affects the effective contraction area directly. CF is stored for future
+    valve-table / gas-sizing support and is not used by the present rate solve.
+    CR scales the downstream pressure-recovery term when RECOVERY='ON'.
     """
 
     _SEC_PER_DAY = 24.0 * 60.0 * 60.0
@@ -1587,16 +1783,20 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
                                   - FROZEN: No mass transfer
                                   - HENRYFAUSKE: Partial equilibrium
                                   - EQUILIBRIUM: Gas/liquid equilibrium
-        :param diameter: Maximum valve diameter. If NNOZZLE is defined, nozzle diameter for each nozzle group.
+        :param diameter: Maximum valve diameter. Multiple nozzle groups are not supported.
         :param discharge_coefficient: Discharge coefficient
-        :param opening: Opening in diameter
-        :param gas_liquid_sizing_ratio: Ratio between gas and liquid sizing coefficients
+        :param opening: Scalar opening multiplier applied to the choke area.
+        :param flow_coefficient: Scalar valve coefficient multiplier applied to
+                                 the choke area. Valve tables are not supported.
+        :param gas_liquid_sizing_ratio: Ratio between gas and liquid sizing coefficients;
+                                        currently stored for compatibility only.
         :param thermal_phase_equilibrium: If set to True, thermal equilibrium between gas and liquid is assumed;
-                                          otherwise, the gas is expanded isentropical while the liquid is isothermal.
-                                          Only used for HYDROVALVE and STANDINGVALVE.
-        :param recovery: Enable/disable the pressure recovery downstream valve. Only used for HYDROVALVE and STANDINGVALVE.
+                                          otherwise, the gas is expanded isentropically while the liquid is isothermal.
+                                          Used by FROZEN and HENRYFAUSKE closures.
+        :param recovery: Enable/disable simplified pressure recovery downstream of the throat.
         :param recovery_tuning: 1 gives maximum recovery and 0 gives zero recovery
-        :param slip_model: Slip model for choke throat. Only used for HYDROVALVE and STANDINGVALVE.
+        :param slip_model: Slip model for choke throat. Only NOSLIP is currently usable;
+                           CHISHOLM is declared but raises NotImplementedError.
         """
         if max_molar_rate is not None and max_molar_rate <= 0.0:
             raise ValueError("max_molar_rate must be positive when specified.")
