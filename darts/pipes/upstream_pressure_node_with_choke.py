@@ -57,14 +57,100 @@ class EquilibriumPhaseState:
 
 
 class ChokePhysicsHelper:
-    _MIN_T_K = 150.0
-    _MAX_T_K = 500.0
-    _H_BOUNDS = (-23714.0, 8230.0)
+    _TEMPERATURE_ROOT_SAMPLES = 32
+    _ENTHALPY_ROOT_SAMPLES = 48
 
     def __init__(self, physics):
         self.physics = physics
         self.pc = physics.property_containers[0]
         self.eos = self.pc.flash_ev.eos["VL"]
+        self.pressure_bounds = self._obl_axis_bounds(
+            "pressure"
+        ) or self._pt_axis_bounds(0, "pressure")
+        self.temperature_bounds = self._obl_axis_bounds(
+            "temperature"
+        ) or self._pt_axis_bounds(-1, "temperature")
+        self.enthalpy_bounds = self._obl_axis_bounds(
+            "enthalpy"
+        ) or self._computed_ph_axis_bounds("enthalpy")
+
+        if self.pressure_bounds is None:
+            raise ValueError("Choke model requires pressure OBL bounds.")
+        if self.temperature_bounds is None:
+            raise ValueError("Choke model requires temperature OBL bounds.")
+        if self.enthalpy_bounds is None:
+            raise ValueError("Choke model requires enthalpy OBL bounds.")
+
+    @staticmethod
+    def _valid_bounds(lower, upper, name: str) -> tuple[float, float]:
+        lower = float(lower)
+        upper = float(upper)
+        if not np.isfinite(lower) or not np.isfinite(upper) or lower >= upper:
+            raise ValueError(f"Invalid {name} OBL bounds: ({lower}, {upper}).")
+        return lower, upper
+
+    def _obl_axis_bounds(self, axis_name: str) -> tuple[float, float] | None:
+        physics_vars = list(getattr(self.physics, "vars", []))
+        if axis_name not in physics_vars:
+            return None
+
+        axes_min = getattr(self.physics, "axes_min", None)
+        axes_max = getattr(self.physics, "axes_max", None)
+        if axes_min is None or axes_max is None:
+            return None
+
+        axis_idx = physics_vars.index(axis_name)
+        return self._valid_bounds(
+            axes_min[axis_idx],
+            axes_max[axis_idx],
+            axis_name,
+        )
+
+    def _pt_axis_bounds(
+        self,
+        axis_idx: int,
+        axis_name: str,
+    ) -> tuple[float, float] | None:
+        axes_min = getattr(self.physics, "PT_axes_min", None)
+        axes_max = getattr(self.physics, "PT_axes_max", None)
+        if axes_min is None or axes_max is None:
+            return None
+        return self._valid_bounds(axes_min[axis_idx], axes_max[axis_idx], axis_name)
+
+    def _computed_ph_axis_bounds(self, axis_name: str) -> tuple[float, float] | None:
+        physics_vars = list(getattr(self.physics, "vars", []))
+        if axis_name in physics_vars:
+            axis_idx = physics_vars.index(axis_name)
+        elif axis_name == "enthalpy":
+            axis_idx = self.physics.n_vars - 1
+        else:
+            return None
+
+        axes_min = getattr(self.physics, "PT_axes_min", None)
+        axes_max = getattr(self.physics, "PT_axes_max", None)
+        if axes_min is None or axes_max is None:
+            return None
+
+        state_spec_cls = getattr(self.physics, "StateSpecification", None)
+        ph_state_spec = getattr(
+            state_spec_cls,
+            "PH",
+            getattr(self.physics, "state_spec", None),
+        )
+        computed_axes_min, computed_axes_max = self.physics.determine_obl_bounds(
+            min_p=axes_min[0],
+            max_p=axes_max[0],
+            min_t=axes_min[-1],
+            max_t=axes_max[-1],
+            min_z=axes_min[1 : self.physics.nc],
+            max_z=axes_max[1 : self.physics.nc],
+            state_spec=ph_state_spec,
+        )
+        return self._valid_bounds(
+            computed_axes_min[axis_idx],
+            computed_axes_max[axis_idx],
+            axis_name,
+        )
 
     @staticmethod
     def phase_root_flag(phase_name: str):
@@ -106,10 +192,31 @@ class ChokePhysicsHelper:
         return float(eos_entropy(self.eos, pressure, temperature, composition))
 
     def build_ph_state(self, pressure: float, molar_enthalpy: float, composition):
-        if self.physics.n_vars == 2:
-            return value_vector([pressure, molar_enthalpy])
+        physics_vars = list(getattr(self.physics, "vars", []))
+        if "pressure" not in physics_vars or "enthalpy" not in physics_vars:
+            raise ValueError(
+                "Equilibrium choke models require PH physics with pressure and "
+                "enthalpy OBL axes."
+            )
+
+        state = np.zeros(self.physics.n_vars, dtype=float)
+        state[physics_vars.index("pressure")] = float(pressure)
+        state[physics_vars.index("enthalpy")] = float(molar_enthalpy)
+
         z = np.asarray(composition, dtype=float)
-        return value_vector([pressure, molar_enthalpy, *z[:-1]])
+        composition_axis_idxs = [
+            idx
+            for idx, variable in enumerate(physics_vars)
+            if variable not in ("pressure", "enthalpy")
+        ]
+        if len(composition_axis_idxs) != max(len(z) - 1, 0):
+            raise ValueError(
+                "Composition size is inconsistent with the PH OBL composition axes."
+            )
+        for axis_idx, zi in zip(composition_axis_idxs, z[:-1], strict=False):
+            state[axis_idx] = zi
+
+        return value_vector(state.tolist())
 
     def evaluate_equilibrium_mixture_entropy(
         self,
@@ -173,7 +280,7 @@ class ChokePhysicsHelper:
         return None
 
     def clamp_enthalpy(self, molar_enthalpy: float) -> float:
-        return float(np.clip(molar_enthalpy, *self._H_BOUNDS))
+        return float(np.clip(molar_enthalpy, *self.enthalpy_bounds))
 
     def evaluate_phase_enthalpy(
         self,
@@ -209,11 +316,11 @@ class ChokePhysicsHelper:
             )
 
         bracket = self.find_bracket(
-            np.linspace(self._MIN_T_K, self._MAX_T_K, 32),
+            np.linspace(*self.temperature_bounds, self._TEMPERATURE_ROOT_SAMPLES),
             enthalpy_residual,
         )
         if bracket is None:
-            return float(np.clip(self._MAX_T_K, self._MIN_T_K, self._MAX_T_K))
+            return float(self.temperature_bounds[1])
         if bracket[0] == bracket[1]:
             return bracket[0]
         return float(brentq(enthalpy_residual, bracket[0], bracket[1]))
@@ -475,7 +582,7 @@ class ChokePhysicsHelper:
             )
 
         bracket = self.find_bracket(
-            np.linspace(self._MIN_T_K, self._MAX_T_K, 32),
+            np.linspace(*self.temperature_bounds, self._TEMPERATURE_ROOT_SAMPLES),
             entropy_residual,
         )
         if bracket is None:
@@ -534,7 +641,7 @@ class ChokePhysicsHelper:
             )
 
         bracket = self.find_bracket(
-            np.linspace(self._H_BOUNDS[0], self._H_BOUNDS[1], 48),
+            np.linspace(*self.enthalpy_bounds, self._ENTHALPY_ROOT_SAMPLES),
             entropy_residual,
         )
         if bracket is None:
@@ -665,7 +772,7 @@ class OrificeValveGeometryModel(ValveGeometryModel):
 
     @property
     def choke_area(self) -> float:
-        return math.pi * self._diameter**2 / 4.0
+        return math.pi / 4.0 * self._diameter**2
 
     @property
     def throat_area(self) -> float:
@@ -1209,6 +1316,12 @@ class ChokeModel:
     def _state_cache_key(self, pressure: float) -> float:
         return round(float(pressure), 8)
 
+    def _lower_pressure_search_bound(self, upper: float) -> float | None:
+        lower = max(self.helper.pressure_bounds[0], self._MIN_PRESSURE_BAR)
+        if lower >= upper:
+            return None
+        return lower
+
     def _flow_state(
         self,
         pressure: float,
@@ -1302,8 +1415,8 @@ class ChokeModel:
             downstream_pressure,
             self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR),
         )
-        lower = min(self._MIN_PRESSURE_BAR, 0.5 * upper)
-        if upper <= lower:
+        lower = self._lower_pressure_search_bound(upper)
+        if lower is None:
             return None
 
         def residual(throat_pressure: float) -> float:
@@ -1329,9 +1442,9 @@ class ChokeModel:
         cache: dict[float, ChokeFlowState],
     ) -> tuple[float, float]:
         upper = self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR)
-        lower = min(self._MIN_PRESSURE_BAR, 0.5 * upper)
-        if upper <= lower:
-            return lower, 0.0
+        lower = self._lower_pressure_search_bound(upper)
+        if lower is None:
+            return upper, 0.0
 
         def objective(throat_pressure: float) -> float:
             return -self._mass_rate_from_throat_pressure(throat_pressure, cache)
