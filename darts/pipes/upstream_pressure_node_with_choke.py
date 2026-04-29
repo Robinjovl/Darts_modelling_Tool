@@ -1441,6 +1441,8 @@ def build_hydraulic_choke_model(
     ``OLGA_STYLE`` preserves the original integral pressure-drop implementation.
     ``PERKINS`` switches only the critical/subcritical selection and downstream
     pressure-recovery treatment to the Perkins method.
+    ``SINTEF_HEM`` uses the quasi-steady homogeneous-equilibrium restricted-flow
+    calculation described by the SINTEF CO2 choke-flow work.
     """
     hydraulic_model = hydraulic_model.upper()
     model_args = dict(
@@ -1457,6 +1459,8 @@ def build_hydraulic_choke_model(
         return ChokeModel(**model_args)
     if hydraulic_model == "PERKINS":
         return PerkinsChokeModel(**model_args)
+    if hydraulic_model in ("SINTEF_HEM", "HEM"):
+        return SintefHemChokeModel(**model_args)
     raise NotImplementedError(
         f"hydraulic_model={hydraulic_model!r} is not implemented yet."
     )
@@ -1464,14 +1468,12 @@ def build_hydraulic_choke_model(
 
 class ChokeModel:
     """
-    Numerical choke solver coupling thermodynamics, geometry, and recovery.
+    Base class for choke solvers coupling thermodynamics and geometry.
 
-    The implemented hydraulic model follows the OLGA-style structure: integrate
-    inverse momentum density from throat to upstream pressure, use geometry
-    terms to convert that pressure drop into mass rate, then either match the
-    requested downstream pressure or choose the critical maximum-rate throat
-    pressure. Critical flow is found by numerical maximization, not by the
-    analytical derivative equation in the OLGA documentation.
+    Subclasses provide the hydraulic relation and critical-flow criterion:
+    ``OLGA_STYLE`` uses the existing integral pressure-drop solve, ``PERKINS``
+    uses Perkins Eq. A-28/A-30, and ``SINTEF_HEM`` uses the homogeneous
+    equilibrium mass-flux maximum from the SINTEF CO2 orifice/nozzle model.
     """
 
     _PRESSURE_EPS_BAR = 1e-6
@@ -1767,6 +1769,235 @@ class ChokeModel:
             downstream_pressure,
             cache,
         )
+        return ChokeEvaluationResult(
+            mass_rate_kg_s=mass_rate_kg_s,
+            discharge_molar_enthalpy=discharge_state.molar_enthalpy,
+            throat_pressure=float(throat_pressure),
+            flow_regime=flow_regime,
+            discharge_density=discharge_state.density,
+            discharge_inv_momentum_density=discharge_state.inv_momentum_density,
+            discharge_gas_mass_fraction=discharge_state.gas_mass_fraction,
+        )
+
+
+class SintefHemChokeModel(ChokeModel):
+    """
+    SINTEF-style homogeneous-equilibrium restricted-flow model.
+
+    This model is intended for dense/liquid CO2 injection where flashing can
+    occur inside the restriction. It follows the quasi-steady formulation used
+    by the SINTEF CO2 orifice/nozzle work: along an isentropic equilibrium path,
+    Eq. (8) gives the local velocity from the stagnation enthalpy and Eq. (9)
+    gives the restriction mass flux as ``rho * u``.
+
+    The implemented model is HEM, not the delayed HEM. It allows equilibrium
+    flashing and therefore fixes the main limitation of using the Perkins
+    frozen-liquid path for liquid CO2, but it does not yet include the
+    superheat-limit/CNT delayed phase-transition path used by D-HEM. The
+    critical point is selected as the maximum of ``rho * u`` along the
+    isentropic equilibrium path; this is the numerical equivalent of the
+    sonic-point selection when an explicit speed-of-sound evaluator is not
+    available from open-DARTS.
+
+    ``discharge_coefficient`` is applied as an effective-area multiplier. Use a
+    value near 1.0 for nozzle-like restrictions and a contraction coefficient
+    for sharp-edged orifice-like restrictions when matching the SINTEF setup.
+    """
+
+    _CRITICAL_SCAN_POINTS = 64
+
+    @property
+    def hydraulic_model(self) -> str:
+        return "SINTEF_HEM"
+
+    def __init__(
+        self,
+        helper: ChokePhysicsHelper,
+        boundary_state: ChokeBoundaryState,
+        valve_geometry_model: ValveGeometryModel,
+        equilibrium_model: EquilibriumModel,
+        recovery_model: RecoveryModel,
+        slip_model: SlipModel,
+        upstream_area: float,
+        downstream_area: float,
+    ):
+        """
+        :param helper: Adapter used to evaluate open-DARTS thermodynamic
+                       properties and equilibrium isentropic states.
+        :param boundary_state: User-specified upstream stagnation pressure,
+                               temperature, phase, composition, enthalpy, and
+                               entropy.
+        :param valve_geometry_model: Restriction geometry. Its effective area is
+                                     used as the flow area in the SINTEF HEM
+                                     mass-rate calculation.
+        :param equilibrium_model: Must be EQUILIBRIUM so flashing is evaluated
+                                  as a homogeneous-equilibrium PH state.
+        :param recovery_model: Present for API consistency. SINTEF HEM uses the
+                               downstream pressure directly for subcritical
+                               flow and critical flow is independent of it.
+        :param slip_model: Must be NOSLIP, consistent with HEM.
+        :param upstream_area: Flow area upstream of the restriction, in m2.
+        :param downstream_area: Flow area downstream of the restriction, in m2.
+        """
+        super().__init__(
+            helper=helper,
+            boundary_state=boundary_state,
+            valve_geometry_model=valve_geometry_model,
+            equilibrium_model=equilibrium_model,
+            recovery_model=recovery_model,
+            slip_model=slip_model,
+            upstream_area=upstream_area,
+            downstream_area=downstream_area,
+        )
+        if self.equilibrium_model.name != "EQUILIBRIUM":
+            raise ValueError(
+                "hydraulic_model='SINTEF_HEM' requires equilibrium_model='EQUILIBRIUM' "
+                "so liquid CO2 flashing is included."
+            )
+        if self.slip_model.name != "NOSLIP":
+            raise ValueError(
+                "hydraulic_model='SINTEF_HEM' requires slip_model='NOSLIP'."
+            )
+
+    def _mass_specific_enthalpy_j_kg(
+        self,
+        molar_enthalpy: float,
+        composition,
+    ) -> float:
+        mw_kg_per_kmol = self.helper._phase_mw_kg_per_kmol(composition)
+        if mw_kg_per_kmol <= 0.0:
+            raise ValueError("Molecular weight must be positive.")
+        return float(molar_enthalpy) / mw_kg_per_kmol * 1000.0
+
+    def _sintef_velocity(
+        self,
+        pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float:
+        """
+        Compute restriction velocity from SINTEF Eq. (8).
+
+        The upstream boundary state is treated as a stagnation state, so the
+        stagnation enthalpy is the upstream static enthalpy. open-DARTS stores
+        molar enthalpy in kJ/kmol; the energy equation is evaluated in J/kg.
+        """
+        state = self._flow_state(pressure, cache)
+        h_stagnation = self._mass_specific_enthalpy_j_kg(
+            self.boundary_state.molar_enthalpy,
+            self.boundary_state.composition,
+        )
+        h_local = self._mass_specific_enthalpy_j_kg(
+            state.molar_enthalpy,
+            self.boundary_state.composition,
+        )
+        delta_h = h_stagnation - h_local
+        if not np.isfinite(delta_h) or delta_h <= 0.0:
+            return 0.0
+        return math.sqrt(2.0 * delta_h)
+
+    def _sintef_mass_flux(
+        self,
+        pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float:
+        """Return ``rho * u`` from SINTEF Eq. (9), in kg/(m2 s)."""
+        state = self._flow_state(pressure, cache)
+        if not np.isfinite(state.density) or state.density <= 0.0:
+            return 0.0
+        return state.density * self._sintef_velocity(pressure, cache)
+
+    def _mass_rate_from_throat_pressure(
+        self,
+        throat_pressure: float,
+        cache: dict[float, ChokeFlowState],
+    ) -> float:
+        """Compute mass rate from the SINTEF HEM mass flux and effective area."""
+        if throat_pressure >= self.boundary_state.pressure:
+            return 0.0
+        mass_flux = self._sintef_mass_flux(throat_pressure, cache)
+        return mass_flux * self.valve_geometry_model.effective_area
+
+    def _critical_solution(
+        self,
+        cache: dict[float, ChokeFlowState],
+    ) -> tuple[float, float]:
+        """
+        Select the critical HEM mass flux as the maximum of Eq. (9).
+
+        SINTEF describes choking as the point where velocity reaches the speed
+        of sound on the calculated path. Because open-DARTS does not expose an
+        equilibrium sound-speed evaluator here, the same critical point is found
+        by maximizing the steady isentropic mass flux over pressure.
+        """
+        upper = self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR)
+        lower = self._lower_pressure_search_bound(upper)
+        if lower is None:
+            return upper, 0.0
+
+        def objective(pressure: float) -> float:
+            return -self._mass_rate_from_throat_pressure(pressure, cache)
+
+        samples = np.linspace(lower, upper, self._CRITICAL_SCAN_POINTS)
+        rates = np.asarray(
+            [self._mass_rate_from_throat_pressure(p, cache) for p in samples],
+            dtype=float,
+        )
+        if np.all(~np.isfinite(rates)) or np.nanmax(rates) <= 0.0:
+            return upper, 0.0
+
+        best_idx = int(np.nanargmax(rates))
+        lo_idx = max(best_idx - 1, 0)
+        hi_idx = min(best_idx + 1, len(samples) - 1)
+        if lo_idx == hi_idx:
+            critical_pressure = float(samples[best_idx])
+        else:
+            optimum = minimize_scalar(
+                objective,
+                bounds=(float(samples[lo_idx]), float(samples[hi_idx])),
+                method="bounded",
+            )
+            critical_pressure = float(optimum.x)
+        return critical_pressure, self._mass_rate_from_throat_pressure(
+            critical_pressure,
+            cache,
+        )
+
+    def evaluate(self, downstream_pressure: float) -> ChokeEvaluationResult:
+        """
+        Evaluate SINTEF HEM critical/subcritical restricted flow.
+
+        If the supplied downstream pressure is below the critical pressure found
+        on the isentropic equilibrium path, the critical mass flux is used.
+        Otherwise Eq. (8)/(9) is evaluated directly at the downstream pressure.
+        """
+        cache: dict[float, ChokeFlowState] = {}
+        critical_throat_pressure, critical_mass_rate_kg_s = self._critical_solution(
+            cache
+        )
+        subcritical_pressure = float(
+            np.clip(
+                downstream_pressure,
+                self._lower_pressure_search_bound(
+                    self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR)
+                )
+                or self._MIN_PRESSURE_BAR,
+                self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR),
+            )
+        )
+
+        if downstream_pressure <= critical_throat_pressure:
+            throat_pressure = critical_throat_pressure
+            mass_rate_kg_s = critical_mass_rate_kg_s
+            flow_regime = "critical"
+        else:
+            throat_pressure = subcritical_pressure
+            mass_rate_kg_s = self._mass_rate_from_throat_pressure(
+                throat_pressure,
+                cache,
+            )
+            flow_regime = "subcritical"
+
+        discharge_state = self._flow_state(throat_pressure, cache)
         return ChokeEvaluationResult(
             mass_rate_kg_s=mass_rate_kg_s,
             discharge_molar_enthalpy=discharge_state.molar_enthalpy,
@@ -2251,6 +2482,8 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
     venturi/standing-valve options, and the full Henry-Fauske derivative
     equations are not implemented. ``hydraulic_model='PERKINS'`` is available
     for the Perkins energy-equation critical/subcritical choke method.
+    ``hydraulic_model='SINTEF_HEM'`` is available for dense/liquid CO2 injection
+    with homogeneous-equilibrium flashing through the restriction.
 
     The API exposes OLGA-style choke inputs explicitly:
       - discharge_coefficient ~= CD
@@ -2300,6 +2533,8 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
                                 - OLGA_STYLE: Existing integral pressure-drop solver.
                                 - PERKINS: Perkins critical/subcritical method with
                                   Perry-orifice recovery when RECOVERY='ON'.
+                                - SINTEF_HEM: SINTEF-style homogeneous-equilibrium
+                                  restricted-flow model for flashing dense/liquid CO2.
         :param valve_geometry: Valve geometry used in the choke model:
                                - ORIFICE: Orifice type with no spatial extension, vena contracta appears behind the valve.
                                - BEAN: Bean type with spatial extension, vena contracta appears inside the valve.
@@ -2317,12 +2552,13 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
         :param thermal_phase_equilibrium: If set to True, thermal equilibrium between gas and liquid is assumed;
                                           otherwise, the gas is expanded isentropically while the liquid is isothermal.
                                           Used by FROZEN and HENRYFAUSKE closures.
-        :param recovery: Enable/disable downstream pressure recovery.
-                         Use ON when the downstream pressure is a recovered pipe
-                         pressure after the choke, as in a well
-                         segment pressure. Use OFF only when the downstream
-                         pressure should be interpreted as the throat pressure
-                         inside the choke.
+        :param recovery: Enable/disable Perkins/Perry downstream pressure
+                         recovery. Use ON with PERKINS when the downstream
+                         pressure is a recovered pipe pressure after the choke,
+                         as in a well segment pressure. Use OFF with
+                         SINTEF_HEM; that model evaluates subcritical flow at
+                         the downstream pressure and internally selects the
+                         critical throat pressure when choked.
         :param recovery_tuning: 1 gives maximum recovery and 0 gives zero recovery
         :param slip_model: Slip model for choke throat. Only NOSLIP is currently usable;
                            CHISHOLM is declared but raises NotImplementedError.
