@@ -40,6 +40,12 @@ class DataTS:
         self.dt_max = 10.0  # maximal allowed timestep [days]
         self.newton_tol = 1e-2  # newton solver residual
         self.newton_tol_wel_mult = 100.0  # used to compute the newton solver residual for wells = tol_res * tol_wel_mult
+        self.well_rate_ctrl_absolute_residual_scale = (
+            1.0  # absolute residual scale for well rate controls
+        )
+        self.well_rate_ctrl_relative_residual_scale = (
+            1e-5  # relative residual scale for well rate controls
+        )
         self.newton_tol_stationary = 1e-3  # tolerance for stationary point detection in the newton solver (by residual)
         self.newton_max_iter = 20  # maximum newton iterations allowed
         self.linear_tol = 1e-5
@@ -395,6 +401,8 @@ class DartsModel:
         newton_type=None,
         newton_params=None,
         line_search: bool = False,
+        well_rate_ctrl_absolute_residual_scale: float = None,
+        well_rate_ctrl_relative_residual_scale: float = None,
         coupled_well_res_norm_method: int = 1,
     ):
         """
@@ -418,6 +426,10 @@ class DartsModel:
         :type it_linear: int
         :param newton_type:
         :param newton_params:
+        :param well_rate_ctrl_absolute_residual_scale: Absolute residual scale for well rate-control equations
+        :type well_rate_ctrl_absolute_residual_scale: float
+        :param well_rate_ctrl_relative_residual_scale: Relative residual scale for well rate-control equations
+        :type well_rate_ctrl_relative_residual_scale: float
         :param coupled_well_res_norm_method: Method of norm evaluation of residuals for the coupled well-reservoir model
         :type coupled_well_res_norm_method: int
         """
@@ -447,6 +459,16 @@ class DartsModel:
         )
 
         self.data_ts.line_search = line_search
+        self.data_ts.well_rate_ctrl_absolute_residual_scale = (
+            well_rate_ctrl_absolute_residual_scale
+            if well_rate_ctrl_absolute_residual_scale is not None
+            else self.data_ts.well_rate_ctrl_absolute_residual_scale
+        )
+        self.data_ts.well_rate_ctrl_relative_residual_scale = (
+            well_rate_ctrl_relative_residual_scale
+            if well_rate_ctrl_relative_residual_scale is not None
+            else self.data_ts.well_rate_ctrl_relative_residual_scale
+        )
 
         # Linear solver parameters. if None, default value will be used
         self.data_ts.linear_tol = (
@@ -472,6 +494,12 @@ class DartsModel:
         self.params.mult_ts = self.data_ts.dt_mult
         self.params.tolerance_newton = self.data_ts.newton_tol
         self.params.max_i_newton = self.data_ts.newton_max_iter
+        self.params.well_rate_ctrl_absolute_residual_scale = (
+            self.data_ts.well_rate_ctrl_absolute_residual_scale
+        )
+        self.params.well_rate_ctrl_relative_residual_scale = (
+            self.data_ts.well_rate_ctrl_relative_residual_scale
+        )
         self.params.tolerance_linear = self.data_ts.linear_tol
         self.params.max_i_linear = self.data_ts.linear_max_iter
         if self.data_ts.linear_type is not None:

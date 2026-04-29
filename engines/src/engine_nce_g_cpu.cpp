@@ -431,8 +431,11 @@ engine_nce_g_cpu<NC, NP>::calc_well_residual_L2()
         // and then add RHS for well control equations
         for (int c = 0; c < nc; c++)
         {
+			// scale wellhead residual if it is a rate control residual
+            const value_t residual_scale = (c == 0) ? w->control.get_rate_ctrl_residual_scale(params->well_rate_ctrl_absolute_residual_scale, params->well_rate_ctrl_relative_residual_scale) : 1.0;
             // well constraints should not be normalized, so pre-multiply by norm
-            res[c] += RHS[w->well_head_idx * n_vars + c] * RHS[w->well_head_idx * n_vars + c] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c];
+            value_t scaled_residual = RHS[w->well_head_idx * n_vars + c] / residual_scale;
+            res[c] += scaled_residual * scaled_residual * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c];
         }
         res[E_VAR] += RHS[(w->well_head_idx) * n_vars + E_VAR] * RHS[(w->well_head_idx) * n_vars + E_VAR] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP];
     }
@@ -471,8 +474,10 @@ engine_nce_g_cpu<NC, NP>::calc_well_residual_Linf()
         // and then add RHS for well control equations
         for (int c = 0; c < nc; c++)
         {
+			// scale wellhead residual if it is a rate control residual
             // well constraints should not be normalized, so pre-multiply by norm
-            res = fabs(RHS[w->well_head_idx * n_vars + c]);
+            const value_t residual_scale = (c == 0) ? w->control.get_rate_ctrl_residual_scale(params->well_rate_ctrl_absolute_residual_scale, params->well_rate_ctrl_relative_residual_scale) : 1.0;
+            res = fabs(RHS[w->well_head_idx * n_vars + c] / residual_scale);
             residual = std::max(residual, res);
         }
         res = fabs(RHS[(w->well_head_idx) * n_vars + E_VAR]);

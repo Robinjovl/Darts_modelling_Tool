@@ -1,6 +1,8 @@
 #ifndef WELL_CONTROLS_H
 #define WELL_CONTROLS_H
 
+#include <algorithm>
+#include <cmath>
 #include <vector>
 #include "globals.h"
 #include "evaluator_iface.h"
@@ -69,6 +71,18 @@ public:
         value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_);
 
     WellControlType get_well_control_type() { return this->control_type; }
+    bool is_rate_control() const { return this->control_type > WellControlType::BHP && this->control_type < WellControlType::NUMBER_OF_RATE_TYPES; }
+    value_t get_target() const { return this->target; }
+    value_t get_rate_ctrl_residual_scale(value_t absolute_scale, value_t relative_scale) const
+    {
+        if (!this->is_rate_control())
+        {
+            return 1.0;
+        }
+        const value_t abs_scale = std::max(static_cast<value_t>(0.0), absolute_scale);
+        const value_t rel_scale = std::max(static_cast<value_t>(0.0), relative_scale);
+        return std::max(static_cast<value_t>(1.0e-30), std::max(abs_scale, std::fabs(this->target) * rel_scale));
+    }
     index_t get_well_n_ops() { return this->n_ops; }
     index_t get_well_n_vars() { return this->n_vars; }
     std::string get_well_control_type_str();
