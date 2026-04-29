@@ -262,10 +262,11 @@ if __name__ == '__main__':
     decouple_geomech = True
     #decouple_geomech = False
 
+    # nx ny nz
     #mesh='16_16_15'  # for debugging
     #mesh='34_34_57' # rsv 2100-2200
     #mesh='34_34_66' # rsv 2000-2400
-    mesh='64_64_66'
+    mesh='71_71_66'
     #mesh='34_35_57'  # perm_frac
 
     generate_mesh=True

@@ -879,10 +879,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
 
 if __name__ == '__main__':
 
+    # nx ny nz
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
     #case = '34_34_57'  # z 0 - 5 km
-    case = '34_34_66'  # z 0 - 5 km 
+    #case = '34_34_66'  # z 0 - 5 km 
+    mesh='71_71_66'
     #case = '42_42_66'  # z 0 - 5 km 
     #case = '34_34_90'  # z 0 - 5 km more refined around rsv
     #case = '42_42_90'  # z 0 - 5 km more refined around rsv

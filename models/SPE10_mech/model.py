@@ -187,7 +187,7 @@ class Model(THMCModel):
         
         # 50 - to put into the cell center as (0,0) is a boundary between two cells
         cell_shift = 50.
-		if nx == 64:
+        if nx == 64:
             cell_shift = 0. # if the mesh is centered at (0,0)
         self.idata.other.prod_well_coords = [cell_shift - shift, cell_shift, perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
         self.idata.other.inj_well_coords = [cell_shift + shift, cell_shift, perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
@@ -219,14 +219,12 @@ class Model(THMCModel):
             Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
         elif nx == 16: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
             Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
-        elif nx == 64: # 
-            Xc = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
+        elif nx == 71: # 
+            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
                           [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
                           np.arange(-800, -100, 100).tolist() + 
-                          np.arange(-100, 0, 10).tolist() + 
-                          np.arange(10, 90, 10).tolist() + 
-                          np.arange(100, 1200+1, 100).tolist() +
-                          [1400,1600,2000,2500,3000,4000,5000,6000,8000])
+                          np.arange(-100, 0, 10).tolist())
+            Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
         elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 100-7000 m
             Xc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
         #elif nx == 41: # 41x41
