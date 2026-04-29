@@ -925,9 +925,9 @@ if __name__ == '__main__':
     timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
     
     # short run
-    #sim_time = 30 # days
-    #report_step = sim_time  # days
-    #timestep = 1
+    sim_time = 30 # days
+    report_step = sim_time  # days
+    timestep = 1
     
     #run_thm = True
     run_thm = False
