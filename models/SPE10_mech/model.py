@@ -225,6 +225,11 @@ class Model(THMCModel):
                           np.arange(-800, -100, 100).tolist() + 
                           np.arange(-100, 0, 10).tolist())
             Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
+        elif nx == 41: # 
+            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
+                          [-1100, -1000, -900] +
+                          np.arange(-800, -100, 100).tolist() + [-50])
+            Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
         elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 100-7000 m
             Xc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
         #elif nx == 41: # 41x41

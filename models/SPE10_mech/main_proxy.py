@@ -884,7 +884,8 @@ if __name__ == '__main__':
     #case = '16_16_15'
     #case = '34_34_57'  # z 0 - 5 km
     #case = '34_34_66'  # z 0 - 5 km 
-    mesh='71_71_66'
+    case = '41_41_66'
+    #case ='71_71_66' #refined middle and tips
     #case = '42_42_66'  # z 0 - 5 km 
     #case = '34_34_90'  # z 0 - 5 km more refined around rsv
     #case = '42_42_90'  # z 0 - 5 km more refined around rsv
@@ -927,9 +928,9 @@ if __name__ == '__main__':
     timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
     
     # short run
-    sim_time = 30 # days
-    report_step = sim_time  # days
-    timestep = 1
+    #sim_time = 30 # days
+    #report_step = sim_time  # days
+    #timestep = 1
     
     #run_thm = True
     run_thm = False
