@@ -107,7 +107,7 @@ class FlowUpscalingModel(DartsModel):
 
     def __init__(self, kx_patch_c, ky_patch_c, kz_patch_c,
                  refine=(5, 5), dx_parent=30.0, dy_parent=30.0, dz_parent=10.0,
-                 start_z=1990.0, poro=0.2, rcond=500.0, hcap=2200.0):
+                 start_z=500.0, poro=0.2, rcond=500.0, hcap=2200.0):
         super().__init__()
 
         self.kx_patch_c = kx_patch_c
@@ -224,7 +224,7 @@ class FlowUpscalingModel(DartsModel):
         pc.density_ev = {"CO2_rich": EoSDensity(eos=pr, Mw=comp_data.Mw)}
         pc.viscosity_ev = {"CO2_rich": Fenghour1998()}
         pc.enthalpy_ev = {"CO2_rich": EoSEnthalpy(eos=pr)}
-        pc.conductivity_ev = {"CO2_rich": ConstFunc(10.0)}
+        pc.conductivity_ev = {"CO2_rich": ConstFunc(5.5)}
 
         self.physics = Compositional(
             components=components,
@@ -251,8 +251,8 @@ class FlowUpscalingModel(DartsModel):
         init = Initialize(self.physics)
 
         boundary_state = {
-            "pressure": 200.0,          # bar
-            "temperature": 83.0 + 273.15,
+            "pressure": 50,          # bar
+            "temperature": 32.0 + 273.15,
         }
 
         primary_specs = {}
@@ -280,7 +280,7 @@ class FlowUpscalingModel(DartsModel):
                     is_inj=True,
                     target=10.0,               # kg/day or simulator-consistent unit in your setup
                     inj_composition=inj_composition,
-                    inj_temp=314.15,
+                    inj_temp=14.7 + 273.15,
                 )
 
 

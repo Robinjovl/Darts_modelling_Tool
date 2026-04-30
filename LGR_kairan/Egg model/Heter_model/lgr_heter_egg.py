@@ -612,7 +612,7 @@ class Model(DartsModel):
             phases_names,
             self.timer,
             state_spec=state_spec,
-            n_points=1000,
+            n_points=10000,
             min_p=1,
             max_p=500,
             min_z=0.0,
@@ -734,6 +734,10 @@ class Model(DartsModel):
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, phase_name='LCO2',
                                                is_inj=False, target=190.)
+                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE, phase_name='LCO2',
+                #                                   is_inj=False, target=4.32e6)
+                # self.physics.set_well_controls(wctrl=w.constraint, control_type=well_control_iface.BHP,
+                #                                   is_inj=False, target=40.)
 
 
 

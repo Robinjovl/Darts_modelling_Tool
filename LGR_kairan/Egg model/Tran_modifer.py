@@ -106,7 +106,7 @@ class SinglePhaseCO2Properties(PropertyContainer):
 
     def evaluate(self, state):
         state_np = np.asarray(state, dtype=float)
-        pressure = state_np[0]
+        self.pressure = state_np[0]
         self.temperature = state_np[-1] if self.thermal else self.temperature
 
         zc = np.append(
@@ -123,12 +123,12 @@ class SinglePhaseCO2Properties(PropertyContainer):
         M = np.sum(self.x[j, :] * self.Mw)
 
         self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
-            pressure, self.temperature, [1.0]
+            self.pressure, self.temperature, [1.0]
         )
         self.dens_m[j] = self.dens[j] / M
 
         self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
-            pressure=pressure,
+            pressure=self.pressure,
             temperature=self.temperature,
             x=[1.0],
             rho=self.dens[j],
@@ -212,7 +212,7 @@ class FlowUpscalingExampleModel(DartsModel):
             permz=kz,
             poro=0.2,
             depth=None,
-            start_z=1990.0,
+            start_z=500.0,
             rcond=500.0,
             hcap=2200.0,
         )
@@ -296,17 +296,17 @@ class FlowUpscalingExampleModel(DartsModel):
         init = Initialize(self.physics)
 
         boundary_state = {
-            "pressure": 200.0,          # bar
-            "temperature": 80.0 + 273.15,
+            "pressure": 50.0,          # bar
+            "temperature": 32.0 + 273.15,
         }
 
         primary_specs = {}
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = np.ones(int(self.reservoir.nz))
 
-        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=1990.0,
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=500.0,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=int(self.reservoir.nz),
-                                        dTdh=40.0 / 1000.0)
+                                        dTdh=34.0 / 1000.0)
 
         self.physics.set_initial_conditions_from_depth_table(
             mesh=self.reservoir.mesh,

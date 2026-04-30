@@ -127,7 +127,7 @@ class Model(DartsModel):
 
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz_res,
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None,
-                                      start_z=1990, rcond=rcon0_full, hcap=hcap0_full,)
+                                      start_z=490, rcond=rcon0_full, hcap=hcap0_full,)
         boundary_factor = 2000
         base_vol = float(dx * dy * dz_res)
         v_big = 1e20
@@ -214,14 +214,14 @@ class Model(DartsModel):
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = 1.0
 
-        boundary_state = {"pressure" :200}
+        boundary_state = {"pressure" :50}
         for comp in self.physics.components[:-1]:
             boundary_state[comp] = float(primary_specs[comp])
-        boundary_state["temperature"] = 83 +273.15
+        boundary_state["temperature"] = 32 +273.15
 
         dTdh = 34/1000 #k/m
 
-        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=500,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
                                         dTdh=dTdh)
 
@@ -238,7 +238,7 @@ class Model(DartsModel):
                                             is_inj=True, target=4.32e6, inj_composition=inj_composition, inj_temp=314.15)
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=190.)
+                                               is_inj=False, target=40.)
 
 
 

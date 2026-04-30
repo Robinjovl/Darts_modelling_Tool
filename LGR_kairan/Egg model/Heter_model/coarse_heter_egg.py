@@ -151,7 +151,7 @@ class Model(DartsModel):
             permz=kz_full,
             poro=poro_full,
             depth=None,
-            start_z=1990,
+            start_z=490,
             rcond=rcond_full,
             hcap=hcap_full,
         )
@@ -258,14 +258,14 @@ class Model(DartsModel):
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = 1.0
 
-        boundary_state = {"pressure": 200}
+        boundary_state = {"pressure": 50}
         for comp in self.physics.components[:-1]:
             boundary_state[comp] = primary_specs[comp]
-        boundary_state["temperature"] = 83 + 273.15
+        boundary_state["temperature"] = 32 + 273.15
 
         dTdh = 34 / 1000
 
-        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=500,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
                                         dTdh=dTdh)
 
@@ -293,7 +293,7 @@ class Model(DartsModel):
                     wctrl=w.control,
                     control_type=well_control_iface.BHP,
                     is_inj=False,
-                    target=190.0,
+                    target=40.0,
                 )
 
 

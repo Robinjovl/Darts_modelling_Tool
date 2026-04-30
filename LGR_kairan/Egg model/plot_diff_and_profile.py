@@ -94,7 +94,7 @@ def get_inj_prod_line(model, inj_name="I1", prod_name="P1"):
 # 2D XY map plotting
 # =========================================================
 
-def extract_xy_slice_cells(model, values, depth=2035.0, use_lgr=True):
+def extract_xy_slice_cells(model, values, depth=535.0, use_lgr=True):
     """
     Extract one XY layer by selecting cells closest to given depth.
     """
@@ -112,7 +112,7 @@ def extract_xy_slice_cells(model, values, depth=2035.0, use_lgr=True):
 def plot_xy_patch_map(
     model,
     values,
-    depth=2035.0,
+    depth=535.0,
     use_lgr=True,
     savepath="xy_map.png",
     title="",
@@ -178,7 +178,7 @@ def plot_difference_map(
     prop_array,
     year1,
     year2,
-    depth=2035.0,
+    depth=535.0,
     use_lgr=True,
     savepath="diff_map.png",
     title="",
@@ -222,7 +222,7 @@ def plot_difference_map(
 def extract_1d_line_between_wells(
     model,
     values,
-    depth=2035.0,
+    depth=535.0,
     y0=None,
     x_from=None,
     x_to=None,
@@ -303,7 +303,7 @@ def plot_1d_profiles_between_wells(
     time_vector,
     prop_array,
     years=(1, 5, 10, 15, 20, 30, 40, 50),
-    depth=2035.0,
+    depth=535.0,
     use_lgr=True,
     savepath="profile_1d.png",
     title="",
@@ -361,7 +361,7 @@ def make_difference_maps_batch(
     out_dir,
     prop_name,
     year_pairs,
-    depth=2035.0,
+    depth=535.0,
     use_lgr=True,
     cmap="coolwarm",
     symmetric=True,
@@ -395,7 +395,7 @@ def make_profiles_batch(
     out_dir,
     prop_name,
     years,
-    depth=2035.0,
+    depth=535.0,
     use_lgr=True,
     ylabel="",
 ):
