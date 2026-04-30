@@ -543,6 +543,7 @@ class WellData:
             bhp_constraint=bhp_constraint,
             temperature=temperature,
             phase_name=phase_name,
+            inj_composition=inj_composition,
         )
         self._append_rate_control_with_ramp(
             name=name,
@@ -563,6 +564,7 @@ class WellData:
             bhp=bhp,
             temperature=temperature,
             phase_name=phase_name,
+            inj_composition=inj_composition,
         )
         self._append_control(name, time, wctrl)
 
