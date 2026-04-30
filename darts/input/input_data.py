@@ -3,6 +3,8 @@ from enum import Enum
 
 import numpy as np
 
+from darts.engines import well_control_iface
+
 
 # set PETSC solver types with negative values to easily distinguish c++ solvers and PETSC
 class linear_solver_types(Enum):
@@ -121,12 +123,14 @@ class WellControl:
         # if Compositional
         self.phase_name = None  # phase name for well control, [str]
 
-    def prod_rate_control(self, rate, rate_type, bhp_constraint=None, phase_name=None):
+    def prod_rate_control(
+        self, rate, rate_ctrl_type, bhp_constraint=None, phase_name=None
+    ):
         self.reset()
         self.type = 'prod'
         self.mode = 'rate'
         self.rate = rate
-        self.rate_type = rate_type
+        self.rate_ctrl_type = rate_ctrl_type
         self.bhp_constraint = bhp_constraint
         # if Compositional
         self.phase_name = phase_name  # produced phase name, [str]
@@ -140,7 +144,7 @@ class WellControl:
     def inj_rate_control(
         self,
         rate,
-        rate_type,
+        rate_ctrl_type,
         bhp_constraint=None,
         temperature=None,
         phase_name=None,
@@ -150,7 +154,7 @@ class WellControl:
         self.type = 'inj'
         self.mode = 'rate'
         self.rate = rate
-        self.rate_type = rate_type
+        self.rate_ctrl_type = rate_ctrl_type
         self.bhp_constraint = bhp_constraint
         # if thermal
         self.inj_bht = temperature  # K
@@ -243,7 +247,7 @@ class WellData:
     def __init__(self):
         self.wells = dict()
 
-    def _append_control(self, name, time, wctrl):
+    def _append_control(self, name: str, time: float, wctrl: well_control_iface):
         """
         Append one scheduled well control and keep controls sorted by time.
         """
@@ -252,12 +256,12 @@ class WellData:
 
     def _append_rate_control_with_ramp(
         self,
-        name,
-        time,
-        wctrl,
-        ramp_up_period=0.0,
-        ramp_up_steps=10,
-        ramp_up_start_rate=0.0,
+        name: str,
+        time: float,
+        wctrl: well_control_iface,
+        ramp_up_period: float = 0.0,
+        ramp_up_steps: int = 10,
+        ramp_up_start_rate: float = 0.0,
     ):
         """
         Append a rate control directly or expand it into a linear ramp.
@@ -414,7 +418,7 @@ class WellData:
         bhp_constraint: float,
         inj_temp: float,
         phase_name: str,
-        rate_type=None,
+        rate_ctrl_type=None,
     ):
         """
         :param name: well name
@@ -432,7 +436,7 @@ class WellData:
         wctrl.type = type
         wctrl.mode = mode
         wctrl.rate = rate
-        wctrl.rate_type = rate_type
+        wctrl.rate_ctrl_type = rate_ctrl_type
         wctrl.bhp = bhp
         wctrl.bhp_constraint = bhp_constraint
         wctrl.inj_bht = inj_temp
@@ -441,25 +445,25 @@ class WellData:
 
     def add_prd_rate_control(
         self,
-        name,
-        rate,
-        rate_type,
-        bhp_constraint=None,
-        phase_name=None,
-        time=0,
-        ramp_up_period=0.0,
-        ramp_up_steps=10,
-        ramp_up_start_rate=0.0,
+        name: str,
+        rate: float,
+        rate_ctrl_type: well_control_iface.WellControlType,
+        bhp_constraint: well_control_iface = None,
+        phase_name: str = None,
+        time: float = 0,
+        ramp_up_period: float = 0.0,
+        ramp_up_steps: int = 10,
+        ramp_up_start_rate: float = 0.0,
     ):
         """
         Add a production rate control.
 
         :param name: Well name.
-        :param rate: Target production rate. The unit is determined by rate_type.
-        :param rate_type: Rate type:
-                          - well_control_iface.MOLAR_RATE
-                          - well_control_iface.MASS_RATE
-                          - well_control_iface.VOLUMETRIC_RATE
+        :param rate: Target production rate. The unit is determined by rate_ctrl_type.
+        :param rate_ctrl_type: Rate control type:
+                              - well_control_iface.MOLAR_RATE
+                              - well_control_iface.MASS_RATE
+                              - well_control_iface.VOLUMETRIC_RATE
         :param bhp_constraint: Optional lower BHP constraint for the producer.
         :param phase_name: Produced phase name for phase-rate controls.
         :param time: Time when the control or ramp starts.
@@ -477,7 +481,7 @@ class WellData:
         wctrl = WellControl()
         wctrl.prod_rate_control(
             rate=rate,
-            rate_type=rate_type,
+            rate_ctrl_type=rate_ctrl_type,
             bhp_constraint=bhp_constraint,
             phase_name=phase_name,
         )
@@ -497,27 +501,27 @@ class WellData:
 
     def add_inj_rate_control(
         self,
-        name,
-        rate,
-        rate_type,
-        bhp_constraint=None,
-        temperature=None,
-        phase_name=None,
-        inj_composition=None,
-        time=0,
-        ramp_up_period=0.0,
-        ramp_up_steps=10,
-        ramp_up_start_rate=0.0,
+        name: str,
+        rate: float,
+        rate_ctrl_type: well_control_iface.WellControlType,
+        bhp_constraint: well_control_iface = None,
+        temperature: float = None,
+        phase_name: str = None,
+        inj_composition: list | np.ndarray = None,
+        time: float = 0,
+        ramp_up_period: float = 0.0,
+        ramp_up_steps: int = 10,
+        ramp_up_start_rate: float = 0.0,
     ):
         """
         Add an injection rate control.
 
         :param name: Well name.
-        :param rate: Target injection rate. The unit is determined by rate_type.
-        :param rate_type: Rate type:
-                          - well_control_iface.MOLAR_RATE
-                          - well_control_iface.MASS_RATE
-                          - well_control_iface.VOLUMETRIC_RATE
+        :param rate: Target injection rate. The unit is determined by rate_ctrl_type.
+        :param rate_ctrl_type: Rate control type:
+                               - well_control_iface.MOLAR_RATE
+                               - well_control_iface.MASS_RATE
+                               - well_control_iface.VOLUMETRIC_RATE
         :param bhp_constraint: Optional upper BHP constraint for the injector.
         :param temperature: Injection temperature for thermal physics.
         :param phase_name: Injected phase name for phase-rate controls.
@@ -539,7 +543,7 @@ class WellData:
         wctrl = WellControl()
         wctrl.inj_rate_control(
             rate=rate,
-            rate_type=rate_type,
+            rate_ctrl_type=rate_ctrl_type,
             bhp_constraint=bhp_constraint,
             temperature=temperature,
             phase_name=phase_name,
