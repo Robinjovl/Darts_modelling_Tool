@@ -103,6 +103,8 @@ public:
     min_i_newton = 0;
     tolerance_newton = 1e-3;
     well_tolerance_coefficient = 1e2;
+    well_rate_ctrl_absolute_residual_scale = 1.0;
+    well_rate_ctrl_relative_residual_scale = 1e-5;
     stationary_point_tolerance = 1e-3;
     newton_type = NEWTON_LOCAL_CHOP;
     newton_params.push_back(0.1);
@@ -140,6 +142,8 @@ public:
   value_t tolerance_newton; // tolerance for newton solver
   value_t tolerance_linear; // tolerance for linear solver
   value_t well_tolerance_coefficient; // tolerance multiplier for well newton tolerance
+  value_t well_rate_ctrl_absolute_residual_scale; // absolute residual scale for well rate-control equations
+  value_t well_rate_ctrl_relative_residual_scale; // relative residual scale for well rate-control equations
   value_t stationary_point_tolerance; // stationary point tolerance
   bool line_search;         // apply line search in newton iterations
 
