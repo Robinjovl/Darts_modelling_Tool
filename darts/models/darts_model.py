@@ -1256,7 +1256,7 @@ class DartsModel:
                     # Control
                     self.physics.set_well_controls(
                         wctrl=w.control,
-                        control_type=wctrl.rate_type,
+                        control_type=wctrl.rate_ctrl_type,
                         is_inj=True,
                         target=wctrl.rate,
                         phase_name=wctrl.phase_name,
@@ -1290,7 +1290,7 @@ class DartsModel:
                     # Control
                     self.physics.set_well_controls(
                         wctrl=w.control,
-                        control_type=wctrl.rate_type,
+                        control_type=wctrl.rate_ctrl_type,
                         is_inj=False,
                         target=-np.abs(wctrl.rate),
                         phase_name=wctrl.phase_name,
