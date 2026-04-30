@@ -1,3 +1,4 @@
+from copy import deepcopy
 from enum import Enum
 
 import numpy as np
@@ -230,11 +231,61 @@ class WellPerforation:
 
 class WellData:
     """
-    well definition
+    Well definitions, perforations, and scheduled controls.
+
+    Rate ramp-up support is available through add_inj_rate_control() and
+    add_prd_rate_control(). Ramp-up is implemented by expanding one target rate
+    into multiple scheduled controls in self.wells[name].controls. Models must
+    use the idata.well_data schedule and DartsModel.set_well_controls_idata()
+    for these scheduled controls to take effect.
     """
 
     def __init__(self):
         self.wells = dict()
+
+    def _append_control(self, name, time, wctrl):
+        """
+        Append one scheduled well control and keep controls sorted by time.
+        """
+        self.wells[name].controls.append((time, wctrl))
+        self.wells[name].controls.sort(key=lambda item: item[0])
+
+    def _append_rate_control_with_ramp(
+        self,
+        name,
+        time,
+        wctrl,
+        ramp_up_period=0.0,
+        ramp_up_steps=10,
+        ramp_up_start_rate=0.0,
+    ):
+        """
+        Append a rate control directly or expand it into a linear ramp.
+
+        If ramp_up_period is zero, only the target control is scheduled at time.
+        If ramp_up_period is positive, ramp_up_steps + 1 controls are scheduled,
+        including the start and target rates.
+        """
+        assert ramp_up_period >= 0.0, "ramp_up_period must be non-negative"
+        if ramp_up_period == 0.0:
+            self._append_control(name, time, wctrl)
+            return
+
+        assert isinstance(ramp_up_steps, int), "ramp_up_steps must be an integer"
+        assert ramp_up_steps > 0, "ramp_up_steps must be positive"
+
+        target_rate = wctrl.rate
+        for step in range(ramp_up_steps + 1):
+            fraction = step / ramp_up_steps
+            ramped_ctrl = deepcopy(wctrl)
+            ramped_ctrl.rate = ramp_up_start_rate + fraction * (
+                target_rate - ramp_up_start_rate
+            )
+            self._append_control(
+                name,
+                time + fraction * ramp_up_period,
+                ramped_ctrl,
+            )
 
     def add_well(
         self,
@@ -363,6 +414,7 @@ class WellData:
         bhp_constraint: float,
         inj_temp: float,
         phase_name: str,
+        rate_type=None,
     ):
         """
         :param name: well name
@@ -376,24 +428,52 @@ class WellData:
         :param phase_name # injected phase name, [str], for Compositional physics
         :return:
         """
-        self.wells[name].controls.append(
-            (
-                time,
-                WellControl(
-                    type=type,
-                    mode=mode,
-                    rate=rate,
-                    bhp=bhp,
-                    bhp_constraint=bhp_constraint,
-                    inj_temp=inj_temp,
-                    phase_name=phase_name,
-                ),
-            )
-        )
+        wctrl = WellControl()
+        wctrl.type = type
+        wctrl.mode = mode
+        wctrl.rate = rate
+        wctrl.rate_type = rate_type
+        wctrl.bhp = bhp
+        wctrl.bhp_constraint = bhp_constraint
+        wctrl.inj_bht = inj_temp
+        wctrl.phase_name = phase_name
+        self._append_control(name, time, wctrl)
 
     def add_prd_rate_control(
-        self, name, rate, rate_type, bhp_constraint=None, phase_name=None, time=0
+        self,
+        name,
+        rate,
+        rate_type,
+        bhp_constraint=None,
+        phase_name=None,
+        time=0,
+        ramp_up_period=0.0,
+        ramp_up_steps=10,
+        ramp_up_start_rate=0.0,
     ):
+        """
+        Add a production rate control.
+
+        :param name: Well name.
+        :param rate: Target production rate. The unit is determined by rate_type.
+        :param rate_type: Rate type:
+                          - well_control_iface.MOLAR_RATE
+                          - well_control_iface.MASS_RATE
+                          - well_control_iface.VOLUMETRIC_RATE
+        :param bhp_constraint: Optional lower BHP constraint for the producer.
+        :param phase_name: Produced phase name for phase-rate controls.
+        :param time: Time when the control or ramp starts.
+        :param ramp_up_period: Duration of the ramp from ramp_up_start_rate to
+                               rate. If zero, the target rate is applied directly.
+        :param ramp_up_steps: Number of equal ramp intervals. The number of
+                              scheduled controls is ramp_up_steps + 1 because both
+                              endpoints are included.
+        :param ramp_up_start_rate: Initial rate at the start of the ramp, in the
+                                   same unit as rate.
+
+        Example: rate=200, ramp_up_period=10, and ramp_up_steps=100 creates
+        scheduled controls every 0.1 day from 0 to 200.
+        """
         wctrl = WellControl()
         wctrl.prod_rate_control(
             rate=rate,
@@ -401,12 +481,19 @@ class WellData:
             bhp_constraint=bhp_constraint,
             phase_name=phase_name,
         )
-        self.wells[name].controls.append((time, wctrl))
+        self._append_rate_control_with_ramp(
+            name=name,
+            time=time,
+            wctrl=wctrl,
+            ramp_up_period=ramp_up_period,
+            ramp_up_steps=ramp_up_steps,
+            ramp_up_start_rate=ramp_up_start_rate,
+        )
 
     def add_prd_bhp_control(self, name, bhp, time=0):
         wctrl = WellControl()
         wctrl.prod_bhp_control(bhp=bhp)
-        self.wells[name].controls.append((time, wctrl))
+        self._append_control(name, time, wctrl)
 
     def add_inj_rate_control(
         self,
@@ -418,7 +505,35 @@ class WellData:
         phase_name=None,
         inj_composition=None,
         time=0,
+        ramp_up_period=0.0,
+        ramp_up_steps=10,
+        ramp_up_start_rate=0.0,
     ):
+        """
+        Add an injection rate control.
+
+        :param name: Well name.
+        :param rate: Target injection rate. The unit is determined by rate_type.
+        :param rate_type: Rate type:
+                          - well_control_iface.MOLAR_RATE
+                          - well_control_iface.MASS_RATE
+                          - well_control_iface.VOLUMETRIC_RATE
+        :param bhp_constraint: Optional upper BHP constraint for the injector.
+        :param temperature: Injection temperature for thermal physics.
+        :param phase_name: Injected phase name for phase-rate controls.
+        :param inj_composition: Injected composition for compositional physics.
+        :param time: Time when the control or ramp starts.
+        :param ramp_up_period: Duration of the ramp from ramp_up_start_rate to
+                               rate. If zero, the target rate is applied directly.
+        :param ramp_up_steps: Number of equal ramp intervals. The number of
+                              scheduled controls is ramp_up_steps + 1 because
+                              both endpoints are included.
+        :param ramp_up_start_rate: Initial rate at the start of the ramp, in the
+                                   same unit as rate.
+
+        Example: rate=200, ramp_up_period=10, and ramp_up_steps=100 creates
+        scheduled controls every 0.1 day from 0 to 200.
+        """
         if inj_composition is None:
             inj_composition = []
         wctrl = WellControl()
@@ -429,7 +544,14 @@ class WellData:
             temperature=temperature,
             phase_name=phase_name,
         )
-        self.wells[name].controls.append((time, wctrl))
+        self._append_rate_control_with_ramp(
+            name=name,
+            time=time,
+            wctrl=wctrl,
+            ramp_up_period=ramp_up_period,
+            ramp_up_steps=ramp_up_steps,
+            ramp_up_start_rate=ramp_up_start_rate,
+        )
 
     def add_inj_bhp_control(
         self, name, bhp, temperature=None, phase_name=None, inj_composition=None, time=0
@@ -437,8 +559,12 @@ class WellData:
         if inj_composition is None:
             inj_composition = []
         wctrl = WellControl()
-        wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, phase_name=phase_name)
-        self.wells[name].controls.append((time, wctrl))
+        wctrl.inj_bhp_control(
+            bhp=bhp,
+            temperature=temperature,
+            phase_name=phase_name,
+        )
+        self._append_control(name, time, wctrl)
 
 
 class OBLParams:
