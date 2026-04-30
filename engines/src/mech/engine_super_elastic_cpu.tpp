@@ -1274,7 +1274,11 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 	for (uint8_t d = 0; d < ND; d++)
 	{
 		Jac[N_VARS_SQ * diag_ind[w->well_head_idx] + (U_VAR + d) * N_VARS + U_VAR + d] = 1.0;
-		Jac[N_VARS_SQ * diag_ind[w->well_body_idx] + (U_VAR + d) * N_VARS + U_VAR + d] = 1.0;
+
+		for (index_t p = 0; p < w->n_segments; p++)
+		{
+			Jac[N_VARS_SQ * diag_ind[w->well_body_idx + p] + (U_VAR + d) * N_VARS + U_VAR + d] = 1.0;
+		}
 	}
   }
 
