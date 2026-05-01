@@ -5,6 +5,11 @@ from for_each_model import for_each_model, run_tests, abort_redirection, redirec
 import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
+from compare_well_output import (
+    compare_generated_well_outputs,
+    get_pkl_suffix,
+    snapshot_well_outputs,
+)
 
 
 def _ensure_parent_dir(path):
@@ -32,6 +37,10 @@ def _normalize_odls_env():
         except Exception:
             pass
     return os.getenv('ODLS') == '-a'
+
+
+def _pkl_suffix():
+    return get_pkl_suffix()
 
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
     base_dir = os.getcwd()  # base directory is models/
@@ -183,7 +192,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total_m = len(accepted_dirs)
     n_total += n_total_m
 
-    # check main.py files runs, without comparison of pkl files
+    # check main.py files runs and compare well output pkl files when they are produced
     failed_models_main = []
     accepted_dirs += ['CCS']
     if iter_solvers:  # run this case only for the build with iterative solvers
@@ -204,11 +213,20 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         stderr_path = os.path.join(logs_dir, safe_mdir + '_mainpy_err.log')
         _ensure_parent_dir(stdout_path)
         _ensure_parent_dir(stderr_path)
+        well_output_snapshot = snapshot_well_outputs(model_path)
         with open(stdout_path, 'w') as stdout_file, open(stderr_path, 'w') as stderr_file:
             mrun = subprocess.run(["python", "main.py", platform], stdout=stdout_file, stderr=stderr_file)
             rcode = mrun.returncode
+        failed_well_output = 0
         if not rcode:
-            print('OK')
+            failed_well_output = compare_generated_well_outputs(
+                model_path,
+                well_output_snapshot,
+                overwrite=overwrite,
+                pkl_suffix=_pkl_suffix(),
+            )
+        if not rcode and not failed_well_output:
+            print('OK (main.py with no errors)')
         else:
             print('FAIL')
             failed_models_main += [mdir + ' (main.py)']
@@ -274,13 +292,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
 def check_performance(mod):
     _normalize_odls_env()
-    pkl_suffix = ''
-    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-        pkl_suffix = '_gpu'
-    elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
-    else:
-        pkl_suffix = '_odls'
+    pkl_suffix = _pkl_suffix()
     x = os.path.basename(os.getcwd())
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed
