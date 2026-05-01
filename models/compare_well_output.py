@@ -123,7 +123,7 @@ def get_reference_file(output_file: str, model_dir: str, pkl_suffix: str = ""):
     label = _reference_label(rel_parent)
     filename = "well_time_data_" + platform.system().lower()[:3] + pkl_suffix
     if label:
-        filename += "__" + label
+        filename += "_" + label
     return os.path.join(model_dir, "ref", filename + ".pkl")
 
 
