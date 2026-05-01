@@ -5,10 +5,10 @@ from for_each_model import for_each_model, run_tests, abort_redirection, redirec
 import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
-from compare_well_output import (
-    compare_generated_well_outputs,
+from compare_well_time_series import (
+    compare_generated_well_time_series,
     get_pkl_suffix,
-    snapshot_well_outputs,
+    snapshot_well_time_series_files,
 )
 
 
@@ -192,7 +192,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total_m = len(accepted_dirs)
     n_total += n_total_m
 
-    # check main.py files runs and compare well output pkl files when they are produced
+    # check main.py files and compare well time-series pkl files when they are produced
     failed_models_main = []
     accepted_dirs += ['CCS']
     if iter_solvers:  # run this case only for the build with iterative solvers
@@ -213,19 +213,19 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         stderr_path = os.path.join(logs_dir, safe_mdir + '_mainpy_err.log')
         _ensure_parent_dir(stdout_path)
         _ensure_parent_dir(stderr_path)
-        well_output_snapshot = snapshot_well_outputs(model_path)
+        well_time_series_snapshot = snapshot_well_time_series_files(model_path)
         with open(stdout_path, 'w') as stdout_file, open(stderr_path, 'w') as stderr_file:
             mrun = subprocess.run(["python", "main.py", platform], stdout=stdout_file, stderr=stderr_file)
             rcode = mrun.returncode
-        failed_well_output = 0
+        failed_well_time_series = 0
         if not rcode:
-            failed_well_output = compare_generated_well_outputs(
+            failed_well_time_series = compare_generated_well_time_series(
                 model_path,
-                well_output_snapshot,
+                well_time_series_snapshot,
                 overwrite=overwrite,
                 pkl_suffix=_pkl_suffix(),
             )
-        if not rcode and not failed_well_output:
+        if not rcode and not failed_well_time_series:
             print('OK (main.py with no errors)')
         else:
             print('FAIL')

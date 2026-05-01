@@ -7,10 +7,10 @@ from multiprocessing import Process, set_start_method, Value
 import time
 import importlib
 
-from compare_well_output import (
-    compare_generated_well_outputs,
+from compare_well_time_series import (
+    compare_generated_well_time_series,
     get_pkl_suffix,
-    snapshot_well_outputs,
+    snapshot_well_time_series_files,
 )
 
 original_stdout = os.dup(1)
@@ -231,22 +231,22 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             starting_time = time.time()
             arg_o = arg + [overwrite] if type(arg) == list else arg  # add overwrite [pkl] flag if a list
             model_path = os.path.join(root_path, dir)
-            well_output_snapshot = snapshot_well_outputs(model_path)
+            well_time_series_snapshot = snapshot_well_time_series_files(model_path)
             p = Process(target=run_single_test, args=(dir, 'main', arg_o, ret_value, platform), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
             abort_redirection(log_stream)
             ending_time = time.time()
-            failed_well_output = 0
+            failed_well_time_series = 0
             if not ret_value.value:
-                failed_well_output = compare_generated_well_outputs(
+                failed_well_time_series = compare_generated_well_time_series(
                     model_path,
-                    well_output_snapshot,
+                    well_time_series_snapshot,
                     overwrite=overwrite,
                     pkl_suffix=get_pkl_suffix(),
                 )
-                if failed_well_output:
+                if failed_well_time_series:
                     ret_value.value = 1
             str_status = 'OK' if not ret_value.value else 'FAIL'
             if isinstance(arg, list):
