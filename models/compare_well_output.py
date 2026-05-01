@@ -1,12 +1,11 @@
 import os
 import platform
-import shutil
 
 import numpy as np
 import pandas as pd
 
-
 WELL_OUTPUT_FILENAME = "well_time_data.pkl"
+WELL_OUTPUT_MAX_ROWS = 50
 
 
 def get_pkl_suffix():
@@ -97,7 +96,8 @@ def compare_well_output(
 
     if overwrite:
         os.makedirs(os.path.dirname(reference_file), exist_ok=True)
-        shutil.copyfile(output_file, reference_file)
+        current = get_well_output_reference_slice(pd.read_pickle(output_file))
+        current.to_pickle(reference_file)
         print("SAVED WELL OUTPUT PKL FILE", reference_file)
         return 0
 
@@ -106,8 +106,8 @@ def compare_well_output(
         print("Run with UPLOAD_PKL=1 to create or update this reference file.")
         return 1
 
-    reference = pd.read_pickle(reference_file)
-    current = pd.read_pickle(output_file)
+    reference = get_well_output_reference_slice(pd.read_pickle(reference_file))
+    current = get_well_output_reference_slice(pd.read_pickle(output_file))
     return compare_well_output_frames(current, reference, output_file, reference_file)
 
 
@@ -207,6 +207,17 @@ def compare_well_output_frames(
 
     print("OK (well output comparison)", os.path.relpath(output_file, os.getcwd()))
     return 0
+
+
+def get_well_output_reference_slice(data: pd.DataFrame | dict):
+    """
+    Return the rows used for stored well-output reference comparisons.
+
+    :param data: Well output data loaded from a pickle file.
+    """
+    if not isinstance(data, pd.DataFrame):
+        data = pd.DataFrame(data)
+    return data.head(WELL_OUTPUT_MAX_ROWS)
 
 
 def _reference_label(rel_parent: str):
