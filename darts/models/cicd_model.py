@@ -3,6 +3,7 @@ import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import MaxNLocator
 
 from darts.models.darts_model import DartsModel
 
@@ -136,6 +137,9 @@ class CICDModel(DartsModel):
                         # plot the difference
                         plt.figure()
                         plt.plot(diff)
+                        plt.xlabel(f'{block_label} block index')
+                        plt.ylabel(f'{self.physics.vars[v]} difference')
+                        plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
                         plt.savefig(f'diff_{block_label}_{self.physics.vars[v]}.png')
                         plt.close()
 
@@ -143,6 +147,10 @@ class CICDModel(DartsModel):
                         plt.figure()
                         plt.plot(sol_et, label='ref')
                         plt.plot(sol, label='cur')
+                        plt.legend()
+                        plt.xlabel(f'{block_label} block index')
+                        plt.ylabel(self.physics.vars[v])
+                        plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
                         plt.savefig(f'sol_{block_label}_{self.physics.vars[v]}.png')
                         plt.close()
 
