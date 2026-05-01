@@ -208,7 +208,7 @@ class CICDModel(DartsModel):
 
     def get_performance_data(self):
         """
-        Function to get the needed performance data
+        Get the needed performance data
 
         :return: Performance data
         :rtype: dict
@@ -244,7 +244,7 @@ class CICDModel(DartsModel):
         import platform
 
         """
-        Function to save performance data for future comparison.
+        Save performance data for future comparison.
         :param file_name:
         :return:
         """
@@ -262,7 +262,7 @@ class CICDModel(DartsModel):
         import platform
 
         """
-        Function to load the performance pkl file at previous simulation.
+        Load the performance pkl file at previous simulation.
         :param file_name: performance filename
         """
         if file_name == '':
