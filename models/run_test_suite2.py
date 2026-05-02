@@ -4,6 +4,7 @@ from darts.print_build_info import print_build_info as package_pbi
 from for_each_model import for_each_model, run_tests, abort_redirection, redirect_all_output, for_each_model_adjoint
 import sys, os, shutil
 import subprocess
+from contextlib import redirect_stdout
 from darts.engines import sim_params
 from compare_well_time_series import (
     compare_generated_well_time_series,
@@ -219,15 +220,20 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             rcode = mrun.returncode
         failed_well_time_series = 0
         if not rcode:
-            failed_well_time_series = compare_generated_well_time_series(
-                model_path,
-                well_time_series_snapshot,
-                overwrite=overwrite,
-                pkl_suffix=_pkl_suffix(),
-            )
+            with open(stdout_path, 'a') as stdout_file:
+                print('\nWell time-series comparison:', file=stdout_file)
+                with redirect_stdout(stdout_file):
+                    failed_well_time_series = compare_generated_well_time_series(
+                        model_path,
+                        well_time_series_snapshot,
+                        overwrite=overwrite,
+                        pkl_suffix=_pkl_suffix(),
+                    )
         if not rcode and not failed_well_time_series:
             print('OK (main.py with no errors)')
         else:
+            if failed_well_time_series:
+                print(f'FAIL (well time-series comparison); see {stdout_path}')
             print('FAIL')
             failed_models_main += [mdir + ' (main.py)']
         os.chdir(models_root)

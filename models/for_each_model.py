@@ -2,6 +2,7 @@ from darts.engines import *
 from darts.tools.logging import redirect_all_output, abort_redirection
 import os, sys, shutil
 from pathlib import Path
+from contextlib import redirect_stdout
 
 from multiprocessing import Process, set_start_method, Value
 import time
@@ -240,13 +241,17 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             ending_time = time.time()
             failed_well_time_series = 0
             if not ret_value.value:
-                failed_well_time_series = compare_generated_well_time_series(
-                    model_path,
-                    well_time_series_snapshot,
-                    overwrite=overwrite,
-                    pkl_suffix=get_pkl_suffix(),
-                )
+                with open(log_file, 'a') as log:
+                    print('\nWell time-series comparison:', file=log)
+                    with redirect_stdout(log):
+                        failed_well_time_series = compare_generated_well_time_series(
+                            model_path,
+                            well_time_series_snapshot,
+                            overwrite=overwrite,
+                            pkl_suffix=get_pkl_suffix(),
+                        )
                 if failed_well_time_series:
+                    print(f'FAIL (well time-series comparison); see {log_file}')
                     ret_value.value = 1
             str_status = 'OK' if not ret_value.value else 'FAIL'
             if isinstance(arg, list):
