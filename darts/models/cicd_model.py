@@ -115,11 +115,12 @@ class CICDModel(DartsModel):
                     sol_range = np.max(sol_et) - np.min(sol_et)
                     diff_abs = np.abs(diff)
                     diff_norm = np.linalg.norm(diff)
-                    denom = (
-                        sol_range
-                        if np.isfinite(sol_range) and sol_range != 0
-                        else np.finfo(float).eps
-                    )
+                    # Constant reference values have no useful range for normalization.
+                    # Use their magnitude scale instead of eps to avoid false failures
+                    # from tiny absolute differences in small well-state vectors.
+                    sol_scale = max(np.max(np.abs(sol_et)), 1.0)
+                    min_range = np.finfo(float).eps * sol_scale
+                    denom = sol_range if sol_range > min_range else sol_scale
                     diff_norm_normalized = diff_norm / (len(sol_et) * denom)
                     diff_abs_max_normalized = np.max(diff_abs) / denom
                     if (
