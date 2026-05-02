@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 WELL_TIME_SERIES_FILENAME = "well_time_data.pkl"
-WELL_TIME_SERIES_REFERENCE_ROWS = 50
+WELL_TIME_SERIES_REFERENCE_ROWS = 20
 
 
 def get_pkl_suffix():
