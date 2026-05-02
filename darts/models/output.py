@@ -2334,24 +2334,6 @@ class Output:
             # Calculate dead operators
             p_dead = 1.01325  # Dead pressure (1 atm)
             T_dead = 273.15 + 15  # Dead temperature (15 deg C)
-            if not (
-                self.physics.PT_axes_min[p_idx]
-                <= p_dead
-                <= self.physics.PT_axes_max[p_idx]
-            ):
-                warnings.warn(
-                    f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
-                    stacklevel=1,
-                )
-            if not (
-                self.physics.PT_axes_min[t_idx]
-                <= T_dead
-                <= self.physics.PT_axes_max[t_idx]
-            ):
-                warnings.warn(
-                    f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
-                    stacklevel=1,
-                )
 
             states_2d[:, p_idx] = p_dead
             states_2d[:, t_idx] = T_dead
