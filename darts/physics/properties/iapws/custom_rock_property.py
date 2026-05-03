@@ -1,4 +1,4 @@
-from darts.engines import property_evaluator_iface
+from darts.interpolators import property_evaluator_iface
 
 
 class custom_rock_energy_evaluator(property_evaluator_iface):

@@ -19,7 +19,6 @@ set(OD_ENGINES_MECHANICS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/contact.h
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_elastic_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_elastic_cpu.tpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/matrix.h
 )
 
 # Define the engines_mechanics library
@@ -44,7 +43,6 @@ target_link_libraries(engines_mechanics
     opendarts_compiler_flags
     linear_solvers
     engines_global
-    engines_interpolator
 	opendarts_discretizer
 	HYPRE::HYPRE
     pybind11::pybind11
@@ -56,6 +54,7 @@ target_include_directories(engines_mechanics
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
+    ${INTERPOLATION_INCLUDE_DIRS}
 )
 
 # Setup IDE directory structure for engines_mechanics
