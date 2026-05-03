@@ -1,5 +1,5 @@
 # #.#.# [Future]
-- Improve CI model tests by comparing generated well time-series reference files (`well_time_data.pkl`) and by extending performance-reference checks to include well primary variables in addition to reservoir primary variables ([!312](https://gitlab.com/open-darts/open-darts/-/merge_requests/312)).
+- Fluid heat capacity is added into the input data for THM models ([!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270))
 - Support using the OBL method to calculate DFM well phase velocities. Direct method is still the default method since it is safer in terms of stability ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Add `x_mass` (mass composition of each phase) as a new property to `PropertyContainer` of the super engine because it is needed for evaluation of phase velocities in DFM wells using the OBL method ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Make DFM velocity calculation independent of the order of the phases specified by the user, so now the order of the phases does not affect the performance of DFM wells, but the user needs to specify `"G"` and `"L"` as names of gas and liquid phases for two-phase flow and `"G"`, `"L_a"`, and `"L_b"` as names of gas and two liquid phases for three-phase flow ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)).
@@ -18,14 +18,13 @@
 - Support well controls (rate and WHP) for DFM wells consistent with EPM wells. WHP is controlled for DFM wells and BHP is controlled for EPM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
 - Support total (mass, molar, volumetric, and advective heat) rate control for both EPM and DFM wells. If well rate is controlled and phase is not specified, total rate will be applied ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
 - Fix the issue in the derivative of wellhead equation for rate control of EPM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
-- Fluid heat capacity is added into the input data for THM models ([!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270)):
-- Unstructured reservoir ([!298](https://gitlab.com/open-darts/open-darts/-/merge_requests/298)):
-- Unstrutured reservoir [MR298](https://gitlab.com/open-darts/open-darts/-/merge_requests/298):
+- Unstructured reservoir [!298](https://gitlab.com/open-darts/open-darts/-/merge_requests/298):
 	- fixed the order in store_depth_all_cells (could affect the initialization by gradient)
 	- vtk output is fixed for 3D meshes (order)
 	- separate vtk files for matrix and fracture data
 	- reservoir cache is fixed
-- Fluid heat capacity is added into the input data for THM models ([!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270))
+- Extracted interpolators into a standalone `darts.interpolators` Python module / shared library, decoupled from `darts.engines` at link time (header-only coupling via `interpolation_config.h`). Template instantiations split across multiple translation units to enable parallel compilation and cut per-TU memory (full build down to ~6 min on multi-core; valgrind job pre-builds at `-j NT/2` to avoid OOM). Interpolator tests moved to `tests/interpolators/`. Breaking change: interpolator types are no longer exposed under `darts.engines` — import from `darts.interpolators` ([!301](https://gitlab.com/open-darts/open-darts/-/merge_requests/301))
+- Improve CI model tests by comparing generated well time-series reference files (`well_time_data.pkl`) and by extending performance-reference checks to include well primary variables in addition to reservoir primary variables ([!312](https://gitlab.com/open-darts/open-darts/-/merge_requests/312)).
 - Breaking changes:
   - Rock thermal conductivity was renamed in the input data for geomechanical models:
   \
@@ -37,7 +36,6 @@
   {- Before: init.solve() -}\
   {+ Now:    init.solve_up_and_downwards() +}
   \
-- Extracted interpolators into a standalone `darts.interpolators` Python module / shared library, decoupled from `darts.engines` at link time (header-only coupling via `interpolation_config.h`). Template instantiations split across multiple translation units to enable parallel compilation and cut per-TU memory (full build down to ~6 min on multi-core; valgrind job pre-builds at `-j NT/2` to avoid OOM). Interpolator tests moved to `tests/interpolators/`. Breaking change: interpolator types are no longer exposed under `darts.engines` — import from `darts.interpolators` ([!301](https://gitlab.com/open-darts/open-darts/-/merge_requests/301))
 
 # 1.4.0 [17-02-2026]
 - OBL and operators:
