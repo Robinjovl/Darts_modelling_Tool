@@ -266,6 +266,7 @@ if __name__ == '__main__':
     #mesh='16_16_15'  # for debugging
     #mesh='34_34_57' # rsv 2100-2200
     #mesh='34_34_66' # rsv 2000-2400
+    #mesh='41_41_66'
     mesh='71_71_66'
     #mesh='34_35_57'  # perm_frac
 
@@ -294,8 +295,8 @@ if __name__ == '__main__':
     report_step = 365.25 / 4
 
     # short run
-    #sim_time = 30 # days
-    #report_step = sim_time  # days
+    sim_time = 30 # days
+    report_step = sim_time  # days
 
     run(model_folder=mesh, physics_type=physics_type, generate_mesh=generate_mesh, wells_type=wells_type, decouple_geomech=decouple_geomech, report_step=report_step, sim_time=sim_time)
 

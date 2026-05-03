@@ -59,7 +59,7 @@ def geomech_init_geometry(mesh_data):
 
     return prisms
 
-def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timestep=1, generate_mesh=True):
+def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timestep=1, generate_mesh=True, n_threads=1):
     folder = os.path.join('results', 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case)  # where vtk files are located
     print('OMP_NUM_THREADS =', os.getenv('OMP_NUM_THREADS'))
     # init geomech proxy
@@ -77,6 +77,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     g.young *= bars2mpa
     g.thermal_expansion = m.idata.rock.th_expn_orig
     g.biot = m.idata.rock.biot
+    
+    g.set_num_threads(n_threads)
     
     # plot THM solution
     if False:
@@ -656,10 +658,20 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
             points_xy['inj_well'] = m.idata.other.inj_well_coords[:2]
 
     # compute with proxy in 3D volume
-    if True:
+    if False:
         points_x = np.unique(g.centroids[:, 0])
         points_y = np.array([0.])
         points_z = np.unique(g.centroids[:, 2])
+        if False: # while reading a coarser grid as sources, evaluate at finer grid centers
+            #nx == 71: # rsv corners and near-well (middle) are refined
+            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
+                          [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
+                          np.arange(-800, -100, 100).tolist() + 
+                          np.arange(-100, 0, 10).tolist())
+            Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
+            points_x = (Xc[1:] + Xc[:-1]) * 0.5 # çenters
+        
+        # cut points far from the reservoir for better zoom in plots
         points_x = points_x[reduce(np.logical_and, [points_x > -5000., points_x < 5000.])]
         points_z = points_z[reduce(np.logical_and, [points_z > 1400., points_z < 3400.])]
         
@@ -882,17 +894,14 @@ if __name__ == '__main__':
     # nx ny nz
     #case = '6_6_5'  # for debugging
     #case = '16_16_15'
-    #case = '34_34_57'  # z 0 - 5 km
+
     #case = '34_34_66'  # z 0 - 5 km 
-    case = '41_41_66'
-    #case ='71_71_66' #refined middle and tips
+    #case = '41_41_66' # without refinement
+    case ='71_71_66' #refined middle and tips
     #case = '42_42_66'  # z 0 - 5 km 
     #case = '34_34_90'  # z 0 - 5 km more refined around rsv
     #case = '42_42_90'  # z 0 - 5 km more refined around rsv
     #case='34_35_57' # perm_frac
-    
-    #case = '34_34_15'
-    #case = '16_16_65'
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -956,7 +965,7 @@ if __name__ == '__main__':
             # run geomech proxy
             print('The timestep for plots and proxy-apply:', timestep)
             t1 = datetime.now()
-            run_geomech_proxy(case=case, physics_type=physics_type, wells_type=wells_type, timestep=timestep)
+            run_geomech_proxy(case=case, physics_type=physics_type, wells_type=wells_type, timestep=timestep, n_threads=24)
             t2 = datetime.now()
             proxy_time = t2 - t1
 

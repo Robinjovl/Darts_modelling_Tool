@@ -219,13 +219,13 @@ class Model(THMCModel):
             Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
         elif nx == 16: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
             Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
-        elif nx == 71: # 
+        elif nx == 71: # rsv corners and near-well (middle) are refined
             Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
                           [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
                           np.arange(-800, -100, 100).tolist() + 
                           np.arange(-100, 0, 10).tolist())
             Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
-        elif nx == 41: # 
+        elif nx == 41: # rsv corners and near-well (middle) are NOT refined
             Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
                           [-1100, -1000, -900] +
                           np.arange(-800, -100, 100).tolist() + [-50])
@@ -258,12 +258,12 @@ class Model(THMCModel):
                                  np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
                                  rsv_bottom + 100,
                                  np.arange(rsv_bottom + 200, 5000 + 1, 100)])
-        elif nz == 66:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
+        elif nz == 66:  # refine a bit upper and lower (100m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
             Zc = np.hstack([np.arange(0, rsv_top - 100 + 1, 100),
                                  np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
                                  rsv_bottom + 100,
                                  np.arange(rsv_bottom + 200, 5000 + 1, 100)])
-        elif nz == 90:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
+        elif nz == 90:  # refine a bit upper and lower (500m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
             Zc = np.hstack([np.arange(0, rsv_top - 500 + 1, 100),
                                  np.arange(rsv_top - 450, rsv_bottom + 450 + 1, 25),
                                  rsv_bottom + 500,
@@ -416,7 +416,7 @@ class Model(THMCModel):
             
             self.well_cell_ids.append(ids_1)
             # adding a well
-            self.reservoir.add_well(well_names[i], depth=self.well_init_depth)
+            self.reservoir.add_well(well_names[i])#, depth=self.well_init_depth)
             # adding perforations
             for cell_id in ids_1:
                 cell = elems[cell_id]
@@ -440,10 +440,10 @@ class Model(THMCModel):
                 wi_z = 2 * np.pi * np.sqrt(mean_perm_xx * mean_perm_yy) * dz / np.log(rp_z / rw)
                 well_index = np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
                 # add perforation
-                self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
-                #self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=cell_id, well_index=well_index, well_indexD=0., ms_epm=True, verbose=True)
+                #self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
+                self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=cell_id, well_index=well_index, well_indexD=0., ms_epm=True, verbose=True)
                 print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', centroids_3d[cell_id,:])
-                break  #TODO add only one perforation for now, need to fix the issue with the crossflow 
+                #break  #TODO add only one perforation for now, need to fix the issue with the crossflow
 
 
     def set_boundary_conditions(self): # for initial mechanical equilibrium initialization, wells are switched off
