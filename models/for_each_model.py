@@ -11,8 +11,8 @@ import traceback
 
 from compare_well_time_series import (
     compare_generated_well_time_series,
+    create_well_time_series_snapshot,
     get_pkl_suffix,
-    snapshot_well_time_series_files,
 )
 
 original_stdout = os.dup(1)
@@ -246,7 +246,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             starting_time = time.time()
             arg_o = arg + [overwrite] if type(arg) == list else arg  # add overwrite [pkl] flag if a list
             model_path = os.path.join(root_path, dir)
-            well_time_series_snapshot = snapshot_well_time_series_files(model_path)
+            well_time_series_snapshot = create_well_time_series_snapshot(model_path)
             p = Process(target=run_single_test, args=(dir, 'main', arg_o, ret_value, platform), )
             p.start()
             p.join(timeout=7200)
