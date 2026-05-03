@@ -262,6 +262,9 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             elif ret_value.value and p.exitcode not in (0, None):
                 with open(log_file, 'a') as log:
                     print(f'\nTest process exited with code {p.exitcode}', file=log)
+            elif ret_value.value:
+                with open(log_file, 'a') as log:
+                    print(f'\nTest process returned failure flag with exit code {p.exitcode}', file=log)
             failed_well_time_series = 0
             if not ret_value.value:
                 with open(log_file, 'a') as log:
