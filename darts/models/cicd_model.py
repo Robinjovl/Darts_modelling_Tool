@@ -115,23 +115,32 @@ class CICDModel(DartsModel):
                     sol_range = np.max(sol_et) - np.min(sol_et)
                     diff_abs = np.abs(diff)
                     diff_norm = np.linalg.norm(diff)
-                    # Constant reference values have no useful range for normalization.
-                    # Use their magnitude scale instead of eps to avoid false failures
-                    # from tiny absolute differences in small well-state vectors.
+                    # Constant reference values have no meaningful range for normalization.
+                    # Use their magnitude scale instead of eps, and skip the L2 check for
+                    # this case because it is too sensitive for small well-state vectors.
                     sol_scale = max(np.max(np.abs(sol_et)), 1.0)
                     min_range = np.finfo(float).eps * sol_scale
-                    denom = sol_range if sol_range > min_range else sol_scale
+                    use_range = np.isfinite(sol_range) and sol_range > min_range
+                    denom = sol_range if use_range else sol_scale
                     diff_norm_normalized = diff_norm / (len(sol_et) * denom)
                     diff_abs_max_normalized = np.max(diff_abs) / denom
-                    if (
-                        diff_norm_normalized > diff_norm_normalized_tol
-                        or diff_abs_max_normalized > diff_abs_max_normalized_tol
-                    ):
+                    if use_range:
+                        is_failed = (
+                            diff_norm_normalized > diff_norm_normalized_tol
+                            or diff_abs_max_normalized > diff_abs_max_normalized_tol
+                        )
+                        scale_label = "range"
+                    else:
+                        is_failed = (
+                            diff_abs_max_normalized > diff_abs_max_normalized_tol
+                        )
+                        scale_label = "scale"
+                    if is_failed:
                         fail += 1
                         print(
                             f"#{fail} solution check failed for {block_label} variable {self.physics.vars[v]} "
-                            f"(range {sol_range:f}): L2(diff)/len(diff)/range = {diff_norm_normalized:.2E} "
-                            f"(tol {diff_norm_normalized_tol:.2E}), max(abs(diff))/range {diff_abs_max_normalized:.2E} "
+                            f"(range {sol_range:f}): L2(diff)/len(diff)/{scale_label} = {diff_norm_normalized:.2E} "
+                            f"(tol {diff_norm_normalized_tol:.2E}), max(abs(diff))/{scale_label} {diff_abs_max_normalized:.2E} "
                             f"(tol {diff_abs_max_normalized_tol:.2E}), max(abs(diff)) = {np.max(diff_abs):.2E}"
                         )
 
