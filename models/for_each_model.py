@@ -228,7 +228,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
 
             # erase previous log file if existed
             if isinstance(arg, (list, tuple)) and len(arg) > 0:
-                arg_label = str(arg[0])
+                arg_label = '_'.join(map(str, arg))
             elif isinstance(arg, dict):
                 if 0 in arg:
                     arg_label = str(arg[0])
