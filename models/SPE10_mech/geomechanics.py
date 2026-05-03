@@ -65,6 +65,10 @@ class geomech():
         
         self.deriv_step = 10. # m
 
+    def set_num_threads(self, n_threads : int):
+        from _proxygeomech import set_num_threads
+        set_num_threads(n_threads)
+
     def calc_displacements(self, points, prisms, delta_pressure, delta_temperature):
         '''
         arg: points: points where to compute

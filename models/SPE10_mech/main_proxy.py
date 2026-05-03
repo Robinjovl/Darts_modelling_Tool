@@ -61,7 +61,7 @@ def geomech_init_geometry(mesh_data):
 
 def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timestep=1, generate_mesh=True, n_threads=1):
     folder = os.path.join('results', 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case)  # where vtk files are located
-    print('OMP_NUM_THREADS =', os.getenv('OMP_NUM_THREADS'))
+
     # init geomech proxy
     from geomechanics import geomech
     g = geomech()
@@ -79,6 +79,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
     g.biot = m.idata.rock.biot
     
     g.set_num_threads(n_threads)
+    print('N_THREADS =', n_threads)
     
     # plot THM solution
     if False:
@@ -657,19 +658,12 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         if wells_type in ['inj', 'doublet']:
             points_xy['inj_well'] = m.idata.other.inj_well_coords[:2]
 
-    # compute with proxy in 3D volume
-    if False:
+    # compute with proxy for 2D slice
+    if True:
         points_x = np.unique(g.centroids[:, 0])
         points_y = np.array([0.])
         points_z = np.unique(g.centroids[:, 2])
-        if False: # while reading a coarser grid as sources, evaluate at finer grid centers
-            #nx == 71: # rsv corners and near-well (middle) are refined
-            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
-                          [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
-                          np.arange(-800, -100, 100).tolist() + 
-                          np.arange(-100, 0, 10).tolist())
-            Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
-            points_x = (Xc[1:] + Xc[:-1]) * 0.5 # çenters
+
         
         # cut points far from the reservoir for better zoom in plots
         points_x = points_x[reduce(np.logical_and, [points_x > -5000., points_x < 5000.])]
@@ -677,7 +671,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None, timest
         
         points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
         
-        print('plotting 2D slices, n_points =', points_x.size * points_y.size * points_z.size)
+        print('plotting 2D slices, n_eval_points =', points_x.size * points_y.size * points_z.size, 'n_src_points = ', g.centroids[:, 0].size)
         p_nx, p_ny, p_nz = points_x.size, points_y.size, points_z.size
         points = np.zeros((3, points_x_3d.size))
         points[0, :], points[1, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
@@ -896,8 +890,8 @@ if __name__ == '__main__':
     #case = '16_16_15'
 
     #case = '34_34_66'  # z 0 - 5 km 
-    #case = '41_41_66' # without refinement
-    case ='71_71_66' #refined middle and tips
+    case = '41_41_66' # without refinement
+    #case ='71_71_66' #refined middle and tips
     #case = '42_42_66'  # z 0 - 5 km 
     #case = '34_34_90'  # z 0 - 5 km more refined around rsv
     #case = '42_42_90'  # z 0 - 5 km more refined around rsv
