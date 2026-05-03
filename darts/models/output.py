@@ -2238,6 +2238,9 @@ class Output:
         Calculate different types of rates at perforations or wellhead connections of wells.
         This function is used in the method store_well_time_data of the current class.
 
+        To calculate connection rates, gravity is included, while capillary pressure is ignored in this
+        postprocessing calculation.
+
         :param h5_well_data: Well data stored in the HDF5 file
         :type h5_well_data: dict
         :param conn_idxs: Indices of the desired connections in the connection list
@@ -2322,23 +2325,19 @@ class Output:
         dp = p[:, cell_p] - p[:, cell_m]
 
         reservoir_operator = physics.reservoir_operators[0]
-        grav_m, pc_m = self.get_gravity_and_capillary_pressure_ops(
+        grav_m, _ = self.get_gravity_and_capillary_pressure_ops(
             physics, reservoir_operator, reservoir_ops_m
         )
-        grav_p, pc_p = self.get_gravity_and_capillary_pressure_ops(
+        grav_p, _ = self.get_gravity_and_capillary_pressure_ops(
             physics, reservoir_operator, reservoir_ops_p
         )
         grav_m = grav_m.reshape(n_ts, n_conns, pc.nph)
         grav_p = grav_p.reshape(n_ts, n_conns, pc.nph)
-        pc_m = pc_m.reshape(n_ts, n_conns, pc.nph)
-        pc_p = pc_p.reshape(n_ts, n_conns, pc.nph)
 
         grav_coef = h5_well_data["static"]["grav_coef"]
         grav_coef = np.asarray(grav_coef)[conn_idxs][None, :, None]
 
-        phase_p_diff = (
-            dp[:, :, None] + 0.5 * (grav_m + grav_p) * grav_coef - pc_p + pc_m
-        )
+        phase_p_diff = dp[:, :, None] + 0.5 * (grav_m + grav_p) * grav_coef
         upwind_m = phase_p_diff.reshape(batch_size, pc.nph) < 0
 
         if rate_type in [
