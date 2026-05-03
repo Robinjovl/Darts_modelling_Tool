@@ -215,7 +215,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
     # set working directory to folder which contains tests
     os.chdir(root_path)
 
-    logs_folder = os.path.join(os.path.abspath(os.pardir), '_logs')
+    logs_folder = os.path.join(os.path.abspath(os.curdir), '_logs')
     os.makedirs(logs_folder, exist_ok=True)
 
     failed = []
