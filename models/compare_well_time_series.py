@@ -254,7 +254,9 @@ def _comparison_tolerances():
     nt = int(os.environ.get("OMP_NUM_THREADS", 1))
     is_gpu = os.environ.get("TEST_GPU") == "1"
     if nt > 1 or is_gpu:
-        return 1e-6, 1e-6
+        # Well time-series rates are derived from stored well states and can show
+        # small platform-dependent differences on GPU and multithreaded runs.
+        return 1e-3, 1e-6
     return 1e-9, 1e-9
 
 
