@@ -219,19 +219,28 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             mrun = subprocess.run(["python", "main.py", platform], stdout=stdout_file, stderr=stderr_file)
             rcode = mrun.returncode
         failed_well_time_series = 0
+        n_well_time_series = 0
         if not rcode:
             with open(stdout_path, 'a') as stdout_file:
                 print('\nWell time-series comparison:', file=stdout_file)
                 with redirect_stdout(stdout_file):
-                    failed_well_time_series = compare_generated_well_time_series(
+                    failed_well_time_series, n_well_time_series = compare_generated_well_time_series(
                         model_path,
                         well_time_series_snapshot,
                         overwrite=overwrite,
                         pkl_suffix=_pkl_suffix(),
                     )
         if not rcode and not failed_well_time_series:
-            print('OK (main.py with no errors)')
+            if n_well_time_series:
+                if str(overwrite) == '1':
+                    print('OK (main.py with no errors + well time-series reference saved)')
+                else:
+                    print('OK (main.py with no errors + well time-series comparison)')
+            else:
+                print('OK (main.py with no errors; no well time-series generated)')
         else:
+            if rcode:
+                print(f'FAIL (main.py exited with code {rcode}); see {stdout_path} and {stderr_path}')
             if failed_well_time_series:
                 print(f'FAIL (well time-series comparison); see {stdout_path}')
             print('FAIL')

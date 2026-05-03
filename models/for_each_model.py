@@ -270,7 +270,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
                 with open(log_file, 'a') as log:
                     print('\nWell time-series comparison:', file=log)
                     with redirect_stdout(log):
-                        failed_well_time_series = compare_generated_well_time_series(
+                        failed_well_time_series, _ = compare_generated_well_time_series(
                             model_path,
                             well_time_series_snapshot,
                             overwrite=overwrite,

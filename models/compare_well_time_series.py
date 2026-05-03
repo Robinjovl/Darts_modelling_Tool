@@ -72,11 +72,15 @@ def compare_generated_well_time_series(
     :param pkl_suffix: Solver/platform suffix used in the reference file name.
     """
     failed = 0
+    n_processed = 0
     for time_series_file in changed_well_time_series_files(root_dir, before_snapshot):
+        n_processed += 1
         failed += compare_well_time_series(
             time_series_file, root_dir, overwrite, pkl_suffix
         )
-    return 1 if failed else 0
+    if n_processed == 0:
+        print("No changed well time-series file found.")
+    return 1 if failed else 0, n_processed
 
 
 def compare_well_time_series(
