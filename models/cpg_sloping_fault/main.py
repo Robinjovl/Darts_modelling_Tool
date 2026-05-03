@@ -107,7 +107,6 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
 
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
-        print('Finished VTK post processing')
 
     def add_columns_time_data(time_data):
         time_data['Time (years)'] = time_data['time'] / 365.25 # extra column with time in years
@@ -119,10 +118,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     if not(m.idata.supress_all_output):
         # compute and save well time data
-        print('Storing well time data')
         td = m.output.store_well_time_data(save_output_files=True)
         time_data = pd.DataFrame.from_dict(td)
-        print('Saved well_time_data.pkl')
         # add_columns_time_data(time_data)
 
         # COMPUTE TIME DATA AT FIXED REPORTING STEPS
@@ -142,16 +139,13 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         time_data_report.to_excel(writer, sheet_name='time_data_report')
         writer.close()
 
-        print('Plotting well time data')
         m.output.store_well_time_data(save_output_files=True)
         m.output.plot_well_time_data()
-        print('Finished well time data plots')
 
     m.print_timers()
 
 
     if compare_with_ref:
-        print('Checking performance reference')
         failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
     else:
         failed, sim_time = 0, 0.0
