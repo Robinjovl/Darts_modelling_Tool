@@ -7,6 +7,7 @@ from contextlib import redirect_stdout
 from multiprocessing import Process, set_start_method, Value
 import time
 import importlib
+import traceback
 
 from compare_well_time_series import (
     compare_generated_well_time_series,
@@ -150,6 +151,8 @@ def run_single_test(dir, module_name, args, ret_value, platform):
     # add it also to system path to load modules
     # sys.path.append(os.path.abspath(r'.'))
     sys.path.insert(0, os.path.abspath(r'.'))
+    log_file = None
+    log_stream = None
 
     # import model and run it for default time
     try:
@@ -182,7 +185,6 @@ def run_single_test(dir, module_name, args, ret_value, platform):
         shutil.rmtree("__pycache__", ignore_errors=True)
         # create model instance
         ret_value.value, test_time = mod.run_test(args, platform=platform)
-        log_stream = redirect_all_output(log_file)
         abort_redirection(log_stream)
         if ret_value.value:
             print('FAIL, \t%.2f s' % test_time)
@@ -192,7 +194,19 @@ def run_single_test(dir, module_name, args, ret_value, platform):
             else:
                 print('SAVED')
     except Exception as err:
-        # sys.stdout = orig_stdout
+        if log_stream is not None:
+            try:
+                abort_redirection(log_stream)
+            except Exception:
+                pass
+        if log_file is not None:
+            with open(log_file, 'a') as log:
+                print('\nUnhandled test exception:', file=log)
+                print(dir, file=log)
+                print(err, file=log)
+                traceback.print_exc(file=log)
+        else:
+            traceback.print_exc()
         print(dir)
         print(err)
 
@@ -236,9 +250,18 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             p = Process(target=run_single_test, args=(dir, 'main', arg_o, ret_value, platform), )
             p.start()
             p.join(timeout=7200)
-            p.terminate()
+            timed_out = p.is_alive()
+            if timed_out:
+                p.terminate()
+                p.join()
             abort_redirection(log_stream)
             ending_time = time.time()
+            if timed_out:
+                with open(log_file, 'a') as log:
+                    print('\nTest process timed out after 7200 seconds', file=log)
+            elif ret_value.value and p.exitcode not in (0, None):
+                with open(log_file, 'a') as log:
+                    print(f'\nTest process exited with code {p.exitcode}', file=log)
             failed_well_time_series = 0
             if not ret_value.value:
                 with open(log_file, 'a') as log:
