@@ -47,6 +47,8 @@ class Model(DartsModel):
             tol_linear=1e-3,
             it_newton=10,
             it_linear=50,
+            well_rate_ctrl_absolute_residual_scale=1.0,
+            well_rate_ctrl_relative_residual_scale=1e-5,
         )
 
         self.timer.node["initialization"].stop()

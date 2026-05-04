@@ -22,9 +22,8 @@ from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from dartsflash.libflash import NegativeFlash
-from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess, EoS
+from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData
-from dartsflash.mixtures import DARTSFlash, VL
 from darts.physics.super.initialize import Initialize
 
 
@@ -43,7 +42,9 @@ class Model(DartsModel):
 
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=30, runtime=1000,
                             tol_newton=1e-3, tol_linear=1e-3,
-                            it_newton=10, it_linear=50)
+                            it_newton=10, it_linear=50,
+                            well_rate_ctrl_absolute_residual_scale=1.0,
+                            well_rate_ctrl_relative_residual_scale=1e-5)
 
         self.timer.node["initialization"].stop()
 
@@ -77,15 +78,15 @@ class Model(DartsModel):
 
     def set_reservoir(self):
 
-        (nx, ny, nz) = (60*5,60*5,9)
+        (nx, ny, nz) = (60,60,9)
         nb = nx * ny * nz
         nb_res = nx * ny * 7
-        dx, dy, dz_res = 30./5, 30./5, 10.
+        dx, dy, dz_res = 30., 30., 10.
 
-        permx_res, permy_res, permz_res = 400, 400, 40
+        permx_res, permy_res, permz_res = 100, 100, 10
         poro0 = 0.2
-        poro_burden = 0.0001
-        perm_burden = 1e-6
+        poro_burden = 1e-5
+        perm_burden = 1e-9
 
         # thermal properties
         rcond_res = 181.44 # KJ/m/day/k
@@ -129,16 +130,17 @@ class Model(DartsModel):
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz_res,
                                       permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full,depth= None,
                                       start_z=490, rcond=rcon0_full, hcap=hcap0_full,)
-
+        boundary_factor = 2000
+        base_vol = float(dx * dy * dz_res)
         v_big = 1e20
 
         self.reservoir.boundary_volumes = {
             "xy_minus": v_big,
             "xy_plus": v_big,
-            "yz_minus": None,
-            "yz_plus": None,
-            "xz_minus": None,
-            "xz_plus": None,
+            "yz_minus": v_big,
+            "yz_plus": v_big,
+            "xz_minus": v_big,
+            "xz_plus": v_big,
         }
         self.reservoir.discretize()
         self.build_cell_center()
@@ -148,81 +150,49 @@ class Model(DartsModel):
     def set_wells(self):
         self.reservoir.add_well("I1")
         for k in range(2, 9):
-            self.reservoir.add_perforation("I1", res_cell_idx=(208,148,k),ms_epm=True, well_diameter=0.1524)
+            self.reservoir.add_perforation("I1", res_cell_idx=(42,30,k),ms_epm=True, well_diameter=0.1524)
 
         self.reservoir.add_well("P1")
         for k in range(2, 9):
-            self.reservoir.add_perforation("P1", res_cell_idx=(93,148,k),ms_epm=True, well_diameter=0.1524)
+            self.reservoir.add_perforation("P1", res_cell_idx=(19,30,k),ms_epm=True, well_diameter=0.1524)
 
 
     def set_physics(self):
-        components_names = ['CO2']
-        phases_names = ['V', 'LCO2']
-        comp_data = CompData(components_names, setprops=True)
+        components = ['CO2']
+
+        self.components = components
+        comp_data = CompData(components, setprops=True)
+        pr = CubicEoS(comp_data, CubicEoS.PR)
+
+        self.zero = 1e-12
         epsilon = self.zero / 10
-        ph = True
-        state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
-        self.physics = Compositional(
-            components_names,
-            phases_names,
-            self.timer,
-            state_spec=state_spec,
-            n_points=1000,
-            min_p=1,
-            max_p=500,
-            min_z=0.0,
-            max_z=1.0,
-            epsilon_z=epsilon,
-            min_t=10+273.15,
-            max_t=200+273.15,
-        )
+        phases = ['CO2_rich']
 
-        property_container = PropertyContainer(
-            phases_name=phases_names,
-            components_name=components_names,
-            Mw=comp_data.Mw,
-            eps_z=epsilon,
-            temperature=None,
-            rock_comp=0,
-        )
+        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon, Mw = comp_data.Mw)
 
-        flash_ev = VL(comp_data)
-        flash_ev.set_vl_eos("PR", root_order=[EoS.MAX, EoS.MIN])
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash)
-        property_container.flash_ev = flash_ev
+        # Define property evaluators based on custom properties
+        property_container.density_ev = dict([('CO2_rich', EoSDensity(eos=pr,Mw=comp_data.Mw))])
+        property_container.viscosity_ev = dict([('CO2_rich', Fenghour1998())])
 
-        pr = flash_ev.eos["VL"]
-        property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('LCO2', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
-                                              ])
-        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MAX)),
-                                               ('LCO2', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MIN)),
-                                               ])
-        property_container.viscosity_ev = dict([('V', Fenghour1998()),
-                                                ('LCO2', Fenghour1998()),
-                                                ])
+        property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(eos=pr))])
+        property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)) ])
 
-        property_container.conductivity_ev = dict([('V', ConstFunc(3.5)),
-                                                   ('LCO2', ConstFunc(7.)),
-                                                   ])
 
-        self.sw_init_res = 0
-        swc = self.sw_init_res
-        property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas", swc=swc, sgr=swc, n=1.5)),
-                                               ('LCO2', PhaseRelPerm("oil", swc=swc, sgr=swc, n=1.5)),
-                                               ])
+        """ Activate physics """
+        thermal = True
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+                                     n_points=400, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
+                                     epsilon_z=epsilon, min_t=273.15, max_t=373.15+200)
+
+
+        property_container.output_props = {
+            "satG": lambda: property_container.sat[0],
+            "rhoG": lambda: property_container.dens[0],
+             "muG": lambda: property_container.mu[0],
+            }
 
         self.physics.add_property_region(property_container)
-
-        property_container.output_props = {}
-        property_container.output_props['temperature'] = lambda: property_container.temperature
-        for j, ph in enumerate(phases_names):
-            property_container.output_props['sat_' + ph] = lambda jj=j: property_container.sat[jj]
-            property_container.output_props['rho_' + ph] = lambda jj=j: property_container.dens[jj]
-            property_container.output_props['miu_' + ph] = lambda jj=j: property_container.mu[jj]
-            property_container.output_props['enth_' + ph] = lambda jj=j: property_container.enthalpy[jj]
-            for i, comp in enumerate(components_names):
-                property_container.output_props[comp + '_in_' + ph] = lambda jj=j, ii=i: property_container.x[jj, ii]
 
         return
 
@@ -248,7 +218,7 @@ class Model(DartsModel):
 
         boundary_state = {"pressure" :50}
         for comp in self.physics.components[:-1]:
-            boundary_state[comp] = primary_specs[comp]
+            boundary_state[comp] = float(primary_specs[comp])
         boundary_state["temperature"] = 32 +273.15
 
         dTdh = 34/1000 #k/m
@@ -257,24 +227,17 @@ class Model(DartsModel):
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
                                         dTdh=dTdh)
 
-        self.physics.set_initial_conditions_from_depth_table(
-            mesh=self.reservoir.mesh,
-            input_depth=init.depths,
-            input_distribution={
-                "pressure": X[:, init.var_idxs["pressure"]],
-                "temperature": X[:, init.var_idxs["temperature"]],
-            },
-        )
+        self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
+                                                             input_depth= init.depths,
+                                                            input_distribution={v:X[:,i] for i, v in enumerate(self.physics.vars)})
         return
 
     def set_well_controls(self):
-        inj_composition = [1.0 ]  # pure CO2 injection
+        inj_composition = [1.0]  # pure CO2 injection
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
-                                            is_inj=True, phase_name='LCO2',
-                                            target=4.32e6, inj_composition=inj_composition, inj_temp=313.15)
-
+                                            is_inj=True, target=4.32e6, inj_composition=inj_composition, inj_temp=314.15)
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=40.)

@@ -1,9 +1,10 @@
 import os
 from pathlib import Path
-from uuid import uuid4
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+
 from darts.models.cicd_model import DartsModel
 from darts.engines import well_control_iface
 from darts.reservoirs.struct_reservoir import StructReservoir
@@ -19,7 +20,85 @@ from dartsflash.components import CompData
 
 from darts.physics.super.initialize import Initialize
 from darts.tools.keyword_file_tools import load_single_keyword
-from darts.engines import redirect_darts_output
+
+
+# ============================================================
+# Utilities
+# ============================================================
+
+def ijk_to_global_0based(i_1b: int, j_1b: int, k_1b: int, nx: int, ny: int) -> int:
+    """Convert 1-based (i,j,k) to 0-based flattened index in F-style structured ordering."""
+    return (k_1b - 1) * nx * ny + (j_1b - 1) * nx + (i_1b - 1)
+
+
+def prolongate_piecewise(arr_2d_coarse: np.ndarray, refine_x: int, refine_y: int) -> np.ndarray:
+    """
+    Piecewise prolongation from coarse 2D array to fine 2D array by block replication.
+    shape: (nx_c, ny_c) -> (nx_c*refine_x, ny_c*refine_y)
+    """
+    out = np.repeat(arr_2d_coarse, refine_x, axis=0)
+    out = np.repeat(out, refine_y, axis=1)
+    return out
+
+
+
+def build_patch_perm_from_egg(
+    perm_file: str,
+    center_ij_1b=(46, 30),
+    coarse_patch_size=5,
+    refine=(5, 5),
+    layer_1b=2,
+):
+    """
+    Build a 25x25 fine patch from a 5x5 coarse Egg patch around center_ij_1b.
+
+    Example:
+      coarse_patch_size = 5
+      refine = (5,5)
+      => 25x25 fine grid
+
+    Returns
+    -------
+    kx_f, ky_f, kz_f : ndarray, shape (25, 25, 1)
+    """
+    nx_c, ny_c, nz_c = 60, 60, 7
+    nb_res = nx_c * ny_c * nz_c
+
+    permx = np.asarray(load_single_keyword(str(perm_file), "PERMX", nb_res), dtype=float)
+    permy = np.asarray(load_single_keyword(str(perm_file), "PERMY", nb_res), dtype=float)
+    permz = np.asarray(load_single_keyword(str(perm_file), "PERMZ", nb_res), dtype=float)
+
+    permx = permx.reshape((nx_c, ny_c, nz_c), order="F")
+    permy = permy.reshape((nx_c, ny_c, nz_c), order="F")
+    permz = permz.reshape((nx_c, ny_c, nz_c), order="F")
+
+    ic_1b, jc_1b = center_ij_1b
+    k0 = layer_1b - 1
+
+    half = coarse_patch_size // 2
+    i0_min = ic_1b - 1 - half
+    i0_max = ic_1b - 1 + half
+    j0_min = jc_1b - 1 - half
+    j0_max = jc_1b - 1 + half
+
+    if i0_min < 0 or j0_min < 0 or i0_max >= nx_c or j0_max >= ny_c:
+        raise ValueError("Requested coarse patch exceeds Egg grid boundary.")
+
+    kx_patch_c = permx[i0_min:i0_max + 1, j0_min:j0_max + 1, k0]
+    ky_patch_c = permy[i0_min:i0_max + 1, j0_min:j0_max + 1, k0]
+    kz_patch_c = permz[i0_min:i0_max + 1, j0_min:j0_max + 1, k0]
+
+    rx, ry = refine
+    kx_f = prolongate_piecewise(kx_patch_c, rx, ry)[:, :, None]
+    ky_f = prolongate_piecewise(ky_patch_c, rx, ry)[:, :, None]
+    kz_f = prolongate_piecewise(kz_patch_c, rx, ry)[:, :, None]
+
+    return kx_f, ky_f, kz_f
+
+
+# ============================================================
+# Property container
+# ============================================================
 
 class SinglePhaseCO2Properties(PropertyContainer):
     def __init__(self, phases_name, components_name, eps_z, Mw):
@@ -61,40 +140,11 @@ class SinglePhaseCO2Properties(PropertyContainer):
         return
 
 
+# ============================================================
+# Model
+# ============================================================
 
-def extract_coarse_patch_from_level0(model, ic_1b, jc_1b, k_1b, coarse_patch_size=5):
-
-    if coarse_patch_size % 2 == 0:
-        raise ValueError("coarse_patch_size must be odd.")
-
-    half = coarse_patch_size // 2
-    i0_min = ic_1b - 1 - half
-    i0_max = ic_1b - 1 + half
-    j0_min = jc_1b - 1 - half
-    j0_max = jc_1b - 1 + half
-    k0 = k_1b - 1
-
-    nx0 = int(model.level0.nx)
-    ny0 = int(model.level0.ny)
-    nz0 = int(model.level0.nz)
-
-    if not (0 <= i0_min and i0_max < nx0 and 0 <= j0_min and j0_max < ny0 and 0 <= k0 < nz0):
-        raise ValueError(
-            f"Requested patch exceeds level0 boundary: "
-            f"(ic,jc,k)=({ic_1b},{jc_1b},{k_1b}), patch={coarse_patch_size}"
-        )
-
-    kx0 = np.asarray(model.level0.global_data["permx"], dtype=float)
-    ky0 = np.asarray(model.level0.global_data["permy"], dtype=float)
-    kz0 = np.asarray(model.level0.global_data["permz"], dtype=float)
-
-    kx_patch_c = kx0[i0_min:i0_max + 1, j0_min:j0_max + 1, k0].copy()
-    ky_patch_c = ky0[i0_min:i0_max + 1, j0_min:j0_max + 1, k0].copy()
-    kz_patch_c = kz0[i0_min:i0_max + 1, j0_min:j0_max + 1, k0].copy()
-
-    return kx_patch_c, ky_patch_c, kz_patch_c
-
-class FlowUpscalingModel(DartsModel):
+class FlowUpscalingExampleModel(DartsModel):
     """
     Minimal single-phase CO2 2D example for flow-based upscaling.
 
@@ -106,34 +156,22 @@ class FlowUpscalingModel(DartsModel):
     - permeability comes from a 5 x 5 coarse Egg patch, piecewise prolonged to 25 x 25
     """
 
-    def __init__(self, kx_patch_c, ky_patch_c, kz_patch_c,
-                 refine=(5, 5), dx_parent=30.0, dy_parent=30.0, dz_parent=10.0,
-                 start_z=500.0, poro=0.2, rcond=500.0, hcap=2200.0):
+    def __init__(self, perm_file: str, egg_center_ij_1b=(46, 30)):
         super().__init__()
 
-        self.kx_patch_c = kx_patch_c
-        self.ky_patch_c = ky_patch_c
-        self.kz_patch_c = kz_patch_c
+        self.perm_file = perm_file
+        self.egg_center_ij_1b = egg_center_ij_1b
 
-        self.coarse_patch_size = int(kx_patch_c.shape[0])
-        self.refine = tuple(refine)
-
-        rx, ry = self.refine
-        nxc = self.kx_patch_c.shape[0]
-        nyc = self.kx_patch_c.shape[1]
-
-        self.nx = nxc * rx
-        self.ny = nyc * ry
+        self.nx = 25
+        self.ny = 25
         self.nz = 1
 
-        self.dx = float(dx_parent) / rx
-        self.dy = float(dy_parent) / ry
-        self.dz = float(dz_parent)
+        self.dx = 6.0
+        self.dy = 6.0
+        self.dz = 10.0
 
-        self.patch_size = rx
-        self.patch_center_1b = (self.nx // 2 + 1, self.ny // 2 + 1)
-        self.start_z = float(start_z)
-        self.poro = float(poro)
+        self.patch_size = 5
+        self.patch_center_1b = (13, 13)
 
         self.zero = 1e-10
 
@@ -155,11 +193,13 @@ class FlowUpscalingModel(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
-        rx, ry = self.refine
-
-        kx_f = np.repeat(np.repeat(self.kx_patch_c, rx, axis=0), ry, axis=1)[:, :, None]
-        ky_f = np.repeat(np.repeat(self.ky_patch_c, rx, axis=0), ry, axis=1)[:, :, None]
-        kz_f = np.repeat(np.repeat(self.kz_patch_c, rx, axis=0), ry, axis=1)[:, :, None]
+        kx, ky, kz = build_patch_perm_from_egg(
+            perm_file=self.perm_file,
+            center_ij_1b=self.egg_center_ij_1b,
+            coarse_patch_size=5,
+            refine=(5, 5),
+            layer_1b=7,
+        )
 
         self.reservoir = StructReservoir(
             self.timer,
@@ -169,12 +209,12 @@ class FlowUpscalingModel(DartsModel):
             dx=self.dx,
             dy=self.dy,
             dz=self.dz,
-            permx=kx_f,
-            permy=ky_f,
-            permz=kz_f,
-            poro=self.poro,
+            permx=kx,
+            permy=ky,
+            permz=kz,
+            poro=0.2,
             depth=None,
-            start_z=self.start_z,
+            start_z=500.0,
             rcond=500.0,
             hcap=2200.0,
         )
@@ -199,13 +239,11 @@ class FlowUpscalingModel(DartsModel):
         self.reservoir.cell_center_z = z
 
     def set_wells(self):
-        # only one injector in the center
-        ic = self.patch_center_1b[0]
-        jc = self.patch_center_1b[1]
-        self.reservoir.add_well("I1")
+        # only one producer in the center
+        self.reservoir.add_well("P1")
         self.reservoir.add_perforation(
-            "I1",
-            res_cell_idx=(ic, jc, 1),
+            "P1",
+            res_cell_idx=(13, 13, 1),
             well_diameter=0.1524,
         )
 
@@ -227,7 +265,13 @@ class FlowUpscalingModel(DartsModel):
         pc.density_ev = {"CO2_rich": EoSDensity(eos=pr, Mw=comp_data.Mw)}
         pc.viscosity_ev = {"CO2_rich": Fenghour1998()}
         pc.enthalpy_ev = {"CO2_rich": EoSEnthalpy(eos=pr)}
-        pc.conductivity_ev = {"CO2_rich": ConstFunc(5.5)}
+        pc.conductivity_ev = {"CO2_rich": ConstFunc(10.0)}
+
+        pc.output_props = {
+            "satG": lambda: pc.sat[0],
+            "rhoG": lambda: pc.dens[0],
+            "muG": lambda: pc.mu[0],
+        }
 
         self.physics = Compositional(
             components=components,
@@ -254,7 +298,7 @@ class FlowUpscalingModel(DartsModel):
         init = Initialize(self.physics)
 
         boundary_state = {
-            "pressure": 50,          # bar
+            "pressure": 50.0,          # bar
             "temperature": 32.0 + 273.15,
         }
 
@@ -262,7 +306,7 @@ class FlowUpscalingModel(DartsModel):
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = np.ones(int(self.reservoir.nz))
 
-        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=self.start_z,
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=500.0,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=int(self.reservoir.nz),
                                         dTdh=34.0 / 1000.0)
 
@@ -273,144 +317,19 @@ class FlowUpscalingModel(DartsModel):
         )
 
     def set_well_controls(self):
-        inj_composition = [1.0]
-
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(
                     wctrl=w.control,
                     control_type=well_control_iface.MASS_RATE,
-                    is_inj=True,
-                    target=10.0,               # kg/day or simulator-consistent unit in your setup
-                    inj_composition=inj_composition,
-                    inj_temp=14.7 + 273.15,
+                    is_inj=False,
+                    target=20.0,              # kg/day or simulator-consistent unit in your setup
                 )
 
 
 # ============================================================
 # Effective transmissibility analyzer for central 5x5 patch
 # ============================================================
-
-def compute_eff_tran_for_one_lgr_layer(
-    model, lgr_name,
-    k_1b, coarse_patch_size=5,
-    refine=(5, 5),
-    run_days=365.0,
-    n_steps=20,
-    mobility_mode="interface_avg",
-):
-
-    cfg = model.lgrs[lgr_name]["lgr_coords_in_parent_grid"]
-    ic = int(cfg['i_range'][0])
-    jc = int(cfg['j_range'][0])
-
-    kx_patch_c, ky_patch_c, kz_patch_c = extract_coarse_patch_from_level0(
-        model=model,
-        ic_1b=ic,
-        jc_1b=jc,
-        k_1b=k_1b,
-        coarse_patch_size=coarse_patch_size,
-    )
-
-    effective_2d_model = FlowUpscalingModel(
-        kx_patch_c=kx_patch_c,
-        ky_patch_c=ky_patch_c,
-        kz_patch_c=kz_patch_c,
-        refine=refine,
-        dx_parent=float(model.level0.global_data["dx"][0,0,0]),
-        dy_parent=float(model.level0.global_data["dy"][0,0,0]),
-        dz_parent=float(model.level0.global_data["dz"][0,0,0]),
-        start_z=float(model.level0.global_data["start_z"]) + k_1b * float(model.level0.global_data["dz"][0,0,0]),
-        poro=float(model.level1[lgr_name].global_data["poro"][0,0,0]),
-    )
-
-    analyzer = PatchEffectiveTransAnalyzer(
-        model=effective_2d_model,
-        nx=effective_2d_model.nx,
-        ny=effective_2d_model.ny,
-        nz=effective_2d_model.nz,
-        patch_size=refine[0],
-        patch_center_1b=effective_2d_model.patch_center_1b,
-        n_nb_cols=refine[0],
-    )
-    redirect_darts_output("upscaling_2d.log")
-    effective_2d_model.init(platform='cpu')
-    # code for batch tasks to avoid output collision. Each task writes to its own tmp folder, and the main process can gather results after all tasks are done.
-    job_id = os.environ.get("SLURM_JOB_ID", "nojid")
-    task_id = os.environ.get("SLURM_ARRAY_TASK_ID", "notaskid")
-    pid = os.getpid()
-    run_id = uuid4().hex[:12]
-    tmp_root = Path(__file__).resolve().parent / "tmp_upscaling_results"
-    tmp_root.mkdir(parents=True, exist_ok=True)
-    tmp_dir = tmp_root / f"tmp_upscaling_{job_id}_{task_id}_{pid}_{run_id}"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-
-    effective_2d_model.set_output(output_folder=str(tmp_dir))
-
-    for dt in range(n_steps):
-        effective_2d_model.run(run_days)
-
-    res = analyzer.all_faces(k0=0, mobility_mode=mobility_mode)
-    df = res["summary_df"].copy()
-
-    out = {}
-    for _, row in df.iterrows():
-        out[row["side"]] = float(row["T_eff_avglink"])
-
-    return{
-        'lgr_name': lgr_name,
-        'k_1b': k_1b,
-        'T_eff_avglink': out,
-        "summary_df": df,
-        "effective_2d_model": effective_2d_model,
-    }
-
-def compute_eff_tran_map_for_lgrs(
-    model,
-    lgr_orders,
-    coarse_patch_size=5,
-    run_days=365.0,
-    n_steps=20,
-    mobility_mode="interface_avg",
-    tag_filter=None,
-):
-    """
-    return:
-    eff_tran_map[lgr_name][k_1b][side] = T_eff_total
-    """
-    eff_tran_map = {}
-    detail = {}
-
-    for name in lgr_orders:
-        cfg = model.lgrs[name]["lgr_coords_in_parent_grid"]
-        tag = cfg.get("tag", None)
-
-        if tag_filter is not None and tag not in tag_filter:
-            continue
-
-        rx, ry, rz = map(int, cfg["refine"])
-        k1, k2 = map(int, cfg["k_range"])
-
-        eff_tran_map[name] = {}
-        detail[name] = {}
-
-        for k_1b in range(k1, k2 + 1):
-            out = compute_eff_tran_for_one_lgr_layer(
-                model=model,
-                lgr_name=name,
-                k_1b=k_1b,
-                coarse_patch_size=coarse_patch_size,
-                refine=(rx, ry),
-                run_days=run_days,
-                n_steps=n_steps,
-                mobility_mode=mobility_mode,
-            )
-            eff_tran_map[name][k_1b] = out["T_eff_avglink"]
-            detail[name][k_1b] = out
-
-            print(f"[eff_tran] {name} layer={k_1b} -> {out['T_eff_avglink']}")
-
-    return eff_tran_map, detail
 
 class PatchEffectiveTransAnalyzer:
     """
@@ -660,3 +579,145 @@ class PatchEffectiveTransAnalyzer:
             "faces": detail,
             "summary_df": pd.DataFrame(rows),
         }
+
+
+# ============================================================
+# Run + plot
+# ============================================================
+
+def plot_effective_trans_history(df, save_dir):
+    os.makedirs(save_dir, exist_ok=True)
+
+    plt.figure(figsize=(8, 5), dpi=150)
+    for side in ["left", "right", "up", "down"]:
+        dfi = df[df["side"] == side]
+        plt.plot(dfi["time_day"], dfi["T_eff_avglink"], label=side)
+
+    plt.xlabel("time [day]")
+    plt.ylabel("effective transmissibility")
+    plt.title("Interface effective transmissibility vs time")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "effective_trans_vs_time.png"))
+    plt.close()
+
+def get_reservoir_average_pressure(model):
+    n_res = model.reservoir.mesh.n_res_blocks
+    n_vars = len(model.physics.vars)
+
+    X = np.asarray(model.physics.engine.X, dtype=float)
+    P = X.reshape((-1, n_vars))[:n_res, 0]
+
+    poro = np.array(model.reservoir.mesh.poro, copy=False)[:n_res]
+    volume = np.array(model.reservoir.mesh.volume, copy=False)[:n_res]
+    pv = poro * volume
+    return float(np.sum(P * pv) / np.sum(pv))
+
+def plot_pressure_history(pressure_hist, save_dir):
+    os.makedirs(save_dir, exist_ok=True)
+
+    # -------- plot 1: BHP and reservoir average pressure --------
+    plt.figure(figsize=(8, 5), dpi=150)
+    plt.plot(pressure_hist["time_day"], pressure_hist["bhp_bar"], label="Producer BHP")
+    plt.plot(pressure_hist["time_day"], pressure_hist["avg_pressure"], label="Reservoir average pressure")
+
+    plt.xlabel("time [day]")
+    plt.ylabel("pressure [bar]")
+    plt.title("Producer BHP and reservoir average pressure")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "bhp_and_reservoir_avg_pressure.png"))
+    plt.close()
+
+    # -------- plot 2: pressure difference only --------
+    plt.figure(figsize=(8, 5), dpi=150)
+    plt.plot(pressure_hist["time_day"], pressure_hist["delta_p"])
+
+    plt.xlabel("time [day]")
+    plt.ylabel("Pavg - BHP [bar]")
+    plt.title("Producer pressure drawdown for stabilization check")
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "pavg_minus_bhp_vs_time.png"))
+    plt.close()
+
+
+def run_case():
+    output_dir = "flow_upscaling_producer_example"
+    fig_dir = os.path.join(output_dir, "figures")
+    os.makedirs(fig_dir, exist_ok=True)
+
+    perm_file = Path(r"E:\repo_2\open-darts\LGR_kairan\Egg model\Heter_model\PERM1_ECL.INC")
+
+    model = FlowUpscalingExampleModel(
+        perm_file=str(perm_file),
+        egg_center_ij_1b=(46, 30),
+    )
+
+    model.init(platform="cpu")
+    model.set_output(output_folder=output_dir)
+
+    analyzer = PatchEffectiveTransAnalyzer(
+        model=model,
+        nx=25,
+        ny=25,
+        nz=1,
+        patch_size=5,
+        patch_center_1b=(13, 13),
+        n_nb_cols=5,
+    )
+
+    Nt = 50
+    Dt = 365.0
+
+    rows = []
+    time_point = []
+    avg_pre = []
+
+
+
+    for _ in range(Nt):
+        model.run(Dt)
+        t_end = float(model.physics.engine.t)
+        time_point.append(t_end)
+        avg_pre.append(get_reservoir_average_pressure(model))
+
+        res = analyzer.all_faces(k0=0, mobility_mode="interface_avg")
+        dfi = res["summary_df"].copy()
+        dfi["time_day"] = float(model.physics.engine.t)
+        rows.append(dfi)
+
+        print(dfi)
+    avg_pre_df = pd.DataFrame({
+        "time_day": time_point,
+        "avg_pressure": avg_pre,
+    }).sort_values("time_day").reset_index(drop=True)
+    time_data_dict = model.output.store_well_time_data(save_output_files=True)
+    time_data_df = pd.DataFrame.from_dict(time_data_dict)
+    bhp_df = time_data_df[["time", "well_P1_BHP"]].copy()
+    bhp_df = bhp_df.rename(columns={
+        "time":"time_day",
+        "well_P1_BHP":"bhp_bar",
+    })
+    bhp_df = bhp_df.sort_values("time_day").reset_index(drop=True)
+
+    pressure_hist = pd.merge_asof(
+        avg_pre_df, bhp_df, on="time_day", direction="nearest", tolerance=1e-6,
+    )
+    pressure_hist["delta_p"] = pressure_hist["avg_pressure"] - pressure_hist["bhp_bar"]
+
+    pressure_hist.to_excel(
+    os.path.join(output_dir, "pressure_stabilization_history.xlsx"),
+    index=False,
+)
+
+    plot_pressure_history(pressure_hist, fig_dir)
+
+    hist = pd.concat(rows, axis=0, ignore_index=True)
+    hist.to_excel(os.path.join(output_dir, "effective_trans_history.xlsx"), index=False)
+    plot_effective_trans_history(hist, fig_dir)
+
+    print(f"Saved results to: {output_dir}")
+
+
+if __name__ == "__main__":
+    run_case()

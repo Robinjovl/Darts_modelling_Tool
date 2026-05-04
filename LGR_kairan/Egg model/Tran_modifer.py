@@ -187,6 +187,8 @@ class FlowUpscalingExampleModel(DartsModel):
             tol_linear=1e-3,
             it_newton=10,
             it_linear=50,
+            well_rate_ctrl_absolute_residual_scale=1.0,
+            well_rate_ctrl_relative_residual_scale=1e-5,
         )
         self.timer.node["initialization"].stop()
 
@@ -321,9 +323,9 @@ class FlowUpscalingExampleModel(DartsModel):
             if i == 0:
                 self.physics.set_well_controls(
                     wctrl=w.control,
-                    control_type=well_control_iface.MASS_RATE,
+                    control_type=well_control_iface.BHP,
                     is_inj=True,
-                    target=10.0,               # kg/day or simulator-consistent unit in your setup
+                    target=60.0,               # kg/day or simulator-consistent unit in your setup
                     inj_composition=inj_composition,
                     inj_temp=314.15,
                 )

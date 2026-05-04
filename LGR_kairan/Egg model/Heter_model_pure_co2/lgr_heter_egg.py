@@ -38,8 +38,9 @@ class Model(DartsModel):
 
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=30, runtime=1000,
                             tol_newton=1e-3, tol_linear=1e-3,
-                            it_newton=10, it_linear=50)
-
+                            it_newton=10, it_linear=50,
+                            well_rate_ctrl_absolute_residual_scale=1.0,
+                            well_rate_ctrl_relative_residual_scale=1e-5)
         self.timer.node["initialization"].stop()
 
     def define_lgr(self):
@@ -637,7 +638,7 @@ class Model(DartsModel):
         property_container.flash_ev = flash_ev
 
         pr = flash_ev.eos["VL"]
-      
+
         pr = flash_ev.eos["VL"]
         property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
                                               ('LCO2', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
@@ -732,12 +733,12 @@ class Model(DartsModel):
                                             is_inj=True, target=4.32e6, inj_composition=inj_composition, inj_temp=313.15)
 
             else:
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, phase_name='LCO2',
-                                               is_inj=False, target=190.)
-                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE, phase_name='LCO2',
-                #                                   is_inj=False, target=4.32e6)
-                # self.physics.set_well_controls(wctrl=w.constraint, control_type=well_control_iface.BHP,
-                #                                   is_inj=False, target=40.)
+                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, phase_name='LCO2',
+                #                                is_inj=False, target=190.)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE, phase_name='LCO2',
+                                                  is_inj=False, target=4.32e6)
+                self.physics.set_well_controls(wctrl=w.constraint, control_type=well_control_iface.BHP,
+                                                  is_inj=False, target=40.)
 
 
 
