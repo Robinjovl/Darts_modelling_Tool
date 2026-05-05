@@ -50,7 +50,6 @@ void pybind_ms_well(py::module& m)
         .def_readonly("well_bottom_idx", &ms_well::well_bottom_idx)
 
         .def_readwrite("perforations", &ms_well::perforations)
-        .def_readwrite("pi_perforations", &ms_well::pi_perforations)
         // For lateral heat transfer in DFM wells
         .def_readwrite("with_lateral_heat_transfer", &ms_well::with_lateral_heat_transfer)
         .def_readwrite("connections_for_lateral_heat_transfer", &ms_well::connections_for_lateral_heat_transfer)
@@ -71,12 +70,6 @@ void pybind_ms_well(py::module& m)
     py::enum_<ms_well::MS_Type>(ms_well_class, "MS_Type")
         .value("EPM", ms_well::MS_Type::EPM)
         .value("DFM", ms_well::MS_Type::DFM)
-        .export_values();
-
-    py::enum_<ms_well::PI_Type>(ms_well_class, "PI_Type")
-        .value("MOLAR", ms_well::PI_Type::MOLAR)
-        .value("MASS", ms_well::PI_Type::MASS)
-        .value("VOLUMETRIC", ms_well::PI_Type::VOLUMETRIC)
         .export_values();
 }
 #endif // PYBIND11_ENABLED

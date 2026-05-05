@@ -19,6 +19,7 @@ from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.linear_dfm_well_ipr import (
     LinearDFMWellIPR,
     LinearDFMWellIPRConnection,
+    PI_Type,
 )
 
 
@@ -190,7 +191,7 @@ class Model(CICDModel):
                         )
                         - 1,
                         pi=1e5,
-                        pi_type=ms_well.PI_Type.MASS,
+                        pi_type=PI_Type.MASS,
                         ipr_pressure_offset=0.0,
                     )
                 ],

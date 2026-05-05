@@ -224,8 +224,6 @@ class StructReservoir(ReservoirBase):
         well_diameter: float = 0.1524,
         well_index: float = None,
         well_indexD: float = 0.0,
-        pi: float = None,
-        pi_type: float = None,
         segment_direction: str = "z_axis",
         skin: float = 0.0,
         ms_epm: bool = None,
@@ -235,16 +233,6 @@ class StructReservoir(ReservoirBase):
         """
         Function to add a perforation to the well
 
-        :param pi: Productivity (injectivity) index. PI (II) can be used instead of well index to control well
-                   injectivity/productivity (if both PI and well index are set, PI will be used.). The difference
-                   between well index and PI is that well index is the geometric part of perforation transmissibility,
-                   but PI includes phase viscosity as well (q=PI*kr*dp).
-        :type pi: float
-        :param pi_type: Type of productivity (injectivity) index:
-                        ms_well.PI_Type.MOLAR: Mole-based PI [kmol/day/bar]
-                        ms_well.PI_Type.MASS: Mass-based PI [kg/day/bar]
-                        ms_well.PI_Type.VOLUMETRIC: Volume-based PI [m3/day/bar]
-        :type pi_type: ms_well.PI_Type
         :param with_peaceman_for_dfm_well: If True and the well is of type DFM, it uses the modified Darcy's law based
                                            on the Peaceman model. Otherwise, it uses the Darcy's law without modification.
         :type with_peaceman_for_dfm_well: bool
@@ -340,16 +328,6 @@ class StructReservoir(ReservoirBase):
                     )
                     return
 
-            if pi is not None:
-                assert pi_type in (
-                    ms_well.PI_Type.MOLAR,
-                    ms_well.PI_Type.MASS,
-                    ms_well.PI_Type.VOLUMETRIC,
-                ), f"The PI type '{pi_type}' is not valid!"
-                well_index, well_indexD = 0.0, 0.0
-                well.pi_perforations = well.pi_perforations + [
-                    (well_block, res_block_local, pi, pi_type)
-                ]
             well.perforations = well.perforations + [
                 (well_block, res_block_local, well_index, well_indexD)
             ]

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 
 import numpy as np
 
@@ -6,27 +7,33 @@ from darts.engines import ms_well, value_vector
 from darts.physics.base.physics_base import PhysicsBase
 
 
+class PI_Type(Enum):
+    MOLAR = "molar"
+    MASS = "mass"
+    VOLUMETRIC = "volumetric"
+
+
 @dataclass(frozen=True)
 class LinearDFMWellIPRConnection:
     well_name: str
     perforation_index: int
     pi: float
-    pi_type: ms_well.PI_Type
+    pi_type: PI_Type
     ipr_pressure_offset: float = 0.0
     ipr_intercept: float = 0.0
 
 
 class LinearDFMWellIPR:
     """
-    Apply a linear total-rate IPR for DFM well perforations from Python.
+    Apply a linear total-rate IPR for DFM well perforations.
 
     The used linear IPR is
         q_total = A + B * (p_well - p_reservoir - dp_offset)
 
     where q_total is interpreted according to pi_type:
-      - MASS: kg/day
-      - MOLAR: kmol/day
-      - VOLUMETRIC: m3/day
+      - PI_Type.MASS: kg/day/bar
+      - PI_Type.MOLAR: kmol/day/bar
+      - PI_Type.VOLUMETRIC: m3/day/bar
 
     The total rate is converted to component molar rates using the upstream
     state and added directly to the engine RHS/Jacobian.
@@ -61,13 +68,11 @@ class LinearDFMWellIPR:
         n_jac_block_size = n_vars * n_vars
 
         for resolved in resolved_connections:
-            well_block_idx = resolved["well_block_idx"]
-            res_block_idx = resolved["res_block_idx"]
+            wb_idx = resolved["well_block_idx"]
+            rb_idx = resolved["res_block_idx"]
 
-            well_state = X[
-                well_block_idx * n_vars : (well_block_idx + 1) * n_vars
-            ].copy()
-            res_state = X[res_block_idx * n_vars : (res_block_idx + 1) * n_vars].copy()
+            well_state = X[wb_idx * n_vars : (wb_idx + 1) * n_vars].copy()
+            res_state = X[rb_idx * n_vars : (rb_idx + 1) * n_vars].copy()
 
             base_flux = self._evaluate_connection_flux(
                 resolved=resolved,
@@ -75,8 +80,8 @@ class LinearDFMWellIPR:
                 res_state=res_state,
             )
 
-            well_base = well_block_idx * n_vars
-            res_base = res_block_idx * n_vars
+            well_base = wb_idx * n_vars
+            res_base = rb_idx * n_vars
             rhs[well_base : well_base + n_vars] += base_flux["well_residual"] * dt
             rhs[res_base : res_base + n_vars] += base_flux["res_residual"] * dt
 
@@ -323,22 +328,18 @@ class LinearDFMWellIPR:
         mw_avg: float,
     ) -> float:
         pi_type = self._normalize_pi_type(pi_type)
-        if pi_type == ms_well.PI_Type.MOLAR:
+        if pi_type == PI_Type.MOLAR:
             return total_rate
-        if pi_type == ms_well.PI_Type.MASS:
+        if pi_type == PI_Type.MASS:
             return total_rate / mw_avg
-        if pi_type == ms_well.PI_Type.VOLUMETRIC:
+        if pi_type == PI_Type.VOLUMETRIC:
             return total_rate * self._total_molar_density(upstream_state)
         raise NotImplementedError(f"Unsupported PI type: {pi_type!r}")
 
     @staticmethod
     def _normalize_pi_type(pi_type):
-        if pi_type == ms_well.PI_Type.MOLAR:
-            return ms_well.PI_Type.MOLAR
-        if pi_type == ms_well.PI_Type.MASS:
-            return ms_well.PI_Type.MASS
-        if pi_type == ms_well.PI_Type.VOLUMETRIC:
-            return ms_well.PI_Type.VOLUMETRIC
+        if isinstance(pi_type, PI_Type):
+            return pi_type
         raise ValueError(f"Unsupported PI type: {pi_type!r}")
 
     def _state_overall_composition(self, state: np.ndarray) -> np.ndarray:
