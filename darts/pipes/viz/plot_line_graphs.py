@@ -48,7 +48,9 @@ def plot_line_graphs(
     num_segments = well_geom.num_segments
 
     # Get physics info
-    components_names = coupled_model.physics.property_containers[0].components_name
+    pc = coupled_model.physics.property_containers[0]
+    components_names = pc.components_name
+    fluid_components_names = pc.components_name[: pc.nc_fl]
     num_components = len(components_names)
 
     # Convert days to seconds
@@ -256,7 +258,7 @@ def plot_line_graphs(
 
     # %% Profile/profiles of components mole fractions in the gaseous phase
 
-    for c, comp_name in enumerate(components_names):
+    for c, comp_name in enumerate(fluid_components_names):
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the plot
@@ -299,7 +301,7 @@ def plot_line_graphs(
 
     # %% Profile/profiles of components mole fractions in the liquid phase
 
-    for c, comp_name in enumerate(components_names):
+    for c, comp_name in enumerate(fluid_components_names):
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the plot

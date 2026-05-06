@@ -664,7 +664,12 @@ class DartsModelWithLivePlots(DartsModel):
             x_res = self.reservoir.global_data['dx'].reshape(-1)[:till_this_res_cell]
 
             # Calculate reservoir phase props
-            nc = self.physics.nc
+            Mw_fl = np.asarray(pc.Mw[: pc.nc_fl])
+            g_idx = pc.phases_name.index('G')
+            if 'L' in pc.phases_name:
+                l_idx = pc.phases_name.index('L')
+            elif 'L_a' in pc.phases_name:
+                l_idx = pc.phases_name.index('L_a')
             # Preallocate phase props arrays
             T_res = np.zeros(till_this_res_cell)
             sG_res = np.zeros(till_this_res_cell)
@@ -672,8 +677,8 @@ class DartsModelWithLivePlots(DartsModel):
             rhoL_res = np.zeros(till_this_res_cell)
             miuG_res = np.zeros(till_this_res_cell)
             miuL_res = np.zeros(till_this_res_cell)
-            xG_mass_res = np.zeros((till_this_res_cell, nc))
-            xL_mass_res = np.zeros((till_this_res_cell, nc))
+            xG_mass_res = np.zeros((till_this_res_cell, pc.nc_fl))
+            xL_mass_res = np.zeros((till_this_res_cell, pc.nc_fl))
 
             for i in range(till_this_res_cell):
                 state = np.asarray(self.physics.engine.X)[i * n_vars : (i + 1) * n_vars]
@@ -681,15 +686,20 @@ class DartsModelWithLivePlots(DartsModel):
                 if self.physics.thermal:
                     pc.evaluate_thermal(state)
                 T_res[i] = pc.temperature - 273.15
-                sG_res[i] = pc.sat[0]
-                rhoG_res[i] = pc.dens[0]
-                rhoL_res[i] = pc.dens[1]
-                miuG_res[i] = pc.mu[0]
-                miuL_res[i] = pc.mu[1]
-                x_mass0 = np.zeros((pc.nph, nc))
+                sG_res[i] = pc.sat[g_idx]
+                rhoG_res[i] = pc.dens[g_idx]
+                rhoL_res[i] = pc.dens[l_idx]
+                miuG_res[i] = pc.mu[g_idx]
+                miuL_res[i] = pc.mu[l_idx]
+                x_mass0 = np.zeros((pc.np_fl, pc.nc_fl))
                 for j in pc.ph:
-                    x_mass0[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
-                xG_mass_res[i, :], xL_mass_res[i, :] = x_mass0[0, :], x_mass0[1, :]
+                    xw = pc.x[j, :] * Mw_fl
+                    if np.sum(xw) > 0:
+                        x_mass0[j, :] = xw / np.sum(xw)
+                xG_mass_res[i, :], xL_mass_res[i, :] = (
+                    x_mass0[g_idx, :],
+                    x_mass0[l_idx, :],
+                )
 
             [
                 xG_mass_well,
