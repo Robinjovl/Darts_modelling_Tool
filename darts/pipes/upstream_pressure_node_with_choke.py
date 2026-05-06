@@ -2797,12 +2797,13 @@ class PerkinsChokeModel(ChokeModel):
         cache: dict[float, ChokeFlowState],
     ) -> tuple[float, float, float, float, float]:
         """
-        Return ``fg``, ``alpha1``, ``lambda``, ``n``, and upstream mixture volume.
+        Return ``fg``, ``alpha1``, ``lambda``, ``n``, and upstream reference volume.
 
         Perkins defines ``fg`` as upstream gas mass fraction and ``alpha1`` as
-        the upstream liquid-volume contribution divided by total mixture specific
-        volume. The original paper contains separate oil and water terms; this
-        implementation uses the single liquid phase exposed by open-DARTS.
+        the upstream liquid-volume contribution divided by the upstream gas
+        specific volume. The original paper contains separate oil and water
+        terms; this implementation uses the single liquid phase exposed by
+        open-DARTS.
         """
         if self._perkins_parameter_cache is not None:
             return self._perkins_parameter_cache
@@ -2810,8 +2811,11 @@ class PerkinsChokeModel(ChokeModel):
         upstream_state = self._flow_state(self.boundary_state.pressure, cache)
         gas_mass_fraction = float(np.clip(upstream_state.gas_mass_fraction, 0.0, 1.0))
         liquid_mass_fraction = 1.0 - gas_mass_fraction
-        upstream_specific_volume = upstream_state.inv_momentum_density
-        if not np.isfinite(upstream_specific_volume) or upstream_specific_volume <= 0.0:
+        upstream_mixture_specific_volume = upstream_state.inv_momentum_density
+        if (
+            not np.isfinite(upstream_mixture_specific_volume)
+            or upstream_mixture_specific_volume <= 0.0
+        ):
             raise ValueError(
                 "Perkins model requires positive upstream specific volume."
             )
@@ -2826,12 +2830,22 @@ class PerkinsChokeModel(ChokeModel):
                     "Perkins model requires positive upstream liquid density."
                 )
             liquid_volume_term = liquid_mass_fraction / upstream_state.liquid_density
-        alpha1 = liquid_volume_term / upstream_specific_volume
 
         if gas_mass_fraction <= 1e-12:
+            upstream_reference_specific_volume = upstream_mixture_specific_volume
+            alpha1 = 1.0
             polytropic_exponent = 1.0
             lambda_perkins = 0.0
         else:
+            if (
+                not np.isfinite(upstream_state.gas_density)
+                or upstream_state.gas_density <= 0.0
+            ):
+                raise ValueError(
+                    "Perkins model requires positive upstream gas density."
+                )
+            upstream_reference_specific_volume = 1.0 / upstream_state.gas_density
+            alpha1 = liquid_volume_term / upstream_reference_specific_volume
             polytropic_exponent = self._estimate_gas_polytropic_exponent()
             lambda_perkins = (
                 gas_mass_fraction * polytropic_exponent / (polytropic_exponent - 1.0)
@@ -2842,7 +2856,7 @@ class PerkinsChokeModel(ChokeModel):
             float(alpha1),
             float(lambda_perkins),
             float(polytropic_exponent),
-            float(upstream_specific_volume),
+            float(upstream_reference_specific_volume),
         )
         return self._perkins_parameter_cache
 

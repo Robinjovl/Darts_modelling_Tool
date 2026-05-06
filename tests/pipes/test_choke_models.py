@@ -205,6 +205,40 @@ def test_perkins_a30_root_is_stationary_point_of_a28_for_mixture():
     assert derivative == pytest.approx(0.0, abs=1e-6)
 
 
+def test_perkins_parameters_use_gas_specific_volume_as_a28_reference():
+    """
+    Perkins Eq. A-28 normalizes liquid volume by upstream gas specific volume.
+    """
+    gas_mass_fraction = 0.2
+    liquid_density = 800.0
+    gas_density = 10.0
+    liquid_volume_term = (1.0 - gas_mass_fraction) / liquid_density
+    gas_specific_volume = 1.0 / gas_density
+    model = object.__new__(PerkinsChokeModel)
+    model._perkins_parameter_cache = None
+    model.boundary_state = SimpleNamespace(pressure=100.0)
+    model._estimate_gas_polytropic_exponent = lambda: 1.3
+    model._flow_state = lambda pressure, cache: ChokeFlowState(
+        pressure=pressure,
+        temperature=300.0,
+        molar_enthalpy=0.0,
+        gas_mass_fraction=gas_mass_fraction,
+        inv_momentum_density=gas_mass_fraction / gas_density
+        + (1.0 - gas_mass_fraction) / liquid_density,
+        density=1.0
+        / (
+            gas_mass_fraction / gas_density + (1.0 - gas_mass_fraction) / liquid_density
+        ),
+        gas_density=gas_density,
+        liquid_density=liquid_density,
+    )
+
+    _, alpha1, _, _, upstream_reference_volume = model._perkins_parameters({})
+
+    assert alpha1 == pytest.approx(liquid_volume_term / gas_specific_volume)
+    assert upstream_reference_volume == pytest.approx(gas_specific_volume)
+
+
 def test_sintef_hem_incompressible_limit_matches_orifice_relation():
     """
     For an incompressible isentropic liquid path, SINTEF Eq. (8)/(9) must reduce
