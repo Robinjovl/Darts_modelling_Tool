@@ -678,21 +678,14 @@ class Pipe:
                 den = sL_a + sL_b
                 mask = den > 0
                 rhoL_der = np.zeros_like(rhoL_a_der)
-                num = (
-                    sL_a[:, None]
-                    + sL_b[:, None]
-                    * (
-                        sL_a[:, None] * rhoL_a_der
-                        + rhoL_a[:, None] * sL_a_der
-                        + sL_b[:, None] * rhoL_b_der
-                        + rhoL_b[:, None] * sL_b_der
-                    )
-                    - (
-                        rhoL_a[:, None] * sL_a[:, None]
-                        + rhoL_b[:, None] * sL_b[:, None]
-                    )
-                    * (sL_a_der + sL_b_der)
-                )
+                num = (sL_a[:, None] + sL_b[:, None]) * (
+                    sL_a[:, None] * rhoL_a_der
+                    + rhoL_a[:, None] * sL_a_der
+                    + sL_b[:, None] * rhoL_b_der
+                    + rhoL_b[:, None] * sL_b_der
+                ) - (
+                    rhoL_a[:, None] * sL_a[:, None] + rhoL_b[:, None] * sL_b[:, None]
+                ) * (sL_a_der + sL_b_der)
                 rhoL_der[mask, :] = num[mask, :] / (den[mask, None] ** 2)
 
         """ Calculate phase props of previous time step at interfaces """
