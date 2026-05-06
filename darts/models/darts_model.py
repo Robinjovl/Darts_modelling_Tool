@@ -846,7 +846,7 @@ class DartsModel:
                             "Unknown linear solver type", self.data_ts.linear_type
                         )
                 else:
-                    # compile-tyme C++ linear solvers
+                    # compile-time C++ linear solvers
                     self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
