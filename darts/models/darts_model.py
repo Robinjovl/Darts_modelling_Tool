@@ -813,7 +813,9 @@ class DartsModel:
             ):
                 coef = np.array([0.0, 1.0])
                 history = np.array([residual_history[-2], residual_history[-1]])
-                residual_history[-1] = self.line_search(dt, t, coef, history, verbose)
+                residual_history[-1] = self.line_search(
+                    dt, t, coef, history, verbose, iter_counter=i
+                )
                 max_residual[i] = residual_history[-1][0]
 
                 # check stationary point after line search
@@ -936,23 +938,34 @@ class DartsModel:
                         f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
                     )
 
-    def line_search(self, dt, t, coef, history, verbose: bool = False):
+    def line_search(
+        self,
+        dt: float,
+        t: float,
+        coef: np.ndarray,
+        history: list | np.ndarray,
+        verbose: bool = False,
+        iter_counter: int = None,
+    ):
         """
-        Performs a line search to find the optimal coefficient that minimizes residuals.
+        Perform a line search to find the optimal coefficient that minimizes residuals.
 
         :param dt: Time step for the update process.
-        :type dt: float
         :param t: Current time.
-        :type t: float
         :param coef: Array of current coefficients used in the line search.
-        :type coef: numpy.ndarray
         :param history: Historical residuals, where each entry contains residuals for 'r_mat' and 'r_well'.
-        :type history: list or numpy.ndarray
         :param verbose: If True, prints detailed debug information during execution.
-        :type verbose: bool
-        :return: Tuple containing the minimum residual achieved, a placeholder value (0.0), and the coefficient corresponding to the minimum residual.
+        :param iter_counter: Newton-Raphson iteration counter for the current time step. Used by DFM well velocity updates.
+
+        :return: Tuple containing the minimum residual achieved, a placeholder value (0.0), and the coefficient
+                 corresponding to the minimum residual.
         :rtype: tuple(float, float, float)
         """
+        newton_iter_counter = (
+            self.physics.engine.n_newton_last_dt
+            if iter_counter is None
+            else iter_counter
+        )
 
         if verbose:
             print(
@@ -1023,16 +1036,28 @@ class DartsModel:
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
+            if self.has_dfm_well:
+                self.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
             self.physics.engine.assemble_linear_system(dt)
             self.apply_rhs_flux(dt, t)
+            if self.has_dfm_well:
+                self.apply_dfm_well_lateral_heat_flux(dt, t)
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
-            res = (
-                self.physics.engine.calc_newton_residual(),
-                self.physics.engine.calc_well_residual(),
-            )
+            if self.has_dfm_well:
+                res = (
+                    self.physics.engine.calc_coupled_well_reservoir_residual(
+                        self.data_ts.coupled_well_res_norm_method
+                    ),
+                    self.physics.engine.calc_well_residual(),
+                )
+            else:
+                res = (
+                    self.physics.engine.calc_newton_residual(),
+                    self.physics.engine.calc_well_residual(),
+                )
             res_history = np.append(res_history, res[0])
             if verbose:
                 print(
@@ -1050,6 +1075,10 @@ class DartsModel:
         self.timer.node["newton update"].start()
         self.physics.engine.apply_newton_update(dt)
         self.timer.node["newton update"].stop()
+        if self.has_dfm_well:
+            # The accepted line-search coefficient can differ from the last tested coefficient.
+            # Recompute DFM velocities and derivatives so stored well data matches the accepted state.
+            self.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
 
         return res_history[final_id], 0.0, coef[final_id]
 
