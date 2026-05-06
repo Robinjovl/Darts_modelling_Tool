@@ -1,5 +1,6 @@
 import math
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -7,12 +8,23 @@ from dartsflash.libflash import EoS
 from scipy.optimize import brentq, minimize_scalar
 
 from darts.engines import value_vector
+from darts.physics.super.property_container import PropertyContainer
+from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 
 
 @dataclass(frozen=True)
 class ChokeBoundaryState:
-    """Thermodynamic state imposed upstream of the choke."""
+    """
+    Thermodynamic state imposed upstream of the choke.
+
+    :param pressure: Upstream pressure [bar].
+    :param temperature: Upstream temperature [K].
+    :param composition: Overall upstream composition.
+    :param phase_name: Upstream phase name, currently ``G`` or ``L``.
+    :param molar_enthalpy: Upstream molar enthalpy [kJ/kmol].
+    :param molar_entropy: Upstream molar entropy from the EOS evaluator.
+    """
 
     pressure: float
     temperature: float
@@ -24,7 +36,17 @@ class ChokeBoundaryState:
 
 @dataclass(frozen=True)
 class ChokeEvaluationResult:
-    """Result of solving the choke at the current downstream pipe pressure."""
+    """
+    Result of solving the choke at the current downstream pipe pressure.
+
+    :param mass_rate_kg_s: Choke mass rate [kg/s].
+    :param discharge_molar_enthalpy: Enthalpy assigned to the pipe source [kJ/kmol].
+    :param throat_pressure: Pressure at the controlling restriction state [bar].
+    :param flow_regime: ``critical`` or ``subcritical``.
+    :param discharge_density: Density used for downstream momentum flux [kg/m3].
+    :param discharge_inv_momentum_density: Homogeneous momentum-density inverse [m3/kg].
+    :param discharge_gas_mass_fraction: Gas mass fraction in the discharge state.
+    """
 
     mass_rate_kg_s: float
     discharge_molar_enthalpy: float
@@ -45,6 +67,15 @@ class ChokeFlowState:
     no-slip model it is the homogeneous mixture specific volume,
     ``x_g / rho_g + (1 - x_g) / rho_l``. The OLGA Chisholm/slip correction is
     intentionally not folded into this field until that model is implemented.
+
+    :param pressure: Local pressure [bar].
+    :param temperature: Local temperature [K].
+    :param molar_enthalpy: Local molar enthalpy [kJ/kmol].
+    :param gas_mass_fraction: Local gas mass fraction.
+    :param inv_momentum_density: Momentum-density inverse used in the choke equations [m3/kg].
+    :param density: Homogeneous mixture density [kg/m3].
+    :param gas_density: Gas density [kg/m3], or ``nan`` if gas is absent.
+    :param liquid_density: Liquid density [kg/m3], or ``nan`` if liquid is absent.
     """
 
     pressure: float
@@ -59,7 +90,14 @@ class ChokeFlowState:
 
 @dataclass(frozen=True)
 class DelayedHemTransitionState:
-    """State at the D-HEM superheat-limit transition."""
+    """
+    State at the D-HEM superheat-limit transition.
+
+    :param pressure: Superheat-limit pressure [bar].
+    :param metastable_state: Liquid state immediately before flashing.
+    :param equilibrium_state: Equilibrium state after isenthalpic flashing at the SHL pressure.
+    :param equilibrium_entropy: Entropy of the post-SHL equilibrium state.
+    """
 
     pressure: float
     metastable_state: ChokeFlowState
@@ -69,7 +107,19 @@ class DelayedHemTransitionState:
 
 @dataclass(frozen=True)
 class EquilibriumPhaseState:
-    """Phase split returned by a PH flash at a trial choke pressure."""
+    """
+    Phase split returned by a PH flash at a trial choke pressure.
+
+    :param pressure: Flash pressure [bar].
+    :param temperature: Flash temperature [K].
+    :param gas_mass_fraction: Gas mass fraction from the flash.
+    :param gas_density: Gas density [kg/m3], or ``nan`` if gas is absent.
+    :param liquid_density: Liquid density [kg/m3], or ``nan`` if liquid is absent.
+    :param gas_molar_enthalpy: Gas molar enthalpy [kJ/kmol].
+    :param liquid_molar_enthalpy: Liquid molar enthalpy [kJ/kmol].
+    :param gas_phase_composition: Gas phase composition, if present.
+    :param liquid_phase_composition: Liquid phase composition, if present.
+    """
 
     pressure: float
     temperature: float
@@ -97,7 +147,14 @@ class ChokePhysicsHelper:
     _TEMPERATURE_ROOT_SAMPLES = 32
     _ENTHALPY_ROOT_SAMPLES = 48
 
-    def __init__(self, physics):
+    def __init__(self, physics: object):
+        """
+        Store the open-DARTS property evaluators and OBL bounds for choke solves.
+
+        :param physics: open-DARTS physics object that owns the property container,
+                        OBL bounds, flash evaluator, and EOS/property evaluators
+                        used by the choke model.
+        """
         self.physics = physics
         self.pc = physics.property_containers[0]
         self.eos = self.pc.flash_ev.eos["VL"]
@@ -119,7 +176,7 @@ class ChokePhysicsHelper:
             raise ValueError("Choke model requires enthalpy OBL bounds.")
 
     @staticmethod
-    def _valid_bounds(lower, upper, name: str) -> tuple[float, float]:
+    def _valid_bounds(lower: float, upper: float, name: str) -> tuple[float, float]:
         lower = float(lower)
         upper = float(upper)
         if not np.isfinite(lower) or not np.isfinite(upper) or lower >= upper:
@@ -204,7 +261,7 @@ class ChokePhysicsHelper:
         phase_name: str,
         pressure: float,
         temperature: float,
-        composition,
+        composition: np.ndarray | Sequence[float],
     ) -> float:
         if phase_name not in ("G", "L"):
             raise NotImplementedError(
@@ -222,13 +279,18 @@ class ChokePhysicsHelper:
         self,
         pressure: float,
         temperature: float,
-        composition,
-        root_flag,
+        composition: np.ndarray | Sequence[float],
+        root_flag: object,
     ) -> float:
         self.eos.set_root_flag(root_flag)
         return float(eos_entropy(self.eos, pressure, temperature, composition))
 
-    def build_ph_state(self, pressure: float, molar_enthalpy: float, composition):
+    def build_ph_state(
+        self,
+        pressure: float,
+        molar_enthalpy: float,
+        composition: np.ndarray | Sequence[float],
+    ) -> value_vector:
         physics_vars = list(getattr(self.physics, "vars", []))
         if "pressure" not in physics_vars or "enthalpy" not in physics_vars:
             raise ValueError(
@@ -259,7 +321,7 @@ class ChokePhysicsHelper:
         self,
         pressure: float,
         molar_enthalpy: float,
-        composition,
+        composition: np.ndarray | Sequence[float],
     ) -> float:
         """
         Estimate mixture entropy after a PH equilibrium flash.
@@ -313,7 +375,10 @@ class ChokePhysicsHelper:
         return float(np.dot(weights, np.asarray(phase_entropies, dtype=float)))
 
     @staticmethod
-    def find_bracket(xs: np.ndarray, fn):
+    def find_bracket(
+        xs: np.ndarray,
+        fn: Callable[[float], float],
+    ) -> tuple[float, float] | None:
         vals = np.asarray([fn(x) for x in xs], dtype=float)
         for idx in range(len(xs) - 1):
             if not np.isfinite(vals[idx]) or not np.isfinite(vals[idx + 1]):
@@ -332,7 +397,7 @@ class ChokePhysicsHelper:
         phase_name: str,
         pressure: float,
         temperature: float,
-        composition,
+        composition: np.ndarray | Sequence[float],
     ) -> float:
         return float(
             self.pc.enthalpy_ev[phase_name].evaluate(
@@ -346,7 +411,7 @@ class ChokePhysicsHelper:
         self,
         phase_name: str,
         pressure: float,
-        composition,
+        composition: np.ndarray | Sequence[float],
         molar_enthalpy: float,
     ) -> float:
         def enthalpy_residual(temperature: float) -> float:
@@ -375,8 +440,8 @@ class ChokePhysicsHelper:
         phase_name: str,
         pressure: float,
         temperature: float,
-        composition,
-        molar_enthalpy: float = None,
+        composition: np.ndarray | Sequence[float],
+        molar_enthalpy: float | None = None,
     ) -> ChokeFlowState:
         density = self.evaluate_phase_density(
             phase_name,
@@ -413,7 +478,7 @@ class ChokePhysicsHelper:
         self,
         pressure: float,
         molar_enthalpy: float,
-        composition,
+        composition: np.ndarray | Sequence[float],
     ) -> EquilibriumPhaseState:
         state = self.build_ph_state(pressure, molar_enthalpy, composition)
         self.pc.evaluate(state)
@@ -489,7 +554,7 @@ class ChokePhysicsHelper:
             liquid_phase_composition=liquid_phase_composition,
         )
 
-    def _phase_mw_kg_per_kmol(self, composition) -> float:
+    def _phase_mw_kg_per_kmol(self, composition: np.ndarray | Sequence[float]) -> float:
         return float(
             np.dot(np.asarray(composition, dtype=float), np.asarray(self.pc.Mw))
         )
@@ -503,8 +568,8 @@ class ChokePhysicsHelper:
         liquid_density: float,
         gas_molar_enthalpy: float,
         liquid_molar_enthalpy: float,
-        gas_phase_composition,
-        liquid_phase_composition,
+        gas_phase_composition: np.ndarray | Sequence[float],
+        liquid_phase_composition: np.ndarray | Sequence[float],
     ) -> ChokeFlowState:
         """
         Build a homogeneous gas/liquid state from phase properties.
@@ -592,7 +657,7 @@ class ChokePhysicsHelper:
         self,
         pressure: float,
         molar_enthalpy: float,
-        composition,
+        composition: np.ndarray | Sequence[float],
     ) -> ChokeFlowState:
         phase_state = self.evaluate_equilibrium_phase_state(
             pressure,
@@ -718,7 +783,12 @@ class ChokePhysicsHelper:
         return self.clamp_enthalpy(brentq(entropy_residual, bracket[0], bracket[1]))
 
 
-def eos_entropy(eos, pressure: float, temperature: float, composition) -> float:
+def eos_entropy(
+    eos: object,
+    pressure: float,
+    temperature: float,
+    composition: np.ndarray | Sequence[float],
+) -> float:
     return eos.S(pressure, temperature, np.asarray(composition, dtype=float))
 
 
@@ -746,7 +816,7 @@ class ValveGeometryModel(ABC):
 
     @diameter.setter
     @abstractmethod
-    def diameter(self, value: float):
+    def diameter(self, value: float) -> None:
         pass
 
     @property
@@ -823,11 +893,19 @@ class OrificeValveGeometryModel(ValveGeometryModel):
 
     def __init__(
         self,
-        diameter: float = None,
+        diameter: float | None = None,
         discharge_coefficient: float = 0.84,
         opening: float = 1.0,
         flow_coefficient: float = 1.0,
     ):
+        """
+        Initialize a scalar orifice geometry.
+
+        :param diameter: Choke diameter [m]. If omitted, it is sized from target rate.
+        :param discharge_coefficient: Discharge coefficient applied to the effective area.
+        :param opening: Scalar multiplier on the physical choke area.
+        :param flow_coefficient: Scalar valve coefficient multiplier on the choke area.
+        """
         if discharge_coefficient <= 0.0:
             raise ValueError("discharge_coefficient must be positive.")
         if flow_coefficient <= 0.0:
@@ -851,7 +929,7 @@ class OrificeValveGeometryModel(ValveGeometryModel):
         return self._diameter
 
     @diameter.setter
-    def diameter(self, value: float):
+    def diameter(self, value: float) -> None:
         if value <= 0.0:
             raise ValueError("diameter must be positive.")
         self._diameter = float(value)
@@ -1027,7 +1105,7 @@ class RecoveryModel(ABC):
     def uses_downstream_recovery(self) -> bool:
         return False
 
-    def validate(self, valve_geometry: str):
+    def validate(self, valve_geometry: str) -> None:
         return
 
     @abstractmethod
@@ -1086,19 +1164,23 @@ class DownstreamRecoveryModel(RecoveryModel):
 
 
 class SlipModel(ABC):
-    """Validation hook for future slip models."""
+    """
+    Validation hook for future slip models.
+    """
 
     @property
     @abstractmethod
     def name(self) -> str:
         pass
 
-    def validate(self, equilibrium_model_name: str):
+    def validate(self, equilibrium_model_name: str) -> None:
         return
 
 
 class NoSlipModel(SlipModel):
-    """Homogeneous velocity assumption for gas and liquid."""
+    """
+    Homogeneous velocity assumption for gas and liquid.
+    """
 
     @property
     def name(self) -> str:
@@ -1118,7 +1200,7 @@ class ChisholmSlipModel(SlipModel):
     def name(self) -> str:
         return "CHISHOLM"
 
-    def validate(self, equilibrium_model_name: str):
+    def validate(self, equilibrium_model_name: str) -> None:
         raise NotImplementedError(
             "SLIPMODEL='CHISHOLM' is not implemented yet in the open-DARTS choke boundary."
         )
@@ -1126,7 +1208,7 @@ class ChisholmSlipModel(SlipModel):
 
 class EquilibriumModel(ABC):
     """
-    Thermodynamic closure used to evaluate states along the choke.
+    Define the thermodynamic closure for states along the choke.
 
     Each implementation returns a ``ChokeFlowState`` at a trial pressure. The
     hydraulic solver is shared; only the pressure path and phase split differ.
@@ -1137,7 +1219,7 @@ class EquilibriumModel(ABC):
     def name(self) -> str:
         pass
 
-    def validate(self, slip_model_name: str):
+    def validate(self, slip_model_name: str) -> None:
         return
 
     @abstractmethod
@@ -1341,7 +1423,7 @@ class FullEquilibriumModel(EquilibriumModel):
     def name(self) -> str:
         return "EQUILIBRIUM"
 
-    def validate(self, slip_model_name: str):
+    def validate(self, slip_model_name: str) -> None:
         if slip_model_name != "NOSLIP":
             raise ValueError(
                 "EQUILIBRIUMMODEL='EQUILIBRIUM' cannot be combined with a slip model."
@@ -1366,11 +1448,21 @@ class FullEquilibriumModel(EquilibriumModel):
 
 def build_valve_geometry_model(
     valve_geometry: str,
-    diameter: float = None,
+    diameter: float | None = None,
     discharge_coefficient: float = 0.84,
     opening: float = 1.0,
     flow_coefficient: float = 1.0,
 ) -> ValveGeometryModel:
+    """
+    Build the geometry object used by the choke hydraulic model.
+
+    :param valve_geometry: Geometry keyword, currently ``ORIFICE`` or ``BEAN``.
+    :param diameter: Choke diameter [m]. If omitted, it is sized from target rate.
+    :param discharge_coefficient: Discharge coefficient applied to the effective area.
+    :param opening: Scalar multiplier on the physical choke area.
+    :param flow_coefficient: Scalar valve coefficient multiplier on the choke area.
+    :return: Valve geometry model instance.
+    """
     valve_geometry = valve_geometry.upper()
     if valve_geometry == "ORIFICE":
         return OrificeValveGeometryModel(
@@ -1395,6 +1487,15 @@ def build_equilibrium_model(
     equilibrium_model: str,
     thermal_phase_equilibrium: bool = False,
 ) -> EquilibriumModel:
+    """
+    Build the thermodynamic closure used along the choke pressure path.
+
+    :param equilibrium_model: Closure keyword, currently ``FROZEN``,
+                              ``HENRYFAUSKE``, or ``EQUILIBRIUM``.
+    :param thermal_phase_equilibrium: Whether frozen/Henry-Fauske liquid states
+                                      follow the thermal-equilibrium path.
+    :return: Equilibrium model instance.
+    """
     equilibrium_model = equilibrium_model.upper()
     if equilibrium_model == "FROZEN":
         return FrozenEquilibriumModel(
@@ -1415,6 +1516,13 @@ def build_recovery_model(
     recovery: str,
     recovery_tuning: float = 1.0,
 ) -> RecoveryModel:
+    """
+    Build the downstream pressure-recovery policy.
+
+    :param recovery: Recovery keyword, currently ``OFF`` or ``ON``.
+    :param recovery_tuning: Scalar recovery factor between 0 and 1.
+    :return: Recovery model instance.
+    """
     recovery = recovery.upper()
     if not 0.0 <= recovery_tuning <= 1.0:
         raise ValueError("recovery_tuning must be between 0 and 1.")
@@ -1426,6 +1534,13 @@ def build_recovery_model(
 
 
 def build_slip_model(slip_model: str) -> SlipModel:
+    """
+    Build the slip model used by gas/liquid momentum-density calculations.
+
+    :param slip_model: Slip keyword, currently ``NOSLIP`` or declared
+                       ``CHISHOLM`` placeholder.
+    :return: Slip model instance.
+    """
     slip_model = slip_model.upper()
     if slip_model == "NOSLIP":
         return NoSlipModel()
@@ -1446,7 +1561,7 @@ def build_hydraulic_choke_model(
     downstream_area: float,
 ) -> "ChokeModel":
     """
-    Construct the hydraulic choke solver while keeping thermodynamic options shared.
+    Construct the hydraulic choke solver and share thermodynamic options.
 
     ``OLGA_STYLE`` preserves the original integral pressure-drop implementation.
     ``PERKINS`` switches only the critical/subcritical selection and downstream
@@ -1454,6 +1569,17 @@ def build_hydraulic_choke_model(
     ``SINTEF_HEM`` uses the quasi-steady homogeneous-equilibrium restricted-flow
     calculation described by the SINTEF CO2 choke-flow work.
     ``SINTEF_DHEM`` adds the SINTEF delayed-flashing SHL/CNT path for pure CO2.
+
+    :param hydraulic_model: Hydraulic model keyword.
+    :param helper: Adapter that evaluates open-DARTS thermodynamic properties.
+    :param boundary_state: Upstream thermodynamic state.
+    :param valve_geometry_model: Geometry model for areas and contraction terms.
+    :param equilibrium_model: Thermodynamic closure for trial pressure states.
+    :param recovery_model: Downstream pressure-recovery policy.
+    :param slip_model: Gas/liquid slip policy.
+    :param upstream_area: Flow area upstream of the choke [m2].
+    :param downstream_area: Flow area downstream of the choke [m2].
+    :return: Hydraulic choke model instance.
     """
     hydraulic_model = hydraulic_model.upper()
     model_args = dict(
@@ -1511,13 +1637,15 @@ class ChokeModel:
         downstream_area: float,
     ):
         """
-        :param helper: Adapter used to evaluate open-DARTS thermodynamic properties
+        Store the shared choke solver state.
+
+        :param helper: Adapter that evaluates open-DARTS thermodynamic properties
                        and isentropic states.
         :param boundary_state: User-specified upstream pressure, temperature,
                                phase, composition, enthalpy, and entropy.
         :param valve_geometry_model: Geometry model that supplies choke area,
                                      effective area, and acceleration terms.
-        :param equilibrium_model: Thermodynamic closure used along the pressure
+        :param equilibrium_model: Thermodynamic closure for the pressure
                                   path through the choke.
         :param recovery_model: Downstream pressure-recovery option.
         :param slip_model: Gas/liquid velocity model. Only NOSLIP is currently
@@ -1836,15 +1964,16 @@ class SintefHemChokeModel(ChokeModel):
         downstream_area: float,
     ):
         """
-        :param helper: Adapter used to evaluate open-DARTS thermodynamic
+        Store the SINTEF HEM hydraulic choke model inputs.
+
+        :param helper: Adapter that evaluates open-DARTS thermodynamic
                        properties and equilibrium isentropic states.
         :param boundary_state: User-specified upstream stagnation pressure,
                                temperature, phase, composition, enthalpy, and
                                entropy.
-        :param valve_geometry_model: Restriction geometry. Its effective area is
-                                     used as the flow area in the SINTEF HEM
-                                     mass-rate calculation.
-        :param equilibrium_model: Must be EQUILIBRIUM so flashing is evaluated
+        :param valve_geometry_model: Restriction geometry. Its effective area
+                                     provides the SINTEF HEM flow area.
+        :param equilibrium_model: Must be EQUILIBRIUM so flashing evaluates
                                   as a homogeneous-equilibrium PH state.
         :param recovery_model: Present for API consistency. SINTEF HEM uses the
                                downstream pressure directly for subcritical
@@ -1876,7 +2005,7 @@ class SintefHemChokeModel(ChokeModel):
     def _mass_specific_enthalpy_j_kg(
         self,
         molar_enthalpy: float,
-        composition,
+        composition: np.ndarray | Sequence[float],
     ) -> float:
         mw_kg_per_kmol = self.helper._phase_mw_kg_per_kmol(composition)
         if mw_kg_per_kmol <= 0.0:
@@ -1914,7 +2043,12 @@ class SintefHemChokeModel(ChokeModel):
         pressure: float,
         cache: dict[float, ChokeFlowState],
     ) -> float:
-        """Return ``rho * u`` from SINTEF Eq. (9), in kg/(m2 s)."""
+        """
+        Return ``rho * u`` from SINTEF Eq. (9), in kg/(m2 s).
+
+        :param pressure: Candidate restriction pressure [bar].
+        :param cache: Per-evaluation cache of pressure-indexed flow states.
+        """
         state = self._flow_state(pressure, cache)
         if not np.isfinite(state.density) or state.density <= 0.0:
             return 0.0
@@ -1925,7 +2059,12 @@ class SintefHemChokeModel(ChokeModel):
         throat_pressure: float,
         cache: dict[float, ChokeFlowState],
     ) -> float:
-        """Compute mass rate from the SINTEF HEM mass flux and effective area."""
+        """
+        Compute mass rate from the SINTEF HEM mass flux and effective area.
+
+        :param throat_pressure: Candidate restriction pressure [bar].
+        :param cache: Per-evaluation cache of pressure-indexed flow states.
+        """
         if throat_pressure >= self.boundary_state.pressure:
             return 0.0
         mass_flux = self._sintef_mass_flux(throat_pressure, cache)
@@ -2075,7 +2214,9 @@ class SintefDelayedHemChokeModel(SintefHemChokeModel):
         downstream_area: float,
     ):
         """
-        :param helper: Adapter used to evaluate open-DARTS thermodynamic
+        Store the SINTEF D-HEM hydraulic choke model inputs.
+
+        :param helper: Adapter that evaluates open-DARTS thermodynamic
                        properties, phase fugacity, and equilibrium PH states.
         :param boundary_state: User-specified upstream stagnation liquid CO2
                                state before the restriction.
@@ -2114,7 +2255,11 @@ class SintefDelayedHemChokeModel(SintefHemChokeModel):
         self._saturation_pressure_cache: dict[float, float | None] = {}
 
     def _rathjen_straub_surface_tension_n_m(self, temperature: float) -> float:
-        """Return Rathjen-Straub CO2 liquid-vapor surface tension in N/m."""
+        """
+        Return Rathjen-Straub CO2 liquid-vapor surface tension in N/m.
+
+        :param temperature: Liquid temperature [K].
+        """
         tau = 1.0 - float(temperature) / self._RATHJEN_STRAUB_TC_K
         if tau <= 0.0:
             return 0.0
@@ -2145,7 +2290,12 @@ class SintefDelayedHemChokeModel(SintefHemChokeModel):
         return liquid_lnphi - vapor_lnphi
 
     def _saturation_pressure_bar(self, temperature: float) -> float | None:
-        """Solve pure-CO2 saturation pressure from equality of phase fugacity."""
+        """
+        Solve pure-CO2 saturation pressure from equality of phase fugacity.
+
+        :param temperature: Temperature [K].
+        :return: Saturation pressure [bar], or ``None`` if no two-root state is found.
+        """
         temperature = float(temperature)
         cache_key = round(temperature, 8)
         if cache_key in self._saturation_pressure_cache:
@@ -2515,7 +2665,7 @@ class PerkinsChokeModel(ChokeModel):
     relation,
     ``p_throat = p_up - (p_up - p_downstream) / (1 - (d_choke / d_pipe)**1.85)``.
     When recovery is disabled, the downstream pipe pressure is treated as the
-    throat pressure. Perkins Eq. A-30 is used to solve the critical pressure
+    throat pressure. The model solves Perkins Eq. A-30 for the critical pressure
     ratio. If Eq. A-30 cannot be solved, the model raises an error instead of
     substituting a different critical-flow criterion.
     """
@@ -2539,13 +2689,15 @@ class PerkinsChokeModel(ChokeModel):
         downstream_area: float,
     ):
         """
-        :param helper: Adapter used to evaluate open-DARTS thermodynamic properties
+        Store the Perkins hydraulic choke model inputs.
+
+        :param helper: Adapter that evaluates open-DARTS thermodynamic properties
                        and isentropic states.
         :param boundary_state: User-specified upstream pressure, temperature,
                                phase, composition, enthalpy, and entropy.
-        :param valve_geometry_model: Orifice geometry used by the Perkins
+        :param valve_geometry_model: Orifice geometry for the Perkins
                                      pressure-recovery and area terms.
-        :param equilibrium_model: Thermodynamic closure used along the
+        :param equilibrium_model: Thermodynamic closure for the
                                   isentropic pressure path.
         :param recovery_model: If ON, treats downstream pressure as recovered
                                pipe pressure and estimates throat pressure using
@@ -2764,7 +2916,12 @@ class PerkinsChokeModel(ChokeModel):
         throat_pressure: float,
         cache: dict[float, ChokeFlowState],
     ) -> float:
-        """Evaluate Perkins Eq. A-28 instead of the base integral rate equation."""
+        """
+        Evaluate Perkins Eq. A-28 instead of the base integral rate equation.
+
+        :param throat_pressure: Candidate throat pressure [bar].
+        :param cache: Per-evaluation cache of pressure-indexed flow states.
+        """
         return self._perkins_mass_rate_from_pressure(throat_pressure, cache)
 
     def _perkins_critical_residual(
@@ -2992,21 +3149,21 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
     def __init__(
         self,
         pipe_name: str,
-        pipe_geom,
-        reservoir,
-        physics,
+        pipe_geom: PipeGeometry,
+        reservoir: object,
+        physics: object,
         first_ts_size: float,
         segment_idx: int,
         target_molar_rate: float,
         ramp_up_period: float,
-        composition,
+        composition: np.ndarray | Sequence[float],
         pressure: float,
         temperature: float,
         phase_name: str,
         hydraulic_model: str = "OLGA_STYLE",
         valve_geometry: str = "ORIFICE",
         equilibrium_model: str = "FROZEN",
-        diameter: float = None,
+        diameter: float | None = None,
         discharge_coefficient: float = 0.84,
         opening: float = 1.0,
         flow_coefficient: float = 1.0,
@@ -3015,12 +3172,28 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
         recovery: str = "OFF",
         recovery_tuning: float = 1.0,
         slip_model: str = "NOSLIP",
-        upstream_area: float = None,
-        initial_downstream_pressure: float = None,
-        max_molar_rate: float = None,
+        upstream_area: float | None = None,
+        initial_downstream_pressure: float | None = None,
+        max_molar_rate: float | None = None,
         verbose: bool = False,
     ):
         """
+        Connect an upstream pressure/temperature boundary through a choke.
+
+        :param pipe_name: Name of the pipe/well receiving the boundary source.
+        :param pipe_geom: Pipe geometry object that supplies pipe area and name.
+        :param reservoir: Reservoir object that locates the connected pipe segment
+                          in the global engine state.
+        :param physics: open-DARTS physics object for composition, enthalpy,
+                        entropy, and density evaluations.
+        :param first_ts_size: Size of the first time step [day].
+        :param segment_idx: Pipe segment index connected to the boundary source.
+        :param target_molar_rate: Ramp target before choke limiting [kmol/day].
+        :param ramp_up_period: Period over which the boundary ramps from zero [day].
+        :param composition: Injected fluid composition.
+        :param pressure: Upstream stagnation pressure before the choke [bar].
+        :param temperature: Upstream stagnation temperature before the choke [K].
+        :param phase_name: Upstream phase name, currently ``G`` or ``L``.
         :param hydraulic_model: Hydraulic choke method:
                                 - OLGA_STYLE: Existing integral pressure-drop solver.
                                 - PERKINS: Perkins critical/subcritical method with
@@ -3057,6 +3230,15 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
         :param recovery_tuning: 1 gives maximum recovery and 0 gives zero recovery
         :param slip_model: Slip model for choke throat. Only NOSLIP is currently usable;
                            CHISHOLM is declared but raises NotImplementedError.
+        :param upstream_area: Flow area upstream of the choke [m2]. Defaults to
+                              the pipe internal area.
+        :param initial_downstream_pressure: Initial downstream pressure [bar],
+                                            required when ``diameter`` is omitted
+                                            so the choke can be sized from the
+                                            target rate.
+        :param max_molar_rate: Optional upper bound on the computed molar rate
+                               [kmol/day].
+        :param verbose: Whether to print boundary construction information.
         """
         if max_molar_rate is not None and max_molar_rate <= 0.0:
             raise ValueError("max_molar_rate must be positive when specified.")
@@ -3176,7 +3358,7 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
         return self.choke_model.valve_geometry_model.opening
 
     @opening.setter
-    def opening(self, value: float):
+    def opening(self, value: float) -> None:
         if value <= 0.0:
             raise ValueError("opening must be positive.")
         self.choke_model.valve_geometry_model.opening = float(value)
@@ -3218,9 +3400,9 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
 
     def get_boundary_momentum_flux(
         self,
-        property_container,
+        property_container: PropertyContainer,
         pipe_internal_area: float,
-        molar_rate: float = None,
+        molar_rate: float | None = None,
     ) -> float:
         rate = self.current_rate if molar_rate is None else molar_rate
         mw = np.asarray(property_container.Mw)
@@ -3246,7 +3428,7 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
             / pipe_internal_area
         )
 
-    def update_current_molar_rate(self, simulation_time):
+    def update_current_molar_rate(self, simulation_time: float) -> None:
         engine_x = np.asarray(self.physics.engine.X)
         n_vars = self.physics.n_vars
         downstream_pressure = float(engine_x[self.downstream_block_idx * n_vars])

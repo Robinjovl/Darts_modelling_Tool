@@ -233,7 +233,9 @@ def test_sintef_hem_incompressible_limit_matches_orifice_relation():
 
 
 def test_sintef_dhem_rathjen_straub_surface_tension_matches_co2_reference():
-    """The D-HEM model uses the Rathjen-Straub one-term CO2 correlation."""
+    """
+    The D-HEM model uses the Rathjen-Straub one-term CO2 correlation.
+    """
     model = object.__new__(SintefDelayedHemChokeModel)
 
     sigma = model._rathjen_straub_surface_tension_n_m(280.0)
@@ -242,7 +244,9 @@ def test_sintef_dhem_rathjen_straub_surface_tension_matches_co2_reference():
 
 
 def test_sintef_dhem_cnt_nucleation_rate_uses_molecule_mass():
-    """SINTEF Eq. (6) uses molecule mass, not kg/kmol molecular weight."""
+    """
+    SINTEF Eq. (6) uses molecule mass, not kg/kmol molecular weight.
+    """
     model = object.__new__(SintefDelayedHemChokeModel)
     model.boundary_state = SimpleNamespace(composition=[1.0])
     model.helper = SimpleNamespace(_phase_mw_kg_per_kmol=lambda composition: 44.01)
