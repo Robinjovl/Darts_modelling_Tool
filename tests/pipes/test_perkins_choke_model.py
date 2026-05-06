@@ -7,6 +7,7 @@ from scipy.optimize import brentq
 from darts.pipes.upstream_pressure_node_with_choke import (
     ChokeFlowState,
     PerkinsChokeModel,
+    SintefDelayedHemChokeModel,
     SintefHemChokeModel,
 )
 
@@ -229,3 +230,43 @@ def test_sintef_hem_incompressible_limit_matches_orifice_relation():
     )
 
     assert mass_rate == pytest.approx(expected_rate, rel=1e-12)
+
+
+def test_sintef_dhem_rathjen_straub_surface_tension_matches_co2_reference():
+    """The D-HEM model uses the Rathjen-Straub one-term CO2 correlation."""
+    model = object.__new__(SintefDelayedHemChokeModel)
+
+    sigma = model._rathjen_straub_surface_tension_n_m(280.0)
+
+    assert sigma == pytest.approx(0.0033074, rel=1e-4)
+
+
+def test_sintef_dhem_cnt_nucleation_rate_uses_molecule_mass():
+    """SINTEF Eq. (6) uses molecule mass, not kg/kmol molecular weight."""
+    model = object.__new__(SintefDelayedHemChokeModel)
+    model.boundary_state = SimpleNamespace(composition=[1.0])
+    model.helper = SimpleNamespace(_phase_mw_kg_per_kmol=lambda composition: 44.01)
+    model._saturation_pressure_bar = lambda temperature: 50.0
+
+    pressure_bar = 30.0
+    temperature_k = 280.0
+    liquid_density_kg_m3 = 800.0
+    log_rate_ratio = model._nucleation_log_rate_ratio(
+        pressure_bar,
+        temperature_k,
+        liquid_density_kg_m3,
+    )
+
+    sigma = model._rathjen_straub_surface_tension_n_m(temperature_k)
+    molecule_mass = 44.01 / (1000.0 * model._AVOGADRO)
+    number_density = liquid_density_kg_m3 / molecule_mass
+    delta_p_pa = (50.0 - pressure_bar) * 1e5
+    free_energy_barrier = 16.0 * math.pi * sigma**3 / (3.0 * delta_p_pa**2)
+    expected = (
+        math.log(number_density)
+        + 0.5 * math.log(2.0 * sigma / (math.pi * molecule_mass))
+        - free_energy_barrier / (model._BOLTZMANN_J_K * temperature_k)
+        - math.log(model._JCRIT_PER_M3_S)
+    )
+
+    assert log_rate_ratio == pytest.approx(expected, rel=1e-12)

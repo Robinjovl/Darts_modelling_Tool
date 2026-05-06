@@ -58,6 +58,16 @@ class ChokeFlowState:
 
 
 @dataclass(frozen=True)
+class DelayedHemTransitionState:
+    """State at the D-HEM superheat-limit transition."""
+
+    pressure: float
+    metastable_state: ChokeFlowState
+    equilibrium_state: ChokeFlowState
+    equilibrium_entropy: float
+
+
+@dataclass(frozen=True)
 class EquilibriumPhaseState:
     """Phase split returned by a PH flash at a trial choke pressure."""
 
@@ -1443,6 +1453,7 @@ def build_hydraulic_choke_model(
     pressure-recovery treatment to the Perkins method.
     ``SINTEF_HEM`` uses the quasi-steady homogeneous-equilibrium restricted-flow
     calculation described by the SINTEF CO2 choke-flow work.
+    ``SINTEF_DHEM`` adds the SINTEF delayed-flashing SHL/CNT path for pure CO2.
     """
     hydraulic_model = hydraulic_model.upper()
     model_args = dict(
@@ -1461,6 +1472,8 @@ def build_hydraulic_choke_model(
         return PerkinsChokeModel(**model_args)
     if hydraulic_model in ("SINTEF_HEM", "HEM"):
         return SintefHemChokeModel(**model_args)
+    if hydraulic_model in ("SINTEF_DHEM", "DHEM", "D-HEM"):
+        return SintefDelayedHemChokeModel(**model_args)
     raise NotImplementedError(
         f"hydraulic_model={hydraulic_model!r} is not implemented yet."
     )
@@ -1472,8 +1485,9 @@ class ChokeModel:
 
     Subclasses provide the hydraulic relation and critical-flow criterion:
     ``OLGA_STYLE`` uses the existing integral pressure-drop solve, ``PERKINS``
-    uses Perkins Eq. A-28/A-30, and ``SINTEF_HEM`` uses the homogeneous
-    equilibrium mass-flux maximum from the SINTEF CO2 orifice/nozzle model.
+    uses Perkins Eq. A-28/A-30, ``SINTEF_HEM`` uses the homogeneous equilibrium
+    mass-flux maximum, and ``SINTEF_DHEM`` adds delayed flashing through the
+    superheat-limit/CNT construction from the SINTEF CO2 orifice/nozzle model.
     """
 
     _PRESSURE_EPS_BAR = 1e-6
@@ -2009,6 +2023,482 @@ class SintefHemChokeModel(ChokeModel):
         )
 
 
+class SintefDelayedHemChokeModel(SintefHemChokeModel):
+    """
+    SINTEF delayed homogeneous-equilibrium restricted-flow model for CO2.
+
+    D-HEM follows the same steady energy equation as HEM, but delays flashing
+    until the metastable liquid reaches the superheat limit (SHL). The SHL is
+    calculated from classical nucleation theory using SINTEF Eqs. (3)-(7):
+    nucleation rate, free-energy barrier, critical bubble radius, kinetic
+    prefactor, and ``J = Jcrit``. The liquid-vapor surface tension is the
+    Rathjen-Straub CO2 correlation,
+    ``sigma = 0.08450 * (1 - T / 304.19)**1.280`` in N/m.
+
+    The implemented path is the SINTEF D-HEM path: liquid isentropic expansion
+    to SHL, isenthalpic/isobaric equilibrium flashing at the SHL pressure, then
+    isentropic HEM expansion from that equilibrium state. If the post-SHL HEM
+    path contains a larger mass-flux maximum, that maximum is used; otherwise
+    the SHL flux is the choked flux.
+
+    This implementation is intentionally limited to pure CO2 because the
+    Rathjen-Straub constants and the saturation-pressure solve used here are
+    pure-component relations. open-DARTS PR thermodynamics are used, so exact
+    agreement with SINTEF's GERG/Span-Wagner calculations is not guaranteed.
+    """
+
+    _AVOGADRO = 6.02214076e23
+    _BOLTZMANN_J_K = 1.380649e-23
+    _JCRIT_PER_M3_S = 1.0e12
+    _RATHJEN_STRAUB_TC_K = 304.19
+    _RATHJEN_STRAUB_SIGMA0_N_M = 0.08450
+    _RATHJEN_STRAUB_MU = 1.280
+    _SATURATION_PRESSURE_SAMPLES = 160
+    _SHL_SCAN_POINTS = 240
+    _DHEM_ENTHALPY_ROOT_SAMPLES = 96
+    _ROOT_Z_SEPARATION_TOL = 1e-6
+    _NO_NUCLEATION_LOG_RATIO = -1e6
+
+    @property
+    def hydraulic_model(self) -> str:
+        return "SINTEF_DHEM"
+
+    def __init__(
+        self,
+        helper: ChokePhysicsHelper,
+        boundary_state: ChokeBoundaryState,
+        valve_geometry_model: ValveGeometryModel,
+        equilibrium_model: EquilibriumModel,
+        recovery_model: RecoveryModel,
+        slip_model: SlipModel,
+        upstream_area: float,
+        downstream_area: float,
+    ):
+        """
+        :param helper: Adapter used to evaluate open-DARTS thermodynamic
+                       properties, phase fugacity, and equilibrium PH states.
+        :param boundary_state: User-specified upstream stagnation liquid CO2
+                               state before the restriction.
+        :param valve_geometry_model: Restriction geometry. Its effective area
+                                     multiplies the selected D-HEM mass flux.
+        :param equilibrium_model: Must be EQUILIBRIUM for the isenthalpic
+                                  flash at SHL and the post-SHL HEM path.
+        :param recovery_model: Present for API consistency. D-HEM uses the
+                               downstream pressure directly for subcritical
+                               flow and internally selects the critical point.
+        :param slip_model: Must be NOSLIP, consistent with HEM and D-HEM.
+        :param upstream_area: Flow area upstream of the restriction, in m2.
+        :param downstream_area: Flow area downstream of the restriction, in m2.
+        """
+        super().__init__(
+            helper=helper,
+            boundary_state=boundary_state,
+            valve_geometry_model=valve_geometry_model,
+            equilibrium_model=equilibrium_model,
+            recovery_model=recovery_model,
+            slip_model=slip_model,
+            upstream_area=upstream_area,
+            downstream_area=downstream_area,
+        )
+        component_names = list(getattr(self.helper.pc, "components_name", []))
+        composition = np.asarray(self.boundary_state.composition, dtype=float)
+        if len(composition) != 1 or not np.isclose(composition[0], 1.0):
+            raise ValueError(
+                "hydraulic_model='SINTEF_DHEM' currently supports pure CO2 only."
+            )
+        if component_names and component_names[0].upper() != "CO2":
+            raise ValueError(
+                "hydraulic_model='SINTEF_DHEM' uses CO2-specific "
+                "Rathjen-Straub surface-tension constants."
+            )
+        self._saturation_pressure_cache: dict[float, float | None] = {}
+
+    def _rathjen_straub_surface_tension_n_m(self, temperature: float) -> float:
+        """Return Rathjen-Straub CO2 liquid-vapor surface tension in N/m."""
+        tau = 1.0 - float(temperature) / self._RATHJEN_STRAUB_TC_K
+        if tau <= 0.0:
+            return 0.0
+        return self._RATHJEN_STRAUB_SIGMA0_N_M * tau**self._RATHJEN_STRAUB_MU
+
+    def _saturation_lnphi_difference(
+        self,
+        pressure: float,
+        temperature: float,
+    ) -> float | None:
+        """
+        Return liquid-vapor ln(phi) difference for a two-root pure state.
+
+        Cubic EOS MIN and MAX roots can collapse to the same single root outside
+        the two-phase region. Those points must not be accepted as saturation
+        roots even though their fugacity difference is numerically zero.
+        """
+        composition = self.boundary_state.composition
+        eos = self.helper.eos
+        eos.set_root_flag(EoS.RootFlag.MIN)
+        liquid_z = eos.Z(pressure, temperature, composition)
+        liquid_lnphi = float(eos.lnphi(pressure, temperature, composition)[0])
+        eos.set_root_flag(EoS.RootFlag.MAX)
+        vapor_z = eos.Z(pressure, temperature, composition)
+        vapor_lnphi = float(eos.lnphi(pressure, temperature, composition)[0])
+        if abs(vapor_z - liquid_z) < self._ROOT_Z_SEPARATION_TOL:
+            return None
+        return liquid_lnphi - vapor_lnphi
+
+    def _saturation_pressure_bar(self, temperature: float) -> float | None:
+        """Solve pure-CO2 saturation pressure from equality of phase fugacity."""
+        temperature = float(temperature)
+        cache_key = round(temperature, 8)
+        if cache_key in self._saturation_pressure_cache:
+            return self._saturation_pressure_cache[cache_key]
+        if temperature >= self._RATHJEN_STRAUB_TC_K:
+            self._saturation_pressure_cache[cache_key] = None
+            return None
+
+        critical_point = self.helper.eos.critical_point(self.boundary_state.composition)
+        lower = max(self.helper.pressure_bounds[0], self._MIN_PRESSURE_BAR)
+        upper = min(float(critical_point.Pc), self.helper.pressure_bounds[1]) * (
+            1.0 - self._PRESSURE_EPS_BAR
+        )
+        samples = np.linspace(lower, upper, self._SATURATION_PRESSURE_SAMPLES)
+
+        def residual(pressure: float) -> float:
+            value = self._saturation_lnphi_difference(pressure, temperature)
+            if value is None:
+                raise ValueError("EOS roots collapsed outside the two-phase region.")
+            return value
+
+        previous_pressure = None
+        previous_value = None
+        for pressure in samples:
+            try:
+                value = residual(pressure)
+            except (ValueError, RuntimeError, FloatingPointError):
+                continue
+            if not np.isfinite(value):
+                continue
+            if (
+                previous_pressure is not None
+                and previous_value is not None
+                and previous_value * value < 0.0
+            ):
+                saturation_pressure = brentq(
+                    residual,
+                    previous_pressure,
+                    pressure,
+                )
+                self._saturation_pressure_cache[cache_key] = float(saturation_pressure)
+                return float(saturation_pressure)
+            previous_pressure = float(pressure)
+            previous_value = float(value)
+
+        self._saturation_pressure_cache[cache_key] = None
+        return None
+
+    def _nucleation_log_rate_ratio(
+        self,
+        pressure: float,
+        temperature: float,
+        liquid_density: float,
+    ) -> float:
+        """
+        Return ``ln(J / Jcrit)`` from SINTEF Eqs. (3)-(7).
+
+        ``pressure`` is in bar and density is in kg/m3. The pressure difference
+        in the critical-radius/free-energy terms is converted to Pa.
+        """
+        saturation_pressure = self._saturation_pressure_bar(temperature)
+        if saturation_pressure is None or saturation_pressure <= pressure:
+            return self._NO_NUCLEATION_LOG_RATIO
+
+        sigma = self._rathjen_straub_surface_tension_n_m(temperature)
+        delta_p_pa = (saturation_pressure - pressure) * 1e5
+        if sigma <= 0.0 or delta_p_pa <= 0.0 or liquid_density <= 0.0:
+            return self._NO_NUCLEATION_LOG_RATIO
+
+        mw_kg_per_kmol = self.helper._phase_mw_kg_per_kmol(
+            self.boundary_state.composition
+        )
+        molecule_mass_kg = mw_kg_per_kmol / (1000.0 * self._AVOGADRO)
+        number_density = liquid_density / molecule_mass_kg
+        free_energy_barrier = 16.0 * math.pi * sigma**3 / (3.0 * delta_p_pa**2)
+        log_prefactor = math.log(number_density) + 0.5 * math.log(
+            2.0 * sigma / (math.pi * molecule_mass_kg)
+        )
+        return (
+            log_prefactor
+            - free_energy_barrier / (self._BOLTZMANN_J_K * temperature)
+            - math.log(self._JCRIT_PER_M3_S)
+        )
+
+    def _metastable_liquid_state(
+        self,
+        pressure: float,
+    ) -> ChokeFlowState:
+        temperature, molar_enthalpy = self.helper.solve_single_phase_isentropic_state(
+            self.boundary_state,
+            pressure,
+        )
+        return self.helper.build_single_phase_flow_state(
+            phase_name="L",
+            pressure=pressure,
+            temperature=temperature,
+            composition=self.boundary_state.composition,
+            molar_enthalpy=molar_enthalpy,
+        )
+
+    def _velocity_from_state(self, state: ChokeFlowState) -> float:
+        h_stagnation = self._mass_specific_enthalpy_j_kg(
+            self.boundary_state.molar_enthalpy,
+            self.boundary_state.composition,
+        )
+        h_local = self._mass_specific_enthalpy_j_kg(
+            state.molar_enthalpy,
+            self.boundary_state.composition,
+        )
+        delta_h = h_stagnation - h_local
+        if not np.isfinite(delta_h) or delta_h <= 0.0:
+            return 0.0
+        return math.sqrt(2.0 * delta_h)
+
+    def _find_transition_state(self) -> DelayedHemTransitionState | None:
+        """
+        Find the SHL point along the metastable isentropic liquid path.
+
+        The first pressure where ``J >= Jcrit`` is used as Point 2 in the
+        SINTEF D-HEM construction.
+        """
+        upper = self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR)
+        lower = self._lower_pressure_search_bound(upper)
+        if lower is None:
+            return None
+
+        def residual(pressure: float) -> float:
+            state = self._metastable_liquid_state(pressure)
+            return self._nucleation_log_rate_ratio(
+                pressure,
+                state.temperature,
+                state.liquid_density,
+            )
+
+        samples = np.linspace(upper, lower, self._SHL_SCAN_POINTS)
+        previous_pressure = float(samples[0])
+        previous_value = residual(previous_pressure)
+        for pressure in samples[1:]:
+            try:
+                value = residual(float(pressure))
+            except (ValueError, RuntimeError, FloatingPointError):
+                previous_pressure = float(pressure)
+                previous_value = np.nan
+                continue
+            if (
+                np.isfinite(previous_value)
+                and np.isfinite(value)
+                and previous_value <= 0.0 <= value
+            ):
+                shl_pressure = brentq(residual, previous_pressure, float(pressure))
+                metastable_state = self._metastable_liquid_state(shl_pressure)
+                equilibrium_state = self.helper.build_equilibrium_flow_state(
+                    pressure=shl_pressure,
+                    molar_enthalpy=metastable_state.molar_enthalpy,
+                    composition=self.boundary_state.composition,
+                )
+                equilibrium_entropy = self.helper.evaluate_equilibrium_mixture_entropy(
+                    shl_pressure,
+                    metastable_state.molar_enthalpy,
+                    self.boundary_state.composition,
+                )
+                return DelayedHemTransitionState(
+                    pressure=float(shl_pressure),
+                    metastable_state=metastable_state,
+                    equilibrium_state=equilibrium_state,
+                    equilibrium_entropy=float(equilibrium_entropy),
+                )
+            previous_pressure = float(pressure)
+            previous_value = float(value)
+        return None
+
+    def _post_shl_equilibrium_state(
+        self,
+        pressure: float,
+        transition: DelayedHemTransitionState,
+    ) -> ChokeFlowState:
+        def entropy_residual(molar_enthalpy: float) -> float:
+            return (
+                self.helper.evaluate_equilibrium_mixture_entropy(
+                    pressure,
+                    molar_enthalpy,
+                    self.boundary_state.composition,
+                )
+                - transition.equilibrium_entropy
+            )
+
+        bracket = self.helper.find_bracket(
+            np.linspace(*self.helper.enthalpy_bounds, self._DHEM_ENTHALPY_ROOT_SAMPLES),
+            entropy_residual,
+        )
+        if bracket is None:
+            raise ValueError(
+                "Could not find an equilibrium entropy bracket for the D-HEM "
+                "post-SHL path."
+            )
+        if bracket[0] == bracket[1]:
+            molar_enthalpy = bracket[0]
+        else:
+            molar_enthalpy = brentq(entropy_residual, bracket[0], bracket[1])
+        return self.helper.build_equilibrium_flow_state(
+            pressure=pressure,
+            molar_enthalpy=self.helper.clamp_enthalpy(molar_enthalpy),
+            composition=self.boundary_state.composition,
+        )
+
+    def _mass_rate_from_state(self, state: ChokeFlowState) -> float:
+        if not np.isfinite(state.density) or state.density <= 0.0:
+            return 0.0
+        return (
+            state.density
+            * self._velocity_from_state(state)
+            * self.valve_geometry_model.effective_area
+        )
+
+    def _post_shl_mass_rate(
+        self,
+        pressure: float,
+        transition: DelayedHemTransitionState,
+    ) -> float:
+        state = self._post_shl_equilibrium_state(pressure, transition)
+        return self._mass_rate_from_state(state)
+
+    def _critical_solution(
+        self,
+        transition: DelayedHemTransitionState,
+    ) -> tuple[float, float, ChokeFlowState]:
+        """
+        Select the D-HEM choked state from SHL flux and post-SHL HEM flux.
+
+        SINTEF states that, when the post-SHL HEM path also reaches sonic
+        conditions, the D-HEM choke flux is the maximum of the SHL flux and the
+        post-SHL HEM choke flux.
+        """
+        shl_mass_rate = self._mass_rate_from_state(transition.metastable_state)
+        lower = self._lower_pressure_search_bound(
+            transition.pressure * (1.0 - self._PRESSURE_EPS_BAR)
+        )
+        if lower is None:
+            return transition.pressure, shl_mass_rate, transition.equilibrium_state
+
+        def objective(pressure: float) -> float:
+            return -self._post_shl_mass_rate(pressure, transition)
+
+        samples = np.linspace(
+            lower,
+            transition.pressure * (1.0 - self._PRESSURE_EPS_BAR),
+            self._CRITICAL_SCAN_POINTS,
+        )
+        rates = np.asarray(
+            [self._post_shl_mass_rate(p, transition) for p in samples],
+            dtype=float,
+        )
+        if np.all(~np.isfinite(rates)) or np.nanmax(rates) <= 0.0:
+            return transition.pressure, shl_mass_rate, transition.equilibrium_state
+
+        best_idx = int(np.nanargmax(rates))
+        lo_idx = max(best_idx - 1, 0)
+        hi_idx = min(best_idx + 1, len(samples) - 1)
+        if lo_idx == hi_idx:
+            post_critical_pressure = float(samples[best_idx])
+        else:
+            optimum = minimize_scalar(
+                objective,
+                bounds=(float(samples[lo_idx]), float(samples[hi_idx])),
+                method="bounded",
+            )
+            post_critical_pressure = float(optimum.x)
+
+        post_critical_state = self._post_shl_equilibrium_state(
+            post_critical_pressure,
+            transition,
+        )
+        post_critical_rate = self._mass_rate_from_state(post_critical_state)
+        if shl_mass_rate >= post_critical_rate:
+            return transition.pressure, shl_mass_rate, transition.equilibrium_state
+        return post_critical_pressure, post_critical_rate, post_critical_state
+
+    def evaluate(self, downstream_pressure: float) -> ChokeEvaluationResult:
+        """
+        Evaluate SINTEF D-HEM critical/subcritical restricted flow.
+
+        Above SHL, the downstream pressure is evaluated on the metastable liquid
+        path. Below SHL, the post-transition equilibrium path is used unless the
+        SHL or post-SHL maximum has already choked the flow.
+        """
+        transition = self._find_transition_state()
+        if transition is None:
+            pressure = float(
+                np.clip(
+                    downstream_pressure,
+                    self._lower_pressure_search_bound(
+                        self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR)
+                    )
+                    or self._MIN_PRESSURE_BAR,
+                    self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR),
+                )
+            )
+            state = self._metastable_liquid_state(pressure)
+            return ChokeEvaluationResult(
+                mass_rate_kg_s=self._mass_rate_from_state(state),
+                discharge_molar_enthalpy=state.molar_enthalpy,
+                throat_pressure=pressure,
+                flow_regime="subcritical",
+                discharge_density=state.density,
+                discharge_inv_momentum_density=state.inv_momentum_density,
+                discharge_gas_mass_fraction=state.gas_mass_fraction,
+            )
+
+        critical_pressure, critical_mass_rate, critical_state = self._critical_solution(
+            transition
+        )
+        if downstream_pressure <= critical_pressure:
+            state = critical_state
+            pressure = critical_pressure
+            mass_rate = critical_mass_rate
+            regime = "critical"
+        elif downstream_pressure > transition.pressure:
+            pressure = float(
+                np.clip(
+                    downstream_pressure,
+                    transition.pressure,
+                    self.boundary_state.pressure * (1.0 - self._PRESSURE_EPS_BAR),
+                )
+            )
+            state = self._metastable_liquid_state(pressure)
+            mass_rate = self._mass_rate_from_state(state)
+            regime = "subcritical"
+        else:
+            pressure = float(
+                np.clip(
+                    downstream_pressure,
+                    self._lower_pressure_search_bound(
+                        transition.pressure * (1.0 - self._PRESSURE_EPS_BAR)
+                    )
+                    or self._MIN_PRESSURE_BAR,
+                    transition.pressure * (1.0 - self._PRESSURE_EPS_BAR),
+                )
+            )
+            state = self._post_shl_equilibrium_state(pressure, transition)
+            mass_rate = self._mass_rate_from_state(state)
+            regime = "subcritical"
+
+        return ChokeEvaluationResult(
+            mass_rate_kg_s=mass_rate,
+            discharge_molar_enthalpy=state.molar_enthalpy,
+            throat_pressure=float(pressure),
+            flow_regime=regime,
+            discharge_density=state.density,
+            discharge_inv_momentum_density=state.inv_momentum_density,
+            discharge_gas_mass_fraction=state.gas_mass_fraction,
+        )
+
+
 class PerkinsChokeModel(ChokeModel):
     """
     Perkins critical/subcritical choke model with open-DARTS thermodynamics.
@@ -2484,6 +2974,8 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
     for the Perkins energy-equation critical/subcritical choke method.
     ``hydraulic_model='SINTEF_HEM'`` is available for dense/liquid CO2 injection
     with homogeneous-equilibrium flashing through the restriction.
+    ``hydraulic_model='SINTEF_DHEM'`` is available for pure CO2 injection with
+    delayed flashing from the SINTEF SHL/CNT construction.
 
     The API exposes OLGA-style choke inputs explicitly:
       - discharge_coefficient ~= CD
@@ -2535,6 +3027,8 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
                                   Perry-orifice recovery when RECOVERY='ON'.
                                 - SINTEF_HEM: SINTEF-style homogeneous-equilibrium
                                   restricted-flow model for flashing dense/liquid CO2.
+                                - SINTEF_DHEM: SINTEF-style delayed HEM model
+                                  for pure CO2 with CNT superheat-limit flashing.
         :param valve_geometry: Valve geometry used in the choke model:
                                - ORIFICE: Orifice type with no spatial extension, vena contracta appears behind the valve.
                                - BEAN: Bean type with spatial extension, vena contracta appears inside the valve.
@@ -2556,9 +3050,10 @@ class UpstreamPressureNodeWithChoke(UpstreamRampUpRate):
                          recovery. Use ON with PERKINS when the downstream
                          pressure is a recovered pipe pressure after the choke,
                          as in a well segment pressure. Use OFF with
-                         SINTEF_HEM; that model evaluates subcritical flow at
-                         the downstream pressure and internally selects the
-                         critical throat pressure when choked.
+                         SINTEF_HEM or SINTEF_DHEM; those models evaluate
+                         subcritical flow at the downstream pressure and
+                         internally select the critical throat pressure when
+                         choked.
         :param recovery_tuning: 1 gives maximum recovery and 0 gives zero recovery
         :param slip_model: Slip model for choke throat. Only NOSLIP is currently usable;
                            CHISHOLM is declared but raises NotImplementedError.

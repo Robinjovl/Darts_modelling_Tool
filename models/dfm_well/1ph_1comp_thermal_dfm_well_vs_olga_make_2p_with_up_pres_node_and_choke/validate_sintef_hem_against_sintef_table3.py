@@ -9,6 +9,8 @@ two choices:
   expected to be biased for flashing releases.
 * SINTEF_HEM with equilibrium flashing and contraction coefficients from the
   SINTEF HEM comparison.
+* SINTEF_DHEM with CNT-delayed flashing and the Rathjen-Straub CO2
+  surface-tension correlation.
 """
 
 from __future__ import annotations
@@ -21,8 +23,8 @@ from pathlib import Path
 import numpy as np
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-EXAMPLE_DIR = SCRIPT_DIR.parent
-REPO_ROOT = EXAMPLE_DIR.parents[2]
+EXAMPLE_DIR = SCRIPT_DIR
+REPO_ROOT = SCRIPT_DIR.parents[2]
 
 for path in (REPO_ROOT, EXAMPLE_DIR):
     path_text = str(path)
@@ -52,6 +54,7 @@ class SintefCase:
     measured_mass_rate_kg_s: float
     measured_mass_flux_t_m2_s: float
     sintef_hem_mass_flux_t_m2_s: float
+    sintef_dhem_mass_flux_t_m2_s: float
     contraction_coefficient: float
 
 
@@ -64,17 +67,18 @@ class ValidationResult:
     predicted_mass_flux_t_m2_s: float
     measured_error_pct: float
     sintef_hem_error_pct: float | None
+    sintef_dhem_error_pct: float | None
     throat_pressure_bar: float
     flow_regime: str
 
 
 SINTEF_CASES = (
-    SintefCase(13, "orifice", 12.7, 24.6, 12.77, 9.61, 8.592, 67.8, 63.9, 0.75),
-    SintefCase(16, "orifice", 4.5, 24.4, 12.17, 11.58, 1.600, 100.6, 74.8, 0.74),
-    SintefCase(17, "nozzle", 4.5, 25.2, 12.40, 11.74, 1.807, 113.6, 101.6, 1.0),
-    SintefCase(18, "nozzle", 12.7, 25.1, 12.41, 8.81, 10.072, 79.5, 76.1, 1.0),
-    SintefCase(20, "nozzle", 9.0, 22.7, 11.40, 9.40, 5.515, 86.7, 83.7, 1.0),
-    SintefCase(21, "orifice", 9.0, 22.0, 11.50, 9.94, 4.208, 66.2, 66.4, 0.74),
+    SintefCase(13, "orifice", 12.7, 24.6, 12.77, 9.61, 8.592, 67.8, 63.9, 70.1, 0.75),
+    SintefCase(16, "orifice", 4.5, 24.4, 12.17, 11.58, 1.600, 100.6, 74.8, 79.6, 0.74),
+    SintefCase(17, "nozzle", 4.5, 25.2, 12.40, 11.74, 1.807, 113.6, 101.6, 107.7, 1.0),
+    SintefCase(18, "nozzle", 12.7, 25.1, 12.41, 8.81, 10.072, 79.5, 76.1, 84.5, 1.0),
+    SintefCase(20, "nozzle", 9.0, 22.7, 11.40, 9.40, 5.515, 86.7, 83.7, 92.5, 1.0),
+    SintefCase(21, "orifice", 9.0, 22.0, 11.50, 9.94, 4.208, 66.2, 66.4, 73.0, 0.74),
 )
 
 PIPE_DIAMETER_M = 0.0408
@@ -185,11 +189,18 @@ def evaluate_case(
         / case.measured_mass_flux_t_m2_s
     )
     sintef_hem_error = None
+    sintef_dhem_error = None
     if hydraulic_model == "SINTEF_HEM":
         sintef_hem_error = (
             100.0
             * (predicted_mass_flux - case.sintef_hem_mass_flux_t_m2_s)
             / case.sintef_hem_mass_flux_t_m2_s
+        )
+    if hydraulic_model == "SINTEF_DHEM":
+        sintef_dhem_error = (
+            100.0
+            * (predicted_mass_flux - case.sintef_dhem_mass_flux_t_m2_s)
+            / case.sintef_dhem_mass_flux_t_m2_s
         )
     density = helper.evaluate_phase_density(
         "L",
@@ -205,6 +216,7 @@ def evaluate_case(
         predicted_mass_flux_t_m2_s=predicted_mass_flux,
         measured_error_pct=measured_error,
         sintef_hem_error_pct=sintef_hem_error,
+        sintef_dhem_error_pct=sintef_dhem_error,
         throat_pressure_bar=result.throat_pressure,
         flow_regime=result.flow_regime,
     )
@@ -215,6 +227,7 @@ def _print_results(
     results: list[ValidationResult],
     *,
     compare_to_sintef_hem: bool = False,
+    compare_to_sintef_dhem: bool = False,
 ) -> None:
     print(title)
     print(
@@ -228,6 +241,8 @@ def _print_results(
     )
     if compare_to_sintef_hem:
         header += "  sintef_hem_j  hem_err_%"
+    if compare_to_sintef_dhem:
+        header += "  sintef_dhem_j  dhem_err_%"
     header += "  p_throat_bar  regime"
     print(header)
     for item in results:
@@ -245,6 +260,11 @@ def _print_results(
             row += (
                 f"{item.case.sintef_hem_mass_flux_t_m2_s:>13.3f} "
                 f"{item.sintef_hem_error_pct:>9.2f} "
+            )
+        if compare_to_sintef_dhem:
+            row += (
+                f"{item.case.sintef_dhem_mass_flux_t_m2_s:>14.3f} "
+                f"{item.sintef_dhem_error_pct:>10.2f} "
             )
         row += (
             f"{item.throat_pressure_bar:>13.3f} "
@@ -275,6 +295,22 @@ def _print_results(
             f"{sum(abs_hem_errors) / len(abs_hem_errors):.2f}%"
         )
         print(f"SINTEF HEM max absolute error: {max(abs_hem_errors):.2f}%")
+    if compare_to_sintef_dhem:
+        dhem_errors = [
+            item.sintef_dhem_error_pct
+            for item in results
+            if item.sintef_dhem_error_pct is not None
+        ]
+        abs_dhem_errors = [abs(error) for error in dhem_errors]
+        print(
+            f"SINTEF D-HEM mean signed error: "
+            f"{sum(dhem_errors) / len(dhem_errors):.2f}%"
+        )
+        print(
+            f"SINTEF D-HEM mean absolute error: "
+            f"{sum(abs_dhem_errors) / len(abs_dhem_errors):.2f}%"
+        )
+        print(f"SINTEF D-HEM max absolute error: {max(abs_dhem_errors):.2f}%")
 
 
 def main() -> None:
@@ -302,6 +338,17 @@ def main() -> None:
         )
         for case in SINTEF_CASES
     ]
+    dhem_results = [
+        evaluate_case(
+            helper,
+            case,
+            hydraulic_model="SINTEF_DHEM",
+            equilibrium_model="EQUILIBRIUM",
+            discharge_coefficient=case.contraction_coefficient,
+            recovery="OFF",
+        )
+        for case in SINTEF_CASES
+    ]
     _print_results(
         "Perkins FROZEN-liquid comparison against SINTEF Table 3 "
         f"(Cd={PERKINS_AVERAGE_DISCHARGE_COEFFICIENT}, recovery=ON). "
@@ -314,6 +361,13 @@ def main() -> None:
         "(Cd=case contraction coefficient, recovery=OFF).",
         hem_results,
         compare_to_sintef_hem=True,
+    )
+    print()
+    _print_results(
+        "SINTEF_DHEM delayed-flashing comparison "
+        "(Cd=case contraction coefficient, recovery=OFF).",
+        dhem_results,
+        compare_to_sintef_dhem=True,
     )
 
 
