@@ -5,6 +5,12 @@ from tools import print_range_array
 from datetime import datetime
 from scipy.interpolate import griddata as gd
 
+try:
+    from _proxygeomech_cuda import compute_geomech_cuda as _compute_geomech_cuda
+    HAS_GPU = True
+except ImportError:
+    HAS_GPU = False
+
 # arg: t - 1D array of 6 values in Voight notation
 # returns (3x3) tensor
 def get_tensor_from_voight(t):
@@ -68,6 +74,10 @@ class geomech():
     def set_num_threads(self, n_threads : int):
         from _proxygeomech import set_num_threads
         set_num_threads(n_threads)
+
+    def set_platform(self, platform : str):
+        from _proxygeomech import set_platform
+        set_platform(platform)
 
     def calc_displacements(self, points, prisms, delta_pressure, delta_temperature):
         '''

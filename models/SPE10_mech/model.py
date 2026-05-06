@@ -185,10 +185,8 @@ class Model(THMCModel):
         # as the perf is single, put it to the middle depth of the rsv
         perf_depth_start = (self.idata.other.rsv_top + self.idata.other.rsv_bottom)*0.5
         
-        # 50 - to put into the cell center as (0,0) is a boundary between two cells
-        cell_shift = 50.
-        if nx == 64:
-            cell_shift = 0. # if the mesh is centered at (0,0)
+        #cell_shift = 50.        # 50 - to put into the cell center as (0,0) is a boundary between two cells
+        cell_shift = 0. # if the mesh is centered at (0,0)
         self.idata.other.prod_well_coords = [cell_shift - shift, cell_shift, perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
         self.idata.other.inj_well_coords = [cell_shift + shift, cell_shift, perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
         self.well_init_depth = perf_depth_start
@@ -215,10 +213,10 @@ class Model(THMCModel):
         self.idata.mesh.tags = self.idata.mesh.bnd_tags.copy()
         self.idata.mesh.tags['MATRIX_1'] = mat_tag
 
-        if nx == 6: # for debugging, -4..4 km XY
-            Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
-        elif nx == 16: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
-            Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
+        if nx == 7: # for debugging, -4..4 km XY
+            Xc = np.array([-4000, -2000, -1000, -100, 100, 1000, 2000, 4000])
+        elif nx == 17: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
+            Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, -50, 50, 100, 200, 300, 400, 500, 1000, 2000, 4000])
         elif nx == 71: # rsv corners and near-well (middle) are refined
             Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
                           [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
@@ -230,13 +228,6 @@ class Model(THMCModel):
                           [-1100, -1000, -900] +
                           np.arange(-800, -100, 100).tolist() + [-50])
             Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
-        elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 100-7000 m
-            Xc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
-        #elif nx == 41: # 41x41
-        #    pass
-        #    #rsv = np.arange(-900, 1000, 200)
-        #    #side = np.arange(1000, 6500, 1000)
-        #    #self.Xc = np.hstack([-side, rsv, side])
         else:
             print('not found an option to mesh with nx = ', nx)
             exit(1)
@@ -274,9 +265,10 @@ class Model(THMCModel):
             
         # no frac
         Yc = Xc.copy()
-        if self.idata.other.perm_frac:
-            Yc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 0, 100).tolist() + [-self.idata.other.frac_width/2., self.idata.other.frac_width/2.] + np.arange(100, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
-        
+        if self.idata.other.perm_frac: # insert to the middle (y=0) a thin layer representing a fracture
+            Yc = np.hstack([Yc[Yc<0], np.array([-self.idata.other.frac_width/2., self.idata.other.frac_width/2.]), Yc[Yc>0]])
+            
+            
         self.idata.other.Xc = Xc
         self.idata.other.Yc = Yc
         self.idata.other.Zc = Zc

@@ -263,12 +263,9 @@ if __name__ == '__main__':
     #decouple_geomech = False
 
     # nx ny nz
-    #mesh='16_16_15'  # for debugging
-    #mesh='34_34_57' # rsv 2100-2200
-    #mesh='34_34_66' # rsv 2000-2400
+    #mesh='17_17_15'  # for debugging
     mesh='41_41_66'
     #mesh='71_71_66'
-    #mesh='34_35_57'  # perm_frac
 
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing

@@ -129,9 +129,9 @@ def read_thm_solution_from_vtk(m, folder : str, timestep: int):
     thm_sol.rsv_centroids = centroids[rsv, :]
     return thm_sol
 
-def run_geomech_proxy(case, physics_type='single_phase', 
+def run_geomech_proxy(case, physics_type='single_phase',
                       wells_type=None, timestep=1, modes=[],
-                      generate_mesh=True, n_threads=1):
+                      generate_mesh=True, n_threads=1, use_gpu=False):
     folder = os.path.join('results', 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case)  # where vtk files are located
 
     # init geomech proxy
@@ -152,6 +152,14 @@ def run_geomech_proxy(case, physics_type='single_phase',
     
     g.set_num_threads(n_threads)
     print('N_THREADS =', n_threads)
+    if use_gpu:
+        from geomechanics import HAS_GPU
+        if not HAS_GPU:
+            raise RuntimeError('use_gpu=True but _proxygeomech_cuda is not available')
+        g.set_platform('gpu')
+        print('PLATFORM = gpu')
+    else:
+        print('PLATFORM = cpu')
     
     thm_sol = read_thm_solution_from_vtk(m, folder=folder, timestep=timestep)
     g.centroids = thm_sol.rsv_centroids
@@ -536,6 +544,38 @@ def run_geomech_proxy(case, physics_type='single_phase',
             plt.savefig(os.path.join(output_folder, arr_name + '_imshow.png'))
             plt.close()
 
+    def plot_mesh_skeleton(output_folder):
+        Xc = m.idata.other.Xc
+        Zc = m.idata.other.Zc
+        rsv_top = m.idata.other.rsv_top
+        rsv_bottom = m.idata.other.rsv_bottom
+
+        Xc_plot = Xc[(Xc >= -1700) & (Xc <= 1700)]
+        Zc_plot = Zc[(Zc >= rsv_top - 500) & (Zc <= rsv_bottom + 500)]
+
+        rsv_xy = m.idata.other.rsv_xy
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        for xi in Xc_plot:
+            is_rsv_bnd = np.isclose(xi, -rsv_xy) or np.isclose(xi, rsv_xy)
+            ax.axvline(x=xi, color='steelblue', linewidth=2.5 if is_rsv_bnd else 0.7,
+                       zorder=3 if is_rsv_bnd else 1)
+        for zi in Zc_plot:
+            is_rsv_bnd = np.isclose(zi, rsv_top) or np.isclose(zi, rsv_bottom)
+            ax.axhline(y=zi, color='coral', linewidth=2.5 if is_rsv_bnd else 0.7,
+                       zorder=3 if is_rsv_bnd else 1)
+        ax.set_xlim(Xc_plot.min(), Xc_plot.max())
+        ax.set_ylim(Zc_plot.min(), Zc_plot.max())
+        ax.invert_yaxis()
+        ax.set_xlabel('X, m.')
+        ax.set_ylabel('Depth, m.')
+        ax.set_title('Mesh skeleton (Xc in [-1200,1200], Zc near reservoir)')
+        ax.set_aspect('auto')
+        fig.tight_layout()
+        fig.savefig(os.path.join(output_folder, 'mesh_skeleton.png'))
+        plt.close(fig)
+        print('Saved mesh_skeleton.png')
+
     def save_html_prx_vs_thm(base_names, output_folder, filename='proxy_vs_thm_2d.html',
                               locs=None, modes_1d=None, suffix_1d='all'):
         # dp + dt contours at the top
@@ -680,14 +720,15 @@ def run_geomech_proxy(case, physics_type='single_phase',
         points_y = np.array([0.])
         points_z = np.unique(g.centroids[:, 2])
 
-        if False: # while reading a coarser grid as sources, evaluate at finer grid centers
-            #nx == 71: # rsv corners and near-well (middle) are refined
+        if '2d_slices_41_71' in modes: # while reading a coarser grid as sources, evaluate at finer grid centers
+            # replace points_x by ones from the finer grid
+            # Xc from nx == 71 case in model.py: # rsv corners and near-well (middle) are refined
             Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
                           [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
                           np.arange(-800, -100, 100).tolist() + 
                           np.arange(-100, 0, 10).tolist())
             Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
-            points_x = (Xc[1:] + Xc[:-1]) * 0.5 # çenters
+            points_x = (Xc[1:] + Xc[:-1]) * 0.5 # centers
             
         # cut points far from the reservoir for better zoom in plots
         points_x = points_x[reduce(np.logical_and, [points_x > -5000., points_x < 5000.])]
@@ -755,9 +796,10 @@ def run_geomech_proxy(case, physics_type='single_phase',
         shared_cbar = True  # use same colorbar min/max for prx and thm plots of the same variable
 
         # compare proxy vs thm on finer mesh although coarser mesh data used as the input for proxy
-        #folder_71 = folder.replace('41_41_66', '71_71_66')
-        #thm_sol = read_thm_solution_from_vtk(m, folder=folder_71, timestep=timestep)
-        
+        if '2d_slices_41_71' in modes:
+            folder_71 = folder.replace('41_41_66', '71_71_66')
+            thm_sol = read_thm_solution_from_vtk(m, folder=folder_71, timestep=timestep)
+            
         # THM 2D plots on the same grid
         thm_raw = {'Horizontal displacements (X), mm. - THM': thm_sol.ux_last * m2mm,
                    'Vertical displacements, mm. - THM': thm_sol.uz_last * m2mm,
@@ -765,7 +807,9 @@ def run_geomech_proxy(case, physics_type='single_phase',
                    'Vertical effective stress change, MPa - THM': thm_sol.delta_Szz_last,
                    'Horizontal total stress change (XX), MPa - THM': thm_sol.delta_total_Sxx_last,
                    'Vertical total stress change, MPa - THM': thm_sol.delta_total_Szz_last}
-        thm_interp = get_thm_by_interp(thm_raw, points[1, :], points[0, :], points[2, :], method='nearest') # nearest is better here as eval points are centroids
+        thm_interp_method = 'nearest' # nearest is better here as eval points are centroids
+        #thm_interp_method = 'linear' # 
+        thm_interp = get_thm_by_interp(thm_raw, points[1, :], points[0, :], points[2, :], method=thm_interp_method) 
         array_dict_thm = {k: v.reshape((p_nx, p_ny, p_nz))[:, 0, :].transpose()
                           for k, v in thm_interp.items()}
 
@@ -788,6 +832,12 @@ def run_geomech_proxy(case, physics_type='single_phase',
 
         plot_contour(array_dict_thm, points_x, points_z, output_folder=output_folder, slice='XZ', vlims=vlims_thm)
 
+        print('Array ranges:')
+        for b in base_names:
+            prx = array_dict[f'{b} - Proxy']
+            thm = array_dict_thm[f'{b} - THM']
+            print(f'  {b}  Proxy [{prx.min():.4g}, {prx.max():.4g}]  THM [{thm.min():.4g}, {thm.max():.4g}]')
+
         # THM - Proxy difference 2D plots
         diff_clip = None
         #diff_clip = 0.1  # nullify stress differences larger than this value as they affect the axis range but located in very small vicinity 
@@ -800,6 +850,8 @@ def run_geomech_proxy(case, physics_type='single_phase',
             array_dict_diff[f'{b} - Difference'] = d
             #array_dict_diff[f'{b} - Relative Difference'] = rd
         plot_contour(array_dict_diff, points_x, points_z, output_folder=output_folder, slice='XZ')
+
+        plot_mesh_skeleton(output_folder)
 
         if False:
             print('Relative difference THM vs Proxy (% of |THM|):')
@@ -912,16 +964,12 @@ def run_geomech_proxy(case, physics_type='single_phase',
 if __name__ == '__main__':
 
     # nx ny nz
-    #case = '6_6_5'  # for debugging
-    #case = '16_16_15'
+    #case = '7_7_5'  # for debugging
+    #case = '17_17_15' # for testing
 
-    #case = '34_34_66'  # z 0 - 5 km 
     case = '41_41_66' # without refinement
     #case ='71_71_66' #refined middle and tips
-    #case = '42_42_66'  # z 0 - 5 km 
-    #case = '34_34_90'  # z 0 - 5 km more refined around rsv
-    #case = '42_42_90'  # z 0 - 5 km more refined around rsv
-    #case='34_35_57' # perm_frac
+   #case = '71_71_90'  # z 0 - 5 km more refined around rsv
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -971,6 +1019,11 @@ if __name__ == '__main__':
     #modes += ['print_at_point']
     #modes += ['plot_vertic_line']
     modes += ['plot_2d_slices']
+    #modes += ['2d_slices_41_71'] # coarse mesh THM (nx=41) => finer eval points in proxy (nx=71) and compare it against finer THM (nx=71) 
+
+    # for proxy:
+    n_threads = 24  # CPU cores
+    use_gpu = False  # CUDA
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
@@ -992,7 +1045,7 @@ if __name__ == '__main__':
             t1 = datetime.now()
             run_geomech_proxy(case=case, physics_type=physics_type, 
                               wells_type=wells_type, modes=modes,
-                              timestep=timestep, n_threads=24)
+                              timestep=timestep, n_threads=n_threads, use_gpu=use_gpu)
             t2 = datetime.now()
             proxy_time = t2 - t1
 
