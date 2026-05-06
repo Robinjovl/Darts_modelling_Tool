@@ -416,7 +416,8 @@ class Model(THMCModel):
             
             self.well_cell_ids.append(ids_1)
             # adding a well
-            self.reservoir.add_well(well_names[i])#, depth=self.well_init_depth)
+            #self.reservoir.add_well(well_names[i])
+            self.reservoir.add_well(well_names[i], depth=self.well_init_depth)
             # adding perforations
             for cell_id in ids_1:
                 cell = elems[cell_id]
@@ -440,10 +441,10 @@ class Model(THMCModel):
                 wi_z = 2 * np.pi * np.sqrt(mean_perm_xx * mean_perm_yy) * dz / np.log(rp_z / rw)
                 well_index = np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
                 # add perforation
-                #self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
-                self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=cell_id, well_index=well_index, well_indexD=0., ms_epm=True, verbose=True)
+                self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
+                #self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=cell_id, well_index=well_index, well_indexD=0., ms_epm=True, verbose=True)
                 print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', centroids_3d[cell_id,:])
-                #break  #TODO add only one perforation for now, need to fix the issue with the crossflow
+                break  #TODO add only one perforation for now, need to fix the issue with the crossflow
 
 
     def set_boundary_conditions(self): # for initial mechanical equilibrium initialization, wells are switched off
