@@ -12,6 +12,7 @@ from main import run
 m2mm = 1e3
 bars2mpa = 0.1
 Pa2bars = 1e-5
+g_grav = 9.81  # m/s^2
 
 def fmt(x):
     return '{:.3}'.format(x)
@@ -715,6 +716,8 @@ def run_geomech_proxy(case, physics_type='single_phase',
         if wells_type in ['inj', 'doublet']:
             points_xy['inj_well'] = m.idata.other.inj_well_coords[:2]
 
+    base_names = [] # for html/pdf reports
+
     # compute with proxy for 2D slice
     if 'plot_2d_slices' in modes:
         points_x = np.unique(g.centroids[:, 0])
@@ -753,6 +756,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         #plot_imshow(array_dict, points_x, points_z, output_folder=output_folder, slice = 'XZ')
         
         if True: # run proxy and save PKLs
+            print('computing proxy...')
             ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
             ux_prx = ux_prx.reshape((p_nx, p_ny, p_nz))
             uy_prx = uy_prx.reshape((p_nx, p_ny, p_nz))
@@ -868,6 +872,52 @@ def run_geomech_proxy(case, physics_type='single_phase',
 
         pass  # HTML/PDF reports are saved after 1D plots are generated (see below)
 
+    if 'plot_2d_thm_41_vs_71' in modes:
+        from model import Model
+        m_41 = Model(model_folder='41_41_66', physics_type=physics_type, uniform_props=False,
+                     wells_type=wells_type, decouple_geomech=True, generate_mesh=False, dummy='yes')
+        m_41.set_input_data()
+
+        folder_41 = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_41_41_66')
+        folder_71 = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_71_71_66')
+
+        thm_sol_41 = read_thm_solution_from_vtk(m_41, folder=folder_41, timestep=timestep)
+        thm_sol_71 = read_thm_solution_from_vtk(m, folder=folder_71, timestep=timestep)
+
+        # eval grid from 71 centroids (finer), same x/z filter as plot_2d_slices
+        pts_x = np.unique(thm_sol_71.centroids[:, 0])  # follows existing naming convention
+        pts_y = np.array([0.])
+        pts_z = np.unique(thm_sol_71.centroids[:, 2])
+        pts_x = pts_x[reduce(np.logical_and, [pts_x > -5000., pts_x < 5000.])]
+        pts_z = pts_z[reduce(np.logical_and, [pts_z > 1400., pts_z < 3400.])]
+
+        p_nx, p_ny, p_nz = pts_x.size, pts_y.size, pts_z.size
+        px3, py3, pz3 = np.meshgrid(pts_x, pts_y, pts_z)
+        pts = np.zeros((3, px3.size))
+        pts[0, :], pts[1, :], pts[2, :] = px3.flatten(), py3.flatten(), pz3.flatten()
+
+        def interp_thm_dp(thm_s):
+            return gd(
+                (thm_s.centroids[:, 1], thm_s.centroids[:, 0], thm_s.centroids[:, 2]),
+                thm_s.delta_pressure,
+                (pts[1, :], pts[0, :], pts[2, :]),
+                method='linear', fill_value=0.
+            ).reshape((p_nx, p_ny, p_nz))
+
+        dp_41 = interp_thm_dp(thm_sol_41)
+        dp_71 = interp_thm_dp(thm_sol_71)
+
+        vmin = min(dp_41.min(), dp_71.min())
+        vmax = max(dp_41.max(), dp_71.max())
+        vlims_cmp = {'delta_pressure, MPa - THM 41': (vmin, vmax),
+                     'delta_pressure, MPa - THM 71': (vmin, vmax)}
+        plot_contour({'delta_pressure, MPa - THM 41': dp_41[:, 0, :].transpose()},
+                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp)
+        plot_contour({'delta_pressure, MPa - THM 71': dp_71[:, 0, :].transpose()},
+                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp)
+        plot_contour({'delta_pressure, MPa - Difference (71-41)': (dp_71 - dp_41)[:, 0, :].transpose()},
+                     pts_x, pts_z, output_folder=output_folder, slice='XZ')
+
     modes_1d = []
     if 'plot_vertic_line' in modes: # 1D plots (along vertical lines at points_xy)
         for k in points_xy.keys():
@@ -953,9 +1003,9 @@ def run_geomech_proxy(case, physics_type='single_phase',
         rock_dens = m.idata.rock.density
         fluid_dens = m.idata.fluid.density
         
-        p_init_by_density = 9.81 * fluid_dens * max_depth * Pa2bars
-        szz_init_by_density = 9.81 * (rock_dens*(1-poro_non_rsv) + fluid_dens*poro_non_rsv) * (max_depth - rsv_thickness) * Pa2bars
-        szz_init_by_density += 9.81 * (rock_dens*(1-poro_rsv) + fluid_dens*poro_rsv) * rsv_thickness * Pa2bars
+        p_init_by_density = g_grav * fluid_dens * max_depth * Pa2bars
+        szz_init_by_density = g_grav * (rock_dens*(1-poro_non_rsv) + fluid_dens*poro_non_rsv) * (max_depth - rsv_thickness) * Pa2bars
+        szz_init_by_density += g_grav * (rock_dens*(1-poro_rsv) + fluid_dens*poro_rsv) * rsv_thickness * Pa2bars
         # Note, that THM depth is at cell center 
         print('Pressure at depth ', max_depth, 'by gradient=', fmt(p_init_by_density),
               'THM=', fmt(thm_sol.p_init.max()), 'bars')
@@ -968,8 +1018,8 @@ if __name__ == '__main__':
     #case = '7_7_5'  # for debugging
     #case = '17_17_15' # for testing
 
-    case = '41_41_66' # without refinement
-    #case ='71_71_66' #refined middle and tips
+    #case = '41_41_66' # without refinement
+    case ='77_77_66' #refined middle and tips
     #case = '71_71_90'  # z 0 - 5 km more refined around rsv
 
     #uniform_props = True
@@ -1017,10 +1067,11 @@ if __name__ == '__main__':
     
     modes = []
     #modes += ['check_initial'] # check initial pressure and stress for THM
-    #modes += ['print_at_point']
-    #modes += ['plot_vertic_line']
+    #modes += ['print_at_point'] # compare both THM and proxy versus analytical solution
+    #modes += ['plot_vertic_line'] 
     modes += ['plot_2d_slices']
-    modes += ['2d_slices_41_71'] # coarse mesh THM (nx=41) => finer eval points in proxy (nx=71) and compare it against finer THM (nx=71) 
+    #modes += ['2d_slices_41_71'] # coarse mesh THM (nx=41) => finer eval points in proxy (nx=71) and compare it against finer THM (nx=71); only if case ='41_41_66'
+    #modes += ['plot_2d_thm_41_vs_71']  # compare delta_pressure: THM 41_41_66 vs THM 71_71_66. This doesn't run proxy
 
     # for proxy:
     n_threads = 24  # CPU cores

@@ -217,8 +217,8 @@ class Model(THMCModel):
             Xc = np.array([-4000, -2000, -1000, -100, 100, 1000, 2000, 4000])
         elif nx == 17: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
             Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, -50, 50, 100, 200, 300, 400, 500, 1000, 2000, 4000])
-        elif nx == 71: # rsv corners and near-well (middle) are refined
-            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
+        elif nx == 83: # rsv corners and near-well (middle) are refined
+            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1500,-1450,-1400,-1350,-1300,-1250,-1200,-1150] + 
                           [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
                           np.arange(-800, -100, 100).tolist() + 
                           np.arange(-100, 0, 10).tolist())
@@ -434,7 +434,7 @@ class Model(THMCModel):
                 # add perforation
                 self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
                 #self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=cell_id, well_index=well_index, well_indexD=0., ms_epm=True, verbose=True)
-                print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', centroids_3d[cell_id,:])
+                print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', centroids_3d[cell_id,:], 'well_index=', well_index)
                 break  #TODO add only one perforation for now, need to fix the issue with the crossflow
 
 
