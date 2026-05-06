@@ -945,14 +945,13 @@ if __name__ == '__main__':
         wells_types_list += ['doublet']
     
     # for THM solver run
-    
     if not thermal:
         n_years = 1
     else:
         n_years = 30
-
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
+    
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
     timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
     
