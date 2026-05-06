@@ -557,13 +557,14 @@ def run_geomech_proxy(case, physics_type='single_phase',
 
         fig, ax = plt.subplots(figsize=(8, 6))
         for xi in Xc_plot:
-            is_rsv_bnd = np.isclose(xi, -rsv_xy) or np.isclose(xi, rsv_xy)
-            ax.axvline(x=xi, color='steelblue', linewidth=2.5 if is_rsv_bnd else 0.7,
-                       zorder=3 if is_rsv_bnd else 1)
+            ax.axvline(x=xi, color='steelblue', linewidth=0.7, zorder=1)
         for zi in Zc_plot:
-            is_rsv_bnd = np.isclose(zi, rsv_top) or np.isclose(zi, rsv_bottom)
-            ax.axhline(y=zi, color='coral', linewidth=2.5 if is_rsv_bnd else 0.7,
-                       zorder=3 if is_rsv_bnd else 1)
+            ax.axhline(y=zi, color='coral', linewidth=0.7, zorder=1)
+        # reservoir boundary rectangle (dashed red, lines clipped to their crossing points)
+        from matplotlib.patches import Rectangle
+        rect = Rectangle((-rsv_xy, rsv_top), 2 * rsv_xy, rsv_bottom - rsv_top,
+                         linewidth=2., edgecolor='red', linestyle='--', facecolor='none', zorder=3)
+        ax.add_patch(rect)
         ax.set_xlim(Xc_plot.min(), Xc_plot.max())
         ax.set_ylim(Zc_plot.min(), Zc_plot.max())
         ax.invert_yaxis()
@@ -969,7 +970,7 @@ if __name__ == '__main__':
 
     case = '41_41_66' # without refinement
     #case ='71_71_66' #refined middle and tips
-   #case = '71_71_90'  # z 0 - 5 km more refined around rsv
+    #case = '71_71_90'  # z 0 - 5 km more refined around rsv
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -1019,7 +1020,7 @@ if __name__ == '__main__':
     #modes += ['print_at_point']
     #modes += ['plot_vertic_line']
     modes += ['plot_2d_slices']
-    #modes += ['2d_slices_41_71'] # coarse mesh THM (nx=41) => finer eval points in proxy (nx=71) and compare it against finer THM (nx=71) 
+    modes += ['2d_slices_41_71'] # coarse mesh THM (nx=41) => finer eval points in proxy (nx=71) and compare it against finer THM (nx=71) 
 
     # for proxy:
     n_threads = 24  # CPU cores

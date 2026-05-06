@@ -268,7 +268,6 @@ class Model(THMCModel):
         if self.idata.other.perm_frac: # insert to the middle (y=0) a thin layer representing a fracture
             Yc = np.hstack([Yc[Yc<0], np.array([-self.idata.other.frac_width/2., self.idata.other.frac_width/2.]), Yc[Yc>0]])
             
-            
         self.idata.other.Xc = Xc
         self.idata.other.Yc = Yc
         self.idata.other.Zc = Zc
