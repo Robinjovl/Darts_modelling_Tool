@@ -1481,7 +1481,9 @@ class Pipe:
                     + transition * vDh * np.cos(theta_filtered)
                 ) * low_re_multiplier
 
-                self.vD0[indices] = vD_filtered
+                vD0 = np.zeros(num_interfaces)
+                vD0[indices] = vD_filtered
+                self.vD0 = vD0
                 return
 
             # Calculate the adjustment function for the mist flow regime
