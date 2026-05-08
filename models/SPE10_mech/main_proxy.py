@@ -1018,8 +1018,8 @@ if __name__ == '__main__':
     #case = '7_7_5'  # for debugging
     #case = '17_17_15' # for testing
 
-    case = '41_41_66' # without refinement
-    #case ='77_77_66' #refined middle and tips
+    #case = '41_41_66' # without refinement
+    case ='71_71_66' #refined middle and tips
     #case = '71_71_90'  # z 0 - 5 km more refined around rsv
 
     #uniform_props = True

@@ -193,11 +193,15 @@ class Model(THMCModel):
 
         # well controls
         self.idata.other.delta_temp_inj = 40 # [K] - delta for temperature control
-        # RATE control
-        self.idata.other.delta_p = None
-        self.idata.other.wctrl_type = well_control_iface.MASS_RATE # mass or molar rate can be choosen here
-        self.idata.other.well_rate = 2000. # [m^3/day] 
-        self.idata.other.well_rate *= self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
+        if not self.thermal: # BHP control
+            self.idata.other.delta_p = 10 # bars
+            self.idata.other.wctrl_type = well_control_iface.BHP
+            self.idata.other.well_rate = None
+        else: # RATE control
+            self.idata.other.delta_p = None
+            self.idata.other.wctrl_type = well_control_iface.MASS_RATE # mass or molar rate can be choosen here
+            self.idata.other.well_rate = 2000. # [m^3/day] 
+            self.idata.other.well_rate *= self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
 
         self.idata.mesh.bnd_tags = {}
         tags = self.idata.mesh.bnd_tags  # short name
@@ -214,23 +218,28 @@ class Model(THMCModel):
         self.idata.mesh.tags['MATRIX_1'] = mat_tag
 
         if nx == 7: # for debugging, -4..4 km XY
-            Xc = np.array([-4000, -2000, -1000, -100, 100, 1000, 2000, 4000])
+            Xc_left = np.array([-4000, -2000, -1000, -100])
         elif nx == 17: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
-            Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, -50, 50, 100, 200, 300, 400, 500, 1000, 2000, 4000])
+            Xc_left = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, -50])
         elif nx == 83: # rsv corners and near-well (middle) are refined
             Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1500,-1450,-1400,-1350,-1300,-1250,-1200,-1150] + 
                           [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
                           np.arange(-800, -100, 100).tolist() + 
                           np.arange(-100, 0, 10).tolist())
-            Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
+        elif nx == 71: # rsv corners and near-well (middle) are refined
+            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
+                          [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
+                          np.arange(-800, -100, 100).tolist() + 
+                          np.arange(-100, 0, 10).tolist())
         elif nx == 41: # rsv corners and near-well (middle) are NOT refined
             Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
                           [-1100, -1000, -900] +
                           np.arange(-800, -100, 100).tolist() + [-50])
-            Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
         else:
             print('not found an option to mesh with nx = ', nx)
             exit(1)
+
+        Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
 
         rsv_top = self.idata.other.rsv_top
         rsv_bottom = self.idata.other.rsv_bottom
