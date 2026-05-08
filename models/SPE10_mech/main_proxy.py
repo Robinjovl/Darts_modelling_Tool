@@ -359,7 +359,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
             stress[1,:], stress[0,:], stress[2,:], stress_total[1,:], stress_total[0,:], stress_total[2,:]  # xx yy zz
 
 
-    def compare_vert_line(points, suffix='', loc='', output_folder='.', modes={}):
+    def compare_vert_line(points, suffix='', loc='', output_folder='.', array_names={}):
         z_range = points[2,:]
 
         array_dict = {'dp': thm_sol.delta_pressure, 'dt': thm_sol.delta_temperature}
@@ -392,19 +392,19 @@ def run_geomech_proxy(case, physics_type='single_phase',
         for i in range(n_points):  # use XY from point and different Z
             point = np.array([points[0, i], points[1, i], points[2, i]])  # YXZ - > XYZ
             ux_thm[i], uy_thm[i], uz_thm[i] = get_thm_displs(point)
-            if 'strain' in modes:
+            if 'strain' in array_names:
                 qx_thm[i], qy_thm[i], qz_thm[i] = get_thm_strain(point)
-            if 'delta_eff_stress_z' in modes:
+            if 'delta_eff_stress_z' in array_names:
                 sx_thm[i], sy_thm[i], sz_thm[i] = get_thm_stress(point)
-            if 'delta_total_stress_z' in modes:
+            if 'delta_total_stress_z' in array_names:
                 sx_total_thm[i], sy_total_thm[i], sz_total_thm[i] = get_thm_total_stress(point)
                 
-            if ('strain' in modes or 'delta_eff_stress_z' in modes) and plot_thm2:
+            if ('strain' in array_names or 'delta_eff_stress_z' in array_names) and plot_thm2:
                 qx_thm2[i], qy_thm2[i], qz_thm2[i], \
                 sx_thm2[i], sy_thm2[i], sz_thm2[i] = get_thm_stress_by_deriv(point)
             
-        for mode in modes:
-            match mode:
+        for array_name in array_names:
+            match array_name:
                 case 'displ_z': prx = uz_prx * m2mm; thm = uz_thm * m2mm; s = 'Vertical displacement, mm.' + ' at ' + loc
                 case 'displ_y': prx = uy_prx * m2mm; thm = uy_thm * m2mm; s = 'Horizontal displacement (Y), mm.' + ' at ' + loc
                 case 'displ_x': prx = ux_prx * m2mm; thm = ux_thm * m2mm; s = 'Horizontal displacement (X), mm.' + ' at ' + loc
@@ -437,8 +437,8 @@ def run_geomech_proxy(case, physics_type='single_phase',
             if prx is not None:
                 plt.plot(prx, z_range, label='Proxy', linestyle='--', c='red')#, marker='.')
                 
-            if ('stress' in mode or 'strain' in mode) and plot_thm2:
-                plt.plot(thm2, z_range, label=mode + '_THM2', color='black')#marker='.', 
+            if ('stress' in array_names or 'strain' in array_names) and plot_thm2:
+                plt.plot(thm2, z_range, label=array_name + '_THM2', color='black')#marker='.', 
                 
             # for comparizon with analytical solution laterally infinite rsv
             #if mode == 'delta_total_stress_z' and np.fabs(prx.max()) < 0.05 and np.fabs(thm_sol.max()) < 0.05: # vertical stress is almost zero
@@ -454,7 +454,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
             plt.grid(which='major', linestyle='-', linewidth=0.8)
             plt.grid(which='minor', linestyle=':', linewidth=0.5) 
             plt.tight_layout()
-            plt.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '.png'))
+            plt.savefig(os.path.join(output_folder, array_name + '_' + loc + '_' + suffix + '.png'))
             plt.close()
             
             # plot the difference THM solution vs Proxy
@@ -483,7 +483,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
                     lines2, labels2 = ax2.get_legend_handles_labels()
                     ax1.legend(lines1 + lines2, labels1 + labels2)
                 fig.tight_layout()
-                fig.savefig(os.path.join(output_folder, mode + '_' + loc + '_' + suffix + '_diff'+ '.png'))
+                fig.savefig(os.path.join(output_folder, array_name + '_' + loc + '_' + suffix + '_diff'+ '.png'))
                 plt.close(fig)
             
 
@@ -579,7 +579,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         print('Saved mesh_skeleton.png')
 
     def save_html_prx_vs_thm(base_names, output_folder, filename='proxy_vs_thm_2d.html',
-                              locs=None, modes_1d=None, suffix_1d='all'):
+                              locs=None, array_names=None, suffix_1d='all'):
         # dp + dt contours at the top
         contour_cells = []
         for fname, title in [('dp_contour.png', '&#916;P contour (XZ)'), ('dt_contour.png', '&#916;T contour (XZ)')]:
@@ -604,23 +604,23 @@ def run_geomech_proxy(case, physics_type='single_phase',
                 <td style="text-align:center"><img src="{diff_file}" style="max-width:100%"></td>
               </tr>''')
 
-        # 1D plots: rows=modes, columns=locations in fixed order
+        # 1D plots: rows=array_names, columns=locations in fixed order
         col_order = ['(250,250)', 'inj_well', 'prod_well']
         active_locs = [l for l in col_order if locs and l in locs]
         plots_1d_html = ''
-        if active_locs and modes_1d:
+        if active_locs and array_names:
             th_locs = ''.join(f'<th>{l}</th>' for l in active_locs)
             rows_1d = []
-            for mode in modes_1d:
+            for array_name in array_names:
                 cells = []
                 for loc in active_locs:
-                    plot_file = f'{mode}_{loc}_{suffix_1d}.png'
+                    plot_file = f'{array_name}_{loc}_{suffix_1d}.png'
                     if os.path.exists(os.path.join(output_folder, plot_file)):
                         cells.append(f'<td style="text-align:center">'
                                      f'<img src="{plot_file}" style="max-width:100%"></td>')
                     else:
                         cells.append('<td style="text-align:center;color:gray">N/A</td>')
-                rows_1d.append(f'<tr><td style="white-space:nowrap"><b>{mode}</b></td>{"".join(cells)}</tr>')
+                rows_1d.append(f'<tr><td style="white-space:nowrap"><b>{array_name}</b></td>{"".join(cells)}</tr>')
             plots_1d_html = f'''
         <h2>1D vertical profiles</h2>
         <table border="1" cellspacing="4" cellpadding="4" style="width:100%">
@@ -647,7 +647,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         print(f'Saved HTML report: {html_path}')
 
     def save_pdf_report(base_names, output_folder, filename='proxy_vs_thm_report.pdf',
-                        locs=None, modes_1d=None, suffix_1d='all'):
+                        locs=None, array_names=None, suffix_1d='all'):
         from matplotlib.backends.backend_pdf import PdfPages
         import matplotlib.image as mpimg
 
@@ -693,12 +693,12 @@ def run_geomech_proxy(case, physics_type='single_phase',
                      (f'{b} - THM_contour.png'.replace(' ', '_'), 'THM'),
                      (f'{b} - Difference_contour.png'.replace(' ', '_'), 'Difference (THM-Proxy)')],
                     row_title=b, col_fontsize=7, title_fontsize=8)
-            # 1D profiles: one page per mode, columns = locations
-            if active_locs and modes_1d:
-                for mode in modes_1d:
+            # 1D profiles: one page per array_name, columns = locations
+            if active_locs and array_names:
+                for array_name in array_names:
                     add_ncol_page(pdf,
-                        [(f'{mode}_{loc}_{suffix_1d}.png', loc) for loc in active_locs],
-                        row_title=mode)
+                        [(f'{array_name}_{loc}_{suffix_1d}.png', loc) for loc in active_locs],
+                        row_title=array_name)
         print(f'Saved PDF report: {pdf_path}')
 
 
@@ -918,18 +918,18 @@ def run_geomech_proxy(case, physics_type='single_phase',
         plot_contour({'delta_pressure, MPa - Difference (71-41)': (dp_71 - dp_41)[:, 0, :].transpose()},
                      pts_x, pts_z, output_folder=output_folder, slice='XZ')
 
-    modes_1d = []
+    array_names = []
     if 'plot_vertic_line' in modes: # 1D plots (along vertical lines at points_xy)
         for k in points_xy.keys():
             point_xy = points_xy[k]
             print('1D plots for point', k, 'YX=', point_xy)
-            modes_1d += ['delta_pressure']
-            modes_1d += ['delta_temperature']
-            modes_1d += ['displ_z', 'displ_y', 'displ_x']
-            modes_1d += ['delta_eff_stress_z', 'delta_eff_stress_y', 'delta_eff_stress_x']
-            modes_1d += ['delta_total_stress_z', 'delta_total_stress_y', 'delta_total_stress_x']
-            #modes_1d += ['strain_z', 'strain_y', 'strain_x']
-            #modes_1d = ['strain_x']  # debug
+            array_names += ['delta_pressure']
+            array_names += ['delta_temperature']
+            array_names += ['displ_z', 'displ_y', 'displ_x']
+            array_names += ['delta_eff_stress_z', 'delta_eff_stress_y', 'delta_eff_stress_x']
+            array_names += ['delta_total_stress_z', 'delta_total_stress_y', 'delta_total_stress_x']
+            #array_names += ['strain_z', 'strain_y', 'strain_x']
+            #array_names = ['strain_x']  # debug
             #z_min = 0.
             #z_max = thm_sol.centroids[:, 2].max() #+ 1000.
             z_step = 5.  # m.
@@ -945,7 +945,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
             points_all[1, :] = point_xy[1]
             points_all[2, :] = z_range_all
             
-            compare_vert_line(points_all, suffix='all', loc=k, output_folder=output_folder, modes=modes)
+            compare_vert_line(points_all, suffix='all', loc=k, output_folder=output_folder, array_names=array_names)
             
             if False: # zoomed in plot for the rsv part, if its thickness is quite small
                 z_range_rsv = np.arange(m.idata.other.rsv_top-100., m.idata.other.rsv_bottom+100., z_step)
@@ -957,12 +957,12 @@ def run_geomech_proxy(case, physics_type='single_phase',
                 points_rsv[0, :] = point_xy[1] # X<->Y
                 points_rsv[1, :] = point_xy[0]            
                 points_rsv[2, :] = z_range_rsv
-                compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=output_folder, modes=modes)
+                compare_vert_line(points_rsv, suffix='rsv', loc=k, output_folder=output_folder, array_names=array_names)
 
     save_html_prx_vs_thm(base_names, output_folder=output_folder,
-                         locs=list(points_xy.keys()), modes_1d=modes_1d, suffix_1d='all')
+                         locs=list(points_xy.keys()), array_names=array_names, suffix_1d='all')
     save_pdf_report(base_names, output_folder=output_folder,
-                    locs=list(points_xy.keys()), modes_1d=modes_1d, suffix_1d='all')
+                    locs=list(points_xy.keys()), array_names=array_names, suffix_1d='all')
 
     # print vert displs and stresses change at a point
     if 'print_at_point' in modes:
@@ -1018,8 +1018,8 @@ if __name__ == '__main__':
     #case = '7_7_5'  # for debugging
     #case = '17_17_15' # for testing
 
-    #case = '41_41_66' # without refinement
-    case ='77_77_66' #refined middle and tips
+    case = '41_41_66' # without refinement
+    #case ='77_77_66' #refined middle and tips
     #case = '71_71_90'  # z 0 - 5 km more refined around rsv
 
     #uniform_props = True
@@ -1068,7 +1068,7 @@ if __name__ == '__main__':
     modes = []
     #modes += ['check_initial'] # check initial pressure and stress for THM
     #modes += ['print_at_point'] # compare both THM and proxy versus analytical solution
-    #modes += ['plot_vertic_line'] 
+    modes += ['plot_vertic_line'] 
     modes += ['plot_2d_slices']
     #modes += ['2d_slices_41_71'] # coarse mesh THM (nx=41) => finer eval points in proxy (nx=71) and compare it against finer THM (nx=71); only if case ='41_41_66'
     #modes += ['plot_2d_thm_41_vs_71']  # compare delta_pressure: THM 41_41_66 vs THM 71_71_66. This doesn't run proxy

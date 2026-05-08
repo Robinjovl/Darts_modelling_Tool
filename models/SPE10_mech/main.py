@@ -266,6 +266,7 @@ if __name__ == '__main__':
     #mesh='17_17_15'  # for debugging
     mesh='41_41_66'
     #mesh='71_71_66'
+    mesh='83_83_90'
 
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
