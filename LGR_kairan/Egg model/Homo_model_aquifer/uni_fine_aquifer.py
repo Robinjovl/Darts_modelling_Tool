@@ -50,6 +50,12 @@ class TableKFlash(Flash):
     def evaluate(self, pressure, temperature, zc):
         self.K_values = self.get_k_values(pressure, temperature)
         self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
+        if self.nu[0] < 0.:
+            self.nu = [0., 1.]
+            self.X = [[0., 0.], zc]
+        elif self.nu[0] > 1.:
+            self.nu = [1., 0.]
+            self.X = [zc, [0., 0.]]
         self.temperature = temperature
         return 0
 
@@ -91,10 +97,11 @@ class TableKFlash(Flash):
 
 
 class Model(DartsModel):
-    def __init__(self):
+    def __init__(self, include_producer=True):
         super().__init__()
         self.timer.node["initialization"].start()
-        self.zero = 1e-8
+        self.include_producer = include_producer
+        self.zero = 1e-12
         self.set_reservoir()
         self.set_physics()
         self.set_sim_params(
@@ -153,7 +160,7 @@ class Model(DartsModel):
         kz[mask_res] = 80.0
         poro[mask_res] = 0.2
         rcond[mask_over] = 149.54
-        rcond[mask_res] = 500.0
+        rcond[mask_res] = 2.1 * 86.4
         rcond[mask_under] = 149.54
         hcap[mask_over] = 2347.29
         hcap[mask_res] = 2200.0
@@ -179,10 +186,10 @@ class Model(DartsModel):
         self.reservoir.boundary_volumes = {
             "xy_minus": 1e20,
             "xy_plus": 1e20,
-            "yz_minus": None,
-            "yz_plus": None,
-            "xz_minus": None,
-            "xz_plus": None,
+            "yz_minus": 1e20,
+            "yz_plus": 1e20,
+            "xz_minus": 1e20,
+            "xz_plus": 1e20,
         }
         self.reservoir.discretize()
         self.build_cell_center()
@@ -191,6 +198,8 @@ class Model(DartsModel):
         self.reservoir.add_well("I1")
         for k in range(2, 9):
             self.reservoir.add_perforation("I1", res_cell_idx=(208, 148, k), ms_epm=True, well_diameter=0.1524)
+        if not self.include_producer:
+            return
         self.reservoir.add_well("P1")
         for k in range(2, 9):
             self.reservoir.add_perforation("P1", res_cell_idx=(93, 148, k), ms_epm=True, well_diameter=0.1524)
@@ -209,11 +218,11 @@ class Model(DartsModel):
         pc.density_ev = {"CO2_rich": EoSDensity(eos=pr, Mw=comp_data.Mw), "aqueous": Garcia2001(components)}
         pc.viscosity_ev = {"CO2_rich": Fenghour1998(), "aqueous": Islam2012(components)}
         pc.rel_perm_ev = {
-            "CO2_rich": PhaseRelPerm("gas", swc=0.30, sgr=0.10, kre=1.0, n=4.2),
-            "aqueous": PhaseRelPerm("oil", swc=0.30, sgr=0.10, kre=1.0, n=1.9),
+            "CO2_rich": PhaseRelPerm("gas", swc=0.20, sgr=0.00, kre=0.95, n=5),
+            "aqueous": PhaseRelPerm("oil", swc=0.20, sgr=0.00, kre=1.0, n=6),
         }
         pc.enthalpy_ev = {"CO2_rich": EoSEnthalpy(eos=pr), "aqueous": EoSEnthalpy(eos=aq)}
-        pc.conductivity_ev = {"CO2_rich": ConstFunc(181.44), "aqueous": ConstFunc(181.44)}
+        pc.conductivity_ev = {"CO2_rich": ConstFunc(6), "aqueous": ConstFunc(60)}
 
         self.physics = Compositional(
             components,
@@ -227,7 +236,7 @@ class Model(DartsModel):
             max_z=1.0 - eps,
             epsilon_z=eps,
             min_t=273.15,
-            max_t=573.15,
+            max_t=400 + 273.15,
         )
         pc.output_props = {
             "satG": lambda: pc.sat[0],

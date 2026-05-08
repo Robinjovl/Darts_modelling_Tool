@@ -199,7 +199,7 @@ class Model(DartsModel):
         # --- reshape Egg model permeability to reservoir part only ---
         permx_res = 800
         permy_res = 800
-        permz_res = 800
+        permz_res = 80
 
 
 
@@ -210,7 +210,7 @@ class Model(DartsModel):
 
         # --- thermal properties ---
         rcon0_full[mask_over] = rcond_over
-        rcon0_full[mask_res] = 500
+        rcon0_full[mask_res] = 2.1*86.4
         rcon0_full[mask_under] = rcond_under
         hcap0_full[mask_over] = hcap_over
         hcap0_full[mask_res] = 2200
@@ -222,7 +222,7 @@ class Model(DartsModel):
 
         actnum0 = self.create_actnum_with_lgr(nx, ny, nz, refined_cells_ijk)
         self.level0 = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
-                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full, depth=None, start_z=990,
+                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full, depth=None, start_z=1990,
                                       hcap=hcap0_full, rcond=rcon0_full, actnum=actnum0)
 
         v_big = 1e20
@@ -283,8 +283,8 @@ class Model(DartsModel):
                 permx=permx_f, permy=permy_f, permz=permz_f,
                 poro=poro_f,
                 depth=None,
-                start_z=1000,
-                rcond=500,
+                start_z=2000,
+                rcond=2.1*86.4,
                 hcap=2200,
             )
 
@@ -360,7 +360,7 @@ class Model(DartsModel):
 
 
             self.level1_imag[name] = StructReservoir(self.timer, nx=nx1+2, ny=ny1+2, nz=nz1, dx=dx_imag, dy=dy_imag, dz=dz_imag,
-                                        permx=permx_im, permy=permy_im, permz=permz_im, poro=poro_im, depth= None, start_z=1000, rcond=500, hcap=2200)
+                                        permx=permx_im, permy=permy_im, permz=permz_im, poro=poro_im, depth= None, start_z=2000, rcond=2.1*86.4, hcap=2200)
 
 
             # top vertical imaginary grid for overburden connection(5,5,2)
@@ -390,7 +390,7 @@ class Model(DartsModel):
             permy_top[:, :, 1] = self.level0.global_data['permy'][ip, jp, pk_top_res]
             permz_top[:, :, 1] = self.level0.global_data['permz'][ip, jp, pk_top_res]
 
-            rcond_top[:, :, 1] = 500
+            rcond_top[:, :, 1] = 2.1*86.4
             hcap_top[:, :, 1]  = 2200
             self.level1_imag_z_top[name] = StructReservoir(
                 self.timer,
@@ -399,14 +399,14 @@ class Model(DartsModel):
                 permx=permx_top, permy=permy_top, permz=permz_top,
                 poro=0.2,
                 depth=None,
-                start_z=990,
+                start_z=1990,
                 rcond=rcond_top,
                 hcap=hcap_top
             )
 
             # 3) BOTTOM VERTICAL IMAGINARY GRID: (5, 5, 2)
-            # layer 0 = reservoir bottom fine layer
-            # layer 1 = underburden coarse layer
+            # layer 0 = reservoir last layer
+            # layer 1 = underburden first layer
 
             dx_bot = np.broadcast_to(dx_vec[:, None, None], (nx1, ny1, 2)).copy()
             dy_bot = np.broadcast_to(dy_vec[None, :, None], (nx1, ny1, 2)).copy()
@@ -426,7 +426,7 @@ class Model(DartsModel):
             permy_bot[:, :, 0] = self.level0.global_data['permy'][ip, jp, pk_bot_res]
             permz_bot[:, :, 0] = self.level0.global_data['permz'][ip, jp, pk_bot_res]
             poro_bot[:, :, 0]  = 0.2
-            rcond_bot[:, :, 0] = 500
+            rcond_bot[:, :, 0] = 2.1*86.4
             hcap_bot[:, :, 0]  = 2200
 
             permx_bot[:, :, 1] = self.level0.global_data['permx'][ip, jp, pk_under]
@@ -443,7 +443,7 @@ class Model(DartsModel):
                 permx=permx_bot, permy=permy_bot, permz=permz_bot,
                 poro=poro_bot,
                 depth=None,
-                start_z=990 + (nz_over + nz_res - 1) * dz,
+                start_z=1990 + (nz_over + nz_res - 1) * dz,
                 rcond=rcond_bot,
                 hcap=hcap_bot
             )
@@ -497,7 +497,7 @@ class Model(DartsModel):
             # volume: structured fine grid, direct from discretized volume is safer
             volume_list.append(dx_f * dy_f * dz_f)
 
-            rcond_list.append(np.ones(self.level1[name].n, dtype=float)*500)
+            rcond_list.append(np.ones(self.level1[name].n, dtype=float)*2.1*86.4)
             hcap_list.append(np.ones(self.level1[name].n, dtype=float) * 2200)
 
 
@@ -557,45 +557,6 @@ class Model(DartsModel):
                 inj_global = inj_local + self.lgr_meta['lgr_offsets'][comp[wname]["lgr"]]
                 self.reservoir.add_perforation(wname, cell_index=inj_global,ms_epm=True, well_radius=0.0762)
 
-    # """single phase- single component model"""
-    # def set_physics(self):
-    #     components = ['CO2']
-
-    #     self.components = components
-    #     comp_data = CompData(components, setprops=True)
-    #     pr = CubicEoS(comp_data, CubicEoS.PR)
-
-    #     self.zero = 1e-12
-    #     epsilon = self.zero / 10
-    #     phases = ['CO2_rich']
-
-    #     property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon, Mw=comp_data.Mw)
-
-    #     # Define property evaluators based on custom properties
-    #     property_container.density_ev = dict([('CO2_rich', EoSDensity(eos=pr,Mw=comp_data.Mw))])
-    #     property_container.viscosity_ev = dict([('CO2_rich', Fenghour1998())])
-
-    #     property_container.enthalpy_ev = dict([('CO2_rich', EoSEnthalpy(eos=pr))])
-    #     property_container.conductivity_ev = dict([('CO2_rich', ConstFunc(10.)) ])
-
-
-    #     """ Activate physics """
-    #     thermal = True
-    #     state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-    #     self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-    #                                  n_points=400, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-    #                                  epsilon_z=epsilon, min_t=273.15, max_t=373.15+200)
-
-
-    #     property_container.output_props = {
-    #         "satG": lambda: property_container.sat[0],
-    #         "rhoG": lambda: property_container.dens[0],
-    #          "muG": lambda: property_container.mu[0],
-    #         }
-
-    #     self.physics.add_property_region(property_container)
-
-    #     return
     def set_physics(self):
         components_names = ['CO2']
         phases_names = ['CO2_rich']
@@ -680,14 +641,14 @@ class Model(DartsModel):
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = 1.0
 
-        boundary_state = {"pressure" :100}
+        boundary_state = {"pressure" :200}
         for comp in self.physics.components[:-1]:
             boundary_state[comp] = primary_specs[comp]
-        boundary_state["temperature"] = 49 +273.15
+        boundary_state["temperature"] = 83 +273.15
 
         dTdh = 34/1000 #k/m
 
-        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=1000,
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=2000,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=nb,
                                         dTdh=dTdh)
 
@@ -717,8 +678,8 @@ class Model(DartsModel):
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
                                             is_inj=True,
                                             phase_name='CO2_rich',
-                                            target=4.32e6, inj_composition=inj_composition, inj_temp=29+273.15)
+                                            target=4.32e6, inj_composition=inj_composition, inj_temp=40+273.15)
 
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=90.)
+                                               is_inj=False, target=190.)

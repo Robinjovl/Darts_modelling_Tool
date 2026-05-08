@@ -25,19 +25,6 @@ from dartsflash.components import CompData
 from dartsflash.libflash import AQEoS, CubicEoS
 
 
-# class Garcia2001(Spivey2004):
-#     def __init__(self, components, ions=None, combined_ions=None):
-#         super().__init__(components, ions, combined_ions)
-#         self.CO2_idx = components.index("CO2")
-
-#     def evaluate(self, pressure, temperature, x):
-#         rho_b = DensityBasic(dens0=1020.0, compr=4.5e-5, p0=1.01325).evaluate(pressure, temperature, x)
-#         tc = temperature - 273.15
-#         v_app = (37.51 - 9.585e-2 * tc + 8.740e-4 * tc**2 - 5.044e-7 * tc**3) * 1e-6
-#         m_co2 = 55.509 * x[self.CO2_idx] / x[self.H2O_idx]
-#         return (1.0 + m_co2 * 44.01e-3) / (m_co2 * v_app + 1.0 / rho_b)
-
-
 class TableKFlash(Flash):
     def __init__(self, nc, table_path, eps=1e-11):
         super().__init__(nph=2, nc=nc)
@@ -55,6 +42,12 @@ class TableKFlash(Flash):
     def evaluate(self, pressure, temperature, zc):
         self.K_values = self.get_k_values(pressure, temperature)
         self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
+        if self.nu[0] < 0.:
+            self.nu = [0., 1.]
+            self.X = [[0., 0.], zc]
+        elif self.nu[0] > 1.:
+            self.nu = [1., 0.]
+            self.X = [zc, [0., 0.]]
         self.temperature = temperature
         return 0
 
@@ -89,46 +82,12 @@ class TableKFlash(Flash):
                      + table[pi1, ti1] * wp * wt)
 
 
-def make_cfg_lgr():
-    return {
-        "burden": {
-            "poro_burden": 1e-5,
-            "perm_burden": 1e-9,
-            "rcond_over": 149.54,
-            "hcap_over": 2347.29,
-            "rcond_under": 149.54,
-            "hcap_under": 2347.29,
-        },
-        "reservoir": {"nx": 60, "ny": 60, "nz": 9, "poro": 0.2, "dx": 30.0, "dy": 30.0, "dz": 10.0},
-        "lgrs": {
-            "lgr0": {
-                "parent_grid_name": "global",
-                "lgr_coords_in_parent_grid": {
-                    "i_range": [42, 42], "j_range": [30, 30], "k_range": [1, 7],
-                    "refine": [5, 5, 1], "dx_vec": [6.0] * 5, "dy_vec": [6.0] * 5,
-                    "tag": "inj",
-                },
-            },
-            "lgr1": {
-                "parent_grid_name": "global",
-                "lgr_coords_in_parent_grid": {
-                    "i_range": [19, 19], "j_range": [30, 30], "k_range": [1, 7],
-                    "refine": [5, 5, 1], "dx_vec": [6.0] * 5, "dy_vec": [6.0] * 5,
-                    "tag": "prod",
-                },
-            },
-        },
-        "wells": {"I1": {"lgr": "lgr0", "k_from": 1, "k_to": 7},
-                  "P1": {"lgr": "lgr1", "k_from": 1, "k_to": 7}},
-    }
-
-
 class Model(DartsModel):
-    def __init__(self, cfg=None):
+    def __init__(self, cfg):
         super().__init__()
         self.timer.node["initialization"].start()
-        self.zero = 1e-8
-        self.cfg = make_cfg_lgr() if cfg is None else cfg
+        self.zero = 1e-12
+        self.cfg = cfg
         self.set_reservoir()
         self.set_physics()
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=1, runtime=1000,
@@ -243,11 +202,25 @@ class Model(DartsModel):
         poro = np.full(nb, self.cfg["burden"]["poro_burden"])
         rcond = np.empty(nb)
         hcap = np.empty(nb)
-        kx[mask_res], ky[mask_res], kz[mask_res], poro[mask_res] = 800.0, 800.0, 80.0, self.cfg["reservoir"]["poro"]
+        reservoir = self.cfg["reservoir"]
+        kx[mask_res], ky[mask_res], kz[mask_res], poro[mask_res] = (
+            reservoir["permx"],
+            reservoir["permy"],
+            reservoir["permz"],
+            reservoir["poro"],
+        )
 
-        rcond[mask_over], rcond[mask_res], rcond[mask_under] = self.cfg["burden"]["rcond_over"], 500.0, self.cfg["burden"]["rcond_under"]
+        rcond[mask_over], rcond[mask_res], rcond[mask_under] = (
+            self.cfg["burden"]["rcond_over"],
+            reservoir["rcond"],
+            self.cfg["burden"]["rcond_under"],
+        )
 
-        hcap[mask_over], hcap[mask_res], hcap[mask_under] = self.cfg["burden"]["hcap_over"], 2200.0, self.cfg["burden"]["hcap_under"]
+        hcap[mask_over], hcap[mask_res], hcap[mask_under] = (
+            self.cfg["burden"]["hcap_over"],
+            reservoir["hcap"],
+            self.cfg["burden"]["hcap_under"],
+        )
 
         self.level0 = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
                                       permx=kx, permy=ky, permz=kz, poro=poro, depth=None,
@@ -255,10 +228,10 @@ class Model(DartsModel):
 
         self.level0.boundary_volumes = {"xy_minus": 1e20,
                                         "xy_plus": 1e20,
-                                        "yz_minus": None,
-                                        "yz_plus": None,
-                                        "xz_minus": None,
-                                        "xz_plus": None}
+                                        "yz_minus": 1e20,
+                                        "yz_plus": 1e20,
+                                        "xz_minus": 1e20,
+                                        "xz_plus": 1e20}
 
         self.level1, self.level1_imag, self.level1_imag_z_top, self.level1_imag_z_bot = {}, {}, {}, {}
         for name, entry in self.lgrs.items():
@@ -302,6 +275,8 @@ class Model(DartsModel):
             dy_z = np.broadcast_to(dy_vec[None, :, None], (rx, ry, 2)).copy()
             dz_z = np.full((rx, ry, 2), dz)
             top_range = (k1 - 1, k1)
+            # Bottom imaginary grid must align with reservoir last layer plus
+            # underburden first layer.
             bot_range = (k2, k2 + 1)
             self.level1_imag_z_top[name] = StructReservoir(self.timer, nx=rx, ny=ry, nz=2, dx=dx_z, dy=dy_z, dz=dz_z,
                                                            permx=self.make_lgr_array("permx", i_parent, j_parent, top_range, prop_shape),
@@ -316,7 +291,7 @@ class Model(DartsModel):
                                                            permy=self.make_lgr_array("permy", i_parent, j_parent, bot_range, prop_shape),
                                                            permz=self.make_lgr_array("permz", i_parent, j_parent, bot_range, prop_shape),
                                                            poro=self.make_lgr_array("poro", i_parent, j_parent, bot_range, prop_shape),
-                                                           depth=None, start_z=2050.0,
+                                                           depth=None, start_z=1990.0 + (nz_over + nz_res - 1) * dz,
                                                            rcond=self.make_lgr_array("rcond", i_parent, j_parent, bot_range, prop_shape),
                                                            hcap=self.make_lgr_array("hcap", i_parent, j_parent, bot_range, prop_shape))
 
@@ -382,17 +357,20 @@ class Model(DartsModel):
                          "aqueous": Garcia2001(components)}
         pc.viscosity_ev = {"CO2_rich": Fenghour1998(),
                            "aqueous": Islam2012(components)}
-        pc.rel_perm_ev = {"CO2_rich": PhaseRelPerm("gas", swc=0.30, sgr=0.10, kre=1.0, n=4.2),
-                          "aqueous": PhaseRelPerm("oil", swc=0.30, sgr=0.10, kre=1.0, n=1.9)}
+
+        # Krevor et al. (2012), Berea sandstone drainage-fit baseline
+        pc.rel_perm_ev = {"CO2_rich": PhaseRelPerm("gas", swc=0.20, sgr=0.00, kre=0.95, n=5),
+                          "aqueous": PhaseRelPerm("oil", swc=0.20, sgr=0.00, kre=1.0, n=6)}
         pc.enthalpy_ev = {"CO2_rich": EoSEnthalpy(eos=pr),
                           "aqueous": EoSEnthalpy(eos=aq)}
-        pc.conductivity_ev = {"CO2_rich": ConstFunc(181.44),
-                              "aqueous": ConstFunc(181.44)}
+        # J. Phys. Chem. Ref. Data 45, 013102 (2016)
+        pc.conductivity_ev = {"CO2_rich": ConstFunc(6),
+                              "aqueous": ConstFunc(60)}
         self.physics = Compositional(components, phases, self.timer,
                                      state_spec=Compositional.StateSpecification.PT,
                                      n_points=400, min_p=1, max_p=1000, min_z=eps,
                                      max_z=1.0 - eps,
-                                     epsilon_z=eps, min_t=273.15, max_t=573.15)
+                                     epsilon_z=eps, min_t=273.15, max_t=400+273.15)
         pc.output_props = {"satG": lambda: pc.sat[0],
                            "satAq": lambda: pc.sat[1],
                            "rhoG": lambda: pc.dens[0],
@@ -419,9 +397,11 @@ class Model(DartsModel):
                 self.physics.set_well_controls(wctrl=well.control, control_type=well_control_iface.MASS_RATE,
                                                is_inj=True, target=4.32e6, phase_name="CO2_rich",
                                                inj_composition=[1.0 - self.zero], inj_temp=40+273.15)
-                self.physics.set_well_controls(wctrl=well.constraint, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=300, phase_name="CO2_rich",
-                                               inj_composition=[1.0 - self.zero], inj_temp=40+273.15)
+                # self.physics.set_well_controls(wctrl=well.constraint, control_type=well_control_iface.BHP,
+                #                                is_inj=True, target=300, phase_name="CO2_rich",
+                #                                inj_composition=[1.0 - self.zero], inj_temp=40+273.15)
             else:
                 self.physics.set_well_controls(wctrl=well.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=190.0)
+                # self.physics.set_well_controls(wctrl=well.constraint, control_type=well_control_iface.MASS_RATE,
+                #                                   is_inj=False, target=0, phase_name="CO2_rich")

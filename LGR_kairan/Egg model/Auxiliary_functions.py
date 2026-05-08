@@ -1193,123 +1193,109 @@ class AquiferPhaseLGRInterfaceTransAnalyzer(
     LGRInterfaceTransAnalyzer,
 ):
     """
-    Phase effective transmissibility across LGR coarse-fine lateral interfaces.
+    Extract assembled transmissibilities across LGR coarse-fine lateral interfaces.
 
     This is the aquifer/two-phase counterpart of LGRInterfaceTransAnalyzer.
-    It extracts the same LGR interface links, then computes one effective T
-    for each requested phase, by default CO2_rich and aqueous.
+    LGR interfaces are already assembled in reservoir.mesh, so this class
+    reports the mesh transmissibilities directly instead of recomputing
+    effective transmissibilities from flow.
     """
 
-    def __init__(self, model, phases=None):
+    def __init__(self, model, phases=None, nz_over=1):
         super().__init__(model)
-        self._init_phase_mobility(phases=phases)
+        self.nz_over = int(nz_over)
+        self.phase_names = tuple(phases) if phases is not None else self.DEFAULT_PHASES
 
-    def _phase_effective_for_connection_df(
-        self,
-        df,
-        lgr_name,
-        side,
-        k_1b,
-        mobility_mode="interface_avg",
-        eps_mobility=1e-30,
-    ):
+    def _layer_numbers_for_lgr(self, lgr_name, k_cfg_1b):
+        cfg = self._get_lgr_cfg(lgr_name)
+        k_start = int(cfg["k_range"][0])
+
+        if k_start <= self.nz_over:
+            k_reservoir_1b = int(k_cfg_1b)
+            k_global_1b = int(k_cfg_1b) + self.nz_over
+        else:
+            k_global_1b = int(k_cfg_1b)
+            k_reservoir_1b = int(k_cfg_1b) - self.nz_over
+
+        return k_global_1b, k_reservoir_1b
+
+    @staticmethod
+    def _empty_interface_trans_df():
+        return pd.DataFrame(
+            columns=[
+                "lgr_name",
+                "side",
+                "k_1b",
+                "k_global_1b",
+                "k_reservoir_1b",
+                "n_links",
+                "tran_sum",
+                "tran_mean",
+                "tran_min",
+                "tran_max",
+            ]
+        )
+
+    def interface_trans_of_face(self, lgr_name, side):
+        df = self.extract_face_connections(lgr_name, side)
         if df.empty:
-            return pd.DataFrame(), {}
-
-        pressure = self.get_pressure_array(reservoir_only=True)
-        fine_cells = df["fine_global"].to_numpy(dtype=int)
-        coarse_cells = df["coarse_local"].to_numpy(dtype=int)
-
-        p_if_avg = float(np.mean(pressure[np.unique(fine_cells)]))
-        p_nb_avg = float(np.mean(pressure[np.unique(coarse_cells)]))
-        dp_macro = p_if_avg - p_nb_avg
-        if abs(dp_macro) < 1e-14:
-            raise ZeroDivisionError(
-                f"Macro pressure drop too small for LGR={lgr_name}, side={side}, k_1b={k_1b}."
-            )
-
-        accum = {
-            phase: {"flux": 0.0, "mobility_refs": [], "link_rows": []}
-            for phase in self.phase_names
-        }
-
-        for _, row in df.iterrows():
-            c_if = int(row["fine_global"])
-            c_nb = int(row["coarse_local"])
-            tran = float(row["tran"])
-            p_if = float(pressure[c_if])
-            p_nb = float(pressure[c_nb])
-            dp_link = p_if - p_nb
-            props_if = self.eval_phase_props(c_if)
-            props_nb = self.eval_phase_props(c_nb)
-
-            for phase in self.phase_names:
-                mob_if = props_if[phase]["mobility"]
-                mob_nb = props_nb[phase]["mobility"]
-                mob_ref = self._select_link_mobility(
-                    mob_if, mob_nb, p_if, p_nb, mobility_mode
-                )
-                q_link = -tran * dp_link * mob_ref
-                accum[phase]["flux"] += q_link
-                accum[phase]["mobility_refs"].append(mob_ref)
-                accum[phase]["link_rows"].append({
-                    "lgr_name": lgr_name,
-                    "side": side,
-                    "k_1b": int(k_1b),
-                    "phase": phase,
-                    "cell_if": c_if,
-                    "cell_nb": c_nb,
-                    "fine_global": c_if,
-                    "coarse_local": c_nb,
-                    "tran": tran,
-                    "p_if": p_if,
-                    "p_nb": p_nb,
-                    "dp_link": dp_link,
-                    "mobility_if": mob_if,
-                    "mobility_nb": mob_nb,
-                    "mobility_ref_link": mob_ref,
-                    "kr_if": props_if[phase]["kr"],
-                    "kr_nb": props_nb[phase]["kr"],
-                    "mu_if": props_if[phase]["mu"],
-                    "mu_nb": props_nb[phase]["mu"],
-                    "sat_if": props_if[phase]["sat"],
-                    "sat_nb": props_nb[phase]["sat"],
-                    "flux": q_link,
-                })
-
-        rows = []
-        detail = {}
-        for phase, data in accum.items():
-            mobility_ref = float(np.mean(data["mobility_refs"]))
-            total_flux = float(data["flux"])
-            if abs(mobility_ref) < eps_mobility:
-                t_eff_total = np.nan
-                t_eff_per_link = np.nan
-            else:
-                t_eff_total = -total_flux / (mobility_ref * dp_macro)
-                t_eff_per_link = t_eff_total / len(data["link_rows"])
-
-            row = {
+            return {
                 "lgr_name": lgr_name,
                 "side": side,
-                "k_1b": int(k_1b),
-                "phase": phase,
-                "n_links": len(data["link_rows"]),
-                "p_nb_avg": p_nb_avg,
-                "p_if_avg": p_if_avg,
-                "dp_macro": dp_macro,
-                "mobility_ref": mobility_ref,
-                "total_flux": total_flux,
-                "T_eff_total": t_eff_total,
-                "T_eff_per_link": t_eff_per_link,
-            }
-            rows.append(row)
-            detail[phase] = {
-                **row,
-                "link_df": pd.DataFrame(data["link_rows"]),
+                "connection_df": df,
+                "per_layer_df": self._empty_interface_trans_df(),
             }
 
-        return pd.DataFrame(rows), detail
+        rows = []
+        for k_cfg_1b, layer_df in df.groupby("k_1b", sort=True):
+            k_global_1b, k_reservoir_1b = self._layer_numbers_for_lgr(
+                lgr_name,
+                int(k_cfg_1b),
+            )
+            rows.append({
+                "lgr_name": lgr_name,
+                "side": side,
+                "k_1b": int(k_reservoir_1b),
+                "k_global_1b": int(k_global_1b),
+                "k_reservoir_1b": int(k_reservoir_1b),
+                "n_links": int(len(layer_df)),
+                "tran_sum": float(layer_df["tran"].sum()),
+                "tran_mean": float(layer_df["tran"].mean()),
+                "tran_min": float(layer_df["tran"].min()),
+                "tran_max": float(layer_df["tran"].max()),
+            })
+
+        return {
+            "lgr_name": lgr_name,
+            "side": side,
+            "connection_df": df,
+            "per_layer_df": pd.DataFrame(rows),
+        }
+
+    def interface_trans_all_lgrs(self):
+        results = {}
+        rows = []
+
+        for lgr_name in self.model.lgr_meta["lgr_orders"]:
+            results[lgr_name] = {}
+            for side in self.VALID_SIDES:
+                out = self.interface_trans_of_face(lgr_name, side)
+                results[lgr_name][side] = out
+                if not out["per_layer_df"].empty:
+                    rows.append(out["per_layer_df"])
+
+        results["summary_df"] = (
+            pd.concat(rows, axis=0, ignore_index=True)
+            if rows
+            else self._empty_interface_trans_df()
+        )
+        return results
+
+    def interface_trans_per_layer_interfaces(self):
+        out = self.interface_trans_all_lgrs()["summary_df"]
+        return out.sort_values(
+            ["lgr_name", "k_reservoir_1b", "side"]
+        ).reset_index(drop=True)
 
     def phase_effective_trans_of_face(
         self,
@@ -1318,39 +1304,13 @@ class AquiferPhaseLGRInterfaceTransAnalyzer(
         mobility_mode="interface_avg",
         agg_mode="average",
     ):
-        df = self.extract_face_connections(lgr_name, side)
-        if df.empty:
-            return {
-                "lgr_name": lgr_name,
-                "side": side,
-                "per_layer_df": pd.DataFrame(),
-                "summary_df": pd.DataFrame(),
-                "per_layer": {},
-            }
-
-        layer_rows = []
-        detail = {}
-        for k_1b, layer_df in df.groupby("k_1b", sort=True):
-            layer_summary, layer_detail = self._phase_effective_for_connection_df(
-                layer_df,
-                lgr_name=lgr_name,
-                side=side,
-                k_1b=int(k_1b),
-                mobility_mode=mobility_mode,
-            )
-            layer_rows.append(layer_summary)
-            detail[int(k_1b)] = layer_detail
-
-        per_layer_df = pd.concat(layer_rows, axis=0, ignore_index=True)
-        summary_df = self._aggregate_phase_layers(per_layer_df, mode=agg_mode)
-        summary_df.insert(0, "lgr_name", lgr_name)
-
+        out = self.interface_trans_of_face(lgr_name, side)
         return {
             "lgr_name": lgr_name,
             "side": side,
-            "per_layer_df": per_layer_df,
-            "summary_df": summary_df,
-            "per_layer": detail,
+            "per_layer_df": out["per_layer_df"],
+            "summary_df": out["per_layer_df"],
+            "per_layer": {},
         }
 
     def phase_effective_trans_all_lgrs(
@@ -1358,28 +1318,7 @@ class AquiferPhaseLGRInterfaceTransAnalyzer(
         mobility_mode="interface_avg",
         agg_mode="average",
     ):
-        results = {}
-        summaries = []
-
-        for lgr_name in self.model.lgr_meta["lgr_orders"]:
-            results[lgr_name] = {}
-            for side in self.VALID_SIDES:
-                out = self.phase_effective_trans_of_face(
-                    lgr_name=lgr_name,
-                    side=side,
-                    mobility_mode=mobility_mode,
-                    agg_mode=agg_mode,
-                )
-                results[lgr_name][side] = out
-                if not out["summary_df"].empty:
-                    summaries.append(out["summary_df"])
-
-        results["summary_df"] = (
-            pd.concat(summaries, axis=0, ignore_index=True)
-            if summaries
-            else pd.DataFrame()
-        )
-        return results
+        return self.interface_trans_all_lgrs()
 
     def phase_effective_trans_per_layer_interfaces(
         self,
@@ -1388,47 +1327,10 @@ class AquiferPhaseLGRInterfaceTransAnalyzer(
         """
         Return one flat table for every LGR layer and lateral interface.
 
-        Rows are keyed by:
-            lgr_name, k_1b, side, phase
-
-        This is the most direct view for checking per-layer left/right/up/down
-        aquifer effective transmissibilities.
+        Kept for compatibility with older notebooks. LGR transmissibilities are
+        read directly from reservoir.mesh and are not phase-effective values.
         """
-        rows = []
-
-        for lgr_name in self.model.lgr_meta["lgr_orders"]:
-            for side in self.VALID_SIDES:
-                out = self.phase_effective_trans_of_face(
-                    lgr_name=lgr_name,
-                    side=side,
-                    mobility_mode=mobility_mode,
-                    agg_mode="average",
-                )
-                if not out["per_layer_df"].empty:
-                    rows.append(out["per_layer_df"])
-
-        if not rows:
-            return pd.DataFrame(
-                columns=[
-                    "lgr_name",
-                    "k_1b",
-                    "side",
-                    "phase",
-                    "n_links",
-                    "p_nb_avg",
-                    "p_if_avg",
-                    "dp_macro",
-                    "mobility_ref",
-                    "total_flux",
-                    "T_eff_total",
-                    "T_eff_per_link",
-                ]
-            )
-
-        df = pd.concat(rows, axis=0, ignore_index=True)
-        return df.sort_values(
-            ["lgr_name", "k_1b", "side", "phase"]
-        ).reset_index(drop=True)
+        return self.interface_trans_per_layer_interfaces()
 
 
 class AquiferPhaseFineEffectiveTransAnalyzer(
@@ -1455,6 +1357,7 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
         phases=None,
         lgrs=None,
         parent_refine=(5, 5, 1),
+        nz_over=1,
     ):
         super().__init__(
             darts_model=darts_model,
@@ -1469,6 +1372,7 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
         self._init_phase_mobility(phases=phases)
         self.lgrs = lgrs
         self.parent_refine = tuple(parent_refine)
+        self.nz_over = int(nz_over)
 
     @staticmethod
     def _fine_patch_center_from_lgr_cfg(lgr_cfg, parent_refine):
@@ -1484,9 +1388,11 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
         return fine_i, fine_j
 
     @staticmethod
-    def _reservoir_k0_range_from_lgr_cfg(lgr_cfg):
+    def _reservoir_k0_range_from_lgr_cfg(lgr_cfg, nz_over=1):
         cfg = lgr_cfg["lgr_coords_in_parent_grid"]
         k1, k2 = map(int, cfg["k_range"])
+        if k1 <= nz_over:
+            return range(nz_over + k1 - 1, nz_over + k2)
         return range(k1 - 1, k2)
 
     def _set_patch_context(self, patch_center_1b, reservoir_k0_range):
@@ -1509,8 +1415,7 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
 
         pressure = self.get_pressure_array(reservoir_only=True)
         dp_macro = pinfo["p_if_avg"] - pinfo["p_nb_avg"]
-        if abs(dp_macro) < 1e-14:
-            raise ZeroDivisionError(f"Macro pressure drop too small for side={side}, k0={k0}.")
+        dp_too_small = abs(dp_macro) < 1e-14
 
         accum = {
             phase: {"flux": 0.0, "mobility_refs": [], "link_rows": []}
@@ -1563,7 +1468,7 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
         for phase, data in accum.items():
             mobility_ref = float(np.mean(data["mobility_refs"]))
             total_flux = float(data["flux"])
-            if abs(mobility_ref) < eps_mobility:
+            if dp_too_small or abs(mobility_ref) < eps_mobility:
                 t_eff_total = np.nan
                 t_eff_per_link = np.nan
             else:
@@ -1578,6 +1483,7 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
                 "p_nb_avg": float(pinfo["p_nb_avg"]),
                 "p_if_avg": float(pinfo["p_if_avg"]),
                 "dp_macro": float(dp_macro),
+                "dp_too_small": bool(dp_too_small),
                 "mobility_ref": mobility_ref,
                 "total_flux": total_flux,
                 "T_eff_total": t_eff_total,
@@ -1664,12 +1570,13 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
         self,
         lgrs=None,
         parent_refine=None,
+        nz_over=None,
         mobility_mode="interface_avg",
     ):
         """
         Return a flat fine-model table keyed like the LGR analyzer:
 
-            lgr_name, k_1b, side, phase
+            lgr_name, k_reservoir_1b, side, phase
 
         Parameters
         ----------
@@ -1679,6 +1586,10 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
         parent_refine
             Global fine-grid refinement relative to the parent coarse grid.
             Defaults to the value passed to __init__, usually (5, 5, 1).
+        nz_over
+            Number of overburden layers in the fine structured model. LGR
+            k_range is reservoir-local, so the default value 1 maps reservoir
+            layers 1..7 to global layers 2..8.
         """
         lgrs = self.lgrs if lgrs is None else lgrs
         if lgrs is None:
@@ -1688,6 +1599,7 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
             )
 
         parent_refine = self.parent_refine if parent_refine is None else tuple(parent_refine)
+        nz_over = self.nz_over if nz_over is None else int(nz_over)
         original_center = (self.i_center_1b, self.j_center_1b)
         original_k0_range = list(self.reservoir_k0_range)
 
@@ -1698,7 +1610,10 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
                     lgr_cfg,
                     parent_refine=parent_refine,
                 )
-                reservoir_k0_range = self._reservoir_k0_range_from_lgr_cfg(lgr_cfg)
+                reservoir_k0_range = self._reservoir_k0_range_from_lgr_cfg(
+                    lgr_cfg,
+                    nz_over=nz_over,
+                )
                 self._set_patch_context(
                     patch_center_1b=patch_center,
                     reservoir_k0_range=reservoir_k0_range,
@@ -1715,7 +1630,11 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
                     df.insert(0, "lgr_name", lgr_name)
                     df.insert(1, "patch_center_i_1b", patch_center[0])
                     df.insert(2, "patch_center_j_1b", patch_center[1])
-                    df.insert(3, "k_1b", df["k0"].astype(int) + 1)
+                    k_global_1b = df["k0"].astype(int) + 1
+                    k_reservoir_1b = df["k0"].astype(int) - nz_over + 1
+                    df.insert(3, "k_1b", k_reservoir_1b)
+                    df.insert(4, "k_global_1b", k_global_1b)
+                    df.insert(5, "k_reservoir_1b", k_reservoir_1b)
                     rows.append(df)
         finally:
             self._set_patch_context(
@@ -1730,6 +1649,8 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
                     "patch_center_i_1b",
                     "patch_center_j_1b",
                     "k_1b",
+                    "k_global_1b",
+                    "k_reservoir_1b",
                     "k0",
                     "side",
                     "phase",
@@ -1746,5 +1667,5 @@ class AquiferPhaseFineEffectiveTransAnalyzer(
 
         df = pd.concat(rows, axis=0, ignore_index=True)
         return df.sort_values(
-            ["lgr_name", "k_1b", "side", "phase"]
+            ["lgr_name", "k_reservoir_1b", "side", "phase"]
         ).reset_index(drop=True)

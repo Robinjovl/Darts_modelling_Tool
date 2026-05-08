@@ -1,15 +1,18 @@
 import os
+from copy import deepcopy
 import numpy as np
 import pandas as pd
 import argparse
 from datetime import datetime
-from Heter_model_aquifer.lgr_aquifer import Model
+from Homo_model_aquifer.uni_coarse_aquifer import Model
+
 from darts.engines import value_vector, redirect_darts_output
 from darts.physics.base.operators_base import PropertyOperators as props
 from drawing import get_physics_field, plot_xy_plane, plot_xz_section, plot_well_time_data_2, plot_average_res_pressure
 from Auxiliary_functions import LGRInterfaceTransAnalyzer, FineEffectiveTransAnalyzer, cal_average_true_reservoir_pressure
 from Auxiliary_functions import AquiferPhaseFineEffectiveTransAnalyzer, AquiferPhaseLGRInterfaceTransAnalyzer
 from plot_diff_and_profile import make_difference_maps_batch, make_profiles_batch, get_property_key
+
 
 def make_cfg_lgr():
     cfg = {
@@ -25,7 +28,11 @@ def make_cfg_lgr():
             "ny":60,
             "nz":9,
             "poro": 0.2,
-            "perm": 100,
+            "permx": 800.0,
+            "permy": 800.0,
+            "permz": 80.0,
+            "rcond": 2.1 * 86.4,
+            "hcap": 2200.0,
             "dx" : 30,
             "dy" : 30,
             "dz" : 10,
@@ -63,6 +70,20 @@ def make_cfg_lgr():
         }
     }
     return cfg
+
+
+def make_injector_only_cfg(cfg):
+    """
+    Keep the same reservoir and LGR layout, but remove producer wells for the
+    preparatory injection-only stage.
+    """
+    inj_cfg = deepcopy(cfg)
+    inj_cfg["wells"] = {
+        name: well_cfg
+        for name, well_cfg in cfg["wells"].items()
+        if name.startswith("I")
+    }
+    return inj_cfg
 
 
 def get_padded_limits(values, pad_fraction=0.05):
@@ -104,6 +125,25 @@ def plot_primary_xy_xz(model, values, basename, title, section_dir, xy_depth, zm
     )
 
 
+def cal_average_reservoir_pressure(model, use_lgr=True):
+    if use_lgr:
+        return cal_average_true_reservoir_pressure(model)
+
+    n_vars = len(model.physics.vars)
+    n_res_blocks = model.reservoir.mesh.n_res_blocks
+    states = np.asarray(model.physics.engine.X, dtype=float).reshape((-1, n_vars))[:n_res_blocks]
+
+    nx, ny = int(model.reservoir.nx), int(model.reservoir.ny)
+    k_index = np.arange(n_res_blocks) // (nx * ny)
+    reservoir_mask = (k_index >= 1) & (k_index < 8)
+
+    pressure = states[reservoir_mask, 0]
+    poro = np.asarray(model.reservoir.mesh.poro, dtype=float)[:n_res_blocks][reservoir_mask]
+    volume = np.asarray(model.reservoir.mesh.volume, dtype=float)[:n_res_blocks][reservoir_mask]
+    pore_volume = poro * volume
+    return float(np.sum(pressure * pore_volume) / np.sum(pore_volume))
+
+
 # def parse_args():
 #     parser = argparse.ArgumentParser()
 #     parser.add_argument("--perm-file", type=str, required=True,
@@ -128,11 +168,15 @@ if __name__ == '__main__':
     # USE_LGR = args.use_lgr
 
     Perm_file_name = "PERM66_ECL.INC"
-    output_dir = "output_lgr_aquifer_10yr_perm66"
-    Nt=10
+    Nt=50
     Dt = 365.0
-    USE_LGR = True
+    INJECTION_ONLY_STEPS = 3
+    USE_LGR = False
     Fine = False
+    lgr_output_dir = "output_lgr_open_aquifer_new"
+    fine_output_dir = "output_fine_open_aquifer_new"
+    coarse_output_dir = "output_coarse_open_aquifer_new_3yr_inj"
+    output_dir = lgr_output_dir if USE_LGR else fine_output_dir if Fine else coarse_output_dir
     Refine = (5, 5, 1)
     RHO_PROP = "rhoG"
     RHO_AQ_PROP = "rhoAq"
@@ -154,18 +198,77 @@ if __name__ == '__main__':
     os.makedirs(SECTION_DIR, exist_ok=True)
     os.makedirs(WELL_DIR, exist_ok=True)
 
+    cfg = make_cfg_lgr()
     if USE_LGR:
-        cfg = make_cfg_lgr()
-        darts_model = Model(cfg, perm_file_name=Perm_file_name)
+        stage1_output_dir = f"{output_dir}_stage1_inj_only"
+        os.makedirs(stage1_output_dir, exist_ok=True)
+        stage1_log_path = os.path.join(stage1_output_dir, "run.log")
+
+        cfg_inj_only = make_injector_only_cfg(cfg)
+        redirect_darts_output(stage1_log_path)
+        injection_model = Model(cfg_inj_only)
+        injection_model.init(platform="cpu")
+        injection_model.set_output(output_folder=stage1_output_dir)
+        injection_model.run(
+            INJECTION_ONLY_STEPS * Dt,
+            save_reservoir_data=True,
+        )
+        injection_model.output.store_well_time_data(save_output_files=True)
+        restart_file = os.path.join(stage1_output_dir, "reservoir_solution.h5")
+
+        stage2_log_path = os.path.join(output_dir, "run.log")
+        redirect_darts_output(stage2_log_path)
+        darts_model = Model(cfg)
+        darts_model.init(platform="cpu", restart=True)
+        darts_model.set_output(output_folder=output_dir)
+        darts_model.load_restart_data(restart_file, ts_idx=-1)
+        del injection_model
     elif Fine:
-        darts_model = Model(perm_file_name=Perm_file_name, refine=Refine)
+        stage1_output_dir = f"{output_dir}_stage1_inj_only"
+        os.makedirs(stage1_output_dir, exist_ok=True)
+        stage1_log_path = os.path.join(stage1_output_dir, "run.log")
+
+        redirect_darts_output(stage1_log_path)
+        injection_model = Model(include_producer=False)
+        injection_model.init(platform="cpu")
+        injection_model.set_output(output_folder=stage1_output_dir)
+        injection_model.run(
+            INJECTION_ONLY_STEPS * Dt,
+            save_reservoir_data=True,
+        )
+        injection_model.output.store_well_time_data(save_output_files=True)
+        restart_file = os.path.join(stage1_output_dir, "reservoir_solution.h5")
+
+        run_log_path = os.path.join(output_dir, "run.log")
+        redirect_darts_output(run_log_path)
+        darts_model = Model(include_producer=True)
+        darts_model.init(platform="cpu", restart=True)
+        darts_model.set_output(output_folder=output_dir)
+        darts_model.load_restart_data(restart_file, ts_idx=-1)
+        del injection_model
     else:
-        darts_model = Model(perm_file_name=Perm_file_name)
+        stage1_output_dir = f"{output_dir}_stage1_inj_only"
+        os.makedirs(stage1_output_dir, exist_ok=True)
+        stage1_log_path = os.path.join(stage1_output_dir, "run.log")
 
-    redirect_darts_output(os.path.join(output_dir, "run.log"))
-    darts_model.init(platform="cpu")
+        redirect_darts_output(stage1_log_path)
+        injection_model = Model(include_producer=False)
+        injection_model.init(platform="cpu")
+        injection_model.set_output(output_folder=stage1_output_dir)
+        injection_model.run(
+            INJECTION_ONLY_STEPS * Dt,
+            save_reservoir_data=True,
+        )
+        injection_model.output.store_well_time_data(save_output_files=True)
+        restart_file = os.path.join(stage1_output_dir, "reservoir_solution.h5")
 
-    darts_model.set_output(output_folder=output_dir)
+        run_log_path = os.path.join(output_dir, "run.log")
+        redirect_darts_output(run_log_path)
+        darts_model = Model(include_producer=True)
+        darts_model.init(platform="cpu", restart=True)
+        darts_model.set_output(output_folder=output_dir)
+        darts_model.load_restart_data(restart_file, ts_idx=-1)
+        del injection_model
 
     # initial_co2_kmol, initial_co2_mass_kg = calculate_total_co2_in_reservoir_single_phase(darts_model)
 
@@ -194,8 +297,8 @@ if __name__ == '__main__':
     pressure_key, pressure0 = get_primary_field(prim0, ["pressure", "p"])
     temperature_key, temperature0 = get_primary_field(prim0, ["temperature", "temp", "T"])
     bulk_co2_key, bulk_co2_0 = get_primary_field(prim0, ["CO2"])
-    # avg_p_time.append(float(darts_model.physics.engine.t))
-    # avg_p_value.append(cal_average_true_reservoir_pressure(darts_model))
+    avg_p_time.append(float(darts_model.physics.engine.t))
+    avg_p_value.append(cal_average_reservoir_pressure(darts_model, use_lgr=USE_LGR))
 
     #Permeability
     if USE_LGR:
@@ -245,6 +348,10 @@ if __name__ == '__main__':
     _, initial_property_array = darts_model.output.output_properties(
         output_properties=PROP_OUTPUTS,
         engine=True,
+    )
+    darts_model.output.append_properties_to_reservoir(
+        float(darts_model.physics.engine.t),
+        initial_property_array,
     )
     rho0 = initial_property_array[RHO_PROP][0, :]
     mu0 = initial_property_array[MU_PROP][0, :]
@@ -296,19 +403,18 @@ if __name__ == '__main__':
 
 
     target_days = {365, 2 * 365, 5 * 365, 6 * 365, 10 * 365, 11 * 365, 15 * 365, 16 * 365, 19 * 365, 20 * 365}
-    plot_days = {365, 5 * 365, 10 * 365, 15 * 365, 20 * 365}
+    plot_days = {365, 2 * 365, 5 * 365, 10 * 365, 15 * 365, 20 * 365, 30 * 365, 40 * 365, 50 * 365}
+    run_steps = max(Nt - INJECTION_ONLY_STEPS, 0)
     if True:
-        for t in range(Nt):
+        for t in range(run_steps):
             darts_model.run(Dt)
-
-
             darts_model.print_timers()
             darts_model.print_stat()
 
             t_end = float(darts_model.physics.engine.t)
             report_day = int(round(t_end))
-            # avg_p_time.append(t_end)
-            # avg_p_value.append(cal_average_true_reservoir_pressure(darts_model))
+            avg_p_time.append(t_end)
+            avg_p_value.append(cal_average_reservoir_pressure(darts_model, use_lgr=USE_LGR))
 
             if report_day in plot_days:
                 prim = get_physics_field(darts_model)
@@ -401,10 +507,10 @@ if __name__ == '__main__':
         print(type(darts_model.output.reservoir))
         print(darts_model.output.reservoir.output_to_vtk.__qualname__)
         print(darts_model.output.reservoir.output_to_vtk.__module__)
-        darts_model.output.output_to_vtk()
+        darts_model.output.output_to_vtk(output_properties=PROP_OUTPUTS)
 
         plot_well_time_data_2(darts_model, time_data_df,save_output_files=WELL_DIR)
-        # plot_average_res_pressure(avg_p_time, avg_p_value, save_dir=WELL_DIR)
+        plot_average_res_pressure(avg_p_time, avg_p_value, save_dir=WELL_DIR)
 
 
         """material balance check: calculate total CO2 mass in reservoir"""
@@ -472,7 +578,7 @@ if __name__ == '__main__':
         # -----------------------------------------------------
         # 3) difference maps
         # -----------------------------------------------------
-        year_pairs = [(1, 2), (5, 6), (10, 11), (15, 16), (19, 20)]
+        year_pairs = [(2, 5), (5, 6), (10, 11), (15, 16), (19, 20)]
 
         make_difference_maps_batch(
             model=darts_model,
@@ -505,7 +611,7 @@ if __name__ == '__main__':
         # -----------------------------------------------------
         # 4) 1D profiles between wells
         # -----------------------------------------------------
-        years = (1, 5, 10, 15, 20)
+        years = (2, 5, 10, 15, 20,30, 40, 50)
 
         make_profiles_batch(
             model=darts_model,

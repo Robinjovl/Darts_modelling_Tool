@@ -36,6 +36,12 @@ class TableKFlash(Flash):
     def evaluate(self, pressure, temperature, zc):
         self.K_values = self.get_k_values(pressure, temperature)
         self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
+        if self.nu[0] < 0.:
+            self.nu = [0., 1.]
+            self.X = [[0., 0.], zc]
+        elif self.nu[0] > 1.:
+            self.nu = [1., 0.]
+            self.X = [zc, [0., 0.]]
         self.temperature = temperature
         return 0
 
@@ -71,11 +77,12 @@ class TableKFlash(Flash):
 
 
 class Model(DartsModel):
-    def __init__(self, perm_file_name="PERM66_ECL.INC"):
+    def __init__(self, perm_file_name="PERM66_ECL.INC", include_producer=True):
         super().__init__()
         self.perm_file_name = perm_file_name
+        self.include_producer = include_producer
         self.timer.node["initialization"].start()
-        self.zero = 1e-8
+        self.zero = 1e-12
         self.set_reservoir()
         self.set_physics()
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=30, runtime=1000,
@@ -126,23 +133,23 @@ class Model(DartsModel):
         mask_res = (k_index >= nz_over) & (k_index < nz_over + nz_res)
         mask_over = k_index < nz_over
         mask_under = k_index >= nz_over + nz_res
-        kx = np.full(nb, 1e-6)
-        ky = np.full(nb, 1e-6)
-        kz = np.full(nb, 1e-6)
-        poro = np.full(nb, 1e-4)
+        kx = np.full(nb, 1e-9)
+        ky = np.full(nb, 1e-9)
+        kz = np.full(nb, 1e-9)
+        poro = np.full(nb, 1e-5)
         rcond = np.empty(nb)
         hcap = np.empty(nb)
         kx[mask_res] = permx_res.reshape(-1, order="F")
         ky[mask_res] = permy_res.reshape(-1, order="F")
         kz[mask_res] = permz_res.reshape(-1, order="F")
         poro[mask_res] = 0.2
-        rcond[mask_over], rcond[mask_res], rcond[mask_under] = 149.54, 500.0, 149.54
+        rcond[mask_over], rcond[mask_res], rcond[mask_under] = 149.54, 2.1 * 86.4, 149.54
         hcap[mask_over], hcap[mask_res], hcap[mask_under] = 2347.29, 2200.0, 2347.29
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
                                          permx=kx, permy=ky, permz=kz, poro=poro, depth=None,
                                          start_z=1990.0, rcond=rcond, hcap=hcap)
-        self.reservoir.boundary_volumes = {"xy_minus": 1e20, "xy_plus": 1e20, "yz_minus": None,
-                                           "yz_plus": None, "xz_minus": None, "xz_plus": None}
+        self.reservoir.boundary_volumes = {"xy_minus": 1e20, "xy_plus": 1e20, "yz_minus": 1e20,
+                                           "yz_plus": 1e20, "xz_minus": 1e20, "xz_plus": 1e20}
         self.reservoir.discretize()
         self.build_cell_center()
 
@@ -150,6 +157,8 @@ class Model(DartsModel):
         self.reservoir.add_well("I1")
         for k in range(2, 9):
             self.reservoir.add_perforation("I1", res_cell_idx=(42, 30, k), ms_epm=True, well_diameter=0.1524)
+        if not self.include_producer:
+            return
         self.reservoir.add_well("P1")
         for k in range(2, 9):
             self.reservoir.add_perforation("P1", res_cell_idx=(19, 30, k), ms_epm=True, well_diameter=0.1524)
@@ -169,15 +178,15 @@ class Model(DartsModel):
         pc.density_ev = {"CO2_rich": EoSDensity(eos=pr, Mw=comp_data.Mw),
                          "aqueous": Garcia2001(components)}
         pc.viscosity_ev = {"CO2_rich": Fenghour1998(), "aqueous": Islam2012(components)}
-        pc.rel_perm_ev = {"CO2_rich": PhaseRelPerm("gas", swc=0.30, sgr=0.10, kre=1.0, n=4.2),
-                          "aqueous": PhaseRelPerm("oil", swc=0.30, sgr=0.10, kre=1.0, n=1.9)}
+        pc.rel_perm_ev = {"CO2_rich": PhaseRelPerm("gas", swc=0.20, sgr=0.00, kre=0.95, n=5),
+                          "aqueous": PhaseRelPerm("oil", swc=0.20, sgr=0.00, kre=1.0, n=6)}
         pc.enthalpy_ev = {"CO2_rich": EoSEnthalpy(eos=pr),
                           "aqueous": EoSEnthalpy(eos=aq)}
-        pc.conductivity_ev = {"CO2_rich": ConstFunc(181.44),
-                              "aqueous": ConstFunc(181.44)}
+        pc.conductivity_ev = {"CO2_rich": ConstFunc(6),
+                              "aqueous": ConstFunc(60)}
         self.physics = Compositional(components, phases, self.timer, state_spec=Compositional.StateSpecification.PT,
                                      n_points=400, min_p=1, max_p=1000, min_z=eps, max_z=1.0 - eps,
-                                     epsilon_z=eps, min_t=273.15, max_t=573.15)
+                                     epsilon_z=eps, min_t=273.15, max_t=400+273.15)
         pc.output_props = {"satG": lambda: pc.sat[0],
                            "rhoG": lambda: pc.dens[0],
                            "rhoAq": lambda: pc.dens[1],
