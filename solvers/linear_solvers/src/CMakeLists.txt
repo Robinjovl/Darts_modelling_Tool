@@ -50,7 +50,6 @@ target_link_libraries(linear_solvers
   PUBLIC
     opendarts_compiler_flags
     config
-    auxiliary
     SuperLU
     cblas
     HYPRE::HYPRE
@@ -61,6 +60,7 @@ target_link_libraries(linear_solvers
 target_include_directories(linear_solvers
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/interpolation/include>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -70,13 +70,13 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_LINEAR_SOLVERS_PUBLI
 
 if(ONLY_SOLVERS)
   # Install the library file of opendarts_linear_solvers
-  install(TARGETS linear_solvers 
-    CONFIGURATIONS RELEASE    
+  install(TARGETS linear_solvers
+    CONFIGURATIONS RELEASE
     DESTINATION lib/unbundled
   )
 
   install(TARGETS linear_solvers
-    CONFIGURATIONS DEBUG     
+    CONFIGURATIONS DEBUG
     DESTINATION lib/unbundled/debug
   )
 
@@ -85,18 +85,18 @@ if(ONLY_SOLVERS)
           DESTINATION include
           COMPONENT header_files
           FILES_MATCHING PATTERN "*.hpp")
-          
+
   # Setup the bundled linear_solvers library
   # Single file for delivery
 
-  # These steps setup a single file 
-  # with all dependent libraries included in the same file 
-  # In the future with all components of opendarts integrated with cmake 
-  # this is no longer needed, for now it is done to simplify integration 
+  # These steps setup a single file
+  # with all dependent libraries included in the same file
+  # In the future with all components of opendarts integrated with cmake
+  # this is no longer needed, for now it is done to simplify integration
   # with engines.
 
-  # Generate the single library file and determine the include header files directories 
-  # This function takes linear_solvers library checks all dependencies, bundle them 
+  # Generate the single library file and determine the include header files directories
+  # This function takes linear_solvers library checks all dependencies, bundle them
   # all together and places the single .a file into <CMAKE_BINARY_DIR>/bundled_libs.
   # Additionally it returns:
   #   linear_solvers_bundled_filename: the full path to the single. a file
@@ -107,7 +107,7 @@ if(ONLY_SOLVERS)
   # Generate the single file library as an imported library
   add_library(linear_solvers_bundled STATIC IMPORTED GLOBAL)
   set_target_properties(linear_solvers_bundled
-    PROPERTIES 
+    PROPERTIES
     IMPORTED_LOCATION ${linear_solvers_bundled_filename}
     INTERFACE_INCLUDE_DIRECTORIES "${linear_solvers_bundled_header_files}"
   )
@@ -117,12 +117,12 @@ if(ONLY_SOLVERS)
   message(STATUS "-----------------------------------------------")
 
   install(FILES ${linear_solvers_bundled_filename}
-    CONFIGURATIONS RELEASE RELWITHDEBINFO ""    
+    CONFIGURATIONS RELEASE RELWITHDEBINFO ""
     DESTINATION lib
   )
 
   install(FILES ${linear_solvers_bundled_filename}
-    CONFIGURATIONS DEBUG    
+    CONFIGURATIONS DEBUG
     DESTINATION lib
     RENAME ${CMAKE_STATIC_LIBRARY_PREFIX}${bundled_tgt_file_name}_d${CMAKE_STATIC_LIBRARY_SUFFIX}
   )

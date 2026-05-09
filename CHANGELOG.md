@@ -1,7 +1,10 @@
 # #.#.# [Future]
+- Improve CI model tests by ([!312](https://gitlab.com/open-darts/open-darts/-/merge_requests/312))
+    - comparing generated well time-series .pkl files with .pkl reference files and
+    - extending performance-reference checks to include well primary variables in addition to reservoir primary variables.
 - Support using the OBL method to calculate DFM well phase velocities. Direct method is still the default method since it is safer in terms of stability ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Add `x_mass` (mass composition of each phase) as a new property to `PropertyContainer` of the super engine because it is needed for evaluation of phase velocities in DFM wells using the OBL method ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
-- Make DFM velocity calculation independent of the order of the phases specified by the user, so now the order of the phases does not affect the performance of DFM wells, but the user needs to specify `"G"` and `"L"` as names of gas and liquid phases for two-phase flow and `"G"`, `"L_a"`, and `"L_b"` as names of gas and two liquid phases for three-phase flow  ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)).
+- Make DFM velocity calculation independent of the order of the phases specified by the user, so now the order of the phases does not affect the performance of DFM wells, but the user needs to specify `"G"` and `"L"` as names of gas and liquid phases for two-phase flow and `"G"`, `"L_a"`, and `"L_b"` as names of gas and two liquid phases for three-phase flow ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)).
 - Correct derivative of averaged density of the liquid phase for three-phase flow of gas and two liquid phases ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Improve storage and visualization of properties of DFM wells ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
   - Streamline storage and visualization of DFM well properties
@@ -30,6 +33,12 @@
   {- Before: idata.rock.conductivity -}\
   {+ Now:    idata.rock.thermal_conductivity +}
   \
+  - Equilibrium initialization function name was changed from version 1.3.2:
+  \
+  {- Before: init.solve() -}\
+  {+ Now:    init.solve_up_and_downwards() +}
+  \
+- Extracted interpolators into a standalone `darts.interpolators` Python module / shared library, decoupled from `darts.engines` at link time (header-only coupling via `interpolation_config.h`). Template instantiations split across multiple translation units to enable parallel compilation and cut per-TU memory (full build down to ~6 min on multi-core; valgrind job pre-builds at `-j NT/2` to avoid OOM). Interpolator tests moved to `tests/interpolators/`. Breaking change: interpolator types are no longer exposed under `darts.engines` — import from `darts.interpolators` ([!301](https://gitlab.com/open-darts/open-darts/-/merge_requests/301))
 
 # 1.4.0 [17-02-2026]
 - OBL and operators:

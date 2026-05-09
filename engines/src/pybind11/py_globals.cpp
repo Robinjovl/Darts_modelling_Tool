@@ -235,15 +235,9 @@ void pybind_globals(py::module &m)
       .def_readwrite("n_timesteps_total", &sim_stat::n_timesteps_total)
       .def_readwrite("n_timesteps_wasted", &sim_stat::n_timesteps_wasted);
 
-  py::class_<timer_node>(m, "timer_node", "Timers tree structure")
-      .def(py::init<>())
-      .def("start", &timer_node::start)
-      .def("stop", &timer_node::stop)
-      .def("get_timer", &timer_node::get_timer)
-      .def("print", &timer_node::print)
-      .def("reset_recursive", &timer_node::reset_recursive)
-      //properties
-      .def_readwrite("node", &timer_node::node);
+  // timer_node is registered by darts.interpolators (imported at module init).
+  // Re-export it so that `from darts.engines import timer_node` still works.
+  m.attr("timer_node") = py::module_::import("darts.interpolators").attr("timer_node");
 
   m.def("redirect_darts_output", &redirect_darts_output, "Redirect darts standard output to a file. \n"
                                                          "If empty filename is specified, then no output will be produced.",

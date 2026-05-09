@@ -310,6 +310,14 @@ echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
 # Build and install openDARTS
+# Under valgrind (-O2 -g) the auto-generated super_part*.cpp interpolator TUs
+# can OOM-kill g++ at high -j. Pre-build the interpolators target with reduced
+# parallelism; the subsequent full build skips already-compiled objects.
+if [[ "$valgrind" == true && "$NT" -gt 1 ]]; then
+    HEAVY_NT=$(( NT / 2 ))
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT (valgrind OOM mitigation)"
+    make interpolators -j $HEAVY_NT 2>> ../make_darts.log
+fi
 make install -j $NT 2>> ../make_darts.log
 
 # Test

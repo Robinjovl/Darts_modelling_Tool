@@ -2335,17 +2335,6 @@ class Output:
             p_dead = 1.01325  # Dead pressure (1 atm)
             T_dead = 273.15 + 15  # Dead temperature (15 deg C)
 
-            if not (
-                self.physics.PT_axes_min[p_idx]
-                <= p_dead
-                <= self.physics.PT_axes_max[p_idx]
-                and self.physics.PT_axes_min[t_idx]
-                <= T_dead
-                <= self.physics.PT_axes_max[t_idx]
-            ):
-                # Since the dead pressure or temperature for well advective heat rate calculation is outside the OBL bounds, leave it zero.
-                return np.zeros((n_ts, n_conns, pc.nph))
-
             states_2d[:, p_idx] = p_dead
             states_2d[:, t_idx] = T_dead
             states_vec_dead = value_vector(states_2d.ravel())
