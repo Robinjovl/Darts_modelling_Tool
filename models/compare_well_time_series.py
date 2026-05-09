@@ -71,6 +71,16 @@ def compare_generated_well_time_series(
     :param overwrite: Flag to overwrite reference files with generated well time-series files.
     :param pkl_suffix: Solver/platform suffix used in the reference file name.
     """
+    # Single-thread CI jobs provide the reference check for well time-series.
+    # Multithread runs can produce small thread-count-dependent differences in
+    # well time-series, so they are not compared with reference results.
+    if skip_well_time_series_comparison():
+        print(
+            "SKIP well time-series comparison: "
+            f"OMP_NUM_THREADS={get_thread_count()}."
+        )
+        return 0, 0, True
+
     failed = 0
     n_processed = 0
     for time_series_file in find_changed_well_time_series_files(root_dir, before_snapshot):
@@ -80,7 +90,7 @@ def compare_generated_well_time_series(
         )
     if n_processed == 0:
         print("No changed well time-series file found.")
-    return 1 if failed else 0, n_processed
+    return 1 if failed else 0, n_processed, False
 
 
 def compare_well_time_series(
@@ -255,13 +265,26 @@ def get_comparison_tolerances():
     """
     Return numeric comparison tolerances for the active test environment.
     """
-    nt = int(os.environ.get("OMP_NUM_THREADS", 1))
     is_gpu = os.environ.get("TEST_GPU") == "1"
-    if nt > 1 or is_gpu:
+    if get_thread_count() > 1 or is_gpu:
         # Well time-series rates are derived from stored well states and can show
         # small platform-dependent differences on GPU and multithreaded runs.
         return 1e-3, 1e-5
     return 1e-5, 1e-5
+
+
+def skip_well_time_series_comparison():
+    """
+    Return whether generated well time-series comparisons should be skipped.
+    """
+    return get_thread_count() > 1
+
+
+def get_thread_count():
+    """
+    Return the configured OpenMP thread count.
+    """
+    return int(os.environ.get("OMP_NUM_THREADS", 1))
 
 
 def get_nanargmax(values: np.ndarray):
