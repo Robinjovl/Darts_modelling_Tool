@@ -12,12 +12,12 @@ Notes:
         - Use 'G' as the name of the gaseous phase
         - Use 'L' as the name of the liquid phase (for a single liquid phase)
         - Use 'L_a' and 'L_b' as the names of the liquid phases (for two liquid phases)
-        - Immobile phases after PropertyContainer.np_fl are returned with zero velocity. The drift-flux momentum
-          closure itself is still gas/liquid. If an immobile phase has nonzero holdup in a DFM pipe segment, the
-          closure effectively treats that occupied volume as part of the liquid fraction through terms such as
-          (1 - sG); solid blockage or separate solid holdup physics is not modeled, i.e., mmobile phases are not
-          considered in the pipe velocity calculation, but their volume is still considered in the accumulation term
-          of the conservation equations.
+        - Immobile phases after PropertyContainer.np_fl, or phases explicitly listed in Pipe.immobile_phase_names,
+          are returned with zero velocity. The drift-flux momentum closure itself is still gas/liquid. If an
+          immobile phase has nonzero holdup in a DFM pipe segment, the closure effectively treats that occupied
+          volume as part of the liquid fraction through terms such as (1 - sG); solid blockage or separate solid
+          holdup physics is not modeled, i.e., immobile phases are not considered in the pipe velocity calculation,
+          but their volume is still considered in the accumulation term of the conservation equations.
 """
 
 import math
@@ -61,6 +61,7 @@ class Pipe:
         reservoir,
         initial_conditions: SingleAmbientTemperature | LinearAmbientTemperature,
         source_sinks: dict = None,
+        immobile_phase_names: list[str] | None = None,
         Cmax: float = 1.2,
         Fv: float = 1,
         prop_eval_method: str = "direct",
@@ -83,6 +84,10 @@ class Pipe:
         :type initial_conditions: SingleAmbientTemperature or LinearAmbientTemperature
         :param source_sinks: Dict containing sources or sinks for the momentum equation
         :type source_sinks: dict
+        :param immobile_phase_names: Phase names that are thermodynamic phases but are wanted to have zero DFM
+                                     velocity in the pipe, e.g. ["Ice"]. These phases are the immobile phases that
+                                     are not considered as np_sol in the property container.
+        :type immobile_phase_names: list[str] or None
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
                      could have a value between 1.0 and 1.5. It is set to:
                      --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
@@ -132,17 +137,30 @@ class Pipe:
         # Check if mobile phase names and number of mobile phases are as expected. Then, store phase indices.
         phase_names = physics.phases
         pc = physics.property_containers[0]
-        mobile_phase_names = phase_names[: pc.np_fl]
+        immobile_phase_names = (
+            [] if immobile_phase_names is None else list(immobile_phase_names)
+        )
+        unknown_immobile_phases = set(immobile_phase_names) - set(phase_names)
+        assert not unknown_immobile_phases, (
+            f"Immobile phase(s) {sorted(unknown_immobile_phases)} are not found in the list of phases!"
+        )
+        thermodynamic_phase_names = phase_names[: pc.np_fl]
+        mobile_phase_names = [
+            phase_name
+            for phase_name in thermodynamic_phase_names
+            if phase_name not in immobile_phase_names
+        ]
+        self.n_mobile_phases = len(mobile_phase_names)
         assert "G" in mobile_phase_names, (
             "Gaseous phase with the name 'G' is not found in the list of phases!"
         )
         self.g_idx = phase_names.index("G")
-        if pc.np_fl == 2:
+        if self.n_mobile_phases == 2:
             assert "L" in mobile_phase_names, (
                 "Liquid phase with the name 'L' is not found in the list of phases!"
             )
             self.l_idx = phase_names.index("L")
-        elif pc.np_fl == 3:
+        elif self.n_mobile_phases == 3:
             assert "L_a" in mobile_phase_names, (
                 "Liquid phase with the name 'L_a' is not found in the list of phases!"
             )
@@ -153,8 +171,11 @@ class Pipe:
             self.lb_idx = phase_names.index("L_b")
         else:
             raise Exception(
-                f"{pc.np_fl} mobile phase(s) is not supported! "
-                f"Full phase list: {phase_names}"
+                f"{self.n_mobile_phases} DFM mobile phase(s) is not supported! "
+                f"Mobile phase list: {mobile_phase_names}; "
+                f"immobile phase list: {immobile_phase_names}; "
+                f"thermodynamic phase list: {thermodynamic_phase_names}; "
+                f"full phase list: {phase_names}"
             )
 
         self.isothermal = not physics.thermal
@@ -349,9 +370,9 @@ class Pipe:
 
         # Get phase indices
         g_idx = self.g_idx
-        if pc.np_fl == 2:
+        if self.n_mobile_phases == 2:
             l_idx = self.l_idx
-        elif pc.np_fl == 3:
+        elif self.n_mobile_phases == 3:
             la_idx = self.la_idx
             lb_idx = self.lb_idx
 
@@ -380,14 +401,14 @@ class Pipe:
                 for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                     xG_mass0[:, c_idx] = prop_arr0[f'x{c_name}_in_G_mass']
 
-                if pc.np_fl == 2:
+                if self.n_mobile_phases == 2:
                     rhoL0 = prop_arr0['rhoL']
                     miuL0 = prop_arr0['miuL'] * 1e-3  # convert cP to Pa.s
                     xL_mass0 = np.zeros((num_segments, pc.nc_fl))
                     for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                         xL_mass0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_mass']
 
-                if pc.np_fl == 3:
+                if self.n_mobile_phases == 3:
                     sL_a_0 = prop_arr0['sL_a']
                     sL_b_0 = prop_arr0['sL_b']
                     rhoL_a_0 = prop_arr0['rhoL_a']
@@ -432,7 +453,7 @@ class Pipe:
                 xG_mass0 = np.zeros((num_segments, pc.nc_fl))
                 xL_mass0 = np.zeros((num_segments, pc.nc_fl))
 
-                if pc.np_fl == 3:
+                if self.n_mobile_phases == 3:
                     sL_a_0 = np.zeros(num_segments)
                     sL_b_0 = np.zeros(num_segments)
                     rhoL_a_0 = np.zeros(num_segments)
@@ -451,7 +472,7 @@ class Pipe:
                     sG0[i] = pc.sat[g_idx]
                     rhoG0[i] = pc.dens[g_idx]
                     miuG0[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
-                    if pc.np_fl == 2:
+                    if self.n_mobile_phases == 2:
                         rhoL0[i] = pc.dens[l_idx]
                         miuL0[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                         # Calculate mass fractions of components in each phase
@@ -465,7 +486,7 @@ class Pipe:
                             x_mass0[l_idx, :],
                         )
 
-                    if pc.np_fl == 3:
+                    if self.n_mobile_phases == 3:
                         sL_a_0[i], sL_b_0[i] = pc.sat[la_idx], pc.sat[lb_idx]
                         rhoL_a_0[i], rhoL_b_0[i] = pc.dens[la_idx], pc.dens[lb_idx]
                         miuL_a_0[i], miuL_b_0[i] = (
@@ -546,14 +567,14 @@ class Pipe:
             for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                 xG_mass[:, c_idx] = prop_arr[f'x{c_name}_in_G_mass']
 
-            if pc.np_fl == 2:
+            if self.n_mobile_phases == 2:
                 rhoL = prop_arr['rhoL']
                 miuL = prop_arr['miuL'] * 1e-3  # convert cP to Pa.s
                 xL_mass = np.zeros((num_segments, pc.nc_fl))
                 for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                     xL_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_mass']
 
-            if pc.np_fl == 3:
+            if self.n_mobile_phases == 3:
                 sL_a = prop_arr['sL_a']
                 sL_b = prop_arr['sL_b']
                 rhoL_a = prop_arr['rhoL_a']
@@ -596,7 +617,7 @@ class Pipe:
             xG_mass = np.zeros((num_segments, pc.nc_fl))
             xL_mass = np.zeros((num_segments, pc.nc_fl))
 
-            if pc.np_fl == 3:
+            if self.n_mobile_phases == 3:
                 sL_a = np.zeros(num_segments)
                 sL_b = np.zeros(num_segments)
                 rhoL_a = np.zeros(num_segments)
@@ -615,7 +636,7 @@ class Pipe:
                 sG[i] = pc.sat[g_idx]
                 rhoG[i] = pc.dens[g_idx]
                 miuG[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
-                if pc.np_fl == 2:
+                if self.n_mobile_phases == 2:
                     rhoL[i] = pc.dens[l_idx]
                     miuL[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                     # Calculate mass fractions of components in each phase
@@ -624,7 +645,7 @@ class Pipe:
                         x_mass[j, :] = (pc.x[j, :] * Mw_fl) / sum(pc.x[j, :] * Mw_fl)
                     xG_mass[i, :], xL_mass[i, :] = x_mass[g_idx, :], x_mass[l_idx, :]
 
-                if pc.np_fl == 3:
+                if self.n_mobile_phases == 3:
                     sL_a[i], sL_b[i] = pc.sat[la_idx], pc.sat[lb_idx]
                     rhoL_a[i], rhoL_b[i] = pc.dens[la_idx], pc.dens[lb_idx]
                     miuL_a[i], miuL_b[i] = pc.mu[la_idx] * 1e-3, pc.mu[lb_idx] * 1e-3
@@ -667,9 +688,9 @@ class Pipe:
         if self.diff_method == "OBL":
             sG_der = self.get_op_der_matrix(op_idx=SAT_OP + g_idx)
             rhoG_der = self.get_op_der_matrix(op_idx=GRAV_OP + g_idx)
-            if pc.np_fl == 2:
+            if self.n_mobile_phases == 2:
                 rhoL_der = self.get_op_der_matrix(op_idx=GRAV_OP + l_idx)
-            elif pc.np_fl == 3:
+            elif self.n_mobile_phases == 3:
                 rhoL_a_der = self.get_op_der_matrix(op_idx=GRAV_OP + la_idx)
                 rhoL_b_der = self.get_op_der_matrix(op_idx=GRAV_OP + lb_idx)
                 sL_a_der = self.get_op_der_matrix(op_idx=SAT_OP + la_idx)
@@ -1398,7 +1419,6 @@ class Pipe:
         n_conns = self.geometry.num_interfaces
         n_vars = self.physics.n_vars
         nph = self.physics.nph
-        pc = self.physics.property_containers[0]
 
         # Evaluate phase velocities
         phase_vels = self.eval_phase_vels(
@@ -1433,9 +1453,9 @@ class Pipe:
         vG, vL = phase_vels[:n_conns], phase_vels[n_conns:]
         phase_vels = np.zeros((n_conns, nph), dtype=np.float64)
         phase_vels[:, self.g_idx] = vG
-        if pc.np_fl == 2:
+        if self.n_mobile_phases == 2:
             phase_vels[:, self.l_idx] = vL
-        elif pc.np_fl == 3:
+        elif self.n_mobile_phases == 3:
             phase_vels[:, self.la_idx] = vL
             phase_vels[:, self.lb_idx] = vL
         phase_vels = phase_vels.ravel(order="F")
@@ -1444,9 +1464,9 @@ class Pipe:
         vel_der_size_all = n_conns * 2 * n_vars
         phase_vels_ders = np.zeros((vel_der_size_all, nph), dtype=np.float64)
         phase_vels_ders[:, self.g_idx] = vel_der_dense_G.ravel()
-        if pc.np_fl == 2:
+        if self.n_mobile_phases == 2:
             phase_vels_ders[:, self.l_idx] = vel_der_dense_L.ravel()
-        elif pc.np_fl == 3:
+        elif self.n_mobile_phases == 3:
             phase_vels_ders[:, self.la_idx] = vel_der_dense_L.ravel()
             phase_vels_ders[:, self.lb_idx] = vel_der_dense_L.ravel()
         phase_vels_ders = phase_vels_ders.ravel(order="F")
