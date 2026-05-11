@@ -102,6 +102,7 @@ def plot_heat_map_contourf(
     pc = coupled_model.physics.property_containers[0]
     components_names = pc.components_name
     num_components = len(components_names)
+    n_mobile_phases = coupled_model.wells[well_name].n_mobile_phases
 
     # Load primary vars and phase props
     well_props_file_path = os.path.join(
@@ -522,7 +523,7 @@ def plot_heat_map_contourf(
 
     # %% Liquid L_a volume fraction profile
 
-    if pc.nph == 3:
+    if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid L_a volume fraction matrix
@@ -612,7 +613,7 @@ def plot_heat_map_contourf(
 
     # %% Liquid L_b volume fraction profile
 
-    if pc.nph == 3:
+    if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid L_b volume fraction matrix
@@ -802,7 +803,7 @@ def plot_heat_map_contourf(
 
     # %% Profile/profiles of components mole fractions in the liquid phase
 
-    if pc.nph == 2:
+    if n_mobile_phases == 2:
         for c, comp_name in enumerate(components_names):
             # Update figure counter for name of the saved figure
             figure_counter += 1
@@ -910,7 +911,7 @@ def plot_heat_map_contourf(
 
         # %% Profile/profiles of components mole fractions in the liquid phase L_a
 
-        if pc.nph == 3:
+        if n_mobile_phases == 3:
             for c, comp_name in enumerate(components_names):
                 # Update figure counter for name of the saved figure
                 figure_counter += 1
@@ -1019,7 +1020,7 @@ def plot_heat_map_contourf(
 
         # %% Profile/profiles of components mole fractions in the liquid phase L_b
 
-        if pc.nph == 3:
+        if n_mobile_phases == 3:
             for c, comp_name in enumerate(components_names):
                 # Update figure counter for name of the saved figure
                 figure_counter += 1
@@ -1215,7 +1216,7 @@ def plot_heat_map_contourf(
 
     # %% Liquid density profile
 
-    if pc.nph == 2:
+    if n_mobile_phases == 2:
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid density matrix
@@ -1308,7 +1309,7 @@ def plot_heat_map_contourf(
 
     # %% Liquid L_a density profile
 
-    if pc.nph == 3:
+    if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid L_a density matrix
@@ -1411,7 +1412,7 @@ def plot_heat_map_contourf(
 
     # %% Liquid L_b density profile
 
-    if pc.nph == 3:
+    if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid L_b density matrix
@@ -1601,7 +1602,7 @@ def plot_heat_map_contourf(
 
     # %% Liquid viscosity profile
 
-    if pc.nph == 2:
+    if n_mobile_phases == 2:
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid viscosity matrix
@@ -1694,7 +1695,7 @@ def plot_heat_map_contourf(
 
     # %% Liquid L_a viscosity profile
 
-    if pc.nph == 3:
+    if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid L_a viscosity matrix
@@ -1797,7 +1798,7 @@ def plot_heat_map_contourf(
 
     # %% Liquid L_b viscosity profile
 
-    if pc.nph == 3:
+    if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid L_b viscosity matrix

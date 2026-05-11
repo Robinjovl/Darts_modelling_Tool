@@ -47,10 +47,11 @@ def save_dfm_well_props(
     pc = coupled_model.physics.property_containers[0]
 
     # Get phase indices
+    n_mobile_phases = coupled_model.wells[well_name].n_mobile_phases
     g_idx = coupled_model.wells[well_name].g_idx
-    if pc.np_fl == 2:
+    if n_mobile_phases == 2:
         l_idx = coupled_model.wells[well_name].l_idx
-    elif pc.np_fl == 3:
+    elif n_mobile_phases == 3:
         la_idx = coupled_model.wells[well_name].la_idx
         lb_idx = coupled_model.wells[well_name].lb_idx
 
@@ -60,27 +61,27 @@ def save_dfm_well_props(
     T = np.zeros(num_segments)
 
     sG = np.zeros(num_segments)
-    if pc.np_fl == 2:
+    if n_mobile_phases == 2:
         sL = np.zeros(num_segments)
-    elif pc.np_fl == 3:
+    elif n_mobile_phases == 3:
         sL_a = np.zeros(num_segments)
         sL_b = np.zeros(num_segments)
     rhoG = np.zeros(num_segments)
-    if pc.np_fl == 2:
+    if n_mobile_phases == 2:
         rhoL = np.zeros(num_segments)
-    elif pc.np_fl == 3:
+    elif n_mobile_phases == 3:
         rhoL_a = np.zeros(num_segments)
         rhoL_b = np.zeros(num_segments)
     miuG = np.zeros(num_segments)
-    if pc.np_fl == 2:
+    if n_mobile_phases == 2:
         miuL = np.zeros(num_segments)
-    elif pc.np_fl == 3:
+    elif n_mobile_phases == 3:
         miuL_a = np.zeros(num_segments)
         miuL_b = np.zeros(num_segments)
     xG = np.zeros((num_segments, pc.nc_fl))
-    if pc.np_fl == 2:
+    if n_mobile_phases == 2:
         xL = np.zeros((num_segments, pc.nc_fl))
-    elif pc.np_fl == 3:
+    elif n_mobile_phases == 3:
         xL_a = np.zeros((num_segments, pc.nc_fl))
         xL_b = np.zeros((num_segments, pc.nc_fl))
 
@@ -124,27 +125,27 @@ def save_dfm_well_props(
                     T[j] = pc.temperature
 
             xG[j, :] = pc.x[g_idx, :]
-            if pc.np_fl == 2:
+            if n_mobile_phases == 2:
                 xL[j, :] = pc.x[l_idx, :]
-            elif pc.np_fl == 3:
+            elif n_mobile_phases == 3:
                 xL_a[j, :] = pc.x[la_idx, :]
                 xL_b[j, :] = pc.x[lb_idx, :]
             sG[j] = pc.sat[g_idx]
-            if pc.np_fl == 2:
+            if n_mobile_phases == 2:
                 sL[j] = pc.sat[l_idx]
-            elif pc.np_fl == 3:
+            elif n_mobile_phases == 3:
                 sL_a[j] = pc.sat[la_idx]
                 sL_b[j] = pc.sat[lb_idx]
             rhoG[j] = pc.dens[g_idx]
-            if pc.np_fl == 2:
+            if n_mobile_phases == 2:
                 rhoL[j] = pc.dens[l_idx]
-            elif pc.np_fl == 3:
+            elif n_mobile_phases == 3:
                 rhoL_a[j] = pc.dens[la_idx]
                 rhoL_b[j] = pc.dens[lb_idx]
             miuG[j] = pc.mu[g_idx]
-            if pc.np_fl == 2:
+            if n_mobile_phases == 2:
                 miuL[j] = pc.mu[l_idx]
-            elif pc.np_fl == 3:
+            elif n_mobile_phases == 3:
                 miuL_a[j] = pc.mu[la_idx]
                 miuL_b[j] = pc.mu[lb_idx]
 
@@ -169,7 +170,7 @@ def save_dfm_well_props(
         vG = np.append(vG, np.nan)
         vL = np.append(vL, np.nan)
 
-        if pc.np_fl == 2:
+        if n_mobile_phases == 2:
             ts_primary_vars_and_phases_props = [
                 p.copy(),
                 z.copy(),
@@ -208,7 +209,7 @@ def save_dfm_well_props(
                     ),
                 ]
             )
-        elif pc.np_fl == 3:
+        elif n_mobile_phases == 3:
             ts_primary_vars_and_phases_props = [
                 p.copy(),
                 z.copy(),

@@ -70,10 +70,10 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         "miuG",
         "miuL",
     ]
-    pc = coupled_model.physics.property_containers[0]
-    if pc.np_fl == 2:
+    n_mobile_phases = coupled_model.wells[well_name].n_mobile_phases
+    if n_mobile_phases == 2:
         avail_props.append("sL")
-    elif pc.np_fl == 3:
+    elif n_mobile_phases == 3:
         avail_props.extend(["sL_a", "sL_b"])
     assert prop_name in avail_props, (
         f"Entered prop_name '{prop_name}' is not in the list of available properties!"
