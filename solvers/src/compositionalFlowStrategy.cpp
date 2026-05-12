@@ -82,7 +82,7 @@ void CompositionalFlowStrategy::setup()
 
   // Restriction: Block column lumped
   // Lumps block columns when restricting from fine to coarse grid
-  std::cout << "  Restriction: blockColLumped (HYPRE type 12)" << std::endl;
+  std::cout << "  Restriction: blockColLumped (HYPRE type 14)" << std::endl;
   m_levelParams[0].restrictType = RestrictionType::blockColLumped;
 
   // Coarse grid: Full Galerkin product

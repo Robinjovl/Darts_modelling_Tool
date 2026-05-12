@@ -193,19 +193,12 @@ namespace opendarts
       mgr_solver.setParameters(params);
 
       initialized = true;
+      first_solve = true;
       return 0;
     }
 
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_mgr<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A)
-    {
-      // Just update matrix pointer (like SuperLU)
-      matrix_ptr = A;
-      return 0;
-    }
-
-    template <uint8_t N_BLOCK_SIZE>
-    int linsolv_mgr<N_BLOCK_SIZE>::solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X)
     {
       if (!initialized)
       {
@@ -213,13 +206,14 @@ namespace opendarts
         return -1;
       }
 
-      if (matrix_ptr == nullptr)
+      if (A == nullptr)
       {
         std::cerr << "[MGR] Error: Matrix pointer is null." << std::endl;
         return -1;
       }
 
-      // Get block CSR parameters
+      matrix_ptr = A;
+
       const opendarts::config::index_t n_blocks = matrix_ptr->n_rows;
       const opendarts::config::index_t block_size = N_BLOCK_SIZE;
       const opendarts::config::index_t nnz_blocks_declared = matrix_ptr->n_non_zeros;
@@ -234,7 +228,6 @@ namespace opendarts
         return -1;
       }
 
-      // Validate row_ptr monotonicity and bounds vs declared nnz_blocks
       const opendarts::config::index_t nnz_blocks_from_rows = row_ptr[n_blocks];
       if (nnz_blocks_from_rows > nnz_blocks_declared)
       {
@@ -264,10 +257,7 @@ namespace opendarts
                   << std::endl;
       }
 
-      const opendarts::config::index_t nnz_blocks = nnz_blocks_declared;
-
-      // Pass block CSR directly to MGR solver
-      if (!mgr_solver.setMatrixFromCSR(n_blocks, n_blocks, block_size, nnz_blocks,
+      if (!mgr_solver.setMatrixFromCSR(n_blocks, n_blocks, block_size, nnz_blocks_declared,
                                        row_ptr,
                                        col_ind,
                                        values,
@@ -277,23 +267,46 @@ namespace opendarts
         return -1;
       }
 
-      // Only create strategy on first solve
       if (first_solve)
       {
         auto strategy = std::make_unique<mgr::strategies::CompositionalFlowStrategy>(
             block_size, n_blocks * block_size, n_blocks);
         strategy->setup();
         mgr_solver.setStrategy(std::move(strategy));
+      }
 
-        // Use cached parameters for setup
-        mgr::SolverParameters setup_params = mgr_solver.getParameters();
-        if (mgr_solver.setup(setup_params.maxIter, setup_params.tolerance) != 0)
+      mgr::SolverParameters setup_params = mgr_solver.getParameters();
+      if (mgr_solver.setup(setup_params.maxIter, setup_params.tolerance) != 0)
+      {
+        std::cerr << "[MGR] Error: Failed to setup solver" << std::endl;
+        return -1;
+      }
+
+      first_solve = false;
+      return 0;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X)
+    {
+      if (!initialized)
+      {
+        std::cerr << "[MGR] Error: Solver not initialized. Call init() first." << std::endl;
+        return -1;
+      }
+
+      if (matrix_ptr == nullptr)
+      {
+        std::cerr << "[MGR] Error: Matrix pointer is null." << std::endl;
+        return -1;
+      }
+
+      if (first_solve)
+      {
+        if (setup(matrix_ptr) != 0)
         {
-          std::cerr << "[MGR] Error: Failed to setup solver" << std::endl;
           return -1;
         }
-
-        first_solve = false;
       }
 
       if (log_level_cached >= 2)

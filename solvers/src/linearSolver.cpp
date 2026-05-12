@@ -1007,6 +1007,9 @@ void LinearSolver::cleanup()
     m_ijSol = nullptr;
   }
 
+  m_parMatrix = nullptr;
+  m_parRHS = nullptr;
+  m_parSol = nullptr;
   m_matrixLoaded = false;
   m_matrixAssembled = false;
 }
@@ -1111,6 +1114,10 @@ bool LinearSolver::setMatrixFromCSR( int_t num_rows,
     m_matrix.diag_ind.clear();
   }
 
+  // New matrix values invalidate any previously assembled HYPRE objects.
+  m_matrixLoaded = false;
+  m_matrixAssembled = false;
+
   return true;
 }
 
@@ -1172,6 +1179,10 @@ bool LinearSolver::setMatrixFromVector( int_t num_rows,
     m_matrix.diag_ind.clear();
   }
 
+  // New matrix values invalidate any previously assembled HYPRE objects.
+  m_matrixLoaded = false;
+  m_matrixAssembled = false;
+
   return true;
 }
 
@@ -1180,6 +1191,9 @@ int_t LinearSolver::setup( int_t max_iters, double tolerance )
   // Update solver parameters
   m_params.maxIter = max_iters;
   m_params.tolerance = tolerance;
+
+  // Rebuild from the latest matrix contents on every setup().
+  cleanup();
 
   // Compute physics-based scaling if enabled
   if( m_params.usePhysicsScaling )
