@@ -571,7 +571,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         ax.invert_yaxis()
         ax.set_xlabel('X, m.')
         ax.set_ylabel('Depth, m.')
-        ax.set_title('Mesh skeleton (Xc in [-1200,1200], Zc near reservoir)')
+        ax.set_title('Mesh skeleton')
         ax.set_aspect('auto')
         fig.tight_layout()
         fig.savefig(os.path.join(output_folder, 'mesh_skeleton.png'))
@@ -1015,12 +1015,13 @@ def run_geomech_proxy(case, physics_type='single_phase',
 if __name__ == '__main__':
 
     # nx ny nz
-    #case = '7_7_5'  # for debugging
-    #case = '17_17_15' # for testing
+    cases = []
+    #cases += ['7_7_5']  # for debugging
+    #case += ['17_17_15'] # for testing
 
-    #case = '41_41_66' # without refinement
-    case ='71_71_66' #refined middle and tips
-    #case = '71_71_90'  # z 0 - 5 km more refined around rsv
+    cases += ['41_41_66'] # without refinement
+    cases += ['71_71_66'] #refined middle and tips
+    #cases += ['71_71_90']  # z 0 - 5 km more refined around rsv
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -1077,30 +1078,31 @@ if __name__ == '__main__':
     n_threads = 24  # CPU cores
     use_gpu = False  # CUDA
 
-    for physics_type in physics_types_list:
-        for wells_type in wells_types_list:
-            print('\n\n' + '='*30)
-            print(physics_type, wells_type)
-
-            # run THM with no mechanics->flow impact
-            t1 = datetime.now()
-            if run_thm:
-                run(model_folder=case, physics_type=physics_type, 
-                    uniform_props=uniform_props, wells_type=wells_type, 
-                    decouple_geomech=True, generate_mesh=generate_mesh,
-                    report_step=report_step, sim_time=sim_time)
-            t2 = datetime.now()
-            thm_time = t2 - t1
-
-            # run geomech proxy
-            print('The timestep for plots and proxy-apply:', timestep)
-            t1 = datetime.now()
-            run_geomech_proxy(case=case, physics_type=physics_type, 
-                              wells_type=wells_type, modes=modes,
-                              timestep=timestep, n_threads=n_threads, use_gpu=use_gpu)
-            t2 = datetime.now()
-            proxy_time = t2 - t1
-
-            print('case', case, physics_type, wells_type, 'done')
-            print('THM   time', thm_time)
-            print('proxy time', proxy_time)
+    for case in cases:
+        for physics_type in physics_types_list:
+            for wells_type in wells_types_list:
+                print('\n\n' + '='*30)
+                print(physics_type, wells_type)
+    
+                # run THM with no mechanics->flow impact
+                t1 = datetime.now()
+                if run_thm:
+                    run(model_folder=case, physics_type=physics_type, 
+                        uniform_props=uniform_props, wells_type=wells_type, 
+                        decouple_geomech=True, generate_mesh=generate_mesh,
+                        report_step=report_step, sim_time=sim_time)
+                t2 = datetime.now()
+                thm_time = t2 - t1
+    
+                # run geomech proxy
+                print('The timestep for plots and proxy-apply:', timestep)
+                t1 = datetime.now()
+                run_geomech_proxy(case=case, physics_type=physics_type, 
+                                  wells_type=wells_type, modes=modes,
+                                  timestep=timestep, n_threads=n_threads, use_gpu=use_gpu)
+                t2 = datetime.now()
+                proxy_time = t2 - t1
+    
+                print('case', case, physics_type, wells_type, 'done')
+                print('THM   time', thm_time)
+                print('proxy time', proxy_time)
