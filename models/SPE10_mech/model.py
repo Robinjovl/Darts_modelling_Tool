@@ -217,29 +217,39 @@ class Model(THMCModel):
         self.idata.mesh.tags = self.idata.mesh.bnd_tags.copy()
         self.idata.mesh.tags['MATRIX_1'] = mat_tag
 
-        if nx == 7: # for debugging, -4..4 km XY
-            Xc_left = np.array([-4000, -2000, -1000, -100])
-        elif nx == 17: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
-            Xc_left = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, -50])
-        elif nx == 83: # rsv corners and near-well (middle) are refined
-            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1500,-1450,-1400,-1350,-1300,-1250,-1200,-1150] + 
-                          [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
-                          np.arange(-800, -100, 100).tolist() + 
-                          np.arange(-100, 0, 10).tolist())
-        elif nx == 71: # rsv corners and near-well (middle) are refined
-            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
-                          [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
-                          np.arange(-800, -100, 100).tolist() + 
-                          np.arange(-100, 0, 10).tolist())
-        elif nx == 41: # rsv corners and near-well (middle) are NOT refined
-            Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
-                          [-1100, -1000, -900] +
-                          np.arange(-800, -100, 100).tolist() + [-50])
-        else:
-            print('not found an option to mesh with nx = ', nx)
-            exit(1)
-
-        Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
+        def Xc_from_nx(nx):
+            if nx == 1: # 1 layer
+                Xc_left = np.array([-100])
+            elif nx == 7: # for debugging, -4..4 km XY
+                Xc_left = np.array([-4000, -2000, -1000, -100])
+            elif nx == 17: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
+                Xc_left = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, -50])
+            elif nx == 83: # rsv corners and near-well (middle) are refined
+                Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1500,-1450,-1400,-1350,-1300,-1250,-1200,-1150] + 
+                              [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
+                              np.arange(-800, -100, 100).tolist() + 
+                              np.arange(-100, 0, 10).tolist())
+            elif nx == 71: # rsv corners and near-well (middle) are refined
+                Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
+                              [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
+                              np.arange(-800, -100, 100).tolist() + 
+                              np.arange(-100, 0, 10).tolist())
+            elif nx == 41: # rsv corners and near-well (middle) are NOT refined
+                Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] + 
+                              [-1100, -1000, -900] +
+                              np.arange(-800, -100, 100).tolist() + [-50])
+            else:
+                print('not found an option to mesh with nx = ', nx)
+                exit(1)
+    
+            Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
+            return Xc
+        
+        Xc = Xc_from_nx(nx)
+        Yc = Xc_from_nx(ny)
+        
+        if self.idata.other.perm_frac: # insert to the middle (y=0) a thin layer representing a fracture
+            Yc = np.hstack([Yc[Yc<0], np.array([-self.idata.other.frac_width/2., self.idata.other.frac_width/2.]), Yc[Yc>0]])
 
         rsv_top = self.idata.other.rsv_top
         rsv_bottom = self.idata.other.rsv_bottom
@@ -271,11 +281,6 @@ class Model(THMCModel):
         else:
             print('not found an option to mesh with nz = ', nz)
             exit(1)
-            
-        # no frac
-        Yc = Xc.copy()
-        if self.idata.other.perm_frac: # insert to the middle (y=0) a thin layer representing a fracture
-            Yc = np.hstack([Yc[Yc<0], np.array([-self.idata.other.frac_width/2., self.idata.other.frac_width/2.]), Yc[Yc>0]])
             
         self.idata.other.Xc = Xc
         self.idata.other.Yc = Yc

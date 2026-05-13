@@ -199,57 +199,6 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     return m, data
 
-def test(mesh_type, physics_type, overwrite='0'):
-    '''
-    :param overwrite: write pkl file even if it exists
-    :return: tuple (bool failed, float64 time)
-    '''
-    print('mesh_type:' + mesh_type, 'physics_type:' + physics_type, 'overwrite: ' + overwrite, sep=', ')
-    import platform
-
-    try:
-        # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
-        from darts.engines import set_num_threads
-        set_num_threads(1)
-    except:
-        pass
-
-    m, data = run(mesh_type, physics_type)
-
-    pkl_suffix = ''
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
-    file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
-                             '_' + mesh_type + '_' + physics_type + '.pkl')
-    failed = 0
-
-    is_plk_exist = os.path.isfile(file_name)
-    if is_plk_exist:
-        ref_data = m.load_performance_data(file_name=file_name)
-
-    for ith_step, dt in enumerate(m.time_steps):
-        if is_plk_exist:
-            sol_data_step = data[ith_step]
-            ref_data_step = ref_data[ith_step]
-            failed += m.check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
-                                             png_suffix=mesh_type+'_'+physics_type+'_'+str(ith_step))
-
-    if not is_plk_exist or overwrite == '1':
-        m.save_performance_data(data=data, file_name=file_name)
-        return False, 0.0
-
-    if is_plk_exist:
-        return (failed > 0), data[-1]['simulation time']
-    else:
-        return False, -1.0
-
-def run_test(args: list = [], platform='cpu'):
-    if len(args) == 3:
-        return test(mesh_type=args[0], physics_type=args[1], overwrite=args[2])
-    else:
-        print('Wrong number of arguments provided to the run_test:', args)
-        return 1, 0.0
-
 if __name__ == '__main__':
     try:
         # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
@@ -263,16 +212,17 @@ if __name__ == '__main__':
     #decouple_geomech = False
 
     # nx ny nz
-    mesh='17_17_15'  # for debugging
+    #mesh='17_17_15'  # for debugging
     #mesh='41_41_66'
     #mesh='71_71_66'
     #mesh='83_83_90'
+    mesh='71_1_66'  # 1 layer by Y
 
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
 
-    thermal = False
-    #thermal = True
+    #thermal = False
+    thermal = True
 
     if not thermal:
         physics_type = 'single_phase'
