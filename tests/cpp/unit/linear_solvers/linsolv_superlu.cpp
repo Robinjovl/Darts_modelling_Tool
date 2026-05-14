@@ -157,8 +157,8 @@ int get_tridiagonal_solution_linsolv_superlu(std::vector<opendarts::config::mat_
   }
 
   // Initialise the timers
-  opendarts::auxiliary::timer_node timer_setup, timer_setup_superLU;
-  opendarts::auxiliary::timer_node timer_solve, timer_solve_superLU;
+  ::timer_node timer_setup, timer_setup_superLU;
+  ::timer_node timer_solve, timer_solve_superLU;
 
   timer_setup.node.emplace("SUPERLU", timer_setup_superLU);
   timer_solve.node.emplace("SUPERLU", timer_solve_superLU);

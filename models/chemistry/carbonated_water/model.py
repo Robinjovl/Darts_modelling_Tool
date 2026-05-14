@@ -31,12 +31,12 @@ from conversions import convert_composition, correct_composition, calculate_inje
 class MyOutput(Output):
     def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder: str, sol_filename: str,
                  well_filename: str, save_initial: bool, all_phase_props: bool, precision: str, compression: str,
-                 verbose: bool):
+                 compression_level : int, verbose: bool):
 
         super().__init__(timer=timer, reservoir=reservoir, physics=physics, op_list=op_list, params=params,
                          output_folder=output_folder, sol_filename=sol_filename, well_filename=well_filename,
                          save_initial=save_initial, all_phase_props=all_phase_props, precision=precision,
-                         compression=compression, verbose=verbose)
+                         compression=compression, compression_level = compression_level, verbose=verbose)
 
         # prepare arrays for evaluation of properties
         n_prop_ops = self.physics.n_property_itor_ops
@@ -167,7 +167,7 @@ class Model(CICDModel):
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,
-                   precision : str = 'd', compression : str = 'gzip', verbose : bool = False):
+                   precision : str = 'd', compression : str = 'gzip', compression_level : int = 0, verbose : bool = False):
         self.output_folder = output_folder
         self.sol_filename  = sol_filename
         self.well_filename = well_filename
@@ -175,7 +175,8 @@ class Model(CICDModel):
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
 
         self.output = MyOutput(self.timer, self.reservoir, self.physics, self.op_list, self.params, self.output_folder,
-                               self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
+                               self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression,
+                               compression_level, verbose)
 
     def set_physics(self):
         # some properties
@@ -287,7 +288,7 @@ class Model(CICDModel):
 
         # Create property containers:
         property_container = PropertyContainer(phases=self.phases, components_name=self.elements, Mw=Mw,
-                                            stoich_matrix=stoich_matrix, min_z=self.obl_min, temperature=self.temperature,
+                                            stoich_matrix=stoich_matrix, eps_z=self.obl_min, temperature=self.temperature,
                                             fc_mask=self.fc_mask)
         property_container.permporo_mult_ev = self.permporo
         property_container.diffusion_ev = {ph: ConstFunc(np.concatenate([np.zeros(self.n_solid), \
@@ -300,7 +301,7 @@ class Model(CICDModel):
             # PHREEQC backend expects .dat filenames
             db_filename = f"{self.database}.dat"
             property_container.flash_ev = PhreeqcFlash(
-                min_z=property_container.min_z,
+                min_z=property_container.eps_z,
                 minerals=property_container.minerals,
                 components=property_container.components_name[property_container.fc_mask],
                 temperature=property_container.temperature,
@@ -310,7 +311,7 @@ class Model(CICDModel):
             # Reaktoro expects 'supcrtbl' without .dat; PHREEQC DBs with .dat
             db_filename = 'supcrtbl' if self.database == 'supcrtbl' else f"{self.database}.dat"
             property_container.flash_ev = ReaktoroFlash(
-                min_z=property_container.min_z,
+                min_z=property_container.eps_z,
                 minerals=property_container.minerals,
                 components=property_container.components_name[property_container.fc_mask],
                 temperature=property_container.temperature,
@@ -338,9 +339,10 @@ class Model(CICDModel):
 
         output_property_container = OutputPropertyContainer(property_container)
 
-        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, n_points=self.n_points, phases=phase_name,
-                                    axes_min=self.axes_min, axes_max=self.axes_max, properties=property_container,
-                                    cache=False)
+        self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name,
+                                                n_points=self.n_points, axes_min=self.axes_min, axes_max=self.axes_max,
+                                                epsilon_z=property_container.eps_z, extrapolation_flag=False,
+                                                cache=False)
         self.physics.add_property_region(property_container, output_property_container, 0)
 
         # Compute injection stream
@@ -548,15 +550,13 @@ class Model(CICDModel):
         w_d = 1.5
         well_index = 5
 
-        well_type = ms_well.MS_Type.EPM
-
-        # self.reservoir.add_well("I1", well_type, well_diameter=w_d)
+        # self.reservoir.add_well("I1", well_diameter=w_d)
         # for idx in range(self.domain_cells[1]):
         #     self.reservoir.add_perforation(well_name='I1', res_cell_idx=(1, idx + 1, 1), ms_epm=False,
         #                                    verbose=True, well_diameter=w_d, well_index=well_index,
         #                                    well_indexD=well_index)
 
-        self.reservoir.add_well("P1", well_type, well_diameter=w_d)
+        self.reservoir.add_well("P1", well_diameter=w_d)
         if isinstance(self.reservoir, UnstructReservoir):
             for idx in self.prd_cells:
                 self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, ms_epm=False,

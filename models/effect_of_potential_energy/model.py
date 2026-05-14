@@ -56,28 +56,35 @@ class Model(CICDModel):
 
     def set_physics(self, n_points):
         """Physical properties"""
+        from dartsflash.libflash import EoS
+        from dartsflash.components import CompData
+        from dartsflash.mixtures import DARTSFlash, VLAq
+        # Fluid components, ions and solid
         components = ["H2O", "CO2"]
+        self.components = components
         phases = ["aq", "CO2_rich_phase"]
         comp_data = CompData(components, setprops=True)
 
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-        # aq = Jager2003(comp_data)
-        aq = AQEoS(comp_data, AQEoS.Ziabakhsh2012)
+        """ Define flash """
+        flash_ev = VLAq(comp_data, hybrid=True)
+        flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE],
+                            trial_comps=[InitialGuess.Yi.Wilson],
+                            stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
+                            )
+        flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+        pr = flash_ev.eos["VL"]
+        aq = flash_ev.eos["Aq"]
 
-        flash_params = FlashParams(comp_data)
-
-        # EoS-related parameters
-        flash_params.add_eos("PR", pr)
-        flash_params.add_eos("AQ", aq)
-        flash_params.eos_order = ["AQ", "PR"]
-
-        state_spec = Compositional.StateSpecification.PT
+        flash_ev.init_flash(eos_order=["Aq", "VL"],
+                            flash_type=DARTSFlash.FlashType.PTFlash,
+                            )
 
         """ properties correlations """
+        epsilon = self.zero / 10
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
-                                               min_z=self.zero/10)
+                                               eps_z=epsilon)
 
-        property_container.flash_ev = NegativeFlash(flash_params, ["AQ", "PR"], [InitialGuess.Henry_AV])
+        property_container.flash_ev = flash_ev
         property_container.density_ev = dict([('CO2_rich_phase', EoSDensity(pr, comp_data.Mw)),
                                               ('aq', Garcia2001(components))])
         property_container.viscosity_ev = dict([('CO2_rich_phase', Fenghour1998()),
@@ -96,8 +103,10 @@ class Model(CICDModel):
                                            "yH2O": lambda: property_container.x[1, 0]
                                            }
 
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=600, min_z=self.zero/10,
-                                     max_z=1-self.zero/10, min_t=220, max_t=500, state_spec=state_spec, cache=False)
+        state_spec = Compositional.StateSpecification.PT
+        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=600, min_z=0., max_z=1.,
+                                     epsilon_z=epsilon, min_t=220, max_t=500, state_spec=state_spec, cache=False,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -106,10 +115,26 @@ class Model(CICDModel):
         base_depth = self.reservoir.mesh.depth[0]
         boundary_state = {'H2O': 1 - self.zero, 'pressure': 100., 'temperature': 350}
         init = Initialize(physics=self.physics)
-        X = init.solve(depth_bottom=self.reservoir.global_data['depth'].max(),
-                       depth_top=self.reservoir.global_data['depth'].min(),
-                       depth_known=base_depth, boundary_state=boundary_state,
-                       primary_specs={'H2O': 1 - self.zero}, secondary_specs={})
+
+        # Solve boundary state
+        X0 = init.solve_state(Xi=[100., 1.-self.zero, 350.],
+                              specs=boundary_state,
+                              )
+
+        # Initialize depth table
+        X, bc_idx = init.init_depth_table(depth_bottom=self.reservoir.global_data['depth'].max(),
+                                          depth_top=self.reservoir.global_data['depth'].min(),
+                                          depth_known=base_depth,
+                                          X0=X0,
+                                          nb=self.reservoir.nz,
+                                          dTdh=0.03
+                                          )
+
+        # Solve vertical equilibrium in region below
+        specs = {'H2O': 1 - self.zero}
+        X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=True).flatten()
+
+        # Pass depth table
         self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, input_depth=init.depths,
                                                              input_distribution={var: X[i::self.physics.n_vars] for i, var in
                                                                                  enumerate(self.physics.vars)})

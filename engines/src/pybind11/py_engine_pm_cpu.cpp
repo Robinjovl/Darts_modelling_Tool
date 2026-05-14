@@ -13,10 +13,10 @@ void pybind_engine_pm_cpu(py::module& m)
 {
 	py::class_<engine_pm_cpu, engine_base>(m, "engine_pm_cpu", "Isothermal poromechanics CPU simulator engine for sigle phase single component flow")  \
 		.def(py::init<>()) \
-		.def("init", (int (engine_pm_cpu::*)(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) &engine_pm_cpu::init, "Initialize simulator by mesh and params", py::keep_alive<1, 5>()) \
+		.def("init", (int (engine_pm_cpu::*)(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, operator_set_gradient_evaluator_iface*, sim_params*, timer_node*)) &engine_pm_cpu::init, "Initialize simulator by mesh and params", py::keep_alive<1, 6>()) \
 		.def("calc_newton_dev", &engine_pm_cpu::calc_newton_dev) \
 		.def("apply_newton_update", &engine_pm_cpu::apply_newton_update) \
-		.def("post_newtonloop", &engine_pm_cpu::post_newtonloop) \
+		.def("post_newtonloop", (int (engine_pm_cpu::*)(value_t, value_t, index_t)) &engine_pm_cpu::post_newtonloop) \
 		.def("post_explicit", &engine_pm_cpu::post_explicit) \
 		.def("update_uu_jacobian", &engine_pm_cpu::update_uu_jacobian) \
 		.def_readwrite("find_equilibrium", &engine_pm_cpu::FIND_EQUILIBRIUM) \

@@ -6,6 +6,7 @@
 #include <cstring>
 #include "contact.h"
 
+
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "csr_matrix.hpp"
 #include "linsolv_superlu.hpp"
@@ -15,7 +16,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -89,6 +89,7 @@ int contact::init_friction(pm_discretizer* _discr, conn_mesh* _mesh)
 
 	return 0;
 }
+
 int contact::init_fault()
 {
 	n_blocks = mesh->n_blocks;
@@ -195,6 +196,7 @@ int contact::init_fault()
 
 	return 0;
 }
+
 int contact::init_local_iterations()
 {
 	// allocate memory
@@ -1210,7 +1212,7 @@ int contact::apply_direction_chop(const std::vector<value_t>& X, const std::vect
 
 vector<value_t> contact::getFrictionCoef(const index_t i, const value_t dt, Matrix slip_vel, const Matrix& slip)
 {
-	value_t mu_cur, numer, denom;
+	value_t mu_cur = 0.0, numer = 0.0, denom = 1.0;
 	Matrix dmu(ND, 1), dnumer(ND, 1), dinvdenom(ND, 1);
 	const index_t cell_id = cell_ids[i];
 	const value_t slip_vel_norm = sqrt(slip_vel(1, 0) * slip_vel(1, 0) + slip_vel(2, 0) * slip_vel(2, 0));
@@ -1273,7 +1275,7 @@ vector<value_t> contact::getFrictionCoef(const index_t i, const value_t dt, Matr
 }
 vector<value_t> contact::getStabilizedFrictionCoef(const index_t i, const value_t dt, Matrix slip_vel, const Matrix& slip)
 {
-	value_t mu_cur, numer, denom, tmp;
+	value_t mu_cur = 0.0, numer = 0.0, denom = 1.0, tmp = 0.0;
 	Matrix dmu(ND, 1), dnumer(ND, 1), dinvdenom(ND, 1);
 	const index_t cell_id = cell_ids[i];
 	bool min_vel_limit = false;

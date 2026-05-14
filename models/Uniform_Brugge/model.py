@@ -85,8 +85,7 @@ class Model(CICDModel):
             else:
                 name = "P" + str(i + 1 - n_injector)
 
-            well_type = ms_well.MS_Type.EPM
-            self.reservoir.add_well(name, well_type)
+            self.reservoir.add_well(name)
             idx = self.reservoir.find_cell_index(wc)
             self.reservoir.add_perforation(name, res_cell_idx=idx, well_index=well_index_list[i], well_indexD=0)
 
@@ -94,6 +93,7 @@ class Model(CICDModel):
         """Physical properties"""
         # Create property containers:
         zero = 1e-12
+        epsilon = 1e-13
         phases = ['gas', 'oil', 'wat']
         components = ['g', 'o', 'w']
 
@@ -102,7 +102,7 @@ class Model(CICDModel):
         self.ini_stream = [0.001225901537, 0.7711341309]
 
         pvt = 'Brugge_struct/physics.in'
-        property_container = ModelProperties(phases_name=phases, components_name=components, pvt=pvt, min_z=zero/10)
+        property_container = ModelProperties(phases_name=phases, components_name=components, pvt=pvt, eps_z=epsilon)
 
         """ properties correlations """
         property_container.flash_ev = flash_black_oil(pvt)
@@ -124,7 +124,8 @@ class Model(CICDModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=500, min_p=1, max_p=200, min_z=zero / 10, max_z=1 - zero / 10)
+                                     n_points=500, min_p=1, max_p=200, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -186,12 +187,12 @@ class Model(CICDModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, pvt, min_z=1e-11):
+    def __init__(self, phases_name, components_name, pvt, eps_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
 
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=1.)
         self.pvt = pvt
         self.surf_dens = get_table_keyword(self.pvt, 'DENSITY')[0]
         self.surf_oil_dens = self.surf_dens[0]
@@ -207,7 +208,7 @@ class ModelProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
 
         zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
 
@@ -217,7 +218,7 @@ class ModelProperties(PropertyContainer):
 
         self.clean_arrays()
         # two-phase flash - assume water phase is always present and water component last
-        (xgo, V, pbub) = self.flash_ev.evaluate(pressure, zc)
+        (xgo, V, pbub) = self.flash_ev.evaluate(self.pressure, zc)
         for i in range(self.nph):
             self.x[i, i] = 1
 
@@ -233,13 +234,13 @@ class ModelProperties(PropertyContainer):
             # molar weight of mixture
             for i in range(self.nc):
                 M += self.Mw[i] * self.x[j][i]
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, pbub, xgo)  # output in [kg/m3]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure, pbub, xgo)  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, pbub)  # output in [cp]
+            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(self.pressure, pbub)  # output in [cp]
 
         self.nu[2] = zc[2]
         # two phase undersaturated condition
-        if pressure > pbub:
+        if self.pressure > pbub:
             self.nu[0] = 0
             self.nu[1] = zc[1]
         else:
@@ -268,7 +269,7 @@ class ModelProperties(PropertyContainer):
 
         self.ph = []
         for j in range(self.nph):
-            if zc[j] > self.min_z:
+            if zc[j] > self.eps_z:
                 self.ph.append(j)
             self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
 

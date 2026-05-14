@@ -56,19 +56,17 @@ class Model(CICDModel, OptModuleSettings):
 
         WI = 200
 
-        well_type = ms_well.MS_Type.EPM
-
         n_perf = self.reservoir.nz
         for i, inj in enumerate(self.inj_list):
 
-            self.reservoir.add_well('I' + str(i + 1), well_type)
+            self.reservoir.add_well('I' + str(i + 1))
 
             for k in range(n_perf):
                 self.reservoir.add_perforation('I' + str(i + 1), res_cell_idx=(inj[0], inj[1], k + 1),
                                                well_diameter=0.2, well_index=WI)
 
         for p, prod in enumerate(self.prod_list):
-            self.reservoir.add_well('P' + str(p + 1), well_type)
+            self.reservoir.add_well('P' + str(p + 1))
 
             for k in range(n_perf):
                 self.reservoir.add_perforation('P' + str(p + 1), res_cell_idx=(prod[0], prod[1], k + 1),
@@ -103,12 +101,13 @@ class Model(CICDModel, OptModuleSettings):
             # Initialize flash object
             flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash,
                                 eos_order=["Aq", "VL"], t_min=250., t_max=575.,
-                                t_tol=1e-1, f_tol=1e-10)
+                                pxflash_switch_ttol=1e-1, pxflash_ftol=1e-10)
 
             # Define PropertyContainer
             from darts.physics.super.property_container import PropertyContainer
             zero = 1e-10
-            property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, min_z=zero / 10)
+            epsilon = 1e-11
+            property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, eps_z=epsilon)
 
             property_container.flash_ev = flash_ev
 
@@ -131,10 +130,9 @@ class Model(CICDModel, OptModuleSettings):
                                                'satAq': lambda: property_container.sat[0]}
 
             from darts.physics.super.physics import Compositional
-            state_spec = Compositional.StateSpecification.PH if not pt else Compositional.StateSpecification.PT
-            self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                         n_points=1001, min_p=1, max_p=400, min_z=zero / 10, max_z=1 - zero / 10,
-                                         min_t=273.15, max_t=373.15, cache=False)
+            self.physics = Compositional(components, phases, self.timer, state_spec=Compositional.StateSpecification.PH,
+                                         n_points=1001, min_p=1, max_p=400, min_z=0., max_z=1., epsilon_z=epsilon,
+                                         min_t=273.15, max_t=373.15, cache=False, extrapolation_flag=True)
             self.physics.add_property_region(property_container)
 
         return

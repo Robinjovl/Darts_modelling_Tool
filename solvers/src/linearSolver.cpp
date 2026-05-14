@@ -10,13 +10,16 @@
 #include <cmath>
 #include <limits>
 #include <algorithm>
+#include <string>
 
 // HYPRE headers
 #include <_hypre_parcsr_ls.h>
 #include <HYPRE_parcsr_ls.h>
 #include <_hypre_IJ_mv.h>
 #include <HYPRE_IJ_mv.h>
+#include <HYPRE_utilities.h>
 
+namespace mgr {
 namespace {
 HYPRE_Int MGRDummySetup(HYPRE_Solver,
                         HYPRE_ParCSRMatrix,
@@ -25,9 +28,82 @@ HYPRE_Int MGRDummySetup(HYPRE_Solver,
 {
   return 0;
 }
-} // namespace
 
-namespace mgr {
+std::string describeHypreError( HYPRE_Int rc )
+{
+  if( rc == 0 )
+  {
+    return "OK";
+  }
+
+  char description[512] = {};
+  HYPRE_DescribeError( rc, description );
+
+  if( description[0] == '\0' )
+  {
+    return "<no HYPRE error description available>";
+  }
+
+  return std::string( description );
+}
+
+void logMGRSetupContext( const char * stage,
+                         int_t block_size,
+                         int_t num_levels,
+                         int_t num_points,
+                         int_t global_rows,
+                         int_t matrix_rows,
+                         int_t matrix_cols,
+                         int_t num_nonzero_blocks,
+                         const SolverParameters & params )
+{
+  std::cerr << "[MGR] Context (" << stage << "): "
+            << "block_size=" << block_size
+            << ", num_levels=" << num_levels
+            << ", num_points=" << num_points
+            << ", global_rows=" << global_rows
+            << ", matrix_rows=" << matrix_rows
+            << ", matrix_cols=" << matrix_cols
+            << ", nnz_blocks=" << num_nonzero_blocks
+            << ", tol=" << params.tolerance
+            << ", maxIter=" << params.maxIter
+            << ", kdim=" << params.kdim
+            << ", logLevel=" << params.logLevel
+            << std::endl;
+}
+
+void logHypreFailure( const char * stage,
+                      HYPRE_Int rc,
+                      int_t block_size,
+                      int_t num_levels,
+                      int_t num_points,
+                      int_t global_rows,
+                      int_t matrix_rows,
+                      int_t matrix_cols,
+                      int_t num_nonzero_blocks,
+                      const SolverParameters & params )
+{
+  std::cerr << "[MGR] " << stage << " failed with rc=" << rc
+            << " (" << describeHypreError( rc ) << ")" << std::endl;
+
+  const HYPRE_Int hypre_error = HYPRE_GetError();
+  if( hypre_error != 0 && hypre_error != rc )
+  {
+    std::cerr << "[MGR] HYPRE_GetError()=" << hypre_error
+              << " (" << describeHypreError( hypre_error ) << ")" << std::endl;
+  }
+
+  logMGRSetupContext( stage,
+                      block_size,
+                      num_levels,
+                      num_points,
+                      global_rows,
+                      matrix_rows,
+                      matrix_cols,
+                      num_nonzero_blocks,
+                      params );
+}
+} // namespace
 
 LinearSolver::LinearSolver()
   : m_hasInitialGuess( false )
@@ -382,24 +458,55 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
   int_t num_levels = m_strategy->numLevels();
   // Always use m_matrix.block_size - m_mgrBlockSize can get corrupted due to memory layout issues
   int_t block_size = m_matrix.block_size;
+  const int_t global_rows = m_matrix.global_num_rows;
+  const int_t matrix_rows = m_matrix.num_rows;
+  const int_t matrix_cols = m_matrix.num_cols;
+  const int_t num_nonzero_blocks = m_matrix.num_nonzero_blocks;
 
   if( num_points <= 0 )
   {
     std::cerr << "Error: MGR point markers are empty" << std::endl;
+    logMGRSetupContext( "empty-point-markers",
+                        block_size,
+                        num_levels,
+                        num_points,
+                        global_rows,
+                        matrix_rows,
+                        matrix_cols,
+                        num_nonzero_blocks,
+                        m_params );
     return nullptr;
   }
 
-  if( m_matrix.global_num_rows > 0 && num_points != m_matrix.global_num_rows )
+  if( global_rows > 0 && num_points != global_rows )
   {
     std::cerr << "Error: MGR point markers size (" << num_points
-              << ") does not match matrix size (" << m_matrix.global_num_rows
+              << ") does not match matrix size (" << global_rows
               << ")" << std::endl;
+    logMGRSetupContext( "point-marker-size-mismatch",
+                        block_size,
+                        num_levels,
+                        num_points,
+                        global_rows,
+                        matrix_rows,
+                        matrix_cols,
+                        num_nonzero_blocks,
+                        m_params );
     return nullptr;
   }
 
   if( block_size <= 0 )
   {
     std::cerr << "Error: Invalid MGR block size (" << block_size << ")" << std::endl;
+    logMGRSetupContext( "invalid-block-size",
+                        block_size,
+                        num_levels,
+                        num_points,
+                        global_rows,
+                        matrix_rows,
+                        matrix_cols,
+                        num_nonzero_blocks,
+                        m_params );
     return nullptr;
   }
 
@@ -407,6 +514,15 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
   {
     std::cerr << "Error: MGR block size (" << block_size
               << ") does not divide global DOFs (" << num_points << ")" << std::endl;
+    logMGRSetupContext( "block-size-does-not-divide-dofs",
+                        block_size,
+                        num_levels,
+                        num_points,
+                        global_rows,
+                        matrix_rows,
+                        matrix_cols,
+                        num_nonzero_blocks,
+                        m_params );
     return nullptr;
   }
 
@@ -422,12 +538,28 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
     label_ptrs[i] = const_cast<int_t*>( level_params.labels.data() );
   }
 
-  HYPRE_MGRSetCpointsByPointMarkerArray( mgr_precond,
-                                         block_size,
-                                         num_levels,
-                                         num_labels.data(),
-                                         label_ptrs.data(),
-                                         const_cast<int_t*>( point_markers.data() ) );
+  HYPRE_ClearAllErrors();
+  HYPRE_Int rc = HYPRE_MGRSetCpointsByPointMarkerArray( mgr_precond,
+                                                        block_size,
+                                                        num_levels,
+                                                        num_labels.data(),
+                                                        label_ptrs.data(),
+                                                        const_cast<int_t*>( point_markers.data() ) );
+  if( rc != 0 )
+  {
+    logHypreFailure( "HYPRE_MGRSetCpointsByPointMarkerArray",
+                     rc,
+                     block_size,
+                     num_levels,
+                     num_points,
+                     global_rows,
+                     matrix_rows,
+                     matrix_cols,
+                     num_nonzero_blocks,
+                     m_params );
+    HYPRE_MGRDestroy( mgr_precond );
+    return nullptr;
+  }
 
   // Set level-wise parameters
   std::vector<int_t> f_relax_types( num_levels );
@@ -460,29 +592,93 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
     }
   }
 
-  HYPRE_MGRSetLevelFRelaxType( mgr_precond, f_relax_types.data() );
-  HYPRE_MGRSetLevelNumRelaxSweeps( mgr_precond, f_relax_iters.data() );
-  HYPRE_MGRSetLevelInterpType( mgr_precond, interp_types.data() );
-  HYPRE_MGRSetLevelRestrictType( mgr_precond, restrict_types.data() );
-  HYPRE_MGRSetCoarseGridMethod( mgr_precond, coarse_methods.data() );
-  HYPRE_MGRSetLevelSmoothType( mgr_precond, smooth_types.data() );
-  HYPRE_MGRSetLevelSmoothIters( mgr_precond, smooth_iters.data() );
+  HYPRE_ClearAllErrors();
+  rc = HYPRE_MGRSetLevelFRelaxType( mgr_precond, f_relax_types.data() );
+  if( rc == 0 ) rc = HYPRE_MGRSetLevelNumRelaxSweeps( mgr_precond, f_relax_iters.data() );
+  if( rc == 0 ) rc = HYPRE_MGRSetLevelInterpType( mgr_precond, interp_types.data() );
+  if( rc == 0 ) rc = HYPRE_MGRSetLevelRestrictType( mgr_precond, restrict_types.data() );
+  if( rc == 0 ) rc = HYPRE_MGRSetCoarseGridMethod( mgr_precond, coarse_methods.data() );
+  if( rc == 0 ) rc = HYPRE_MGRSetLevelSmoothType( mgr_precond, smooth_types.data() );
+  if( rc == 0 ) rc = HYPRE_MGRSetLevelSmoothIters( mgr_precond, smooth_iters.data() );
+  if( rc != 0 )
+  {
+    logHypreFailure( "HYPRE_MGRSetLevel*",
+                     rc,
+                     block_size,
+                     num_levels,
+                     num_points,
+                     global_rows,
+                     matrix_rows,
+                     matrix_cols,
+                     num_nonzero_blocks,
+                     m_params );
+    HYPRE_MGRDestroy( mgr_precond );
+    return nullptr;
+  }
 
   // Match GEOS defaults for coarse grid truncation and non-Galerkin settings
-  HYPRE_MGRSetTruncateCoarseGridThreshold( mgr_precond, 1.0e-20 );
+  HYPRE_ClearAllErrors();
+  rc = HYPRE_MGRSetTruncateCoarseGridThreshold( mgr_precond, 1.0e-20 );
 #if defined(HYPRE_RELEASE_NUMBER) && (HYPRE_RELEASE_NUMBER >= 23300)
-  HYPRE_MGRSetNonGalerkinMaxElmts( mgr_precond, 1 );
+  if( rc == 0 ) rc = HYPRE_MGRSetNonGalerkinMaxElmts( mgr_precond, 1 );
 #endif
+  if( rc != 0 )
+  {
+    logHypreFailure( "HYPRE_MGRSetTruncateCoarseGridThreshold/NonGalerkin",
+                     rc,
+                     block_size,
+                     num_levels,
+                     num_points,
+                     global_rows,
+                     matrix_rows,
+                     matrix_cols,
+                     num_nonzero_blocks,
+                     m_params );
+    HYPRE_MGRDestroy( mgr_precond );
+    return nullptr;
+  }
 
   // Set non-C-points to F-points
-  HYPRE_MGRSetNonCpointsToFpoints( mgr_precond, 1 );
+  HYPRE_ClearAllErrors();
+  rc = HYPRE_MGRSetNonCpointsToFpoints( mgr_precond, 1 );
+  if( rc != 0 )
+  {
+    logHypreFailure( "HYPRE_MGRSetNonCpointsToFpoints",
+                     rc,
+                     block_size,
+                     num_levels,
+                     num_points,
+                     global_rows,
+                     matrix_rows,
+                     matrix_cols,
+                     num_nonzero_blocks,
+                     m_params );
+    HYPRE_MGRDestroy( mgr_precond );
+    return nullptr;
+  }
 
   // Set coarse solver
   HYPRE_Solver coarse_solver = m_strategy->getCoarseSolver();
-  HYPRE_MGRSetCoarseSolver( mgr_precond,
-                            HYPRE_BoomerAMGSolve,
-                            HYPRE_BoomerAMGSetup,
-                            coarse_solver );
+  HYPRE_ClearAllErrors();
+  rc = HYPRE_MGRSetCoarseSolver( mgr_precond,
+                                 HYPRE_BoomerAMGSolve,
+                                 HYPRE_BoomerAMGSetup,
+                                 coarse_solver );
+  if( rc != 0 )
+  {
+    logHypreFailure( "HYPRE_MGRSetCoarseSolver",
+                     rc,
+                     block_size,
+                     num_levels,
+                     num_points,
+                     global_rows,
+                     matrix_rows,
+                     matrix_cols,
+                     num_nonzero_blocks,
+                     m_params );
+    HYPRE_MGRDestroy( mgr_precond );
+    return nullptr;
+  }
 
   return mgr_precond;
 }
@@ -525,6 +721,15 @@ SolverResults LinearSolver::solveGMRES_MGR()
   HYPRE_Solver mgr_precond = setupMGRPreconditioner();
   if( !mgr_precond )
   {
+    logMGRSetupContext( "setupMGRPreconditioner-returned-null",
+                        m_matrix.block_size,
+                        m_strategy ? m_strategy->numLevels() : 0,
+                        m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
+                        m_matrix.global_num_rows,
+                        m_matrix.num_rows,
+                        m_matrix.num_cols,
+                        m_matrix.num_nonzero_blocks,
+                        m_params );
     std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
     results.converged = false;
     results.finalResidual = std::numeric_limits<real_type>::infinity();
@@ -532,8 +737,20 @@ SolverResults LinearSolver::solveGMRES_MGR()
     return results;
   }
 
-  if( HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol ) != 0 )
+  HYPRE_ClearAllErrors();
+  HYPRE_Int mgr_setup_rc = HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol );
+  if( mgr_setup_rc != 0 )
   {
+    logHypreFailure( "HYPRE_MGRSetup",
+                     mgr_setup_rc,
+                     m_matrix.block_size,
+                     m_strategy ? m_strategy->numLevels() : 0,
+                     m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
+                     m_matrix.global_num_rows,
+                     m_matrix.num_rows,
+                     m_matrix.num_cols,
+                     m_matrix.num_nonzero_blocks,
+                     m_params );
     std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
     results.converged = false;
     results.finalResidual = std::numeric_limits<real_type>::infinity();
@@ -655,6 +872,15 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
   HYPRE_Solver mgr_precond = setupMGRPreconditioner();
   if( !mgr_precond )
   {
+    logMGRSetupContext( "setupMGRPreconditioner-returned-null",
+                        m_matrix.block_size,
+                        m_strategy ? m_strategy->numLevels() : 0,
+                        m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
+                        m_matrix.global_num_rows,
+                        m_matrix.num_rows,
+                        m_matrix.num_cols,
+                        m_matrix.num_nonzero_blocks,
+                        m_params );
     std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
     results.converged = false;
     results.finalResidual = std::numeric_limits<real_type>::infinity();
@@ -662,8 +888,20 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
     return results;
   }
 
-  if( HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol ) != 0 )
+  HYPRE_ClearAllErrors();
+  HYPRE_Int mgr_setup_rc = HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol );
+  if( mgr_setup_rc != 0 )
   {
+    logHypreFailure( "HYPRE_MGRSetup",
+                     mgr_setup_rc,
+                     m_matrix.block_size,
+                     m_strategy ? m_strategy->numLevels() : 0,
+                     m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
+                     m_matrix.global_num_rows,
+                     m_matrix.num_rows,
+                     m_matrix.num_cols,
+                     m_matrix.num_nonzero_blocks,
+                     m_params );
     std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
     results.converged = false;
     results.finalResidual = std::numeric_limits<real_type>::infinity();

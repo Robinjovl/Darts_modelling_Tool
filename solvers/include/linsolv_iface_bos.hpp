@@ -18,7 +18,6 @@
 #define OPENDARTS_LINEAR_SOLVERS_LINSOLV_IFACE_BOS_HPP
 //--------------------------------------------------------------------------
 
-#include "timer_node.hpp"
 #include "data_types.hpp"
 #include "csr_matrix_base.hpp"
 #include "csr_matrix.hpp"

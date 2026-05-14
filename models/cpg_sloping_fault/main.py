@@ -88,7 +88,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             # compute additional properties only for the first and for the last timestep:
             output_properties = output_properties_full if ith_step in [0, n_timesteps] else output_properties_main
             #print('timestep', ith_step, 'output_properties:', output_properties)
-            timesteps, property_array = m.output.output_properties(output_properties=output_properties, timestep=ith_step, engine=False)
+            timesteps, property_array = m.output.output_properties(output_properties=output_properties, ts_idx=ith_step, engine=False)
             if ith_step == 0:
                 centers_x, centers_y, centers_z = m.reservoir.get_centers()
                 property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})
@@ -118,7 +118,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     if not(m.idata.supress_all_output):
         # compute and save well time data
-        td = m.output.store_well_time_data(save_output_files=True)
+        td = m.output.store_well_time_data(save_output_files=False)
         time_data = pd.DataFrame.from_dict(td)
         # add_columns_time_data(time_data)
 
@@ -138,9 +138,6 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data_report.xlsx'))
         time_data_report.to_excel(writer, sheet_name='time_data_report')
         writer.close()
-
-        m.output.store_well_time_data(save_output_files=True)
-        m.output.plot_well_time_data()
 
     m.print_timers()
 

@@ -204,7 +204,7 @@ namespace opendarts
     	check_result(HYPRE_IJMatrixAssemble(A_ij));
     }
 
-    void check_result(int res)
+    inline void check_result(int res)
     {
       char err_msg_char[256];
       if (res)

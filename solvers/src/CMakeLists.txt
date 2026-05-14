@@ -155,6 +155,7 @@ target_link_libraries(linear_solvers
 target_include_directories(linear_solvers
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/interpolation/include>
     $<INSTALL_INTERFACE:include>
 )
 

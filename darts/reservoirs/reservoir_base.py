@@ -14,13 +14,14 @@ class ReservoirBase:
     """
 
     mesh: conn_mesh
-    wells: ms_well_vector = []
+    wells: list[ms_well]
 
     def __init__(self, timer: timer_node, cache: bool = False):
         # Initialize timer for initialization and caching
         self.timer = timer.node["initialization"]
 
         self.cache = cache
+        self.mesh = None
         self.wells = []
 
         self.poro, self.permx, self.permy, self.permz = [], [], [], []
@@ -43,7 +44,7 @@ class ReservoirBase:
         It calls discretize() to generate mesh object and adds the wells with perforations to the mesh.
         """
         # if block is used to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
-        if not hasattr(self, "mesh"):
+        if self.mesh is None:
             self.mesh = self.discretize(verbose)
         return
 
@@ -116,7 +117,9 @@ class ReservoirBase:
             assert well_geometry is None, (
                 "For EPM, well_geometry must not be specified!"
             )
-            # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
+            # Large well trans for EPM well model
+            well.well_transmissibility = 1e5
+            # First put only area in segment_volume to be multiplied by segment length later. segment_volume is the volume of
             # the segment in front of the reservoir cell which is perforated.
             well.segment_volume = pi / 4 * well_diameter**2
             # will be updated in add_perforation
@@ -231,42 +234,6 @@ class ReservoirBase:
         self.mesh.init_grav_coef()
         # Initialize specific potential energy at cell centroids and connections for both reservoir and wells
         self.mesh.init_spe(grav_acceleration_for_spe=self.grav_acceleration_for_spe)
-
-    @abc.abstractmethod
-    def output_to_plt(
-        self,
-        data: dict,
-        output_props: list = None,
-        lims: dict = None,
-        fig=None,
-        figsize: tuple = None,
-        axs_shape: tuple = None,
-        aspect_ratio: str = "equal",
-        logx: bool = False,
-        plot_zeros: bool = True,
-        cmap: str = "jet",
-        colorbar_loc: str = "right",
-    ):
-        """
-        Method for plotting output using matplotlib library.
-        Implementation is specific to inherited Reservoir classes
-
-        :param data: Data for output
-        :type data: dict
-        :param output_props: List of properties to plot
-        :type output_props: list
-        :param lims: Dictionary of lists with [lower, upper] limits for output variables, will default to [None, None]
-        :type lims: dict
-        :param fig: Figure object, default is None
-        :param figsize: Tuple of (width, height) for figure
-        :param axs_shape: Tuple of (rows, columns) for figure
-        :param aspect_ratio: Aspect ratio ('equal', 'auto', or float), default is 'equal'
-        :param logx: Bool to plot x-axis in logscale, default is False
-        :param plot_zeros: Bool to plot zero values, default is True
-        :param cmap: plt.Colourmap, default is 'jet'
-        :param colorbar_loc: Location of colorbar ('right' or 'bottom'), default is 'right'
-        """
-        pass
 
     @abc.abstractmethod
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):

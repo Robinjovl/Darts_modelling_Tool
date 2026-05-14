@@ -37,7 +37,7 @@ class Model(THMCModel):
         Mw = [18.015]
         components = ['H2O']
         phases = ['wat']
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, min_z=self.zero,
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, eps_z=self.zero,
                                                temperature=323.15)
         """ properties correlations """
         property_container.flash_ev = SinglePhase(nc=1)
@@ -53,7 +53,7 @@ class Model(THMCModel):
         property_container.rock_density_ev = ConstFunc(self.rock_density0)
         # create physics
         self.physics = Poroelasticity(components=components, phases=phases, timer=self.timer, n_points=n_points,
-                                      min_p=-10, max_p=1000, min_z=self.zero, max_z=1 - self.zero, discretizer=self.discretizer_name)
+                                      min_p=-10, max_p=1000, min_z=0., max_z=1, epsilon_z=self.zero/10, discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
         self.physics.init_physics(discr_type=self.discretizer_name, platform='cpu')
 

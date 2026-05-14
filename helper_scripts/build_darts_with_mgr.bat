@@ -371,7 +371,9 @@ if "!skip_thirdparty_check!"=="false" (
     echo.
 )
 
-if "!skip_req!"=="false" (
+if /I "!skip_req: =!"=="true" goto :after_thirdparty_build
+
+if /I "!skip_req: =!"=="false" (
   echo ========================================================================
   echo   Step 1/3: Building HYPRE with MGR support
   echo ========================================================================
@@ -512,6 +514,8 @@ if "!skip_req!"=="false" (
   !MSBUILD_CMD! superlu.sln /p:Configuration=%config% /p:Platform=x64 /p:PlatformToolset=!PLATFORM_TOOLSET! -maxCpuCount:%NT% > ..\..\make_superlu.log || goto :error
   cd ..
 )
+
+:after_thirdparty_build
 
 echo ========================================================================
 echo   Step 2/3: Building openDARTS with MGR integration

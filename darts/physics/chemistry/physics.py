@@ -3,8 +3,8 @@ from darts.physics.base.operators_base import (
     PropertyOperators as BasePropertyOperators,
 )
 from darts.physics.base.operators_base import (
+    ThermalVarOperator,
     WellControlOperators,
-    WellInitOperators,
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
@@ -28,11 +28,9 @@ class ElementBasedReactiveFlow(Compositional):
         n_points: int | list[int],
         axes_min: list[float],
         axes_max: list[float],
-        properties,
-        platform: str = 'cpu',
-        itor_type: str = 'multilinear',
-        itor_mode: str = 'adaptive',
-        itor_precision: str = 'd',
+        epsilon_z: float,
+        sim_eps_multiplier: float = 10,
+        extrapolation_flag: bool = True,
         cache: bool = True,
     ):
         """
@@ -49,16 +47,13 @@ class ElementBasedReactiveFlow(Compositional):
         :type axes_min: list
         :param axes_max: Maximum axes values
         :type axes_max: list
-        :param properties: Property container object
-        :type properties: user-defined or built-in PropertyContainer class
-        :param platform: Platform to run the simulation
-        :type platform: str (cpu or gpu)
-        :param itor_type: Interpolator type
-        :type itor_type: str (multilinear or linear)
-        :param itor_mode: Interpolator mode
-        :type itor_mode: str (adaptive or static)
-        :param itor_precision: Interpolator precision
-        :type itor_precision: str
+        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
+        :type epsilon_z: float
+        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
+                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
+        :type sim_eps_multiplier: float
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :type extrapolation_flag: bool
         :param cache: Cache flag
         :type cache: bool
         """
@@ -77,6 +72,9 @@ class ElementBasedReactiveFlow(Compositional):
             axes_min=axes_min,
             axes_max=axes_max,
             n_axes_points=n_points,
+            epsilon_z=epsilon_z,
+            sim_eps_multiplier=sim_eps_multiplier,
+            extrapolation_flag=extrapolation_flag,
             timer=timer,
             cache=cache,
         )
@@ -90,22 +88,36 @@ class ElementBasedReactiveFlow(Compositional):
         """
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
-                self.property_containers[region]
+                self.property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
             self.initial_operators[region] = ConversionOperators(
-                self.property_containers[region]
+                self.property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
             self.property_operators[region] = BasePropertyOperators(
-                self.output_property_containers[region], self.thermal
+                self.output_property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
 
         self.well_ctrl_operators = WellControlOperators(
-            self.property_containers[self.regions[0]], self.thermal
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
-        self.well_init_operators = WellInitOperators(
+        self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
 
     def add_property_region(
@@ -128,7 +140,7 @@ class ElementBasedReactiveFlow(Compositional):
         - :class:`comp_itor` initialization and porosity interpolator
         - :class:`property_itor` output property interpolator
         - :class:`well_ctrl_itor` well control interpolator
-        - :class:`well_init_itor` well initialization interpolator
+        - :class:`thermal_var_itor` well initialization interpolator
         :param platform: Platform to run the simulation
         :type platform: str (cpu or gpu)
         :param itor_type: Interpolator type
@@ -203,9 +215,9 @@ class ElementBasedReactiveFlow(Compositional):
             precision=itor_precision,
         )
         self.n_well_ctrl_itor_ops = n_well_ctrl_ops
-        self.well_init_itor, n_well_init_ops = self.create_interpolator(
-            self.well_init_operators,
-            n_ops=self.well_init_operators.n_ops,
+        self.thermal_var_itor, n_thermal_var_ops = self.create_interpolator(
+            self.thermal_var_operator,
+            n_ops=self.thermal_var_operator.n_ops,
             axes_min=value_vector(self.PT_axes_min),
             axes_max=value_vector(self.PT_axes_max),
             timer_name='well initialization',
@@ -214,4 +226,4 @@ class ElementBasedReactiveFlow(Compositional):
             mode=itor_mode,
             precision=itor_precision,
         )
-        self.n_well_init_itor_ops = n_well_init_ops
+        self.n_thermal_var_ops = n_thermal_var_ops

@@ -44,19 +44,19 @@ class Model(CICDModel):
 
     def set_wells(self):
         if self.wells_mode == 'wells':
-            well_type = ms_well.MS_Type.EPM
-            self.reservoir.add_well("P1", well_type)
+            self.reservoir.add_well("P1")
             self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx // 2, 1, 1), ms_epm=False)
 
     def set_physics(self):
         """Physical properties"""
         zero = 1e-13
+        epsilon = 1e-14
         components = ['w']
         phases = ['wat', 'gas']
 
         self.inj = value_vector([300])
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=zero/10)
+        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
@@ -74,8 +74,8 @@ class Model(CICDModel):
         thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
-                                     min_t=273.15 + 20, max_t=273.15 + 200)
+                                     n_points=400, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     min_t=273.15 + 20, max_t=273.15 + 200, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -123,11 +123,11 @@ class Model(CICDModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
+    def __init__(self, phases_name, components_name, eps_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
         self.x = np.ones((self.nph, self.nc))
 
     def evaluate(self, state):
@@ -139,7 +139,7 @@ class ModelProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         self.ph = np.array([0], dtype=np.intp)
@@ -149,7 +149,7 @@ class ModelProperties(PropertyContainer):
             # molar weight of mixture
             for i in range(self.nc):
                 M += self.Mw[i] * self.x[j][i]
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, 0)  # output in [kg/m3]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure, 0)  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 

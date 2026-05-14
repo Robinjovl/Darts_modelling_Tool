@@ -6,13 +6,13 @@ from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 
+
 redirect_darts_output('run.log')
 
 # initialize model
 n = Model()
 n.init()
 n.set_output()
-time_data_filename = n.output_folder + "/darts_time_data.pkl"
 
 # run model
 n.run(1000)

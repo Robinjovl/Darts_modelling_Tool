@@ -60,7 +60,7 @@ def run_darts(mode):
 
         if mode == 'wells':
             # compute well time data
-            time_data_dict = n.output.store_well_time_data()
+            time_data_dict = n.output.store_well_time_data(save_output_files=True)
 
             # plot well time data
             time_data_df = pd.DataFrame.from_dict(time_data_dict)

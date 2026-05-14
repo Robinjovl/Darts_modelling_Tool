@@ -4,7 +4,13 @@ from darts.print_build_info import print_build_info as package_pbi
 from for_each_model import for_each_model, run_tests, abort_redirection, redirect_all_output, for_each_model_adjoint
 import sys, os, shutil
 import subprocess
+from contextlib import redirect_stdout
 from darts.engines import sim_params
+from compare_well_time_series import (
+    compare_generated_well_time_series,
+    create_well_time_series_snapshot,
+    get_pkl_suffix,
+)
 
 
 def _ensure_parent_dir(path):
@@ -12,6 +18,30 @@ def _ensure_parent_dir(path):
     parent = os.path.dirname(os.path.abspath(path))
     if parent and not os.path.exists(parent):
         os.makedirs(parent, exist_ok=True)
+
+
+def _normalize_odls_env():
+    """
+    Infer iterative-solver runs from the default CPU solver when ODLS is unset.
+
+    Manual `darts run_test_suite2.py ...` runs no longer export ODLS, while the
+    default solver still differs between ODLS and iterative builds. The testsuite
+    naming and a few solver selections still rely on ODLS, so synthesize it here
+    when the build clearly defaults to an iterative CPU solver.
+    """
+    if os.getenv('TEST_GPU') == '1':
+        return False
+    if os.getenv('ODLS') is None:
+        try:
+            if sim_params().linear_type != sim_params.cpu_superlu:
+                os.environ['ODLS'] = '-a'
+        except Exception:
+            pass
+    return os.getenv('ODLS') == '-a'
+
+
+def _pkl_suffix():
+    return get_pkl_suffix()
 
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
     base_dir = os.getcwd()  # base directory is models/
@@ -163,7 +193,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total_m = len(accepted_dirs)
     n_total += n_total_m
 
-    # check main.py files runs, without comparison of pkl files
+    # check main.py files and compare well time-series pkl files when they are produced
     failed_models_main = []
     accepted_dirs += ['CCS']
     if iter_solvers:  # run this case only for the build with iterative solvers
@@ -184,12 +214,38 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         stderr_path = os.path.join(logs_dir, safe_mdir + '_mainpy_err.log')
         _ensure_parent_dir(stdout_path)
         _ensure_parent_dir(stderr_path)
+        well_time_series_snapshot = create_well_time_series_snapshot(model_path)
         with open(stdout_path, 'w') as stdout_file, open(stderr_path, 'w') as stderr_file:
             mrun = subprocess.run(["python", "main.py", platform], stdout=stdout_file, stderr=stderr_file)
             rcode = mrun.returncode
+        failed_well_time_series = 0
+        n_well_time_series = 0
+        skipped_well_time_series = False
         if not rcode:
-            print('OK')
+            with open(stdout_path, 'a') as stdout_file:
+                print('\nWell time-series comparison:', file=stdout_file)
+                with redirect_stdout(stdout_file):
+                    failed_well_time_series, n_well_time_series, skipped_well_time_series = compare_generated_well_time_series(
+                        model_path,
+                        well_time_series_snapshot,
+                        overwrite=overwrite,
+                        pkl_suffix=_pkl_suffix(),
+                    )
+        if not rcode and not failed_well_time_series:
+            if skipped_well_time_series:
+                print('OK (main.py ran without errors; well time-series comparison skipped for multithread run)')
+            elif n_well_time_series:
+                if str(overwrite) == '1':
+                    print('OK (main.py ran without errors; well time-series reference saved)')
+                else:
+                    print('OK (main.py ran without errors; well time-series comparison passed)')
+            else:
+                print('OK (main.py ran without errors; no well time-series generated)')
         else:
+            if rcode:
+                print(f'FAIL (main.py exited with code {rcode}); see {stdout_path} and {stderr_path}')
+            if failed_well_time_series:
+                print(f'FAIL (well time-series comparison); see {stdout_path}')
             print('FAIL')
             failed_models_main += [mdir + ' (main.py)']
         os.chdir(models_root)
@@ -253,13 +309,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
 
 def check_performance(mod):
-    pkl_suffix = ''
-    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-        pkl_suffix = '_gpu'
-    elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
-    else:
-        pkl_suffix = '_odls'
+    _normalize_odls_env()
+    pkl_suffix = _pkl_suffix()
     x = os.path.basename(os.getcwd())
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed
@@ -344,9 +395,7 @@ if __name__ == '__main__':
     if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
         test_all_models = True
 
-    iter_solvers = False
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
-        iter_solvers = True
+    iter_solvers = _normalize_odls_env()
 
     rcode = run_testing(platform, overwrite, iter_solvers, test_all_models)
     exit(rcode)

@@ -339,6 +339,14 @@ echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
 # Build and install openDARTS
+# Under valgrind (-O2 -g) the auto-generated super_part*.cpp interpolator TUs
+# can OOM-kill g++ at high -j. Pre-build the interpolators target with reduced
+# parallelism; the subsequent full build skips already-compiled objects.
+if [[ "$valgrind" == true && "$NT" -gt 1 ]]; then
+    HEAVY_NT=$(( NT / 2 ))
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT (valgrind OOM mitigation)"
+    make interpolators -j $HEAVY_NT 2>> ../make_darts.log
+fi
 make install -j $NT 2>> ../make_darts.log
 
 # Test
@@ -377,4 +385,60 @@ fi
 echo -e "\n************************************************************************"
 echo "| Building python package open-darts: DONE! "
 echo -e "************************************************************************\n"
+
+# Build warnings/errors summary -----------------------------------------------
+report_build_summary()
+{
+  local warn_pattern=': warning[: #]'
+  local err_pattern=': error[: #]'
+
+  # (component_name, log_file) pairs
+  local components=(
+    "Hypre:make_hypre.log"
+    "SuperLU:make_superlu.log"
+    "IPhreeqc:make_iphreeqc.log"
+    "open-DARTS:make_darts.log"
+  )
+
+  # Count warnings/errors before printing (avoid reading make_darts.log while appending)
+  local -A warn_counts err_counts
+  for entry in "${components[@]}"; do
+    local name="${entry%%:*}"
+    local logfile="${entry##*:}"
+    if [[ -f "$logfile" ]]; then
+      warn_counts[$name]=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
+      err_counts[$name]=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
+    fi
+  done
+
+  # Print to stdout and append to make_darts.log
+  {
+    echo ""
+    echo "========================================="
+    echo " Build warnings/errors summary"
+    echo "========================================="
+    printf " %-14s | %8s | %6s\n" "Component" "Warnings" "Errors"
+    echo " -----------------------------------------"
+
+    for entry in "${components[@]}"; do
+      local name="${entry%%:*}"
+      if [[ -n "${warn_counts[$name]+x}" ]]; then
+        printf " %-14s | %8d | %6d\n" "$name" "${warn_counts[$name]}" "${err_counts[$name]}"
+      fi
+    done
+
+    echo "========================================="
+
+    local darts_warnings=${warn_counts[open-DARTS]:-0}
+    if [[ $darts_warnings -gt 0 ]]; then
+      echo ""
+      echo " open-DARTS unique warnings:"
+      grep -E "$warn_pattern" make_darts.log 2>/dev/null | sort -u | head -100
+    fi
+
+    echo ""
+    echo "OPENDARTS_WARNING_COUNT=$darts_warnings"
+  } | tee -a make_darts.log
+}
+report_build_summary
 # ------------------------------------------------------------------------------
