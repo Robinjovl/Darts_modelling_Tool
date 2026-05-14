@@ -511,7 +511,9 @@ class DartsModelWithLivePlots(DartsModel):
             till_this_res_cell = self.live_plot_config.plot_till_this_res_cell
             assert till_this_res_cell <= n_res_blocks
             p_res = X_np[:i_start_well, p_idx][:till_this_res_cell]
-            x_res = self.reservoir.global_data['dx'].reshape(-1)[:till_this_res_cell]
+            x_res = np.cumsum(
+                self.reservoir.global_data['dx'].reshape(-1)[:till_this_res_cell]
+            )
 
             # Preallocate phase props arrays
             T_res = np.zeros(till_this_res_cell)
