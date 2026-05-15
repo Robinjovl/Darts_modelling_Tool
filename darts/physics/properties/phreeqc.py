@@ -210,6 +210,8 @@ class Flash:
                 [2, 1, 3, 5, 5, 3, 4, 6, 6, 5, 5, 6, 1, 3, 2, 1, 3, 2]
             )
 
+        self._build_element_species_matrices()
+
         # Unify PHREEQC template across specs; use high_precision=false and dynamic sections
         fluid_elements_order = [
             el for el, _ in sorted(self.fc_idx.items(), key=lambda kv: kv[1])
@@ -279,12 +281,14 @@ class Flash:
         except Exception as e:
             warnings.warn(f"Failed to load '{resolved}': {e}.", Warning, stacklevel=2)
 
-    def interpret_results(self, database, water_mass):
+    def interpret_results(self, database, water_mass, pressure_bar):
         """
         Interprets the results of a PHREEQC simulation.
         :param database: PHREEQC database object
         :param water_mass: mass of water in kg
         :type water_mass: float
+        :param pressure_bar: pressure in bar
+        :type pressure_bar: float
         :return: (nu_v) vapour phase molar fraction, (x) molar composition of aqueous
          and (y) vapour phases, (rho_phases) phase molar densities,
          (kin_state) kinetic params, (volume_aq + volume_gas) fluid volume,
@@ -319,6 +323,22 @@ class Flash:
             species_gas_molar_fractions = gas_moles / sum_gas_moles
         else:
             species_gas_molar_fractions = np.zeros_like(gas_moles)
+
+        co2_gas_idx = next(
+            (
+                i
+                for i, sp in enumerate(self.gas_species)
+                if sp == "CO2(g)" or sp == "CO2" or sp.startswith("CO2(")
+            ),
+            None,
+        )
+        if co2_gas_idx is not None and co2_gas_idx < len(species_gas_molar_fractions):
+            y_co2 = float(species_gas_molar_fractions[co2_gas_idx])
+            if not np.isfinite(y_co2):
+                y_co2 = 0.0
+            y_co2 = max(y_co2, 0.0)
+        else:
+            y_co2 = 0.0
 
         # interpret aqueous phase
         aq_start = 3 + n_gases
@@ -359,6 +379,7 @@ class Flash:
         kin_state['Act(H+)'] = results_array[counter]
         kin_state['Act(CO2)'] = results_array[counter + 1]
         kin_state['Act(H2O)'] = results_array[counter + 2]
+        kin_state['P(CO2)'] = y_co2 * pressure_bar
         species_molalities = results_array[counter + 3 :]
 
         species_aq_molar_fractions = (
@@ -406,7 +427,8 @@ class Flash:
         :rtype: tuple[float, np.ndarray, np.ndarray, dict, dict, float, np.ndarray, np.ndarray]
         """
         # extract pressure and fluid composition
-        pressure_atm = state[0] / 1.01325  # bar to atm
+        pressure_bar = float(state[0])
+        pressure_atm = pressure_bar / 1.01325  # bar to atm
 
         # check for negative composition occurrence
         fluid_composition = self.get_fluid_composition(state)
@@ -468,7 +490,7 @@ class Flash:
                 fluid_volume,
                 species_aq_molar_fractions,
                 species_gas_molar_fractions,
-            ) = self.interpret_results(self.phreeqc, water_mass)
+            ) = self.interpret_results(self.phreeqc, water_mass, pressure_bar)
         except Exception as e:
             warnings.warn(f"Failed to run PHREEQC: {e}", Warning, stacklevel=2)
             if self.spec == 0:
@@ -489,7 +511,7 @@ class Flash:
                 fluid_volume,
                 species_aq_molar_fractions,
                 species_gas_molar_fractions,
-            ) = self.interpret_results(self.backup_phreeqc)
+            ) = self.interpret_results(self.backup_phreeqc, water_mass, pressure_bar)
 
         return (
             nu_v,
@@ -529,3 +551,98 @@ class Flash:
             count = int(count_str) if count_str else 1
             stoich[el] = stoich.get(el, 0) + count
         return stoich
+
+    def _parse_species_formula_to_elements(self, species_name):
+        """
+        Parse a PHREEQC species name into element stoichiometry.
+
+        Handles common PHREEQC notation:
+        - charge suffixes (e.g., H+, Ca+2, CO3-2)
+        - phase suffixes (e.g., CO2(g), H2O(aq))
+        - grouped formulas with multipliers (e.g., (CO2)2, CaMg(CO3)2)
+        """
+        import re
+
+        formula = species_name.strip()
+        # Remove trailing phase marker, e.g., "(g)" or "(aq)"
+        formula = re.sub(r"\([A-Za-z]+\)$", "", formula)
+        # Remove trailing charge notation, e.g., "+", "-2", "+2", "2+"
+        formula = re.sub(r"([+-]\d*|\d*[+-])$", "", formula)
+
+        stack = [{}]
+        i = 0
+        while i < len(formula):
+            ch = formula[i]
+
+            if ch == "(":
+                stack.append({})
+                i += 1
+                continue
+
+            if ch == ")":
+                i += 1
+                j = i
+                while j < len(formula) and formula[j].isdigit():
+                    j += 1
+                multiplier = int(formula[i:j] or "1")
+                group = stack.pop() if len(stack) > 1 else {}
+                for el, count in group.items():
+                    stack[-1][el] = stack[-1].get(el, 0) + count * multiplier
+                i = j
+                continue
+
+            if ch.isupper():
+                j = i + 1
+                if j < len(formula) and formula[j].islower():
+                    j += 1
+                element = formula[i:j]
+                k = j
+                while k < len(formula) and formula[k].isdigit():
+                    k += 1
+                count = int(formula[j:k] or "1")
+                stack[-1][element] = stack[-1].get(element, 0) + count
+                i = k
+                continue
+
+            # Skip any other symbols (charges, separators, etc.)
+            i += 1
+
+        return stack[0]
+
+    def _build_element_species_matrices(self):
+        """
+        Build element-species stoichiometric matrices for aqueous and gas phases.
+
+        Stored matrices:
+        - *_element_to_species_matrix: shape (n_elements, n_species_in_phase)
+        - *_species_to_element_matrix: shape (n_species_in_phase, n_elements)
+        """
+        element_symbols = [
+            el for el, _ in sorted(self.fc_idx.items(), key=lambda kv: kv[1])
+        ]
+
+        self.system_elements = element_symbols
+        self.system_species = list(self.aqueous_species) + list(self.gas_species)
+
+        n_elements = len(element_symbols)
+        self.aqueous_element_to_species_matrix = np.zeros(
+            (n_elements, len(self.aqueous_species)), dtype=float
+        )
+        self.gas_element_to_species_matrix = np.zeros(
+            (n_elements, len(self.gas_species)), dtype=float
+        )
+
+        for j, sp in enumerate(self.aqueous_species):
+            stoich = self._parse_species_formula_to_elements(sp)
+            for i, el in enumerate(element_symbols):
+                self.aqueous_element_to_species_matrix[i, j] = stoich.get(el, 0.0)
+
+        for j, sp in enumerate(self.gas_species):
+            stoich = self._gas_species_element_stoich.get(sp, {})
+            for i, el in enumerate(element_symbols):
+                self.gas_element_to_species_matrix[i, j] = stoich.get(el, 0.0)
+
+        self.aqueous_species_to_element_matrix = (
+            self.aqueous_element_to_species_matrix.T
+        )
+        self.gas_species_to_element_matrix = self.gas_element_to_species_matrix.T

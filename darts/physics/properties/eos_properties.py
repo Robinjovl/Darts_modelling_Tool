@@ -1,5 +1,5 @@
 import numpy as np
-from dartsflash.libflash import EoS, VdWP
+from dartsflash.libflash import EoS, StateSpecification, VdWP
 
 NA = 6.02214076e23  # Avogadro's number [mol-1]
 kB = 1.380649e-23  # Boltzmann constant [J/K]
@@ -35,7 +35,16 @@ class EoSDensity:
         self.ions = ions
         self.combined_ions_stoichiometry = combined_ions_stoichiometry
 
-    def evaluate(self, pressure, temperature, x):
+    def evaluate(
+        self,
+        pressure,
+        temperature,
+        x,
+        derivs=False,
+        state_spec: StateSpecification = None,
+        dTdP: float = None,
+        dTdX: float = None,
+    ):
         """
         Evaluates the EoS for molar volume at given pressure, temperature and composition x.
         Calculates mixture molar weight MW and translates molar volume (m3/mol) to density (kg/m3)
@@ -46,19 +55,38 @@ class EoSDensity:
         :type temperature: float
         :param x: Phase composition in mole fractions/mole numbers
         :type x: list
+        :param derivs: Whether to return derivatives
+        :type derivs: bool
+        :param state_spec: State specification
+        :type state_spec: StateSpecification
+        :param dTdP: Temperature derivative with respect to pressure
+        :type dTdP: float
+        :param dTdX: Temperature derivative with respect to composition
+        :type dTdX: float
 
-        :returns: Phase density in kg/m3
-        :rtype: float
+        :returns: Phase density in kg/m3 or tuple of phase density, d(rho)/dP|_X, d(rho)/dX|_P
+        :rtype: float or tuple of floats
         """
         self.eos.set_root_flag(self.root_flag)
 
         if self.combined_ions_stoichiometry is not None:
             xi = np.append(x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry))
         else:
-            xi = x
+            xi = np.array(x)
 
         MW = np.sum(xi * np.array(self.Mw)) * 1e-3  # kg/mol
-        return MW / self.eos.V(pressure, temperature, xi)  # kg/mol / m3/mol -> kg/m3
+        if not derivs:
+            return MW / self.eos.V(pressure, temperature, xi.tolist())
+
+        spec = state_spec or StateSpecification.TEMPERATURE
+        dtdp = 0.0 if dTdP is None else dTdP
+        dtdx = 1.0 if dTdX is None else dTdX
+        value, dVdP, dVdX = self.eos.V_with_derivs(
+            pressure, temperature, xi.tolist(), spec, dtdp, dtdx
+        )
+        rho = MW / value
+        coeff = -MW / (value * value)
+        return rho, coeff * dVdP, coeff * dVdX
 
 
 class EoSEnthalpy:
@@ -86,7 +114,16 @@ class EoSEnthalpy:
         self.ions = ions
         self.combined_ions_stoichiometry = combined_ions_stoichiometry
 
-    def evaluate(self, pressure, temperature, x):
+    def evaluate(
+        self,
+        pressure,
+        temperature,
+        x,
+        derivs=False,
+        state_spec: StateSpecification = None,
+        dTdP: float = None,
+        dTdX: float = None,
+    ):
         """
         Evaluates the EoS for residual enthalpy at given pressure, temperature and composition x.
         Evaluates the ideal gas enthalpy at temperature and composition x.
@@ -97,19 +134,36 @@ class EoSEnthalpy:
         :type temperature: float
         :param x: Phase composition in mole fractions/mole numbers
         :type x: list
-
-        :returns: Phase enthalpy in J/mol
-        :rtype: float
+        :param derivs: Whether to return derivatives
+        :type derivs: bool
+        :param state_spec: State specification
+        :type state_spec: StateSpecification
+        :param dTdP: Temperature derivative with respect to pressure
+        :type dTdP: float
+        :param dTdX: Temperature derivative with respect to composition
+        :type dTdX: float
+        :returns: Phase enthalpy in J/mol or tuple of phase enthalpy, d(H/R)/dP|_X, d(H/R)/dX|_P
+        :rtype: float or tuple of floats
         """
         self.eos.set_root_flag(self.root_flag)
 
         if self.combined_ions_stoichiometry is not None:
             xi = np.append(x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry))
         else:
-            xi = x
+            xi = np.array(x)
 
-        H = self.eos.H(pressure, temperature, xi)  # H/R
-        return H * R  # J/mol == kJ/kmol
+        spec = state_spec or StateSpecification.TEMPERATURE
+        dtdp = 0.0 if dTdP is None else dTdP
+        dtdx = 1.0 if dTdX is None else dTdX
+
+        if not derivs:
+            H = self.eos.H(pressure, temperature, xi.tolist())  # H/R
+            return H * R  # J/mol
+
+        value, dHdP, dHdX = self.eos.H_with_derivs(
+            pressure, temperature, xi.tolist(), spec, dtdp, dtdx
+        )
+        return value * R, dHdP * R, dHdX * R
 
 
 class VdWPDensity:

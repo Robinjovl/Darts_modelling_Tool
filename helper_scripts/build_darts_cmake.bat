@@ -115,6 +115,8 @@ if %skip_req%==false (
     cd thirdparty\build
     if not exist iphreeqc mkdir iphreeqc
     cd iphreeqc
+    if exist CMakeCache.txt del /f /q CMakeCache.txt
+    if exist CMakeFiles rmdir /s /q CMakeFiles
 	  cmake ^
       -D CMAKE_INSTALL_PREFIX=..\..\install\iphreeqc ^
       -D BUILD_TESTING=OFF ^

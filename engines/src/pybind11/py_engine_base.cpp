@@ -16,6 +16,7 @@ void pybind_engine_base (py::module &m)
 	   .def("print_stat", &engine_base::print_stat)  \
 	   .def("test_assembly", &engine_base::test_assembly)  \
 	   .def("test_spmv", &engine_base::test_spmv)  \
+	   .def("evaluate_obl", &engine_base::evaluate_obl, py::call_guard<py::gil_scoped_release>())  \
 	   .def("assemble_linear_system", &engine_base::assemble_linear_system, py::call_guard<py::gil_scoped_release>())  \
 	   .def("calc_newton_residual", &engine_base::calc_newton_residual, py::call_guard<py::gil_scoped_release>())  \
 	   .def("calc_well_residual", &engine_base::calc_well_residual, py::call_guard<py::gil_scoped_release>())  \

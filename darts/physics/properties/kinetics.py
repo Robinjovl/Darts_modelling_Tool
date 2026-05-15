@@ -357,7 +357,7 @@ class KineticRate:
 
         Parameters
         - kin_state: Dict-like with activities/saturation ratios from PHREEQC; expects keys
-          'Act(H+)', 'Act(CO2)', and 'SR_<mineral>'
+          'Act(H+)', 'Act(CO2)', 'P(CO2)', and 'SR_<mineral>'
         - solid_saturation: Solid saturation (volume fraction) of the mineral
         - rho_s: Solid molar density [kmol/m3]
         - temperature: Temperature [K]
@@ -369,7 +369,7 @@ class KineticRate:
         activity_by_mech = {
             'acidic': kin_state['Act(H+)'],
             'neutral': 1.0,
-            'carbonate': kin_state['Act(CO2)'],
+            'carbonate': kin_state['P(CO2)'],
         }
 
         # calculate rates by mechanism

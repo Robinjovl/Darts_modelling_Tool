@@ -3,8 +3,15 @@
 
 
 // define those to avoid warning indication in syntax check for non-nvcc compilers
+// use inline so header-defined helpers do not violate ODR in multiple translation units
 #ifndef __NVCC__
-#define __forceinline__
+#if defined(_MSC_VER)
+#define __forceinline__ __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#define __forceinline__ inline __attribute__((always_inline))
+#else
+#define __forceinline__ inline
+#endif
 #define __host__
 #define __device__
 #endif

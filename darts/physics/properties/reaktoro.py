@@ -53,8 +53,9 @@ class Flash:
         components: list[str],
         temperature: float | None = None,
         gas_species: list[str] | tuple[str, ...] = ("CO2(g)", "H2O(g)"),
-        tolerance: float = 1e-10,
+        tolerance: float = 1e-12,
         database_filename: str = "phreeqc.dat",
+        mineral_saturation_names: dict[str, str] | None = None,
     ):
         """
         :param min_z: minimal composition value
@@ -107,6 +108,12 @@ class Flash:
 
         # Gas setup (names must match database species names)
         self.gas_species = list(gas_species)
+        # Optional mapping from DARTS mineral formula key (e.g., CaCO3)
+        # to thermodynamic mineral name used in saturation-ratio lookup
+        # (e.g., Calcite). This avoids formula collisions with polymorphs.
+        self.mineral_saturation_names = (
+            dict(mineral_saturation_names) if mineral_saturation_names else {}
+        )
 
         # Initialize Reaktoro system (PHREEQC database backend)
         self.database_filename = database_filename
@@ -187,7 +194,7 @@ class Flash:
 
         solver = EquilibriumSolver(self.system)
         op = EquilibriumOptions()
-        op.optima.convergence.tolerance = 1e-12
+        op.optima.convergence.tolerance = self.tolerance
         solver.setOptions(op)
         try:
             result = solver.solve(state, conds)
@@ -258,22 +265,53 @@ class Flash:
                 ]
             )
 
+        # CO2 gas partial pressure catalyst in bar.
+        co2_gas_idx = next(
+            (
+                i
+                for i, sp in enumerate(self.gas_species)
+                if sp == "CO2(g)" or sp == "CO2" or sp.startswith("CO2(")
+            ),
+            None,
+        )
+        if co2_gas_idx is not None and co2_gas_idx < len(species_gas_molar_fractions):
+            y_co2 = float(species_gas_molar_fractions[co2_gas_idx])
+            if not np.isfinite(y_co2):
+                y_co2 = 0.0
+            y_co2 = max(y_co2, 0.0)
+        else:
+            y_co2 = 0.0
+
         # Kinetic state: saturation ratios and activities
-        aq_props = AqueousProps(state)
+        aq_props = AqueousProps.compute(props)
         kin_state = {
             'Act(H+)': props.speciesActivity("H+").val(),
             'Act(CO2)': props.speciesActivity("CO2" + self.aq_ending).val(),
             'Act(H2O)': props.speciesActivity("H2O" + self.aq_ending).val(),
+            'P(CO2)': y_co2 * pressure_bar,
             #'pH': aq_props.pH().val(),
         }
 
-        n_saturation_species = aq_props.saturationSpecies().size()
+        # n_saturation_species = aq_props.saturationSpecies().size()
         for m in self.mineral_names:
-            id = aq_props.saturationSpecies().findWithFormula(m)
-            if id < n_saturation_species:
-                kin_state[f"SR_{m}"] = aq_props.saturationRatio(id).val()
-            else:
-                kin_state[f"SR_{m}"] = 0.0
+            sr_name = self.mineral_saturation_names.get(m, m)
+            sr_value = None
+
+            # Prefer explicit mineral name mapping when provided.
+            try:
+                sr_value = aq_props.saturationRatio(sr_name).val()
+            except Exception:
+                sr_value = None
+
+            # Fallback to formula-based lookup if no named match exists.
+            # if sr_value is None:
+            #     id = aq_props.saturationSpecies().findWithFormula(m)
+            #     if id < n_saturation_species:
+            #         sr_value = aq_props.saturationRatio(id).val()
+            #     else:
+            #         sr_value = 0.0
+
+            kin_state[f"SR_{m}"] = sr_value
 
         return (
             nu_v,
@@ -337,3 +375,50 @@ class Flash:
         self.gas_species = [
             sp.name() for sp in self.system.phases()[phase_idx].species()
         ]
+
+        self._build_element_species_matrices()
+
+    def _build_element_species_matrices(self):
+        """
+        Build element-species stoichiometric matrices for aqueous and gas phases.
+
+        Stored matrices:
+        - *_element_to_species_matrix: shape (n_elements, n_species_in_phase)
+        - *_species_to_element_matrix: shape (n_species_in_phase, n_elements)
+        """
+        element_symbols = [el.symbol() for el in self.system.elements()]
+        system_species = [sp.name() for sp in self.system.species()]
+        species_index = {name: i for i, name in enumerate(system_species)}
+
+        # Prefer element-only matrix (without charge row), fallback to slicing.
+        try:
+            formula_matrix_elements = np.asarray(
+                self.system.formulaMatrixElements(), dtype=float
+            )
+        except Exception:
+            formula_matrix_elements = np.asarray(
+                self.system.formulaMatrix(), dtype=float
+            )
+            formula_matrix_elements = formula_matrix_elements[: len(element_symbols), :]
+
+        def species_indices(species_names, phase_name):
+            missing = [name for name in species_names if name not in species_index]
+            if missing:
+                raise RuntimeError(
+                    f"Cannot build {phase_name} element-species mapping; missing species in system: {missing}"
+                )
+            return [species_index[name] for name in species_names]
+
+        aq_indices = species_indices(self.aqueous_species, "aqueous")
+        gas_indices = species_indices(self.gas_species, "gas")
+
+        self.system_elements = element_symbols
+        self.system_species = system_species
+
+        self.aqueous_element_to_species_matrix = formula_matrix_elements[:, aq_indices]
+        self.gas_element_to_species_matrix = formula_matrix_elements[:, gas_indices]
+
+        self.aqueous_species_to_element_matrix = (
+            self.aqueous_element_to_species_matrix.T
+        )
+        self.gas_species_to_element_matrix = self.gas_element_to_species_matrix.T

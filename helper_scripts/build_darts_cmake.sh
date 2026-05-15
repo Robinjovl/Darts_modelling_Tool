@@ -236,6 +236,8 @@ if [[ "$skip_req" == false ]]; then
         echo -e "\n-- Install IPhreeqc: START\n"
         cd thirdparty
         mkdir -p build/iphreeqc && cd build/iphreeqc
+        rm -f CMakeCache.txt
+        rm -rf CMakeFiles
         cmake \
             -D CMAKE_INSTALL_PREFIX=../../install/iphreeqc \
             -D BUILD_TESTING=OFF \

@@ -59,6 +59,7 @@ public:
      */
 
   /// @brief report for one newton iteration
+  virtual int evaluate_obl(value_t deltat) override;
   virtual int assemble_linear_system(value_t deltat) override;
   virtual int solve_linear_equation() override;
   virtual int post_newtonloop(value_t deltat, value_t time) override;
