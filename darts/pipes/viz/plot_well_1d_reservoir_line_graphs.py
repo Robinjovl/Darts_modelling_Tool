@@ -88,9 +88,9 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     elif prop_name == "sL":
         xlabel = "Liquid volume fraction [-]"
     elif prop_name == "sL_a":
-        xlabel = "Liquid L_a volume fraction [-]"
+        xlabel = "L_a volume fraction [-]"
     elif prop_name == "sL_b":
-        xlabel = "Liquid L_b volume fraction [-]"
+        xlabel = "L_b volume fraction [-]"
     elif prop_name == "rhoG":
         xlabel = r"Gas density [kg/m$^3$]"
     elif prop_name == "rhoL":
@@ -147,7 +147,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
 
     # Load primary vars and phase props for the well
     well_props_file_path = os.path.join(
-        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
+        coupled_model.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
     well_data_frame = pd.read_pickle(well_props_file_path)
 

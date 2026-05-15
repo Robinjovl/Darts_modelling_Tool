@@ -101,12 +101,13 @@ def plot_heat_map_contourf(
     # Get physics info
     pc = coupled_model.physics.property_containers[0]
     components_names = pc.components_name
+    fluid_components_names = pc.components_name[: pc.nc_fl]
     num_components = len(components_names)
     n_mobile_phases = coupled_model.wells[well_name].n_mobile_phases
 
     # Load primary vars and phase props
     well_props_file_path = os.path.join(
-        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
+        coupled_model.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
     data_frame = pd.read_pickle(well_props_file_path)
 
@@ -248,7 +249,7 @@ def plot_heat_map_contourf(
 
         # Fill the overall mole fraction matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
-            z = data_frame["Overall mole fractions"][
+            z = data_frame["z"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
             ]
             z = z.tolist()
@@ -521,15 +522,15 @@ def plot_heat_map_contourf(
 
     plt.close(fig)
 
-    # %% Liquid L_a volume fraction profile
+    # %% L_a volume fraction profile
 
     if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
-        # Initialize the liquid L_a volume fraction matrix
+        # Initialize the L_a volume fraction matrix
         sL_a_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_a volume fraction matrix
+        # Fill the L_a volume fraction matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
             sL_a = data_frame["sL_a"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -571,7 +572,7 @@ def plot_heat_map_contourf(
             ticks=levels,
             spacing='proportional',
         )
-        cbar.set_label('Liquid L_a volume fraction [-]', fontsize=font_size)
+        cbar.set_label('L_a volume fraction [-]', fontsize=font_size)
         cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         # Set the y-axis ticks
@@ -595,7 +596,7 @@ def plot_heat_map_contourf(
         # Add title
         if with_title:
             ax.set_title(
-                'Liquid L_a volume fraction profile along the wellbore over time',
+                'L_a volume fraction profile along the wellbore over time',
                 fontsize=font_size,
                 fontweight='bold',
             )
@@ -603,7 +604,7 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             coupled_model.output_folder,
-            f"{figure_counter}- Liquid L_a volume fraction.{save_as}",
+            f"{figure_counter}- L_a volume fraction.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -611,15 +612,15 @@ def plot_heat_map_contourf(
 
         plt.close(fig)
 
-    # %% Liquid L_b volume fraction profile
+    # %% L_b volume fraction profile
 
     if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
-        # Initialize the liquid L_b volume fraction matrix
+        # Initialize the L_b volume fraction matrix
         sL_b_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_b volume fraction matrix
+        # Fill the L_b volume fraction matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
             sL_b = data_frame["sL_b"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -661,7 +662,7 @@ def plot_heat_map_contourf(
             ticks=levels,
             spacing='proportional',
         )
-        cbar.set_label('Liquid L_b volume fraction [-]', fontsize=font_size)
+        cbar.set_label('L_b volume fraction [-]', fontsize=font_size)
         cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         # Set the y-axis ticks
@@ -685,7 +686,7 @@ def plot_heat_map_contourf(
         # Add title
         if with_title:
             ax.set_title(
-                'Liquid L_b volume fraction profile along the wellbore over time',
+                'L_b volume fraction profile along the wellbore over time',
                 fontsize=font_size,
                 fontweight='bold',
             )
@@ -693,7 +694,7 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- Liquid L_b volume fraction.{save_as}",
+            f"{figure_counter}- L_b volume fraction.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -701,131 +702,30 @@ def plot_heat_map_contourf(
 
         plt.close(fig)
 
-    # %% Profile/profiles of components mole fractions in the gaseous phase
-
-    for c, comp_name in enumerate(components_names):
-        # Update figure counter for name of the saved figure
-        figure_counter += 1
-        # Initialize the xG_mole_c matrix
-        xG_mole_c_matrix = np.zeros((num_segments, num_selected_ts))
-
-        # Fill the xG_mole_c matrix
-        for ts_idx, ts_counter in enumerate(time_step_idx_range):
-            xG = data_frame["xG"][
-                ts_counter * num_segments : (ts_counter + 1) * num_segments
-            ]
-            xG_c = np.array([x[c] for x in xG])
-            xG_mole_c_matrix[:, ts_idx] = xG_c
-
-        # Initialize the plot
-        fig, ax = plt.subplots(figsize=(12, 6))
-
-        # Create a discrete colorbar and colormap
-        x_min, x_max = (
-            np.nanmin(xG_mole_c_matrix),
-            np.nanmax(xG_mole_c_matrix),
-        )  # Using np.nanmin or np.nanmax because if nan exists in the matrix, np.min and np.max return nan as min and max, which we don't want.
-        if x_min == x_max:
-            x_min = 0.0
-            x_max = 1.0
-        levels = np.linspace(x_min, x_max, n_cmap_bins_comp + 1)
-        cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
-        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-
-        # Region‐based fill
-        cf = ax.contourf(
-            x,
-            y_segments,
-            xG_mole_c_matrix,
-            levels=levels,
-            cmap=cmap,
-            norm=norm,
-            # extend='both'  # if you want arrows at the ends
-        )
-
-        # Overlay the exact same contour lines
-        _cs = ax.contour(
-            x, y_segments, xG_mole_c_matrix, levels=levels, colors='k', linewidths=0.7
-        )
-        # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
-
-        # Create the colorbar
-        cbar = fig.colorbar(
-            cf,
-            ax=ax,
-            boundaries=levels,
-            ticks=levels,
-            spacing='proportional',
-        )
-        cbar.set_label(
-            comp_name + ' mole fraction in the gaseous phase [-]', fontsize=font_size
-        )
-        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
-
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
-        # Add axes labels
-        ax.set_xlabel(x_label, fontsize=font_size)
-        ax.set_ylabel(y_segments_label, fontsize=font_size)
-
-        # Make the x-axis logarithmic
-        if with_logarithmic_x_axis:
-            ax.set_xscale('log')
-
-        ax.tick_params(
-            axis='both', labelsize=font_size
-        )  # Set the font size of tick labels
-
-        # Add title
-        if with_title:
-            ax.set_title(
-                'Profile of '
-                + comp_name
-                + ' mole fraction in the gaseous phase along the wellbore over time',
-                fontsize=font_size,
-                fontweight='bold',
-            )
-
-        plt.tight_layout()
-        file_address = os.path.join(
-            main_dir,
-            f"{figure_counter}- {comp_name} mole fraction in the gaseous phase.{save_as}",
-        )
-        plt.savefig(file_address)
-        if show_plot:
-            plt.show()
-
-        plt.close(fig)
-
-    # %% Profile/profiles of components mole fractions in the liquid phase
-
-    if n_mobile_phases == 2:
-        for c, comp_name in enumerate(components_names):
+    def plot_phase_mass_fraction_heatmaps(phase_name, phase_description):
+        nonlocal figure_counter
+        for comp_name in fluid_components_names:
             # Update figure counter for name of the saved figure
             figure_counter += 1
-            # Initialize the xL_mole_c matrix
-            xL_mole_c_matrix = np.zeros((num_segments, num_selected_ts))
+            # Initialize the phase mass fraction matrix
+            x_c_matrix = np.zeros((num_segments, num_selected_ts))
 
-            # Fill the xL_mole_c matrix
+            # Fill the phase mass fraction matrix
+            prop_name = f"x{comp_name}_in_{phase_name}_mass"
             for ts_idx, ts_counter in enumerate(time_step_idx_range):
-                xL = data_frame["xL"][
+                x_c = data_frame[prop_name][
                     ts_counter * num_segments : (ts_counter + 1) * num_segments
                 ]
-                xL_c = np.array([x[c] for x in xL])
-                xL_mole_c_matrix[:, ts_idx] = xL_c
+                x_c_matrix[:, ts_idx] = x_c
 
             # Initialize the plot
             fig, ax = plt.subplots(figsize=(12, 6))
 
             # Create a discrete colorbar and colormap
             x_min, x_max = (
-                np.nanmin(xL_mole_c_matrix),
-                np.nanmax(xL_mole_c_matrix),
-            )  # Using np.nanmin because if nan exists in the matrix, np.min and np.max return nan as min and max
+                np.nanmin(x_c_matrix),
+                np.nanmax(x_c_matrix),
+            )  # Using np.nanmin or np.nanmax because if nan exists in the matrix, np.min and np.max return nan as min and max, which we don't want.
             if x_min == x_max:
                 x_min = 0.0
                 x_max = 1.0
@@ -833,11 +733,11 @@ def plot_heat_map_contourf(
             cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
             norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
-            # Region‐based fill
+            # Region-based fill
             cf = ax.contourf(
                 x,
                 y_segments,
-                xL_mole_c_matrix,
+                x_c_matrix,
                 levels=levels,
                 cmap=cmap,
                 norm=norm,
@@ -846,12 +746,7 @@ def plot_heat_map_contourf(
 
             # Overlay the exact same contour lines
             _cs = ax.contour(
-                x,
-                y_segments,
-                xL_mole_c_matrix,
-                levels=levels,
-                colors='k',
-                linewidths=0.7,
+                x, y_segments, x_c_matrix, levels=levels, colors='k', linewidths=0.7
             )
             # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
 
@@ -864,7 +759,8 @@ def plot_heat_map_contourf(
                 spacing='proportional',
             )
             cbar.set_label(
-                comp_name + ' mole fraction in the liquid phase [-]', fontsize=font_size
+                comp_name + f' mass fraction in {phase_description} phase [-]',
+                fontsize=font_size,
             )
             cbar.ax.tick_params(
                 labelsize=font_size
@@ -893,7 +789,7 @@ def plot_heat_map_contourf(
                 ax.set_title(
                     'Profile of '
                     + comp_name
-                    + ' mole fraction in the liquid phase along the wellbore over time',
+                    + f' mass fraction in the {phase_description} phase along the wellbore over time',
                     fontsize=font_size,
                     fontweight='bold',
                 )
@@ -901,7 +797,7 @@ def plot_heat_map_contourf(
             plt.tight_layout()
             file_address = os.path.join(
                 main_dir,
-                f"{figure_counter}- {comp_name} mole fraction in the liquid phase.{save_as}",
+                f"{figure_counter}- {comp_name} mass fraction in the {phase_description} phase.{save_as}",
             )
             plt.savefig(file_address)
             if show_plot:
@@ -909,223 +805,13 @@ def plot_heat_map_contourf(
 
             plt.close(fig)
 
-        # %% Profile/profiles of components mole fractions in the liquid phase L_a
-
-        if n_mobile_phases == 3:
-            for c, comp_name in enumerate(components_names):
-                # Update figure counter for name of the saved figure
-                figure_counter += 1
-                # Initialize the xL_a_mole_c matrix
-                xL_a_mole_c_matrix = np.zeros((num_segments, num_selected_ts))
-
-                # Fill the xL_a_mole_c matrix
-                for ts_idx, ts_counter in enumerate(time_step_idx_range):
-                    xL_a = data_frame["xL_a"][
-                        ts_counter * num_segments : (ts_counter + 1) * num_segments
-                    ]
-                    xL_a_c = np.array([x[c] for x in xL_a])
-                    xL_a_mole_c_matrix[:, ts_idx] = xL_a_c
-
-                # Initialize the plot
-                fig, ax = plt.subplots(figsize=(12, 6))
-
-                # Create a discrete colorbar and colormap
-                x_min, x_max = (
-                    np.nanmin(xL_a_mole_c_matrix),
-                    np.nanmax(xL_a_mole_c_matrix),
-                )  # Using np.nanmin because if nan exists in the matrix, np.min and np.max return nan as min and max
-                if x_min == x_max:
-                    x_min = 0.0
-                    x_max = 1.0
-                levels = np.linspace(x_min, x_max, n_cmap_bins_comp + 1)
-                cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
-                norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-
-                # Region‐based fill
-                cf = ax.contourf(
-                    x,
-                    y_segments,
-                    xL_a_mole_c_matrix,
-                    levels=levels,
-                    cmap=cmap,
-                    norm=norm,
-                    # extend='both'  # if you want arrows at the ends
-                )
-
-                # Overlay the exact same contour lines
-                _cs = ax.contour(
-                    x,
-                    y_segments,
-                    xL_a_mole_c_matrix,
-                    levels=levels,
-                    colors='k',
-                    linewidths=0.7,
-                )
-                # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
-
-                # Create the colorbar
-                cbar = fig.colorbar(
-                    cf,
-                    ax=ax,
-                    boundaries=levels,
-                    ticks=levels,
-                    spacing='proportional',
-                )
-                cbar.set_label(
-                    comp_name + ' mole fraction in the liquid phase L_a [-]',
-                    fontsize=font_size,
-                )
-                cbar.ax.tick_params(
-                    labelsize=font_size
-                )  # Set tick font size of the colorbar
-
-                # Set the y-axis ticks
-                ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
-
-                # Reverse the y-axis
-                ax.invert_yaxis()
-
-                # Add axes labels
-                ax.set_xlabel(x_label, fontsize=font_size)
-                ax.set_ylabel(y_segments_label, fontsize=font_size)
-
-                # Make the x-axis logarithmic
-                if with_logarithmic_x_axis:
-                    ax.set_xscale('log')
-
-                ax.tick_params(
-                    axis='both', labelsize=font_size
-                )  # Set the font size of tick labels
-
-                # Add title
-                if with_title:
-                    ax.set_title(
-                        'Profile of '
-                        + comp_name
-                        + ' mole fraction in the liquid phase L_a along the wellbore over time',
-                        fontsize=font_size,
-                        fontweight='bold',
-                    )
-
-                plt.tight_layout()
-                file_address = os.path.join(
-                    main_dir,
-                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a.{save_as}",
-                )
-                plt.savefig(file_address)
-                if show_plot:
-                    plt.show()
-
-                plt.close(fig)
-
-        # %% Profile/profiles of components mole fractions in the liquid phase L_b
-
-        if n_mobile_phases == 3:
-            for c, comp_name in enumerate(components_names):
-                # Update figure counter for name of the saved figure
-                figure_counter += 1
-                # Initialize the xL_b_mole_c matrix
-                xL_b_mole_c_matrix = np.zeros((num_segments, num_selected_ts))
-
-                # Fill the xL_b_mole_c matrix
-                for ts_idx, ts_counter in enumerate(time_step_idx_range):
-                    xL_b = data_frame["xL_b"][
-                        ts_counter * num_segments : (ts_counter + 1) * num_segments
-                    ]
-                    xL_b_c = np.array([x[c] for x in xL_b])
-                    xL_b_mole_c_matrix[:, ts_idx] = xL_b_c
-
-                # Initialize the plot
-                fig, ax = plt.subplots(figsize=(12, 6))
-
-                # Create a discrete colorbar and colormap
-                x_min, x_max = (
-                    np.nanmin(xL_b_mole_c_matrix),
-                    np.nanmax(xL_b_mole_c_matrix),
-                )  # Using np.nanmin because if nan exists in the matrix, np.min and np.max return nan as min and max
-                if x_min == x_max:
-                    x_min = 0.0
-                    x_max = 1.0
-                levels = np.linspace(x_min, x_max, n_cmap_bins_comp + 1)
-                cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
-                norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-
-                # Region‐based fill
-                cf = ax.contourf(
-                    x,
-                    y_segments,
-                    xL_b_mole_c_matrix,
-                    levels=levels,
-                    cmap=cmap,
-                    norm=norm,
-                    # extend='both'  # if you want arrows at the ends
-                )
-
-                # Overlay the exact same contour lines
-                _cs = ax.contour(
-                    x,
-                    y_segments,
-                    xL_b_mole_c_matrix,
-                    levels=levels,
-                    colors='k',
-                    linewidths=0.7,
-                )
-                # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
-
-                # Create the colorbar
-                cbar = fig.colorbar(
-                    cf,
-                    ax=ax,
-                    boundaries=levels,
-                    ticks=levels,
-                    spacing='proportional',
-                )
-                cbar.set_label(
-                    comp_name + ' mole fraction in the liquid phase L_b [-]',
-                    fontsize=font_size,
-                )
-                cbar.ax.tick_params(
-                    labelsize=font_size
-                )  # Set tick font size of the colorbar
-
-                # Set the y-axis ticks
-                ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
-
-                # Reverse the y-axis
-                ax.invert_yaxis()
-
-                # Add axes labels
-                ax.set_xlabel(x_label, fontsize=font_size)
-                ax.set_ylabel(y_segments_label, fontsize=font_size)
-
-                # Make the x-axis logarithmic
-                if with_logarithmic_x_axis:
-                    ax.set_xscale('log')
-
-                ax.tick_params(
-                    axis='both', labelsize=font_size
-                )  # Set the font size of tick labels
-
-                # Add title
-                if with_title:
-                    ax.set_title(
-                        'Profile of '
-                        + comp_name
-                        + ' mole fraction in the liquid phase L_b along the wellbore over time',
-                        fontsize=font_size,
-                        fontweight='bold',
-                    )
-
-                plt.tight_layout()
-                file_address = os.path.join(
-                    main_dir,
-                    f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b.{save_as}",
-                )
-                plt.savefig(file_address)
-                if show_plot:
-                    plt.show()
-
-                plt.close(fig)
+    # %% Profile/profiles of components mass fractions in phases
+    plot_phase_mass_fraction_heatmaps('G', 'G')
+    if n_mobile_phases == 2:
+        plot_phase_mass_fraction_heatmaps('L', 'L')
+    elif n_mobile_phases == 3:
+        plot_phase_mass_fraction_heatmaps('L_a', 'L_a')
+        plot_phase_mass_fraction_heatmaps('L_b', 'L_b')
 
     # %% Gas density profile
 
@@ -1307,15 +993,15 @@ def plot_heat_map_contourf(
 
         plt.close(fig)
 
-    # %% Liquid L_a density profile
+    # %% L_a density profile
 
     if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
-        # Initialize the liquid L_a density matrix
+        # Initialize the L_a density matrix
         rhoL_a_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_a density matrix
+        # Fill the L_a density matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
             rhoL_a = data_frame["rhoL_a"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -1370,7 +1056,7 @@ def plot_heat_map_contourf(
             ticks=levels,
             spacing='proportional',
         )
-        cbar.set_label('Liquid L_a density [kg/m$^3$]', fontsize=font_size)
+        cbar.set_label('L_a density [kg/m$^3$]', fontsize=font_size)
         cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         # Set the y-axis ticks
@@ -1394,7 +1080,7 @@ def plot_heat_map_contourf(
         # Add title
         if with_title:
             ax.set_title(
-                'Liquid L_a density profile along the wellbore over time',
+                'L_a density profile along the wellbore over time',
                 fontsize=font_size,
                 fontweight='bold',
             )
@@ -1402,7 +1088,7 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- Liquid L_a density.{save_as}",
+            f"{figure_counter}- L_a density.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -1410,15 +1096,15 @@ def plot_heat_map_contourf(
 
         plt.close(fig)
 
-    # %% Liquid L_b density profile
+    # %% L_b density profile
 
     if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
-        # Initialize the liquid L_b density matrix
+        # Initialize the L_b density matrix
         rhoL_b_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_b density matrix
+        # Fill the L_b density matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
             rhoL_b = data_frame["rhoL_b"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -1473,7 +1159,7 @@ def plot_heat_map_contourf(
             ticks=levels,
             spacing='proportional',
         )
-        cbar.set_label('Liquid L_b density [kg/m$^3$]', fontsize=font_size)
+        cbar.set_label('L_b density [kg/m$^3$]', fontsize=font_size)
         cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         # Set the y-axis ticks
@@ -1497,7 +1183,7 @@ def plot_heat_map_contourf(
         # Add title
         if with_title:
             ax.set_title(
-                'Liquid L_b density profile along the wellbore over time',
+                'L_b density profile along the wellbore over time',
                 fontsize=font_size,
                 fontweight='bold',
             )
@@ -1505,7 +1191,7 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- Liquid L_b density.{save_as}",
+            f"{figure_counter}- L_b density.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -1693,15 +1379,15 @@ def plot_heat_map_contourf(
 
         plt.close(fig)
 
-    # %% Liquid L_a viscosity profile
+    # %% L_a viscosity profile
 
     if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
-        # Initialize the liquid L_a viscosity matrix
+        # Initialize the L_a viscosity matrix
         miuL_a_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_a viscosity matrix
+        # Fill the L_a viscosity matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
             miuL_a = data_frame["miuL_a"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -1756,7 +1442,7 @@ def plot_heat_map_contourf(
             ticks=levels,
             spacing='proportional',
         )
-        cbar.set_label('Liquid L_a viscosity [$cP$]', fontsize=font_size)
+        cbar.set_label('L_a viscosity [$cP$]', fontsize=font_size)
         cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         # Set the y-axis ticks
@@ -1780,7 +1466,7 @@ def plot_heat_map_contourf(
         # Add title
         if with_title:
             ax.set_title(
-                'Liquid L_a viscosity profile along the wellbore over time',
+                'L_a viscosity profile along the wellbore over time',
                 fontsize=font_size,
                 fontweight='bold',
             )
@@ -1788,7 +1474,7 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- Liquid L_a viscosity.{save_as}",
+            f"{figure_counter}- L_a viscosity.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:
@@ -1796,15 +1482,15 @@ def plot_heat_map_contourf(
 
         plt.close(fig)
 
-    # %% Liquid L_b viscosity profile
+    # %% L_b viscosity profile
 
     if n_mobile_phases == 3:
         # Update figure counter for name of the saved figure
         figure_counter += 1
-        # Initialize the liquid L_b viscosity matrix
+        # Initialize the L_b viscosity matrix
         miuL_b_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the liquid L_b viscosity matrix
+        # Fill the L_b viscosity matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
             miuL_b = data_frame["miuL_b"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
@@ -1859,7 +1545,7 @@ def plot_heat_map_contourf(
             ticks=levels,
             spacing='proportional',
         )
-        cbar.set_label('Liquid L_b viscosity [$cP$]', fontsize=font_size)
+        cbar.set_label('L_b viscosity [$cP$]', fontsize=font_size)
         cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         # Set the y-axis ticks
@@ -1883,7 +1569,7 @@ def plot_heat_map_contourf(
         # Add title
         if with_title:
             ax.set_title(
-                'Liquid L_b viscosity profile along the wellbore over time',
+                'L_b viscosity profile along the wellbore over time',
                 fontsize=font_size,
                 fontweight='bold',
             )
@@ -1891,7 +1577,7 @@ def plot_heat_map_contourf(
         plt.tight_layout()
         file_address = os.path.join(
             main_dir,
-            f"{figure_counter}- Liquid L_b viscosity.{save_as}",
+            f"{figure_counter}- L_b viscosity.{save_as}",
         )
         plt.savefig(file_address)
         if show_plot:

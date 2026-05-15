@@ -34,7 +34,7 @@ def plot_well_prop_profiles(
 
     # Load primary vars and phase props
     well_props_file_path = os.path.join(
-        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
+        coupled_model.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
     data_frame = pd.read_pickle(well_props_file_path)
 
@@ -182,7 +182,7 @@ def plot_well_prop_profiles(
     plt.figure(figsize=(10, 6))
 
     for idx, report_index in enumerate(report_indices):
-        z = data_frame["Overall mole fractions"][
+        z = data_frame["z"][
             report_index * num_segments : (report_index + 1) * num_segments
         ]
         z = z.tolist()

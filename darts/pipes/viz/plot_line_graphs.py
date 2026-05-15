@@ -39,7 +39,7 @@ def plot_line_graphs(
 
     # Load primary vars and phase props
     well_props_file_path = os.path.join(
-        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
+        coupled_model.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
     data_frame = pd.read_pickle(well_props_file_path)
 
@@ -52,6 +52,7 @@ def plot_line_graphs(
     components_names = pc.components_name
     fluid_components_names = pc.components_name[: pc.nc_fl]
     num_components = len(components_names)
+    n_mobile_phases = coupled_model.wells[well_name].n_mobile_phases
 
     # Convert days to seconds
     simulated_time = h5_well_dict["dynamic"]["time"] * 24 * 60 * 60
@@ -117,7 +118,7 @@ def plot_line_graphs(
         plt.figure(figsize=(12, 6))
 
         for ts_counter in list_of_time_steps:
-            z_profile = data_frame["Overall mole fractions"][
+            z_profile = data_frame["z"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
             ]
             z_profile = z_profile.tolist()
@@ -256,91 +257,59 @@ def plot_line_graphs(
 
     plt.close()
 
-    # %% Profile/profiles of components mole fractions in the gaseous phase
+    def plot_phase_mass_fraction_profiles(phase_name, phase_description):
+        nonlocal figure_counter
+        for comp_name in fluid_components_names:
+            # Update figure counter for name of the saved figure
+            figure_counter += 1
+            # Initialize the plot
+            plt.figure(figsize=(12, 6))
 
-    for c, comp_name in enumerate(fluid_components_names):
-        # Update figure counter for name of the saved figure
-        figure_counter += 1
-        # Initialize the plot
-        plt.figure(figsize=(12, 6))
+            prop_name = f"x{comp_name}_in_{phase_name}_mass"
+            for ts_counter in list_of_time_steps:
+                x_profile = data_frame[prop_name][
+                    ts_counter * num_segments : (ts_counter + 1) * num_segments
+                ]
+                plt.plot(x_profile, list(range(num_segments)), color=colors[ts_counter])
 
-        for ts_counter in list_of_time_steps:
-            xG_profile = data_frame["xG"][
-                ts_counter * num_segments : (ts_counter + 1) * num_segments
-            ]
-            xG_c_profile = np.array([x[c] for x in xG_profile])
-            plt.plot(xG_c_profile, list(range(num_segments)), color=colors[ts_counter])
+            # Reverse the y-axis
+            plt.gca().invert_yaxis()
+            plt.ylim(num_segments - 1, 0)
 
-        # Reverse the y-axis
-        plt.gca().invert_yaxis()
-        plt.ylim(num_segments - 1, 0)
+            # Set the y-axis ticks
+            plt.gca().yaxis.set_major_locator(MultipleLocator(1))
 
-        # Set the y-axis ticks
-        plt.gca().yaxis.set_major_locator(MultipleLocator(1))
+            plt.xlabel(
+                comp_name + f" mass fraction in the {phase_description} phase [-]",
+                fontsize=14,
+            )
+            plt.ylabel("Segment index", fontsize=14)
 
-        plt.xlabel(comp_name + " mole fraction in the gaseous phase [-]", fontsize=14)
-        plt.ylabel("Segment index", fontsize=14)
+            plt.title(
+                comp_name
+                + f" mass fraction in the {phase_description} phase profile/profiles along the wellbore",
+                fontsize=14,
+                fontweight="bold",
+            )
 
-        plt.title(
-            comp_name
-            + " mole fraction in the gaseous phase profile/profiles along the wellbore",
-            fontsize=14,
-            fontweight="bold",
-        )
+            plt.tight_layout()
+            file_address = os.path.join(
+                main_dir,
+                f"{figure_counter}- {comp_name} mass fraction in the {phase_description} phase.png",
+            )
+            plt.savefig(file_address)
+            if show_plot:
+                plt.show()
 
-        plt.tight_layout()
-        file_address = os.path.join(
-            main_dir,
-            f"{figure_counter}- {comp_name} mole fraction in the gaseous phase.png",
-        )
-        plt.savefig(file_address)
-        if show_plot:
-            plt.show()
+            plt.close()
 
-        plt.close()
-
-    # %% Profile/profiles of components mole fractions in the liquid phase
-
-    for c, comp_name in enumerate(fluid_components_names):
-        # Update figure counter for name of the saved figure
-        figure_counter += 1
-        # Initialize the plot
-        plt.figure(figsize=(12, 6))
-
-        for ts_counter in list_of_time_steps:
-            xL_profile = data_frame["xL"][
-                ts_counter * num_segments : (ts_counter + 1) * num_segments
-            ]
-            xL_c_profile = np.array([x[c] for x in xL_profile])
-            plt.plot(xL_c_profile, list(range(num_segments)), color=colors[ts_counter])
-
-        # Reverse the y-axis
-        plt.gca().invert_yaxis()
-        plt.ylim(num_segments - 1, 0)
-
-        # Set the y-axis ticks
-        plt.gca().yaxis.set_major_locator(MultipleLocator(1))
-
-        plt.xlabel(comp_name + " mole fraction in the liquid phase [-]", fontsize=14)
-        plt.ylabel("Segment index", fontsize=14)
-
-        plt.title(
-            comp_name
-            + " mole fraction in the liquid phase profile/profiles along the wellbore",
-            fontsize=14,
-            fontweight="bold",
-        )
-
-        plt.tight_layout()
-        file_address = os.path.join(
-            main_dir,
-            f"{figure_counter}- {comp_name} mole fraction in the liquid phase.png",
-        )
-        plt.savefig(file_address)
-        if show_plot:
-            plt.show()
-
-        plt.close()
+    # %% Profile/profiles of components mass fractions in phases
+    plot_phase_mass_fraction_profiles("G", "G")
+    if n_mobile_phases == 2:
+        plot_phase_mass_fraction_profiles("L", "L")
+    elif n_mobile_phases == 3:
+        plot_phase_mass_fraction_profiles("L_a", "L_a")
+        plot_phase_mass_fraction_profiles("L_b", "L_b")
 
     # %% Gas density profile
 
