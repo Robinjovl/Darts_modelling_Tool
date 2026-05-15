@@ -39,6 +39,8 @@ namespace opendarts
       , log_level_cached(1)
       , use_physics_scaling_cached(true)
       , use_flex_gmres_cached(true)
+      , n_reservoir_blocks_cached(0)
+      , mgr_strategy_config_cached()
     {
       std::cout << "[MGR] linsolv_mgr created with N_BLOCK_SIZE = " << (int)N_BLOCK_SIZE << std::endl;
     }
@@ -122,6 +124,233 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_n_reservoir_blocks(opendarts::config::index_t n_reservoir_blocks)
+    {
+      n_reservoir_blocks_cached = n_reservoir_blocks;
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_enable_well_level(bool enable_well_level)
+    {
+      mgr_strategy_config_cached.enableWellLevel = enable_well_level;
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_enable_composition_level(bool enable_composition_level)
+    {
+      mgr_strategy_config_cached.enableCompositionLevel = enable_composition_level;
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    std::vector<mgr::strategies::VariableRole>
+    linsolv_mgr<N_BLOCK_SIZE>::to_variable_roles(const std::vector<int> & variable_roles)
+    {
+      std::vector<mgr::strategies::VariableRole> roles;
+      roles.reserve(variable_roles.size());
+      for (const auto role : variable_roles)
+      {
+        roles.push_back(static_cast<mgr::strategies::VariableRole>(role));
+      }
+      return roles;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    std::vector<int>
+    linsolv_mgr<N_BLOCK_SIZE>::to_int_roles(const std::vector<mgr::strategies::VariableRole> & variable_roles)
+    {
+      std::vector<int> roles;
+      roles.reserve(variable_roles.size());
+      for (const auto role : variable_roles)
+      {
+        roles.push_back(static_cast<int>(role));
+      }
+      return roles;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    std::vector<mgr::int_t>
+    linsolv_mgr<N_BLOCK_SIZE>::to_labels(const std::vector<int> & labels)
+    {
+      std::vector<mgr::int_t> converted_labels;
+      converted_labels.reserve(labels.size());
+      for (const auto label : labels)
+      {
+        converted_labels.push_back(static_cast<mgr::int_t>(label));
+      }
+      return converted_labels;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_reservoir_variable_roles(const std::vector<int> & variable_roles)
+    {
+      mgr_strategy_config_cached.reservoirVariableRoles = to_variable_roles(variable_roles);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_well_variable_roles(const std::vector<int> & variable_roles)
+    {
+      mgr_strategy_config_cached.wellVariableRoles = to_variable_roles(variable_roles);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::clear_mgr_custom_levels()
+    {
+      mgr_strategy_config_cached.customLevels.clear();
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_num_custom_levels(int num_custom_levels)
+    {
+      mgr_strategy_config_cached.customLevels.resize(std::max(0, num_custom_levels));
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_custom_level_options(int custom_level_index,
+                                                                 const std::vector<int> & keep_labels,
+                                                                 int frelax_type,
+                                                                 int frelax_iters,
+                                                                 int interp_type,
+                                                                 int restrict_type,
+                                                                 int coarse_method,
+                                                                 int smoother_type,
+                                                                 int smoother_iters)
+    {
+      if (custom_level_index < 0)
+      {
+        std::cerr << "[MGR] Warning: ignoring custom level with negative index "
+                  << custom_level_index << "." << std::endl;
+        return;
+      }
+
+      const auto level_index = static_cast<size_t>(custom_level_index);
+      if (mgr_strategy_config_cached.customLevels.size() <= level_index)
+      {
+        mgr_strategy_config_cached.customLevels.resize(level_index + 1);
+      }
+
+      auto & level = mgr_strategy_config_cached.customLevels[level_index];
+      set_level_options(level,
+                        frelax_type,
+                        frelax_iters,
+                        interp_type,
+                        restrict_type,
+                        coarse_method,
+                        smoother_type,
+                        smoother_iters);
+      level.labels = to_labels(keep_labels);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_well_strategy(int well_strategy)
+    {
+      mgr_strategy_config_cached.wellStrategy =
+          static_cast<mgr::strategies::WellStrategy>(well_strategy);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_well_frelax_type(int frelax_type)
+    {
+      mgr_strategy_config_cached.wellLevel.fRelaxType =
+          static_cast<mgr::FRelaxationType>(frelax_type);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_well_frelax_iters(int frelax_iters)
+    {
+      mgr_strategy_config_cached.wellLevel.fRelaxIters = std::max(0, frelax_iters);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_level_options(mgr::MGRLevelParameters & level,
+                                                      int frelax_type,
+                                                      int frelax_iters,
+                                                      int interp_type,
+                                                      int restrict_type,
+                                                      int coarse_method,
+                                                      int smoother_type,
+                                                      int smoother_iters)
+    {
+      level.fRelaxType = static_cast<mgr::FRelaxationType>(frelax_type);
+      level.fRelaxIters = std::max(0, frelax_iters);
+      level.interpType = static_cast<mgr::InterpolationType>(interp_type);
+      level.restrictType = static_cast<mgr::RestrictionType>(restrict_type);
+      level.coarseGridMethod = static_cast<mgr::CoarseGridMethod>(coarse_method);
+      level.globalSmootherType = static_cast<mgr::GlobalSmootherType>(smoother_type);
+      level.globalSmootherIters = std::max(0, smoother_iters);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_well_level_options(int frelax_type,
+                                                               int frelax_iters,
+                                                               int interp_type,
+                                                               int restrict_type,
+                                                               int coarse_method,
+                                                               int smoother_type,
+                                                               int smoother_iters)
+    {
+      set_level_options(mgr_strategy_config_cached.wellLevel,
+                        frelax_type,
+                        frelax_iters,
+                        interp_type,
+                        restrict_type,
+                        coarse_method,
+                        smoother_type,
+                        smoother_iters);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_composition_level_options(int frelax_type,
+                                                                      int frelax_iters,
+                                                                      int interp_type,
+                                                                      int restrict_type,
+                                                                      int coarse_method,
+                                                                      int smoother_type,
+                                                                      int smoother_iters)
+    {
+      set_level_options(mgr_strategy_config_cached.compositionLevel,
+                        frelax_type,
+                        frelax_iters,
+                        interp_type,
+                        restrict_type,
+                        coarse_method,
+                        smoother_type,
+                        smoother_iters);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_pressure_level_options(int frelax_type,
+                                                                   int frelax_iters,
+                                                                   int interp_type,
+                                                                   int restrict_type,
+                                                                   int coarse_method,
+                                                                   int smoother_type,
+                                                                   int smoother_iters)
+    {
+      set_level_options(mgr_strategy_config_cached.pressureLevel,
+                        frelax_type,
+                        frelax_iters,
+                        interp_type,
+                        restrict_type,
+                        coarse_method,
+                        smoother_type,
+                        smoother_iters);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_max_iterations() const
     {
       return max_iters_cached;
@@ -161,6 +390,60 @@ namespace opendarts
     bool linsolv_mgr<N_BLOCK_SIZE>::get_use_flex_gmres() const
     {
       return use_flex_gmres_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_n_reservoir_blocks() const
+    {
+      return n_reservoir_blocks_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    bool linsolv_mgr<N_BLOCK_SIZE>::get_mgr_enable_well_level() const
+    {
+      return mgr_strategy_config_cached.enableWellLevel;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    bool linsolv_mgr<N_BLOCK_SIZE>::get_mgr_enable_composition_level() const
+    {
+      return mgr_strategy_config_cached.enableCompositionLevel;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_mgr_num_custom_levels() const
+    {
+      return static_cast<int>(mgr_strategy_config_cached.customLevels.size());
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    std::vector<int> linsolv_mgr<N_BLOCK_SIZE>::get_mgr_reservoir_variable_roles() const
+    {
+      return to_int_roles(mgr_strategy_config_cached.reservoirVariableRoles);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    std::vector<int> linsolv_mgr<N_BLOCK_SIZE>::get_mgr_well_variable_roles() const
+    {
+      return to_int_roles(mgr_strategy_config_cached.wellVariableRoles);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_mgr_well_strategy() const
+    {
+      return static_cast<int>(mgr_strategy_config_cached.wellStrategy);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_mgr_well_frelax_type() const
+    {
+      return static_cast<int>(mgr_strategy_config_cached.wellLevel.fRelaxType);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_mgr_well_frelax_iters() const
+    {
+      return mgr_strategy_config_cached.wellLevel.fRelaxIters;
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -269,8 +552,28 @@ namespace opendarts
 
       if (first_solve)
       {
+        opendarts::config::index_t n_reservoir_blocks = n_blocks;
+        if (n_reservoir_blocks_cached > 0)
+        {
+          if (n_reservoir_blocks_cached <= n_blocks)
+          {
+            n_reservoir_blocks = n_reservoir_blocks_cached;
+          }
+          else
+          {
+            std::cerr << "[MGR] Warning: configured reservoir block count ("
+                      << n_reservoir_blocks_cached
+                      << ") exceeds matrix block count (" << n_blocks
+                      << "); treating all blocks as reservoir blocks." << std::endl;
+          }
+        }
+
         auto strategy = std::make_unique<mgr::strategies::CompositionalFlowStrategy>(
-            block_size, n_blocks * block_size, n_blocks);
+            block_size,
+            n_blocks * block_size,
+            n_blocks,
+            n_reservoir_blocks,
+            mgr_strategy_config_cached);
         strategy->setup();
         mgr_solver.setStrategy(std::move(strategy));
       }

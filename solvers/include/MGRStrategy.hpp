@@ -29,7 +29,7 @@ enum class FRelaxationType : int
   none = -1,                         ///< No F-relaxation
 
   // Basic methods
-  jacobi = 0,                        ///< Jacobi relaxation
+  weightedJacobi = 0,                ///< Weighted Jacobi relaxation
 
   // Multilevel methods
   singleVCycleSmoother = 1,           ///< Single-level V-cycle smoother
@@ -38,16 +38,21 @@ enum class FRelaxationType : int
   // Gauss-Seidel variants
   hybridGaussSeidelForward = 3,        ///< Hybrid Gauss-Seidel, forward solve
   hybridGaussSeidelBackward = 4,       ///< Hybrid Gauss-Seidel, backward solve
+  hybridChaoticGaussSeidel = 5,        ///< Hybrid chaotic Gauss-Seidel / SOR
   hybridSymmetricGaussSeidel = 6,      ///< Hybrid symmetric Gauss-Seidel (SSOR)
+  jacobi = 7,                          ///< Jacobi relaxation
+  l1HybridSymmetricGaussSeidel = 8,    ///< l1-scaled hybrid symmetric Gauss-Seidel
+  gaussianElimination = 9,             ///< Gaussian elimination (small systems)
   l1GaussSeidelForward = 13,          ///< l1-scaled Gauss-Seidel, forward solve
   l1GaussSeidelBackward = 14,         ///< l1-scaled Gauss-Seidel, backward solve
 
   // Advanced methods
+  fcfJacobi = 17,                     ///< FCF-Jacobi (BoomerAMG relaxation)
   l1Jacobi = 18,                      ///< l1-scaled Jacobi
-  fcfJacobi = 17,                     ///< FCF-Jacobi (color-forward)
+  sparseDirectSolver = 29,            ///< Sparse direct solver for A_FF
+  ilu = 32,                           ///< ILU solver for A_FF
 
   // Direct solvers (for F-point elimination)
-  gaussianElimination = 9,            ///< Gaussian elimination (small systems)
   gaussianEliminationWPivoting = 99,  ///< Gaussian elimination with pivoting
   directInverse = 199                 ///< Direct inversion
 };
@@ -64,7 +69,9 @@ enum class InterpolationType : int
   jacobi = 2,                        ///< Diagonal scaling (Jacobi) - DEFAULT
   classicalModified = 3,             ///< Classical modified interpolation
   approximateInverse = 4,            ///< Approximate inverse interpolation
-  blockJacobi = 12                   ///< Block Jacobi interpolation
+  blockJacobi = 12,                  ///< Block Jacobi interpolation
+  blockRowSum = 13,                  ///< Block row-sum lumped interpolation
+  blockRowSumAbs = 14                ///< Absolute-value block row-sum lumped interpolation
 };
 
 /**
@@ -82,7 +89,8 @@ enum class RestrictionType : int
   pAIRDistance2 = 5,                 ///< pAIR distance 2
   blockJacobi = 12,                  ///< Block Jacobi restriction
   cprLike = 13,                      ///< CPR-like restriction operator
-  blockColLumped = 14                ///< Block column-lumped approximation
+  blockColLumped = 14,               ///< Block column-lumped approximation
+  partialColLumped = 15              ///< Partial column-lumped restriction
 };
 
 /**
@@ -96,7 +104,8 @@ enum class CoarseGridMethod : int
   nonGalerkinBlockDiag = 1,          ///< Non-Galerkin, block diagonal inverse approximation
   nonGalerkinCPRDiag = 2,            ///< Non-Galerkin, CPR-like with diagonal inverse
   nonGalerkinCPRBlockDiag = 3,       ///< Non-Galerkin, CPR-like with block diagonal inverse
-  nonGalerkinSparseApproxInv = 4     ///< Non-Galerkin, sparse approximate inverse
+  nonGalerkinSparseApproxInv = 4,    ///< Non-Galerkin, sparse approximate inverse
+  nonGalerkinA_CC = 5                ///< Non-Galerkin with empty inv(A_FF), coarse matrix A_CC
 };
 
 /**

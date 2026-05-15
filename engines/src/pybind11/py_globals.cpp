@@ -227,6 +227,85 @@ void pybind_globals(py::module &m)
     .value("LINF", sim_params::nonlinear_norm_t::LINF)
     .export_values();
 
+  // HYPRE MGR strategy constants exposed on sim_params for Python-side solver setup.
+  // These are plain integer constants because the MGR solver module consumes HYPRE's
+  // numeric option values directly. Keep the names category-qualified so a value is
+  // not accidentally passed to the wrong HYPRE MGR option family.
+  sim_params.attr("mgrWellEliminateBlock") = py::int_(0);
+  sim_params.attr("mgrWellKeepPrimary") = py::int_(1);
+
+  sim_params.attr("mgrVarPressure") = py::int_(0);
+  sim_params.attr("mgrVarComposition") = py::int_(1);
+  sim_params.attr("mgrVarSaturation") = py::int_(2);
+  sim_params.attr("mgrVarTemperature") = py::int_(3);
+  sim_params.attr("mgrVarVolumeConstraint") = py::int_(4);
+  sim_params.attr("mgrVarWellPressure") = py::int_(100);
+  sim_params.attr("mgrVarWellSecondary") = py::int_(101);
+  sim_params.attr("mgrVarFacility") = py::int_(200);
+  sim_params.attr("mgrVarRockMechanics") = py::int_(300);
+  sim_params.attr("mgrVarDisplacement") = py::int_(301);
+  sim_params.attr("mgrVarStress") = py::int_(302);
+  sim_params.attr("mgrVarOther") = py::int_(999);
+
+  sim_params.attr("mgrFRelaxNone") = py::int_(-1);
+  sim_params.attr("mgrFRelaxWeightedJacobi") = py::int_(0);
+  sim_params.attr("mgrFRelaxSingleVCycle") = py::int_(1);
+  sim_params.attr("mgrFRelaxAMG") = py::int_(2);
+  sim_params.attr("mgrFRelaxHybridGaussSeidelForward") = py::int_(3);
+  sim_params.attr("mgrFRelaxHybridGaussSeidelBackward") = py::int_(4);
+  sim_params.attr("mgrFRelaxHybridChaoticGaussSeidel") = py::int_(5);
+  sim_params.attr("mgrFRelaxHybridSymmetricGaussSeidel") = py::int_(6);
+  sim_params.attr("mgrFRelaxJacobi") = py::int_(7);
+  sim_params.attr("mgrFRelaxL1HybridSymmetricGaussSeidel") = py::int_(8);
+  sim_params.attr("mgrFRelaxGaussianElimination") = py::int_(9);
+  sim_params.attr("mgrFRelaxL1GaussSeidelForward") = py::int_(13);
+  sim_params.attr("mgrFRelaxL1GaussSeidelBackward") = py::int_(14);
+  sim_params.attr("mgrFRelaxFCFJacobi") = py::int_(17);
+  sim_params.attr("mgrFRelaxL1Jacobi") = py::int_(18);
+  sim_params.attr("mgrFRelaxSparseDirectSolver") = py::int_(29);
+  sim_params.attr("mgrFRelaxILU") = py::int_(32);
+  sim_params.attr("mgrFRelaxGaussianEliminationWithPivoting") = py::int_(99);
+  sim_params.attr("mgrFRelaxDirectInverse") = py::int_(199);
+
+  sim_params.attr("mgrInterpInjection") = py::int_(0);
+  sim_params.attr("mgrInterpL1Jacobi") = py::int_(1);
+  sim_params.attr("mgrInterpJacobi") = py::int_(2);
+  sim_params.attr("mgrInterpClassicalModified") = py::int_(3);
+  sim_params.attr("mgrInterpApproximateInverse") = py::int_(4);
+  sim_params.attr("mgrInterpBlockJacobi") = py::int_(12);
+  sim_params.attr("mgrInterpBlockRowSum") = py::int_(13);
+  sim_params.attr("mgrInterpBlockRowSumAbs") = py::int_(14);
+
+  sim_params.attr("mgrRestrictInjection") = py::int_(0);
+  sim_params.attr("mgrRestrictUnscaled") = py::int_(1);
+  sim_params.attr("mgrRestrictJacobi") = py::int_(2);
+  sim_params.attr("mgrRestrictApproximateInverse") = py::int_(3);
+  sim_params.attr("mgrRestrictPAIRDistance1") = py::int_(4);
+  sim_params.attr("mgrRestrictPAIRDistance2") = py::int_(5);
+  sim_params.attr("mgrRestrictBlockJacobi") = py::int_(12);
+  sim_params.attr("mgrRestrictCPRLike") = py::int_(13);
+  sim_params.attr("mgrRestrictBlockColLumped") = py::int_(14);
+  sim_params.attr("mgrRestrictPartialColLumped") = py::int_(15);
+
+  sim_params.attr("mgrCoarseGalerkin") = py::int_(0);
+  sim_params.attr("mgrCoarseNonGalerkinBlockDiag") = py::int_(1);
+  sim_params.attr("mgrCoarseNonGalerkinCPRDiag") = py::int_(2);
+  sim_params.attr("mgrCoarseNonGalerkinCPRBlockDiag") = py::int_(3);
+  sim_params.attr("mgrCoarseNonGalerkinSparseApproxInv") = py::int_(4);
+  sim_params.attr("mgrCoarseNonGalerkinA_CC") = py::int_(5);
+
+  sim_params.attr("mgrSmootherNone") = py::int_(-1);
+  sim_params.attr("mgrSmootherBlockJacobi") = py::int_(0);
+  sim_params.attr("mgrSmootherBlockGaussSeidel") = py::int_(1);
+  sim_params.attr("mgrSmootherJacobi") = py::int_(2);
+  sim_params.attr("mgrSmootherGaussSeidelSequential") = py::int_(3);
+  sim_params.attr("mgrSmootherGaussSeidelParallel") = py::int_(4);
+  sim_params.attr("mgrSmootherHybridGaussSeidelForward") = py::int_(5);
+  sim_params.attr("mgrSmootherHybridGaussSeidelBackward") = py::int_(6);
+  sim_params.attr("mgrSmootherEuclidILU") = py::int_(8);
+  sim_params.attr("mgrSmootherHypreILU") = py::int_(16);
+  sim_params.attr("mgrSmootherL1Jacobi") = py::int_(18);
+
   py::class_<sim_stat>(m, "sim_stat", "Class simulation statistics")
       .def(py::init<>())
       //properties

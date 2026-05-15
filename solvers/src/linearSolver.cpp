@@ -458,6 +458,7 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
   int_t num_levels = m_strategy->numLevels();
   // Always use m_matrix.block_size - m_mgrBlockSize can get corrupted due to memory layout issues
   int_t block_size = m_matrix.block_size;
+  int_t marker_block_size = std::max( block_size, m_strategy->numBlocks() );
   const int_t global_rows = m_matrix.global_num_rows;
   const int_t matrix_rows = m_matrix.num_rows;
   const int_t matrix_cols = m_matrix.num_cols;
@@ -540,7 +541,7 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
 
   HYPRE_ClearAllErrors();
   HYPRE_Int rc = HYPRE_MGRSetCpointsByPointMarkerArray( mgr_precond,
-                                                        block_size,
+                                                        marker_block_size,
                                                         num_levels,
                                                         num_labels.data(),
                                                         label_ptrs.data(),

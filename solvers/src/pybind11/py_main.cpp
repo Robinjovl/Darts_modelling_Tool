@@ -40,6 +40,53 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Enable/disable MGR preconditioner", py::arg("use_mgr"))
         .def("set_log_level", &linsolv_mgr<N>::set_log_level,
              "Set logging verbosity level (0=none, 1=basic, 2=detailed)", py::arg("log_level"))
+        .def("set_n_reservoir_blocks", &linsolv_mgr<N>::set_n_reservoir_blocks,
+             "Set number of reservoir blocks before appended well blocks", py::arg("n_reservoir_blocks"))
+        .def("set_mgr_enable_well_level", &linsolv_mgr<N>::set_mgr_enable_well_level,
+             "Enable/disable the dedicated MGR well-elimination level",
+             py::arg("enable_well_level"))
+        .def("set_mgr_enable_composition_level", &linsolv_mgr<N>::set_mgr_enable_composition_level,
+             "Enable/disable the optional reservoir composition reduction level",
+             py::arg("enable_composition_level"))
+        .def("set_mgr_reservoir_variable_roles", &linsolv_mgr<N>::set_mgr_reservoir_variable_roles,
+             "Set physical roles for reservoir local variables, ordered by local variable index",
+             py::arg("variable_roles"))
+        .def("set_mgr_well_variable_roles", &linsolv_mgr<N>::set_mgr_well_variable_roles,
+             "Set physical roles for well local variables, ordered by local variable index",
+             py::arg("variable_roles"))
+        .def("clear_mgr_custom_levels", &linsolv_mgr<N>::clear_mgr_custom_levels,
+             "Remove all user-defined MGR custom reduction levels")
+        .def("set_mgr_num_custom_levels", &linsolv_mgr<N>::set_mgr_num_custom_levels,
+             "Resize the user-defined MGR custom reduction level list",
+             py::arg("num_custom_levels"))
+        .def("set_mgr_custom_level_options", &linsolv_mgr<N>::set_mgr_custom_level_options,
+             "Set keep labels and HYPRE options for a user-defined MGR custom reduction level",
+             py::arg("custom_level_index"), py::arg("keep_labels"), py::arg("frelax_type"),
+             py::arg("frelax_iters"), py::arg("interp_type"), py::arg("restrict_type"),
+             py::arg("coarse_method"), py::arg("smoother_type"), py::arg("smoother_iters"))
+        .def("set_mgr_well_strategy", &linsolv_mgr<N>::set_mgr_well_strategy,
+             "Set well strategy (0=eliminate well block, 1=keep well primary on coarse grid)",
+             py::arg("well_strategy"))
+        .def("set_mgr_well_frelax_type", &linsolv_mgr<N>::set_mgr_well_frelax_type,
+             "Set HYPRE MGR F-relaxation type for the well reduction level (e.g. 7=Jacobi, 18=L1-Jacobi, 199=direct inverse)",
+             py::arg("frelax_type"))
+        .def("set_mgr_well_frelax_iters", &linsolv_mgr<N>::set_mgr_well_frelax_iters,
+             "Set number of F-relaxation sweeps for the well reduction level", py::arg("frelax_iters"))
+        .def("set_mgr_well_level_options", &linsolv_mgr<N>::set_mgr_well_level_options,
+             "Set all options for the well reduction level",
+             py::arg("frelax_type"), py::arg("frelax_iters"), py::arg("interp_type"),
+             py::arg("restrict_type"), py::arg("coarse_method"), py::arg("smoother_type"),
+             py::arg("smoother_iters"))
+        .def("set_mgr_composition_level_options", &linsolv_mgr<N>::set_mgr_composition_level_options,
+             "Set all options for the optional reservoir composition reduction level",
+             py::arg("frelax_type"), py::arg("frelax_iters"), py::arg("interp_type"),
+             py::arg("restrict_type"), py::arg("coarse_method"), py::arg("smoother_type"),
+             py::arg("smoother_iters"))
+        .def("set_mgr_pressure_level_options", &linsolv_mgr<N>::set_mgr_pressure_level_options,
+             "Set all options for the reservoir pressure reduction level",
+             py::arg("frelax_type"), py::arg("frelax_iters"), py::arg("interp_type"),
+             py::arg("restrict_type"), py::arg("coarse_method"), py::arg("smoother_type"),
+             py::arg("smoother_iters"))
         // Getter methods
         .def("get_max_iterations", &linsolv_mgr<N>::get_max_iterations,
              "Get maximum number of iterations")
@@ -51,6 +98,24 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Get whether MGR preconditioner is enabled")
         .def("get_log_level", &linsolv_mgr<N>::get_log_level,
              "Get logging verbosity level")
+        .def("get_n_reservoir_blocks", &linsolv_mgr<N>::get_n_reservoir_blocks,
+             "Get configured number of reservoir blocks")
+        .def("get_mgr_enable_well_level", &linsolv_mgr<N>::get_mgr_enable_well_level,
+             "Get whether the dedicated MGR well-elimination level is enabled")
+        .def("get_mgr_enable_composition_level", &linsolv_mgr<N>::get_mgr_enable_composition_level,
+             "Get whether the optional reservoir composition reduction level is enabled")
+        .def("get_mgr_num_custom_levels", &linsolv_mgr<N>::get_mgr_num_custom_levels,
+             "Get number of user-defined MGR custom reduction levels")
+        .def("get_mgr_reservoir_variable_roles", &linsolv_mgr<N>::get_mgr_reservoir_variable_roles,
+             "Get configured reservoir variable roles")
+        .def("get_mgr_well_variable_roles", &linsolv_mgr<N>::get_mgr_well_variable_roles,
+             "Get configured well variable roles")
+        .def("get_mgr_well_strategy", &linsolv_mgr<N>::get_mgr_well_strategy,
+             "Get configured well strategy")
+        .def("get_mgr_well_frelax_type", &linsolv_mgr<N>::get_mgr_well_frelax_type,
+             "Get configured HYPRE MGR F-relaxation type for the well reduction level")
+        .def("get_mgr_well_frelax_iters", &linsolv_mgr<N>::get_mgr_well_frelax_iters,
+             "Get configured F-relaxation sweeps for the well reduction level")
         // Interface methods (inherited from linsolv_iface)
         .def("get_n_iters", &linsolv_mgr<N>::get_n_iters,
              "Get number of iterations from last solve")

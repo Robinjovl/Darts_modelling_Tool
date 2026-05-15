@@ -93,6 +93,30 @@ class Model(CICDModel):
         self.solver.set_log_level(self.params.linear_print_level)
         self.solver.set_kdim(50)  # Krylov subspace dimension
         self.solver.set_use_mgr(True)  # Use MGR preconditioner
+
+        # Single-level MGR: skip well and composition reduction levels, then
+        # reduce directly to the pressure/well-pressure coarse system.
+        self.solver.set_mgr_enable_well_level(False)
+        self.solver.set_mgr_enable_composition_level(False)
+
+        reservoir_roles = [sim_params.mgrVarPressure] + [sim_params.mgrVarComposition] * (block_size - 1)
+        well_roles = [sim_params.mgrVarWellPressure] + [sim_params.mgrVarWellSecondary] * (block_size - 1)
+        self.solver.set_mgr_reservoir_variable_roles(reservoir_roles)
+        self.solver.set_mgr_well_variable_roles(well_roles)
+
+        self.solver.set_mgr_pressure_level_options(
+            sim_params.mgrFRelaxNone,
+            0,
+            sim_params.mgrInterpInjection,
+            sim_params.mgrRestrictBlockColLumped,
+            sim_params.mgrCoarseGalerkin,
+            sim_params.mgrSmootherHypreILU,
+            1,
+        )
+
+        mesh = getattr(self.reservoir, "mesh", None)
+        if mesh is not None:
+            self.solver.set_n_reservoir_blocks(mesh.n_res_blocks)
         return
 
     def init(self, *args, **kwargs):
@@ -115,6 +139,7 @@ class Model(CICDModel):
         # Set the solver on the engine - this replaces any solver created in init_base
         if hasattr(self, 'solver') and self.solver is not None:
             if hasattr(self.physics, 'engine') and self.physics.engine is not None:
+                self.solver.set_n_reservoir_blocks(self.reservoir.mesh.n_res_blocks)
                 self.physics.engine.set_linear_solver(self.solver)
 
     def set_initial_conditions(self):
