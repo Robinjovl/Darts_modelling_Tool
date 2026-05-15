@@ -624,6 +624,12 @@ class DartsModelWithLivePlots(DartsModel):
                 dens_res[i, :] = pc.dens[: len(phase_names)]
                 mu_res[i, :] = pc.mu[: len(mobile_phase_names)]
 
+            # Do not show the phase properties if the phases still don't exist
+            dens_well[dens_well <= 0.0] = np.nan
+            mu_well[mu_well <= 0.0] = np.nan
+            dens_res[dens_res <= 0.0] = np.nan
+            mu_res[mu_res <= 0.0] = np.nan
+
             # Well props
             lines["well_pressure"].set_data(p_well, np.arange(n_segments))
             axes[0, 0].relim()
