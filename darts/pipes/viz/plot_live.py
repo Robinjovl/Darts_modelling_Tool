@@ -1,3 +1,5 @@
+import os
+import shutil
 from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
@@ -32,6 +34,13 @@ class LivePlotConfig:
     # Template of the figure title
     title_template: str = "Time: {time:.4e} \nNR iteration counter: {iter_counter}"
 
+    # "show" opens interactive live plots; "save" saves snapshots without showing interactive live plots.
+    output_mode: str = "show"
+    # If output_mode is "save", snapshot_folder is the subfolder inside DartsModel.output_folder where the snapshots are saved.
+    snapshot_folder: str = "live_plot_snapshots"
+    snapshot_format: str = "png"
+    snapshot_dpi: int = 150
+
 
 class DartsModelWithLivePlots(DartsModel):
     def __init__(self):
@@ -49,12 +58,75 @@ class DartsModelWithLivePlots(DartsModel):
 
         self.live_plot_config = LivePlotConfig()
         self._live_plot_store = {}
+        self._live_plot_snapshot_counter = 0
+
+    def _get_live_plot_output_mode(self) -> str:
+        output_mode = self.live_plot_config.output_mode
+        if output_mode not in ["show", "save"]:
+            raise ValueError('live_plot_config.output_mode must be "show" or "save"')
+        return output_mode
+
+    def _show_live_plot_figures(self) -> bool:
+        return self._get_live_plot_output_mode() == "show"
+
+    def _save_live_plot_snapshots(self) -> bool:
+        return self._get_live_plot_output_mode() == "save"
+
+    def _get_live_plot_snapshot_folder(self) -> str:
+        snapshot_folder = self.live_plot_config.snapshot_folder
+        if os.path.isabs(snapshot_folder):
+            raise ValueError(
+                "live_plot_config.snapshot_folder must be relative to self.output_folder"
+            )
+        if os.path.normpath(snapshot_folder) == ".":
+            raise ValueError(
+                "live_plot_config.snapshot_folder must name a subfolder inside self.output_folder"
+            )
+
+        output_folder = os.path.abspath(self.output_folder)
+        snapshot_folder = os.path.abspath(os.path.join(output_folder, snapshot_folder))
+        if os.path.commonpath([output_folder, snapshot_folder]) != output_folder:
+            raise ValueError(
+                "live_plot_config.snapshot_folder must stay inside self.output_folder"
+            )
+
+        return snapshot_folder
+
+    def _prepare_live_plot_snapshot_folder(self):
+        snapshot_folder = self._get_live_plot_snapshot_folder()
+        if os.path.isdir(snapshot_folder):
+            for item in os.scandir(snapshot_folder):
+                if item.is_dir():
+                    shutil.rmtree(item.path)
+
+        os.makedirs(snapshot_folder, exist_ok=True)
+
+    def _init_live_plot_snapshot_dir(self, figure_name: str):
+        snapshot_dir = os.path.join(self._get_live_plot_snapshot_folder(), figure_name)
+        os.makedirs(snapshot_dir, exist_ok=True)
+        return snapshot_dir
+
+    def _save_live_plot_snapshot(
+        self,
+        fig,
+        snapshot_dir: str,
+        snapshot_index: int,
+    ):
+        snapshot_format = self.live_plot_config.snapshot_format.lstrip(".")
+        file_name = f"{snapshot_index:06d}.{snapshot_format}"
+        fig.savefig(
+            os.path.join(snapshot_dir, file_name),
+            dpi=self.live_plot_config.snapshot_dpi,
+        )
 
     def init_live_plots(self):
         """
         Initialize live plots
         """
-        plt.ion()
+        if self._show_live_plot_figures():
+            plt.ion()
+        else:
+            self._prepare_live_plot_snapshot_folder()
 
         """ Start initializing the figure containing axes for the properties of the Newton solver """
         if self.live_plot_config.enable_solver_props:
@@ -97,12 +169,16 @@ class DartsModelWithLivePlots(DartsModel):
             ax1.set_xlabel("Time [days]")
             ax1.set_ylabel("Time step size [days]")
 
-            fig.show()
-
+            snapshot_dir = None
+            if self._show_live_plot_figures():
+                fig.show()
+            else:
+                snapshot_dir = self._init_live_plot_snapshot_dir("solver_props")
             self._live_plot_store["solver_fig"] = {
                 "fig": fig,
                 "axes": axes,
                 "lines": [line0, line1],
+                "snapshot_dir": snapshot_dir,
             }
         """ End initializing the figure containing axes for the properties of the Newton solver """
 
@@ -194,13 +270,17 @@ class DartsModelWithLivePlots(DartsModel):
                 label='Bottom-hole state',
             )
 
-            fig.show()
-
+            snapshot_dir = None
+            if self._show_live_plot_figures():
+                fig.show()
+            else:
+                snapshot_dir = self._init_live_plot_snapshot_dir("ph_diagram")
             # Update the figure store
             self._live_plot_store["ph_fig"] = {
                 "fig": fig,
                 "axes": axes,
                 "lines": [line],
+                "snapshot_dir": snapshot_dir,
             }
         """ Stop initializing the figure containing a pair of axes for the PH diagram """
 
@@ -343,8 +423,11 @@ class DartsModelWithLivePlots(DartsModel):
             ax9.set_ylabel("Phase viscosity [cP]")
             ax9.legend(loc="best", fontsize=8)
 
-            fig.show()
-
+            snapshot_dir = None
+            if self._show_live_plot_figures():
+                fig.show()
+            else:
+                snapshot_dir = self._init_live_plot_snapshot_dir("well_res_profiles")
             lines = {
                 "well_pressure": line0,
                 "well_temperature": line1,
@@ -364,6 +447,7 @@ class DartsModelWithLivePlots(DartsModel):
                 "res_density_lines": res_density_lines,
                 "well_viscosity_lines": well_viscosity_lines,
                 "res_viscosity_lines": res_viscosity_lines,
+                "snapshot_dir": snapshot_dir,
             }
         """ Stop initializing the figure containing axes for profiles of wellbore and 1D reservoir properties """
 
@@ -386,6 +470,9 @@ class DartsModelWithLivePlots(DartsModel):
         # Initialize once (first call only)
         if not self._live_plot_store:
             self.init_live_plots()
+
+        self._live_plot_snapshot_counter += 1
+        snapshot_index = self._live_plot_snapshot_counter
 
         """ Start updating the figure containing axes for the properties of the Newton solver """
         if self.live_plot_config.enable_solver_props:
@@ -413,9 +500,12 @@ class DartsModelWithLivePlots(DartsModel):
             axes[1].relim()
             axes[1].autoscale_view()
 
-            # Refresh display
-            fig.canvas.draw_idle()
-            fig.canvas.flush_events()
+            if self._show_live_plot_figures():
+                fig.canvas.draw_idle()
+                fig.canvas.flush_events()
+            else:
+                snapshot_dir = self._live_plot_store["solver_fig"]["snapshot_dir"]
+                self._save_live_plot_snapshot(fig, snapshot_dir, snapshot_index)
         """ End updating the figure containing axes for the properties of the Newton solver """
 
         """ Start updating the figure containing a pair of axes for the PH diagram """
@@ -457,9 +547,12 @@ class DartsModelWithLivePlots(DartsModel):
                 )
             )
 
-            # Refresh display
-            fig.canvas.draw_idle()
-            fig.canvas.flush_events()
+            if self._show_live_plot_figures():
+                fig.canvas.draw_idle()
+                fig.canvas.flush_events()
+            else:
+                snapshot_dir = self._live_plot_store["ph_fig"]["snapshot_dir"]
+                self._save_live_plot_snapshot(fig, snapshot_dir, snapshot_index)
         """ Stop updating the figure containing a pair of axes for the PH diagram """
 
         """ Start updating the figure containing axes for profiles of wellbore and 1D reservoir properties """
@@ -589,9 +682,12 @@ class DartsModelWithLivePlots(DartsModel):
                 )
             )
 
-            # Refresh display
-            fig.canvas.draw_idle()
-            fig.canvas.flush_events()
+            if self._show_live_plot_figures():
+                fig.canvas.draw_idle()
+                fig.canvas.flush_events()
+            else:
+                snapshot_dir = self._live_plot_store["well_fig"]["snapshot_dir"]
+                self._save_live_plot_snapshot(fig, snapshot_dir, snapshot_index)
         """ Stop updating the figure containing axes for profiles of wellbore and 1D reservoir properties """
 
         # plt.pause(0.5)
