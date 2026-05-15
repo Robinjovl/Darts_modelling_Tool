@@ -785,7 +785,9 @@ class DartsModelWithLivePlots(DartsModel):
             ):
                 coef = np.array([0.0, 1.0])
                 history = np.array([residual_history[-2], residual_history[-1]])
-                residual_history[-1] = self.line_search(dt, t, coef, history, verbose)
+                residual_history[-1] = self.line_search(
+                    dt, t, coef, history, verbose, iter_counter=i
+                )
                 max_residual[i] = residual_history[-1][0]
 
                 # check stationary point after line search
