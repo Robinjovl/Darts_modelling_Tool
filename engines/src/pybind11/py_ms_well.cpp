@@ -20,13 +20,13 @@ void pybind_ms_well(py::module& m)
         .def("init_physics", &ms_well::init_physics,
             "Initialize well physics",
             "n_vars"_a, "n_ops"_a, "phase_names"_a,
-            "epm_well_ctrl_etor"_a, "dfm_well_ctrl_etor"_a, "thermal_var_etor"_a,
-            "thermal"_a = 0, py::keep_alive<1, 7>())
+            "well_ctrl_etor"_a, "thermal_var_etor"_a,
+            "thermal"_a = 0, py::keep_alive<1, 6>())
         .def("init_mech_physics", &ms_well::init_mech_physics,
             "Initialize well physics for poromechanics",
             "N_VARS"_a, "P_VAR"_a, "n_vars"_a, "n_ops"_a, "phase_names"_a,
-            "epm_well_ctrl_etor"_a, "dfm_well_ctrl_etor"_a, "thermal_var_etor"_a,
-            "thermal"_a = 0, py::keep_alive<1, 9>())
+            "well_ctrl_etor"_a, "thermal_var_etor"_a,
+            "thermal"_a = 0, py::keep_alive<1, 8>())
 
         // properties
         .def_readwrite("name", &ms_well::name)

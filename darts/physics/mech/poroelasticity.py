@@ -4,7 +4,7 @@ from darts.engines import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
     ThermalVarOperator,
-    WellControlOperators,
+    WellCtrlOperators,
 )
 from darts.physics.super.operator_evaluator import *
 from darts.physics.super.physics import Compositional, PhysicsBase
@@ -142,7 +142,7 @@ class Poroelasticity(Compositional):
     def set_operators(self):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellControlOperators` for well control
+        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         if self.discretizer_name == "pm_discretizer":
@@ -186,18 +186,9 @@ class Poroelasticity(Compositional):
                 dz=self.dz,
             )
 
-        # Create well control operator evaluators for EPM and DFM wells
-        self.epm_well_ctrl_operators = WellControlOperators(
+        self.well_ctrl_operators = WellCtrlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
-            is_dfm_well=False,
-            extrapolation_flag=self.extrapolation_flag,
-            dz=self.dz,
-        )
-        self.dfm_well_ctrl_operators = WellControlOperators(
-            self.property_containers[self.regions[0]],
-            self.thermal,
-            is_dfm_well=True,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
@@ -226,8 +217,7 @@ class Poroelasticity(Compositional):
                 self.n_vars,
                 self.n_ops,
                 self.phases,
-                self.epm_well_ctrl_itor,
-                self.dfm_well_ctrl_itor,
+                self.well_ctrl_itor,
                 self.thermal_var_itor,
                 self.thermal,
             )

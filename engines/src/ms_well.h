@@ -45,12 +45,12 @@ public:
     ms_well();
 
     void init_physics(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-        operator_set_gradient_evaluator_iface* epm_well_ctrl_etor_, operator_set_gradient_evaluator_iface* dfm_well_ctrl_etor_,
-        operator_set_gradient_evaluator_iface* thermal_var_etor_, int thermal_ = 0);
+        operator_set_gradient_evaluator_iface* well_ctrl_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_,
+        int thermal_ = 0);
 
     void init_mech_physics(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-        operator_set_gradient_evaluator_iface* epm_well_ctrl_etor_, operator_set_gradient_evaluator_iface* dfm_well_ctrl_etor_,
-        operator_set_gradient_evaluator_iface* thermal_var_etor_, int thermal_ = 0);
+        operator_set_gradient_evaluator_iface* well_ctrl_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_,
+        int thermal_ = 0);
 
     // the function changes (overwrites) jacobian equations for well_head_idx block
     // since well_head_idx has exactly 1 connection, it is assumed that
@@ -132,10 +132,8 @@ public:
     std::vector<value_t> phases_vels_ders;   // phases velocities derivatives used for a DFM well
 
     std::vector<value_t> well_ctrl_ops;
-    operator_set_evaluator_iface* epm_well_ctrl_etor;
-    operator_set_gradient_evaluator_iface* epm_well_ctrl_etor_ad;  //adjoint method
-    operator_set_evaluator_iface* dfm_well_ctrl_etor;
-    operator_set_gradient_evaluator_iface* dfm_well_ctrl_etor_ad;  //adjoint method
+    operator_set_evaluator_iface* well_ctrl_etor;
+    operator_set_gradient_evaluator_iface* well_ctrl_etor_ad;  //adjoint method
 
     std::vector<value_t> state;
     std::vector<value_t> state_neighbour;

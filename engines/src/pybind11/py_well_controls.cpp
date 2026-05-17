@@ -14,13 +14,13 @@ public:
   using well_control_iface::well_control_iface;
 
   /* Trampoline (need one for each virtual function) */
-  // int add_to_jacobian_epm(value_t dt, index_t well_head_idx, value_t well_transmissibility,
+  // int add_to_jacobian(value_t dt, index_t well_head_idx, value_t well_transmissibility,
   //                     index_t n_block_size, uint8_t N_VARS, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
   // {
   //   PYBIND11_OVERLOAD_PURE(
   //     int,                      /* Return type */
   //     well_control_iface,       /* Parent class */
-  //     add_to_jacobian_epm,      /* Name of function in C++ (must match Python name) */
+  //     add_to_jacobian,          /* Name of function in C++ (must match Python name) */
   //     dt,                       /* Argument(s) */
   //     well_head_idx,
 	//   well_transmissibility,
@@ -88,14 +88,18 @@ void pybind_well_controls(py::module &m)
 {
   py::class_<well_control_iface, py_well_control_iface /* <--- trampoline*/> well_control_iface(m, "well_control_iface");
   well_control_iface
-    .def(py::init<index_t, index_t, bool, operator_set_gradient_evaluator_iface*, operator_set_gradient_evaluator_iface*, operator_set_gradient_evaluator_iface*>())
+    .def(py::init<index_t, index_t, bool, operator_set_gradient_evaluator_iface*, operator_set_gradient_evaluator_iface*>())
       .def("set_bhp_control", &well_control_iface::set_bhp_control)
       .def("set_rate_control", &well_control_iface::set_rate_control)
       .def("get_well_control_type", &well_control_iface::get_well_control_type)
       .def("get_well_control_type_str", &well_control_iface::get_well_control_type_str)
+      .def("get_n_well_ctrl_ops", &well_control_iface::get_n_well_ctrl_ops)
+      .def("get_n_well_vars", &well_control_iface::get_n_well_vars)
+      .def("get_rate_ctrl_op_idx", &well_control_iface::get_rate_ctrl_op_idx)
+      .def("get_pres_ctrl_op_idx", &well_control_iface::get_pres_ctrl_op_idx)
+      .def("get_temp_ctrl_op_idx", &well_control_iface::get_temp_ctrl_op_idx)
       .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
-      .def("add_to_jacobian_epm", &well_control_iface::add_to_jacobian_epm)
-      .def("add_to_jacobian_dfm", &well_control_iface::add_to_jacobian_dfm);
+      .def("add_to_jacobian", &well_control_iface::add_to_jacobian);
 
   py::enum_<well_control_iface::WellControlType>(well_control_iface, "WellControlType")
     .value("NONE", well_control_iface::WellControlType::NONE)

@@ -12,7 +12,7 @@ import numpy as np
 
 from darts.engines import *
 from darts.interpolators import *
-from darts.physics.base.operators_base import ThermalVarOperator, WellControlOperators
+from darts.physics.base.operators_base import ThermalVarOperator, WellCtrlOperators
 
 
 class PhysicsBase:
@@ -23,7 +23,7 @@ class PhysicsBase:
 
     The Physics object is composed of :class:`PropertyContainer` objects for each of the regions and a set of operators.
     The operators consist of :class:`ReservoirOperators` objects for each of the regions, a :class:`WellOperators`,
-    a :class:`WellControlOperators`, a :class:`ThermalVarOperator` and a :class:`PropertyOperators` object.
+    a :class:`WellCtrlOperators`, a :class:`ThermalVarOperator` and a :class:`PropertyOperators` object.
     For each set of operators (evaluators, etor), an interpolator (itor) object is created for use in the :class:`engine`.
 
     :ivar engine: Engine object
@@ -36,10 +36,8 @@ class PhysicsBase:
     :type property_operators: dict
     :ivar well_operators: :class:`WellOperators` object for evaluation of well cell states
     :type well_operators: dict
-    :ivar epm_well_ctrl_operators: :class:`WellControlOperators` object for EPM well control
-    :type epm_well_ctrl_operators: WellControlOperators
-    :ivar dfm_well_ctrl_operators: :class:`WellControlOperators` object for DFM well control
-    :type dfm_well_ctrl_operators: WellControlOperators
+    :ivar well_ctrl_operators: :class:`WellCtrlOperators` object for well controls
+    :type well_ctrl_operators: WellCtrlOperators
     :ivar thermal_var_operator: :class:`ThermalVarOperator` object for generic state specification
     :type thermal_var_operator: ThermalVarOperator
     :ivar regions: List of property regions
@@ -48,8 +46,7 @@ class PhysicsBase:
 
     engine: engine_base
     well_operators: operator_set_evaluator_iface
-    epm_well_ctrl_operators: WellControlOperators
-    dfm_well_ctrl_operators: WellControlOperators
+    well_ctrl_operators: WellCtrlOperators
     thermal_var_operator: ThermalVarOperator
 
     @total_ordering
@@ -320,21 +317,9 @@ class PhysicsBase:
             is_barycentric=is_barycentric,
         )
 
-        self.epm_well_ctrl_itor, _ = self.create_interpolator(
-            self.epm_well_ctrl_operators,
-            n_ops=self.epm_well_ctrl_operators.n_ops,
-            axes_min=self.axes_min,
-            axes_max=self.axes_max,
-            timer_name='well controls interpolation',
-            platform=platform,
-            algorithm=itor_type,
-            mode=itor_mode,
-            precision=itor_precision,
-            is_barycentric=is_barycentric,
-        )
-        self.dfm_well_ctrl_itor, _ = self.create_interpolator(
-            self.dfm_well_ctrl_operators,
-            n_ops=self.dfm_well_ctrl_operators.n_ops,
+        self.well_ctrl_itor, _ = self.create_interpolator(
+            self.well_ctrl_operators,
+            n_ops=self.well_ctrl_operators.n_ops,
             axes_min=self.axes_min,
             axes_max=self.axes_max,
             timer_name='well controls interpolation',
@@ -562,8 +547,7 @@ class PhysicsBase:
                 self.n_vars,
                 self.n_ops,
                 self.phases,
-                self.epm_well_ctrl_itor,
-                self.dfm_well_ctrl_itor,
+                self.well_ctrl_itor,
                 self.thermal_var_itor,
                 self.thermal,
             )

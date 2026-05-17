@@ -2289,7 +2289,7 @@ class Output:
         time_idx = np.arange(n_ts)[:, None]
 
         batch_size = n_ts * n_conns
-        n_well_ctrl_ops = physics.epm_well_ctrl_operators.n_ops
+        n_well_ctrl_ops = physics.well_ctrl_operators.n_ops
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
         n_vars = physics.n_vars
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
@@ -2347,10 +2347,10 @@ class Output:
             "advective_heat_rates",
         ]:
             well_ops_m = evaluate_ops(
-                states_m_2d, n_well_ctrl_ops, physics.epm_well_ctrl_itor
+                states_m_2d, n_well_ctrl_ops, physics.well_ctrl_itor
             )
             well_ops_p = evaluate_ops(
-                states_p_2d, n_well_ctrl_ops, physics.epm_well_ctrl_itor
+                states_p_2d, n_well_ctrl_ops, physics.well_ctrl_itor
             )
         elif rate_type not in ["component_molar_rates", "component_mass_rates"]:
             raise Exception(
@@ -2449,10 +2449,10 @@ class Output:
             # Calculate heat operators at the dead state (1 atm and 15 deg C)
             if physics.state_spec == physics.StateSpecification.PT:
                 values_dead_m = evaluate_ops(
-                    states_m_dead, n_well_ctrl_ops, physics.epm_well_ctrl_itor
+                    states_m_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
                 values_dead_p = evaluate_ops(
-                    states_p_dead, n_well_ctrl_ops, physics.epm_well_ctrl_itor
+                    states_p_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
                 ops_dead = np.where(
@@ -2495,10 +2495,10 @@ class Output:
 
                 # Now pass the dead state array with enthalpies to the well control interpolator
                 values_dead_m = evaluate_ops(
-                    states_m_dead, n_well_ctrl_ops, physics.epm_well_ctrl_itor
+                    states_m_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
                 values_dead_p = evaluate_ops(
-                    states_p_dead, n_well_ctrl_ops, physics.epm_well_ctrl_itor
+                    states_p_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
                 ops_dead = np.where(

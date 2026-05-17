@@ -17,8 +17,8 @@ ms_well::ms_well()
 }
 
 void ms_well::init_physics(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-    operator_set_gradient_evaluator_iface* epm_well_ctrl_etor_, operator_set_gradient_evaluator_iface* dfm_well_ctrl_etor_,
-    operator_set_gradient_evaluator_iface* thermal_var_etor_, int thermal_)
+    operator_set_gradient_evaluator_iface* well_ctrl_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_,
+    int thermal_)
 {
     n_block_size = n_vars_;
     P_VAR = 0;
@@ -31,20 +31,18 @@ void ms_well::init_physics(int n_vars_, int n_ops_, std::vector<std::string> pha
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
 
-    control = well_control_iface(n_phases, n_vars - thermal, thermal, epm_well_ctrl_etor_, dfm_well_ctrl_etor_, thermal_var_etor_);
-    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, epm_well_ctrl_etor_, dfm_well_ctrl_etor_, thermal_var_etor_);
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_ctrl_etor_, thermal_var_etor_);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_ctrl_etor_, thermal_var_etor_);
 
     // Store well control evaluators for calculation of wellhead and perforation rates and adjoint
-    well_ctrl_ops.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
-    epm_well_ctrl_etor = epm_well_ctrl_etor_;
-    epm_well_ctrl_etor_ad = epm_well_ctrl_etor_;  // adjoint method
-    dfm_well_ctrl_etor = dfm_well_ctrl_etor_;
-    dfm_well_ctrl_etor_ad = dfm_well_ctrl_etor_;  // adjoint method
+    well_ctrl_ops.resize(control.get_n_well_ctrl_ops());
+    well_ctrl_etor = well_ctrl_etor_;
+    well_ctrl_etor_ad = well_ctrl_etor_;  // adjoint method
 }
 
 void ms_well::init_mech_physics(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-    operator_set_gradient_evaluator_iface* epm_well_ctrl_etor_, operator_set_gradient_evaluator_iface* dfm_well_ctrl_etor_,
-    operator_set_gradient_evaluator_iface* thermal_var_etor_, int thermal_)
+    operator_set_gradient_evaluator_iface* well_ctrl_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_,
+    int thermal_)
 {
     n_block_size = N_VARS_;
     P_VAR = P_VAR_;
@@ -57,15 +55,13 @@ void ms_well::init_mech_physics(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, in
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
 
-    control = well_control_iface(n_phases, n_vars - thermal, thermal, epm_well_ctrl_etor_, dfm_well_ctrl_etor_, thermal_var_etor_);
-    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, epm_well_ctrl_etor_, dfm_well_ctrl_etor_, thermal_var_etor_);
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_ctrl_etor_, thermal_var_etor_);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_ctrl_etor_, thermal_var_etor_);
 
     // Store well control evaluators for calculation of wellhead and perforation rates and adjoint
-    well_ctrl_ops.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
-    epm_well_ctrl_etor = epm_well_ctrl_etor_;
-    epm_well_ctrl_etor_ad = epm_well_ctrl_etor_;  // adjoint method
-    dfm_well_ctrl_etor = dfm_well_ctrl_etor_;
-    dfm_well_ctrl_etor_ad = dfm_well_ctrl_etor_;  // adjoint method
+    well_ctrl_ops.resize(control.get_n_well_ctrl_ops());
+    well_ctrl_etor = well_ctrl_etor_;
+    well_ctrl_etor_ad = well_ctrl_etor_;  // adjoint method
 }
 
 int ms_well::initialize_control_epm(std::vector<value_t>& X)
@@ -90,7 +86,7 @@ int ms_well::initialize_control_epm(std::vector<value_t>& X)
         // copy neighbour state
         std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
         // initialize
-        control.initialize_well_block_epm(state, state_neighbour);
+        control.initialize_well_block(state, state_neighbour, false);
         // move initialized state back to X
         std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
     }
@@ -100,7 +96,7 @@ int ms_well::initialize_control_epm(std::vector<value_t>& X)
     // copy neighbour state
     std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
     // initialize
-    control.initialize_well_block_epm(state, state_neighbour);
+    control.initialize_well_block(state, state_neighbour, false);
     // move initialized state back to X
     std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
     return 0;
@@ -124,7 +120,7 @@ int ms_well::initialize_control_dfm(std::vector<value_t>& X)
     // copy neighbour state
     std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
     // initialize
-    control.initialize_well_block_dfm(state, state_neighbour);
+    control.initialize_well_block(state, state_neighbour, true);
     // move initialized state back to X
     std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
     return 0;
@@ -151,10 +147,9 @@ int ms_well::check_constraints(double dt, std::vector<value_t>& X)
 
 int ms_well::add_to_jacobian(double dt, std::vector<value_t>& X, value_t* jac_well_head, std::vector<value_t>& RHS)
 {
-    if (ms_type == ms_well::MS_Type::EPM)
-        control.add_to_jacobian_epm(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
-    else if (ms_type == ms_well::MS_Type::DFM)
-        control.add_to_jacobian_dfm(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS, phases_vels, phases_vels_ders);
+    const bool is_dfm_well = ms_type == ms_well::MS_Type::DFM;
+    control.add_to_jacobian(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS,
+        phases_vels, phases_vels_ders, is_dfm_well);
 
     return 0;
 }
@@ -172,14 +167,14 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
     state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
 
-    epm_well_ctrl_etor->evaluate(state, well_ctrl_ops);
+    well_ctrl_etor->evaluate(state, well_ctrl_ops);
 
     // Energy and volumetric rates
     value_t total_energy = 0.;
     for (int i = 0; i < n_phases; i++)
     {
-        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(well_ctrl_ops[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * p_diff * well_transmissibility);
-        total_energy += well_ctrl_ops[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
+        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(well_ctrl_ops[control.get_rate_ctrl_op_idx(well_control_iface::VOLUMETRIC_RATE, i, false)] * p_diff * well_transmissibility);
+        total_energy += well_ctrl_ops[control.get_rate_ctrl_op_idx(well_control_iface::ADVECTIVE_HEAT_RATE, i, false)] * p_diff * well_transmissibility;
     }
     time_data[name + " : energy (kJ/day)"].push_back(total_energy);
 
@@ -232,7 +227,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
     // BHP and temperature
     time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_block_size + P_VAR]);
-    time_data[name + " : temperature (K)"].push_back(well_ctrl_ops[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
+    time_data[name + " : temperature (K)"].push_back(well_ctrl_ops[control.get_temp_ctrl_op_idx()]);
 
     return 0;
 }
@@ -240,6 +235,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data, index_t n_blocks)
 {
     // calculate rate based on velocity unknown; use for decouple velocity engine.
+    const bool is_dfm_well = ms_type == ms_well::MS_Type::DFM;
 
     index_t upstream_idx;
 
@@ -256,14 +252,14 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
 
     state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
 
-    epm_well_ctrl_etor->evaluate(state, well_ctrl_ops);
+    well_ctrl_etor->evaluate(state, well_ctrl_ops);
 
     // Energy and volumetric rates
     value_t total_energy = 0.;
     for (int i = 0; i < n_phases; i++)
     {
-        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(well_ctrl_ops[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * velocity);
-        total_energy += well_ctrl_ops[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
+        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(well_ctrl_ops[control.get_rate_ctrl_op_idx(well_control_iface::VOLUMETRIC_RATE, i, is_dfm_well)] * velocity);
+        total_energy += well_ctrl_ops[control.get_rate_ctrl_op_idx(well_control_iface::ADVECTIVE_HEAT_RATE, i, is_dfm_well)] * p_diff * well_transmissibility;
     }
     time_data[name + " : energy (kJ/day)"].push_back(total_energy);
 
@@ -316,7 +312,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
 
     // BHP and temperature
     time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_vars + P_VAR]);
-    time_data[name + " : temperature (K)"].push_back(well_ctrl_ops[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
+    time_data[name + " : temperature (K)"].push_back(well_ctrl_ops[control.get_temp_ctrl_op_idx()]);
 
     return 0;
 }
