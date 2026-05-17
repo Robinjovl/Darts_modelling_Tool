@@ -18,6 +18,10 @@
 - Support well controls (rate and WHP) for DFM wells consistent with EPM wells. WHP is controlled for DFM wells and BHP is controlled for EPM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
 - Support total (mass, molar, volumetric, and advective heat) rate control for both EPM and DFM wells. If well rate is controlled and phase is not specified, total rate will be applied ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
 - Fix the issue in the derivative of wellhead equation for rate control of EPM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Fix bugs when using DFM wells for three-phase (gas + two liquid phases) fluid flow ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Enable pipe flow calculations in DARTS-well for systems containing immobile phases ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Enable line search in `darts_model.py` to work with models containing DFM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Fix output perforation rates when `ms_epm` is `False` by considering the gravity component in `output.py` + store `mesh.grav_coef` in the h5 file + expose `mesh.grav_ceof` to Python ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
 - Unstructured reservoir [!298](https://gitlab.com/open-darts/open-darts/-/merge_requests/298):
 	- fixed the order in store_depth_all_cells (could affect the initialization by gradient)
 	- vtk output is fixed for 3D meshes (order)
