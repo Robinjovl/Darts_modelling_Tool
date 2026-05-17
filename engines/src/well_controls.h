@@ -45,7 +45,7 @@ public:
 protected:
     WellControlType control_type = WellControlType::NONE;
     std::optional<index_t> phase_idx = std::nullopt;
-    index_t n_phases, n_comps, thermal, n_well_vars, n_well_ctrl_ops, well_state_offset;
+    index_t n_phases, n_comps, thermal, n_vars, n_well_ctrl_ops, well_state_offset;
     value_t target, inj_temp;
     std::vector<value_t> inj_comp;
     std::vector<index_t> block_idx{ 0 };
@@ -68,11 +68,11 @@ public:
         // WellCtrlOperators are defined as follows:
         // NP EPM MOLAR_RATE, NP EPM MASS_RATE, NP EPM VOLUMETRIC_RATE, NP EPM ADVECTIVE_HEAT_RATE ctrl operators,
         // P, T, then NP DFM MOLAR_RATE, NP DFM MASS_RATE, NP DFM VOLUMETRIC_RATE, NP DFM ADVECTIVE_HEAT_RATE ctrl operators.
-        n_well_vars = n_comps + thermal;
+        n_vars = n_comps + thermal;
         n_well_ctrl_ops = well_control_iface::n_well_ctrl_models * WellControlType::NUMBER_OF_RATE_TYPES * n_phases
             + well_control_iface::n_state_ctrls;
         well_ctrl_ops.resize(n_well_ctrl_ops);
-        well_ctrl_ops_derivs.resize(n_well_ctrl_ops * n_well_vars);
+        well_ctrl_ops_derivs.resize(n_well_ctrl_ops * n_vars);
     }
 
     virtual int set_bhp_control(bool is_inj, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_);
@@ -84,7 +84,6 @@ public:
     std::string get_well_control_target_str();
 
     index_t get_n_well_ctrl_ops() { return this->n_well_ctrl_ops; }
-    index_t get_n_well_vars() { return this->n_well_vars; }
     index_t get_rate_ctrl_op_idx(WellControlType ctrl_type, index_t phase_idx_, bool is_dfm_well) const;
     index_t get_pres_ctrl_op_idx() const { return state_ctrl_ops_offset(); }
     index_t get_temp_ctrl_op_idx() const { return state_ctrl_ops_offset() + 1; }
