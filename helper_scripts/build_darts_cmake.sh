@@ -180,7 +180,14 @@ fi
 # ------------------------------------------------------------------------------
 
 rm -rf dist
-rm -rf darts/*.so
+# Remove previously built Python extension modules and shared libraries.
+# Build artifacts live both directly under darts/ (engines, discretizer, ...)
+# and in subpackages such as darts/solvers/ (the compiled solvers module and
+# libopendarts_solvers). A flat darts/*.so glob misses the latter, leaving a
+# stale solvers library that shadows the fresh build, so clean recursively.
+# Note: the unversioned *.so glob intentionally excludes the bundled
+# libstdc++.so.6 (a copied runtime dependency, re-installed by CMake).
+find darts -type f \( -name '*.so' -o -name '*.pyd' -o -name '*.dylib' \) -delete 2>/dev/null || true
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
     echo '\n   Cleaning build folder'

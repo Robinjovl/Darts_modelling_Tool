@@ -72,7 +72,15 @@ echo    rebuild_hypre = %rebuild_hypre%
 echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
-del darts\*.pyd 2>NUL
+REM Remove previously built Python extension modules and shared libraries.
+REM Build artifacts live both directly under darts\ and in subpackages such as
+REM darts\solvers\ (the compiled solvers module solvers.pyd and the shared
+REM library opendarts_solvers.dll); a flat darts\*.pyd glob misses the latter,
+REM leaving a stale library that shadows the fresh build, so clean recursively.
+REM On Windows the Python modules are .pyd and the shared libraries are .dll
+REM (opendarts_solvers.dll, IPhreeqc.dll, ...), all re-installed by CMake.
+del /s /q darts\*.pyd 2>NUL
+del /s /q darts\*.dll 2>NUL
 rmdir /s /q dist 2>NUL
 
 if %clean_mode%==true (
