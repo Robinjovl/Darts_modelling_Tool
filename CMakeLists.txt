@@ -380,6 +380,15 @@ target_link_options(opendarts_compiler_flags
   INTERFACE
     ${opendarts_cxx_linker_flags}
 )
+
+# In a CUDA build WITH_GPU is defined globally, so headers guarded by it
+# (e.g. timer_node.hpp -> <cuda_runtime.h>) are pulled into ordinary
+# host-compiled translation units too. Put the CUDA toolkit headers on the
+# include path of every target so those includes resolve under g++ as well
+# as nvcc. (The cudart link itself is provided where the symbols are used.)
+if(CUDA)
+  target_include_directories(opendarts_compiler_flags INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
+endif()
 # ------------------------------------------------------------------------------
 
 
