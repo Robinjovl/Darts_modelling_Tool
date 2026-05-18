@@ -43,9 +43,21 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
         .def("set_use_physics_scaling", &linsolv_mgr<N>::set_use_physics_scaling,
              "Enable/disable physics-based row/column scaling",
              py::arg("use_scaling"))
+        .def("set_mgr_scaling_type", &linsolv_mgr<N>::set_mgr_scaling_type,
+             "Set scaling mode (0=none, 1=physics, 2=row/column one-norm, 3=diagonal)",
+             py::arg("scaling_type"))
         .def("set_use_flex_gmres", &linsolv_mgr<N>::set_use_flex_gmres,
              "Select FlexGMRES (true) or GMRES (false) for the outer Krylov solver",
              py::arg("use_flex_gmres"))
+        .def("set_mgr_composite_mode", &linsolv_mgr<N>::set_mgr_composite_mode,
+             "Set composite preconditioner mode (0=MGR only, 1=MGR then local, 2=local only)",
+             py::arg("composite_mode"))
+        .def("set_mgr_local_solver", &linsolv_mgr<N>::set_mgr_local_solver,
+             "Set full-system BCSR local solver (0=none, 1=block Jacobi, 2=block ILU(0))",
+             py::arg("local_solver"))
+        .def("set_mgr_bilu0_pivot_shift", &linsolv_mgr<N>::set_mgr_bilu0_pivot_shift,
+             "Set relative diagonal shift used when inverting BILU0 dense diagonal blocks",
+             py::arg("pivot_shift"))
         .def("set_mgr_pressure_amg_options", &linsolv_mgr<N>::set_mgr_pressure_amg_options,
              "Set key BoomerAMG options for the pressure coarse solver",
              py::arg("coarsen_type"), py::arg("interp_type"), py::arg("relax_type"),
@@ -111,8 +123,16 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Get logging verbosity level")
         .def("get_use_physics_scaling", &linsolv_mgr<N>::get_use_physics_scaling,
              "Get whether physics-based row/column scaling is enabled")
+        .def("get_mgr_scaling_type", &linsolv_mgr<N>::get_mgr_scaling_type,
+             "Get scaling mode (0=none, 1=physics, 2=row/column one-norm, 3=diagonal)")
         .def("get_use_flex_gmres", &linsolv_mgr<N>::get_use_flex_gmres,
              "Get whether FlexGMRES is enabled")
+        .def("get_mgr_composite_mode", &linsolv_mgr<N>::get_mgr_composite_mode,
+             "Get composite preconditioner mode")
+        .def("get_mgr_local_solver", &linsolv_mgr<N>::get_mgr_local_solver,
+             "Get full-system BCSR local solver type")
+        .def("get_mgr_bilu0_pivot_shift", &linsolv_mgr<N>::get_mgr_bilu0_pivot_shift,
+             "Get BILU0 relative diagonal pivot shift")
         .def("get_n_reservoir_blocks", &linsolv_mgr<N>::get_n_reservoir_blocks,
              "Get configured number of reservoir blocks")
         .def("get_mgr_enable_well_level", &linsolv_mgr<N>::get_mgr_enable_well_level,

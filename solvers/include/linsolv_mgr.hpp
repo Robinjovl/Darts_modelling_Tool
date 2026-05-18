@@ -52,7 +52,11 @@ namespace opendarts
       void set_use_mgr(bool use_mgr);
       void set_log_level(int log_level);
       void set_use_physics_scaling(bool use_scaling);
+      void set_mgr_scaling_type(int scaling_type);
       void set_use_flex_gmres(bool use_flex_gmres);
+      void set_mgr_composite_mode(int composite_mode);
+      void set_mgr_local_solver(int local_solver);
+      void set_mgr_bilu0_pivot_shift(opendarts::config::mat_float pivot_shift);
       void set_mgr_pressure_amg_options(int coarsen_type,
                                         int interp_type,
                                         int relax_type,
@@ -108,7 +112,11 @@ namespace opendarts
       bool get_use_mgr() const;
       int get_log_level() const;
       bool get_use_physics_scaling() const;
+      int get_mgr_scaling_type() const;
       bool get_use_flex_gmres() const;
+      int get_mgr_composite_mode() const;
+      int get_mgr_local_solver() const;
+      opendarts::config::mat_float get_mgr_bilu0_pivot_shift() const;
       opendarts::config::index_t get_n_reservoir_blocks() const;
       bool get_mgr_enable_well_level() const;
       bool get_mgr_enable_composition_level() const;
@@ -139,7 +147,11 @@ namespace opendarts
       bool use_mgr_cached;
       int log_level_cached;
       bool use_physics_scaling_cached;
+      int scaling_type_cached;
       bool use_flex_gmres_cached;
+      int composite_mode_cached;
+      int local_solver_cached;
+      opendarts::config::mat_float bilu0_pivot_shift_cached;
       opendarts::config::index_t n_reservoir_blocks_cached;
       mgr::strategies::CompositionalFlowStrategyConfig mgr_strategy_config_cached;
 

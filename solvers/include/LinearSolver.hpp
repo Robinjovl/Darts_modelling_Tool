@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+class timer_node;
+
 // Forward declarations for HYPRE
 extern "C" {
 typedef struct hypre_ParCSRMatrix_struct *HYPRE_ParCSRMatrix;
@@ -29,9 +31,33 @@ enum class KrylovType
   flexgmres
 };
 
+enum class ScalingType : int
+{
+  none = 0,
+  physics = 1,
+  rowColOneNorm = 2,
+  diagonal = 3
+};
+
+enum class CompositePreconditionerMode : int
+{
+  mgrOnly = 0,
+  mgrThenLocal = 1,
+  localOnly = 2
+};
+
+enum class LocalPreconditionerType : int
+{
+  none = 0,
+  blockJacobi = 1,
+  blockILU0 = 2
+};
+
 // Open-darts compatible type aliases
 using index_t = int_t;
 using mat_float = real_type;
+
+class BlockLocalPreconditioner;
 
 /**
  * @brief Block CSR matrix data structure (internal use only)
@@ -79,6 +105,12 @@ struct SolverParameters
 
   // Physics-based scaling (Ahat = D * A * D, bhat = D * b, x = D * xhat)
   bool usePhysicsScaling = true; ///< Enable physics-based scaling (GEOS default)
+  ScalingType scalingType = ScalingType::physics; ///< Matrix/RHS scaling mode
+
+  // Optional full-system BCSR local correction used inside the Krylov preconditioner.
+  CompositePreconditionerMode compositeMode = CompositePreconditionerMode::mgrOnly;
+  LocalPreconditionerType localPreconditioner = LocalPreconditionerType::none;
+  real_type localPivotShift = 1.0e-12;
 
 };
 
@@ -147,6 +179,19 @@ public:
   void setParameters( const SolverParameters & params )
   {
     m_params = params;
+    if( !m_params.usePhysicsScaling )
+    {
+      m_params.scalingType = ScalingType::none;
+    }
+    else if( m_params.scalingType == ScalingType::none )
+    {
+      m_params.usePhysicsScaling = false;
+    }
+    if( m_params.compositeMode != CompositePreconditionerMode::mgrOnly &&
+        m_params.localPreconditioner == LocalPreconditionerType::none )
+    {
+      m_params.localPreconditioner = LocalPreconditionerType::blockILU0;
+    }
   }
 
   /**
@@ -320,20 +365,11 @@ public:
   int set_p_system_prec(void* prec);
 
   /**
-   * @brief Initialize timer nodes (open-darts compatibility placeholder)
-   * @param timer_setup Timer node for setup (ignored, using std::chrono internally)
-   * @param timer_solve Timer node for solve (ignored, using std::chrono internally)
-   *
-   * This method exists for interface compatibility with open-darts.
-   * MGR Linear Solver uses std::chrono internally for timing.
+   * @brief Initialize timer nodes (open-darts compatibility)
+   * @param timer_setup Timer node for setup
+   * @param timer_solve Timer node for solve
    */
-  void init_timer_nodes(void* timer_setup, void* timer_solve)
-  {
-    // Placeholder: ignore open-darts timer_node pointers
-    (void)timer_setup;
-    (void)timer_solve;
-    // Use std::chrono internally instead
-  }
+  void init_timer_nodes(::timer_node* timer_setup, ::timer_node* timer_solve);
 
   /**
    * @brief Get setup time from last solve
@@ -354,17 +390,27 @@ private:
   std::vector<real_type> m_reference;   ///< Reference solution (if available)
   std::vector<real_type> m_solution;    ///< Computed solution
   std::vector<real_type> m_initialGuess; ///< Initial guess (if set)
-  std::vector<real_type> m_scaling;     ///< Physics-based scaling vector
+  std::vector<real_type> m_scaling;     ///< Backward-compatible symmetric scaling vector
+  std::vector<real_type> m_rowScaling;  ///< Left scaling vector for matrix/RHS
+  std::vector<real_type> m_colScaling;  ///< Right scaling vector for matrix/solution
   bool m_hasInitialGuess;               ///< Flag for initial guess
 
   SolverParameters m_params;            ///< Solver parameters
   std::unique_ptr<MGRStrategy> m_strategy; ///< MGR strategy
+  std::unique_ptr<BlockLocalPreconditioner> m_blockLocalPreconditioner;
 
   SolverResults m_lastResults;          ///< Results from most recent solve (for get_n_iters/get_residual)
 
   // Timing members (open-darts compatibility)
   double m_setupTime = 0.0;             ///< Setup time in seconds
   double m_solveTime = 0.0;             ///< Solve time in seconds
+  ::timer_node* m_timerSetup = nullptr; ///< open-DARTS setup timer root
+  ::timer_node* m_timerSolve = nullptr; ///< open-DARTS solve timer root
+
+  // Residual normalization members
+  real_type m_lastRhsNorm = 0.0;             ///< Norm of the HYPRE RHS used for convergence
+  real_type m_lastInitialResidualNorm = 0.0; ///< Initial residual norm used when RHS is zero
+  real_type m_lastResidualDenominator = 0.0; ///< Denominator for reported relative residual
 
   // init() method parameters (for open-darts compatibility)
   int_t m_initMaxIters = 100;           ///< Max iterations from init()
@@ -376,6 +422,12 @@ private:
   HYPRE_ParCSRMatrix m_parMatrix;       ///< HYPRE parallel matrix
   HYPRE_ParVector m_parRHS;             ///< HYPRE parallel RHS vector
   HYPRE_ParVector m_parSol;             ///< HYPRE parallel solution vector
+
+  HYPRE_Solver m_activeMGRPrecond = nullptr; ///< MGR preconditioner used by composite callbacks
+  std::string m_activeKrylovName;            ///< Current Krylov solver name for timer nesting
+  std::vector<real_type> m_compositeResidual;
+  std::vector<real_type> m_compositeAx;
+  std::vector<real_type> m_compositeCorrection;
 
   bool m_matrixLoaded;                  ///< Matrix loaded flag
   bool m_matrixAssembled;               ///< Matrix assembled flag
@@ -392,9 +444,44 @@ private:
   bool createHYPREVectors();
 
   /**
-   * @brief Compute physics-based scaling vector (per component)
+   * @brief Compute matrix/RHS scaling vectors
    */
+  void computeScaling();
   void computePhysicsScaling();
+  void computeRowColOneNormScaling();
+  void computeDiagonalScaling();
+  bool scalingActive(int_t num_rows) const;
+
+  real_type computeScaledVectorNorm(const real_type* values, int_t num_rows) const;
+  real_type computeInitialResidualNorm(const real_type* rhs,
+                                       const real_type* initial_guess,
+                                       int_t num_rows) const;
+  void updateResidualNormalization(const real_type* rhs,
+                                   const real_type* initial_guess,
+                                   int_t num_rows);
+  real_type normalizeFinalResidual(real_type hypre_final_residual) const;
+  void setConvergenceFromResidual(SolverResults& results,
+                                  real_type hypre_final_residual) const;
+
+  ::timer_node* setupTimerNode(const std::string& name) const;
+  ::timer_node* solveTimerNode(const std::string& krylov_name,
+                               const std::string& name) const;
+
+  void setupBlockLocalPreconditioner();
+  void clearCompositeWorkVectors();
+  bool blockLocalPreconditionerReady() const;
+  int applyCompositePreconditioner(HYPRE_ParCSRMatrix A,
+                                   HYPRE_ParVector b,
+                                   HYPRE_ParVector x);
+
+  static int compositePreconditionerSetup(HYPRE_Solver solver,
+                                          HYPRE_ParCSRMatrix A,
+                                          HYPRE_ParVector b,
+                                          HYPRE_ParVector x);
+  static int compositePreconditionerSolve(HYPRE_Solver solver,
+                                          HYPRE_ParCSRMatrix A,
+                                          HYPRE_ParVector b,
+                                          HYPRE_ParVector x);
 
   /**
    * @brief Setup MGR preconditioner

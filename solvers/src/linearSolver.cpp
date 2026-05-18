@@ -5,6 +5,7 @@
 #include "LinearSolver.hpp"
 #include "OpendartsJacobian.hpp"
 #include "CompositionalFlowStrategy.hpp"
+#include "timer_node.h"
 #include <iostream>
 #include <chrono>
 #include <cmath>
@@ -14,13 +15,42 @@
 
 // HYPRE headers
 #include <_hypre_parcsr_ls.h>
+#include <_hypre_parcsr_mv.h>
 #include <HYPRE_parcsr_ls.h>
+#include <HYPRE_parcsr_mv.h>
 #include <_hypre_IJ_mv.h>
 #include <HYPRE_IJ_mv.h>
 #include <HYPRE_utilities.h>
 
 namespace mgr {
 namespace {
+class ScopedTimer
+{
+public:
+  explicit ScopedTimer(::timer_node* timer)
+    : timer_(timer)
+  {
+    if( timer_ )
+    {
+      timer_->start();
+    }
+  }
+
+  ~ScopedTimer()
+  {
+    if( timer_ )
+    {
+      timer_->stop();
+    }
+  }
+
+  ScopedTimer(const ScopedTimer&) = delete;
+  ScopedTimer& operator=(const ScopedTimer&) = delete;
+
+private:
+  ::timer_node* timer_;
+};
+
 HYPRE_Int MGRDummySetup(HYPRE_Solver,
                         HYPRE_ParCSRMatrix,
                         HYPRE_ParVector,
@@ -105,6 +135,521 @@ void logHypreFailure( const char * stage,
 }
 } // namespace
 
+class BlockLocalPreconditioner
+{
+public:
+  bool setup( const BlockCSRMatrix & matrix,
+              LocalPreconditionerType type,
+              const std::vector<real_type> & row_scaling,
+              const std::vector<real_type> & col_scaling,
+              bool apply_scaling,
+              real_type pivot_shift )
+  {
+    clear();
+    if( type == LocalPreconditionerType::none )
+    {
+      return false;
+    }
+    if( matrix.num_rows <= 0 || matrix.num_cols <= 0 ||
+        matrix.block_size <= 0 || matrix.num_rows != matrix.num_cols )
+    {
+      return false;
+    }
+
+    m_type = type;
+    m_numRows = matrix.num_rows;
+    m_blockSize = matrix.block_size;
+    m_blockSizeSquared = m_blockSize * m_blockSize;
+    m_pivotShift = std::max<real_type>( pivot_shift, 0.0 );
+    m_rowPtr = matrix.row_ptr;
+    m_colInd = matrix.col_ind;
+    m_diagInd.assign( m_numRows, -1 );
+
+    if( static_cast<int_t>( m_rowPtr.size() ) < m_numRows + 1 ||
+        static_cast<int_t>( m_colInd.size() ) < matrix.num_nonzero_blocks ||
+        static_cast<int_t>( matrix.values.size() ) < matrix.num_nonzero_blocks * m_blockSizeSquared )
+    {
+      clear();
+      return false;
+    }
+
+    for( int_t row = 0; row < m_numRows; ++row )
+    {
+      int_t diag = -1;
+      if( static_cast<int_t>( matrix.diag_ind.size() ) > row )
+      {
+        const int_t candidate = matrix.diag_ind[row];
+        if( candidate >= m_rowPtr[row] && candidate < m_rowPtr[row + 1] &&
+            m_colInd[candidate] == row )
+        {
+          diag = candidate;
+        }
+      }
+      if( diag < 0 )
+      {
+        diag = findBlock( row, row );
+      }
+      if( diag < 0 )
+      {
+        clear();
+        return false;
+      }
+      m_diagInd[row] = diag;
+    }
+
+    m_originalValues.resize( matrix.num_nonzero_blocks * m_blockSizeSquared );
+    m_luValues.resize( matrix.num_nonzero_blocks * m_blockSizeSquared );
+    for( int_t row = 0; row < m_numRows; ++row )
+    {
+      for( int_t block = m_rowPtr[row]; block < m_rowPtr[row + 1]; ++block )
+      {
+        const int_t col = m_colInd[block];
+        const int_t block_offset = block * m_blockSizeSquared;
+        for( int_t r = 0; r < m_blockSize; ++r )
+        {
+          const int_t scalar_row = row * m_blockSize + r;
+          const real_type row_scale =
+              apply_scaling && scalar_row < static_cast<int_t>( row_scaling.size() )
+              ? row_scaling[scalar_row] : 1.0;
+          for( int_t c = 0; c < m_blockSize; ++c )
+          {
+            const int_t scalar_col = col * m_blockSize + c;
+            const real_type col_scale =
+                apply_scaling && scalar_col < static_cast<int_t>( col_scaling.size() )
+                ? col_scaling[scalar_col] : 1.0;
+            m_originalValues[block_offset + r * m_blockSize + c] =
+                matrix.values[block_offset + r * m_blockSize + c] * row_scale * col_scale;
+          }
+        }
+      }
+    }
+    m_luValues = m_originalValues;
+
+    m_diagInverse.assign( m_numRows * m_blockSizeSquared, 0.0 );
+    m_blockWork.assign( m_blockSizeSquared, 0.0 );
+    m_backwardBlock.assign( m_blockSize, 0.0 );
+    if( m_type == LocalPreconditionerType::blockJacobi )
+    {
+      factorBlockJacobi();
+    }
+    else
+    {
+      factorBlockILU0();
+    }
+
+    m_forwardWork.assign( m_numRows * m_blockSize, 0.0 );
+    m_ready = true;
+    return true;
+  }
+
+  void clear()
+  {
+    m_type = LocalPreconditionerType::none;
+    m_numRows = 0;
+    m_blockSize = 0;
+    m_blockSizeSquared = 0;
+    m_pivotShift = 0.0;
+    m_failedPivots = 0;
+    m_ready = false;
+    m_rowPtr.clear();
+    m_colInd.clear();
+    m_diagInd.clear();
+    m_originalValues.clear();
+    m_luValues.clear();
+    m_diagInverse.clear();
+    m_forwardWork.clear();
+    m_blockWork.clear();
+    m_backwardBlock.clear();
+  }
+
+  bool ready() const
+  {
+    return m_ready;
+  }
+
+  int_t failedPivots() const
+  {
+    return m_failedPivots;
+  }
+
+  const char * name() const
+  {
+    return m_type == LocalPreconditionerType::blockJacobi ? "block Jacobi" : "block ILU(0)";
+  }
+
+  void matvec( const real_type * x, real_type * y ) const
+  {
+    const int_t n = m_numRows * m_blockSize;
+    std::fill( y, y + n, 0.0 );
+    for( int_t row = 0; row < m_numRows; ++row )
+    {
+      real_type * y_block = y + row * m_blockSize;
+      for( int_t p = m_rowPtr[row]; p < m_rowPtr[row + 1]; ++p )
+      {
+        const real_type * block = &m_originalValues[p * m_blockSizeSquared];
+        const real_type * x_block = x + m_colInd[p] * m_blockSize;
+        for( int_t r = 0; r < m_blockSize; ++r )
+        {
+          real_type sum = 0.0;
+          for( int_t c = 0; c < m_blockSize; ++c )
+          {
+            sum += block[r * m_blockSize + c] * x_block[c];
+          }
+          y_block[r] += sum;
+        }
+      }
+    }
+  }
+
+  void apply( const real_type * rhs, real_type * x )
+  {
+    if( !m_ready )
+    {
+      return;
+    }
+
+    for( int_t row = 0; row < m_numRows; ++row )
+    {
+      real_type * y = &m_forwardWork[row * m_blockSize];
+      const real_type * rhs_block = rhs + row * m_blockSize;
+      for( int_t r = 0; r < m_blockSize; ++r )
+      {
+        y[r] = rhs_block[r];
+      }
+
+      if( m_type == LocalPreconditionerType::blockILU0 )
+      {
+        for( int_t p = m_rowPtr[row]; p < m_rowPtr[row + 1]; ++p )
+        {
+          const int_t col = m_colInd[p];
+          if( col >= row )
+          {
+            continue;
+          }
+          subtractBlockMatvec( &m_luValues[p * m_blockSizeSquared],
+                               &m_forwardWork[col * m_blockSize],
+                               y );
+        }
+      }
+    }
+
+    std::fill( x, x + m_numRows * m_blockSize, 0.0 );
+    for( int_t row = m_numRows - 1; row >= 0; --row )
+    {
+      for( int_t r = 0; r < m_blockSize; ++r )
+      {
+        m_backwardBlock[r] = m_forwardWork[row * m_blockSize + r];
+      }
+
+      if( m_type == LocalPreconditionerType::blockILU0 )
+      {
+        for( int_t p = m_rowPtr[row]; p < m_rowPtr[row + 1]; ++p )
+        {
+          const int_t col = m_colInd[p];
+          if( col <= row )
+          {
+            continue;
+          }
+          subtractBlockMatvec( &m_luValues[p * m_blockSizeSquared],
+                               x + col * m_blockSize,
+                               m_backwardBlock.data() );
+        }
+      }
+
+      multiplyBlockVector( &m_diagInverse[row * m_blockSizeSquared],
+                           m_backwardBlock.data(),
+                           x + row * m_blockSize );
+
+      if( row == 0 )
+      {
+        break;
+      }
+    }
+  }
+
+private:
+  int_t findBlock( int_t row, int_t col ) const
+  {
+    for( int_t p = m_rowPtr[row]; p < m_rowPtr[row + 1]; ++p )
+    {
+      if( m_colInd[p] == col )
+      {
+        return p;
+      }
+    }
+    return -1;
+  }
+
+  void factorBlockJacobi()
+  {
+    for( int_t row = 0; row < m_numRows; ++row )
+    {
+      invertDiagonalBlock( row );
+    }
+  }
+
+  void factorBlockILU0()
+  {
+    std::vector<int_t> lower_blocks;
+    for( int_t row = 0; row < m_numRows; ++row )
+    {
+      lower_blocks.clear();
+      for( int_t p = m_rowPtr[row]; p < m_rowPtr[row + 1]; ++p )
+      {
+        if( m_colInd[p] < row )
+        {
+          lower_blocks.push_back( p );
+        }
+      }
+      std::sort( lower_blocks.begin(), lower_blocks.end(),
+                 [this]( int_t lhs, int_t rhs )
+                 {
+                   return m_colInd[lhs] < m_colInd[rhs];
+                 } );
+
+      for( int_t lower_pos : lower_blocks )
+      {
+        const int_t pivot_row = m_colInd[lower_pos];
+        rightMultiplyBlockInPlace( &m_luValues[lower_pos * m_blockSizeSquared],
+                                   &m_diagInverse[pivot_row * m_blockSizeSquared] );
+
+        for( int_t upper_pos = m_rowPtr[pivot_row]; upper_pos < m_rowPtr[pivot_row + 1]; ++upper_pos )
+        {
+          const int_t col = m_colInd[upper_pos];
+          if( col <= pivot_row )
+          {
+            continue;
+          }
+          const int_t row_pos = findBlock( row, col );
+          if( row_pos < 0 )
+          {
+            continue;
+          }
+          subtractBlockProduct( &m_luValues[lower_pos * m_blockSizeSquared],
+                                &m_luValues[upper_pos * m_blockSizeSquared],
+                                &m_luValues[row_pos * m_blockSizeSquared] );
+        }
+      }
+
+      invertDiagonalBlock( row );
+    }
+  }
+
+  void invertDiagonalBlock( int_t row )
+  {
+    const int_t diag = m_diagInd[row];
+    const real_type * block = &m_luValues[diag * m_blockSizeSquared];
+    real_type * inverse = &m_diagInverse[row * m_blockSizeSquared];
+    if( !invertBlock( block, inverse ) )
+    {
+      ++m_failedPivots;
+      std::fill( inverse, inverse + m_blockSizeSquared, 0.0 );
+      for( int_t i = 0; i < m_blockSize; ++i )
+      {
+        inverse[i * m_blockSize + i] = 1.0;
+      }
+    }
+  }
+
+  bool invertBlock( const real_type * block, real_type * inverse ) const
+  {
+    real_type norm = 0.0;
+    for( int_t i = 0; i < m_blockSizeSquared; ++i )
+    {
+      norm = std::max( norm, std::abs( block[i] ) );
+    }
+    const real_type shift = m_pivotShift * std::max<real_type>( norm, 1.0 );
+    const real_type pivot_tol = std::numeric_limits<real_type>::epsilon() *
+                                std::max<real_type>( norm, 1.0 ) * 100.0;
+
+    if( m_blockSize == 1 )
+    {
+      const real_type pivot = block[0] + shift;
+      if( std::abs( pivot ) <= pivot_tol || !std::isfinite( pivot ) )
+      {
+        return false;
+      }
+      inverse[0] = 1.0 / pivot;
+      return std::isfinite( inverse[0] );
+    }
+
+    if( m_blockSize == 2 )
+    {
+      const real_type a = block[0] + shift;
+      const real_type b = block[1];
+      const real_type c = block[2];
+      const real_type d = block[3] + shift;
+      const real_type det = a * d - b * c;
+      if( std::abs( det ) <= pivot_tol || !std::isfinite( det ) )
+      {
+        return false;
+      }
+      const real_type inv_det = 1.0 / det;
+      inverse[0] = d * inv_det;
+      inverse[1] = -b * inv_det;
+      inverse[2] = -c * inv_det;
+      inverse[3] = a * inv_det;
+      return std::isfinite( inverse[0] ) && std::isfinite( inverse[1] ) &&
+             std::isfinite( inverse[2] ) && std::isfinite( inverse[3] );
+    }
+
+    const int_t width = 2 * m_blockSize;
+    std::vector<real_type> aug( m_blockSize * width, 0.0 );
+    for( int_t r = 0; r < m_blockSize; ++r )
+    {
+      for( int_t c = 0; c < m_blockSize; ++c )
+      {
+        aug[r * width + c] = block[r * m_blockSize + c] + ( r == c ? shift : 0.0 );
+      }
+      aug[r * width + m_blockSize + r] = 1.0;
+    }
+
+    for( int_t col = 0; col < m_blockSize; ++col )
+    {
+      int_t pivot_row = col;
+      real_type pivot_abs = std::abs( aug[col * width + col] );
+      for( int_t row = col + 1; row < m_blockSize; ++row )
+      {
+        const real_type candidate = std::abs( aug[row * width + col] );
+        if( candidate > pivot_abs )
+        {
+          pivot_abs = candidate;
+          pivot_row = row;
+        }
+      }
+      if( pivot_abs <= pivot_tol || !std::isfinite( pivot_abs ) )
+      {
+        return false;
+      }
+      if( pivot_row != col )
+      {
+        for( int_t j = 0; j < width; ++j )
+        {
+          std::swap( aug[col * width + j], aug[pivot_row * width + j] );
+        }
+      }
+
+      const real_type pivot = aug[col * width + col];
+      for( int_t j = 0; j < width; ++j )
+      {
+        aug[col * width + j] /= pivot;
+      }
+      for( int_t row = 0; row < m_blockSize; ++row )
+      {
+        if( row == col )
+        {
+          continue;
+        }
+        const real_type factor = aug[row * width + col];
+        if( factor == 0.0 )
+        {
+          continue;
+        }
+        for( int_t j = 0; j < width; ++j )
+        {
+          aug[row * width + j] -= factor * aug[col * width + j];
+        }
+      }
+    }
+
+    for( int_t r = 0; r < m_blockSize; ++r )
+    {
+      for( int_t c = 0; c < m_blockSize; ++c )
+      {
+        inverse[r * m_blockSize + c] = aug[r * width + m_blockSize + c];
+        if( !std::isfinite( inverse[r * m_blockSize + c] ) )
+        {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  void rightMultiplyBlockInPlace( real_type * block, const real_type * right ) const
+  {
+    std::fill( m_blockWork.begin(), m_blockWork.end(), 0.0 );
+    for( int_t r = 0; r < m_blockSize; ++r )
+    {
+      for( int_t c = 0; c < m_blockSize; ++c )
+      {
+        real_type sum = 0.0;
+        for( int_t k = 0; k < m_blockSize; ++k )
+        {
+          sum += block[r * m_blockSize + k] * right[k * m_blockSize + c];
+        }
+        m_blockWork[r * m_blockSize + c] = sum;
+      }
+    }
+    std::copy( m_blockWork.begin(), m_blockWork.end(), block );
+  }
+
+  void subtractBlockProduct( const real_type * left,
+                             const real_type * right,
+                             real_type * target ) const
+  {
+    for( int_t r = 0; r < m_blockSize; ++r )
+    {
+      for( int_t c = 0; c < m_blockSize; ++c )
+      {
+        real_type sum = 0.0;
+        for( int_t k = 0; k < m_blockSize; ++k )
+        {
+          sum += left[r * m_blockSize + k] * right[k * m_blockSize + c];
+        }
+        target[r * m_blockSize + c] -= sum;
+      }
+    }
+  }
+
+  void multiplyBlockVector( const real_type * block,
+                            const real_type * vector,
+                            real_type * result ) const
+  {
+    for( int_t r = 0; r < m_blockSize; ++r )
+    {
+      real_type sum = 0.0;
+      for( int_t c = 0; c < m_blockSize; ++c )
+      {
+        sum += block[r * m_blockSize + c] * vector[c];
+      }
+      result[r] = sum;
+    }
+  }
+
+  void subtractBlockMatvec( const real_type * block,
+                            const real_type * vector,
+                            real_type * target ) const
+  {
+    for( int_t r = 0; r < m_blockSize; ++r )
+    {
+      real_type sum = 0.0;
+      for( int_t c = 0; c < m_blockSize; ++c )
+      {
+        sum += block[r * m_blockSize + c] * vector[c];
+      }
+      target[r] -= sum;
+    }
+  }
+
+  LocalPreconditionerType m_type = LocalPreconditionerType::none;
+  int_t m_numRows = 0;
+  int_t m_blockSize = 0;
+  int_t m_blockSizeSquared = 0;
+  real_type m_pivotShift = 0.0;
+  int_t m_failedPivots = 0;
+  bool m_ready = false;
+  std::vector<int_t> m_rowPtr;
+  std::vector<int_t> m_colInd;
+  std::vector<int_t> m_diagInd;
+  std::vector<real_type> m_originalValues;
+  std::vector<real_type> m_luValues;
+  std::vector<real_type> m_diagInverse;
+  std::vector<real_type> m_forwardWork;
+  mutable std::vector<real_type> m_blockWork;
+  std::vector<real_type> m_backwardBlock;
+};
+
 LinearSolver::LinearSolver()
   : m_hasInitialGuess( false )
   , m_ijMatrix( nullptr )
@@ -123,11 +668,21 @@ LinearSolver::LinearSolver()
   m_params.useMGR = true;
   m_params.logLevel = 1;
   m_params.usePhysicsScaling = true;
+  m_params.scalingType = ScalingType::physics;
+  m_params.compositeMode = CompositePreconditionerMode::mgrOnly;
+  m_params.localPreconditioner = LocalPreconditionerType::none;
+  m_params.localPivotShift = 1.0e-12;
 }
 
 LinearSolver::~LinearSolver()
 {
   cleanup();
+}
+
+void LinearSolver::init_timer_nodes(::timer_node* timer_setup, ::timer_node* timer_solve)
+{
+  m_timerSetup = timer_setup;
+  m_timerSolve = timer_solve;
 }
 
 void LinearSolver::setStrategy( std::unique_ptr<MGRStrategy> strategy )
@@ -159,12 +714,323 @@ void LinearSolver::clearInitialGuess()
   m_hasInitialGuess = false;
 }
 
+bool LinearSolver::scalingActive(int_t num_rows) const
+{
+  return m_params.scalingType != ScalingType::none &&
+         m_rowScaling.size() == static_cast<size_t>( num_rows ) &&
+         m_colScaling.size() == static_cast<size_t>( m_matrix.global_num_cols );
+}
+
+real_type LinearSolver::computeScaledVectorNorm(const real_type* values, int_t num_rows) const
+{
+  if( !values || num_rows <= 0 )
+  {
+    return 0.0;
+  }
+
+  const bool apply_scaling = scalingActive( num_rows );
+  real_type sum = 0.0;
+  for( int_t i = 0; i < num_rows; ++i )
+  {
+    real_type value = values[i];
+    if( apply_scaling )
+    {
+      value *= m_rowScaling[i];
+    }
+    sum += value * value;
+  }
+  return std::sqrt( sum );
+}
+
+real_type LinearSolver::computeInitialResidualNorm(const real_type* rhs,
+                                                   const real_type* initial_guess,
+                                                   int_t num_rows) const
+{
+  if( !rhs || num_rows <= 0 )
+  {
+    return 0.0;
+  }
+
+  if( !initial_guess )
+  {
+    return computeScaledVectorNorm( rhs, num_rows );
+  }
+
+  const int_t block_size = m_matrix.block_size;
+  if( block_size <= 0 || m_matrix.num_rows <= 0 )
+  {
+    return computeScaledVectorNorm( rhs, num_rows );
+  }
+
+  const bool apply_scaling = scalingActive( num_rows );
+  real_type sum = 0.0;
+  for( int_t cell = 0; cell < m_matrix.num_rows; ++cell )
+  {
+    for( int_t i = 0; i < block_size; ++i )
+    {
+      const int_t global_row = cell * block_size + i;
+      real_type ax = 0.0;
+      for( int_t block_idx = m_matrix.row_ptr[cell];
+           block_idx < m_matrix.row_ptr[cell + 1];
+           ++block_idx )
+      {
+        const int_t col_cell = m_matrix.col_ind[block_idx];
+        const int_t block_start = block_idx * block_size * block_size;
+        for( int_t j = 0; j < block_size; ++j )
+        {
+          const int_t global_col = col_cell * block_size + j;
+          ax += m_matrix.values[block_start + i * block_size + j] * initial_guess[global_col];
+        }
+      }
+
+      real_type residual = rhs[global_row] - ax;
+      if( apply_scaling )
+      {
+        residual *= m_rowScaling[global_row];
+      }
+      sum += residual * residual;
+    }
+  }
+
+  return std::sqrt( sum );
+}
+
+void LinearSolver::updateResidualNormalization(const real_type* rhs,
+                                               const real_type* initial_guess,
+                                               int_t num_rows)
+{
+  m_lastRhsNorm = computeScaledVectorNorm( rhs, num_rows );
+  m_lastInitialResidualNorm = computeInitialResidualNorm( rhs, initial_guess, num_rows );
+  m_lastResidualDenominator =
+      ( m_lastRhsNorm > 0.0 ) ? m_lastRhsNorm : m_lastInitialResidualNorm;
+}
+
+real_type LinearSolver::normalizeFinalResidual(real_type hypre_final_residual) const
+{
+  if( m_lastRhsNorm > 0.0 )
+  {
+    return hypre_final_residual;
+  }
+
+  if( m_lastResidualDenominator > 0.0 )
+  {
+    return hypre_final_residual / m_lastResidualDenominator;
+  }
+
+  return hypre_final_residual;
+}
+
+void LinearSolver::setConvergenceFromResidual(SolverResults& results,
+                                              real_type hypre_final_residual) const
+{
+  const real_type reported_residual = normalizeFinalResidual( hypre_final_residual );
+  results.finalResidual = reported_residual;
+
+  const real_type machine_epsilon = std::numeric_limits<real_type>::epsilon() * 100.0;
+  if( reported_residual < m_params.tolerance )
+  {
+    results.converged = true;
+  }
+  else if( reported_residual < machine_epsilon )
+  {
+    results.converged = true;
+    std::cout << "[MGR] Warning: Residual (" << reported_residual << ") is above tolerance ("
+              << m_params.tolerance << ") but at machine precision. Considering converged.\n";
+  }
+  else
+  {
+    results.converged = false;
+  }
+}
+
+::timer_node* LinearSolver::setupTimerNode(const std::string& name) const
+{
+  if( !m_timerSetup )
+  {
+    return nullptr;
+  }
+  return &m_timerSetup->node["MGR"].node[name];
+}
+
+::timer_node* LinearSolver::solveTimerNode(const std::string& krylov_name,
+                                           const std::string& name) const
+{
+  if( !m_timerSolve )
+  {
+    return nullptr;
+  }
+  return &m_timerSolve->node[krylov_name].node[name];
+}
+
+void LinearSolver::clearCompositeWorkVectors()
+{
+  m_compositeResidual.clear();
+  m_compositeAx.clear();
+  m_compositeCorrection.clear();
+}
+
+bool LinearSolver::blockLocalPreconditionerReady() const
+{
+  return m_blockLocalPreconditioner && m_blockLocalPreconditioner->ready();
+}
+
+void LinearSolver::setupBlockLocalPreconditioner()
+{
+  if( m_params.compositeMode == CompositePreconditionerMode::mgrOnly ||
+      m_params.localPreconditioner == LocalPreconditionerType::none )
+  {
+    if( m_blockLocalPreconditioner )
+    {
+      m_blockLocalPreconditioner->clear();
+    }
+    clearCompositeWorkVectors();
+    return;
+  }
+
+  if( !m_blockLocalPreconditioner )
+  {
+    m_blockLocalPreconditioner = std::make_unique<BlockLocalPreconditioner>();
+  }
+
+  const char * timer_name =
+      m_params.localPreconditioner == LocalPreconditionerType::blockJacobi
+      ? "block Jacobi setup" : "block ILU(0) setup";
+  ScopedTimer timer( setupTimerNode( timer_name ) );
+
+  const bool apply_scaling = scalingActive( m_matrix.global_num_rows );
+  const bool ok = m_blockLocalPreconditioner->setup( m_matrix,
+                                                     m_params.localPreconditioner,
+                                                     m_rowScaling,
+                                                     m_colScaling,
+                                                     apply_scaling,
+                                                     m_params.localPivotShift );
+  if( !ok )
+  {
+    std::cerr << "[MGR] Warning: full-system BCSR local correction setup failed; "
+              << "falling back to MGR-only preconditioning." << std::endl;
+    m_params.compositeMode = CompositePreconditionerMode::mgrOnly;
+    m_params.localPreconditioner = LocalPreconditionerType::none;
+    clearCompositeWorkVectors();
+    return;
+  }
+
+  const int_t failed_pivots = m_blockLocalPreconditioner->failedPivots();
+  if( failed_pivots > 0 )
+  {
+    std::cerr << "[MGR] Warning: " << m_blockLocalPreconditioner->name()
+              << " used identity fallback for " << failed_pivots
+              << " diagonal block(s)." << std::endl;
+  }
+
+  const int_t n = m_matrix.global_num_rows;
+  m_compositeResidual.assign( n, 0.0 );
+  m_compositeAx.assign( n, 0.0 );
+  m_compositeCorrection.assign( n, 0.0 );
+}
+
+int LinearSolver::compositePreconditionerSetup(HYPRE_Solver,
+                                               HYPRE_ParCSRMatrix,
+                                               HYPRE_ParVector,
+                                               HYPRE_ParVector)
+{
+  return 0;
+}
+
+int LinearSolver::compositePreconditionerSolve(HYPRE_Solver solver,
+                                               HYPRE_ParCSRMatrix A,
+                                               HYPRE_ParVector b,
+                                               HYPRE_ParVector x)
+{
+  LinearSolver * self = reinterpret_cast<LinearSolver *>( solver );
+  if( !self )
+  {
+    return 1;
+  }
+  return self->applyCompositePreconditioner( A, b, x );
+}
+
+int LinearSolver::applyCompositePreconditioner(HYPRE_ParCSRMatrix A,
+                                               HYPRE_ParVector b,
+                                               HYPRE_ParVector x)
+{
+  if( m_params.compositeMode == CompositePreconditionerMode::mgrOnly ||
+      !blockLocalPreconditionerReady() )
+  {
+    return HYPRE_MGRSolve( m_activeMGRPrecond, A, b, x );
+  }
+
+  ::timer_node * mgr_timer =
+      m_activeKrylovName.empty() ? nullptr : solveTimerNode( m_activeKrylovName, "MGR" );
+  ScopedTimer total_timer( mgr_timer );
+
+  hypre_Vector * b_local = hypre_ParVectorLocalVector( b );
+  hypre_Vector * x_local = hypre_ParVectorLocalVector( x );
+  if( !b_local || !x_local )
+  {
+    return HYPRE_MGRSolve( m_activeMGRPrecond, A, b, x );
+  }
+
+  const int_t local_size = static_cast<int_t>( hypre_VectorSize( b_local ) );
+  if( local_size != m_matrix.global_num_rows ||
+      static_cast<int_t>( hypre_VectorSize( x_local ) ) != local_size )
+  {
+    return HYPRE_MGRSolve( m_activeMGRPrecond, A, b, x );
+  }
+
+  real_type * b_data = hypre_VectorData( b_local );
+  real_type * x_data = hypre_VectorData( x_local );
+  if( !b_data || !x_data )
+  {
+    return HYPRE_MGRSolve( m_activeMGRPrecond, A, b, x );
+  }
+
+  if( m_params.compositeMode == CompositePreconditionerMode::localOnly )
+  {
+    ScopedTimer local_timer( mgr_timer ? &mgr_timer->node["block local solve"] : nullptr );
+    m_blockLocalPreconditioner->apply( b_data, x_data );
+    return 0;
+  }
+
+  HYPRE_ParVectorSetConstantValues( x, 0.0 );
+  int rc = 0;
+  {
+    ScopedTimer mgr_solve_timer( mgr_timer ? &mgr_timer->node["HYPRE_MGRSolve"] : nullptr );
+    rc = HYPRE_MGRSolve( m_activeMGRPrecond, A, b, x );
+  }
+  if( rc != 0 )
+  {
+    return rc;
+  }
+
+  {
+    ScopedTimer residual_timer( mgr_timer ? &mgr_timer->node["BCSR residual"] : nullptr );
+    m_blockLocalPreconditioner->matvec( x_data, m_compositeAx.data() );
+    for( int_t i = 0; i < local_size; ++i )
+    {
+      m_compositeResidual[i] = b_data[i] - m_compositeAx[i];
+    }
+  }
+
+  {
+    ScopedTimer local_timer( mgr_timer ? &mgr_timer->node["block local solve"] : nullptr );
+    m_blockLocalPreconditioner->apply( m_compositeResidual.data(),
+                                       m_compositeCorrection.data() );
+  }
+
+  for( int_t i = 0; i < local_size; ++i )
+  {
+    x_data[i] += m_compositeCorrection[i];
+  }
+  return 0;
+}
+
 bool LinearSolver::createHYPREMatrix()
 {
+  ScopedTimer timer( setupTimerNode( "HYPRE IJ matrix" ) );
+
   int_t num_rows = m_matrix.global_num_rows;
-  const bool apply_scaling = m_params.usePhysicsScaling &&
-                             ( m_scaling.size() == static_cast<size_t>( num_rows ) );
   int_t num_cols = m_matrix.global_num_cols;
+  const bool apply_scaling = scalingActive( num_rows );
   int_t num_cells = m_matrix.num_rows;
   int_t block_size = m_matrix.block_size;
   // Create IJ matrix
@@ -180,7 +1046,7 @@ bool LinearSolver::createHYPREMatrix()
     for( int_t i = 0; i < block_size; ++i )
     {
       bigint_t global_row = cell * block_size + i;
-      real_type row_scale = apply_scaling ? m_scaling[global_row] : 1.0;
+      real_type row_scale = apply_scaling ? m_rowScaling[global_row] : 1.0;
 
       std::vector<bigint_t> cols;
       std::vector<real_type> vals;
@@ -198,7 +1064,7 @@ bool LinearSolver::createHYPREMatrix()
           real_type val = m_matrix.values[block_start + i * block_size + j];
           if( apply_scaling )
           {
-            val *= row_scale * m_scaling[global_col];
+            val *= row_scale * m_colScaling[global_col];
           }
 
           // Add ALL values from CSR file (no filtering)
@@ -228,9 +1094,10 @@ bool LinearSolver::createHYPREMatrix()
 
 bool LinearSolver::createHYPREVectors()
 {
+  ScopedTimer timer( setupTimerNode( "HYPRE vectors" ) );
+
   int_t num_rows = m_matrix.global_num_rows;
-  const bool apply_scaling = m_params.usePhysicsScaling &&
-                             ( m_scaling.size() == static_cast<size_t>( num_rows ) );
+  const bool apply_scaling = scalingActive( num_rows );
 
   // Create RHS vector
   HYPRE_IJVectorCreate( MPI_COMM_WORLD, 0, num_rows - 1, &m_ijRHS );
@@ -261,12 +1128,16 @@ bool LinearSolver::createHYPREVectors()
     rhs_fallback.assign( num_rows, 0.0 );
     rhs_values = rhs_fallback.data();
   }
+
+  const real_type* initial_guess = m_hasInitialGuess ? m_initialGuess.data() : nullptr;
+  updateResidualNormalization( rhs_values, initial_guess, num_rows );
+
   if( apply_scaling )
   {
     rhs_scaled.resize( num_rows );
     for( int_t i = 0; i < num_rows; ++i )
     {
-      rhs_scaled[i] = rhs_values[i] * m_scaling[i];
+      rhs_scaled[i] = rhs_values[i] * m_rowScaling[i];
     }
     rhs_values = rhs_scaled.data();
   }
@@ -281,9 +1152,9 @@ bool LinearSolver::createHYPREVectors()
     {
       for( int_t i = 0; i < num_rows; ++i )
       {
-        if( m_scaling[i] != 0.0 )
+        if( m_colScaling[i] != 0.0 )
         {
-          m_solution[i] /= m_scaling[i];
+          m_solution[i] /= m_colScaling[i];
         }
       }
     }
@@ -304,14 +1175,37 @@ bool LinearSolver::createHYPREVectors()
   return true;
 }
 
-void LinearSolver::computePhysicsScaling()
+void LinearSolver::computeScaling()
 {
   m_scaling.clear();
+  m_rowScaling.clear();
+  m_colScaling.clear();
 
-  if( !m_params.usePhysicsScaling )
+  if( !m_params.usePhysicsScaling || m_params.scalingType == ScalingType::none )
   {
     return;
   }
+
+  switch( m_params.scalingType )
+  {
+    case ScalingType::physics:
+      computePhysicsScaling();
+      break;
+    case ScalingType::rowColOneNorm:
+      computeRowColOneNormScaling();
+      break;
+    case ScalingType::diagonal:
+      computeDiagonalScaling();
+      break;
+    case ScalingType::none:
+    default:
+      break;
+  }
+}
+
+void LinearSolver::computePhysicsScaling()
+{
+  ScopedTimer timer( setupTimerNode( "physics scaling" ) );
 
   const int_t block_size = m_matrix.block_size;
   const int_t num_rows = m_matrix.global_num_rows;
@@ -388,6 +1282,8 @@ void LinearSolver::computePhysicsScaling()
 
   // Populate scaling vector
   m_scaling.resize( num_rows );
+  m_rowScaling.resize( num_rows );
+  m_colScaling.resize( m_matrix.global_num_cols, 1.0 );
   for( int_t cell = 0; cell < m_matrix.num_rows; ++cell )
   {
     for( int_t i = 0; i < block_size; ++i )
@@ -402,7 +1298,136 @@ void LinearSolver::computePhysicsScaling()
       {
         m_scaling[global_row] = 1.0;
       }
+      m_rowScaling[global_row] = m_scaling[global_row];
+      m_colScaling[global_row] = m_scaling[global_row];
     }
+  }
+}
+
+void LinearSolver::computeRowColOneNormScaling()
+{
+  ScopedTimer timer( setupTimerNode( "row-col one-norm scaling" ) );
+
+  const int_t block_size = m_matrix.block_size;
+  const int_t num_rows = m_matrix.global_num_rows;
+  const int_t num_cols = m_matrix.global_num_cols;
+
+  if( block_size <= 0 || num_rows <= 0 || num_cols <= 0 )
+  {
+    return;
+  }
+
+  std::vector<real_type> row_norms( num_rows, 0.0 );
+  std::vector<real_type> col_norms( num_cols, 0.0 );
+
+  for( int_t cell = 0; cell < m_matrix.num_rows; ++cell )
+  {
+    for( int_t block_idx = m_matrix.row_ptr[cell];
+         block_idx < m_matrix.row_ptr[cell + 1];
+         ++block_idx )
+    {
+      const int_t col_cell = m_matrix.col_ind[block_idx];
+      const int_t block_start = block_idx * block_size * block_size;
+      for( int_t i = 0; i < block_size; ++i )
+      {
+        const int_t global_row = cell * block_size + i;
+        for( int_t j = 0; j < block_size; ++j )
+        {
+          const real_type val = std::abs( m_matrix.values[block_start + i * block_size + j] );
+          row_norms[global_row] += val;
+        }
+      }
+    }
+  }
+
+  const real_type min_norm = std::numeric_limits<real_type>::min();
+  m_rowScaling.resize( num_rows, 1.0 );
+  for( int_t i = 0; i < num_rows; ++i )
+  {
+    if( row_norms[i] > min_norm && std::isfinite( row_norms[i] ) )
+    {
+      m_rowScaling[i] = 1.0 / row_norms[i];
+    }
+  }
+
+  for( int_t cell = 0; cell < m_matrix.num_rows; ++cell )
+  {
+    for( int_t block_idx = m_matrix.row_ptr[cell];
+         block_idx < m_matrix.row_ptr[cell + 1];
+         ++block_idx )
+    {
+      const int_t col_cell = m_matrix.col_ind[block_idx];
+      const int_t block_start = block_idx * block_size * block_size;
+      for( int_t i = 0; i < block_size; ++i )
+      {
+        const int_t global_row = cell * block_size + i;
+        for( int_t j = 0; j < block_size; ++j )
+        {
+          const int_t global_col = col_cell * block_size + j;
+          const real_type val = std::abs( m_matrix.values[block_start + i * block_size + j] );
+          col_norms[global_col] += val * m_rowScaling[global_row];
+        }
+      }
+    }
+  }
+
+  m_colScaling.resize( num_cols, 1.0 );
+  for( int_t i = 0; i < num_cols; ++i )
+  {
+    if( col_norms[i] > min_norm && std::isfinite( col_norms[i] ) )
+    {
+      m_colScaling[i] = 1.0 / col_norms[i];
+    }
+  }
+  m_scaling = m_colScaling;
+}
+
+void LinearSolver::computeDiagonalScaling()
+{
+  ScopedTimer timer( setupTimerNode( "diagonal scaling" ) );
+
+  const int_t block_size = m_matrix.block_size;
+  const int_t num_rows = m_matrix.global_num_rows;
+  const int_t num_cols = m_matrix.global_num_cols;
+
+  if( block_size <= 0 || num_rows <= 0 || num_cols <= 0 )
+  {
+    return;
+  }
+
+  std::vector<real_type> diag_abs( num_rows, 0.0 );
+  for( int_t cell = 0; cell < m_matrix.num_rows; ++cell )
+  {
+    for( int_t block_idx = m_matrix.row_ptr[cell];
+         block_idx < m_matrix.row_ptr[cell + 1];
+         ++block_idx )
+    {
+      if( m_matrix.col_ind[block_idx] != cell )
+      {
+        continue;
+      }
+
+      const int_t block_start = block_idx * block_size * block_size;
+      for( int_t i = 0; i < block_size; ++i )
+      {
+        const int_t global_row = cell * block_size + i;
+        diag_abs[global_row] = std::abs( m_matrix.values[block_start + i * block_size + i] );
+      }
+    }
+  }
+
+  const real_type min_norm = std::numeric_limits<real_type>::min();
+  m_scaling.resize( num_rows, 1.0 );
+  m_rowScaling.resize( num_rows, 1.0 );
+  m_colScaling.resize( num_cols, 1.0 );
+  for( int_t i = 0; i < num_rows; ++i )
+  {
+    if( diag_abs[i] > min_norm && std::isfinite( diag_abs[i] ) )
+    {
+      m_scaling[i] = 1.0 / std::sqrt( diag_abs[i] );
+    }
+    m_rowScaling[i] = m_scaling[i];
+    m_colScaling[i] = m_scaling[i];
   }
 }
 
@@ -706,6 +1731,7 @@ SolverResults LinearSolver::solveGMRES_MGR()
 {
 
   SolverResults results;
+  ::timer_node* mgr_timer = solveTimerNode( "GMRES", "MGR" );
 
   // Create GMRES solver
   HYPRE_Solver gmres_solver;
@@ -717,53 +1743,75 @@ SolverResults LinearSolver::solveGMRES_MGR()
   HYPRE_ParCSRGMRESSetPrintLevel( gmres_solver, m_params.logLevel );
   HYPRE_ParCSRGMRESSetLogging( gmres_solver, 1 );
 
-  // Setup MGR preconditioner
   auto setup_start = std::chrono::high_resolution_clock::now();
-  HYPRE_Solver mgr_precond = setupMGRPreconditioner();
-  if( !mgr_precond )
+  HYPRE_Solver mgr_precond = nullptr;
   {
-    logMGRSetupContext( "setupMGRPreconditioner-returned-null",
-                        m_matrix.block_size,
-                        m_strategy ? m_strategy->numLevels() : 0,
-                        m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
-                        m_matrix.global_num_rows,
-                        m_matrix.num_rows,
-                        m_matrix.num_cols,
-                        m_matrix.num_nonzero_blocks,
-                        m_params );
-    std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
-    results.converged = false;
-    results.finalResidual = std::numeric_limits<real_type>::infinity();
-    results.iterations = 0;
-    return results;
-  }
+    ScopedTimer mgr_total( mgr_timer );
+    {
+      ScopedTimer timer( mgr_timer ? &mgr_timer->node["create/config"] : nullptr );
+      mgr_precond = setupMGRPreconditioner();
+    }
+    if( !mgr_precond )
+    {
+      logMGRSetupContext( "setupMGRPreconditioner-returned-null",
+                          m_matrix.block_size,
+                          m_strategy ? m_strategy->numLevels() : 0,
+                          m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
+                          m_matrix.global_num_rows,
+                          m_matrix.num_rows,
+                          m_matrix.num_cols,
+                          m_matrix.num_nonzero_blocks,
+                          m_params );
+      std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
+      results.converged = false;
+      results.finalResidual = std::numeric_limits<real_type>::infinity();
+      results.iterations = 0;
+      return results;
+    }
 
-  HYPRE_ClearAllErrors();
-  HYPRE_Int mgr_setup_rc = HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol );
-  if( mgr_setup_rc != 0 )
-  {
-    logHypreFailure( "HYPRE_MGRSetup",
-                     mgr_setup_rc,
-                     m_matrix.block_size,
-                     m_strategy ? m_strategy->numLevels() : 0,
-                     m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
-                     m_matrix.global_num_rows,
-                     m_matrix.num_rows,
-                     m_matrix.num_cols,
-                     m_matrix.num_nonzero_blocks,
-                     m_params );
-    std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
-    results.converged = false;
-    results.finalResidual = std::numeric_limits<real_type>::infinity();
-    results.iterations = 0;
-    return results;
-  }
+    HYPRE_ClearAllErrors();
+    HYPRE_Int mgr_setup_rc = 0;
+    {
+      ScopedTimer timer( mgr_timer ? &mgr_timer->node["HYPRE_MGRSetup"] : nullptr );
+      mgr_setup_rc = HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol );
+    }
+    if( mgr_setup_rc != 0 )
+    {
+      logHypreFailure( "HYPRE_MGRSetup",
+                       mgr_setup_rc,
+                       m_matrix.block_size,
+                       m_strategy ? m_strategy->numLevels() : 0,
+                       m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
+                       m_matrix.global_num_rows,
+                       m_matrix.num_rows,
+                       m_matrix.num_cols,
+                       m_matrix.num_nonzero_blocks,
+                       m_params );
+      std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
+      results.converged = false;
+      results.finalResidual = std::numeric_limits<real_type>::infinity();
+      results.iterations = 0;
+      return results;
+    }
 
-  // Set MGR as preconditioner for GMRES
-  HYPRE_ParCSRGMRESSetPrecond( gmres_solver,
-                                HYPRE_MGRSolve,
-                                MGRDummySetup,
-                                mgr_precond );
+    m_activeMGRPrecond = mgr_precond;
+    m_activeKrylovName = "GMRES";
+    if( m_params.compositeMode != CompositePreconditionerMode::mgrOnly &&
+        blockLocalPreconditionerReady() )
+    {
+      HYPRE_ParCSRGMRESSetPrecond( gmres_solver,
+                                    LinearSolver::compositePreconditionerSolve,
+                                    LinearSolver::compositePreconditionerSetup,
+                                    reinterpret_cast<HYPRE_Solver>( this ) );
+    }
+    else
+    {
+      HYPRE_ParCSRGMRESSetPrecond( gmres_solver,
+                                    HYPRE_MGRSolve,
+                                    MGRDummySetup,
+                                    mgr_precond );
+    }
+  }
 
   auto setup_end = std::chrono::high_resolution_clock::now();
   results.setupTime = std::chrono::duration<double>( setup_end - setup_start ).count();
@@ -772,8 +1820,14 @@ SolverResults LinearSolver::solveGMRES_MGR()
   // Setup and solve
   auto solve_start = std::chrono::high_resolution_clock::now();
 
-  HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
-  HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  {
+    ScopedTimer timer( solveTimerNode( "GMRES", "GMRES setup" ) );
+    HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
+  {
+    ScopedTimer timer( solveTimerNode( "GMRES", "GMRES solve" ) );
+    HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
 
   auto solve_end = std::chrono::high_resolution_clock::now();
   results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
@@ -786,26 +1840,7 @@ SolverResults LinearSolver::solveGMRES_MGR()
   HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
 
   results.iterations = num_iterations;
-  results.finalResidual = final_res_norm;
-
-  // Convergence check: consider converged if residual is very small, even if slightly above tolerance
-  // This handles cases where the solver reaches machine precision
-  const real_type machine_epsilon = std::numeric_limits<real_type>::epsilon() * 100.0; // ~1e-14
-  if( final_res_norm < m_params.tolerance )
-  {
-    results.converged = true;
-  }
-  else if( final_res_norm < machine_epsilon )
-  {
-    // Residual is at machine precision level, consider it converged
-    results.converged = true;
-    std::cout << "[MGR] Warning: Residual (" << final_res_norm << ") is above tolerance ("
-              << m_params.tolerance << ") but at machine precision. Considering converged.\n";
-  }
-  else
-  {
-    results.converged = false;
-  }
+  setConvergenceFromResidual( results, final_res_norm );
 
   // Extract solution
   int_t num_rows = m_matrix.global_num_rows;
@@ -820,13 +1855,12 @@ SolverResults LinearSolver::solveGMRES_MGR()
   HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
 
   // Unscale solution if physics-based scaling was applied
-  const bool apply_scaling = m_params.usePhysicsScaling &&
-                             ( m_scaling.size() == m_solution.size() );
+  const bool apply_scaling = scalingActive( static_cast<int_t>( m_solution.size() ) );
   if( apply_scaling )
   {
     for( size_t i = 0; i < m_solution.size(); ++i )
     {
-      m_solution[i] *= m_scaling[i];
+      m_solution[i] *= m_colScaling[i];
     }
   }
 
@@ -847,6 +1881,8 @@ SolverResults LinearSolver::solveGMRES_MGR()
   }
 
   // Cleanup
+  m_activeMGRPrecond = nullptr;
+  m_activeKrylovName.clear();
   HYPRE_MGRDestroy( mgr_precond );
   HYPRE_ParCSRGMRESDestroy( gmres_solver );
 
@@ -857,6 +1893,7 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
 {
 
   SolverResults results;
+  ::timer_node* mgr_timer = solveTimerNode( "FlexGMRES", "MGR" );
 
   // Create FlexGMRES solver
   HYPRE_Solver gmres_solver;
@@ -868,53 +1905,75 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
   HYPRE_ParCSRFlexGMRESSetPrintLevel( gmres_solver, m_params.logLevel );
   HYPRE_ParCSRFlexGMRESSetLogging( gmres_solver, 1 );
 
-  // Setup MGR preconditioner
   auto setup_start = std::chrono::high_resolution_clock::now();
-  HYPRE_Solver mgr_precond = setupMGRPreconditioner();
-  if( !mgr_precond )
+  HYPRE_Solver mgr_precond = nullptr;
   {
-    logMGRSetupContext( "setupMGRPreconditioner-returned-null",
-                        m_matrix.block_size,
-                        m_strategy ? m_strategy->numLevels() : 0,
-                        m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
-                        m_matrix.global_num_rows,
-                        m_matrix.num_rows,
-                        m_matrix.num_cols,
-                        m_matrix.num_nonzero_blocks,
-                        m_params );
-    std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
-    results.converged = false;
-    results.finalResidual = std::numeric_limits<real_type>::infinity();
-    results.iterations = 0;
-    return results;
-  }
+    ScopedTimer mgr_total( mgr_timer );
+    {
+      ScopedTimer timer( mgr_timer ? &mgr_timer->node["create/config"] : nullptr );
+      mgr_precond = setupMGRPreconditioner();
+    }
+    if( !mgr_precond )
+    {
+      logMGRSetupContext( "setupMGRPreconditioner-returned-null",
+                          m_matrix.block_size,
+                          m_strategy ? m_strategy->numLevels() : 0,
+                          m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
+                          m_matrix.global_num_rows,
+                          m_matrix.num_rows,
+                          m_matrix.num_cols,
+                          m_matrix.num_nonzero_blocks,
+                          m_params );
+      std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
+      results.converged = false;
+      results.finalResidual = std::numeric_limits<real_type>::infinity();
+      results.iterations = 0;
+      return results;
+    }
 
-  HYPRE_ClearAllErrors();
-  HYPRE_Int mgr_setup_rc = HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol );
-  if( mgr_setup_rc != 0 )
-  {
-    logHypreFailure( "HYPRE_MGRSetup",
-                     mgr_setup_rc,
-                     m_matrix.block_size,
-                     m_strategy ? m_strategy->numLevels() : 0,
-                     m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
-                     m_matrix.global_num_rows,
-                     m_matrix.num_rows,
-                     m_matrix.num_cols,
-                     m_matrix.num_nonzero_blocks,
-                     m_params );
-    std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
-    results.converged = false;
-    results.finalResidual = std::numeric_limits<real_type>::infinity();
-    results.iterations = 0;
-    return results;
-  }
+    HYPRE_ClearAllErrors();
+    HYPRE_Int mgr_setup_rc = 0;
+    {
+      ScopedTimer timer( mgr_timer ? &mgr_timer->node["HYPRE_MGRSetup"] : nullptr );
+      mgr_setup_rc = HYPRE_MGRSetup( mgr_precond, m_parMatrix, m_parRHS, m_parSol );
+    }
+    if( mgr_setup_rc != 0 )
+    {
+      logHypreFailure( "HYPRE_MGRSetup",
+                       mgr_setup_rc,
+                       m_matrix.block_size,
+                       m_strategy ? m_strategy->numLevels() : 0,
+                       m_strategy ? static_cast<int_t>( m_strategy->getPointMarkers().size() ) : 0,
+                       m_matrix.global_num_rows,
+                       m_matrix.num_rows,
+                       m_matrix.num_cols,
+                       m_matrix.num_nonzero_blocks,
+                       m_params );
+      std::cerr << "Error: MGR preconditioner setup failed" << std::endl;
+      results.converged = false;
+      results.finalResidual = std::numeric_limits<real_type>::infinity();
+      results.iterations = 0;
+      return results;
+    }
 
-  // Set MGR as preconditioner for FlexGMRES
-  HYPRE_ParCSRFlexGMRESSetPrecond( gmres_solver,
-                                  HYPRE_MGRSolve,
-                                  MGRDummySetup,
-                                  mgr_precond );
+    m_activeMGRPrecond = mgr_precond;
+    m_activeKrylovName = "FlexGMRES";
+    if( m_params.compositeMode != CompositePreconditionerMode::mgrOnly &&
+        blockLocalPreconditionerReady() )
+    {
+      HYPRE_ParCSRFlexGMRESSetPrecond( gmres_solver,
+                                        LinearSolver::compositePreconditionerSolve,
+                                        LinearSolver::compositePreconditionerSetup,
+                                        reinterpret_cast<HYPRE_Solver>( this ) );
+    }
+    else
+    {
+      HYPRE_ParCSRFlexGMRESSetPrecond( gmres_solver,
+                                        HYPRE_MGRSolve,
+                                        MGRDummySetup,
+                                        mgr_precond );
+    }
+  }
 
   auto setup_end = std::chrono::high_resolution_clock::now();
   results.setupTime = std::chrono::duration<double>( setup_end - setup_start ).count();
@@ -923,8 +1982,14 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
   // Setup and solve
   auto solve_start = std::chrono::high_resolution_clock::now();
 
-  HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
-  HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  {
+    ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES setup" ) );
+    HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
+  {
+    ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES solve" ) );
+    HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
 
   auto solve_end = std::chrono::high_resolution_clock::now();
   results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
@@ -937,26 +2002,7 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
   HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
 
   results.iterations = num_iterations;
-  results.finalResidual = final_res_norm;
-
-  // Convergence check: consider converged if residual is very small, even if slightly above tolerance
-  // This handles cases where the solver reaches machine precision
-  const real_type machine_epsilon = std::numeric_limits<real_type>::epsilon() * 100.0; // ~1e-14
-  if( final_res_norm < m_params.tolerance )
-  {
-    results.converged = true;
-  }
-  else if( final_res_norm < machine_epsilon )
-  {
-    // Residual is at machine precision level, consider it converged
-    results.converged = true;
-    std::cout << "[MGR] Warning: Residual (" << final_res_norm << ") is above tolerance ("
-              << m_params.tolerance << ") but at machine precision. Considering converged.\n";
-  }
-  else
-  {
-    results.converged = false;
-  }
+  setConvergenceFromResidual( results, final_res_norm );
 
   // Extract solution
   int_t num_rows = m_matrix.global_num_rows;
@@ -971,13 +2017,12 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
   HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
 
   // Unscale solution if physics-based scaling was applied
-  const bool apply_scaling = m_params.usePhysicsScaling &&
-                             ( m_scaling.size() == m_solution.size() );
+  const bool apply_scaling = scalingActive( static_cast<int_t>( m_solution.size() ) );
   if( apply_scaling )
   {
     for( size_t i = 0; i < m_solution.size(); ++i )
     {
-      m_solution[i] *= m_scaling[i];
+      m_solution[i] *= m_colScaling[i];
     }
   }
 
@@ -998,6 +2043,8 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
   }
 
   // Cleanup
+  m_activeMGRPrecond = nullptr;
+  m_activeKrylovName.clear();
   HYPRE_MGRDestroy( mgr_precond );
   HYPRE_ParCSRFlexGMRESDestroy( gmres_solver );
 
@@ -1020,7 +2067,11 @@ SolverResults LinearSolver::solveGMRES_AMG()
 
   // Setup AMG preconditioner
   auto setup_start = std::chrono::high_resolution_clock::now();
-  HYPRE_Solver amg_precond = setupAMGPreconditioner();
+  HYPRE_Solver amg_precond = nullptr;
+  {
+    ScopedTimer timer( solveTimerNode( "GMRES", "AMG create/config" ) );
+    amg_precond = setupAMGPreconditioner();
+  }
 
   HYPRE_ParCSRGMRESSetPrecond( gmres_solver,
                                 HYPRE_BoomerAMGSolve,
@@ -1034,8 +2085,14 @@ SolverResults LinearSolver::solveGMRES_AMG()
   // Setup and solve
   auto solve_start = std::chrono::high_resolution_clock::now();
 
-  HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
-  HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  {
+    ScopedTimer timer( solveTimerNode( "GMRES", "GMRES setup" ) );
+    HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
+  {
+    ScopedTimer timer( solveTimerNode( "GMRES", "GMRES solve" ) );
+    HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
 
   auto solve_end = std::chrono::high_resolution_clock::now();
   results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
@@ -1048,26 +2105,7 @@ SolverResults LinearSolver::solveGMRES_AMG()
   HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
 
   results.iterations = num_iterations;
-  results.finalResidual = final_res_norm;
-
-  // Convergence check: consider converged if residual is very small, even if slightly above tolerance
-  // This handles cases where the solver reaches machine precision
-  const real_type machine_epsilon = std::numeric_limits<real_type>::epsilon() * 100.0; // ~1e-14
-  if( final_res_norm < m_params.tolerance )
-  {
-    results.converged = true;
-  }
-  else if( final_res_norm < machine_epsilon )
-  {
-    // Residual is at machine precision level, consider it converged
-    results.converged = true;
-    std::cout << "[MGR] Warning: Residual (" << final_res_norm << ") is above tolerance ("
-              << m_params.tolerance << ") but at machine precision. Considering converged.\n";
-  }
-  else
-  {
-    results.converged = false;
-  }
+  setConvergenceFromResidual( results, final_res_norm );
 
   // Extract solution
   int_t num_rows = m_matrix.global_num_rows;
@@ -1082,13 +2120,12 @@ SolverResults LinearSolver::solveGMRES_AMG()
   HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
 
   // Unscale solution if physics-based scaling was applied
-  const bool apply_scaling = m_params.usePhysicsScaling &&
-                             ( m_scaling.size() == m_solution.size() );
+  const bool apply_scaling = scalingActive( static_cast<int_t>( m_solution.size() ) );
   if( apply_scaling )
   {
     for( size_t i = 0; i < m_solution.size(); ++i )
     {
-      m_solution[i] *= m_scaling[i];
+      m_solution[i] *= m_colScaling[i];
     }
   }
 
@@ -1131,7 +2168,11 @@ SolverResults LinearSolver::solveFlexGMRES_AMG()
 
   // Setup AMG preconditioner
   auto setup_start = std::chrono::high_resolution_clock::now();
-  HYPRE_Solver amg_precond = setupAMGPreconditioner();
+  HYPRE_Solver amg_precond = nullptr;
+  {
+    ScopedTimer timer( solveTimerNode( "FlexGMRES", "AMG create/config" ) );
+    amg_precond = setupAMGPreconditioner();
+  }
 
   HYPRE_ParCSRFlexGMRESSetPrecond( gmres_solver,
                                   HYPRE_BoomerAMGSolve,
@@ -1145,8 +2186,14 @@ SolverResults LinearSolver::solveFlexGMRES_AMG()
   // Setup and solve
   auto solve_start = std::chrono::high_resolution_clock::now();
 
-  HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
-  HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  {
+    ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES setup" ) );
+    HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
+  {
+    ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES solve" ) );
+    HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
 
   auto solve_end = std::chrono::high_resolution_clock::now();
   results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
@@ -1159,26 +2206,7 @@ SolverResults LinearSolver::solveFlexGMRES_AMG()
   HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
 
   results.iterations = num_iterations;
-  results.finalResidual = final_res_norm;
-
-  // Convergence check: consider converged if residual is very small, even if slightly above tolerance
-  // This handles cases where the solver reaches machine precision
-  const real_type machine_epsilon = std::numeric_limits<real_type>::epsilon() * 100.0; // ~1e-14
-  if( final_res_norm < m_params.tolerance )
-  {
-    results.converged = true;
-  }
-  else if( final_res_norm < machine_epsilon )
-  {
-    // Residual is at machine precision level, consider it converged
-    results.converged = true;
-    std::cout << "[MGR] Warning: Residual (" << final_res_norm << ") is above tolerance ("
-              << m_params.tolerance << ") but at machine precision. Considering converged.\n";
-  }
-  else
-  {
-    results.converged = false;
-  }
+  setConvergenceFromResidual( results, final_res_norm );
 
   // Extract solution
   int_t num_rows = m_matrix.global_num_rows;
@@ -1193,13 +2221,12 @@ SolverResults LinearSolver::solveFlexGMRES_AMG()
   HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
 
   // Unscale solution if physics-based scaling was applied
-  const bool apply_scaling = m_params.usePhysicsScaling &&
-                             ( m_scaling.size() == m_solution.size() );
+  const bool apply_scaling = scalingActive( static_cast<int_t>( m_solution.size() ) );
   if( apply_scaling )
   {
     for( size_t i = 0; i < m_solution.size(); ++i )
     {
-      m_solution[i] *= m_scaling[i];
+      m_solution[i] *= m_colScaling[i];
     }
   }
 
@@ -1251,6 +2278,16 @@ void LinearSolver::cleanup()
   m_parSol = nullptr;
   m_matrixLoaded = false;
   m_matrixAssembled = false;
+  m_scaling.clear();
+  m_rowScaling.clear();
+  m_colScaling.clear();
+  m_activeMGRPrecond = nullptr;
+  m_activeKrylovName.clear();
+  if( m_blockLocalPreconditioner )
+  {
+    m_blockLocalPreconditioner->clear();
+  }
+  clearCompositeWorkVectors();
 }
 
 // ============================================================================
@@ -1427,6 +2464,8 @@ bool LinearSolver::setMatrixFromVector( int_t num_rows,
 
 int_t LinearSolver::setup( int_t max_iters, double tolerance )
 {
+  ScopedTimer timer( setupTimerNode( "setup total" ) );
+
   // Update solver parameters
   m_params.maxIter = max_iters;
   m_params.tolerance = tolerance;
@@ -1434,11 +2473,9 @@ int_t LinearSolver::setup( int_t max_iters, double tolerance )
   // Rebuild from the latest matrix contents on every setup().
   cleanup();
 
-  // Compute physics-based scaling if enabled
-  if( m_params.usePhysicsScaling )
-  {
-    computePhysicsScaling();
-  }
+  // Compute matrix/RHS scaling if enabled.
+  computeScaling();
+  setupBlockLocalPreconditioner();
 
   // Create HYPRE matrix from BlockCSR
   if( !createHYPREMatrix() )
@@ -1475,10 +2512,11 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
   }
 
   int_t num_rows = m_matrix.global_num_rows;
-  const bool apply_scaling = m_params.usePhysicsScaling &&
-                             ( m_scaling.size() == static_cast<size_t>( num_rows ) );
+  const bool use_flex = ( m_params.krylovType == KrylovType::flexgmres );
+  const std::string krylov_name = use_flex ? "FlexGMRES" : "GMRES";
+  ScopedTimer krylov_timer( m_timerSolve ? &m_timerSolve->node[krylov_name] : nullptr );
+  const bool apply_scaling = scalingActive( num_rows );
 
-  // Update RHS vector in HYPRE
   std::vector<bigint_t> rows( num_rows );
   for( int_t i = 0; i < num_rows; ++i )
   {
@@ -1487,25 +2525,31 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
 
   std::vector<real_type> rhs_scaled;
   const real_type * rhs_values = B;
-  if( apply_scaling )
   {
-    rhs_scaled.resize( num_rows );
-    for( int_t i = 0; i < num_rows; ++i )
-    {
-      rhs_scaled[i] = B[i] * m_scaling[i];
-    }
-    rhs_values = rhs_scaled.data();
-  }
-  HYPRE_IJVectorSetValues( m_ijRHS, num_rows, rows.data(), rhs_values );
-  HYPRE_IJVectorAssemble( m_ijRHS );
+    ScopedTimer timer( solveTimerNode( krylov_name, "RHS update" ) );
+    updateResidualNormalization( B, nullptr, num_rows );
 
-  // Initialize solution vector to zero
-  std::vector<real_type> zeros( num_rows, 0.0 );
-  HYPRE_IJVectorSetValues( m_ijSol, num_rows, rows.data(), zeros.data() );
-  HYPRE_IJVectorAssemble( m_ijSol );
+    if( apply_scaling )
+    {
+      rhs_scaled.resize( num_rows );
+      for( int_t i = 0; i < num_rows; ++i )
+      {
+        rhs_scaled[i] = B[i] * m_rowScaling[i];
+      }
+      rhs_values = rhs_scaled.data();
+    }
+    HYPRE_IJVectorSetValues( m_ijRHS, num_rows, rows.data(), rhs_values );
+    HYPRE_IJVectorAssemble( m_ijRHS );
+  }
+
+  {
+    ScopedTimer timer( solveTimerNode( krylov_name, "initial guess" ) );
+    std::vector<real_type> zeros( num_rows, 0.0 );
+    HYPRE_IJVectorSetValues( m_ijSol, num_rows, rows.data(), zeros.data() );
+    HYPRE_IJVectorAssemble( m_ijSol );
+  }
 
   // Choose solver based on parameters
-  const bool use_flex = ( m_params.krylovType == KrylovType::flexgmres );
   if( m_params.useMGR && m_strategy )
   {
     m_lastResults = use_flex ? solveFlexGMRES_MGR() : solveGMRES_MGR();
@@ -1516,12 +2560,15 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
   }
 
   // Extract solution to X array
-  HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), X );
-  if( apply_scaling )
   {
-    for( int_t i = 0; i < num_rows; ++i )
+    ScopedTimer timer( solveTimerNode( krylov_name, "solution copy" ) );
+    HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), X );
+    if( apply_scaling )
     {
-      X[i] *= m_scaling[i];
+      for( int_t i = 0; i < num_rows; ++i )
+      {
+        X[i] *= m_colScaling[i];
+      }
     }
   }
 

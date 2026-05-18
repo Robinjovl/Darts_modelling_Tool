@@ -25,6 +25,36 @@ namespace opendarts
 {
   namespace linear_solvers
   {
+    namespace
+    {
+      class ScopedTimer
+      {
+      public:
+        explicit ScopedTimer(::timer_node *timer)
+          : timer_(timer)
+        {
+          if (timer_)
+          {
+            timer_->start();
+          }
+        }
+
+        ~ScopedTimer()
+        {
+          if (timer_)
+          {
+            timer_->stop();
+          }
+        }
+
+        ScopedTimer(const ScopedTimer&) = delete;
+        ScopedTimer& operator=(const ScopedTimer&) = delete;
+
+      private:
+        ::timer_node *timer_;
+      };
+    }
+
     template <uint8_t N_BLOCK_SIZE>
     linsolv_mgr<N_BLOCK_SIZE>::linsolv_mgr()
       : linsolv_iface_bos<N_BLOCK_SIZE>()
@@ -38,10 +68,16 @@ namespace opendarts
       , use_mgr_cached(true)
       , log_level_cached(1)
       , use_physics_scaling_cached(true)
+      , scaling_type_cached(static_cast<int>(mgr::ScalingType::physics))
       , use_flex_gmres_cached(true)
+      , composite_mode_cached(static_cast<int>(mgr::CompositePreconditionerMode::mgrOnly))
+      , local_solver_cached(static_cast<int>(mgr::LocalPreconditionerType::none))
+      , bilu0_pivot_shift_cached(1.0e-12)
       , n_reservoir_blocks_cached(0)
       , mgr_strategy_config_cached()
     {
+      this->timer_setup = nullptr;
+      this->timer_solve = nullptr;
       std::cout << "[MGR] linsolv_mgr created with N_BLOCK_SIZE = " << (int)N_BLOCK_SIZE << std::endl;
     }
 
@@ -108,8 +144,24 @@ namespace opendarts
     void linsolv_mgr<N_BLOCK_SIZE>::set_use_physics_scaling(bool use_scaling)
     {
       use_physics_scaling_cached = use_scaling;
+      scaling_type_cached = use_scaling ? static_cast<int>(mgr::ScalingType::physics)
+                                        : static_cast<int>(mgr::ScalingType::none);
       mgr::SolverParameters params = mgr_solver.getParameters();
       params.usePhysicsScaling = use_scaling;
+      params.scalingType = static_cast<mgr::ScalingType>(scaling_type_cached);
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_scaling_type(int scaling_type)
+    {
+      scaling_type_cached = scaling_type;
+      use_physics_scaling_cached =
+          scaling_type != static_cast<int>(mgr::ScalingType::none);
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.usePhysicsScaling = use_physics_scaling_cached;
+      params.scalingType = static_cast<mgr::ScalingType>(scaling_type_cached);
       mgr_solver.setParameters(params);
     }
 
@@ -120,6 +172,41 @@ namespace opendarts
       mgr::SolverParameters params = mgr_solver.getParameters();
       params.krylovType = use_flex_gmres ? mgr::KrylovType::flexgmres
                                          : mgr::KrylovType::gmres;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_composite_mode(int composite_mode)
+    {
+      composite_mode_cached = composite_mode;
+      if (composite_mode != static_cast<int>(mgr::CompositePreconditionerMode::mgrOnly) &&
+          local_solver_cached == static_cast<int>(mgr::LocalPreconditionerType::none))
+      {
+        local_solver_cached = static_cast<int>(mgr::LocalPreconditionerType::blockILU0);
+      }
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.compositeMode = static_cast<mgr::CompositePreconditionerMode>(composite_mode_cached);
+      params.localPreconditioner = static_cast<mgr::LocalPreconditionerType>(local_solver_cached);
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_local_solver(int local_solver)
+    {
+      local_solver_cached = local_solver;
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.localPreconditioner = static_cast<mgr::LocalPreconditionerType>(local_solver_cached);
+      params.compositeMode = static_cast<mgr::CompositePreconditionerMode>(composite_mode_cached);
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_bilu0_pivot_shift(opendarts::config::mat_float pivot_shift)
+    {
+      bilu0_pivot_shift_cached = pivot_shift;
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.localPivotShift = pivot_shift;
       mgr_solver.setParameters(params);
     }
 
@@ -406,9 +493,33 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_mgr_scaling_type() const
+    {
+      return scaling_type_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     bool linsolv_mgr<N_BLOCK_SIZE>::get_use_flex_gmres() const
     {
       return use_flex_gmres_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_mgr_composite_mode() const
+    {
+      return composite_mode_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_mgr_local_solver() const
+    {
+      return local_solver_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float linsolv_mgr<N_BLOCK_SIZE>::get_mgr_bilu0_pivot_shift() const
+    {
+      return bilu0_pivot_shift_cached;
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -490,9 +601,14 @@ namespace opendarts
       params.useMGR = use_mgr_cached;
       params.logLevel = log_level_cached;
       params.usePhysicsScaling = use_physics_scaling_cached;
+      params.scalingType = static_cast<mgr::ScalingType>(scaling_type_cached);
+      params.compositeMode = static_cast<mgr::CompositePreconditionerMode>(composite_mode_cached);
+      params.localPreconditioner = static_cast<mgr::LocalPreconditionerType>(local_solver_cached);
+      params.localPivotShift = bilu0_pivot_shift_cached;
       params.krylovType = use_flex_gmres_cached ? mgr::KrylovType::flexgmres
                                                : mgr::KrylovType::gmres;
       mgr_solver.setParameters(params);
+      mgr_solver.init_timer_nodes(this->timer_setup, this->timer_solve);
 
       initialized = true;
       first_solve = true;
@@ -515,6 +631,9 @@ namespace opendarts
       }
 
       matrix_ptr = A;
+      mgr_solver.init_timer_nodes(this->timer_setup, this->timer_solve);
+      ::timer_node *mgr_timer = this->timer_setup ? &this->timer_setup->node["MGR"] : nullptr;
+      ScopedTimer mgr_total(mgr_timer);
 
       const opendarts::config::index_t n_blocks = matrix_ptr->n_rows;
       const opendarts::config::index_t block_size = N_BLOCK_SIZE;
@@ -559,11 +678,16 @@ namespace opendarts
                   << std::endl;
       }
 
-      if (!mgr_solver.setMatrixFromCSR(n_blocks, n_blocks, block_size, nnz_blocks_declared,
-                                       row_ptr,
-                                       col_ind,
-                                       values,
-                                       diag_ind))
+      bool matrix_imported = false;
+      {
+        ScopedTimer timer(mgr_timer ? &mgr_timer->node["import CSR"] : nullptr);
+        matrix_imported = mgr_solver.setMatrixFromCSR(n_blocks, n_blocks, block_size, nnz_blocks_declared,
+                                                      row_ptr,
+                                                      col_ind,
+                                                      values,
+                                                      diag_ind);
+      }
+      if (!matrix_imported)
       {
         std::cerr << "[MGR] Error: Failed to set matrix from CSR data" << std::endl;
         return -1;
@@ -587,6 +711,7 @@ namespace opendarts
           }
         }
 
+        ScopedTimer timer(mgr_timer ? &mgr_timer->node["strategy setup"] : nullptr);
         auto strategy = std::make_unique<mgr::strategies::CompositionalFlowStrategy>(
             block_size,
             n_blocks * block_size,
@@ -638,6 +763,7 @@ namespace opendarts
       }
 
       // Solve
+      mgr_solver.init_timer_nodes(this->timer_setup, this->timer_solve);
       mgr::int_t iters = mgr_solver.solve(B, X);
 
       if (log_level_cached >= 2)
