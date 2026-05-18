@@ -9,8 +9,13 @@
 #endif
 
 #include "engine_base_gpu.h"
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "csr_matrix.hpp"
+#include "linsolv_iface.hpp"
+#else
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
+#endif
 
 // use efficien reduction routine for future norm calculation
 // template <unsigned int blockSize>

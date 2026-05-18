@@ -7,10 +7,18 @@
 
 
 #include "engine_base.h"
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "csr_matrix.hpp"
+#else
 #include "csr_matrix.h"
-#include "gpu_tools.h"
+#endif
+#include "gpu_tools.h"  // engine-local GPU kernel-launch helpers (engines/src)
 #ifdef WITH_GPU
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "linsolv_bicgstab.hpp"
+#else
 #include "linsolv_bicgstab.h"
+#endif
 #define KERNEL_BLOCK_SIZE 128
 
 #endif
@@ -159,7 +167,12 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   // if default CPU solver is used, silently change to default GPU solver
   if (params->linear_type == 0)
   {
+#ifdef OPENDARTS_GPU_HAS_AMGX
     params->linear_type = sim_params::GPU_GMRES_CPR_AMGX_ILU;
+#else
+    // AMGX not built; fall back to the CPR + AMG GPU solver.
+    params->linear_type = sim_params::GPU_GMRES_CPR_AMG;
+#endif
   }
 
   std::string linear_solver_type_str;
@@ -223,6 +236,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
       break;
     }
 #endif //WITH_AIPS
+#ifdef OPENDARTS_GPU_HAS_AMGX
     case sim_params::GPU_GMRES_CPR_AMGX_ILU:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
@@ -327,6 +341,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 	  linear_solver_type_str = "GPU_AMGX";
       break;
     }
+#endif // OPENDARTS_GPU_HAS_AMGX
 #ifdef WITH_ADGPRS_NF
     case sim_params::GPU_GMRES_CPR_NF:
     {

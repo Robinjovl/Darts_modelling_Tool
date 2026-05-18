@@ -47,13 +47,30 @@ using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef WITH_GPU
+#ifdef OPENDARTS_LINEAR_SOLVERS
+// Open-source GPU solver wrappers. aips / adgprs_nf have no open-source
+// counterpart and are intentionally not included here.
+#include "linsolv_bos_cpr_gpu.hpp"
+#include "linsolv_cusparse_ilu.hpp"
+#include "linsolv_cusolv.hpp"
+#include "linsolv_bicgstab.hpp"
+#ifdef WITH_AMGX
+#include "linsolv_amgx.hpp"
+#endif
+#else
 #include "linsolv_bos_cpr_gpu.h"
 #include "linsolv_aips.h"
 #include "linsolv_amgx.h"
 #include "linsolv_adgprs_nf.h"
 #include "linsolv_cusparse_ilu.h"
 #include "linsolv_cusolver.h"
+#endif // OPENDARTS_LINEAR_SOLVERS
+// AMGX solver availability: bos_solvers always ships AMGX; with the
+// open-source solvers it is opt-in via the CMake option WITH_AMGX.
+#if !defined(OPENDARTS_LINEAR_SOLVERS) || defined(WITH_AMGX)
+#define OPENDARTS_GPU_HAS_AMGX
 #endif
+#endif // WITH_GPU
 
 #ifdef WITH_SAMG
 #include "linsolv_samg.h"
@@ -828,6 +845,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			break;
 		}
 #endif //WITH_AIPS
+#ifdef OPENDARTS_GPU_HAS_AMGX
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
 			if constexpr (N_VARS > 1)
@@ -853,6 +871,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			break;
 		}
+#endif // OPENDARTS_GPU_HAS_AMGX
 #ifdef WITH_ADGPRS_NF
 		case sim_params::GPU_GMRES_CPR_NF:
 		{

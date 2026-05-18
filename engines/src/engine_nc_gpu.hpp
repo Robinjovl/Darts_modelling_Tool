@@ -9,7 +9,11 @@
 #include "globals.h"
 #include "ms_well.h"
 #include "engine_base_gpu.h"
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "linsolv_iface.hpp"
+#else
 #include "linsolv_iface.h"
+#endif
 #include "evaluator_iface.h"
 
 template <uint8_t NC>

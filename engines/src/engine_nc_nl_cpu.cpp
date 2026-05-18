@@ -181,6 +181,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 			break;
 		}
 #endif //WITH_AIPS
+#ifdef OPENDARTS_GPU_HAS_AMGX
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
@@ -195,6 +196,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 			linear_solver->set_prec(cpr);
 			break;
 		}
+#endif // OPENDARTS_GPU_HAS_AMGX
 #ifdef WITH_ADGPRS_NF
 		case sim_params::GPU_GMRES_CPR_NF:
 		{
