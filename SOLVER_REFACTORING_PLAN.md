@@ -407,3 +407,38 @@ driven through the compile-build-fix loop:
   dispatch; PETSc/Pardiso become `LinearSolverSpec` subclasses.
 
 This is the recommended starting point for continuing the MR.
+
+### Item 6 — resolved design (decision, 2026-05-18)
+
+A structural conflict was found: the solver registry (`solvers/` tree) is
+compiled **only in the open-source build** — `add_subdirectory(solvers)` is
+gated by `if(NOT DEFINED BOS_SOLVERS_DIR)`. In the proprietary build the tree
+is skipped and `linear_solvers` is the imported external `.a`, so there is no
+registry there. Deleting the engine factory outright would break the
+proprietary build.
+
+**Resolved: `#ifdef`-gate the two paths** (refines decision 1).
+
+- Proprietary build (`!OPENDARTS_LINEAR_SOLVERS`): factory switch +
+  `linear_solver_t` enum **kept, untouched**. Because `WITH_GPU` implies
+  `BOS_SOLVERS_DIR` implies `!OPENDARTS_LINEAR_SOLVERS`, the GPU factory, the
+  `linear_type >= GPU_GMRES_CPR_AMG` discriminator, and `engine_base_gpu.h`
+  are all proprietary-only and need **no change**.
+- Open-source build (`OPENDARTS_LINEAR_SOLVERS` defined): `engine_base::init_base`
+  no longer runs the factory; the linear solver must be injected from Python
+  (built via the registry from a `LinearSolverSpec`). `linear_solver_t` stays
+  in `globals.h` (proprietary needs it) but is unused on the open-source path.
+
+So item 6 narrows to: `engine_base.h` (gate the open-source factory section to
+require an injected solver); `darts_model.py` (build the solver from
+`data_ts.linear_solver` and inject it; `default_linear_solver()` → MGR);
+collapse the Newton-loop `isinstance` dispatch; migrate models.
+
+**Remaining design call:** the registry's `create_linear_solver` currently
+returns the new `linear_solver` type, but `engine_base::set_linear_solver`
+takes `linsolv_iface`. Simplest fix — have the registry/`create_linear_solver`
+return the `linsolv_iface`-based solver for engine injection (the `linsolv_mgr`
+/ `linsolv_superlu` objects already are `linsolv_iface`); the new
+`linear_solver` interface + `linsolv_iface_adapter` then remain as the
+Python-facing / future-solver abstraction. To be settled at the start of the
+item-6 implementation.
