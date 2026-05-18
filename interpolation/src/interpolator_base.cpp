@@ -1,7 +1,5 @@
 #include <numeric>
 #include <algorithm>
-#include <string>
-#include <stdexcept>
 #include <assert.h>
 #include "interpolator_base.hpp"
 
@@ -53,15 +51,6 @@ int interpolator_base::init()
 
 int interpolator_base::evaluate(const std::vector<value_t> &state, std::vector<value_t> &values)
 {
-    if (state.size() < static_cast<size_t>(n_dims))
-    {
-        throw std::invalid_argument("Interpolator state buffer is too small for n_dims=" + std::to_string(n_dims));
-    }
-    if (values.size() < static_cast<size_t>(n_ops))
-    {
-        throw std::invalid_argument("Interpolator values buffer is too small for n_ops=" + std::to_string(n_ops));
-    }
-
     timer->start();
     // call implementation of a derived class
     this->interpolate(state, values);
@@ -75,39 +64,11 @@ int interpolator_base::evaluate_with_derivatives(const std::vector<double> &stat
                                                  std::vector<double> &values,
                                                  std::vector<double> &derivatives)
 {
-    size_t required_states_size = 0;
-    size_t required_values_size = 0;
-    size_t required_derivatives_size = 0;
-
+    // check consistency of input arrays
+    assert(n_dims * values.size() == derivatives.size());
     if (!states_idxs.empty())
     {
-        int max_state_idx = states_idxs[0];
-        for (const int state_idx : states_idxs)
-        {
-            if (state_idx < 0)
-            {
-                throw std::invalid_argument("Interpolator state index cannot be negative");
-            }
-            max_state_idx = std::max(max_state_idx, state_idx);
-        }
-
-        const size_t n_required_states = static_cast<size_t>(max_state_idx) + 1;
-        required_states_size = n_required_states * static_cast<size_t>(n_dims);
-        required_values_size = n_required_states * static_cast<size_t>(n_ops);
-        required_derivatives_size = required_values_size * static_cast<size_t>(n_dims);
-    }
-
-    if (states.size() < required_states_size)
-    {
-        throw std::invalid_argument("Interpolator states buffer is too small for n_dims=" + std::to_string(n_dims));
-    }
-    if (values.size() < required_values_size)
-    {
-        throw std::invalid_argument("Interpolator values buffer is too small for n_ops=" + std::to_string(n_ops));
-    }
-    if (derivatives.size() < required_derivatives_size)
-    {
-        throw std::invalid_argument("Interpolator derivatives buffer is too small for n_ops=" + std::to_string(n_ops));
+        assert(states.size() > static_cast<size_t>(*std::max_element(states_idxs.begin(), states_idxs.end()) * n_dims));
     }
 
     timer->start();

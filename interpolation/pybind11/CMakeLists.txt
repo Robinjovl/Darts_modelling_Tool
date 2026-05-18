@@ -20,7 +20,6 @@ set(INTERPOLATION_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part1.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part2.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part3.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_well_ctrl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_main_interpolation.cpp
@@ -55,7 +54,6 @@ if (CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part1.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part2.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates_part3.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_well_ctrl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
     PROPERTIES LANGUAGE CUDA)
