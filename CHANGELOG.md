@@ -32,6 +32,7 @@
   {+ Now:    init.solve_up_and_downwards() +}
   \
 - Extracted interpolators into a standalone `darts.interpolators` Python module / shared library, decoupled from `darts.engines` at link time (header-only coupling via `interpolation_config.h`). Template instantiations split across multiple translation units to enable parallel compilation and cut per-TU memory (full build down to ~6 min on multi-core; valgrind job pre-builds at `-j NT/2` to avoid OOM). Interpolator tests moved to `tests/interpolators/`. Breaking change: interpolator types are no longer exposed under `darts.engines` — import from `darts.interpolators` ([!301](https://gitlab.com/open-darts/open-darts/-/merge_requests/301))
+- Parallel operator update ([!297](https://gitlab.com/open-darts/open-darts/-/merge_requests/297)): adaptive interpolators rewritten as a three-phase OpenMP update (discover / materialize / interpolate) governed by `OMP_NUM_THREADS`; new `evaluate_batch` interface and `ParallelEvaluator` that evaluates missing supporting points across a multiprocessing pool. Enable per model with `init(parallel_evaluation=True, n_workers=...)`; the default `DartsModel.get_evaluator_factory` (`ModelEvaluatorFactory`) needs no per-model code and works under both `fork` and `spawn`. `Chem_benchmark_new` runs on the parallel path in CI. See `docs/for_developers/parallel_operators.md`.
 
 
 # 1.4.0 [17-02-2026]
