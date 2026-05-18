@@ -21,8 +21,12 @@ class ModelGeothermal(Model_CPG):
             self.physics = Geothermal(self.idata, self.timer)  # IAPWS
         else:
             self.physics = GeothermalPH(self.idata, self.timer)  # Flash
-            self.physics.determine_obl_bounds(state_min=[self.idata.obl.min_p, 250.],
-                                              state_max=[self.idata.obl.max_p, 575.])
+            self.physics.determine_obl_bounds(
+                min_p=self.idata.obl.min_p,
+                max_p=self.idata.obl.max_p,
+                min_t=250.,
+                max_t=575.,
+            )
 
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
@@ -143,18 +147,18 @@ class ModelGeothermal(Model_CPG):
         elif 'wrate' in case:
             for w in wells:
                 if self.well_is_inj(w):
-                    wdata.add_inj_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300)  # m3/day | bars | K
+                    wdata.add_inj_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300, phase_name='water')  # m3/day | bars | K
                 else: # prod
-                    wdata.add_prd_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=70) # m3/day | bars
+                    wdata.add_prd_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=70, phase_name='water') # m3/day | bars
         elif 'wperiodic' in case:
             wname = list(wdata.wells.keys())[0]  # single well
             y2d = 365.25
             for i in range(0, len(self.idata.sim.time_steps), 4):
                 # iterate [inj - stop - prod - stop]
-                wdata.add_inj_rate_control(time=(i+0)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300)
-                wdata.add_prd_rate_control(time=(i+1)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5)
-                wdata.add_prd_rate_control(time=(i+2)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5)
-                wdata.add_prd_rate_control(time=(i+3)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5)
+                wdata.add_inj_rate_control(time=(i+0)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300, phase_name='water')
+                wdata.add_prd_rate_control(time=(i+1)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5, phase_name='water')
+                wdata.add_prd_rate_control(time=(i+2)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5, phase_name='water')
+                wdata.add_prd_rate_control(time=(i+3)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5, phase_name='water')
         else:
             assert False, 'Unknown wctrl_type' +  case
 

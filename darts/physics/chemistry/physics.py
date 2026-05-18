@@ -4,7 +4,7 @@ from darts.physics.base.operators_base import (
 )
 from darts.physics.base.operators_base import (
     ThermalVarOperator,
-    WellControlOperators,
+    WellCtrlOperators,
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
@@ -83,7 +83,7 @@ class ElementBasedReactiveFlow(Compositional):
     def set_operators(self):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellControlOperators` for well control
+        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         for region in self.regions:
@@ -106,12 +106,13 @@ class ElementBasedReactiveFlow(Compositional):
                 dz=self.dz,
             )
 
-        self.well_ctrl_operators = WellControlOperators(
+        self.well_ctrl_operators = WellCtrlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
+
         self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,

@@ -1,6 +1,6 @@
 """
-Injection of gaseous CO₂ at a constant mass injection rate into a well containing water using a standalone well model
-to compare its results with those in DWell for an isothermal two-phase scenario.
+Injection of gaseous CO₂ at a constant mass injection rate into a vertical well containing water using a standalone
+well model to compare its results with those in DWell for an isothermal two-phase scenario.
 
 Lessons learned:
     1- The results of this scenario are very close to the results of the example

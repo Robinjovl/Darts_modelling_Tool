@@ -6,7 +6,7 @@ description: Debug and profile open-DARTS with Debug builds, Valgrind, VTune, an
 # Debug and Profile
 
 Use this skill for root-cause analysis and performance investigation.
-Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
+Use the session conda environment. If the prompt defines one, use it. Otherwise, create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 

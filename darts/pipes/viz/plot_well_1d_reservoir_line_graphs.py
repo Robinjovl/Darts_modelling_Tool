@@ -61,42 +61,43 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         "Number of report step labels must be equal to number of report step times!"
     )
 
-    assert prop_name in [
+    avail_props = [
         "pressure",
         "temperature",
-        "sL",
+        "sG",
         "rhoG",
         "rhoL",
         "miuG",
         "miuL",
     ]
+    n_mobile_phases = coupled_model.wells[well_name].n_mobile_phases
+    if n_mobile_phases == 2:
+        avail_props.append("sL")
+    elif n_mobile_phases == 3:
+        avail_props.extend(["sL_a", "sL_b"])
+    assert prop_name in avail_props, (
+        f"Entered prop_name '{prop_name}' is not in the list of available properties!"
+    )
+
     if prop_name == "pressure":
-        prop_name_in_well_output = "Pressure"
-        prop_name_in_reservoir_output = "pressure"
         xlabel = "Pressure [bar]"
     elif prop_name == "temperature":
-        prop_name_in_well_output = "Temperature"
-        prop_name_in_reservoir_output = "temperature"
         xlabel = "Temperature [\u00b0C]"
+    elif prop_name == "sG":
+        xlabel = "Gas volume fraction [-]"
     elif prop_name == "sL":
-        prop_name_in_well_output = "sL"
-        prop_name_in_reservoir_output = "sat_LCO2"
         xlabel = "Liquid volume fraction [-]"
+    elif prop_name == "sL_a":
+        xlabel = "L_a volume fraction [-]"
+    elif prop_name == "sL_b":
+        xlabel = "L_b volume fraction [-]"
     elif prop_name == "rhoG":
-        prop_name_in_well_output = "rhoG"
-        prop_name_in_reservoir_output = "rho_gas"
         xlabel = r"Gas density [kg/m$^3$]"
     elif prop_name == "rhoL":
-        prop_name_in_well_output = "rhoL"
-        prop_name_in_reservoir_output = "rho_LCO2"
         xlabel = r"Liquid density [kg/m$^3$]"
     elif prop_name == "miuG":
-        prop_name_in_well_output = "miuG"
-        prop_name_in_reservoir_output = "miu_gas"
         xlabel = "Gas viscosity [cP]"
     elif prop_name == "miuL":
-        prop_name_in_well_output = "miuL"
-        prop_name_in_reservoir_output = "miu_LCO2"
         xlabel = "Liquid viscosity [cP]"
 
     # Get well geometry info
@@ -146,7 +147,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
 
     # Load primary vars and phase props for the well
     well_props_file_path = os.path.join(
-        coupled_model.output.output_folder, f"dfm_well_props_{well_name}.pkl"
+        coupled_model.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
     well_data_frame = pd.read_pickle(well_props_file_path)
 
@@ -177,7 +178,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
 
         return reservoir_prop_matrix
 
-    reservoir_prop_matrix = to_matrix(prop_name_in_reservoir_output)
+    reservoir_prop_matrix = to_matrix(prop_name)
     if prop_name == "temperature":
         reservoir_prop_matrix -= 273.15
 
@@ -205,7 +206,7 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
     )
 
     for idx, report_index in enumerate(report_indices):
-        well_prop_profile = well_data_frame[prop_name_in_well_output][
+        well_prop_profile = well_data_frame[prop_name][
             report_index * num_segments : (report_index + 1) * num_segments
         ]
         if prop_name == "temperature":
@@ -336,16 +337,10 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
 
     assert prop_name in ["pressure", "temperature", "sL"]
     if prop_name == "pressure":
-        prop_name_in_well_output = "Pressure"
-        prop_name_in_reservoir_output = "pressure"
         xlabel = "Pressure [bar]"
     elif prop_name == "temperature":
-        prop_name_in_well_output = "Temperature"
-        prop_name_in_reservoir_output = "temperature"
         xlabel = "Temperature [\u00b0C]"
     elif prop_name == "sL":
-        prop_name_in_well_output = "sL"
-        prop_name_in_reservoir_output = "sat_LCO2"
         xlabel = "Liquid volume fraction [-]"
 
     # Get well geometry info
@@ -420,7 +415,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
 
         return reservoir_prop_matrix
 
-    reservoir_prop_matrix = to_matrix(prop_name_in_reservoir_output)
+    reservoir_prop_matrix = to_matrix(prop_name)
     if prop_name == "temperature":
         reservoir_prop_matrix -= 273.15
 
@@ -436,7 +431,7 @@ def plot_well_1d_reservoir_line_graphs_for_scenarios(
     )
 
     for idx, report_index in enumerate(report_indices):
-        well_prop_profile = well_data_frame[prop_name_in_well_output][
+        well_prop_profile = well_data_frame[prop_name][
             report_index * num_segments : (report_index + 1) * num_segments
         ]
         if prop_name == "temperature":
