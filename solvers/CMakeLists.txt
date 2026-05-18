@@ -61,8 +61,8 @@ add_library(opendarts::solvers ALIAS opendarts_solvers)
 # library is build-time-only, so ARCHIVE is intentionally omitted.
 install(TARGETS opendarts_solvers
   CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
-  LIBRARY DESTINATION ./
-  RUNTIME DESTINATION ./
+  LIBRARY DESTINATION ./solvers
+  RUNTIME DESTINATION ./solvers
 )
 
 message(STATUS "Shared solvers library configured (unified)")

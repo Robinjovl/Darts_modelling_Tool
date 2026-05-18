@@ -99,6 +99,9 @@ set(OD_LINEAR_SOLVERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_cpr.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_fs_cpr.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_gmres.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_registry.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_iface_adapter.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_factories.cpp
 )
 
 # Public headers
@@ -123,6 +126,12 @@ set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/MGRStrategy.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/CompositionalFlowStrategy.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/Types.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_config.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linear_solver.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_registry.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_iface_adapter.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_configs.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_factories.hpp
 )
 
 # Define the unified linear_solvers library (STATIC, will be linked into shared opendarts_solvers)
