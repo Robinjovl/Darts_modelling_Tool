@@ -6,7 +6,7 @@ description: Repository architecture and module map for open-DARTS. Use when pla
 # Project Overview
 
 Use this skill to orient quickly in the open-DARTS repository before implementing changes.
-When the planned work will lead to build, install, test, debug, docs, or lint commands, use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
+When the planned work leads to build, install, test, debug, docs, or lint commands, use the session conda environment. If the prompt defines one, use it. Otherwise, create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 

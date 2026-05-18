@@ -13,7 +13,7 @@ open-DARTS provides several mechanisms for debugging and profiling:
 
 ## Conda Environment Policy
 
-Use a prompt-defined conda environment when one is provided. Otherwise create
+Use a prompt-defined conda environment when one is provided. Otherwise, create
 and activate one session-level environment at the first build, install, test,
 debug, docs, or lint step, then reuse it across all skills for the rest of the
 session.
