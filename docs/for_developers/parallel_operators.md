@@ -134,8 +134,14 @@ functions are likewise module-level.
   interpolator — no integration work, only an `MT` build.
 * The **`ParallelEvaluator` layer** is opt-in per model via `parallel_evaluation=True`.
   Thanks to the default `ModelEvaluatorFactory` it requires no model-specific code,
-  so any model with picklable constructor arguments can enable it. It is currently
-  exercised by `models/chemistry/carbonated_water`.
+  so any model with picklable constructor arguments can enable it.
+  * `models/chemistry/carbonated_water` uses it through `main.py`
+    (`init(parallel_evaluation=True, n_workers=...)`).
+  * `models/Chem_benchmark_new` is a **CI/CD model converted to it**: the test
+    harness calls `Model(); init()` generically, so the model overrides `init()`
+    to set `parallel_evaluation=True` by default. This is the pattern for turning
+    any CI/CD model onto the parallel path — override `init()` and pick a modest
+    `n_workers`; nothing else is needed.
 
 ## 6. Caveats
 
