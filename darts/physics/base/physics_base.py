@@ -601,7 +601,7 @@ class PhysicsBase:
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
 
-        :returns: tuple (interpolator, effective_n_ops)
+        :returns: tuple (interpolator, n_ops)
         :rtype: tuple[operator_set_gradient_evaluator_iface, int]
         """
         # check input OBL props
@@ -623,7 +623,6 @@ class PhysicsBase:
         itor = None
         general = False
         cache_loaded = 0
-        signature_n_ops = n_ops
         # try to create itor with 32-bit index type first (kinda a bit faster)
         try:
             if algorithm == 'linear':
@@ -658,73 +657,13 @@ class PhysicsBase:
                         evaluator, self.n_axes_points, axes_min, axes_max
                     )
             except (ValueError, NameError) as err:
-                # Try to find a templatized interpolator with the same name pattern
-                # but with the closest possible higher n_ops available in darts.interpolators.
-                try:
-                    import importlib
-                    import re
-
-                    engines_module = importlib.import_module("darts.interpolators")
-                    base_prefix = itor_name.rsplit('_', 1)[0]
-                    pattern = rf"^{re.escape(base_prefix)}_(\d+)$"
-                    # Find candidates with higher n_ops
-                    candidates = []
-                    for attr_name in dir(engines_module):
-                        match = re.match(pattern, attr_name)
-                        if match:
-                            available_n_ops = int(match.group(1))
-                            if available_n_ops > n_ops:
-                                candidates.append((available_n_ops, attr_name))
-
-                    if candidates:
-                        # Sort candidates by n_ops in ascending order
-                        candidates.sort(key=lambda x: x[0])
-                        selected_n_ops, selected_name = candidates[0]
-                        selected_cls = getattr(engines_module, selected_name)
-                        if algorithm == 'multilinear':
-                            itor = selected_cls(
-                                evaluator, self.n_axes_points, axes_min, axes_max
-                            )
-                        elif algorithm == 'linear':
-                            itor = selected_cls(
-                                evaluator,
-                                self.n_axes_points,
-                                axes_min,
-                                axes_max,
-                                is_barycentric,
-                            )
-                        else:
-                            raise ValueError("Invalid algorithm: " + algorithm)
-                        signature_n_ops = selected_n_ops
-                        print(
-                            "Falling back to interpolator with higher n_ops:",
-                            selected_name,
-                            f"(n_ops={selected_n_ops})",
-                        )
-                    else:
-                        raise RuntimeError(
-                            "No higher n_ops templatized interpolator found"
-                        )
-                except Exception:
-                    # As a last resort, try the general implementation if available
-                    try:
-                        itor = eval("multilinear_adaptive_cpu_interpolator_general")(
-                            evaluator,
-                            self.n_axes_points,
-                            axes_min,
-                            axes_max,
-                            n_dims,
-                            n_ops,
-                        )
-                        general = True
-                    except Exception:
-                        raise ValueError(
-                            "Number of operators is incorrect, no templatized interpolator exists"
-                        ) from err
+                raise ValueError(
+                    "Number of operators is incorrect, no templatized interpolator exists"
+                ) from err
 
         if self.cache:
             # create unique signature for interpolator
-            itor_cache_signature = f"{type(evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
+            itor_cache_signature = f"{type(evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{n_ops:d}_{region}"
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
@@ -769,7 +708,7 @@ class PhysicsBase:
             self._atomic_pickle_dump(itor.point_data, itor_cache_filename)
 
         self.create_itor_timers(itor, timer_name)
-        return itor, signature_n_ops
+        return itor, n_ops
 
     def create_itor_timers(
         self, itor: operator_set_gradient_evaluator_iface, timer_name: str
