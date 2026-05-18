@@ -76,6 +76,18 @@ class DartsModel:
     :type params: :class:`darts.engines.sim_params`
     """
 
+    def __new__(cls, *args, **kwargs):
+        """
+        Capture the constructor arguments so the model can be reconstructed in a
+        worker process by :class:`ModelEvaluatorFactory` (the default mechanism
+        behind :meth:`get_evaluator_factory`). The arguments are stored verbatim;
+        they must be picklable for ``parallel_evaluation=True`` to work.
+        """
+        instance = super().__new__(cls)
+        instance._init_args = args
+        instance._init_kwargs = kwargs
+        return instance
+
     def __init__(self):
         """
         Initialize DartsModel class.
@@ -120,6 +132,36 @@ class DartsModel:
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
 
+    def get_evaluator_factory(self, region):
+        """
+        Return a picklable factory callable ``() -> operator_set_evaluator_iface``
+        that constructs a fresh, independent evaluator for the given region, used
+        by :class:`ParallelEvaluator` when ``parallel_evaluation=True``.
+
+        The default implementation returns a :class:`ModelEvaluatorFactory`, which
+        reconstructs this model from its constructor arguments (captured in
+        :meth:`__new__`) and returns ``physics.reservoir_operators[region]``. This
+        reuses the model's own ``set_physics``/``PropertyContainer`` build, so no
+        per-model duplication of the property stack is required and it works for
+        any model whose constructor arguments are picklable.
+
+        Override this method only if model reconstruction is too expensive to
+        repeat per worker, or if the constructor arguments are not picklable.
+
+        :param region: Region index
+        :type region: int
+        :return: Picklable factory callable that creates a fresh evaluator
+        :rtype: callable
+        """
+        from darts.physics.base.parallel_evaluator import ModelEvaluatorFactory
+
+        return ModelEvaluatorFactory(
+            type(self),
+            getattr(self, '_init_args', ()),
+            getattr(self, '_init_kwargs', {}),
+            region,
+        )
+
     def init(
         self,
         discr_type: str = "tpfa",
@@ -130,6 +172,8 @@ class DartsModel:
         itor_type: str = "multilinear",
         is_barycentric: bool = False,
         n_solid: int = None,
+        parallel_evaluation: bool = False,
+        n_workers: int = None,
     ):
         """
         Function to initialize the model, which includes:
@@ -156,6 +200,11 @@ class DartsModel:
         :type is_barycentric: bool
         :param n_solid: Number of solid minerals for element-based reactive flow
         :type n_solid: int
+        :param parallel_evaluation: Enable parallel batch evaluation of supporting points via multiprocessing.
+            Requires the model to implement ``get_evaluator_factory(region)`` method.
+        :type parallel_evaluation: bool
+        :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
+        :type n_workers: int
         """
         # Initialize reservoir and Mesh object
         assert self.reservoir is not None, "Reservoir object has not been defined"
@@ -175,6 +224,11 @@ class DartsModel:
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
         self.platform = platform
+        # Build evaluator_factory_hook from model's get_evaluator_factory if available
+        evaluator_factory_hook = None
+        if parallel_evaluation:
+            evaluator_factory_hook = self.get_evaluator_factory
+
         self.physics.init_physics(
             discr_type=discr_type,
             platform=platform,
@@ -183,6 +237,9 @@ class DartsModel:
             itor_type=itor_type,
             is_barycentric=is_barycentric,
             n_solid=n_solid,
+            parallel_evaluation=parallel_evaluation,
+            n_workers=n_workers,
+            evaluator_factory_hook=evaluator_factory_hook,
         )
         if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu

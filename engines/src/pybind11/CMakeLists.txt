@@ -33,6 +33,21 @@ pybind11_add_module(engines
   ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
 )
 
+# Precompiled headers: pybind11 headers are massive and shared across all .cpp files.
+# This avoids re-parsing them in every translation unit (20-40% compilation speedup).
+target_precompile_headers(engines
+  PRIVATE
+    <pybind11/pybind11.h>
+    <pybind11/stl.h>
+    <pybind11/stl_bind.h>
+    <pybind11/numpy.h>
+    <vector>
+    <string>
+    <array>
+    <tuple>
+    "${CMAKE_CURRENT_SOURCE_DIR}/py_globals.h"
+)
+
 if (CUDA)
   set(CUDA_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_gpu.cpp

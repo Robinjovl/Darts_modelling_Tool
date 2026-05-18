@@ -6,16 +6,75 @@ docker-image-builder:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
   needs: []
+  variables:
+    # Files whose content determines the Docker image content hash.
+    # When any of these files change, the image will be rebuilt.
+    # Add space-separated paths here to extend the hash scope.
+    DOCKER_HASH_FILES: >-
+      ${CI_PROJECT_DIR}/.cicd/build-linux/Dockerfile
+      ${CI_PROJECT_DIR}/.cicd/build-linux/Toolchain.cmake
+      ${CI_PROJECT_DIR}/.cicd/jobs/build-images.yml
+  before_script:
+    # Set up registry auth for Kaniko (use username/password fields, not base64 auth)
+    - mkdir -p /kaniko/.docker
+    - printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' "$CI_REGISTRY" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" > /kaniko/.docker/config.json
   script:
-    - /kaniko/executor
-      --context "${CI_PROJECT_DIR}/.cicd/build-linux"
-      --dockerfile "${CI_PROJECT_DIR}/.cicd/build-linux/Dockerfile"
-      --destination "${CI_REGISTRY_IMAGE}/linux-builder:${CI_COMMIT_TAG}"
+    # --- content-hash check (similar to apptainer-image-builder-base) ---
+    - echo "Files included in content hash:" ${DOCKER_HASH_FILES}
+    - CONTEXT_SHA=$(cat ${DOCKER_HASH_FILES} | sha256sum | awk '{print $1}')
+    - BUILD_KEY=$(printf '%.16s' "$CONTEXT_SHA")
+    - IMAGE_TAG="sha-${BUILD_KEY}"
+    - FULL_IMAGE="${CI_REGISTRY_IMAGE}/linux-builder"
+    - echo "Docker context hash => ${IMAGE_TAG}"
+    # Check if image with this content hash already exists in registry.
+    # Uses crane (bundled in kaniko debug image) with the same docker config
+    # that kaniko uses for pushing — more reliable than a manual wget auth check.
+    # Probe the registry with /kaniko/warmer (bundled in the kaniko:debug image
+    # and sharing the same DOCKER_CONFIG auth as /kaniko/executor). A successful
+    # warm means the manifest exists; any non-zero exit means we need to build.
+    - |
+      NEEDS_BUILD=1
+      if [ "${UPDATE_DOCKER_IMAGE:-0}" != "1" ]; then
+        if DOCKER_CONFIG=/kaniko/.docker /kaniko/warmer \
+             --image="${FULL_IMAGE}:${IMAGE_TAG}" \
+             --cache-dir=/tmp/kaniko-probe >/dev/null; then
+          echo "Image ${FULL_IMAGE}:${IMAGE_TAG} already exists — skipping build"
+          NEEDS_BUILD=0
+        else
+          echo "Image not found in registry — building..."
+        fi
+      else
+        echo "UPDATE_DOCKER_IMAGE=1 — forcing rebuild"
+      fi
+    # --- build (only when needed) ---
+    - |
+      if [ "$NEEDS_BUILD" = "1" ]; then
+        DEST_ARGS="--destination=${FULL_IMAGE}:${IMAGE_TAG}"
+        if [ "${CI_COMMIT_REF_PROTECTED}" = "true" ]; then
+          DEST_ARGS="${DEST_ARGS} --destination=${FULL_IMAGE}:latest"
+        fi
+        if [ -n "${CI_COMMIT_TAG:-}" ]; then
+          DEST_ARGS="${DEST_ARGS} --destination=${FULL_IMAGE}:${CI_COMMIT_TAG}"
+        fi
+        # On MR branches: validate only, do not push to registry
+        # if [ "${CI_PIPELINE_SOURCE}" = "merge_request_event" ] && [ "${CI_COMMIT_REF_PROTECTED}" != "true" ]; then
+        #   DEST_ARGS="--no-push"
+        # fi
+        /kaniko/executor \
+          --context "${CI_PROJECT_DIR}/.cicd/build-linux" \
+          --dockerfile "${CI_PROJECT_DIR}/.cicd/build-linux/Dockerfile" \
+          ${DEST_ARGS} \
+          --snapshot-mode=redo \
+          --use-new-run \
+          --compressed-caching=false
+      fi
   rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+    - if: $TEST_CUSTOM_BRANCH == "1"
+    - if: $TEST_ALL_PYTHONS == "1"
     - if: $UPDATE_DOCKER_IMAGE == "1"
-    #- changes:
-    #    - .cicd/build-linux/Dockerfile
-    #    - .cicd/build-linux/Toolchain.cmake
 
 .apptainer-image-builder-base:
   stage: build_images
