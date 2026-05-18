@@ -2189,10 +2189,10 @@ class Output:
         reservoir_ops: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Return phase density and capillary-pressure operators for well-rate upwinding.
+        Return phase density and capillary-pressure operators for phase rate calculation.
 
-        Super/chemistry-style operators expose explicit gravity and capillary-pressure
-        operator offsets. The geothermal engine stores molar density in its density
+        Super engine operators expose explicit gravity and capillary-pressure
+        operators. The geothermal engine stores molar density in its density
         operator slice and has no capillary-pressure operator, so convert molar density
         to mass density to match the phase-potential term used by the engine.
         """
@@ -2216,14 +2216,14 @@ class Output:
                 dens_start = pc.nc + pc.nc * pc.nph + pc.nph + 2
 
             molar_density = reservoir_ops[:, dens_start : dens_start + pc.nph]
-            phase_mw = np.asarray(pc.Mw)[0]
+            phase_mw = np.asarray(pc.Mw)[0]  # Geothermal engine supports pure water
             grav = molar_density * phase_mw
             capillary = np.zeros_like(grav)
             return grav, capillary
 
         raise AttributeError(
             "Reservoir operators must expose GRAV_OP/PC_OP or a supported "
-            "engine-specific density layout for well-rate upwinding."
+            "engine-specific density layout for rate calculation."
         )
 
     def calc_rates_at_conns(
