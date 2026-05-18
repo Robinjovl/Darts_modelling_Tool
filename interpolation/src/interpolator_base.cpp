@@ -51,10 +51,10 @@ int interpolator_base::init()
 
 int interpolator_base::evaluate(const std::vector<value_t> &state, std::vector<value_t> &values)
 {
-    timer->start();
+    if (timer) timer->start();
     // call implementation of a derived class
     this->interpolate(state, values);
-    timer->stop();
+    if (timer) timer->stop();
     n_interpolations += n_ops;
     return 0;
 }
@@ -71,10 +71,10 @@ int interpolator_base::evaluate_with_derivatives(const std::vector<double> &stat
         assert(states.size() > static_cast<size_t>(*std::max_element(states_idxs.begin(), states_idxs.end()) * n_dims));
     }
 
-    timer->start();
+    if (timer) timer->start();
     // call implementation of a derived class
     this->interpolate_with_derivatives(states, states_idxs, values, derivatives);
-    timer->stop();
+    if (timer) timer->stop();
     n_interpolations += states_idxs.size() * n_ops;
     return 0;
 }
