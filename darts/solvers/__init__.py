@@ -17,6 +17,11 @@ Typical use::
 """
 
 from . import solvers  # noqa: F401
+from .adaptive import (  # noqa: F401
+    AdaptiveSolverSpec,
+    SolverSwitchContext,
+    fallback_on_failure,
+)
 from .enums import (  # noqa: F401
     CoarseGrid,
     FRelaxation,

@@ -29,7 +29,12 @@ from darts.print_build_info import print_build_info as package_pbi
 # in proprietary (-a) builds, where the engine's built-in factory selects the
 # solver from params.linear_type; the import is therefore guarded.
 try:
-    from darts.solvers import LinearSolverSpec, default_linear_solver
+    from darts.solvers import (
+        AdaptiveSolverSpec,
+        LinearSolverSpec,
+        SolverSwitchContext,
+        default_linear_solver,
+    )
 
     _HAVE_SOLVER_REGISTRY = True
 except ImportError:  # proprietary build without the open-source solvers
@@ -256,9 +261,49 @@ class DartsModel:
             spec = default_linear_solver("cpu")
         if not isinstance(spec, LinearSolverSpec):
             return
+        # Reset adaptive-switching state whenever the solver is (re)built.
+        self._adaptive_solver_index = 0
+        self._adaptive_failures = 0
         # Keep a reference so the solver object outlives the engine that uses it.
         self._linear_solver = spec.build(self.physics.n_vars)
         self.physics.engine.set_linear_solver(self._linear_solver)
+
+    def _maybe_switch_linear_solver(self, timestep_converged: bool):
+        """Adaptive linear-solver switching, evaluated after each timestep.
+
+        When ``data_ts.linear_solver`` is an :class:`AdaptiveSolverSpec`, its
+        policy is evaluated; if the policy selects a different candidate the
+        solver is rebuilt and re-injected into the engine. A no-op for plain
+        specs, in proprietary builds, and on GPU.
+        """
+        if not _HAVE_SOLVER_REGISTRY:
+            return
+        spec = getattr(self.data_ts, "linear_solver", None)
+        if not isinstance(spec, AdaptiveSolverSpec):
+            return
+        engine = self.physics.engine
+        current_index = getattr(self, "_adaptive_solver_index", 0)
+        if not timestep_converged:
+            self._adaptive_failures = getattr(self, "_adaptive_failures", 0) + 1
+        else:
+            self._adaptive_failures = 0
+        context = SolverSwitchContext(
+            current_index=current_index,
+            timestep_converged=timestep_converged,
+            linear_solver_error=int(getattr(engine, "linear_solver_error_last_dt", 0)),
+            linear_iterations=int(getattr(engine, "n_linear_last_dt", 0)),
+            newton_iterations=int(getattr(engine, "n_newton_last_dt", 0)),
+            consecutive_failures=self._adaptive_failures,
+        )
+        new_index = spec.choose(context)
+        if new_index != current_index:
+            self._adaptive_solver_index = new_index
+            self._linear_solver = spec.candidates[new_index].build(self.physics.n_vars)
+            engine.set_linear_solver(self._linear_solver)
+            print(
+                f"[adaptive solver] switched to candidate {new_index}: "
+                f"{type(spec.candidates[new_index]).__name__}"
+            )
 
     def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
         """
@@ -662,6 +707,7 @@ class DartsModel:
             # need to copy since Xn will be updated Xn = X
             xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
             converged = self.run_timestep(dt, t, verbose)
+            self._maybe_switch_linear_solver(converged)
 
             if converged:
                 t += dt
