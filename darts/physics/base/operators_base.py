@@ -191,7 +191,7 @@ class WellCtrlOperators(OperatorsBase):
         )
         self.n_ops = self.n_state_ctrl_ops + 2 * self.n_rate_ctrl_types * self.nph
 
-    def calc_rate_ctrl_ops(self, values, offset, rate_factor):
+    def _fill_rate_ctrl_ops(self, values, offset, rate_factor):
         # Molar rate ctrl operator
         idx = offset
         values[idx + self.property.ph] = (
