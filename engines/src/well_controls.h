@@ -69,8 +69,14 @@ public:
         // NP EPM MOLAR_RATE, NP EPM MASS_RATE, NP EPM VOLUMETRIC_RATE, NP EPM ADVECTIVE_HEAT_RATE ctrl operators,
         // P, T, then NP DFM MOLAR_RATE, NP DFM MASS_RATE, NP DFM VOLUMETRIC_RATE, NP DFM ADVECTIVE_HEAT_RATE ctrl operators.
         n_vars = n_comps + thermal;
-        n_well_ctrl_ops = well_control_iface::n_well_ctrl_models * WellControlType::NUMBER_OF_RATE_TYPES * n_phases
+        // The logical well ctrl layout may be padded by a fallback interpolator with a larger compiled N_OPS.
+        const index_t n_logical_well_ctrl_ops =
+            well_control_iface::n_well_ctrl_models * WellControlType::NUMBER_OF_RATE_TYPES * n_phases
             + well_control_iface::n_state_ctrls;
+        const index_t n_itor_well_ctrl_ops = well_ctrl_etor_ ? well_ctrl_etor_->get_n_ops() : 0;
+        n_well_ctrl_ops = n_itor_well_ctrl_ops > n_logical_well_ctrl_ops
+            ? n_itor_well_ctrl_ops
+            : n_logical_well_ctrl_ops;
         well_ctrl_ops.resize(n_well_ctrl_ops);
         well_ctrl_ops_derivs.resize(n_well_ctrl_ops * n_vars);
     }

@@ -317,7 +317,7 @@ class PhysicsBase:
             is_barycentric=is_barycentric,
         )
 
-        self.well_ctrl_itor, _ = self.create_interpolator(
+        self.well_ctrl_itor, self.n_well_ctrl_itor_ops = self.create_interpolator(
             self.well_ctrl_operators,
             n_ops=self.well_ctrl_operators.n_ops,
             axes_min=self.axes_min,

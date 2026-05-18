@@ -142,6 +142,8 @@ public:
      */
    virtual uint64_t get_n_points_total() const { return 0; };
 
+   virtual int get_n_ops() const { return 0; };
+
    /**
      * @brief Compute operators values and their gradients for every specified state
      *

@@ -2289,7 +2289,10 @@ class Output:
         time_idx = np.arange(n_ts)[:, None]
 
         batch_size = n_ts * n_conns
-        n_well_ctrl_ops = physics.well_ctrl_operators.n_ops
+        # Use the actual interpolator size because fallback interpolators can pad the logical well ctrl operators.
+        n_well_ctrl_ops = getattr(
+            physics, "n_well_ctrl_itor_ops", physics.well_ctrl_operators.n_ops
+        )
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
         n_vars = physics.n_vars
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
