@@ -76,6 +76,18 @@ class DartsModel:
     :type params: :class:`darts.engines.sim_params`
     """
 
+    def __new__(cls, *args, **kwargs):
+        """
+        Capture the constructor arguments so the model can be reconstructed in a
+        worker process by :class:`ModelEvaluatorFactory` (the default mechanism
+        behind :meth:`get_evaluator_factory`). The arguments are stored verbatim;
+        they must be picklable for ``parallel_evaluation=True`` to work.
+        """
+        instance = super().__new__(cls)
+        instance._init_args = args
+        instance._init_kwargs = kwargs
+        return instance
+
     def __init__(self):
         """
         Initialize DartsModel class.
@@ -123,23 +135,31 @@ class DartsModel:
     def get_evaluator_factory(self, region):
         """
         Return a picklable factory callable ``() -> operator_set_evaluator_iface``
-        that constructs a fresh, independent evaluator for the given region.
-        Each call must return a new instance with its own PropertyContainer,
-        flash solver, and other stateful objects.
+        that constructs a fresh, independent evaluator for the given region, used
+        by :class:`ParallelEvaluator` when ``parallel_evaluation=True``.
 
-        Override this method in your Model subclass to enable ``parallel_evaluation=True``.
+        The default implementation returns a :class:`ModelEvaluatorFactory`, which
+        reconstructs this model from its constructor arguments (captured in
+        :meth:`__new__`) and returns ``physics.reservoir_operators[region]``. This
+        reuses the model's own ``set_physics``/``PropertyContainer`` build, so no
+        per-model duplication of the property stack is required and it works for
+        any model whose constructor arguments are picklable.
+
+        Override this method only if model reconstruction is too expensive to
+        repeat per worker, or if the constructor arguments are not picklable.
 
         :param region: Region index
         :type region: int
-        :return: Factory callable that creates a fresh evaluator
+        :return: Picklable factory callable that creates a fresh evaluator
         :rtype: callable
-        :raises NotImplementedError: If not overridden in a subclass
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not implement get_evaluator_factory(). "
-            "Override this method in your Model subclass to enable parallel_evaluation. "
-            "The factory must return a fresh operator_set_evaluator_iface instance "
-            "with independent PropertyContainer and flash solver per call."
+        from darts.physics.base.parallel_evaluator import ModelEvaluatorFactory
+
+        return ModelEvaluatorFactory(
+            type(self),
+            getattr(self, '_init_args', ()),
+            getattr(self, '_init_kwargs', {}),
+            region,
         )
 
     def init(

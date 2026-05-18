@@ -261,10 +261,10 @@ class Model(CICDModel):
             self.n_points = list(self.n_obl_mult * np.array([101, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.02, 0.37]
+                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 1 - self.obl_min, 1 - self.obl_min, 0.01, 0.01, 0.02, 0.37]
             else:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.25]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.1, 0.37]
+                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 1 - self.obl_min, 1 - self.obl_min, 0.01, 0.01, 0.1, 0.37]
 
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],    # Solid_CaCO3
@@ -285,11 +285,6 @@ class Model(CICDModel):
                           'Solid_MgCO3': {'density': 2958., 'compressibility': 1.e-6}}
 
         self.nc = len(self.elements)
-
-        # Stash construction parameters for get_evaluator_factory()
-        self.Mw = Mw
-        self.stoich_matrix = stoich_matrix
-        self.rock_props = rock_props
 
         # Create property containers:
         property_container = PropertyContainer(phases=self.phases, components_name=self.elements, Mw=Mw,
@@ -362,81 +357,11 @@ class Model(CICDModel):
         self.inj_stream = convert_composition(self.inj_stream_components, self.E)
         self.inj_stream = correct_composition(self.inj_stream, self.min_z)
 
-    def get_evaluator_factory(self, region):
-        """Return a picklable factory that constructs a fresh ReservoirOperators per worker."""
-        from darts.physics.chemistry.operator_evaluator import ReservoirOperators
-
-        # Capture construction parameters (all picklable plain data)
-        phases = dict(self.phases)
-        elements = list(self.elements)
-        Mw = dict(self.Mw)
-        stoich_matrix = self.stoich_matrix.copy()
-        fc_mask = self.fc_mask.copy()
-        obl_min = self.obl_min
-        temperature = self.temperature
-        flash_type = self.flash
-        database = self.database
-        n_solid = self.n_solid
-        nc = self.nc
-        kinetic_mechanisms = list(self.kinetic_mechanisms)
-        rock_props = dict(self.rock_props)
-        permporo = self.permporo
-        dz = self.physics.dz
-
-        def factory():
-            from darts.physics.chemistry.property_container import PropertyContainer
-            from darts.physics.properties.density import DensityBasic
-            from darts.physics.properties.basic import ConstFunc
-            from darts.physics.properties.kinetics import KineticRate, LinearReactionSurfaceArea
-            from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
-            from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
-
-            pc = PropertyContainer(
-                phases=phases, components_name=elements, Mw=Mw,
-                stoich_matrix=stoich_matrix, eps_z=obl_min,
-                temperature=temperature, fc_mask=fc_mask,
-            )
-            pc.permporo_mult_ev = permporo
-            pc.diffusion_ev = {
-                ph: ConstFunc(np.concatenate([
-                    np.zeros(n_solid), np.ones(nc - n_solid)
-                ]) * 5.2e-10 * 86400)
-                for ph in phases
-            }
-            pc.rel_perm_ev = {ph: CustomRelPerm(2) for ph in phases}
-            pc.viscosity_ev = {'gas': GasViscosity(), 'liq': LiquidViscosity()}
-
-            if flash_type == 'phreeqc':
-                db_filename = f"{database}.dat"
-                pc.flash_ev = PhreeqcFlash(
-                    min_z=pc.eps_z, minerals=pc.minerals,
-                    components=pc.components_name[pc.fc_mask],
-                    temperature=pc.temperature, database_filename=db_filename,
-                )
-            elif flash_type == 'reaktoro':
-                db_filename = 'supcrtbl' if database == 'supcrtbl' else f"{database}.dat"
-                pc.flash_ev = ReaktoroFlash(
-                    min_z=pc.eps_z, minerals=pc.minerals,
-                    components=pc.components_name[pc.fc_mask],
-                    temperature=pc.temperature, database_filename=db_filename,
-                )
-
-            surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)
-            pc.kinetic_rate_ev = {
-                m: KineticRate(
-                    min_z=obl_min, mineral_name=m.split('_', 1)[1],
-                    mechanisms=kinetic_mechanisms, surface_area_ev=surface_area_ev,
-                )
-                for m in pc.minerals
-            }
-            for mn, props in rock_props.items():
-                pc.rock_compr_ev[mn] = ConstFunc(props['compressibility'])
-                pc.rock_density_ev[mn] = DensityBasic(
-                    compr=props['compressibility'], dens0=props['density'], p0=1.)
-
-            return ReservoirOperators(pc, thermal=False, extrapolation_flag=False, dz=dz)
-
-        return factory
+    # NOTE: get_evaluator_factory() is intentionally NOT overridden here.
+    # The DartsModel default (ModelEvaluatorFactory) reconstructs this model from
+    # its constructor arguments and reuses set_physics()/PropertyContainer, so the
+    # parallel evaluator needs no model-specific factory. See
+    # docs/for_developers/parallel_operators.md.
 
     def set_reservoir(self, domain, nx, mesh_filename, poro_filename):
         self.domain = domain
@@ -472,9 +397,9 @@ class Model(CICDModel):
                 self.solid_sat[:, 0] = (1 - true_initial_mean_poro) * 0.45
                 self.solid_sat[:, 1] = (1 - true_initial_mean_poro) * 0.55
             elif set(self.minerals) == {'calcite', 'dolomite', 'magnesite'}:
-                self.solid_sat[:, 0] = (1 - true_initial_mean_poro) * 0.35
-                self.solid_sat[:, 1] = (1 - true_initial_mean_poro) * 0.45
-                self.solid_sat[:, 2] = (1 - true_initial_mean_poro) * 0.2
+                self.solid_sat[:, 0] = (1 - true_initial_mean_poro) * 0.4
+                self.solid_sat[:, 1] = (1 - true_initial_mean_poro) * 0.2
+                self.solid_sat[:, 2] = (1 - true_initial_mean_poro) * 0.4
             self.inj_cells = np.array([0])
 
             self.volume = np.prod(self.domain_sizes)
