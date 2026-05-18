@@ -25,6 +25,14 @@
 #include "data_types.hpp"
 #include "csr_matrix_base.hpp"
 
+#ifdef WITH_GPU
+// GPU device storage and cuSPARSE-based linear algebra. Only pulled in for
+// CUDA builds; CPU builds never see the CUDA headers. See the WITH_GPU block
+// at the bottom of csr_matrix for the device API.
+#include <cuda_runtime_api.h>
+#include <cusparse.h>
+#endif // WITH_GPU
+
 namespace opendarts
 {
   namespace linear_solvers
@@ -405,6 +413,78 @@ namespace opendarts
 
       template <uint8_t M_BLOCK_SIZE>
       int to_nb_1(const opendarts::linear_solvers::csr_matrix<M_BLOCK_SIZE> *csr_matrix_in); // TODO: do we need this function or as_nb_1 is enough?
+
+      // ----------------------------------------------------------------------
+      // GPU device layer
+      // ----------------------------------------------------------------------
+      // Mirrors the host block-CSR storage on a CUDA device and provides
+      // cuSPARSE-backed block sparse matrix-vector products. Ported from the
+      // proprietary darts-linear-solvers csr_matrix; the open-source GPU
+      // solvers (AMGX, cuSPARSE ILU, BiCGStab, ...) build on this layer.
+      //
+      // 1 once the device mode has been enabled via init_device(); 0 otherwise.
+      // Declared unconditionally so non-GPU callers can cheaply test it.
+      int gpu_mode = 0;
+
+#ifdef WITH_GPU
+      // Device copies of the block-CSR structure and values.
+      opendarts::config::mat_float *values_d = nullptr;   // nonzero block values on device
+      opendarts::config::index_t *rows_ptr_d = nullptr;   // block row pointers on device
+      opendarts::config::index_t *cols_ind_d = nullptr;   // block column indices on device
+      opendarts::config::index_t *diag_ind_d = nullptr;   // diagonal block indices on device
+
+      // Scratch CSR copy used by convert_to_ELL (block-CSR expanded to scalar CSR).
+      opendarts::config::index_t *csrRowPtrC = nullptr;
+      opendarts::config::index_t *csrColIndC = nullptr;
+      opendarts::config::mat_float *csrValC = nullptr;
+
+      // Device work vectors (input v_d, result r_d) and a host check buffer.
+      opendarts::config::mat_float *v_d = nullptr;
+      opendarts::config::mat_float *r_d = nullptr;
+      opendarts::config::mat_float *r_check = nullptr;
+
+      cusparseMatDescr_t cus_descr = nullptr;
+      cusparseHandle_t cus_handle = nullptr;
+
+      /** Allocates the device buffers and initialises the cuSPARSE handle.
+          @param n_rows_input - number of block rows.
+          @param nnz - number of nonzero blocks.
+          @return 0 on success, nonzero on failure. */
+      int init_device(int n_rows_input, int nnz);
+
+      /** Copies the block-CSR structure (rows_ptr, cols_ind, diag_ind) host->device. */
+      int copy_struct_to_device() override;
+
+      /** Copies the block values host->device. */
+      int copy_values_to_device() override;
+
+      /** Copies an arbitrary host vector into a device buffer (n_rows * N_BLOCK_SIZE entries). */
+      int copy_vector_to_device(const opendarts::config::mat_float *vector, opendarts::config::mat_float *vector_d);
+
+      /** Copies a device buffer back to host (n_rows * N_BLOCK_SIZE entries). */
+      int copy_vector_to_host(opendarts::config::mat_float *vector, opendarts::config::mat_float *vector_d);
+
+      /** Expands the device block-CSR matrix into a scalar CSR copy (csr*C buffers). */
+      int convert_to_ELL();
+
+      /** r_d += A * v_d (cuSPARSE block SpMV). */
+      int matrix_vector_product_d(const double *v_d, double *r_d) override;
+
+      /** r_d  = A * v_d (cuSPARSE block SpMV, result overwritten). */
+      int matrix_vector_product_d0(const double *v_d, double *r_d) override;
+
+      /** Scalar-CSR SpMV; HYB path retired in CUDA 11+, kept for API parity. */
+      int matrix_vector_product_d_ell(const double *v_d, double *r_d) override;
+
+      /** r_d = alpha * A * v_d + beta * r_d (non-virtual, concrete-type helper). */
+      int calc_lin_comb_d(double alpha, double *v_d, double beta, double *r_d);
+
+      /** r = alpha * A * u + beta * v, all operands device pointers. */
+      int calc_lin_comb_d(const double alpha, const double beta, double *u, double *v, double *r) override;
+
+      /** Releases all device buffers and the cuSPARSE handle. */
+      int free_device();
+#endif // WITH_GPU
     };
   } // namespace linear_solvers
 } // namespace opendarts
