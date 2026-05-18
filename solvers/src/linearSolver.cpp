@@ -143,7 +143,11 @@ public:
               const std::vector<real_type> & row_scaling,
               const std::vector<real_type> & col_scaling,
               bool apply_scaling,
-              real_type pivot_shift )
+              real_type pivot_shift,
+              LocalFallbackStrategy fallback_strategy,
+              real_type fallback_diagonal_tolerance,
+              real_type fallback_shift_max,
+              real_type fallback_shift_growth )
   {
     clear();
     if( type == LocalPreconditionerType::none )
@@ -161,6 +165,10 @@ public:
     m_blockSize = matrix.block_size;
     m_blockSizeSquared = m_blockSize * m_blockSize;
     m_pivotShift = std::max<real_type>( pivot_shift, 0.0 );
+    m_fallbackStrategy = fallback_strategy;
+    m_fallbackDiagonalTolerance = std::max<real_type>( fallback_diagonal_tolerance, 0.0 );
+    m_fallbackShiftMax = std::max<real_type>( fallback_shift_max, 0.0 );
+    m_fallbackShiftGrowth = std::max<real_type>( fallback_shift_growth, 1.0 );
     m_rowPtr = matrix.row_ptr;
     m_colInd = matrix.col_ind;
     m_diagInd.assign( m_numRows, -1 );
@@ -249,7 +257,13 @@ public:
     m_blockSize = 0;
     m_blockSizeSquared = 0;
     m_pivotShift = 0.0;
+    m_fallbackStrategy = LocalFallbackStrategy::identity;
+    m_fallbackDiagonalTolerance = 1.0e-4;
+    m_fallbackShiftMax = 1.0e-4;
+    m_fallbackShiftGrowth = 100.0;
     m_failedPivots = 0;
+    m_shiftedDenseFallbackPivots = 0;
+    m_diagonalFallbackPivots = 0;
     m_ready = false;
     m_rowPtr.clear();
     m_colInd.clear();
@@ -270,6 +284,16 @@ public:
   int_t failedPivots() const
   {
     return m_failedPivots;
+  }
+
+  int_t shiftedDenseFallbackPivots() const
+  {
+    return m_shiftedDenseFallbackPivots;
+  }
+
+  int_t diagonalFallbackPivots() const
+  {
+    return m_diagonalFallbackPivots;
   }
 
   const char * name() const
@@ -440,27 +464,83 @@ private:
     const int_t diag = m_diagInd[row];
     const real_type * block = &m_luValues[diag * m_blockSizeSquared];
     real_type * inverse = &m_diagInverse[row * m_blockSizeSquared];
-    if( !invertBlock( block, inverse ) )
+    if( invertBlock( block, inverse, m_pivotShift ) )
     {
-      ++m_failedPivots;
-      std::fill( inverse, inverse + m_blockSizeSquared, 0.0 );
-      for( int_t i = 0; i < m_blockSize; ++i )
+      return;
+    }
+
+    if( m_fallbackStrategy == LocalFallbackStrategy::shiftedDense ||
+        m_fallbackStrategy == LocalFallbackStrategy::shiftedDenseThenDiagonal )
+    {
+      if( invertBlockWithShiftFallback( block, inverse ) )
       {
-        inverse[i * m_blockSize + i] = 1.0;
+        ++m_shiftedDenseFallbackPivots;
+        return;
       }
+    }
+
+    if( m_fallbackStrategy == LocalFallbackStrategy::boundedDiagonal ||
+        m_fallbackStrategy == LocalFallbackStrategy::shiftedDenseThenDiagonal )
+    {
+      if( invertBlockDiagonal( block, inverse ) )
+      {
+        ++m_diagonalFallbackPivots;
+        return;
+      }
+    }
+
+    ++m_failedPivots;
+    std::fill( inverse, inverse + m_blockSizeSquared, 0.0 );
+    for( int_t i = 0; i < m_blockSize; ++i )
+    {
+      inverse[i * m_blockSize + i] = 1.0;
     }
   }
 
-  bool invertBlock( const real_type * block, real_type * inverse ) const
+  bool invertBlockWithShiftFallback( const real_type * block, real_type * inverse ) const
+  {
+    if( m_fallbackShiftMax <= 0.0 )
+    {
+      return false;
+    }
+
+    real_type shift = std::max<real_type>( m_pivotShift * m_fallbackShiftGrowth, 1.0e-10 );
+    if( shift > m_fallbackShiftMax )
+    {
+      shift = m_fallbackShiftMax;
+    }
+
+    while( shift <= m_fallbackShiftMax )
+    {
+      if( invertBlock( block, inverse, shift ) )
+      {
+        return true;
+      }
+      if( m_fallbackShiftGrowth <= 1.0 || shift == m_fallbackShiftMax )
+      {
+        break;
+      }
+      shift = std::min<real_type>( shift * m_fallbackShiftGrowth, m_fallbackShiftMax );
+    }
+    return false;
+  }
+
+  bool invertBlock( const real_type * block,
+                    real_type * inverse,
+                    real_type relative_shift ) const
   {
     real_type norm = 0.0;
     for( int_t i = 0; i < m_blockSizeSquared; ++i )
     {
+      if( !std::isfinite( block[i] ) )
+      {
+        return false;
+      }
       norm = std::max( norm, std::abs( block[i] ) );
     }
-    const real_type shift = m_pivotShift * std::max<real_type>( norm, 1.0 );
+    const real_type shift = relative_shift * std::max<real_type>( norm, 1.0 );
     const real_type pivot_tol = std::numeric_limits<real_type>::epsilon() *
-                                std::max<real_type>( norm, 1.0 ) * 100.0;
+                                std::max<real_type>( norm + std::abs( shift ), 1.0 ) * 100.0;
 
     if( m_blockSize == 1 )
     {
@@ -566,6 +646,43 @@ private:
     return true;
   }
 
+  bool invertBlockDiagonal( const real_type * block, real_type * inverse ) const
+  {
+    real_type norm = 0.0;
+    for( int_t i = 0; i < m_blockSizeSquared; ++i )
+    {
+      if( !std::isfinite( block[i] ) )
+      {
+        return false;
+      }
+      norm = std::max( norm, std::abs( block[i] ) );
+    }
+
+    const real_type scale = std::max<real_type>( norm, 1.0 );
+    const real_type diag_tol = m_fallbackDiagonalTolerance * scale;
+    const real_type shift = m_pivotShift * scale;
+    bool used_diagonal_inverse = false;
+    std::fill( inverse, inverse + m_blockSizeSquared, 0.0 );
+    for( int_t i = 0; i < m_blockSize; ++i )
+    {
+      const real_type diagonal = block[i * m_blockSize + i] + shift;
+      if( std::abs( diagonal ) > diag_tol && std::isfinite( diagonal ) )
+      {
+        inverse[i * m_blockSize + i] = 1.0 / diagonal;
+        if( !std::isfinite( inverse[i * m_blockSize + i] ) )
+        {
+          return false;
+        }
+        used_diagonal_inverse = true;
+      }
+      else
+      {
+        inverse[i * m_blockSize + i] = 1.0;
+      }
+    }
+    return used_diagonal_inverse;
+  }
+
   void rightMultiplyBlockInPlace( real_type * block, const real_type * right ) const
   {
     std::fill( m_blockWork.begin(), m_blockWork.end(), 0.0 );
@@ -637,7 +754,13 @@ private:
   int_t m_blockSize = 0;
   int_t m_blockSizeSquared = 0;
   real_type m_pivotShift = 0.0;
+  LocalFallbackStrategy m_fallbackStrategy = LocalFallbackStrategy::identity;
+  real_type m_fallbackDiagonalTolerance = 1.0e-4;
+  real_type m_fallbackShiftMax = 1.0e-4;
+  real_type m_fallbackShiftGrowth = 100.0;
   int_t m_failedPivots = 0;
+  int_t m_shiftedDenseFallbackPivots = 0;
+  int_t m_diagonalFallbackPivots = 0;
   bool m_ready = false;
   std::vector<int_t> m_rowPtr;
   std::vector<int_t> m_colInd;
@@ -672,6 +795,10 @@ LinearSolver::LinearSolver()
   m_params.compositeMode = CompositePreconditionerMode::mgrOnly;
   m_params.localPreconditioner = LocalPreconditionerType::none;
   m_params.localPivotShift = 1.0e-12;
+  m_params.localFallbackStrategy = LocalFallbackStrategy::identity;
+  m_params.localFallbackDiagonalTolerance = 1.0e-4;
+  m_params.localFallbackShiftMax = 1.0e-4;
+  m_params.localFallbackShiftGrowth = 100.0;
 }
 
 LinearSolver::~LinearSolver()
@@ -903,7 +1030,11 @@ void LinearSolver::setupBlockLocalPreconditioner()
                                                      m_rowScaling,
                                                      m_colScaling,
                                                      apply_scaling,
-                                                     m_params.localPivotShift );
+                                                     m_params.localPivotShift,
+                                                     m_params.localFallbackStrategy,
+                                                     m_params.localFallbackDiagonalTolerance,
+                                                     m_params.localFallbackShiftMax,
+                                                     m_params.localFallbackShiftGrowth );
   if( !ok )
   {
     std::cerr << "[MGR] Warning: full-system BCSR local correction setup failed; "
@@ -912,6 +1043,22 @@ void LinearSolver::setupBlockLocalPreconditioner()
     m_params.localPreconditioner = LocalPreconditionerType::none;
     clearCompositeWorkVectors();
     return;
+  }
+
+  const int_t shifted_fallback_pivots = m_blockLocalPreconditioner->shiftedDenseFallbackPivots();
+  if( shifted_fallback_pivots > 0 )
+  {
+    std::cerr << "[MGR] Info: " << m_blockLocalPreconditioner->name()
+              << " used shifted dense fallback for " << shifted_fallback_pivots
+              << " diagonal block(s)." << std::endl;
+  }
+
+  const int_t diagonal_fallback_pivots = m_blockLocalPreconditioner->diagonalFallbackPivots();
+  if( diagonal_fallback_pivots > 0 )
+  {
+    std::cerr << "[MGR] Info: " << m_blockLocalPreconditioner->name()
+              << " used bounded diagonal fallback for " << diagonal_fallback_pivots
+              << " diagonal block(s)." << std::endl;
   }
 
   const int_t failed_pivots = m_blockLocalPreconditioner->failedPivots();

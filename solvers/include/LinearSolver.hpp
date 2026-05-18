@@ -53,6 +53,14 @@ enum class LocalPreconditionerType : int
   blockILU0 = 2
 };
 
+enum class LocalFallbackStrategy : int
+{
+  identity = 0,
+  shiftedDense = 1,
+  boundedDiagonal = 2,
+  shiftedDenseThenDiagonal = 3
+};
+
 // Open-darts compatible type aliases
 using index_t = int_t;
 using mat_float = real_type;
@@ -111,6 +119,10 @@ struct SolverParameters
   CompositePreconditionerMode compositeMode = CompositePreconditionerMode::mgrOnly;
   LocalPreconditionerType localPreconditioner = LocalPreconditionerType::none;
   real_type localPivotShift = 1.0e-12;
+  LocalFallbackStrategy localFallbackStrategy = LocalFallbackStrategy::identity;
+  real_type localFallbackDiagonalTolerance = 1.0e-4;
+  real_type localFallbackShiftMax = 1.0e-4;
+  real_type localFallbackShiftGrowth = 100.0;
 
 };
 

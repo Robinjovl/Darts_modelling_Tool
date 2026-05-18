@@ -58,6 +58,10 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
         .def("set_mgr_bilu0_pivot_shift", &linsolv_mgr<N>::set_mgr_bilu0_pivot_shift,
              "Set relative diagonal shift used when inverting BILU0 dense diagonal blocks",
              py::arg("pivot_shift"))
+        .def("set_mgr_bilu0_fallback_options", &linsolv_mgr<N>::set_mgr_bilu0_fallback_options,
+             "Set BILU0 fallback behavior (0=identity, 1=shifted dense, 2=bounded diagonal, 3=shifted dense then bounded diagonal)",
+             py::arg("fallback_strategy"), py::arg("diagonal_tolerance") = 1.0e-4,
+             py::arg("shifted_max") = 1.0e-4, py::arg("shifted_growth") = 100.0)
         .def("set_mgr_pressure_amg_options", &linsolv_mgr<N>::set_mgr_pressure_amg_options,
              "Set key BoomerAMG options for the pressure coarse solver",
              py::arg("coarsen_type"), py::arg("interp_type"), py::arg("relax_type"),
@@ -133,6 +137,17 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Get full-system BCSR local solver type")
         .def("get_mgr_bilu0_pivot_shift", &linsolv_mgr<N>::get_mgr_bilu0_pivot_shift,
              "Get BILU0 relative diagonal pivot shift")
+        .def("get_mgr_bilu0_fallback_strategy", &linsolv_mgr<N>::get_mgr_bilu0_fallback_strategy,
+             "Get BILU0 fallback strategy")
+        .def("get_mgr_bilu0_fallback_diagonal_tolerance",
+             &linsolv_mgr<N>::get_mgr_bilu0_fallback_diagonal_tolerance,
+             "Get BILU0 fallback diagonal tolerance")
+        .def("get_mgr_bilu0_fallback_shifted_max",
+             &linsolv_mgr<N>::get_mgr_bilu0_fallback_shifted_max,
+             "Get BILU0 shifted dense fallback maximum relative shift")
+        .def("get_mgr_bilu0_fallback_shifted_growth",
+             &linsolv_mgr<N>::get_mgr_bilu0_fallback_shifted_growth,
+             "Get BILU0 shifted dense fallback shift growth factor")
         .def("get_n_reservoir_blocks", &linsolv_mgr<N>::get_n_reservoir_blocks,
              "Get configured number of reservoir blocks")
         .def("get_mgr_enable_well_level", &linsolv_mgr<N>::get_mgr_enable_well_level,

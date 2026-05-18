@@ -73,6 +73,10 @@ namespace opendarts
       , composite_mode_cached(static_cast<int>(mgr::CompositePreconditionerMode::mgrOnly))
       , local_solver_cached(static_cast<int>(mgr::LocalPreconditionerType::none))
       , bilu0_pivot_shift_cached(1.0e-12)
+      , bilu0_fallback_strategy_cached(static_cast<int>(mgr::LocalFallbackStrategy::identity))
+      , bilu0_fallback_diagonal_tolerance_cached(1.0e-4)
+      , bilu0_fallback_shifted_max_cached(1.0e-4)
+      , bilu0_fallback_shifted_growth_cached(100.0)
       , n_reservoir_blocks_cached(0)
       , mgr_strategy_config_cached()
     {
@@ -207,6 +211,26 @@ namespace opendarts
       bilu0_pivot_shift_cached = pivot_shift;
       mgr::SolverParameters params = mgr_solver.getParameters();
       params.localPivotShift = pivot_shift;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_bilu0_fallback_options(
+        int fallback_strategy,
+        opendarts::config::mat_float diagonal_tolerance,
+        opendarts::config::mat_float shifted_max,
+        opendarts::config::mat_float shifted_growth)
+    {
+      bilu0_fallback_strategy_cached = fallback_strategy;
+      bilu0_fallback_diagonal_tolerance_cached = std::max<opendarts::config::mat_float>(diagonal_tolerance, 0.0);
+      bilu0_fallback_shifted_max_cached = std::max<opendarts::config::mat_float>(shifted_max, 0.0);
+      bilu0_fallback_shifted_growth_cached = std::max<opendarts::config::mat_float>(shifted_growth, 1.0);
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.localFallbackStrategy = static_cast<mgr::LocalFallbackStrategy>(bilu0_fallback_strategy_cached);
+      params.localFallbackDiagonalTolerance = bilu0_fallback_diagonal_tolerance_cached;
+      params.localFallbackShiftMax = bilu0_fallback_shifted_max_cached;
+      params.localFallbackShiftGrowth = bilu0_fallback_shifted_growth_cached;
       mgr_solver.setParameters(params);
     }
 
@@ -523,6 +547,30 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_mgr_bilu0_fallback_strategy() const
+    {
+      return bilu0_fallback_strategy_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float linsolv_mgr<N_BLOCK_SIZE>::get_mgr_bilu0_fallback_diagonal_tolerance() const
+    {
+      return bilu0_fallback_diagonal_tolerance_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float linsolv_mgr<N_BLOCK_SIZE>::get_mgr_bilu0_fallback_shifted_max() const
+    {
+      return bilu0_fallback_shifted_max_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float linsolv_mgr<N_BLOCK_SIZE>::get_mgr_bilu0_fallback_shifted_growth() const
+    {
+      return bilu0_fallback_shifted_growth_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_n_reservoir_blocks() const
     {
       return n_reservoir_blocks_cached;
@@ -605,6 +653,10 @@ namespace opendarts
       params.compositeMode = static_cast<mgr::CompositePreconditionerMode>(composite_mode_cached);
       params.localPreconditioner = static_cast<mgr::LocalPreconditionerType>(local_solver_cached);
       params.localPivotShift = bilu0_pivot_shift_cached;
+      params.localFallbackStrategy = static_cast<mgr::LocalFallbackStrategy>(bilu0_fallback_strategy_cached);
+      params.localFallbackDiagonalTolerance = bilu0_fallback_diagonal_tolerance_cached;
+      params.localFallbackShiftMax = bilu0_fallback_shifted_max_cached;
+      params.localFallbackShiftGrowth = bilu0_fallback_shifted_growth_cached;
       params.krylovType = use_flex_gmres_cached ? mgr::KrylovType::flexgmres
                                                : mgr::KrylovType::gmres;
       mgr_solver.setParameters(params);

@@ -57,6 +57,10 @@ namespace opendarts
       void set_mgr_composite_mode(int composite_mode);
       void set_mgr_local_solver(int local_solver);
       void set_mgr_bilu0_pivot_shift(opendarts::config::mat_float pivot_shift);
+      void set_mgr_bilu0_fallback_options(int fallback_strategy,
+                                          opendarts::config::mat_float diagonal_tolerance,
+                                          opendarts::config::mat_float shifted_max,
+                                          opendarts::config::mat_float shifted_growth);
       void set_mgr_pressure_amg_options(int coarsen_type,
                                         int interp_type,
                                         int relax_type,
@@ -117,6 +121,10 @@ namespace opendarts
       int get_mgr_composite_mode() const;
       int get_mgr_local_solver() const;
       opendarts::config::mat_float get_mgr_bilu0_pivot_shift() const;
+      int get_mgr_bilu0_fallback_strategy() const;
+      opendarts::config::mat_float get_mgr_bilu0_fallback_diagonal_tolerance() const;
+      opendarts::config::mat_float get_mgr_bilu0_fallback_shifted_max() const;
+      opendarts::config::mat_float get_mgr_bilu0_fallback_shifted_growth() const;
       opendarts::config::index_t get_n_reservoir_blocks() const;
       bool get_mgr_enable_well_level() const;
       bool get_mgr_enable_composition_level() const;
@@ -152,6 +160,10 @@ namespace opendarts
       int composite_mode_cached;
       int local_solver_cached;
       opendarts::config::mat_float bilu0_pivot_shift_cached;
+      int bilu0_fallback_strategy_cached;
+      opendarts::config::mat_float bilu0_fallback_diagonal_tolerance_cached;
+      opendarts::config::mat_float bilu0_fallback_shifted_max_cached;
+      opendarts::config::mat_float bilu0_fallback_shifted_growth_cached;
       opendarts::config::index_t n_reservoir_blocks_cached;
       mgr::strategies::CompositionalFlowStrategyConfig mgr_strategy_config_cached;
 
