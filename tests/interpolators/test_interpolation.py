@@ -409,7 +409,22 @@ def test_interpolator_thread_consistency(n_dim=4):
     """The C++ three-phase adaptive interpolator must produce bit-identical
     results regardless of OMP_NUM_THREADS — every phase is either serial or
     operates on independent per-cell / per-hypercube data.
+
+    Skipped on single-threaded (ST) builds — e.g. the open-DARTS-solvers (ODLS)
+    build, which has no OpenMP and therefore does not expose set/get_num_threads.
+    On an ST build the interpolator is serial anyway, so there is nothing to vary.
     """
+    import darts.engines as _engines
+
+    if not (
+        hasattr(_engines, 'set_num_threads') and hasattr(_engines, 'get_num_threads')
+    ):
+        print(
+            'interpolator thread-count consistency: SKIPPED '
+            '(single-threaded build — no OpenMP thread control)'
+        )
+        return
+
     zero = 1.0e-9
     n_ops = 4 * n_dim  # 16 for n_dim=4: an instantiated (N_DIMS, N_OPS) template
     n_axes_points = n_dim * [16]
