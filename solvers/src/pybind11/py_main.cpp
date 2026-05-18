@@ -40,6 +40,9 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Enable/disable MGR preconditioner", py::arg("use_mgr"))
         .def("set_log_level", &linsolv_mgr<N>::set_log_level,
              "Set logging verbosity level (0=none, 1=basic, 2=detailed)", py::arg("log_level"))
+        .def("set_use_physics_scaling", &linsolv_mgr<N>::set_use_physics_scaling,
+             "Enable/disable physics-based row/column scaling",
+             py::arg("use_scaling"))
         .def("set_use_flex_gmres", &linsolv_mgr<N>::set_use_flex_gmres,
              "Select FlexGMRES (true) or GMRES (false) for the outer Krylov solver",
              py::arg("use_flex_gmres"))
@@ -106,6 +109,8 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Get whether MGR preconditioner is enabled")
         .def("get_log_level", &linsolv_mgr<N>::get_log_level,
              "Get logging verbosity level")
+        .def("get_use_physics_scaling", &linsolv_mgr<N>::get_use_physics_scaling,
+             "Get whether physics-based row/column scaling is enabled")
         .def("get_use_flex_gmres", &linsolv_mgr<N>::get_use_flex_gmres,
              "Get whether FlexGMRES is enabled")
         .def("get_n_reservoir_blocks", &linsolv_mgr<N>::get_n_reservoir_blocks,
