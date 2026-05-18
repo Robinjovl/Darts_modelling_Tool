@@ -325,10 +325,11 @@ void bind_unified_solver_api(py::module &m)
           "Whether a solver name is available in this build.", py::arg("name"));
     m.def("create_linear_solver",
           [](const std::string &name, const solver_config &config, int block_size)
-              -> std::shared_ptr<linear_solver> {
+              -> std::shared_ptr<linsolv_iface> {
               return create_linear_solver(name, config, block_size);
           },
-          "Create a linear solver by registered name, configuration and block size.",
+          "Create a linear solver by registered name, configuration and block size. "
+          "Returns a LinearSolverInterface that engine_base.set_linear_solver() accepts.",
           py::arg("name"), py::arg("config"), py::arg("block_size"));
 }
 

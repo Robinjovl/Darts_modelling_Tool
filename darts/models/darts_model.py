@@ -25,6 +25,16 @@ from darts.interpolators import op_vector
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
+# Open-source linear-solver registry (the darts.solvers package). It is absent
+# in proprietary (-a) builds, where the engine's built-in factory selects the
+# solver from params.linear_type; the import is therefore guarded.
+try:
+    from darts.solvers import LinearSolverSpec, default_linear_solver
+
+    _HAVE_SOLVER_REGISTRY = True
+except ImportError:  # proprietary build without the open-source solvers
+    _HAVE_SOLVER_REGISTRY = False
+
 
 class DataTS:
     def __init__(self, n_vars):
@@ -45,6 +55,7 @@ class DataTS:
         self.linear_tol = 1e-5
         self.linear_max_iter = 50  # maximum linear iterations allowed
         self.linear_type = None  # linear solver and preconditioner type
+        self.linear_solver = None  # LinearSolverSpec (open-source registry path); takes precedence over linear_type
         self.linear_print_level = None  # linear solver messages printing level (used only for PETSC option), 0 - no messages, 10 - all messages
         #
         self.line_search = False
@@ -217,6 +228,7 @@ class DartsModel:
         """
         Function to initialize the engine by calling 'engine.init()' method.
         """
+        self._apply_linear_solver_spec()
         self.physics.engine.init(
             self.reservoir.mesh,
             ms_well_vector(self.reservoir.wells),
@@ -225,6 +237,28 @@ class DartsModel:
             self.params,
             self.timer.node["simulation"],
         )
+
+    def _apply_linear_solver_spec(self):
+        """Build the linear solver from ``data_ts.linear_solver`` and inject it.
+
+        Active only in the open-source build (the ``darts.solvers`` registry is
+        present) on the CPU platform. When ``data_ts.linear_solver`` is unset,
+        the CPU default (HYPRE MGR) is used. The solver is injected before
+        ``engine.init()``, so the engine's built-in factory is bypassed.
+
+        In proprietary builds, or on GPU, this is a no-op and the engine's
+        factory selects the solver from ``params.linear_type``.
+        """
+        if not _HAVE_SOLVER_REGISTRY or getattr(self, "platform", "cpu") != "cpu":
+            return
+        spec = getattr(self.data_ts, "linear_solver", None)
+        if spec is None:
+            spec = default_linear_solver("cpu")
+        if not isinstance(spec, LinearSolverSpec):
+            return
+        # Keep a reference so the solver object outlives the engine that uses it.
+        self._linear_solver = spec.build(self.physics.n_vars)
+        self.physics.engine.set_linear_solver(self._linear_solver)
 
     def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
         """

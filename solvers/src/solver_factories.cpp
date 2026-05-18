@@ -22,10 +22,8 @@
 #include <string>
 
 #include "linsolv_iface.hpp"
-#include "linsolv_iface_adapter.hpp"
 #include "linsolv_mgr.hpp"
 #include "linsolv_superlu.hpp"
-#include "linear_solver.hpp"
 #include "solver_config.hpp"
 #include "solver_configs.hpp"
 #include "solver_registry.hpp"
@@ -40,14 +38,15 @@ namespace opendarts
       constexpr int MIN_BLOCK_SIZE = 1;
       constexpr int MAX_BLOCK_SIZE = 13;
 
+      using solver_handle = std::shared_ptr<opendarts::linear_solvers::linsolv_iface>;
+
       // ---- MGR (HYPRE Multigrid Reduction) ---------------------------------
 
       // Construct and configure an MGR solver for a compile-time block size.
       template <uint8_t N_BLOCK_SIZE>
-      opendarts::linear_solvers::linsolv_iface *build_mgr(
-          const opendarts::linear_solvers::mgr_solver_config &config)
+      solver_handle build_mgr(const opendarts::linear_solvers::mgr_solver_config &config)
       {
-        auto *solver = new opendarts::linear_solvers::linsolv_mgr<N_BLOCK_SIZE>();
+        auto solver = std::make_shared<opendarts::linear_solvers::linsolv_mgr<N_BLOCK_SIZE>>();
 
         // Scalar parameters: the config defaults match linsolv_mgr's own
         // defaults, so applying them unconditionally is safe.
@@ -110,11 +109,11 @@ namespace opendarts
           }
         }
 
-        return solver;  // upcast linsolv_mgr<N>* -> linsolv_iface*
+        return solver;  // shared_ptr<linsolv_mgr<N>> -> shared_ptr<linsolv_iface>
       }
 
       // Runtime block-size dispatch for MGR.
-      opendarts::linear_solvers::linsolv_iface *build_mgr_for_block_size(int block_size,
+      solver_handle build_mgr_for_block_size(int block_size,
           const opendarts::linear_solvers::mgr_solver_config &config)
       {
         switch (block_size)
@@ -140,8 +139,8 @@ namespace opendarts
       }
 
       // Factory registered under the name "mgr".
-      std::unique_ptr<opendarts::linear_solvers::linear_solver> make_mgr_solver(
-          const opendarts::linear_solvers::solver_config &config, int block_size)
+      solver_handle make_mgr_solver(const opendarts::linear_solvers::solver_config &config,
+          int block_size)
       {
         // Use the MGR-specific configuration if one was supplied; a plain
         // solver_config falls back to the MGR defaults.
@@ -151,20 +150,18 @@ namespace opendarts
         if (mgr_config == nullptr)
           mgr_config = &default_config;
 
-        opendarts::linear_solvers::linsolv_iface *solver =
-            build_mgr_for_block_size(block_size, *mgr_config);
-        return std::make_unique<opendarts::linear_solvers::linsolv_iface_adapter>(solver);
+        return build_mgr_for_block_size(block_size, *mgr_config);
       }
 
       // ---- SuperLU (direct solver) -----------------------------------------
 
       template <uint8_t N_BLOCK_SIZE>
-      opendarts::linear_solvers::linsolv_iface *build_superlu()
+      solver_handle build_superlu()
       {
-        return new opendarts::linear_solvers::linsolv_superlu<N_BLOCK_SIZE>();
+        return std::make_shared<opendarts::linear_solvers::linsolv_superlu<N_BLOCK_SIZE>>();
       }
 
-      opendarts::linear_solvers::linsolv_iface *build_superlu_for_block_size(int block_size)
+      solver_handle build_superlu_for_block_size(int block_size)
       {
         switch (block_size)
         {
@@ -190,11 +187,10 @@ namespace opendarts
 
       // Factory registered under the name "superlu". SuperLU is a direct solver
       // and takes no parameters beyond the matrix, so the configuration is unused.
-      std::unique_ptr<opendarts::linear_solvers::linear_solver> make_superlu_solver(
+      solver_handle make_superlu_solver(
           const opendarts::linear_solvers::solver_config & /*config*/, int block_size)
       {
-        return std::make_unique<opendarts::linear_solvers::linsolv_iface_adapter>(
-            build_superlu_for_block_size(block_size));
+        return build_superlu_for_block_size(block_size);
       }
     } // anonymous namespace
 

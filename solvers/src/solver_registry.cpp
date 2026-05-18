@@ -19,7 +19,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "linear_solver.hpp"
+#include "linsolv_iface.hpp"
 #include "solver_config.hpp"
 
 namespace opendarts
@@ -50,7 +50,7 @@ namespace opendarts
       return solver_registry_map().emplace(name, std::move(factory)).second;
     }
 
-    std::unique_ptr<opendarts::linear_solvers::linear_solver> create_linear_solver(
+    std::shared_ptr<opendarts::linear_solvers::linsolv_iface> create_linear_solver(
         const std::string &name,
         const opendarts::linear_solvers::solver_config &config,
         int block_size)

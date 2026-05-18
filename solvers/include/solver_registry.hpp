@@ -27,18 +27,23 @@ namespace opendarts
 {
   namespace linear_solvers
   {
-    class linear_solver;   // see linear_solver.hpp
+    class linsolv_iface;  // see linsolv_iface.hpp
     struct solver_config;  // see solver_config.hpp
 
-    /** Factory that builds a solver for a configuration and a matrix block size. */
-    using solver_factory = std::function<std::unique_ptr<opendarts::linear_solvers::linear_solver>(
+    /** Factory that builds a solver for a configuration and a matrix block size.
+     *
+     *  Returns the solver as a linsolv_iface -- the interface the engine speaks
+     *  and accepts via engine_base::set_linear_solver(). Concrete solvers
+     *  (linsolv_mgr, linsolv_superlu, ...) all derive from linsolv_iface.
+     */
+    using solver_factory = std::function<std::shared_ptr<opendarts::linear_solvers::linsolv_iface>(
         const opendarts::linear_solvers::solver_config &, int /*block_size*/)>;
 
     /** Register a solver factory under a unique name.
      *
-     *  A solver self-registers from its own translation unit (typically via a
-     *  static registrar object), so adding a new solver needs no change to any
-     *  enum or dispatch switch -- this replaces sim_params::linear_solver_t.
+     *  A solver self-registers from its own translation unit, so adding a new
+     *  solver needs no change to any enum or dispatch switch -- this replaces
+     *  sim_params::linear_solver_t.
      *
      *  @return true if registered, false if the name was already taken
      */
@@ -47,10 +52,9 @@ namespace opendarts
 
     /** Build a solver by registered name.
      *
-     *  @throws std::runtime_error if the name is not registered in this build --
-     *          e.g. a proprietary bos solver when BOS_SOLVERS_DIR was not set.
+     *  @throws std::runtime_error if the name is not registered in this build.
      */
-    std::unique_ptr<opendarts::linear_solvers::linear_solver> create_linear_solver(
+    std::shared_ptr<opendarts::linear_solvers::linsolv_iface> create_linear_solver(
         const std::string &name,
         const opendarts::linear_solvers::solver_config &config,
         int block_size);
