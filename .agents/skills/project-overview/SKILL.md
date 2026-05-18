@@ -14,6 +14,11 @@ When the planned work will lead to build, install, test, debug, docs, or lint co
 2. Map requested changes to concrete paths (`darts/`, `engines/`, `discretizer/`, `solvers/`, `models/`, `tests/`, `docs/`).
 3. Confirm the execution path (build, lint, tests) and the session conda environment plan before editing.
 
+## Conventions
+
+- Write Python docstrings with the opening and closing triple quotation marks on separate lines.
+- Document Python input and output arguments with `:param name:`, `:type name:`, `:return:`, and `:rtype:` fields.
+
 ## Output
 
 - State which modules and files are in scope.
