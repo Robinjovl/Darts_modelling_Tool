@@ -53,6 +53,13 @@ namespace opendarts
       void set_log_level(int log_level);
       void set_use_physics_scaling(bool use_scaling);
       void set_use_flex_gmres(bool use_flex_gmres);
+      void set_mgr_pressure_amg_options(int coarsen_type,
+                                        int interp_type,
+                                        int relax_type,
+                                        int agg_num_levels,
+                                        int agg_interp_type,
+                                        int agg_pmax_elmts,
+                                        int relax_order);
       void set_n_reservoir_blocks(opendarts::config::index_t n_reservoir_blocks);
       void set_mgr_enable_well_level(bool enable_well_level);
       void set_mgr_enable_composition_level(bool enable_composition_level);

@@ -124,6 +124,25 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_pressure_amg_options(int coarsen_type,
+                                                                 int interp_type,
+                                                                 int relax_type,
+                                                                 int agg_num_levels,
+                                                                 int agg_interp_type,
+                                                                 int agg_pmax_elmts,
+                                                                 int relax_order)
+    {
+      mgr_strategy_config_cached.pressureAmgCoarsenType = coarsen_type;
+      mgr_strategy_config_cached.pressureAmgInterpType = interp_type;
+      mgr_strategy_config_cached.pressureAmgRelaxType = relax_type;
+      mgr_strategy_config_cached.pressureAmgAggNumLevels = std::max(0, agg_num_levels);
+      mgr_strategy_config_cached.pressureAmgAggInterpType = agg_interp_type;
+      mgr_strategy_config_cached.pressureAmgAggPMaxElmts = std::max(0, agg_pmax_elmts);
+      mgr_strategy_config_cached.pressureAmgRelaxOrder = relax_order;
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     void linsolv_mgr<N_BLOCK_SIZE>::set_n_reservoir_blocks(opendarts::config::index_t n_reservoir_blocks)
     {
       n_reservoir_blocks_cached = n_reservoir_blocks;

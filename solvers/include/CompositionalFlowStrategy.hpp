@@ -47,6 +47,13 @@ struct CompositionalFlowStrategyConfig
   MGRLevelParameters wellLevel;
   MGRLevelParameters compositionLevel;
   MGRLevelParameters pressureLevel;
+  int pressureAmgCoarsenType;
+  int pressureAmgInterpType;
+  int pressureAmgRelaxType;
+  int pressureAmgAggNumLevels;
+  int pressureAmgAggInterpType;
+  int pressureAmgAggPMaxElmts;
+  int pressureAmgRelaxOrder;
 
   CompositionalFlowStrategyConfig();
 };

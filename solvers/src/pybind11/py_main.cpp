@@ -40,6 +40,14 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Enable/disable MGR preconditioner", py::arg("use_mgr"))
         .def("set_log_level", &linsolv_mgr<N>::set_log_level,
              "Set logging verbosity level (0=none, 1=basic, 2=detailed)", py::arg("log_level"))
+        .def("set_use_flex_gmres", &linsolv_mgr<N>::set_use_flex_gmres,
+             "Select FlexGMRES (true) or GMRES (false) for the outer Krylov solver",
+             py::arg("use_flex_gmres"))
+        .def("set_mgr_pressure_amg_options", &linsolv_mgr<N>::set_mgr_pressure_amg_options,
+             "Set key BoomerAMG options for the pressure coarse solver",
+             py::arg("coarsen_type"), py::arg("interp_type"), py::arg("relax_type"),
+             py::arg("agg_num_levels"), py::arg("agg_interp_type"),
+             py::arg("agg_pmax_elmts"), py::arg("relax_order"))
         .def("set_n_reservoir_blocks", &linsolv_mgr<N>::set_n_reservoir_blocks,
              "Set number of reservoir blocks before appended well blocks", py::arg("n_reservoir_blocks"))
         .def("set_mgr_enable_well_level", &linsolv_mgr<N>::set_mgr_enable_well_level,
@@ -98,6 +106,8 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Get whether MGR preconditioner is enabled")
         .def("get_log_level", &linsolv_mgr<N>::get_log_level,
              "Get logging verbosity level")
+        .def("get_use_flex_gmres", &linsolv_mgr<N>::get_use_flex_gmres,
+             "Get whether FlexGMRES is enabled")
         .def("get_n_reservoir_blocks", &linsolv_mgr<N>::get_n_reservoir_blocks,
              "Get configured number of reservoir blocks")
         .def("get_mgr_enable_well_level", &linsolv_mgr<N>::get_mgr_enable_well_level,

@@ -31,6 +31,13 @@ CompositionalFlowStrategyConfig::CompositionalFlowStrategyConfig()
   : wellStrategy( WellStrategy::eliminateWellBlock )
   , enableWellLevel( true )
   , enableCompositionLevel( true )
+  , pressureAmgCoarsenType( 6 )
+  , pressureAmgInterpType( 6 )
+  , pressureAmgRelaxType( 6 )
+  , pressureAmgAggNumLevels( 1 )
+  , pressureAmgAggInterpType( 6 )
+  , pressureAmgAggPMaxElmts( 20 )
+  , pressureAmgRelaxOrder( 1 )
 {
   wellLevel.fRelaxType = FRelaxationType::directInverse;
   wellLevel.fRelaxIters = 1;
@@ -577,17 +584,24 @@ void CompositionalFlowStrategy::setupPressureAMG()
   HYPRE_BoomerAMGSetMaxIter( m_coarseSolver, 1 );
   HYPRE_BoomerAMGSetPrintLevel( m_coarseSolver, 0 );
 
-  // Use aggressive coarsening for better scalability
-  HYPRE_BoomerAMGSetAggNumLevels( m_coarseSolver, 1 );
-  HYPRE_BoomerAMGSetAggPMaxElmts( m_coarseSolver, 20 );
-
-  // Set interpolation type to multipass
-  HYPRE_BoomerAMGSetAggInterpType( m_coarseSolver, 6 );  // multipass
-
-  // Enable C-F relaxation ordering
-  HYPRE_BoomerAMGSetRelaxOrder( m_coarseSolver, 1 );
+  HYPRE_BoomerAMGSetCoarsenType( m_coarseSolver, m_config.pressureAmgCoarsenType );
+  HYPRE_BoomerAMGSetInterpType( m_coarseSolver, m_config.pressureAmgInterpType );
+  HYPRE_BoomerAMGSetRelaxType( m_coarseSolver, m_config.pressureAmgRelaxType );
+  HYPRE_BoomerAMGSetAggNumLevels( m_coarseSolver, m_config.pressureAmgAggNumLevels );
+  HYPRE_BoomerAMGSetAggPMaxElmts( m_coarseSolver, m_config.pressureAmgAggPMaxElmts );
+  HYPRE_BoomerAMGSetAggInterpType( m_coarseSolver, m_config.pressureAmgAggInterpType );
+  HYPRE_BoomerAMGSetRelaxOrder( m_coarseSolver, m_config.pressureAmgRelaxOrder );
 
   std::cout << "  Coarse solver: BoomerAMG configured for pressure system (Schur complement)" << std::endl;
+  std::cout << "    AMG coarsen/interp/relax: "
+            << m_config.pressureAmgCoarsenType << "/"
+            << m_config.pressureAmgInterpType << "/"
+            << m_config.pressureAmgRelaxType << std::endl;
+  std::cout << "    AMG aggressive levels/interp/pmax/order: "
+            << m_config.pressureAmgAggNumLevels << "/"
+            << m_config.pressureAmgAggInterpType << "/"
+            << m_config.pressureAmgAggPMaxElmts << "/"
+            << m_config.pressureAmgRelaxOrder << std::endl;
 }
 
 } // namespace strategies
