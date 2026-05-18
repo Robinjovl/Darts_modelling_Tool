@@ -108,8 +108,6 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 
 # Determine the type of compiler we have and set compiler flags and other compiler
 # specific flags
-option(USE_MOLD_LINKER "Use the mold linker for GNU builds when available" OFF)
-
 if(DEFINED BOS_SOLVERS_DIR)
   add_compile_definitions(WITH_HYPRE)
 endif()
@@ -159,20 +157,6 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 
   # Linker flags
   set(opendarts_cxx_linker_flags "")
-
-  # Allow forcing GNU ld for linker benchmarks even when mold is installed.
-  if(USE_MOLD_LINKER)
-    # Use mold linker if available (significantly faster linking for template-heavy code)
-    find_program(MOLD_LINKER mold)
-    if(MOLD_LINKER)
-      message(STATUS "  Using mold linker: ${MOLD_LINKER}")
-      list(APPEND opendarts_cxx_linker_flags "-fuse-ld=mold")
-    else()
-      message(STATUS "  mold linker requested but not found; using default linker")
-    endif()
-  else()
-    message(STATUS "  Using default linker (USE_MOLD_LINKER=OFF)")
-  endif()
 
   if(${OPENDARTS_CONFIG} STREQUAL "MT")
     list(APPEND opendarts_cxx_compiler_flags "-fopenmp")
