@@ -134,6 +134,45 @@ set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_factories.hpp
 )
 
+# GPU solver sources -----------------------------------------------------------
+# Only compiled for a CUDA configuration (OPENDARTS_CONFIG=GPU). The .cu files
+# carry CUDA kernels; the .cpp wrappers and csr_matrix.cpp issue CUDA runtime /
+# cuSPARSE / cuBLAS / cuSOLVER calls and are therefore compiled by nvcc too.
+set(OD_GPU_SOLVERS_SRC_FILES "")
+set(OD_GPU_SOLVERS_HEADER_FILES "")
+if(CUDA)
+  set(OD_GPU_SOLVERS_SRC_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_tools.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bicgstab.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusparse_ilu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusolv.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_cpr_gpu.cu
+  )
+  set(OD_GPU_SOLVERS_HEADER_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/gpu_tools.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bicgstab.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cusparse_ilu.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cusolv.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_cpr_gpu.hpp
+  )
+  # csr_matrix.cpp and the .cpp GPU wrappers must be compiled as CUDA.
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/csr_matrix.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bicgstab.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusparse_ilu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusolv.cpp
+    PROPERTIES LANGUAGE CUDA
+  )
+  # AMGX is opt-in (-D WITH_AMGX=ON); it is the only GPU solver with a heavy
+  # thirdparty dependency.
+  if(WITH_AMGX)
+    list(APPEND OD_GPU_SOLVERS_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_amgx.cpp)
+    list(APPEND OD_GPU_SOLVERS_HEADER_FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_amgx.hpp)
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/linsolv_amgx.cpp PROPERTIES LANGUAGE CUDA)
+  endif()
+endif()
+# ------------------------------------------------------------------------------
+
 # Define the unified linear_solvers library (STATIC, will be linked into shared opendarts_solvers)
 add_library(linear_solvers STATIC "")
 
@@ -147,6 +186,8 @@ target_sources(linear_solvers
     ${OD_MGR_SOLVER_SRC_FILES}
     ${OD_LINEAR_SOLVERS_SRC_FILES}
     ${OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES}
+    ${OD_GPU_SOLVERS_SRC_FILES}
+    ${OD_GPU_SOLVERS_HEADER_FILES}
 )
 
 target_link_libraries(linear_solvers
@@ -158,6 +199,26 @@ target_link_libraries(linear_solvers
     cblas
     HYPRE::HYPRE
 )
+
+# Link the CUDA libraries used by the GPU solver wrappers.
+if(CUDA)
+  target_link_libraries(linear_solvers
+    PUBLIC
+      CUDA::cudart
+      CUDA::cusparse
+      CUDA::cublas
+      CUDA::cusolver
+  )
+  if(WITH_AMGX)
+    # AMGX builds a static (amgx) and a shared (amgxsh) target; link the
+    # static one so no extra runtime .so has to be shipped.
+    target_link_libraries(linear_solvers PUBLIC amgx)
+    target_include_directories(linear_solvers
+      PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/thirdparty/AMGX/include>
+    )
+  endif()
+endif()
 
 # Define the include directories required internally (BUILD_INTERFACE)
 # and the ones to propagate when linking to this library (INSTALL_INTERFACE)

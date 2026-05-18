@@ -18,7 +18,9 @@
 #define OPENDARTS_LINEAR_SOLVERS_LINSOLV_AMGX_HPP
 //--------------------------------------------------------------------------
 
-#ifdef WITH_GPU
+// AMGX support is opt-in (CMake option WITH_AMGX); the wrapper is only
+// compiled when both the GPU build and AMGX are enabled.
+#if defined(WITH_GPU) && defined(WITH_AMGX)
 
 #include "data_types.hpp"
 #include "csr_matrix.hpp"
@@ -104,7 +106,7 @@ namespace opendarts
   } // namespace linear_solvers
 } // namespace opendarts
 
-#endif // WITH_GPU
+#endif // WITH_GPU && WITH_AMGX
 
 //--------------------------------------------------------------------------
 #endif // OPENDARTS_LINEAR_SOLVERS_LINSOLV_AMGX_HPP

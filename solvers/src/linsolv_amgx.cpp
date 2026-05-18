@@ -13,7 +13,8 @@
 //    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // *************************************************************************
 
-#ifdef WITH_GPU
+// AMGX support is opt-in (CMake option WITH_AMGX).
+#if defined(WITH_GPU) && defined(WITH_AMGX)
 
 #include <cstdio>
 #include <fstream>
@@ -252,4 +253,4 @@ namespace opendarts
   } // namespace linear_solvers
 } // namespace opendarts
 
-#endif // WITH_GPU
+#endif // WITH_GPU && WITH_AMGX

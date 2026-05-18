@@ -94,11 +94,18 @@ endif()
 if(${OPENDARTS_CONFIG} STREQUAL "ST")
   set(OPENDARTS_CONFIG "ST")
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
-  if(NOT DEFINED BOS_SOLVERS_DIR)
+  # MT still depends on the proprietary multi-threaded bos_solvers. GPU, on the
+  # other hand, can now be built either against bos_solvers or entirely from
+  # the in-tree open-source solvers (the GPU solver wrappers in solvers/),
+  # so a GPU build without BOS_SOLVERS_DIR is allowed.
+  if(NOT DEFINED BOS_SOLVERS_DIR AND NOT GPU_CONFIG)
     message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
   endif()
   if (GPU_CONFIG)
     set(CUDA 1)
+    if(NOT DEFINED BOS_SOLVERS_DIR)
+      message(STATUS "  GPU build using the in-tree open-source solvers (no BOS_SOLVERS_DIR)")
+    endif()
   endif()
 else()
   message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} is an invalid configuration use: ST, MT or GPU.")
@@ -224,6 +231,10 @@ option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests ar
 add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  # add option as feature for pretty display
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
+# AMGX is a heavy thirdparty build; the other GPU solvers only need the CUDA
+# toolkit, so AMGX support is opt-in. Enable with -D WITH_AMGX=ON for a GPU build.
+option(WITH_AMGX "Build the AMGX GPU solver (requires the thirdparty/AMGX submodule)" OFF)
+add_feature_info(WITH_AMGX WITH_AMGX "Build the AMGX GPU solver")
 
 
 # Report options for this build
@@ -327,6 +338,23 @@ if(CUDA)
         unset(_cccl_override_header)
         unset(_cccl_system_header)
         add_compile_definitions(WITH_GPU)
+
+        # Optional AMGX GPU solver. AMGX brings its own (large) CMake build, so
+        # it is only pulled in on explicit request. The other GPU solvers
+        # (BiCGStab, cuSPARSE ILU, cuSOLVER, CPR) need only the CUDA toolkit.
+        if(WITH_AMGX)
+            set(_amgx_dir "${CMAKE_SOURCE_DIR}/thirdparty/AMGX")
+            if(NOT EXISTS "${_amgx_dir}/CMakeLists.txt")
+                message(FATAL_ERROR "WITH_AMGX is ON but the AMGX submodule is missing; "
+                    "run: git submodule update --init thirdparty/AMGX")
+            endif()
+            message(STATUS "Building AMGX GPU solver support from ${_amgx_dir}")
+            # AMGX is an MPI-optional library; openDARTS does not use its MPI path.
+            set(AMGX_NO_RPATH ON CACHE BOOL "" FORCE)
+            add_subdirectory(thirdparty/AMGX)
+            add_compile_definitions(WITH_AMGX)
+            unset(_amgx_dir)
+        endif()
     else()
         message(FATAL_ERROR "CUDA requested but not found!")
     endif()
@@ -345,8 +373,19 @@ target_compile_features(opendarts_compiler_flags
 
 target_compile_options(opendarts_compiler_flags
   INTERFACE
-    ${opendarts_cxx_compiler_flags}
+    # Scope the host C++ flags to C++ translation units only. CUDA (.cu and
+    # CUDA-language) translation units are compiled by nvcc, which does not
+    # understand the raw host flags (-Wshadow, -fno-lto, ...); nvcc gets its
+    # own flags from CMAKE_CUDA_FLAGS in the CUDA configuration block above.
+    $<$<COMPILE_LANGUAGE:CXX>:${opendarts_cxx_compiler_flags}>
 )
+
+# The libstdc++ ABI selection must be identical across C++ and CUDA
+# translation units of the same library, so it is applied as a compile
+# definition for all languages rather than as part of the C++-only flag set.
+if(SET_CXX11_ABI_0 AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+  target_compile_definitions(opendarts_compiler_flags INTERFACE _GLIBCXX_USE_CXX11_ABI=0)
+endif()
 
 target_link_options(opendarts_compiler_flags
   INTERFACE
