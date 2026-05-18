@@ -373,19 +373,8 @@ target_compile_features(opendarts_compiler_flags
 
 target_compile_options(opendarts_compiler_flags
   INTERFACE
-    # Scope the host C++ flags to C++ translation units only. CUDA (.cu and
-    # CUDA-language) translation units are compiled by nvcc, which does not
-    # understand the raw host flags (-Wshadow, -fno-lto, ...); nvcc gets its
-    # own flags from CMAKE_CUDA_FLAGS in the CUDA configuration block above.
-    $<$<COMPILE_LANGUAGE:CXX>:${opendarts_cxx_compiler_flags}>
+    ${opendarts_cxx_compiler_flags}
 )
-
-# The libstdc++ ABI selection must be identical across C++ and CUDA
-# translation units of the same library, so it is applied as a compile
-# definition for all languages rather than as part of the C++-only flag set.
-if(SET_CXX11_ABI_0 AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
-  target_compile_definitions(opendarts_compiler_flags INTERFACE _GLIBCXX_USE_CXX11_ABI=0)
-endif()
 
 target_link_options(opendarts_compiler_flags
   INTERFACE
