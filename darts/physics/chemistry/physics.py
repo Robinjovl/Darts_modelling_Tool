@@ -134,6 +134,9 @@ class ElementBasedReactiveFlow(Compositional):
         itor_mode='adaptive',
         itor_precision='d',
         is_barycentric: bool = False,
+        parallel_evaluation: bool = False,
+        n_workers: int = None,
+        evaluator_factory_hook=None,
     ):
         """
         Function to set interpolator objects:
@@ -152,7 +155,28 @@ class ElementBasedReactiveFlow(Compositional):
         :type itor_precision: str
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param parallel_evaluation: Enable parallel batch evaluation via multiprocessing
+        :type parallel_evaluation: bool
+        :param n_workers: Number of worker processes (default: os.cpu_count())
+        :type n_workers: int
+        :param evaluator_factory_hook: Callable (region) -> factory for parallel evaluation
+        :type evaluator_factory_hook: callable
         """
+        # Optionally wrap reservoir_operators with ParallelEvaluator
+        if parallel_evaluation:
+            if evaluator_factory_hook is None:
+                raise ValueError(
+                    "parallel_evaluation=True requires evaluator_factory_hook"
+                )
+            from darts.physics.base.parallel_evaluator import ParallelEvaluator
+
+            for region in self.regions:
+                factory = evaluator_factory_hook(region)
+                self.reservoir_operators[region] = ParallelEvaluator(
+                    evaluator_factory=factory,
+                    n_workers=n_workers,
+                )
+
         # Create actual accumulation and flux interpolator:
         self.acc_flux_itor = {}
         self.comp_itor = {}

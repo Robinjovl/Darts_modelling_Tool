@@ -131,8 +131,7 @@ echo ========================================================================
 echo   Building openDARTS: START
 echo ========================================================================
 
-rmdir /s /q build 2> NUL
-mkdir build
+if not exist build mkdir build
 cd build
 
 REM Setup build with CMake
@@ -155,13 +154,16 @@ if %phreeqc%==true (
 if not %bos_solvers_dir%=="" (
   set cmake_options=%cmake_options% -D BOS_SOLVERS_DIR=%bos_solvers_dir%
 )
+if defined OD_CMAKE_ARGS (
+  set cmake_options=%cmake_options% %OD_CMAKE_ARGS%
+)
 
 echo CMake options: %cmake_options%
 cmake %cmake_options% ..
 
 REM build and install
-msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts.log || goto :error
-msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts_install.log || goto :error
+cmake --build . --config %config% --parallel %NT% > ..\make_darts.log || goto :error
+cmake --build . --config %config% --target INSTALL --parallel %NT% >> ..\make_darts.log || goto :error
 
 if %testing%==true ctest -C %config%  || goto :error
 

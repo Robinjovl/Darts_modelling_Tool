@@ -78,6 +78,34 @@ public:
    */
    virtual int evaluate(const std::vector<double> &state, std::vector<double> &values) = 0;
 
+   /**
+   * @brief Compute operators values for a batch of states at once.
+   *        Default implementation calls evaluate() per point serially.
+   *        Override in Python (e.g. ParallelEvaluator) to dispatch to multiprocessing pool.
+   *
+   * @param[in]  states     Flat array of coordinates [n_points * n_dims]
+   * @param[in]  n_points   Number of points to evaluate
+   * @param[out] values     Flat array of operator values [n_points * n_ops], pre-allocated
+   * @param[in]  n_ops      Number of operators per point
+   * @return int 0 if evaluation is successful
+   */
+   virtual int evaluate_batch(const std::vector<double> &states, int n_points,
+                              std::vector<double> &values, int n_ops)
+   {
+      int n_dims = (n_points > 0) ? static_cast<int>(states.size()) / n_points : 0;
+      std::vector<double> single_state(n_dims);
+      std::vector<double> single_values(n_ops);
+      for (int i = 0; i < n_points; i++)
+      {
+         std::copy(states.begin() + i * n_dims,
+                   states.begin() + (i + 1) * n_dims, single_state.begin());
+         evaluate(single_state, single_values);
+         std::copy(single_values.begin(), single_values.end(),
+                   values.begin() + i * n_ops);
+      }
+      return 0;
+   }
+
   //  virtual int extrapolate(const std::vector<double> &state, std::vector<double> &values);
 
    timer_node *timer;

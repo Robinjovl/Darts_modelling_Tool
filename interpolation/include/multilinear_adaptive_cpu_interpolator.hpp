@@ -3,12 +3,22 @@
 
 #include <vector>
 #include <array>
+#include <unordered_set>
+#include <algorithm>
 
 #include "multilinear_interpolator_base.hpp"
 
 /**
  * @brief  Piecewise mulitlinear interpolator with adaptive storage
  *
+ * Adaptive evaluation is split into three explicit phases:
+ *   Phase 1 – parallel computation of hypercube indices for every requested cell
+ *   Phase 2 – serial materialization of missing supporting points (Python callback)
+ *             and parallel assembly of missing hypercube payloads
+ *   Phase 3 – parallel read-only interpolation with thread-local workspace
+ *
+ * After Phase 2 completes, point_data and hypercube_data are read-only for Phase 3,
+ * eliminating any concurrent mutation of shared containers.
  *
  * @tparam index_t type used for indexing of supporting points and hypercubes
  * @tparam value_t value type used for supporting point storage, hypercube storage and interpolation
@@ -55,6 +65,7 @@ protected:
      * @brief Get values of operators at a given point
      * Provide a reference to correct location in the adaptive point storage.
      * If the point is not found, compute it first, and then return the reference.
+     * Used by the single-point interpolation path and by materialize_missing_cache.
      *
      * @param[in] point_index index of point
      * @return operator values at given point
@@ -64,6 +75,7 @@ protected:
      * @brief Get values of operators at all vertices of the hypercube.
      * Provide a reference to correct location in the adaptive hypercube storage.
      * If the hypercube is not found, compute it first, and then return the reference.
+     * Used by the single-point interpolation path.
      *
      * @param[in] hypercube_index index of hypercube
      * @return operator values at all vertices of the hypercube
@@ -71,6 +83,7 @@ protected:
    const hypercube_data_t &get_hypercube_data(const index_t hypercube_index);
    /**
      * @brief Compute interpolation and its gradient for all operators at every specified point
+     *        Uses three-phase parallel approach: discover, materialize, interpolate.
      *
      * @param[in]   points        Array of coordinates in parametrization space
      * @param[in]   points_idxs   Indexes of points in the points array which are marked for interpolation
@@ -80,6 +93,16 @@ protected:
      */
    int interpolate_with_derivatives(const std::vector<double> &points, const std::vector<int> &points_idxs,
                                     std::vector<double> &values, std::vector<double> &derivatives) override;
+
+   /**
+     * @brief Materialize all missing supporting points and hypercubes for the given hypercube indices.
+     *        Missing points are evaluated serially through the supporting_point_evaluator (Python-safe).
+     *        Missing hypercube payloads are assembled in parallel from the now-complete point cache.
+     *
+     * @param[in] missing_hc  Sorted, unique vector of hypercube indices not yet in hypercube_data
+     */
+   void materialize_missing_cache(const std::vector<index_t> &missing_hc);
+
    /**
    * @brief adaptive hypercube storage: the values of operators at every vertex of reqested hypercubes
    * Storage is grown dynamically in the process of simulation

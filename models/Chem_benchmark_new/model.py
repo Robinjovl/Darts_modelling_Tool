@@ -57,6 +57,22 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
+    def init(self, *args, **kwargs):
+        """Initialize the model with parallel operator evaluation enabled by default.
+
+        This makes Chem_benchmark_new exercise the parallel interpolator/evaluator
+        path (MR297) in CI. No model-specific factory is needed: the default
+        DartsModel.get_evaluator_factory (ModelEvaluatorFactory) reconstructs this
+        model in each worker, reusing its own set_physics/PropertyContainer build.
+        Constructor arguments (grid_1D, res, custom_physics) are plain ints, so the
+        factory pickles correctly under both 'fork' and 'spawn'.
+
+        Callers may still override these (e.g. ``init(parallel_evaluation=False)``).
+        """
+        kwargs.setdefault('parallel_evaluation', True)
+        kwargs.setdefault('n_workers', 4)
+        return super().init(*args, **kwargs)
+
     def set_reservoir(self, grid_1D: bool, res: int, solid_init):
         """Reservoir"""
         self.permporo = PermPoroRelationship()

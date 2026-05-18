@@ -13,7 +13,7 @@ namespace py = pybind11;
 PYBIND11_MAKE_OPAQUE(std::vector<ms_well*>);
 
 PYBIND11_MAKE_OPAQUE(std::vector<linear_solver_params>);
-//PYBIND11_MAKE_OPAQUE(std::unordered_map<std::string,timer_node>);
+PYBIND11_MAKE_OPAQUE(std::map<std::string, timer_node>);
 
 // get_raw_array<T> is defined in engine_base.h
 
