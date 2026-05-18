@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-from . import _solvers
+from . import solvers
 from .enums import CoarseGrid, FRelaxation, GlobalSmoother, Interpolation, Restriction
 
 
@@ -31,9 +31,9 @@ class LinearSolverSpec:
     #: Name the solver is registered under in the C++ solver registry.
     registry_name: ClassVar[str] = ""
 
-    def _make_config(self) -> _solvers.SolverConfig:
+    def _make_config(self) -> solvers.SolverConfig:
         """Build the C++ configuration object for this spec."""
-        config = _solvers.SolverConfig()
+        config = solvers.SolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
         config.print_level = self.print_level
@@ -43,13 +43,13 @@ class LinearSolverSpec:
         """Create the configured C++ linear solver for the given block size.
 
         :param block_size: number of equations per cell (matrix block size).
-        :returns: a ``_solvers.LinearSolver`` handle.
+        :returns: a ``solvers.LinearSolver`` handle.
         """
         if not self.registry_name:
             raise NotImplementedError(
                 f"{type(self).__name__} does not define a registry_name"
             )
-        return _solvers.create_linear_solver(
+        return solvers.create_linear_solver(
             self.registry_name, self._make_config(), block_size
         )
 
@@ -71,9 +71,9 @@ class MGRLevelSpec:
     smoother_type: int = GlobalSmoother.NONE
     smoother_iters: int = 0
 
-    def _to_cpp(self) -> _solvers.MGRLevelConfig:
+    def _to_cpp(self) -> solvers.MGRLevelConfig:
         """Convert to the C++ ``MGRLevelConfig``."""
-        cpp = _solvers.MGRLevelConfig()
+        cpp = solvers.MGRLevelConfig()
         cpp.keep_labels = [int(label) for label in self.keep_labels]
         cpp.frelax_type = int(self.frelax_type)
         cpp.frelax_iters = int(self.frelax_iters)
@@ -112,8 +112,8 @@ class MGRSolverSpec(LinearSolverSpec):
     pressure_level: MGRLevelSpec | None = None
     custom_levels: list[MGRLevelSpec] = field(default_factory=list)
 
-    def _make_config(self) -> _solvers.MGRSolverConfig:
-        config = _solvers.MGRSolverConfig()
+    def _make_config(self) -> solvers.MGRSolverConfig:
+        config = solvers.MGRSolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
         config.print_level = self.print_level

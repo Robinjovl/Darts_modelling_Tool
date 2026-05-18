@@ -2,7 +2,7 @@
 
 This package exposes:
 
-* the compiled ``_solvers`` extension -- the solver registry, the MGR API and
+* the compiled ``solvers`` extension -- the solver registry, the MGR API and
   the C++ configuration objects (re-exported here for backward compatibility,
   so ``from darts import solvers; solvers.create_linear_solver(...)`` works);
 * the Python :mod:`~darts.solvers.specs` configuration classes
@@ -16,8 +16,7 @@ Typical use::
     solver = spec.build(block_size=3)
 """
 
-from . import _solvers  # noqa: F401
-from ._solvers import *  # noqa: F401,F403
+from . import solvers  # noqa: F401
 from .enums import (  # noqa: F401
     CoarseGrid,
     FRelaxation,
@@ -26,6 +25,7 @@ from .enums import (  # noqa: F401
     Restriction,
     VariableRole,
 )
+from .solvers import *  # noqa: F401,F403
 from .specs import (  # noqa: F401
     LinearSolverSpec,
     MGRLevelSpec,
