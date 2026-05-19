@@ -609,82 +609,45 @@ the engine and the solvers onto it. Key facts that shape the plan:
 
 ---
 
-## Appendix C — Implementation progress (2026-05-18)
+## Appendix C — Implementation status (final)
 
-Done and verified on `xiaoming/add-mgr` (uncommitted working tree):
+Status of the §10 roadmap and the §12 unified-matrix work on branch
+`xiaoming/add-mgr`. "verified" means the build is green and the noted models /
+unit tests were run.
 
-| Commit | Status |
-|---|---|
-| Plan (this document) | done |
-| C2 — unified `linear_solver` interface + registry + `linsolv_iface` adapter | done, builds |
-| Solver registration — `mgr`/`superlu` factories, `register_builtin_solvers()` | done, builds |
-| pybind exposure — registry + config classes in the (renamed) `_solvers` module | done, builds + runs |
-| `darts/solvers/` package — `LinearSolverSpec` classes, HYPRE enums, `default_linear_solver()` | done, builds + runs |
+### §10 roadmap
 
-New files: `solvers/include/{linear_solver,solver_config,solver_configs,solver_registry,solver_factories,linsolv_iface_adapter}.hpp`, `solvers/src/{solver_registry,solver_factories,linsolv_iface_adapter}.cpp`, `darts/solvers/{__init__,enums,specs}.py`. The pybind module was renamed `solvers` → `_solvers` and installed into `darts/solvers/` (with `libopendarts_solvers.so` alongside it).
+| Item | Status | Evidence / notes |
+|---|---|---|
+| **C1** Plan | done | this document |
+| **C2** Unified `linear_solver` interface + registry + `linsolv_iface` adapter | done | `solvers/include/{linear_solver,solver_config,solver_registry,solver_factories,linsolv_iface_adapter}.hpp`; `mgr`/`superlu` factories + `register_builtin_solvers()` |
+| **C3** Neutralise the enum-driven engine factory | done | `engine_base.h`: the open-source build (`OPENDARTS_LINEAR_SOLVERS`) no longer runs the bos-stub factory — it errors clearly and requires a solver injected via `set_linear_solver()`. The proprietary build keeps the `linear_solver_t` enum + factory untouched (resolved design, §"item 6"). `engine_base_gpu.h` open-source path builds the in-tree BiCGStab + cuSPARSE-ILU solver. |
+| **C4** GPU device layer on open-DARTS `csr_matrix` | done | `csr_matrix.hpp/.cpp` WITH_GPU layer (cuSPARSE BSR); `gpu_bsr_spmv` adapter |
+| **C5** 5 GPU solver wrappers in-tree | done | `linsolv_{bicgstab,cusparse_ilu,cusolv,amgx,bos_cpr_gpu}` build from open-source sources |
+| **C6** AMGX submodule + `WITH_GPU` decoupled from `BOS_SOLVERS_DIR` | done | `thirdparty/AMGX` submodule; `WITH_AMGX` opt-in CMake option; GPU builds in-tree with no `BOS_SOLVERS_DIR`. AMGX-absent builds gate AMGX behind `OPENDARTS_GPU_HAS_AMGX` and fall back to the BiCGStab + cuSPARSE-ILU solver. |
+| **C7** `darts/solvers/` Python package | done | `specs.py` (`LinearSolverSpec`, `MGRSolverSpec`, `SuperLUSolverSpec`, `MGRLevelSpec`, `default_linear_solver`), `enums.py`, `adaptive.py`; compiled `solvers` pybind module installed in `darts/solvers/` |
+| **C8** Unified dispatch | done, partial | `DartsModel._apply_linear_solver_spec()` builds the solver from `data_ts.linear_solver` and injects it; `default_linear_solver()` returns `MGRSolverSpec` for CPU; the duplicated Newton-loop solve branch is collapsed into `DartsModel._solve_linear_equation()` (used by the model loop and the live-plotting loop). **Deferred:** wrapping PETSc / Pardiso as `LinearSolverSpec` subclasses — they remain selected through `data_ts.linear_type`; the conversion touches the working solver-setup path and is not verifiable without `petsc4py` / `pypardiso` and their models. |
+| **C9** Adaptive / mid-run switching | done | `darts/solvers/adaptive.py` — `AdaptiveSolverSpec`, `SolverSwitchContext`, `fallback_on_failure` policy; `DartsModel._maybe_switch_linear_solver()` re-injects after a timestep |
+| **C10** CI | done, partial | GPU-from-source job (`build-linux-gpu` / `test-linux-gpu`); cross-path solver coverage via `test-linux` (proprietary `-a`) vs `test-linux-ODLS` (open-source registry solvers) over the model suite. **Deferred:** a dedicated per-solver micro-benchmark job (the dual-path suite run already exercises both solver stacks). |
+| **C11** Cleanup | done | OD-6 assert (`assert(A->n_row_size == N_BLOCK_SIZE)`) guards the `linsolv_iface_bos` down-casts; orphan `CMakeLists.txt` removed (`solvers/linear_solvers/`, `engines/lib/`); the `darts.solvers` classes carry docstrings and are autodocumented in `docs/api.rst`. |
 
-### Remaining — item 6 (enum removal / engine rewiring): implementation notes
+### §12 unified matrix layout
 
-Removing `sim_params::linear_solver_t` is **one atomic refactor** — there is no
-compiling intermediate state, so the following must change together and be
-driven through the compile-build-fix loop:
+| Phase | Status | Evidence |
+|---|---|---|
+| Steps 1–4 — `sparsity_pattern`, `dual_array`, `block_csr_matrix`, `block_csr_view<N>` | done | `solvers/include/{sparsity_pattern,dual_array,block_csr_matrix,block_csr_view}.hpp` + unit tests |
+| Phase A — SpMV, legacy-compatible accessors, GPU BSR SpMV adapter, matrix IO | done | committed; unit-tested |
+| Phase B — `block_csr_matrix` implements `csr_matrix_base`; CPU + GPU engine Jacobian migrated | done | CPU build green, 2ph_comp verified; GPU build green, SPE11b runs on GPU with BiCGStab + cuSPARSE-ILU |
+| Phase C — adjoint `to_nb_1` made polymorphic over `csr_matrix_base`; all 1266 GPU-build warnings cleared | done | `Adjoint_super_engine` / `Adjoint_mpfa` pass; 8 linear-solver unit tests pass; GPU build warning-free |
 
-- `engines/src/globals.h` — delete `linear_solver_t`, the `linear_type` field,
-  the `linear_solver_params` class, and the ctor defaults.
-- `engines/src/engine_base.h` — delete the factory `switch` (~lines 716-919);
-  `init_base` uses only an injected solver (clear error if none); replace the
-  `linear_type >= GPU_GMRES_CPR_AMG` GPU test with the already-computed
-  `is_gpu_engine` (engine-name based, line ~688). Migrate `set_linear_solver`
-  and the `linear_solver` member from `linsolv_iface` to the unified
-  `linear_solver` interface.
-- `engines/src/engine_base.cpp` — same GPU-discriminator replacement at the
-  device-Jacobian copy guard; migrate the solve path from `get_n_iters()` to
-  `stats()`.
-- `engines/src/engine_base_gpu.h` — delete its factory + the `linear_type == 0`
-  coercion.
-- `engines/src/pybind11/py_globals.cpp` — delete the `linear_solver_t` /
-  `linear_solver_params` bindings.
-- Proprietary `bos` path: when `BOS_SOLVERS_DIR` is set, register the external
-  bos solvers in the registry (via the `linsolv_iface` adapter), `#ifdef`-gated,
-  so the proprietary build still has solvers once the factory is gone.
-- `darts/models/darts_model.py`, `thmc_model.py`, `pipes/viz/plot_live.py` and
-  every model — build the solver from `data_ts.linear_solver` (a
-  `LinearSolverSpec`) and inject it; collapse the Newton-loop `isinstance`
-  dispatch; PETSc/Pardiso become `LinearSolverSpec` subclasses.
+### Known follow-ups (out of this MR)
 
-This is the recommended starting point for continuing the MR.
-
-### Item 6 — resolved design (decision, 2026-05-18)
-
-A structural conflict was found: the solver registry (`solvers/` tree) is
-compiled **only in the open-source build** — `add_subdirectory(solvers)` is
-gated by `if(NOT DEFINED BOS_SOLVERS_DIR)`. In the proprietary build the tree
-is skipped and `linear_solvers` is the imported external `.a`, so there is no
-registry there. Deleting the engine factory outright would break the
-proprietary build.
-
-**Resolved: `#ifdef`-gate the two paths** (refines decision 1).
-
-- Proprietary build (`!OPENDARTS_LINEAR_SOLVERS`): factory switch +
-  `linear_solver_t` enum **kept, untouched**. Because `WITH_GPU` implies
-  `BOS_SOLVERS_DIR` implies `!OPENDARTS_LINEAR_SOLVERS`, the GPU factory, the
-  `linear_type >= GPU_GMRES_CPR_AMG` discriminator, and `engine_base_gpu.h`
-  are all proprietary-only and need **no change**.
-- Open-source build (`OPENDARTS_LINEAR_SOLVERS` defined): `engine_base::init_base`
-  no longer runs the factory; the linear solver must be injected from Python
-  (built via the registry from a `LinearSolverSpec`). `linear_solver_t` stays
-  in `globals.h` (proprietary needs it) but is unused on the open-source path.
-
-So item 6 narrows to: `engine_base.h` (gate the open-source factory section to
-require an injected solver); `darts_model.py` (build the solver from
-`data_ts.linear_solver` and inject it; `default_linear_solver()` → MGR);
-collapse the Newton-loop `isinstance` dispatch; migrate models.
-
-**Remaining design call:** the registry's `create_linear_solver` currently
-returns the new `linear_solver` type, but `engine_base::set_linear_solver`
-takes `linsolv_iface`. Simplest fix — have the registry/`create_linear_solver`
-return the `linsolv_iface`-based solver for engine injection (the `linsolv_mgr`
-/ `linsolv_superlu` objects already are `linsolv_iface`); the new
-`linear_solver` interface + `linsolv_iface_adapter` then remain as the
-Python-facing / future-solver abstraction. To be settled at the start of the
-item-6 implementation.
+- **GPU engine Jacobian** still constructs `csr_matrix<N>` (its proven cuSPARSE BSR device
+  layer). Migrating it to `block_csr_matrix` needs `gpu_bsr_spmv` to support in-place device
+  assembly.
+- **Mechanics engines** (`engine_pm`, `engine_elasticity`, `engine_super_elastic`) keep a
+  `csr_matrix<N>` Jacobian — a trial migration to `block_csr_matrix` regressed `engine_pm`
+  (segfault) and was reverted; their Jacobian structure needs its own investigation.
+- Retiring `csr_matrix<N>` is gated on both of the above. `csr_matrix_base` is **kept** — it is
+  the unified polymorphic matrix interface.
+- **C8 PETSc / Pardiso** `LinearSolverSpec` subclasses (see C8 row).
