@@ -94,23 +94,26 @@ make clean         # Remove build artifacts
 
 ## API Documentation
 
-API docs are generated from Python docstrings using `autodoc` and `napoleon`
-(supports Google and NumPy style docstrings). The entry point is `docs/api.rst`.
+API docs are generated from Python docstrings using `autodoc` and `napoleon`.
+The entry point is `docs/api.rst`.
 
 ### Docstring Style
 
-The project uses Google-style docstrings. Example:
+Put opening and closing triple quotation marks on separate lines. Document
+input and output arguments with `:param`, `:type`, `:return:`, and `:rtype:`
+fields. Example:
 
 ```python
 def compute_density(pressure, temperature):
-    """Compute fluid density at given conditions.
+    """
+    Compute fluid density at given conditions.
 
-    Args:
-        pressure: Pressure in bar.
-        temperature: Temperature in Kelvin.
-
-    Returns:
-        Density in kg/m3.
+    :param pressure: Pressure [bar]
+    :type pressure: float
+    :param temperature: Temperature [K]
+    :type temperature: float
+    :return: Fluid density [kg/m3]
+    :rtype: float
     """
 ```
 

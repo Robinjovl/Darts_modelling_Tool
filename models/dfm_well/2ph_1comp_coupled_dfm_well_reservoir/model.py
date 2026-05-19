@@ -1,7 +1,8 @@
 import numpy as np
 
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params, ms_well, value_vector
+from darts.pipes.viz.plot_live import DartsModelWithLivePlots
+from darts.engines import sim_params, ms_well, value_vector, well_control_iface
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 
@@ -9,7 +10,7 @@ from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
-from darts.physics.properties.viscosity import Fenghour1998, Islam2012
+from darts.physics.properties.viscosity import Fenghour1998
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
@@ -18,11 +19,20 @@ from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
-
+# class Model(DartsModelWithLivePlots):
 class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
+
+        # Use DartsModelWithLivePlots as the super class and enable plots below for live plotting
+        # self.live_plot_config.enable_solver_props = True
+
+        # self.live_plot_config.enable_ph_diagram = True
+        # self.live_plot_config.tracked_block_idx = 1000
+
+        # self.live_plot_config.enable_well_res_profiles = True
+        # self.live_plot_config.plot_till_this_res_cell = 0
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -32,36 +42,49 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
+        # For isenthalpic injection and injection at a constant gas rate
         self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
-                            it_newton=10, it_linear=10,
-                            newton_type=sim_params.newton_local_chop,
+                            it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
                             coupled_well_res_norm_method=2,
-                            runtime=10 / 24 / 60,   # This runtime will be used when CI test is conducted without the main file
+                            runtime=1/24/60, # This runtime will be used when CI test is conducted without the main file
                             )
+
+        # # For injection at a constant WHP
+        # self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
+        #                     it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
+        #                     coupled_well_res_norm_method=2,
+        #                     )
+
+        # # For injection at a constant total mass rate
+        # # Use 0.001 as the first time-step size because 0.0001 did not converge
+        # self.set_sim_params(first_ts=0.001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
+        #                     it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
+        #                     coupled_well_res_norm_method=2,
+        #                     )
 
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
-        (nr, nz) = (2, 1)
-        (dr, dz) = (5, 50)
+        (nr, nz) = (1000, 1)
+        (dr, dz) = (0.01, 50)
 
-        poro = np.ones((nr, nz)) * 0.2
-        permr = np.ones((nr, nz)) * 115
+        poro = np.ones((nr, nz)) * 0.21
+        permr = np.ones((nr, nz)) * 100
 
         permz = permr
 
-        self.well_1_ID = 0.1
+        self.well_1_ID = 0.1016
         self.reservoir = StructRadialReservoir(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, poro=poro.flatten(order='F'),
                                                permr=permr.flatten(order='F'), permz=permz.flatten(order='F'),
-                                               R0=self.well_1_ID / 2, R1=10, logspace=True, rcond=181.44, hcap=2200,
-                                               depth=975)  # depth is the depth of the centroid of the top reservoir cell
-        self.reservoir.boundary_volumes['yz_minus'] = 1e20
+                                               R0=self.well_1_ID / 2, R1=1000, logspace=True, rcond=259.2, hcap=5250,
+                                               depth=2025)  # depth is the depth of the centroid of the top reservoir cell
+        self.reservoir.boundary_volumes['yz_plus'] = 1e20
 
         return
 
     def set_initial_conditions(self):
-        p_init_res = 5.91251   # from the pressure of the perforated segment of the wellbore
-        T_init_res = 322.52500   # from the temperature of the perforated segment of the wellbore
+        p_init_res = 11   # from the pressure of the perforated segment of the wellbore
+        T_init_res = 348.15   # from the temperature of the perforated segment of the wellbore
 
         input_distribution = {self.physics.vars[0]: p_init_res,
                               "temperature": T_init_res,
@@ -78,7 +101,7 @@ class Model(CICDModel):
         from dartsflash.components import CompData
         from dartsflash.mixtures import DARTSFlash, VL
         components_names = ['CO2']
-        phases_names = ['G', 'L']
+        phases_names = ['G', 'L']   # G is the gaseous-CO2 phase and L is the liquid-CO2 phase
         comp_data = CompData(components_names, setprops=True)
         epsilon = self.zero / 10
 
@@ -111,12 +134,20 @@ class Model(CICDModel):
                                                 ('L', Fenghour1998()),
                                                 ])
 
-        property_container.conductivity_ev = dict([('G', ConstFunc(10.)),
+        # diff = 8.64e-6
+        # property_container.diffusion_ev = dict([('G', ConstFunc(np.ones(len(components_names)) * diff)),
+        #                                         ('L', ConstFunc(np.ones(len(components_names)) * diff)),
+        #                                         ('aqueous', ConstFunc(np.ones(len(components_names)) * diff * 1e-3))])
+
+        property_container.conductivity_ev = dict([('G', ConstFunc(3.5)),
                                                    ('L', ConstFunc(7.)),
                                                    ])
 
-        property_container.rel_perm_ev = dict([('G', PhaseRelPerm("gas", swc=0.25, sgr=0.0, n=1.5)),
-                                               ('L', PhaseRelPerm("oil", swc=0.25, sgr=0.0, n=4))])
+        self.sw_init_res = 0
+        swc = self.sw_init_res
+        property_container.rel_perm_ev = dict([('G', PhaseRelPerm("gas", swc=swc, sgr=swc, n=1.5)),
+                                               ('L', PhaseRelPerm("oil", swc=swc, sgr=swc, n=1.5)),
+                                               ])
 
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
 
@@ -140,21 +171,21 @@ class Model(CICDModel):
         well_1_ms_type = ms_well.MS_Type.DFM
         # Lengths of the well segments are specified here.
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
-        well_1_segments_lengths = 50 * np.ones(20)  # From top to bottom of the wellbore
+        well_1_segments_lengths = 50 * np.ones(41)  # From top to bottom of the wellbore
         well_1_ID = self.well_1_ID
         well_1_inclination_angle = 0.  # in degrees relative to the vertical direction
-        well_1_wall_roughness = 2.5e-5
+        well_1_wall_roughness = 2.032e-5
         verbose = True
         well_1_geometry = PipeGeometry(well_1_name, well_1_segments_lengths, well_1_ID, well_1_inclination_angle,
                                        well_1_wall_roughness, verbose)
 
-        # %% Set initial conditions in the pipe using LinearAmbientTemperature
-        pipe_head_pressure = 5.02241  # bar
-        pipe_head_temperature = 298.775  # Kelvin
-        temp_grad = 0.025  # deg C/meter
+        #%% Set initial conditions in the pipe using LinearAmbientTemperature
+        pipe_head_pressure = 7.81438  # bar
+        pipe_head_temperature = 15 + 273.15  # Kelvin
+        temp_grad = 0.03  # deg C/meter
         pipe_head_segment_index = 0  # index starts from zero
 
-        initial_conditions_dict = {'phases_names': ['G'], 'phases_compositions': [[1]],
+        initial_conditions_dict = {'phases_names': ['G'], 'phases_compositions': [[1.]],
                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe and pipe_intervals are TVD
 
         well_1_initial_conditions = LinearAmbientTemperature(well_1_name, well_1_geometry, self.physics,
@@ -164,12 +195,17 @@ class Model(CICDModel):
         #%% Add source/sink terms
         inj_segment_idx = 0
         inflow_or_outflow = "inflow"
-        target_inj_rate = 58895.98 / 15  # in kmol/day
-        ramp_up_period = 0.0
+        target_inj_rate = 58895.98  # in kmol/day
+        ramp_up_period = 3 / (24 * 60)  # in day
 
-        inj_phase_comp = np.array([1])
-        molar_enthalpy = 88.02
-        inj_fluid_props = {"composition": inj_phase_comp, "molar_enthalpy": molar_enthalpy}
+        inj_phase_comp = np.array([1.])
+        # There is no difference if the phase used in the following line for evaluating enthalpy is either G
+        # or L because for both the same EoSs are used.
+        inj_phase_name = "G"
+        injected_fluid_pressure = 60.
+        injected_fluid_temperature = 10 + 273.15
+        inj_fluid_props = {"composition": inj_phase_comp, "phase_name": inj_phase_name,
+                           "pressure": injected_fluid_pressure,"temperature": injected_fluid_temperature}
 
         ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
                                   inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
@@ -179,19 +215,14 @@ class Model(CICDModel):
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
-                                 source_sinks=source_sinks, verbose=verbose)}
+                                 source_sinks=source_sinks,
+                                 verbose=verbose)}
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
         # Well with a single perforation
         well_1_perforated_segment = well_1_geometry.num_segments
-
-        # Reservoir cell sizes for the Peaceman model
-        self.reservoir.discretizer.len_cell_xdir[0, 0, 0] = 50.0
-        self.reservoir.discretizer.len_cell_ydir[0, 0, 0] = 50.0
-        self.reservoir.discretizer.len_cell_zdir[0, 0, 0] = 50.0
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
-                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_diameter=well_1_geometry.pipe_ID)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
@@ -206,7 +237,8 @@ class Model(CICDModel):
         # Get inj_fluid_molar_potential_energy
         inj_segment_idx = self.wells["I1"].source_sinks["RampUpRate1"].segment_idx
         inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[self.reservoir.mesh.n_res_blocks + inj_segment_idx]
-        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * self.physics.property_containers[0].Mw[0]
+        Mw_avg = np.sum(self.physics.property_containers[0].Mw * inj_comp)
+        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * Mw_avg
         inj_fluid_energy = inj_fluid_molar_enthalpy + inj_fluid_molar_potential_energy
 
         inj_energy_rate = inj_rate * inj_fluid_energy
@@ -215,6 +247,29 @@ class Model(CICDModel):
 
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
         well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
-        rhs_flux[well_head_start_idx:well_head_start_idx + self.physics.n_vars:] = - inj_rates
+        rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_rates
 
         return rhs_flux
+
+    def set_well_controls(self):
+        # When using well controls, make sure all the unnecessary sources/sinks from the pipe are removed and the
+        # function set_rhs_flux is commented out.
+        inj_composition = []
+        w = self.reservoir.wells[0]
+
+        # # Constant WHP
+        # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+        #                                is_inj=True, target=60.0, inj_composition=inj_composition, inj_temp=283.15)
+
+        # # Constant injection mass rate of gaseous phase
+        # # Don't inject at a constant liquid rate because it fails readily. The reason is that there is no liquid available in
+        # # the wellhead cell. There are methods to overcome this later, e.g., use a high initial pressure for the wellhead cell to
+        # # have liquid CO2 available in it from the beginning.
+        # target_inj_rate = 1 * 24 * 3600  # in kg/day
+        # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE, phase_name="G",
+        #                                is_inj=True, target=target_inj_rate, inj_composition=inj_composition, inj_temp=283.15)
+
+        # # Constant total injection mass rate
+        # target_inj_rate = 5 * 24 * 3600  # in kg/day
+        # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+        #                                is_inj=True, target=target_inj_rate, inj_composition=inj_composition, inj_temp=283.15)

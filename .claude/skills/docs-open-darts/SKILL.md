@@ -6,7 +6,7 @@ description: Build and maintain open-DARTS documentation with Sphinx and MyST, i
 # Documentation
 
 Use this skill for docs authoring and publishing checks.
-Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
+Use the session conda environment. If the prompt defines one, use it. Otherwise, create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 
