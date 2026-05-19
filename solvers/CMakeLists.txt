@@ -55,8 +55,15 @@ target_include_directories(opendarts_solvers
 # Alias for easier linking
 add_library(opendarts::solvers ALIAS opendarts_solvers)
 
-# Note: opendarts_solvers.dll and .lib are NOT installed to darts directory
-# They are only needed during build time for linking Python modules
+# Install the shared library next to the Python modules so the dynamic
+# loader (RPATH=$ORIGIN) resolves it at runtime. The .so/.dll IS a runtime
+# dependency of the solvers Python module; only the Windows .lib import
+# library is build-time-only, so ARCHIVE is intentionally omitted.
+install(TARGETS opendarts_solvers
+  CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
+  LIBRARY DESTINATION ./
+  RUNTIME DESTINATION ./
+)
 
 message(STATUS "Shared solvers library configured (unified)")
 
