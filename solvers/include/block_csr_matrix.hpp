@@ -94,6 +94,21 @@ namespace opendarts
       [[nodiscard]] const mat_float *values() const noexcept { return values_.host_data(); }
       void set_zero();
 
+      // --- legacy-compatible accessors ---------------------------------------
+      // Same names as csr_matrix_base, so engine / solver code that calls
+      // ->get_values() etc. is source-compatible across the step-6 migration
+      // (the structure accessors are const -- the shared structure is
+      // immutable; the few non-const call sites are fixed in step 6).
+      [[nodiscard]] mat_float *get_values() noexcept { return values(); }
+      [[nodiscard]] const mat_float *get_values() const noexcept { return values(); }
+      [[nodiscard]] const index_t *get_rows_ptr() const noexcept { return row_ptr(); }
+      [[nodiscard]] const index_t *get_cols_ind() const noexcept { return col_ind(); }
+      [[nodiscard]] const index_t *get_diag_ind() const noexcept { return diag_ind(); }
+      [[nodiscard]] const index_t *get_row_thread_starts() const noexcept
+      {
+        return structure_->row_thread_starts();
+      }
+
 #ifdef WITH_GPU
       [[nodiscard]] mat_float *values_device() { return values_.device_data(); }
       [[nodiscard]] const mat_float *values_device() const { return values_.device_data(); }
