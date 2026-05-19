@@ -507,6 +507,58 @@ each backend and checking an SpMV against a reference.
 Each step is an independently reviewable commit. The GPU build is completed as a
 *consequence* of steps 3–5, not as a separate patch.
 
+### 12.10 Steps 5–6 migration sub-plan
+
+Steps 1–4 are done (the unified-matrix foundation, additive). Steps 5–6 migrate
+the engine and the solvers onto it. Key facts that shape the plan:
+
+- **The layout is unchanged.** `block_csr_matrix` is the *same* block-CSR as the
+  legacy `csr_matrix<N>` (§12.3) — identical `values` / `row_ptr` / `col_ind` /
+  `diag_ind`. So **no assembly arithmetic changes**; the migration is a type +
+  accessor re-pointing plus completing `block_csr_matrix`'s operation surface.
+- **Open-source paths only.** The migration touches the `OPENDARTS_LINEAR_SOLVERS`
+  code paths. A bos build keeps assembling into the proprietary `csr_matrix`;
+  `block_csr_matrix` replaces the *open-DARTS* `csr_matrix<N>` under the existing
+  `#ifdef OPENDARTS_LINEAR_SOLVERS` switches.
+- The dominant consumer call is `->get_values()` / `->get_rows_ptr()` /
+  `get_cols_ind` / `get_diag_ind` / `get_row_thread_starts` (~150 sites). Giving
+  `block_csr_matrix` those exact accessor names makes that code source-compatible,
+  shrinking the build-gated cut to type declarations.
+
+**Phase A — additive (build stays green; each item committable + unit-tested)**
+
+- A1. Block SpMV on `block_csr_view<N>`: `matrix_vector_product` (r += A·v),
+  `matrix_vector_product_t`, `calc_lin_comb` (r = αAu + βv) — compile-time N.
+- A2. Legacy-compatible accessors on `block_csr_matrix`: `get_values()`,
+  `get_rows_ptr()`, `get_cols_ind()`, `get_diag_ind()`, `get_row_thread_starts()`
+  — same names/signatures as `csr_matrix_base`.
+- A3. cuSPARSE BSR SpMV as a free function / adapter over `block_csr_matrix`
+  (replaces the item-7 `csr_matrix::matrix_vector_product_d`).
+- A4. `sparsity_pattern` builder from `conn_mesh` connectivity (replaces the
+  `csr_matrix::init`-from-structure path the engine uses once per run).
+- A5. Matrix IO (`export_matrix_to_file`) as a free function — debug dumps only.
+
+**Phase B — the atomic cut (build-gated; one focused pass, then a CPU build)**
+
+- B1. `linear_solver` / `linsolv_iface`: `init/setup(csr_matrix_base*)` →
+  `block_csr_matrix&`.
+- B2. Each open-source solver wrapper (`linsolv_mgr`, `linsolv_superlu`,
+  `linsolv_hypre_amg`, `linsolv_hypre_ilu`, the 5 GPU wrappers): matrix type →
+  `block_csr_matrix`; HYPRE/MGR consume `scalar_csr_adapter`; GPU wrappers
+  consume the `block_csr_matrix` device pointers.
+- B3. Engine: the `engine_base` / `engine_base_gpu` Jacobian member
+  `csr_matrix<N>` → `block_csr_matrix`; structure built once via A4; assembly
+  through `block_csr_view<N_VARS>`.
+- B4. Drop `engine_base_gpu : public csr_matrix_base` — composition: the engine
+  *has-a* Jacobian.
+- B5. CPU build, iterate; then GPU build, iterate.
+
+**Phase C — cleanup**
+
+- C1. Retire the open-DARTS `csr_matrix<N>` / `csr_matrix_base` and the item-7
+  device layer (subsumed by `dual_array` + the A3 SpMV adapter).
+- C2. Update `tests/cpp/unit/linear_solvers` to the new types.
+
 ---
 
 ## Appendix A — integration-surface checklist

@@ -86,6 +86,89 @@ namespace opendarts
         return block(matrix_->diag_ind()[i_block]);
       }
 
+      // --- block sparse matrix-vector products -------------------------------
+      // v and r are scalar vectors of length n_block_rows() * N. The block
+      // size N is a compile-time constant, so the inner N x N work unrolls.
+
+      /** r += A * v. */
+      void matrix_vector_product(const mat_float *v, mat_float *r) const noexcept
+      {
+        const index_t *rp = matrix_->row_ptr();
+        const index_t *ci = matrix_->col_ind();
+        const mat_float *vals = matrix_->values();
+        const index_t n = matrix_->n_block_rows();
+        for (index_t i = 0; i < n; ++i)
+        {
+          mat_float *ri = r + static_cast<std::size_t>(i) * N;
+          for (index_t jb = rp[i]; jb < rp[i + 1]; ++jb)
+          {
+            const mat_float *blk = vals + static_cast<std::size_t>(jb) * block_area;
+            const mat_float *vj = v + static_cast<std::size_t>(ci[jb]) * N;
+            for (int e = 0; e < static_cast<int>(N); ++e)
+            {
+              mat_float acc = 0;
+              for (int w = 0; w < static_cast<int>(N); ++w)
+                acc += blk[e * N + w] * vj[w];
+              ri[e] += acc;
+            }
+          }
+        }
+      }
+
+      /** r += A^T * v. */
+      void matrix_vector_product_t(const mat_float *v, mat_float *r) const noexcept
+      {
+        const index_t *rp = matrix_->row_ptr();
+        const index_t *ci = matrix_->col_ind();
+        const mat_float *vals = matrix_->values();
+        const index_t n = matrix_->n_block_rows();
+        for (index_t i = 0; i < n; ++i)
+        {
+          const mat_float *vi = v + static_cast<std::size_t>(i) * N;
+          for (index_t jb = rp[i]; jb < rp[i + 1]; ++jb)
+          {
+            const mat_float *blk = vals + static_cast<std::size_t>(jb) * block_area;
+            mat_float *rj = r + static_cast<std::size_t>(ci[jb]) * N;
+            for (int w = 0; w < static_cast<int>(N); ++w)
+            {
+              mat_float acc = 0;
+              for (int e = 0; e < static_cast<int>(N); ++e)
+                acc += blk[e * N + w] * vi[e];
+              rj[w] += acc;
+            }
+          }
+        }
+      }
+
+      /** r = alpha * A * u + beta * v. */
+      void calc_lin_comb(mat_float alpha, mat_float beta, const mat_float *u,
+        const mat_float *v, mat_float *r) const noexcept
+      {
+        const index_t *rp = matrix_->row_ptr();
+        const index_t *ci = matrix_->col_ind();
+        const mat_float *vals = matrix_->values();
+        const index_t n = matrix_->n_block_rows();
+        for (index_t i = 0; i < n; ++i)
+        {
+          const mat_float *vi = v + static_cast<std::size_t>(i) * N;
+          mat_float *ri = r + static_cast<std::size_t>(i) * N;
+          for (int e = 0; e < static_cast<int>(N); ++e)
+            ri[e] = beta * vi[e];
+          for (index_t jb = rp[i]; jb < rp[i + 1]; ++jb)
+          {
+            const mat_float *blk = vals + static_cast<std::size_t>(jb) * block_area;
+            const mat_float *uj = u + static_cast<std::size_t>(ci[jb]) * N;
+            for (int e = 0; e < static_cast<int>(N); ++e)
+            {
+              mat_float acc = 0;
+              for (int w = 0; w < static_cast<int>(N); ++w)
+                acc += blk[e * N + w] * uj[w];
+              ri[e] += alpha * acc;
+            }
+          }
+        }
+      }
+
     private:
       block_csr_matrix *matrix_;
     };
