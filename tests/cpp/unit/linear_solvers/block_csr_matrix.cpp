@@ -37,7 +37,7 @@ namespace
   {
     block_csr_matrix a(make_tridiagonal(), 3);
     bool ok = !a.empty() && a.block_size() == 3 && a.n_block_rows() == 4
-      && a.n_blocks() == 10 && a.n_rows() == 12 && a.n_values() == 10 * 9;
+      && a.n_blocks() == 10 && a.scalar_n_rows() == 12 && a.n_values() == 10 * 9;
     // Freshly built: values must be zeroed.
     const mat_float *v = a.values();
     for (index_t i = 0; i < a.n_values() && ok; ++i)

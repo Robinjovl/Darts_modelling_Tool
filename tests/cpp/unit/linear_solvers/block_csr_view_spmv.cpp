@@ -65,7 +65,7 @@ namespace
         for (int w = 0; w < static_cast<int>(N); ++w)
           view.at(jb, e, w) = static_cast<mat_float>(1 + (7 * jb + 3 * e + w) % 11);
 
-    const std::size_t n = static_cast<std::size_t>(a.n_rows());
+    const std::size_t n = static_cast<std::size_t>(a.scalar_n_rows());
     std::vector<mat_float> v(n);
     for (std::size_t i = 0; i < n; ++i)
       v[i] = static_cast<mat_float>(1 + (i % 5)) * 0.5;
@@ -101,7 +101,7 @@ namespace
         for (int w = 0; w < 2; ++w)
           view.at(jb, e, w) = static_cast<mat_float>(1 + (5 * jb + e + 2 * w) % 9);
 
-    const std::size_t n = static_cast<std::size_t>(a.n_rows());
+    const std::size_t n = static_cast<std::size_t>(a.scalar_n_rows());
     std::vector<mat_float> x(n), y(n);
     for (std::size_t i = 0; i < n; ++i)
     {

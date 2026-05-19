@@ -102,7 +102,7 @@ namespace opendarts
       const double *v_d, double *r_d) const
     {
       // r = beta * v, then r = alpha * A * u + beta * r  ->  alpha*A*u + beta*v.
-      const std::size_t bytes = static_cast<std::size_t>(matrix_->n_rows()) * sizeof(double);
+      const std::size_t bytes = static_cast<std::size_t>(matrix_->scalar_n_rows()) * sizeof(double);
       if (r_d != v_d)
         cudaMemcpy(r_d, v_d, bytes, cudaMemcpyDeviceToDevice);
       return bsrmv(alpha, u_d, beta, r_d);
