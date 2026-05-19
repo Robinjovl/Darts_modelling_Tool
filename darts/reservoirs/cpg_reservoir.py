@@ -999,8 +999,8 @@ class CPG_Reservoir(ReservoirBase):
         output_directory: str,
         filename: str = "wells.vtk",
         first_perforation_only: bool = True,
-        prolongation_up: float = 1000.0,
-        well_diameter: float = 70.0,
+        prolongation_up: float | None = None,
+        well_diameter: float | None = None,
         tube_sides: int = 50,
         tube_capping: bool = True,
         invert_z: bool = True,
@@ -1021,10 +1021,13 @@ class CPG_Reservoir(ReservoirBase):
             of each well. If ``False``, export all perforations.
         :type first_perforation_only: bool
         :param prolongation_up: Upward extension (in model length units) applied to
-            the first exported perforation segment of each well.
-        :type prolongation_up: float
-        :param well_diameter: Tube diameter in model length units.
-        :type well_diameter: float
+            the first exported perforation segment of each well. If ``None``, it is
+            derived from the reservoir horizontal extent so wells stay proportional
+            to the model regardless of its absolute size.
+        :type prolongation_up: float, optional
+        :param well_diameter: Tube diameter in model length units. If ``None``, it is
+            derived from the reservoir horizontal extent (see ``prolongation_up``).
+        :type well_diameter: float, optional
         :param tube_sides: Number of circumferential sides used by ``vtkTubeFilter``.
         :type tube_sides: int
         :param tube_capping: If ``True``, cap tube ends.
@@ -1042,18 +1045,17 @@ class CPG_Reservoir(ReservoirBase):
         """
         import vtk
 
-        if well_diameter <= 0:
-            raise ValueError(f"well_diameter must be positive, got {well_diameter}.")
         if tube_sides < 3:
             raise ValueError(f"tube_sides must be >= 3, got {tube_sides}.")
-        if prolongation_up < 0:
+        if well_diameter is not None and well_diameter <= 0:
+            raise ValueError(f"well_diameter must be positive, got {well_diameter}.")
+        if prolongation_up is not None and prolongation_up < 0:
             raise ValueError(f"prolongation_up must be >= 0, got {prolongation_up}.")
 
         os.makedirs(output_directory, exist_ok=True)
         well_vtk_filename = os.path.abspath(os.path.join(output_directory, filename))
 
         append_filter = vtk.vtkAppendPolyData()
-        tube_radius = float(well_diameter) * 0.5
 
         def _centroid_to_xyz(centroid) -> tuple[float, float, float]:
             values = centroid.values if hasattr(centroid, "values") else centroid
@@ -1064,9 +1066,41 @@ class CPG_Reservoir(ReservoirBase):
                 )
             return float(arr[0]), float(arr[1]), float(arr[2])
 
-        def _create_tube(center_xyz, prolongation: float):
-            x, y, z = center_xyz
-            z_vtk = -z if invert_z else z
+        # Cell-center coordinates of all reservoir blocks.
+        res_n = int(getattr(self.discr_mesh, "n_cells", len(self.centroids_all_cells)))
+        centroid_xyz_all = np.array(
+            [_centroid_to_xyz(c) for c in self.centroids_all_cells[:res_n]],
+            dtype=float,
+        )
+
+        # Reservoir block depths in the same convention used by the mesh VTK
+        # export. Anchoring wells to the discretizer depths (rather than to the
+        # centroid z-component) keeps wells aligned with the reservoir body and
+        # independent of how the corner-point centroids were computed.
+        mesh_depth = None
+        if getattr(self, "depth_all_cells", None) is not None:
+            mesh_depth = np.asarray(self.depth_all_cells, dtype=float).reshape(-1)
+        elif hasattr(self, "mesh") and getattr(self.mesh, "depth", None) is not None:
+            mesh_depth = np.array(self.mesh.depth, copy=False)
+
+        # Derive tube geometry from the reservoir horizontal extent so wells stay
+        # visually proportional for any model size. Defaults: tube diameter ~0.7 %
+        # and upward prolongation ~12 % of the horizontal bounding-box diagonal.
+        if centroid_xyz_all.shape[0] > 0:
+            extent_x = float(np.ptp(centroid_xyz_all[:, 0]))
+            extent_y = float(np.ptp(centroid_xyz_all[:, 1]))
+        else:
+            extent_x = extent_y = 0.0
+        horizontal_diag = float(np.hypot(extent_x, extent_y))
+        if well_diameter is None:
+            well_diameter = max(0.5, 0.007 * horizontal_diag)
+        if prolongation_up is None:
+            prolongation_up = max(float(well_diameter), 0.12 * horizontal_diag)
+
+        tube_radius = float(well_diameter) * 0.5
+
+        def _create_tube(x, y, depth, prolongation: float):
+            z_vtk = -depth if invert_z else depth
 
             points = vtk.vtkPoints()
             points.InsertNextPoint(x, y, z_vtk + float(prolongation))
@@ -1097,12 +1131,21 @@ class CPG_Reservoir(ReservoirBase):
             first_segment = True
             for perforation in well.perforations:
                 _, res_block_local, _, _ = perforation
-                centroid_xyz = _centroid_to_xyz(
-                    self.centroids_all_cells[res_block_local]
-                )
+                if res_block_local < 0 or res_block_local >= centroid_xyz_all.shape[0]:
+                    continue
+                x, y, centroid_z = centroid_xyz_all[res_block_local]
+                if mesh_depth is not None and res_block_local < mesh_depth.size:
+                    block_depth = float(mesh_depth[res_block_local])
+                else:
+                    block_depth = float(centroid_z)
                 segment_prolongation = float(prolongation_up) if first_segment else 0.0
                 append_filter.AddInputData(
-                    _create_tube(centroid_xyz, prolongation=segment_prolongation)
+                    _create_tube(
+                        float(x),
+                        float(y),
+                        block_depth,
+                        prolongation=segment_prolongation,
+                    )
                 )
                 segments_added += 1
                 first_segment = False
