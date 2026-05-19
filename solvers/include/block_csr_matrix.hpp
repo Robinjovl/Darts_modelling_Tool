@@ -79,6 +79,13 @@ namespace opendarts
       /** (Re)builds over a structure and block size; values zeroed. */
       void reset(std::shared_ptr<sparsity_pattern> structure, int block_size);
 
+      /** Migration-bridge initialiser matching the legacy csr_matrix::init
+          signature: allocates a fresh sparsity_pattern (structure arrays
+          sized but zero) and the values buffer. The caller then fills the
+          structure in place via get_rows_ptr() / get_cols_ind() /
+          get_diag_ind() -- exactly what engine::init_jacobian_structure does. */
+      void init(index_t n_block_rows, index_t n_block_cols, int block_size, index_t nnzb);
+
       [[nodiscard]] bool empty() const noexcept { return block_size_ == 0; }
       [[nodiscard]] int block_size() const noexcept { return block_size_; }
 

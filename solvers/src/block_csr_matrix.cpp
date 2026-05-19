@@ -83,6 +83,14 @@ namespace opendarts
       refresh_base_fields();
     }
 
+    void block_csr_matrix::init(index_t n_block_rows, index_t n_block_cols, int block_size,
+      index_t nnzb)
+    {
+      auto sp = std::make_shared<sparsity_pattern>();
+      sp->allocate(n_block_rows, n_block_cols, nnzb);
+      reset(std::move(sp), block_size);
+    }
+
     block_csr_matrix block_csr_matrix::clone() const
     {
       block_csr_matrix copy;

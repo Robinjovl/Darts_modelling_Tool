@@ -72,6 +72,14 @@ namespace opendarts
       void build(index_t n_block_rows, index_t n_block_cols,
         const index_t *row_ptr, const index_t *col_ind);
 
+      /** Allocates the structure arrays (row_ptr, col_ind, diag_ind,
+          row_thread_starts) sized for @p n_block_rows / @p nnzb but left
+          zero-filled, for a caller that fills them in place (the engine's
+          init_jacobian_structure). A single-partition row_thread_starts is
+          installed; the diagonal indices are written by the caller. This is
+          a migration bridge -- prefer build() once structure arrays exist. */
+      void allocate(index_t n_block_rows, index_t n_block_cols, index_t nnzb);
+
       // --- dimensions --------------------------------------------------------
       [[nodiscard]] index_t n_block_rows() const noexcept { return n_block_rows_; }
       [[nodiscard]] index_t n_block_cols() const noexcept { return n_block_cols_; }

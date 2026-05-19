@@ -65,6 +65,31 @@ namespace opendarts
       csr_view_block_size_ = 0;
     }
 
+    void sparsity_pattern::allocate(index_t n_block_rows, index_t n_block_cols, index_t nnzb)
+    {
+      assert(n_block_rows >= 0 && n_block_cols >= 0 && nnzb >= 0);
+
+      n_block_rows_ = n_block_rows;
+      n_block_cols_ = n_block_cols;
+      nnzb_ = nnzb;
+
+      row_ptr_.resize(static_cast<std::size_t>(n_block_rows) + 1);
+      col_ind_.resize(static_cast<std::size_t>(nnzb));
+      diag_ind_.resize(static_cast<std::size_t>(n_block_rows));
+
+      // Single-partition default; an MT caller may overwrite it before use.
+      row_thread_starts_.resize(2);
+      index_t *ts = row_thread_starts_.host_data();
+      ts[0] = 0;
+      ts[1] = n_block_rows;
+      n_thread_partitions_ = 1;
+
+      global_row_start_ = 0;
+      global_n_rows_ = n_block_rows;
+      csr_view_.reset();
+      csr_view_block_size_ = 0;
+    }
+
     void sparsity_pattern::compute_diag_ind()
     {
       const index_t *rp = row_ptr_.host_data();
