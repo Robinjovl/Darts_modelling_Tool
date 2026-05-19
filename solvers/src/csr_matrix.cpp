@@ -672,10 +672,14 @@ namespace opendarts
     template <uint8_t N_BLOCK_SIZE>
     int csr_matrix<N_BLOCK_SIZE>::matrix_vector_product_t(opendarts::config::mat_float *v, opendarts::config::mat_float *r)
     {
-      opendarts::config::index_t i, j1, j2, j, cl;
-      if(N_BLOCK_SIZE > 1)
+      // Transposed SpMV is only defined for the scalar (block size 1) layout.
+      // if constexpr discards the loop below for N_BLOCK_SIZE > 1 instead of
+      // leaving it as unreachable code after a runtime return.
+      if constexpr (N_BLOCK_SIZE > 1)
         return -1;
-
+      else
+      {
+      opendarts::config::index_t i, j1, j2, j, cl;
       // Here we loop over the rows or matrix, which means
       // looping over the columns of the transpose
       for (i = 0; i < n_rows; ++i)
@@ -693,6 +697,7 @@ namespace opendarts
       }
 
       return 0;
+      }
     }
 
 
@@ -764,6 +769,13 @@ namespace opendarts
     // Ported from the proprietary darts-linear-solvers csr_matrix. Compiled by
     // nvcc when WITH_GPU is set (see solvers/CMakeLists.txt). index_t is int and
     // mat_float is double, which matches the cuSPARSE legacy BSR API directly.
+    //
+    // CUDA 12+ deprecates the legacy block-CSR cuSPARSE routines (bsrmv,
+    // bsr2csr, ...). They remain functional and there is no drop-in generic-API
+    // BSR replacement, so the deprecation diagnostic is silenced for this
+    // device layer; migrating to the generic cuSPARSE API is tracked separately.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
     template <uint8_t N_BLOCK_SIZE>
     int csr_matrix<N_BLOCK_SIZE>::init_device(int n_rows_input, int nnz)
@@ -1076,6 +1088,7 @@ namespace opendarts
       this->gpu_mode = 0;
       return 0;
     }
+#pragma GCC diagnostic pop
 #endif // WITH_GPU
 
 

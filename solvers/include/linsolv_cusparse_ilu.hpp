@@ -53,6 +53,11 @@ namespace opendarts
 
       ~linsolv_cusparse_ilu();
 
+      // Keep the csr_matrix_base init()/setup() overloads visible: declaring
+      // the csr_matrix<N>* overloads below otherwise hides them by name.
+      using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::init;
+      using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::setup;
+
       //////////////////////
       // linear_solver_base
       //////////////////////
@@ -115,6 +120,12 @@ namespace opendarts
       cusparseMatDescr_t descr_M = 0;
       cusparseMatDescr_t descr_L = 0;
       cusparseMatDescr_t descr_U = 0;
+      // CUDA 12+ deprecates the legacy block-CSR ILU/triangular-solve info
+      // handles and solve-policy enum. They remain functional and have no
+      // drop-in generic-API replacement, so the deprecation diagnostic is
+      // silenced for these member declarations.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
       bsrilu02Info_t info_M = 0;
       bsrsv2Info_t info_L = 0;
       bsrsv2Info_t info_U = 0;
@@ -137,6 +148,7 @@ namespace opendarts
       const cusparseSolvePolicy_t policy_M = CUSPARSE_SOLVE_POLICY_USE_LEVEL;
       const cusparseSolvePolicy_t policy_L = CUSPARSE_SOLVE_POLICY_USE_LEVEL;
       const cusparseSolvePolicy_t policy_U = CUSPARSE_SOLVE_POLICY_USE_LEVEL;
+#pragma GCC diagnostic pop
       const cusparseOperation_t trans_L = CUSPARSE_OPERATION_NON_TRANSPOSE;
       const cusparseOperation_t trans_U = CUSPARSE_OPERATION_NON_TRANSPOSE;
       const cusparseDirection_t dir = CUSPARSE_DIRECTION_ROW;

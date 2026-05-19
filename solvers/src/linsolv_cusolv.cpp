@@ -23,6 +23,12 @@
 #include "linsolv_cusolv.hpp"
 #include "csr_matrix.hpp"
 
+// CUDA 12+ deprecates cusolverSp dense/sparse QR entry points in favour of
+// cuDSS. The legacy routine remains functional and cuDSS is not a build
+// dependency here, so the deprecation diagnostic is silenced for this wrapper.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 namespace opendarts
 {
   namespace linear_solvers
@@ -231,5 +237,7 @@ namespace opendarts
     template class linsolv_cusolv<13>;
   } // namespace linear_solvers
 } // namespace opendarts
+
+#pragma GCC diagnostic pop
 
 #endif // WITH_GPU

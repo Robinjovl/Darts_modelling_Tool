@@ -38,6 +38,11 @@ namespace opendarts
 
       ~linsolv_bos_amg();
 
+      // Keep the csr_matrix_base init()/setup() overloads visible: declaring
+      // the csr_matrix<N>* overloads below otherwise hides them by name.
+      using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::init;
+      using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::setup;
+
       virtual int set_prec(opendarts::linear_solvers::linsolv_iface *prec_in);
 
       virtual int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_in,

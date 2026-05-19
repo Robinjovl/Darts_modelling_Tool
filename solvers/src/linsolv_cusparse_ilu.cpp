@@ -23,6 +23,13 @@
 #include "csr_matrix.hpp"
 #include "gpu_tools.hpp"
 
+// CUDA 12+ deprecates the legacy block-CSR cuSPARSE routines (bsrilu02,
+// bsrsv2, ...). They remain functional and have no drop-in generic-API
+// replacement, so the deprecation diagnostic is silenced for this wrapper;
+// migrating to the generic cuSPARSE API is tracked separately.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 namespace opendarts
 {
   namespace linear_solvers
@@ -313,5 +320,7 @@ namespace opendarts
     template class linsolv_cusparse_ilu<13>;
   } // namespace linear_solvers
 } // namespace opendarts
+
+#pragma GCC diagnostic pop
 
 #endif // WITH_GPU
