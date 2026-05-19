@@ -396,15 +396,29 @@ def _register_default_directory_bindings() -> None:
 
 
 def _ensure_default_root_loaded() -> None:
-    """Lazily load the default preset root on first registry access."""
+    """Lazily load the default preset root on first registry access.
+
+    The search path is (first existing wins, all are loaded if multiple exist):
+    1. ``DARTS_PRESET_ROOT`` env var — explicit override, useful when open-darts
+       is installed as a wheel and the source tree lives elsewhere.
+    2. ``DEFAULT_PRESET_ROOT`` — ``<repo>/models/presets`` relative to this file
+       (works for editable / source installs).
+    """
     _register_default_directory_bindings()
-    if DEFAULT_PRESET_ROOT in _SEARCH_ROOTS:
-        return
-    if not DEFAULT_PRESET_ROOT.is_dir():
-        # Empty default root is fine — third-party callers may register
-        # presets at runtime instead.
-        return
-    load_preset_dir(DEFAULT_PRESET_ROOT)
+
+    roots_to_try: list[Path] = []
+
+    env_override = os.environ.get("DARTS_PRESET_ROOT")
+    if env_override:
+        roots_to_try.append(Path(env_override).expanduser().resolve())
+
+    roots_to_try.append(DEFAULT_PRESET_ROOT)
+
+    for root in roots_to_try:
+        if root in _SEARCH_ROOTS:
+            continue
+        if root.is_dir():
+            load_preset_dir(root)
 
 
 # ---------------------------------------------------------------------------
