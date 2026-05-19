@@ -8,7 +8,6 @@ try:
     from darts.engines import copy_data_to_device
 except ImportError:
     pass
-from darts.input.input_data import linear_solver_types
 from darts.models.darts_model import DartsModel
 
 
@@ -899,22 +898,7 @@ class DartsModelWithLivePlots(DartsModel):
                         print("Stationary point detected!")
                     break
             else:
-                if isinstance(self.data_ts.linear_type, linear_solver_types):
-                    # solvers via Python interface
-                    if self.data_ts.linear_type in [
-                        linear_solver_types.CPU_PETSC_CPR,
-                        linear_solver_types.CPU_PETSC_FS,
-                    ]:
-                        self.petsc_solve_linear_equation()
-                    elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                        self.pardiso_solve_linear_equation()
-                    else:
-                        raise Exception(
-                            "Unknown linear solver type", self.data_ts.linear_type
-                        )
-                else:
-                    # compile-tyme C++ linear solvers
-                    self.physics.engine.solve_linear_equation()
+                self._solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()

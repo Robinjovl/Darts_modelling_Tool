@@ -729,6 +729,17 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// Check if external solver was provided (from Python) - if so, use it instead of creating new one
 	if (!linear_solver && !linear_solver_external)
 	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		// Open-source build: the enum-driven factory below builds the
+		// proprietary bos solvers, which are not available here. The linear
+		// solver must be injected from Python -- built from a LinearSolverSpec
+		// via the open-source registry; see darts_model._apply_linear_solver_spec().
+		std::cerr << "ERROR: no linear solver was provided for " << engine_name
+		          << ". The open-source build requires a linear solver injected via "
+		             "set_linear_solver() (a LinearSolverSpec built through the "
+		             "darts.solvers registry)." << std::endl << std::flush;
+		exit(1);
+#else
 		switch (params->linear_type)
 		{
 		case sim_params::CPU_GMRES_CPR_AMG:
@@ -937,6 +948,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		}
 
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 	}
 
 	std::cout << "Linear solver type is " << linear_solver_type_str << std::endl;

@@ -910,22 +910,7 @@ class DartsModel:
                         print("Stationary point detected!")
                     break
             else:
-                if isinstance(self.data_ts.linear_type, linear_solver_types):
-                    # solvers via Python interface
-                    if self.data_ts.linear_type in [
-                        linear_solver_types.CPU_PETSC_CPR,
-                        linear_solver_types.CPU_PETSC_FS,
-                    ]:
-                        self.petsc_solve_linear_equation()
-                    elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                        self.pardiso_solve_linear_equation()
-                    else:
-                        raise Exception(
-                            "Unknown linear solver type", self.data_ts.linear_type
-                        )
-                else:
-                    # compile-tyme C++ linear solvers
-                    self.physics.engine.solve_linear_equation()
+                self._solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
@@ -1405,6 +1390,31 @@ class DartsModel:
         # print('mat_csr', mat_csr)
 
         return mat_csr, rhs, sol
+
+    def _solve_linear_equation(self):
+        """Solve the current Newton linear system with the configured solver.
+
+        Single dispatch point between the Python-side solvers (PETSc / Pardiso,
+        selected through ``data_ts.linear_type``) and the C++ engine solver
+        (the registry-built solver injected by :meth:`_apply_linear_solver_spec`,
+        or a compile-time solver). Centralised here so the Newton loop -- and
+        the live-plotting loop -- carry a single call instead of duplicating
+        the branch.
+        """
+        if isinstance(self.data_ts.linear_type, linear_solver_types):
+            # solvers driven from Python
+            if self.data_ts.linear_type in (
+                linear_solver_types.CPU_PETSC_CPR,
+                linear_solver_types.CPU_PETSC_FS,
+            ):
+                self.petsc_solve_linear_equation()
+            elif self.data_ts.linear_type == linear_solver_types.CPU_PARDISO:
+                self.pardiso_solve_linear_equation()
+            else:
+                raise Exception("Unknown linear solver type", self.data_ts.linear_type)
+        else:
+            # C++ linear solver held by the engine
+            self.physics.engine.solve_linear_equation()
 
     def petsc_solve_linear_equation(self):
         print_level = self.data_ts.linear_print_level
