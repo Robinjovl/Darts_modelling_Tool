@@ -93,6 +93,7 @@ set(OD_LINEAR_SOLVERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/sparsity_pattern.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/csr_expansion.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/block_csr_matrix.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/scalar_csr_adapter.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linear_solver_base.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_superlu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_hypre_amg.cpp
@@ -114,6 +115,7 @@ set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/csr_expansion.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/block_csr_matrix.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/block_csr_view.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/scalar_csr_adapter.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/csr_matrix.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/csr_matrix_base.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_iface.hpp
