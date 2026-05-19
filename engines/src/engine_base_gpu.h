@@ -24,9 +24,11 @@
 #endif
 
 /// This class defines infrastructure for simulation
-// The GPU engine has-a Jacobian (engine_base::Jacobian); it is no longer a
-// csr_matrix_base itself (section 12.10 B4).
-class engine_base_gpu : public engine_base
+// The GPU engine has-a Jacobian (engine_base::Jacobian) and also IS-a
+// csr_matrix_base: the matrix-free path (assembly_kernel == 13) passes the
+// engine itself to linear_solver->setup() as the system matrix. The
+// csr_matrix_base storage-accessor virtuals delegate to the owned Jacobian.
+class engine_base_gpu : public engine_base, public csr_matrix_base
 {
   // methods
 public:
@@ -96,6 +98,27 @@ public:
   virtual int write_matrix_to_file_mm(const char *file_name) { return 0; };
   virtual int convert_to_ELL() { return 0; };
   virtual csr_matrix_base *get_csr_matrix() { return Jacobian; };
+
+#ifdef OPENDARTS_LINEAR_SOLVERS
+  // csr_matrix_base pure-virtual interface. The matrix-free GPU path passes
+  // the engine itself as the system matrix, so the storage accessors simply
+  // forward to the owned Jacobian (block_csr_matrix).
+  value_t *get_values() override { return Jacobian->get_values(); }
+  index_t *get_rows_ptr() override { return Jacobian->get_rows_ptr(); }
+  index_t *get_cols_ind() override { return Jacobian->get_cols_ind(); }
+  index_t *get_diag_ind() override { return Jacobian->get_diag_ind(); }
+  index_t *get_row_thread_starts() override { return Jacobian->get_row_thread_starts(); }
+  int export_matrix_to_file(const std::string &filename,
+      opendarts::linear_solvers::sparse_matrix_export_format export_format) override
+  {
+    return Jacobian->export_matrix_to_file(filename, export_format);
+  }
+  int import_matrix_from_file(const std::string &filename,
+      opendarts::linear_solvers::sparse_matrix_import_format import_format) override
+  {
+    return Jacobian->import_matrix_from_file(filename, import_format);
+  }
+#endif
 
   // Jacobian device/host pointer accessors -- bridge the unified
   // block_csr_matrix (OPENDARTS_LINEAR_SOLVERS) and the legacy/bos
