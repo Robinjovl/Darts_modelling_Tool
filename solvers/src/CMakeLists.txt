@@ -106,6 +106,7 @@ set(OD_LINEAR_SOLVERS_SRC_FILES
 
 # Public headers
 set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/dual_array.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/csr_matrix.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/csr_matrix_base.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_iface.hpp
