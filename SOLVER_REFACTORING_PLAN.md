@@ -398,34 +398,41 @@ struct sparsity_pattern {
 // (2) Host/device storage primitive — §12.5.
 template <class T> class dual_array { /* ... */ };
 
-// (3) The unified matrix — CONCRETE, non-templated. What the engine assembles into and
-//     what every solver receives. Block size is a runtime field.
-class csr_matrix_base {                       // rename candidate: `block_sparse_matrix`
+// (3) block_csr_matrix — CONCRETE, non-templated. What the engine assembles into
+//     and what every solver receives. Block size is a runtime field.
+class block_csr_matrix {
   std::shared_ptr<sparsity_pattern> structure_;
   dual_array<mat_float> values_;
   int block_size_;
  public:
-  // raw typed views — assembly hot path & adapters; no bounds checks, no virtuals
-  mat_float* values_host()   noexcept;
+  // raw views — assembly hot path & adapters; no bounds checks, no virtuals
+  mat_float* values()        noexcept;
   mat_float* values_device() noexcept;        // WITH_GPU
   const index_t* row_ptr() const noexcept;    // ... col_ind / diag_ind
   const sparsity_pattern& structure() const noexcept;
 };
 
-// (4) Typed view — zero-overhead compile-time-`nb` lens for the templated engine.
-//     Non-owning: it does NOT hold storage, it views a csr_matrix_base.
-template <uint8_t N> class csr_matrix {
-  csr_matrix_base& m_;
+// (4) block_csr_view<N> — zero-overhead compile-time-`nb` lens for the templated
+//     engine. Non-owning: it stores a pointer to a block_csr_matrix, no storage.
+template <uint8_t N> class block_csr_view {
+  block_csr_matrix* m_;
  public:
-  explicit csr_matrix(csr_matrix_base& m) : m_(m) {}
-  std::span<mat_float, N*N> block(index_t i, index_t j) noexcept;  // fully inlined
+  explicit block_csr_view(block_csr_matrix& m) : m_(&m) {}
+  mat_float* block(index_t jb) const noexcept;        // fully inlined, N a constant
 };
 ```
 
-This **reverses** the current ownership (today: abstract base, `csr_matrix<N>` owns
-storage). Concrete-base-owns-storage is what lets a `csr_matrix_base&` be read by any
-backend with no knowledge of `nb`, and it dissolves the `std::vector`-vs-raw-pointer
-clash: storage lives once, `csr_matrix<N>` is a typed accessor over it.
+This **inverts** the current ownership (today: abstract `csr_matrix_base`,
+`csr_matrix<N>` owns storage). A concrete storage-owning class is what lets a
+`block_csr_matrix&` be read by any backend with no knowledge of `nb`, and it
+dissolves the `std::vector`-vs-raw-pointer clash: storage lives once,
+`block_csr_view<N>` is a typed accessor over it.
+
+`block_csr_matrix` / `block_csr_view<N>` are introduced **additively**, beside
+the legacy `csr_matrix<N>`: the build stays green at every step while the
+engine and solvers migrate, and `csr_matrix` / `csr_matrix_base` are retired
+last. (A concrete class named `csr_matrix_base` would also be a misnomer; the
+`block_csr_*` names are explicit about the format.)
 
 ### 12.5 Host/device storage — `dual_array<T>`
 
@@ -484,15 +491,18 @@ each backend and checking an SpMV against a reference.
 
 ### 12.9 Migration roadmap (post-MR, design-gated)
 
-1. `dual_array<T>` — host-only + `WITH_GPU` device buffer; unit tests.
-2. `sparsity_pattern` — structural type + cached BSR→CSR expansion.
-3. Refactor `csr_matrix_base` → concrete (owns structure + values); `csr_matrix<N>` →
-   typed non-owning view. Reshapes the item-7 device layer — moves it onto `dual_array`.
+1. `dual_array<T>` — host-only + `WITH_GPU` device buffer; unit tests. **[done]**
+2. `sparsity_pattern` + cached BSR→CSR `csr_expansion`; unit tests. **[done]**
+3. `block_csr_matrix` (concrete, owns structure + values) and `block_csr_view<N>`
+   (typed non-owning view), added **additively** beside the legacy `csr_matrix<N>`;
+   unit tests. **[done]**
 4. Backend adapters: bos & cuSPARSE/AMGX (zero-copy) first, then PETSc-BAIJ, then the
    HYPRE / Pardiso scalar-CSR expansion.
-5. Engine: assemble through `csr_matrix<N_VARS>`; make the Jacobian a **member**
+5. Engine: assemble through `block_csr_view<N_VARS>`; make the Jacobian a **member**
    (composition) — drop `engine_base_gpu : public csr_matrix_base`.
-6. Wire adapters into the solver wrappers behind the existing registry (§7.1).
+6. Wire adapters into the solver wrappers behind the existing registry (§7.1); then
+   retire the legacy `csr_matrix<N>` / `csr_matrix_base` (incl. the item-7 device
+   layer, now subsumed by `dual_array`).
 
 Each step is an independently reviewable commit. The GPU build is completed as a
 *consequence* of steps 3–5, not as a separate patch.

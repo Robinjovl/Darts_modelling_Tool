@@ -117,6 +117,12 @@ namespace opendarts
 #ifdef WITH_GPU
       /** Mirrors the structure arrays (row_ptr, col_ind, diag_ind) to device. */
       void sync_structure_to_device() const;
+
+      // Device pointers to the structure arrays. Valid after a
+      // sync_structure_to_device() call; the buffers are allocated on demand.
+      [[nodiscard]] const index_t *row_ptr_device() const;
+      [[nodiscard]] const index_t *col_ind_device() const;
+      [[nodiscard]] const index_t *diag_ind_device() const;
 #endif
 
     private:

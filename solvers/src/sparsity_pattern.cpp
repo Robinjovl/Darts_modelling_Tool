@@ -165,6 +165,21 @@ namespace opendarts
       col_ind_.sync_to_device();
       diag_ind_.sync_to_device();
     }
+
+    const sparsity_pattern::index_t *sparsity_pattern::row_ptr_device() const
+    {
+      return row_ptr_.device_data();
+    }
+
+    const sparsity_pattern::index_t *sparsity_pattern::col_ind_device() const
+    {
+      return col_ind_.device_data();
+    }
+
+    const sparsity_pattern::index_t *sparsity_pattern::diag_ind_device() const
+    {
+      return diag_ind_.device_data();
+    }
 #endif
   } // namespace linear_solvers
 } // namespace opendarts
