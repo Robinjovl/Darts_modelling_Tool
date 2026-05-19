@@ -458,6 +458,12 @@ namespace opendarts
       /** Copies the block values host->device. */
       int copy_values_to_device() override;
 
+      // csr_matrix_base device-pointer accessors (block-CSR storage on device).
+      opendarts::config::mat_float *get_values_d() override { return values_d; }
+      opendarts::config::index_t *get_rows_ptr_d() override { return rows_ptr_d; }
+      opendarts::config::index_t *get_cols_ind_d() override { return cols_ind_d; }
+      opendarts::config::index_t *get_diag_ind_d() override { return diag_ind_d; }
+
       /** Copies an arbitrary host vector into a device buffer (n_rows * N_BLOCK_SIZE entries). */
       int copy_vector_to_device(const opendarts::config::mat_float *vector, opendarts::config::mat_float *vector_d);
 

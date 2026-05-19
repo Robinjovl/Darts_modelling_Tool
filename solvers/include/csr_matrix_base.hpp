@@ -137,6 +137,14 @@ namespace opendarts
       virtual int calc_lin_comb_d(const double alpha, const double beta, double *u, double *v, double *r) = 0;
       virtual int copy_struct_to_device() = 0;
       virtual int copy_values_to_device() = 0;
+
+      // Direct device-pointer access to the block-CSR storage. Lets a
+      // csr_matrix_base* be driven by the GPU engines/solvers (assembly
+      // kernels, cuSPARSE SpMV) without knowing the concrete matrix type.
+      virtual opendarts::config::mat_float *get_values_d() = 0;  // nonzero block values on device
+      virtual opendarts::config::index_t *get_rows_ptr_d() = 0;  // block row pointers on device
+      virtual opendarts::config::index_t *get_cols_ind_d() = 0;  // block column indices on device
+      virtual opendarts::config::index_t *get_diag_ind_d() = 0;  // diagonal block indices on device
 #endif // WITH_GPU
     };
   } // namespace linear_solvers

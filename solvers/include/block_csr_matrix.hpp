@@ -148,6 +148,14 @@ namespace opendarts
         double *r) override;
       int copy_struct_to_device() override;
       int copy_values_to_device() override;
+
+      // csr_matrix_base device-pointer accessors -- forward to the typed
+      // device views above so a block_csr_matrix can be driven through a
+      // csr_matrix_base* by the GPU engines/solvers.
+      mat_float *get_values_d() override { return values_device(); }
+      index_t *get_rows_ptr_d() override { return const_cast<index_t *>(row_ptr_device()); }
+      index_t *get_cols_ind_d() override { return const_cast<index_t *>(col_ind_device()); }
+      index_t *get_diag_ind_d() override { return const_cast<index_t *>(diag_ind_device()); }
 #endif
 
     private:

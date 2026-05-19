@@ -16,6 +16,7 @@
 #ifdef WITH_GPU
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "linsolv_bicgstab.hpp"
+#include "linsolv_cusparse_ilu.hpp"
 #else
 #include "linsolv_bicgstab.h"
 #endif
@@ -102,7 +103,7 @@ public:
 #ifdef OPENDARTS_LINEAR_SOLVERS
   // csr_matrix_base pure-virtual interface. The matrix-free GPU path passes
   // the engine itself as the system matrix, so the storage accessors simply
-  // forward to the owned Jacobian (block_csr_matrix).
+  // forward to the owned Jacobian.
   value_t *get_values() override { return Jacobian->get_values(); }
   index_t *get_rows_ptr() override { return Jacobian->get_rows_ptr(); }
   index_t *get_cols_ind() override { return Jacobian->get_cols_ind(); }
@@ -118,15 +119,22 @@ public:
   {
     return Jacobian->import_matrix_from_file(filename, import_format);
   }
+#ifdef WITH_GPU
+  value_t *get_values_d() override { return Jacobian->get_values_d(); }
+  index_t *get_rows_ptr_d() override { return Jacobian->get_rows_ptr_d(); }
+  index_t *get_cols_ind_d() override { return Jacobian->get_cols_ind_d(); }
+  index_t *get_diag_ind_d() override { return Jacobian->get_diag_ind_d(); }
+#endif
 #endif
 
-  // Jacobian device/host pointer accessors -- bridge the unified
-  // block_csr_matrix (OPENDARTS_LINEAR_SOLVERS) and the legacy/bos
-  // csr_matrix, so the *_gpu.cu kernels stay free of #ifdef branching.
+  // Jacobian device/host pointer accessors -- bridge the open-source
+  // csr_matrix_base device-pointer virtuals (OPENDARTS_LINEAR_SOLVERS) and
+  // the legacy/bos csr_matrix members, so the *_gpu.cu kernels stay free of
+  // #ifdef branching.
   value_t *jac_values_d()
   {
 #ifdef OPENDARTS_LINEAR_SOLVERS
-    return static_cast<block_csr_matrix *>(Jacobian)->values_device();
+    return Jacobian->get_values_d();
 #else
     return Jacobian->values_d;
 #endif
@@ -134,7 +142,7 @@ public:
   index_t *jac_rows_ptr_d()
   {
 #ifdef OPENDARTS_LINEAR_SOLVERS
-    return const_cast<index_t *>(static_cast<block_csr_matrix *>(Jacobian)->row_ptr_device());
+    return Jacobian->get_rows_ptr_d();
 #else
     return Jacobian->rows_ptr_d;
 #endif
@@ -142,7 +150,7 @@ public:
   index_t *jac_cols_ind_d()
   {
 #ifdef OPENDARTS_LINEAR_SOLVERS
-    return const_cast<index_t *>(static_cast<block_csr_matrix *>(Jacobian)->col_ind_device());
+    return Jacobian->get_cols_ind_d();
 #else
     return Jacobian->cols_ind_d;
 #endif
@@ -150,7 +158,7 @@ public:
   index_t *jac_diag_ind_d()
   {
 #ifdef OPENDARTS_LINEAR_SOLVERS
-    return const_cast<index_t *>(static_cast<block_csr_matrix *>(Jacobian)->diag_ind_device());
+    return Jacobian->get_diag_ind_d();
 #else
     return Jacobian->diag_ind_d;
 #endif
@@ -240,9 +248,43 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 #endif
   }
 
+#ifndef OPENDARTS_GPU_HAS_AMGX
+  // AMGX not built into this (open-source) configuration: redirect any
+  // explicitly requested AMGX-based GPU solver to the AMG-based CPR GPU
+  // solver so the build stays runnable instead of aborting in the switch.
+  switch (params->linear_type)
+  {
+  case sim_params::GPU_GMRES_CPR_AMGX_ILU:
+  case sim_params::GPU_GMRES_CPR_AMGX_ILU_SP:
+  case sim_params::GPU_GMRES_CPR_AMGX_AMGX:
+  case sim_params::GPU_GMRES_AMGX:
+  case sim_params::GPU_AMGX:
+  case sim_params::GPU_BICGSTAB_CPR_AMGX:
+    std::cout << "AMGX not available; using GPU_GMRES_CPR_AMG instead of linear solver type "
+              << params->linear_type << std::endl;
+    params->linear_type = sim_params::GPU_GMRES_CPR_AMG;
+    break;
+  default:
+    break;
+  }
+#endif
+
   std::string linear_solver_type_str;
   if (!linear_solver)
   {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    // Open-source GPU build: the proprietary bos GMRES/CPR/AMG solvers are
+    // stubbed out, so the linear_type-driven factory below cannot run. Use
+    // the open-source GPU BiCGStab Krylov solver with a cuSPARSE block-ILU(0)
+    // preconditioner. AMGX-based linear_type values were already redirected
+    // above; the remaining linear_type is advisory in this configuration.
+    {
+      linsolv_bicgstab<N_VARS> *bicgstab = new linsolv_bicgstab<N_VARS>();
+      bicgstab->set_prec(new linsolv_cusparse_ilu<N_VARS>());
+      linear_solver = bicgstab;
+      linear_solver_type_str = "GPU_BICGSTAB_CUSPARSE_ILU";
+    }
+#else
     switch (params->linear_type)
     {
     case sim_params::GPU_GMRES_CPR_AMG:
@@ -481,6 +523,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
       exit(1);
     }
     }
+#endif // OPENDARTS_LINEAR_SOLVERS
   }
 
   std::cout << "Linear solver type is " << params->linear_type << std::endl;
@@ -570,7 +613,13 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   n_rows = Jacobian->n_rows;
 
 #ifdef WITH_GPU
+#ifdef OPENDARTS_LINEAR_SOLVERS
+  // Open-source GPU engine always solves on device -> always mirror the
+  // block-CSR structure to the device.
+  if (true)
+#else
   if (params->linear_type >= sim_params::GPU_GMRES_CPR_AMG)
+#endif
   {
     timer->node["jacobian assembly"].node["send_to_device"].start();
     Jacobian->copy_struct_to_device();
