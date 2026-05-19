@@ -40,6 +40,11 @@ namespace opendarts
 
 			~linsolv_bos_fs_cpr();
 
+			// Keep the csr_matrix_base init()/setup() overloads visible: declaring
+			// the csr_matrix<N>* overloads below otherwise hides them by name.
+			using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::init;
+			using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::setup;
+
 			// TODO: This implementation is a complete mess.
 			// There are two solves, one apparently is for the preconditioner and the
 			// other is for the system to solve. Why not make it explicit? Why not interconnect?

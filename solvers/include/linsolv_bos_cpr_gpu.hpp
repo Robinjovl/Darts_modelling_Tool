@@ -55,6 +55,11 @@ namespace opendarts
 
       ~linsolv_bos_cpr_gpu();
 
+      // Keep the csr_matrix_base init()/setup() overloads visible: declaring
+      // the csr_matrix<N>* overloads below otherwise hides them by name.
+      using opendarts::linear_solvers::linsolv_iface_bos<n_block_size>::init;
+      using opendarts::linear_solvers::linsolv_iface_bos<n_block_size>::setup;
+
       //////////////////////
       // linear_solver_base
       //////////////////////

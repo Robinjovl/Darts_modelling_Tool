@@ -57,6 +57,11 @@ namespace opendarts
 
       ~linsolv_amgx();
 
+      // Keep the csr_matrix_base init()/setup() overloads visible: declaring
+      // the csr_matrix<N>* overloads below otherwise hides them by name.
+      using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::init;
+      using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::setup;
+
       //////////////////////
       // linear_solver_base
       //////////////////////

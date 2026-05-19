@@ -1427,7 +1427,11 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
     // this is also required by the linear solver "linsolv_superlu<1>", as the preconditioner is not applicable to adjoint so far
     // so this might be improved in the future
 	csr_matrix<1> Temp, T1, T2;
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	Temp.to_nb_1(Jacobian); // unified block_csr_matrix -> polymorphic scalar expansion
+#else
 	Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
+#endif
 	T1.build_transpose(&Temp);
 
 	value_t* T1_values = T1.get_values();

@@ -414,6 +414,11 @@ namespace opendarts
       template <uint8_t M_BLOCK_SIZE>
       int to_nb_1(const opendarts::linear_solvers::csr_matrix<M_BLOCK_SIZE> *csr_matrix_in); // TODO: do we need this function or as_nb_1 is enough?
 
+      // Polymorphic block-CSR -> scalar-CSR expansion: works for any
+      // csr_matrix_base (legacy csr_matrix<N> or the unified block_csr_matrix)
+      // through the get_*() accessor interface and n_row_size block size.
+      int to_nb_1(opendarts::linear_solvers::csr_matrix_base *csr_matrix_in);
+
       // ----------------------------------------------------------------------
       // GPU device layer
       // ----------------------------------------------------------------------

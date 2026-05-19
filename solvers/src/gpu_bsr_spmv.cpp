@@ -22,6 +22,13 @@
 
 #include "gpu_bsr_spmv.hpp"
 
+// CUDA 12+ deprecates the legacy block-CSR cuSPARSE SpMV (cusparseDbsrmv).
+// It remains functional and has no drop-in generic-API replacement, so the
+// deprecation diagnostic is silenced for this wrapper; migrating to the
+// generic cuSPARSE API is tracked separately.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 namespace opendarts
 {
   namespace linear_solvers
@@ -109,5 +116,7 @@ namespace opendarts
     }
   } // namespace linear_solvers
 } // namespace opendarts
+
+#pragma GCC diagnostic pop
 
 #endif // WITH_GPU

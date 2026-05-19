@@ -949,7 +949,11 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 	//}
 
 	csr_matrix<1> Temp, T1, T2;
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	Temp.to_nb_1(Jacobian); // unified block_csr_matrix -> polymorphic scalar expansion
+#else
 	Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
+#endif
 	T1.build_transpose(&Temp);
 
 	value_t* T1_values = T1.get_values();

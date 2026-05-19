@@ -37,6 +37,7 @@ namespace opendarts
       this->n_rows = 0;
       this->n_cols = 0;
       this->n_non_zeros = 0;
+      this->n_row_size = N_BLOCK_SIZE; // keep the csr_matrix_base block-size field in sync
 
       this->init(n_rows, n_cols, n_non_zeros);
     }
@@ -46,14 +47,14 @@ namespace opendarts
         opendarts::config::index_t n_cols_input,
         opendarts::config::index_t n_non_zeros_input)
     {
-
+      this->n_row_size = N_BLOCK_SIZE; // keep the csr_matrix_base block-size field in sync
       this->init(n_rows_input, n_cols_input, n_non_zeros_input);
     }
 
     template <uint8_t N_BLOCK_SIZE>
     csr_matrix<N_BLOCK_SIZE>::csr_matrix(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> &csr_matrix_in)
     {
-
+      this->n_row_size = N_BLOCK_SIZE; // keep the csr_matrix_base block-size field in sync
       this->init(csr_matrix_in);
     }
 
@@ -759,6 +760,50 @@ namespace opendarts
     int csr_matrix<N_BLOCK_SIZE>::to_nb_1(const opendarts::linear_solvers::csr_matrix<M_BLOCK_SIZE> *csr_matrix_in)
     {
       csr_matrix_in->as_nb_1(*this);
+      return 0;
+    }
+
+    // Polymorphic block-CSR -> scalar-CSR expansion. Unlike the templated
+    // overload above this reads the source through the csr_matrix_base
+    // accessor interface, so it works for both the legacy csr_matrix<N> and
+    // the unified block_csr_matrix. The result is written into *this as a
+    // scalar (block size 1) CSR matrix.
+    template <uint8_t N_BLOCK_SIZE>
+    int csr_matrix<N_BLOCK_SIZE>::to_nb_1(opendarts::linear_solvers::csr_matrix_base *csr_matrix_in)
+    {
+      const opendarts::config::index_t block_size = csr_matrix_in->n_row_size;
+      const opendarts::config::index_t n_block_rows = csr_matrix_in->n_rows;
+      const opendarts::config::index_t n_block_cols = csr_matrix_in->n_cols;
+      const opendarts::config::index_t *src_rows = csr_matrix_in->get_rows_ptr();
+      const opendarts::config::index_t *src_cols = csr_matrix_in->get_cols_ind();
+      const opendarts::config::mat_float *src_vals = csr_matrix_in->get_values();
+      const opendarts::config::index_t n_nnzb = src_rows[n_block_rows];
+
+      // Scalar dimensions: every block expands to block_size x block_size scalars.
+      this->init(n_block_rows * block_size, n_block_cols * block_size, n_nnzb * block_size * block_size);
+
+      opendarts::config::index_t value_idx = 0;
+      this->rows_ptr[0] = 0;
+      for (opendarts::config::index_t row_idx = 0; row_idx < n_block_rows; row_idx++)
+      {
+        for (opendarts::config::index_t inner_row = 0; inner_row < block_size; inner_row++)
+        {
+          // Block values are stored row-major; this is the stride to inner_row.
+          const opendarts::config::index_t inner_offset = inner_row * block_size;
+          const opendarts::config::index_t row_nb_1 = row_idx * block_size + inner_row;
+          for (opendarts::config::index_t bi = src_rows[row_idx]; bi < src_rows[row_idx + 1]; bi++)
+          {
+            const opendarts::config::index_t col_idx = src_cols[bi];
+            for (opendarts::config::index_t inner_col = 0; inner_col < block_size; inner_col++)
+            {
+              this->cols_ind[value_idx] = col_idx * block_size + inner_col;
+              this->values[value_idx] = src_vals[bi * block_size * block_size + inner_offset + inner_col];
+              value_idx++;
+            }
+          }
+          this->rows_ptr[row_nb_1 + 1] = value_idx;
+        }
+      }
       return 0;
     }
 
