@@ -79,11 +79,17 @@ class SingleAmbientTemperature:
             )
 
     def check_initial_fluid_conditions(self, initial_conditions_dict):
+        pc = self.physics.property_containers[0]
+        for phase_name in initial_conditions_dict["phases_names"]:
+            assert phase_name in pc.phases_name[: pc.np_fl], (
+                "Initial pipe phase names must be mobile phases."
+            )
+
         for phase_composition in initial_conditions_dict["phases_compositions"]:
             assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), (
                 "Summation of initial fluid mole fractions must be equal to 1!"
             )
-            assert len(phase_composition) == self.physics.property_containers[0].nc, (
+            assert len(phase_composition) == pc.nc, (
                 "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
             )
 
@@ -100,6 +106,8 @@ class SingleAmbientTemperature:
         self.temp_init_segments = self.ambient_temperature * np.ones(num_segments)
 
     def get_initial_pressure_profile(self):
+        pc = self.physics.property_containers[0]
+
         def dpdz(TVD, p):
             for i, interval in enumerate(
                 self.initial_conditions_dict["pipe_intervals"]
@@ -110,10 +118,8 @@ class SingleAmbientTemperature:
                         "phases_compositions"
                     ][i]
 
-            density = (
-                self.physics.property_containers[0]
-                .density_ev[phase_name]
-                .evaluate(p[0], temp, initial_phase_composition)
+            density = pc.density_ev[phase_name].evaluate(
+                p[0], temp, initial_phase_composition[: pc.nc_fl]
             )
 
             return g * density * 1e-5  # Convert Pascal to bar
@@ -271,11 +277,17 @@ class LinearAmbientTemperature:
             )
 
     def check_initial_fluid_conditions(self, initial_conditions_dict):
+        pc = self.physics.property_containers[0]
+        for phase_name in initial_conditions_dict["phases_names"]:
+            assert phase_name in pc.phases_name[: pc.np_fl], (
+                "Initial pipe phase names must be mobile phases."
+            )
+
         for phase_composition in initial_conditions_dict["phases_compositions"]:
             assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), (
                 "Summation of initial fluid mole fractions must be equal to 1!"
             )
-            assert len(phase_composition) == self.physics.property_containers[0].nc, (
+            assert len(phase_composition) == pc.nc, (
                 "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
             )
 
@@ -311,6 +323,8 @@ class LinearAmbientTemperature:
         self.temp_init_seg_interfaces = temp_init_seg_interfaces  # This is used to calculate pressures at segments and interfaces together even though the pressure values at interfaces are not used in any part of the code, but this variable is used for calculating initial pressure profile along the wellbore more easily.
 
     def get_initial_pressure_profile(self):
+        pc = self.physics.property_containers[0]
+
         def dpdz(TVD, p):
             for i, interval in enumerate(
                 self.initial_conditions_dict["pipe_intervals"]
@@ -322,10 +336,8 @@ class LinearAmbientTemperature:
                         "phases_compositions"
                     ][i]
 
-            density = (
-                self.physics.property_containers[0]
-                .density_ev[phase_name]
-                .evaluate(p[0], temp, initial_phase_composition)
+            density = pc.density_ev[phase_name].evaluate(
+                p[0], temp, initial_phase_composition[: pc.nc_fl]
             )
 
             return g * density * 1e-5  # Convert Pas to bar

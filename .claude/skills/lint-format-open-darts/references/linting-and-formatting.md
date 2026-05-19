@@ -134,7 +134,11 @@ pre-commit autoupdate
    report but not auto-remove them; fix manually.
 4. Ruff is configured to **preserve existing quote style** (`quote-style =
    "preserve"`).
-5. New Python directories added to the project must be included in the `files`
+5. Write Python docstrings with opening and closing triple quotation marks on
+   separate lines.
+6. Document Python input and output arguments with `:param name:`, `:type name:`,
+   `:return:`, and `:rtype:` fields.
+7. New Python directories added to the project must be included in the `files`
    glob in `.pre-commit-config.yaml`.
 
 ---

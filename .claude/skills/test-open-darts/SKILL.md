@@ -6,7 +6,7 @@ description: Execute open-DARTS regression and component tests, including model 
 # Test open-DARTS
 
 Use this skill for regression-safe validation.
-Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
+Use the session conda environment. If the prompt defines one, use it. Otherwise, create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 
