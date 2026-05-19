@@ -8,8 +8,10 @@ A preset is a JSON file holding two top-level keys:
   registered in DARTS (e.g. ``DensityBasicConfig``, ``ConstantKConfig``).
 
 Presets live as ``.json`` files under a hierarchical directory tree.  The
-default tree is :data:`DEFAULT_PRESET_ROOT` (``<repo>/models/presets/``);
-third-party trees can be loaded with :func:`load_preset_dir`.
+default tree is :data:`DEFAULT_PRESET_ROOT` — the package-data directory
+``darts/api/presets_data/`` (shipped in the wheel); third-party trees can
+be loaded with :func:`load_preset_dir`, and the ``DARTS_PRESET_ROOT`` env
+var adds a first-priority search root for out-of-tree preset libraries.
 
 The loader resolves an evaluator-config payload via the existing ``kind``
 discriminator (see ``darts.physics.properties.evaluator_base``).  Non-evaluator
@@ -94,9 +96,17 @@ class Preset:
 
 
 def _default_preset_root() -> Path:
-    """Locate ``<repo>/models/presets/`` from this file's location."""
-    # darts/api/presets.py → repo/darts/api/presets.py → repo/models/presets/
-    return Path(__file__).resolve().parents[2] / "models" / "presets"
+    """Locate the shipped preset tree bundled inside the ``darts`` package.
+
+    The presets live at ``darts/api/presets_data/`` and are declared as
+    package data in ``pyproject.toml``, so this resolves correctly for both
+    editable/source installs and wheel installs.  ``importlib.resources``
+    returns a real filesystem path here because open-darts is always
+    installed unzipped (it ships compiled ``.so``/``.pyd`` extensions).
+    """
+    from importlib.resources import files
+
+    return Path(str(files("darts.api"))) / "presets_data"
 
 
 DEFAULT_PRESET_ROOT: Path = _default_preset_root()
@@ -143,7 +153,7 @@ def register_preset_directory_binding(
 def _qualified_name_for(path: Path, root: Path) -> str:
     """Convert a preset file path into its hierarchical name.
 
-    ``models/presets/evaluators/density/co2_brine.json`` →
+    ``presets_data/evaluators/density/co2_brine.json`` →
     ``"evaluators/density/co2_brine"``.
     """
     rel = path.relative_to(root).with_suffix("")

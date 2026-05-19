@@ -2,7 +2,7 @@
 
 Validates three guarantees:
 
-1. Every JSON file shipped under ``models/presets/`` loads cleanly and
+1. Every JSON file shipped under ``darts/api/presets_data/`` loads cleanly and
    validates against its registered Config class.  This is the early-warning
    for schema drift: rename or remove a Config field and the affected
    presets fail loudly here.
@@ -39,7 +39,7 @@ from darts.api.presets import (
 
 
 class TestShippedPresetsValidate:
-    """Walk every preset under ``models/presets/`` and assert it loads."""
+    """Walk every preset under ``darts/api/presets_data/`` and assert it loads."""
 
     def test_default_root_exists(self) -> None:
         """Refactor canary: the canonical preset tree must live where the

@@ -59,6 +59,9 @@ exclude = ["discretizer", "engines", "models", "solvers", "docs", "thirdparty"]
 [tool.setuptools.package-data]
 darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.so.6']
 "darts.physics.properties" = ["databases/*"]
+# Named-preset registry shipped as package data so it is importable from
+# wheel installs (see darts.api.presets._default_preset_root()).
+"darts.api" = ["presets_data/**/*.json"]
 
 # include darts command line interface (cli.py)
 
