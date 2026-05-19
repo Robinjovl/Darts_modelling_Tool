@@ -77,6 +77,15 @@ namespace opendarts
       , bilu0_fallback_diagonal_tolerance_cached(1.0e-4)
       , bilu0_fallback_shifted_max_cached(1.0e-4)
       , bilu0_fallback_shifted_growth_cached(100.0)
+      , local_correction_alpha_cached(1.0)
+      , local_correction_adaptive_fallback_threshold_cached(-1.0)
+      , local_correction_adaptive_alpha_cached(0.0)
+      , local_correction_adaptive_fallback_threshold_high_cached(-1.0)
+      , local_correction_adaptive_alpha_high_cached(0.0)
+      , use_bcsr_cpr_cached(false)
+      , bcsr_cpr_reduction_type_cached(static_cast<int>(mgr::BCSRCPRReductionType::trueIMPES))
+      , bcsr_cpr_pressure_variable_cached(0)
+      , bcsr_cpr_weight_max_cached(1.0e6)
       , n_reservoir_blocks_cached(0)
       , mgr_strategy_config_cached()
     {
@@ -231,6 +240,70 @@ namespace opendarts
       params.localFallbackDiagonalTolerance = bilu0_fallback_diagonal_tolerance_cached;
       params.localFallbackShiftMax = bilu0_fallback_shifted_max_cached;
       params.localFallbackShiftGrowth = bilu0_fallback_shifted_growth_cached;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_local_correction_options(
+        opendarts::config::mat_float alpha,
+        opendarts::config::mat_float adaptive_fallback_threshold,
+        opendarts::config::mat_float adaptive_alpha,
+        opendarts::config::mat_float adaptive_fallback_threshold_high,
+        opendarts::config::mat_float adaptive_alpha_high)
+    {
+      local_correction_alpha_cached = std::max<opendarts::config::mat_float>(alpha, 0.0);
+      local_correction_adaptive_fallback_threshold_cached = adaptive_fallback_threshold;
+      local_correction_adaptive_alpha_cached =
+          std::max<opendarts::config::mat_float>(adaptive_alpha, 0.0);
+      local_correction_adaptive_fallback_threshold_high_cached =
+          adaptive_fallback_threshold_high;
+      local_correction_adaptive_alpha_high_cached =
+          std::max<opendarts::config::mat_float>(adaptive_alpha_high, 0.0);
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.localCorrectionAlpha = local_correction_alpha_cached;
+      params.localCorrectionAdaptiveFallbackThreshold =
+          local_correction_adaptive_fallback_threshold_cached;
+      params.localCorrectionAdaptiveAlpha = local_correction_adaptive_alpha_cached;
+      params.localCorrectionAdaptiveFallbackThresholdHigh =
+          local_correction_adaptive_fallback_threshold_high_cached;
+      params.localCorrectionAdaptiveAlphaHigh = local_correction_adaptive_alpha_high_cached;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_use_bcsr_cpr(bool use_bcsr_cpr)
+    {
+      use_bcsr_cpr_cached = use_bcsr_cpr;
+      if (use_bcsr_cpr_cached &&
+          local_solver_cached == static_cast<int>(mgr::LocalPreconditionerType::none))
+      {
+        local_solver_cached = static_cast<int>(mgr::LocalPreconditionerType::blockILU0);
+      }
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.useBCSRCPR = use_bcsr_cpr_cached;
+      params.localPreconditioner =
+          static_cast<mgr::LocalPreconditionerType>(local_solver_cached);
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_bcsr_cpr_options(
+        int reduction_type,
+        int pressure_variable,
+        opendarts::config::mat_float weight_max)
+    {
+      bcsr_cpr_reduction_type_cached = reduction_type;
+      bcsr_cpr_pressure_variable_cached = std::max(pressure_variable, 0);
+      bcsr_cpr_weight_max_cached =
+          std::max<opendarts::config::mat_float>(weight_max, 1.0);
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.bcsrCPRReduction =
+          static_cast<mgr::BCSRCPRReductionType>(bcsr_cpr_reduction_type_cached);
+      params.bcsrCPRPressureVariable = bcsr_cpr_pressure_variable_cached;
+      params.bcsrCPRWeightMax = bcsr_cpr_weight_max_cached;
       mgr_solver.setParameters(params);
     }
 
@@ -571,6 +644,62 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float linsolv_mgr<N_BLOCK_SIZE>::get_mgr_local_correction_alpha() const
+    {
+      return local_correction_alpha_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float linsolv_mgr<N_BLOCK_SIZE>::get_mgr_local_correction_adaptive_fallback_threshold() const
+    {
+      return local_correction_adaptive_fallback_threshold_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float linsolv_mgr<N_BLOCK_SIZE>::get_mgr_local_correction_adaptive_alpha() const
+    {
+      return local_correction_adaptive_alpha_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float
+    linsolv_mgr<N_BLOCK_SIZE>::get_mgr_local_correction_adaptive_fallback_threshold_high() const
+    {
+      return local_correction_adaptive_fallback_threshold_high_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float
+    linsolv_mgr<N_BLOCK_SIZE>::get_mgr_local_correction_adaptive_alpha_high() const
+    {
+      return local_correction_adaptive_alpha_high_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    bool linsolv_mgr<N_BLOCK_SIZE>::get_use_bcsr_cpr() const
+    {
+      return use_bcsr_cpr_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_reduction_type() const
+    {
+      return bcsr_cpr_reduction_type_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_pressure_variable() const
+    {
+      return bcsr_cpr_pressure_variable_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_weight_max() const
+    {
+      return bcsr_cpr_weight_max_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_n_reservoir_blocks() const
     {
       return n_reservoir_blocks_cached;
@@ -657,6 +786,19 @@ namespace opendarts
       params.localFallbackDiagonalTolerance = bilu0_fallback_diagonal_tolerance_cached;
       params.localFallbackShiftMax = bilu0_fallback_shifted_max_cached;
       params.localFallbackShiftGrowth = bilu0_fallback_shifted_growth_cached;
+      params.localCorrectionAlpha = local_correction_alpha_cached;
+      params.localCorrectionAdaptiveFallbackThreshold =
+          local_correction_adaptive_fallback_threshold_cached;
+      params.localCorrectionAdaptiveAlpha = local_correction_adaptive_alpha_cached;
+      params.localCorrectionAdaptiveFallbackThresholdHigh =
+          local_correction_adaptive_fallback_threshold_high_cached;
+      params.localCorrectionAdaptiveAlphaHigh = local_correction_adaptive_alpha_high_cached;
+      params.useBCSRCPR = use_bcsr_cpr_cached;
+      params.bcsrCPRReduction =
+          static_cast<mgr::BCSRCPRReductionType>(bcsr_cpr_reduction_type_cached);
+      params.bcsrCPRPressureVariable = bcsr_cpr_pressure_variable_cached;
+      params.bcsrCPRWeightMax = bcsr_cpr_weight_max_cached;
+      params.localReservoirBlockCount = n_reservoir_blocks_cached;
       params.krylovType = use_flex_gmres_cached ? mgr::KrylovType::flexgmres
                                                : mgr::KrylovType::gmres;
       mgr_solver.setParameters(params);
@@ -745,24 +887,28 @@ namespace opendarts
         return -1;
       }
 
+      opendarts::config::index_t n_reservoir_blocks = n_blocks;
+      if (n_reservoir_blocks_cached > 0)
+      {
+        if (n_reservoir_blocks_cached <= n_blocks)
+        {
+          n_reservoir_blocks = n_reservoir_blocks_cached;
+        }
+        else
+        {
+          std::cerr << "[MGR] Warning: configured reservoir block count ("
+                    << n_reservoir_blocks_cached
+                    << ") exceeds matrix block count (" << n_blocks
+                    << "); treating all blocks as reservoir blocks." << std::endl;
+        }
+      }
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.localReservoirBlockCount = n_reservoir_blocks;
+      mgr_solver.setParameters(params);
+
       if (first_solve)
       {
-        opendarts::config::index_t n_reservoir_blocks = n_blocks;
-        if (n_reservoir_blocks_cached > 0)
-        {
-          if (n_reservoir_blocks_cached <= n_blocks)
-          {
-            n_reservoir_blocks = n_reservoir_blocks_cached;
-          }
-          else
-          {
-            std::cerr << "[MGR] Warning: configured reservoir block count ("
-                      << n_reservoir_blocks_cached
-                      << ") exceeds matrix block count (" << n_blocks
-                      << "); treating all blocks as reservoir blocks." << std::endl;
-          }
-        }
-
         ScopedTimer timer(mgr_timer ? &mgr_timer->node["strategy setup"] : nullptr);
         auto strategy = std::make_unique<mgr::strategies::CompositionalFlowStrategy>(
             block_size,

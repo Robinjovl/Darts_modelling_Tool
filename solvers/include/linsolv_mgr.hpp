@@ -61,6 +61,15 @@ namespace opendarts
                                           opendarts::config::mat_float diagonal_tolerance,
                                           opendarts::config::mat_float shifted_max,
                                           opendarts::config::mat_float shifted_growth);
+      void set_mgr_local_correction_options(opendarts::config::mat_float alpha,
+                                            opendarts::config::mat_float adaptive_fallback_threshold,
+                                            opendarts::config::mat_float adaptive_alpha,
+                                            opendarts::config::mat_float adaptive_fallback_threshold_high,
+                                            opendarts::config::mat_float adaptive_alpha_high);
+      void set_use_bcsr_cpr(bool use_bcsr_cpr);
+      void set_bcsr_cpr_options(int reduction_type,
+                                int pressure_variable,
+                                opendarts::config::mat_float weight_max);
       void set_mgr_pressure_amg_options(int coarsen_type,
                                         int interp_type,
                                         int relax_type,
@@ -125,6 +134,15 @@ namespace opendarts
       opendarts::config::mat_float get_mgr_bilu0_fallback_diagonal_tolerance() const;
       opendarts::config::mat_float get_mgr_bilu0_fallback_shifted_max() const;
       opendarts::config::mat_float get_mgr_bilu0_fallback_shifted_growth() const;
+      opendarts::config::mat_float get_mgr_local_correction_alpha() const;
+      opendarts::config::mat_float get_mgr_local_correction_adaptive_fallback_threshold() const;
+      opendarts::config::mat_float get_mgr_local_correction_adaptive_alpha() const;
+      opendarts::config::mat_float get_mgr_local_correction_adaptive_fallback_threshold_high() const;
+      opendarts::config::mat_float get_mgr_local_correction_adaptive_alpha_high() const;
+      bool get_use_bcsr_cpr() const;
+      int get_bcsr_cpr_reduction_type() const;
+      int get_bcsr_cpr_pressure_variable() const;
+      opendarts::config::mat_float get_bcsr_cpr_weight_max() const;
       opendarts::config::index_t get_n_reservoir_blocks() const;
       bool get_mgr_enable_well_level() const;
       bool get_mgr_enable_composition_level() const;
@@ -164,6 +182,15 @@ namespace opendarts
       opendarts::config::mat_float bilu0_fallback_diagonal_tolerance_cached;
       opendarts::config::mat_float bilu0_fallback_shifted_max_cached;
       opendarts::config::mat_float bilu0_fallback_shifted_growth_cached;
+      opendarts::config::mat_float local_correction_alpha_cached;
+      opendarts::config::mat_float local_correction_adaptive_fallback_threshold_cached;
+      opendarts::config::mat_float local_correction_adaptive_alpha_cached;
+      opendarts::config::mat_float local_correction_adaptive_fallback_threshold_high_cached;
+      opendarts::config::mat_float local_correction_adaptive_alpha_high_cached;
+      bool use_bcsr_cpr_cached;
+      int bcsr_cpr_reduction_type_cached;
+      int bcsr_cpr_pressure_variable_cached;
+      opendarts::config::mat_float bcsr_cpr_weight_max_cached;
       opendarts::config::index_t n_reservoir_blocks_cached;
       mgr::strategies::CompositionalFlowStrategyConfig mgr_strategy_config_cached;
 

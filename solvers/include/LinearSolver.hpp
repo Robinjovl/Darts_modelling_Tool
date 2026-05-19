@@ -61,6 +61,12 @@ enum class LocalFallbackStrategy : int
   shiftedDenseThenDiagonal = 3
 };
 
+enum class BCSRCPRReductionType : int
+{
+  pressureRow = 0,
+  trueIMPES = 1
+};
+
 // Open-darts compatible type aliases
 using index_t = int_t;
 using mat_float = real_type;
@@ -123,6 +129,19 @@ struct SolverParameters
   real_type localFallbackDiagonalTolerance = 1.0e-4;
   real_type localFallbackShiftMax = 1.0e-4;
   real_type localFallbackShiftGrowth = 100.0;
+  real_type localCorrectionAlpha = 1.0;
+  real_type localCorrectionAdaptiveFallbackThreshold = -1.0;
+  real_type localCorrectionAdaptiveAlpha = 0.0;
+  real_type localCorrectionAdaptiveFallbackThresholdHigh = -1.0;
+  real_type localCorrectionAdaptiveAlphaHigh = 0.0;
+  int_t localReservoirBlockCount = 0;
+
+  // Experimental BCSR-native CPR prototype:
+  // pressure AMG first stage + full-system BCSR local preconditioner second stage.
+  bool useBCSRCPR = false;
+  BCSRCPRReductionType bcsrCPRReduction = BCSRCPRReductionType::trueIMPES;
+  int_t bcsrCPRPressureVariable = 0;
+  real_type bcsrCPRWeightMax = 1.0e6;
 
 };
 
@@ -200,6 +219,11 @@ public:
       m_params.usePhysicsScaling = false;
     }
     if( m_params.compositeMode != CompositePreconditionerMode::mgrOnly &&
+        m_params.localPreconditioner == LocalPreconditionerType::none )
+    {
+      m_params.localPreconditioner = LocalPreconditionerType::blockILU0;
+    }
+    if( m_params.useBCSRCPR &&
         m_params.localPreconditioner == LocalPreconditionerType::none )
     {
       m_params.localPreconditioner = LocalPreconditionerType::blockILU0;
@@ -435,6 +459,23 @@ private:
   HYPRE_ParVector m_parRHS;             ///< HYPRE parallel RHS vector
   HYPRE_ParVector m_parSol;             ///< HYPRE parallel solution vector
 
+  HYPRE_IJMatrix m_cprPressureIJMatrix = nullptr;
+  HYPRE_IJVector m_cprPressureIJRHS = nullptr;
+  HYPRE_IJVector m_cprPressureIJSol = nullptr;
+  HYPRE_ParCSRMatrix m_cprPressureParMatrix = nullptr;
+  HYPRE_ParVector m_cprPressureParRHS = nullptr;
+  HYPRE_ParVector m_cprPressureParSol = nullptr;
+  HYPRE_Solver m_cprPressureAMG = nullptr;
+  bool m_bcsrCPRReady = false;
+  int_t m_cprPressureRows = 0;
+  std::vector<real_type> m_cprPressureWeights;
+  std::vector<real_type> m_cprPressureRHSValues;
+  std::vector<real_type> m_cprPressureSolution;
+  std::vector<real_type> m_cprPressureCorrection;
+  std::vector<real_type> m_cprResidual;
+  std::vector<real_type> m_cprAx;
+  std::vector<real_type> m_cprLocalCorrection;
+
   HYPRE_Solver m_activeMGRPrecond = nullptr; ///< MGR preconditioner used by composite callbacks
   std::string m_activeKrylovName;            ///< Current Krylov solver name for timer nesting
   std::vector<real_type> m_compositeResidual;
@@ -482,6 +523,15 @@ private:
   void setupBlockLocalPreconditioner();
   void clearCompositeWorkVectors();
   bool blockLocalPreconditionerReady() const;
+  bool setupBCSRCPRPreconditioner();
+  void clearBCSRCPRPreconditioner();
+  bool bcsrCPRPreconditionerReady() const;
+  void computeBCSRCPRPressureWeights();
+  bool createBCSRCPRPressureMatrix();
+  bool createBCSRCPRPressureVectors();
+  int applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix A,
+                                 HYPRE_ParVector b,
+                                 HYPRE_ParVector x);
   int applyCompositePreconditioner(HYPRE_ParCSRMatrix A,
                                    HYPRE_ParVector b,
                                    HYPRE_ParVector x);
@@ -494,6 +544,14 @@ private:
                                           HYPRE_ParCSRMatrix A,
                                           HYPRE_ParVector b,
                                           HYPRE_ParVector x);
+  static int bcsrCPRPreconditionerSetup(HYPRE_Solver solver,
+                                        HYPRE_ParCSRMatrix A,
+                                        HYPRE_ParVector b,
+                                        HYPRE_ParVector x);
+  static int bcsrCPRPreconditionerSolve(HYPRE_Solver solver,
+                                        HYPRE_ParCSRMatrix A,
+                                        HYPRE_ParVector b,
+                                        HYPRE_ParVector x);
 
   /**
    * @brief Setup MGR preconditioner
@@ -514,6 +572,16 @@ private:
    * @brief Solve with FlexGMRES + MGR
    */
   SolverResults solveFlexGMRES_MGR();
+
+  /**
+   * @brief Solve with GMRES + experimental BCSR-native CPR
+   */
+  SolverResults solveGMRES_BCSRCPR();
+
+  /**
+   * @brief Solve with FlexGMRES + experimental BCSR-native CPR
+   */
+  SolverResults solveFlexGMRES_BCSRCPR();
 
   /**
    * @brief Solve with GMRES + AMG

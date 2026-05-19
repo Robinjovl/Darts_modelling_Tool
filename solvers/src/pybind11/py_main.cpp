@@ -62,6 +62,19 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Set BILU0 fallback behavior (0=identity, 1=shifted dense, 2=bounded diagonal, 3=shifted dense then bounded diagonal)",
              py::arg("fallback_strategy"), py::arg("diagonal_tolerance") = 1.0e-4,
              py::arg("shifted_max") = 1.0e-4, py::arg("shifted_growth") = 100.0)
+        .def("set_mgr_local_correction_options", &linsolv_mgr<N>::set_mgr_local_correction_options,
+             "Set BCSR local correction damping and fallback-ratio adaptive damping",
+             py::arg("alpha") = 1.0, py::arg("adaptive_fallback_threshold") = -1.0,
+             py::arg("adaptive_alpha") = 0.0,
+             py::arg("adaptive_fallback_threshold_high") = -1.0,
+             py::arg("adaptive_alpha_high") = 0.0)
+        .def("set_use_bcsr_cpr", &linsolv_mgr<N>::set_use_bcsr_cpr,
+             "Enable/disable experimental BCSR-native CPR preconditioner",
+             py::arg("use_bcsr_cpr"))
+        .def("set_bcsr_cpr_options", &linsolv_mgr<N>::set_bcsr_cpr_options,
+             "Set experimental BCSR CPR options (reduction type, pressure variable, max row weight)",
+             py::arg("reduction_type"), py::arg("pressure_variable") = 0,
+             py::arg("weight_max") = 1.0e6)
         .def("set_mgr_pressure_amg_options", &linsolv_mgr<N>::set_mgr_pressure_amg_options,
              "Set key BoomerAMG options for the pressure coarse solver",
              py::arg("coarsen_type"), py::arg("interp_type"), py::arg("relax_type"),
@@ -148,6 +161,29 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
         .def("get_mgr_bilu0_fallback_shifted_growth",
              &linsolv_mgr<N>::get_mgr_bilu0_fallback_shifted_growth,
              "Get BILU0 shifted dense fallback shift growth factor")
+        .def("get_mgr_local_correction_alpha",
+             &linsolv_mgr<N>::get_mgr_local_correction_alpha,
+             "Get BCSR local correction damping factor")
+        .def("get_mgr_local_correction_adaptive_fallback_threshold",
+             &linsolv_mgr<N>::get_mgr_local_correction_adaptive_fallback_threshold,
+             "Get fallback-ratio threshold for adaptive BCSR local correction damping")
+        .def("get_mgr_local_correction_adaptive_alpha",
+             &linsolv_mgr<N>::get_mgr_local_correction_adaptive_alpha,
+             "Get adaptive BCSR local correction damping factor")
+        .def("get_mgr_local_correction_adaptive_fallback_threshold_high",
+             &linsolv_mgr<N>::get_mgr_local_correction_adaptive_fallback_threshold_high,
+             "Get high fallback-ratio threshold for adaptive BCSR local correction damping")
+        .def("get_mgr_local_correction_adaptive_alpha_high",
+             &linsolv_mgr<N>::get_mgr_local_correction_adaptive_alpha_high,
+             "Get high-ratio adaptive BCSR local correction damping factor")
+        .def("get_use_bcsr_cpr", &linsolv_mgr<N>::get_use_bcsr_cpr,
+             "Get whether experimental BCSR-native CPR is enabled")
+        .def("get_bcsr_cpr_reduction_type", &linsolv_mgr<N>::get_bcsr_cpr_reduction_type,
+             "Get BCSR CPR reduction type")
+        .def("get_bcsr_cpr_pressure_variable", &linsolv_mgr<N>::get_bcsr_cpr_pressure_variable,
+             "Get BCSR CPR pressure variable index")
+        .def("get_bcsr_cpr_weight_max", &linsolv_mgr<N>::get_bcsr_cpr_weight_max,
+             "Get BCSR CPR maximum accepted True-IMPES row weight")
         .def("get_n_reservoir_blocks", &linsolv_mgr<N>::get_n_reservoir_blocks,
              "Get configured number of reservoir blocks")
         .def("get_mgr_enable_well_level", &linsolv_mgr<N>::get_mgr_enable_well_level,

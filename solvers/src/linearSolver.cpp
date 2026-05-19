@@ -12,6 +12,8 @@
 #include <limits>
 #include <algorithm>
 #include <string>
+#include <sstream>
+#include <iomanip>
 
 // HYPRE headers
 #include <_hypre_parcsr_ls.h>
@@ -133,7 +135,95 @@ void logHypreFailure( const char * stage,
                       num_nonzero_blocks,
                       params );
 }
+
+bool solveDenseLinearSystem( std::vector<real_type> matrix,
+                             std::vector<real_type> rhs,
+                             int_t n,
+                             real_type pivot_tolerance,
+                             std::vector<real_type> & solution )
+{
+  solution.assign( n, 0.0 );
+  if( n <= 0 ||
+      static_cast<int_t>( matrix.size() ) < n * n ||
+      static_cast<int_t>( rhs.size() ) < n )
+  {
+    return false;
+  }
+
+  for( int_t col = 0; col < n; ++col )
+  {
+    int_t pivot_row = col;
+    real_type pivot_abs = std::abs( matrix[col * n + col] );
+    for( int_t row = col + 1; row < n; ++row )
+    {
+      const real_type candidate = std::abs( matrix[row * n + col] );
+      if( candidate > pivot_abs )
+      {
+        pivot_abs = candidate;
+        pivot_row = row;
+      }
+    }
+    if( pivot_abs <= pivot_tolerance || !std::isfinite( pivot_abs ) )
+    {
+      return false;
+    }
+    if( pivot_row != col )
+    {
+      for( int_t j = col; j < n; ++j )
+      {
+        std::swap( matrix[col * n + j], matrix[pivot_row * n + j] );
+      }
+      std::swap( rhs[col], rhs[pivot_row] );
+    }
+
+    const real_type pivot = matrix[col * n + col];
+    for( int_t row = col + 1; row < n; ++row )
+    {
+      const real_type factor = matrix[row * n + col] / pivot;
+      matrix[row * n + col] = 0.0;
+      for( int_t j = col + 1; j < n; ++j )
+      {
+        matrix[row * n + j] -= factor * matrix[col * n + j];
+      }
+      rhs[row] -= factor * rhs[col];
+    }
+  }
+
+  for( int_t row = n - 1; row >= 0; --row )
+  {
+    real_type value = rhs[row];
+    for( int_t col = row + 1; col < n; ++col )
+    {
+      value -= matrix[row * n + col] * solution[col];
+    }
+    const real_type pivot = matrix[row * n + row];
+    if( std::abs( pivot ) <= pivot_tolerance || !std::isfinite( pivot ) )
+    {
+      return false;
+    }
+    solution[row] = value / pivot;
+    if( !std::isfinite( solution[row] ) )
+    {
+      return false;
+    }
+    if( row == 0 )
+    {
+      break;
+    }
+  }
+  return true;
+}
 } // namespace
+
+enum class BlockInverseFailureReason
+{
+  none,
+  nonFiniteInput,
+  zeroNorm,
+  smallPivot,
+  smallDeterminant,
+  nonFiniteInverse
+};
 
 class BlockLocalPreconditioner
 {
@@ -147,7 +237,8 @@ public:
               LocalFallbackStrategy fallback_strategy,
               real_type fallback_diagonal_tolerance,
               real_type fallback_shift_max,
-              real_type fallback_shift_growth )
+              real_type fallback_shift_growth,
+              int_t reservoir_block_count )
   {
     clear();
     if( type == LocalPreconditionerType::none )
@@ -164,6 +255,9 @@ public:
     m_numRows = matrix.num_rows;
     m_blockSize = matrix.block_size;
     m_blockSizeSquared = m_blockSize * m_blockSize;
+    m_numReservoirRows = reservoir_block_count > 0
+                         ? std::min<int_t>( reservoir_block_count, m_numRows )
+                         : m_numRows;
     m_pivotShift = std::max<real_type>( pivot_shift, 0.0 );
     m_fallbackStrategy = fallback_strategy;
     m_fallbackDiagonalTolerance = std::max<real_type>( fallback_diagonal_tolerance, 0.0 );
@@ -254,6 +348,7 @@ public:
   {
     m_type = LocalPreconditionerType::none;
     m_numRows = 0;
+    m_numReservoirRows = 0;
     m_blockSize = 0;
     m_blockSizeSquared = 0;
     m_pivotShift = 0.0;
@@ -264,6 +359,17 @@ public:
     m_failedPivots = 0;
     m_shiftedDenseFallbackPivots = 0;
     m_diagonalFallbackPivots = 0;
+    m_reservoirFallbackPivots = 0;
+    m_wellFallbackPivots = 0;
+    m_primaryFailureNonFinite = 0;
+    m_primaryFailureZeroNorm = 0;
+    m_primaryFailureSmallPivot = 0;
+    m_primaryFailureSmallDeterminant = 0;
+    m_primaryFailureNonFiniteInverse = 0;
+    m_boundedDiagonalInverseVariables = 0;
+    m_boundedDiagonalIdentityVariables = 0;
+    m_shiftedDenseShiftValues.clear();
+    m_shiftedDenseShiftCounts.clear();
     m_ready = false;
     m_rowPtr.clear();
     m_colInd.clear();
@@ -294,6 +400,83 @@ public:
   int_t diagonalFallbackPivots() const
   {
     return m_diagonalFallbackPivots;
+  }
+
+  int_t totalFallbackPivots() const
+  {
+    return m_failedPivots + m_shiftedDenseFallbackPivots + m_diagonalFallbackPivots;
+  }
+
+  real_type fallbackRatio() const
+  {
+    return m_numRows > 0 ? static_cast<real_type>( totalFallbackPivots() ) /
+                           static_cast<real_type>( m_numRows ) : 0.0;
+  }
+
+  int_t reservoirFallbackPivots() const
+  {
+    return m_reservoirFallbackPivots;
+  }
+
+  int_t wellFallbackPivots() const
+  {
+    return m_wellFallbackPivots;
+  }
+
+  int_t primaryFailureNonFinite() const
+  {
+    return m_primaryFailureNonFinite;
+  }
+
+  int_t primaryFailureZeroNorm() const
+  {
+    return m_primaryFailureZeroNorm;
+  }
+
+  int_t primaryFailureSmallPivot() const
+  {
+    return m_primaryFailureSmallPivot;
+  }
+
+  int_t primaryFailureSmallDeterminant() const
+  {
+    return m_primaryFailureSmallDeterminant;
+  }
+
+  int_t primaryFailureNonFiniteInverse() const
+  {
+    return m_primaryFailureNonFiniteInverse;
+  }
+
+  int_t boundedDiagonalInverseVariables() const
+  {
+    return m_boundedDiagonalInverseVariables;
+  }
+
+  int_t boundedDiagonalIdentityVariables() const
+  {
+    return m_boundedDiagonalIdentityVariables;
+  }
+
+  std::string shiftedDenseShiftSummary() const
+  {
+    if( m_shiftedDenseShiftValues.empty() )
+    {
+      return "none";
+    }
+    std::ostringstream out;
+    out << "{";
+    for( size_t i = 0; i < m_shiftedDenseShiftValues.size(); ++i )
+    {
+      if( i > 0 )
+      {
+        out << ", ";
+      }
+      out << std::scientific << std::setprecision( 3 )
+          << m_shiftedDenseShiftValues[i] << ":" << m_shiftedDenseShiftCounts[i];
+    }
+    out << "}";
+    return out.str();
   }
 
   const char * name() const
@@ -464,17 +647,22 @@ private:
     const int_t diag = m_diagInd[row];
     const real_type * block = &m_luValues[diag * m_blockSizeSquared];
     real_type * inverse = &m_diagInverse[row * m_blockSizeSquared];
-    if( invertBlock( block, inverse, m_pivotShift ) )
+    BlockInverseFailureReason primary_failure = BlockInverseFailureReason::none;
+    if( invertBlock( block, inverse, m_pivotShift, &primary_failure ) )
     {
       return;
     }
+    recordPrimaryFailure( primary_failure );
 
     if( m_fallbackStrategy == LocalFallbackStrategy::shiftedDense ||
         m_fallbackStrategy == LocalFallbackStrategy::shiftedDenseThenDiagonal )
     {
-      if( invertBlockWithShiftFallback( block, inverse ) )
+      real_type accepted_shift = 0.0;
+      if( invertBlockWithShiftFallback( block, inverse, &accepted_shift ) )
       {
         ++m_shiftedDenseFallbackPivots;
+        recordShiftedDenseShift( accepted_shift );
+        recordFallbackLocation( row );
         return;
       }
     }
@@ -482,14 +670,19 @@ private:
     if( m_fallbackStrategy == LocalFallbackStrategy::boundedDiagonal ||
         m_fallbackStrategy == LocalFallbackStrategy::shiftedDenseThenDiagonal )
     {
-      if( invertBlockDiagonal( block, inverse ) )
+      int_t used_diagonal_variables = 0;
+      if( invertBlockDiagonal( block, inverse, &used_diagonal_variables ) )
       {
         ++m_diagonalFallbackPivots;
+        m_boundedDiagonalInverseVariables += used_diagonal_variables;
+        m_boundedDiagonalIdentityVariables += m_blockSize - used_diagonal_variables;
+        recordFallbackLocation( row );
         return;
       }
     }
 
     ++m_failedPivots;
+    recordFallbackLocation( row );
     std::fill( inverse, inverse + m_blockSizeSquared, 0.0 );
     for( int_t i = 0; i < m_blockSize; ++i )
     {
@@ -497,7 +690,9 @@ private:
     }
   }
 
-  bool invertBlockWithShiftFallback( const real_type * block, real_type * inverse ) const
+  bool invertBlockWithShiftFallback( const real_type * block,
+                                     real_type * inverse,
+                                     real_type * accepted_shift ) const
   {
     if( m_fallbackShiftMax <= 0.0 )
     {
@@ -514,6 +709,10 @@ private:
     {
       if( invertBlock( block, inverse, shift ) )
       {
+        if( accepted_shift )
+        {
+          *accepted_shift = shift;
+        }
         return true;
       }
       if( m_fallbackShiftGrowth <= 1.0 || shift == m_fallbackShiftMax )
@@ -527,17 +726,27 @@ private:
 
   bool invertBlock( const real_type * block,
                     real_type * inverse,
-                    real_type relative_shift ) const
+                    real_type relative_shift,
+                    BlockInverseFailureReason * failure_reason = nullptr ) const
   {
+    if( failure_reason )
+    {
+      *failure_reason = BlockInverseFailureReason::none;
+    }
     real_type norm = 0.0;
     for( int_t i = 0; i < m_blockSizeSquared; ++i )
     {
       if( !std::isfinite( block[i] ) )
       {
+        if( failure_reason )
+        {
+          *failure_reason = BlockInverseFailureReason::nonFiniteInput;
+        }
         return false;
       }
       norm = std::max( norm, std::abs( block[i] ) );
     }
+    const bool zero_norm = norm == 0.0;
     const real_type shift = relative_shift * std::max<real_type>( norm, 1.0 );
     const real_type pivot_tol = std::numeric_limits<real_type>::epsilon() *
                                 std::max<real_type>( norm + std::abs( shift ), 1.0 ) * 100.0;
@@ -547,10 +756,25 @@ private:
       const real_type pivot = block[0] + shift;
       if( std::abs( pivot ) <= pivot_tol || !std::isfinite( pivot ) )
       {
+        if( failure_reason )
+        {
+          *failure_reason = !std::isfinite( pivot )
+                            ? BlockInverseFailureReason::nonFiniteInput
+                            : ( zero_norm ? BlockInverseFailureReason::zeroNorm
+                                          : BlockInverseFailureReason::smallPivot );
+        }
         return false;
       }
       inverse[0] = 1.0 / pivot;
-      return std::isfinite( inverse[0] );
+      if( !std::isfinite( inverse[0] ) )
+      {
+        if( failure_reason )
+        {
+          *failure_reason = BlockInverseFailureReason::nonFiniteInverse;
+        }
+        return false;
+      }
+      return true;
     }
 
     if( m_blockSize == 2 )
@@ -562,6 +786,13 @@ private:
       const real_type det = a * d - b * c;
       if( std::abs( det ) <= pivot_tol || !std::isfinite( det ) )
       {
+        if( failure_reason )
+        {
+          *failure_reason = !std::isfinite( det )
+                            ? BlockInverseFailureReason::nonFiniteInput
+                            : ( zero_norm ? BlockInverseFailureReason::zeroNorm
+                                          : BlockInverseFailureReason::smallDeterminant );
+        }
         return false;
       }
       const real_type inv_det = 1.0 / det;
@@ -569,8 +800,14 @@ private:
       inverse[1] = -b * inv_det;
       inverse[2] = -c * inv_det;
       inverse[3] = a * inv_det;
-      return std::isfinite( inverse[0] ) && std::isfinite( inverse[1] ) &&
-             std::isfinite( inverse[2] ) && std::isfinite( inverse[3] );
+      const bool finite_inverse =
+          std::isfinite( inverse[0] ) && std::isfinite( inverse[1] ) &&
+          std::isfinite( inverse[2] ) && std::isfinite( inverse[3] );
+      if( !finite_inverse && failure_reason )
+      {
+        *failure_reason = BlockInverseFailureReason::nonFiniteInverse;
+      }
+      return finite_inverse;
     }
 
     const int_t width = 2 * m_blockSize;
@@ -599,6 +836,13 @@ private:
       }
       if( pivot_abs <= pivot_tol || !std::isfinite( pivot_abs ) )
       {
+        if( failure_reason )
+        {
+          *failure_reason = !std::isfinite( pivot_abs )
+                            ? BlockInverseFailureReason::nonFiniteInput
+                            : ( zero_norm ? BlockInverseFailureReason::zeroNorm
+                                          : BlockInverseFailureReason::smallPivot );
+        }
         return false;
       }
       if( pivot_row != col )
@@ -639,6 +883,10 @@ private:
         inverse[r * m_blockSize + c] = aug[r * width + m_blockSize + c];
         if( !std::isfinite( inverse[r * m_blockSize + c] ) )
         {
+          if( failure_reason )
+          {
+            *failure_reason = BlockInverseFailureReason::nonFiniteInverse;
+          }
           return false;
         }
       }
@@ -646,7 +894,9 @@ private:
     return true;
   }
 
-  bool invertBlockDiagonal( const real_type * block, real_type * inverse ) const
+  bool invertBlockDiagonal( const real_type * block,
+                            real_type * inverse,
+                            int_t * used_diagonal_variables ) const
   {
     real_type norm = 0.0;
     for( int_t i = 0; i < m_blockSizeSquared; ++i )
@@ -662,6 +912,7 @@ private:
     const real_type diag_tol = m_fallbackDiagonalTolerance * scale;
     const real_type shift = m_pivotShift * scale;
     bool used_diagonal_inverse = false;
+    int_t used_diagonal_count = 0;
     std::fill( inverse, inverse + m_blockSizeSquared, 0.0 );
     for( int_t i = 0; i < m_blockSize; ++i )
     {
@@ -674,13 +925,72 @@ private:
           return false;
         }
         used_diagonal_inverse = true;
+        ++used_diagonal_count;
       }
       else
       {
         inverse[i * m_blockSize + i] = 1.0;
       }
     }
+    if( used_diagonal_variables )
+    {
+      *used_diagonal_variables = used_diagonal_count;
+    }
     return used_diagonal_inverse;
+  }
+
+  void recordShiftedDenseShift( real_type accepted_shift )
+  {
+    const real_type tolerance =
+        std::numeric_limits<real_type>::epsilon() *
+        std::max<real_type>( std::abs( accepted_shift ), 1.0 ) * 100.0;
+    for( size_t i = 0; i < m_shiftedDenseShiftValues.size(); ++i )
+    {
+      if( std::abs( m_shiftedDenseShiftValues[i] - accepted_shift ) <= tolerance )
+      {
+        ++m_shiftedDenseShiftCounts[i];
+        return;
+      }
+    }
+    m_shiftedDenseShiftValues.push_back( accepted_shift );
+    m_shiftedDenseShiftCounts.push_back( 1 );
+  }
+
+  void recordFallbackLocation( int_t row )
+  {
+    if( row < m_numReservoirRows )
+    {
+      ++m_reservoirFallbackPivots;
+    }
+    else
+    {
+      ++m_wellFallbackPivots;
+    }
+  }
+
+  void recordPrimaryFailure( BlockInverseFailureReason reason )
+  {
+    switch( reason )
+    {
+      case BlockInverseFailureReason::nonFiniteInput:
+        ++m_primaryFailureNonFinite;
+        break;
+      case BlockInverseFailureReason::zeroNorm:
+        ++m_primaryFailureZeroNorm;
+        break;
+      case BlockInverseFailureReason::smallPivot:
+        ++m_primaryFailureSmallPivot;
+        break;
+      case BlockInverseFailureReason::smallDeterminant:
+        ++m_primaryFailureSmallDeterminant;
+        break;
+      case BlockInverseFailureReason::nonFiniteInverse:
+        ++m_primaryFailureNonFiniteInverse;
+        break;
+      case BlockInverseFailureReason::none:
+      default:
+        break;
+    }
   }
 
   void rightMultiplyBlockInPlace( real_type * block, const real_type * right ) const
@@ -751,6 +1061,7 @@ private:
 
   LocalPreconditionerType m_type = LocalPreconditionerType::none;
   int_t m_numRows = 0;
+  int_t m_numReservoirRows = 0;
   int_t m_blockSize = 0;
   int_t m_blockSizeSquared = 0;
   real_type m_pivotShift = 0.0;
@@ -761,6 +1072,17 @@ private:
   int_t m_failedPivots = 0;
   int_t m_shiftedDenseFallbackPivots = 0;
   int_t m_diagonalFallbackPivots = 0;
+  int_t m_reservoirFallbackPivots = 0;
+  int_t m_wellFallbackPivots = 0;
+  int_t m_primaryFailureNonFinite = 0;
+  int_t m_primaryFailureZeroNorm = 0;
+  int_t m_primaryFailureSmallPivot = 0;
+  int_t m_primaryFailureSmallDeterminant = 0;
+  int_t m_primaryFailureNonFiniteInverse = 0;
+  int_t m_boundedDiagonalInverseVariables = 0;
+  int_t m_boundedDiagonalIdentityVariables = 0;
+  std::vector<real_type> m_shiftedDenseShiftValues;
+  std::vector<int_t> m_shiftedDenseShiftCounts;
   bool m_ready = false;
   std::vector<int_t> m_rowPtr;
   std::vector<int_t> m_colInd;
@@ -781,6 +1103,13 @@ LinearSolver::LinearSolver()
   , m_parMatrix( nullptr )
   , m_parRHS( nullptr )
   , m_parSol( nullptr )
+  , m_cprPressureIJMatrix( nullptr )
+  , m_cprPressureIJRHS( nullptr )
+  , m_cprPressureIJSol( nullptr )
+  , m_cprPressureParMatrix( nullptr )
+  , m_cprPressureParRHS( nullptr )
+  , m_cprPressureParSol( nullptr )
+  , m_cprPressureAMG( nullptr )
   , m_matrixLoaded( false )
   , m_matrixAssembled( false )
 {
@@ -799,6 +1128,15 @@ LinearSolver::LinearSolver()
   m_params.localFallbackDiagonalTolerance = 1.0e-4;
   m_params.localFallbackShiftMax = 1.0e-4;
   m_params.localFallbackShiftGrowth = 100.0;
+  m_params.localCorrectionAlpha = 1.0;
+  m_params.localCorrectionAdaptiveFallbackThreshold = -1.0;
+  m_params.localCorrectionAdaptiveAlpha = 0.0;
+  m_params.localCorrectionAdaptiveFallbackThresholdHigh = -1.0;
+  m_params.localCorrectionAdaptiveAlphaHigh = 0.0;
+  m_params.useBCSRCPR = false;
+  m_params.bcsrCPRReduction = BCSRCPRReductionType::trueIMPES;
+  m_params.bcsrCPRPressureVariable = 0;
+  m_params.bcsrCPRWeightMax = 1.0e6;
 }
 
 LinearSolver::~LinearSolver()
@@ -1001,9 +1339,404 @@ bool LinearSolver::blockLocalPreconditionerReady() const
   return m_blockLocalPreconditioner && m_blockLocalPreconditioner->ready();
 }
 
+bool LinearSolver::bcsrCPRPreconditionerReady() const
+{
+  return m_bcsrCPRReady && m_cprPressureAMG && m_cprPressureParMatrix &&
+         m_cprPressureParRHS && m_cprPressureParSol && blockLocalPreconditionerReady();
+}
+
+void LinearSolver::clearBCSRCPRPreconditioner()
+{
+  if( m_cprPressureAMG )
+  {
+    HYPRE_BoomerAMGDestroy( m_cprPressureAMG );
+    m_cprPressureAMG = nullptr;
+  }
+  if( m_cprPressureIJMatrix )
+  {
+    HYPRE_IJMatrixDestroy( m_cprPressureIJMatrix );
+    m_cprPressureIJMatrix = nullptr;
+  }
+  if( m_cprPressureIJRHS )
+  {
+    HYPRE_IJVectorDestroy( m_cprPressureIJRHS );
+    m_cprPressureIJRHS = nullptr;
+  }
+  if( m_cprPressureIJSol )
+  {
+    HYPRE_IJVectorDestroy( m_cprPressureIJSol );
+    m_cprPressureIJSol = nullptr;
+  }
+  m_cprPressureParMatrix = nullptr;
+  m_cprPressureParRHS = nullptr;
+  m_cprPressureParSol = nullptr;
+  m_bcsrCPRReady = false;
+  m_cprPressureRows = 0;
+  m_cprPressureWeights.clear();
+  m_cprPressureRHSValues.clear();
+  m_cprPressureSolution.clear();
+  m_cprPressureCorrection.clear();
+  m_cprResidual.clear();
+  m_cprAx.clear();
+  m_cprLocalCorrection.clear();
+}
+
+void LinearSolver::computeBCSRCPRPressureWeights()
+{
+  const int_t block_size = m_matrix.block_size;
+  const int_t pressure_var =
+      std::clamp<int_t>( m_params.bcsrCPRPressureVariable, 0, block_size - 1 );
+  const bool apply_scaling = scalingActive( m_matrix.global_num_rows );
+  const real_type weight_max = std::max<real_type>( m_params.bcsrCPRWeightMax, 1.0 );
+
+  m_cprPressureWeights.assign( m_cprPressureRows * block_size, 0.0 );
+  int_t fallback_rows = 0;
+  int_t true_impes_rows = 0;
+
+  for( int_t row = 0; row < m_cprPressureRows; ++row )
+  {
+    real_type * weights = &m_cprPressureWeights[row * block_size];
+    weights[pressure_var] = 1.0;
+
+    if( m_params.bcsrCPRReduction != BCSRCPRReductionType::trueIMPES ||
+        block_size <= 1 )
+    {
+      continue;
+    }
+
+    int_t diag = -1;
+    if( static_cast<int_t>( m_matrix.diag_ind.size() ) > row )
+    {
+      const int_t candidate = m_matrix.diag_ind[row];
+      if( candidate >= m_matrix.row_ptr[row] &&
+          candidate < m_matrix.row_ptr[row + 1] &&
+          m_matrix.col_ind[candidate] == row )
+      {
+        diag = candidate;
+      }
+    }
+    if( diag < 0 )
+    {
+      for( int_t p = m_matrix.row_ptr[row]; p < m_matrix.row_ptr[row + 1]; ++p )
+      {
+        if( m_matrix.col_ind[p] == row )
+        {
+          diag = p;
+          break;
+        }
+      }
+    }
+    if( diag < 0 )
+    {
+      ++fallback_rows;
+      continue;
+    }
+
+    std::vector<int_t> f_vars;
+    f_vars.reserve( block_size - 1 );
+    for( int_t v = 0; v < block_size; ++v )
+    {
+      if( v != pressure_var )
+      {
+        f_vars.push_back( v );
+      }
+    }
+    const int_t n_f = static_cast<int_t>( f_vars.size() );
+    std::vector<real_type> matrix_ff_t( n_f * n_f, 0.0 );
+    std::vector<real_type> rhs( n_f, 0.0 );
+
+    real_type norm = 0.0;
+    const int_t block_offset = diag * block_size * block_size;
+    for( int_t r = 0; r < block_size; ++r )
+    {
+      const int_t scalar_row = row * block_size + r;
+      const real_type row_scale =
+          apply_scaling && scalar_row < static_cast<int_t>( m_rowScaling.size() )
+          ? m_rowScaling[scalar_row] : 1.0;
+      for( int_t c = 0; c < block_size; ++c )
+      {
+        const int_t scalar_col = row * block_size + c;
+        const real_type col_scale =
+            apply_scaling && scalar_col < static_cast<int_t>( m_colScaling.size() )
+            ? m_colScaling[scalar_col] : 1.0;
+        const real_type value =
+            m_matrix.values[block_offset + r * block_size + c] * row_scale * col_scale;
+        norm = std::max( norm, std::abs( value ) );
+      }
+    }
+
+    for( int_t a = 0; a < n_f; ++a )
+    {
+      const int_t f_col = f_vars[a];
+      const int_t scalar_row = row * block_size + pressure_var;
+      const int_t scalar_col = row * block_size + f_col;
+      const real_type row_scale =
+          apply_scaling && scalar_row < static_cast<int_t>( m_rowScaling.size() )
+          ? m_rowScaling[scalar_row] : 1.0;
+      const real_type col_scale =
+          apply_scaling && scalar_col < static_cast<int_t>( m_colScaling.size() )
+          ? m_colScaling[scalar_col] : 1.0;
+      rhs[a] = -m_matrix.values[block_offset + pressure_var * block_size + f_col] *
+               row_scale * col_scale;
+      for( int_t b = 0; b < n_f; ++b )
+      {
+        const int_t f_row = f_vars[b];
+        const int_t ff_scalar_row = row * block_size + f_row;
+        const int_t ff_scalar_col = row * block_size + f_col;
+        const real_type ff_row_scale =
+            apply_scaling && ff_scalar_row < static_cast<int_t>( m_rowScaling.size() )
+            ? m_rowScaling[ff_scalar_row] : 1.0;
+        const real_type ff_col_scale =
+            apply_scaling && ff_scalar_col < static_cast<int_t>( m_colScaling.size() )
+            ? m_colScaling[ff_scalar_col] : 1.0;
+        matrix_ff_t[a * n_f + b] =
+            m_matrix.values[block_offset + f_row * block_size + f_col] *
+            ff_row_scale * ff_col_scale;
+      }
+    }
+
+    std::vector<real_type> solution;
+    const real_type pivot_tolerance =
+        std::numeric_limits<real_type>::epsilon() * std::max<real_type>( norm, 1.0 ) * 100.0;
+    const bool ok = solveDenseLinearSystem( matrix_ff_t,
+                                            rhs,
+                                            n_f,
+                                            pivot_tolerance,
+                                            solution );
+    if( !ok )
+    {
+      ++fallback_rows;
+      continue;
+    }
+
+    bool accept = true;
+    for( int_t a = 0; a < n_f; ++a )
+    {
+      if( !std::isfinite( solution[a] ) ||
+          std::abs( solution[a] ) > weight_max )
+      {
+        accept = false;
+        break;
+      }
+    }
+    if( !accept )
+    {
+      ++fallback_rows;
+      continue;
+    }
+
+    for( int_t a = 0; a < n_f; ++a )
+    {
+      weights[f_vars[a]] = solution[a];
+    }
+    ++true_impes_rows;
+  }
+
+  if( m_params.logLevel >= 1 )
+  {
+    std::cerr << "[MGR] BCSR CPR pressure weights: rows=" << m_cprPressureRows
+              << ", true_impes=" << true_impes_rows
+              << ", pressure_row_fallback=" << fallback_rows
+              << "." << std::endl;
+  }
+}
+
+bool LinearSolver::createBCSRCPRPressureMatrix()
+{
+  if( m_cprPressureRows <= 0 )
+  {
+    return false;
+  }
+
+  ScopedTimer timer( setupTimerNode( "BCSR CPR pressure matrix" ) );
+
+  const int_t block_size = m_matrix.block_size;
+  const int_t pressure_var =
+      std::clamp<int_t>( m_params.bcsrCPRPressureVariable, 0, block_size - 1 );
+  const bool apply_scaling = scalingActive( m_matrix.global_num_rows );
+
+  HYPRE_IJMatrixCreate( MPI_COMM_WORLD,
+                        0,
+                        m_cprPressureRows - 1,
+                        0,
+                        m_cprPressureRows - 1,
+                        &m_cprPressureIJMatrix );
+  HYPRE_IJMatrixSetObjectType( m_cprPressureIJMatrix, HYPRE_PARCSR );
+  HYPRE_IJMatrixInitialize( m_cprPressureIJMatrix );
+
+  for( int_t row = 0; row < m_cprPressureRows; ++row )
+  {
+    std::vector<bigint_t> cols;
+    std::vector<real_type> vals;
+    const real_type * weights = &m_cprPressureWeights[row * block_size];
+
+    for( int_t block = m_matrix.row_ptr[row]; block < m_matrix.row_ptr[row + 1]; ++block )
+    {
+      const int_t col_cell = m_matrix.col_ind[block];
+      if( col_cell < 0 || col_cell >= m_cprPressureRows )
+      {
+        continue;
+      }
+
+      const int_t block_offset = block * block_size * block_size;
+      real_type value = 0.0;
+      for( int_t r = 0; r < block_size; ++r )
+      {
+        const int_t scalar_row = row * block_size + r;
+        const int_t scalar_col = col_cell * block_size + pressure_var;
+        const real_type row_scale =
+            apply_scaling && scalar_row < static_cast<int_t>( m_rowScaling.size() )
+            ? m_rowScaling[scalar_row] : 1.0;
+        const real_type col_scale =
+            apply_scaling && scalar_col < static_cast<int_t>( m_colScaling.size() )
+            ? m_colScaling[scalar_col] : 1.0;
+        value += weights[r] *
+                 m_matrix.values[block_offset + r * block_size + pressure_var] *
+                 row_scale * col_scale;
+      }
+      cols.push_back( col_cell );
+      vals.push_back( value );
+    }
+
+    if( cols.empty() )
+    {
+      cols.push_back( row );
+      vals.push_back( 1.0 );
+    }
+
+    bigint_t hypre_row = row;
+    int_t ncols = static_cast<int_t>( cols.size() );
+    HYPRE_IJMatrixSetValues( m_cprPressureIJMatrix,
+                             1,
+                             &ncols,
+                             &hypre_row,
+                             cols.data(),
+                             vals.data() );
+  }
+
+  HYPRE_IJMatrixAssemble( m_cprPressureIJMatrix );
+  HYPRE_IJMatrixGetObject( m_cprPressureIJMatrix,
+                           reinterpret_cast<void **>( &m_cprPressureParMatrix ) );
+  return m_cprPressureParMatrix != nullptr;
+}
+
+bool LinearSolver::createBCSRCPRPressureVectors()
+{
+  if( m_cprPressureRows <= 0 )
+  {
+    return false;
+  }
+
+  ScopedTimer timer( setupTimerNode( "BCSR CPR pressure vectors" ) );
+
+  HYPRE_IJVectorCreate( MPI_COMM_WORLD,
+                        0,
+                        m_cprPressureRows - 1,
+                        &m_cprPressureIJRHS );
+  HYPRE_IJVectorSetObjectType( m_cprPressureIJRHS, HYPRE_PARCSR );
+  HYPRE_IJVectorInitialize( m_cprPressureIJRHS );
+
+  HYPRE_IJVectorCreate( MPI_COMM_WORLD,
+                        0,
+                        m_cprPressureRows - 1,
+                        &m_cprPressureIJSol );
+  HYPRE_IJVectorSetObjectType( m_cprPressureIJSol, HYPRE_PARCSR );
+  HYPRE_IJVectorInitialize( m_cprPressureIJSol );
+
+  std::vector<bigint_t> rows( m_cprPressureRows );
+  std::vector<real_type> zeros( m_cprPressureRows, 0.0 );
+  for( int_t i = 0; i < m_cprPressureRows; ++i )
+  {
+    rows[i] = i;
+  }
+  HYPRE_IJVectorSetValues( m_cprPressureIJRHS,
+                           m_cprPressureRows,
+                           rows.data(),
+                           zeros.data() );
+  HYPRE_IJVectorSetValues( m_cprPressureIJSol,
+                           m_cprPressureRows,
+                           rows.data(),
+                           zeros.data() );
+  HYPRE_IJVectorAssemble( m_cprPressureIJRHS );
+  HYPRE_IJVectorAssemble( m_cprPressureIJSol );
+  HYPRE_IJVectorGetObject( m_cprPressureIJRHS,
+                           reinterpret_cast<void **>( &m_cprPressureParRHS ) );
+  HYPRE_IJVectorGetObject( m_cprPressureIJSol,
+                           reinterpret_cast<void **>( &m_cprPressureParSol ) );
+  return m_cprPressureParRHS != nullptr && m_cprPressureParSol != nullptr;
+}
+
+bool LinearSolver::setupBCSRCPRPreconditioner()
+{
+  clearBCSRCPRPreconditioner();
+  if( !m_params.useBCSRCPR )
+  {
+    return true;
+  }
+  if( !blockLocalPreconditionerReady() )
+  {
+    std::cerr << "[MGR] Error: BCSR CPR requires a ready full-system BCSR local "
+              << "preconditioner." << std::endl;
+    return false;
+  }
+
+  const int_t reservoir_rows =
+      m_params.localReservoirBlockCount > 0
+      ? std::min<int_t>( m_params.localReservoirBlockCount, m_matrix.num_rows )
+      : m_matrix.num_rows;
+  if( reservoir_rows <= 0 )
+  {
+    std::cerr << "[MGR] Error: BCSR CPR pressure system has no reservoir rows."
+              << std::endl;
+    return false;
+  }
+
+  m_cprPressureRows = reservoir_rows;
+  computeBCSRCPRPressureWeights();
+  if( !createBCSRCPRPressureMatrix() || !createBCSRCPRPressureVectors() )
+  {
+    std::cerr << "[MGR] Error: failed to create BCSR CPR pressure matrix/vectors."
+              << std::endl;
+    clearBCSRCPRPreconditioner();
+    return false;
+  }
+
+  {
+    ScopedTimer timer( setupTimerNode( "BCSR CPR AMG setup" ) );
+    m_cprPressureAMG = setupAMGPreconditioner();
+    if( !m_cprPressureAMG )
+    {
+      clearBCSRCPRPreconditioner();
+      return false;
+    }
+    const HYPRE_Int rc = HYPRE_BoomerAMGSetup( m_cprPressureAMG,
+                                               m_cprPressureParMatrix,
+                                               m_cprPressureParRHS,
+                                               m_cprPressureParSol );
+    if( rc != 0 )
+    {
+      std::cerr << "[MGR] Error: BCSR CPR pressure AMG setup failed with rc="
+                << rc << " (" << describeHypreError( rc ) << ")." << std::endl;
+      clearBCSRCPRPreconditioner();
+      return false;
+    }
+  }
+
+  const int_t n = m_matrix.global_num_rows;
+  m_cprPressureRHSValues.assign( m_cprPressureRows, 0.0 );
+  m_cprPressureSolution.assign( m_cprPressureRows, 0.0 );
+  m_cprPressureCorrection.assign( n, 0.0 );
+  m_cprResidual.assign( n, 0.0 );
+  m_cprAx.assign( n, 0.0 );
+  m_cprLocalCorrection.assign( n, 0.0 );
+  m_bcsrCPRReady = true;
+  return true;
+}
+
 void LinearSolver::setupBlockLocalPreconditioner()
 {
-  if( m_params.compositeMode == CompositePreconditionerMode::mgrOnly ||
+  if( ( !m_params.useBCSRCPR &&
+        m_params.compositeMode == CompositePreconditionerMode::mgrOnly ) ||
       m_params.localPreconditioner == LocalPreconditionerType::none )
   {
     if( m_blockLocalPreconditioner )
@@ -1034,7 +1767,8 @@ void LinearSolver::setupBlockLocalPreconditioner()
                                                      m_params.localFallbackStrategy,
                                                      m_params.localFallbackDiagonalTolerance,
                                                      m_params.localFallbackShiftMax,
-                                                     m_params.localFallbackShiftGrowth );
+                                                     m_params.localFallbackShiftGrowth,
+                                                     m_params.localReservoirBlockCount );
   if( !ok )
   {
     std::cerr << "[MGR] Warning: full-system BCSR local correction setup failed; "
@@ -1050,7 +1784,9 @@ void LinearSolver::setupBlockLocalPreconditioner()
   {
     std::cerr << "[MGR] Info: " << m_blockLocalPreconditioner->name()
               << " used shifted dense fallback for " << shifted_fallback_pivots
-              << " diagonal block(s)." << std::endl;
+              << " diagonal block(s), shifts="
+              << m_blockLocalPreconditioner->shiftedDenseShiftSummary()
+              << "." << std::endl;
   }
 
   const int_t diagonal_fallback_pivots = m_blockLocalPreconditioner->diagonalFallbackPivots();
@@ -1058,7 +1794,11 @@ void LinearSolver::setupBlockLocalPreconditioner()
   {
     std::cerr << "[MGR] Info: " << m_blockLocalPreconditioner->name()
               << " used bounded diagonal fallback for " << diagonal_fallback_pivots
-              << " diagonal block(s)." << std::endl;
+              << " diagonal block(s), variables(diagonal_inverse="
+              << m_blockLocalPreconditioner->boundedDiagonalInverseVariables()
+              << ", identity="
+              << m_blockLocalPreconditioner->boundedDiagonalIdentityVariables()
+              << ")." << std::endl;
   }
 
   const int_t failed_pivots = m_blockLocalPreconditioner->failedPivots();
@@ -1067,6 +1807,27 @@ void LinearSolver::setupBlockLocalPreconditioner()
     std::cerr << "[MGR] Warning: " << m_blockLocalPreconditioner->name()
               << " used identity fallback for " << failed_pivots
               << " diagonal block(s)." << std::endl;
+  }
+
+  const int_t total_fallback_pivots = m_blockLocalPreconditioner->totalFallbackPivots();
+  if( total_fallback_pivots > 0 )
+  {
+    std::cerr << "[MGR] Info: " << m_blockLocalPreconditioner->name()
+              << " fallback diagnostics: total=" << total_fallback_pivots
+              << ", ratio=" << m_blockLocalPreconditioner->fallbackRatio()
+              << ", reservoir=" << m_blockLocalPreconditioner->reservoirFallbackPivots()
+              << ", well=" << m_blockLocalPreconditioner->wellFallbackPivots()
+              << ", primary_failures(nonfinite="
+              << m_blockLocalPreconditioner->primaryFailureNonFinite()
+              << ", zero_norm="
+              << m_blockLocalPreconditioner->primaryFailureZeroNorm()
+              << ", small_pivot="
+              << m_blockLocalPreconditioner->primaryFailureSmallPivot()
+              << ", small_det="
+              << m_blockLocalPreconditioner->primaryFailureSmallDeterminant()
+              << ", nonfinite_inverse="
+              << m_blockLocalPreconditioner->primaryFailureNonFiniteInverse()
+              << ")." << std::endl;
   }
 
   const int_t n = m_matrix.global_num_rows;
@@ -1094,6 +1855,171 @@ int LinearSolver::compositePreconditionerSolve(HYPRE_Solver solver,
     return 1;
   }
   return self->applyCompositePreconditioner( A, b, x );
+}
+
+int LinearSolver::bcsrCPRPreconditionerSetup(HYPRE_Solver,
+                                             HYPRE_ParCSRMatrix,
+                                             HYPRE_ParVector,
+                                             HYPRE_ParVector)
+{
+  return 0;
+}
+
+int LinearSolver::bcsrCPRPreconditionerSolve(HYPRE_Solver solver,
+                                             HYPRE_ParCSRMatrix A,
+                                             HYPRE_ParVector b,
+                                             HYPRE_ParVector x)
+{
+  LinearSolver * self = reinterpret_cast<LinearSolver *>( solver );
+  if( !self )
+  {
+    return 1;
+  }
+  return self->applyBCSRCPRPreconditioner( A, b, x );
+}
+
+int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
+                                             HYPRE_ParVector b,
+                                             HYPRE_ParVector x)
+{
+  if( !bcsrCPRPreconditionerReady() )
+  {
+    return 1;
+  }
+
+  ::timer_node * cpr_timer =
+      m_activeKrylovName.empty() ? nullptr : solveTimerNode( m_activeKrylovName, "BCSR_CPR" );
+  ScopedTimer total_timer( cpr_timer );
+
+  hypre_Vector * b_local = hypre_ParVectorLocalVector( b );
+  hypre_Vector * x_local = hypre_ParVectorLocalVector( x );
+  if( !b_local || !x_local )
+  {
+    return 1;
+  }
+
+  const int_t local_size = static_cast<int_t>( hypre_VectorSize( b_local ) );
+  if( local_size != m_matrix.global_num_rows ||
+      static_cast<int_t>( hypre_VectorSize( x_local ) ) != local_size )
+  {
+    return 1;
+  }
+
+  real_type * b_data = hypre_VectorData( b_local );
+  real_type * x_data = hypre_VectorData( x_local );
+  if( !b_data || !x_data )
+  {
+    return 1;
+  }
+
+  const int_t block_size = m_matrix.block_size;
+  const int_t pressure_var =
+      std::clamp<int_t>( m_params.bcsrCPRPressureVariable, 0, block_size - 1 );
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["pressure RHS"] : nullptr );
+    for( int_t row = 0; row < m_cprPressureRows; ++row )
+    {
+      const real_type * weights = &m_cprPressureWeights[row * block_size];
+      const real_type * rhs_block = b_data + row * block_size;
+      real_type value = 0.0;
+      for( int_t r = 0; r < block_size; ++r )
+      {
+        value += weights[r] * rhs_block[r];
+      }
+      m_cprPressureRHSValues[row] = value;
+      m_cprPressureSolution[row] = 0.0;
+    }
+  }
+
+  std::vector<bigint_t> pressure_rows( m_cprPressureRows );
+  for( int_t i = 0; i < m_cprPressureRows; ++i )
+  {
+    pressure_rows[i] = i;
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["AMG pressure solve"] : nullptr );
+    HYPRE_IJVectorSetValues( m_cprPressureIJRHS,
+                             m_cprPressureRows,
+                             pressure_rows.data(),
+                             m_cprPressureRHSValues.data() );
+    HYPRE_IJVectorSetValues( m_cprPressureIJSol,
+                             m_cprPressureRows,
+                             pressure_rows.data(),
+                             m_cprPressureSolution.data() );
+    HYPRE_IJVectorAssemble( m_cprPressureIJRHS );
+    HYPRE_IJVectorAssemble( m_cprPressureIJSol );
+    const HYPRE_Int rc = HYPRE_BoomerAMGSolve( m_cprPressureAMG,
+                                               m_cprPressureParMatrix,
+                                               m_cprPressureParRHS,
+                                               m_cprPressureParSol );
+    if( rc != 0 )
+    {
+      return rc;
+    }
+    HYPRE_IJVectorGetValues( m_cprPressureIJSol,
+                             m_cprPressureRows,
+                             pressure_rows.data(),
+                             m_cprPressureSolution.data() );
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["pressure injection"] : nullptr );
+    std::fill( m_cprPressureCorrection.begin(), m_cprPressureCorrection.end(), 0.0 );
+    for( int_t row = 0; row < m_cprPressureRows; ++row )
+    {
+      m_cprPressureCorrection[row * block_size + pressure_var] =
+          m_cprPressureSolution[row];
+    }
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["BCSR residual"] : nullptr );
+    m_blockLocalPreconditioner->matvec( m_cprPressureCorrection.data(),
+                                        m_cprAx.data() );
+    for( int_t i = 0; i < local_size; ++i )
+    {
+      m_cprResidual[i] = b_data[i] - m_cprAx[i];
+    }
+  }
+
+  real_type local_alpha = std::max<real_type>( m_params.localCorrectionAlpha, 0.0 );
+  if( blockLocalPreconditionerReady() )
+  {
+    const real_type fallback_ratio = m_blockLocalPreconditioner->fallbackRatio();
+    if( m_params.localCorrectionAdaptiveFallbackThresholdHigh >= 0.0 &&
+        fallback_ratio >= m_params.localCorrectionAdaptiveFallbackThresholdHigh )
+    {
+      local_alpha = std::max<real_type>( m_params.localCorrectionAdaptiveAlphaHigh, 0.0 );
+    }
+    else if( m_params.localCorrectionAdaptiveFallbackThreshold >= 0.0 &&
+             fallback_ratio >= m_params.localCorrectionAdaptiveFallbackThreshold )
+    {
+      local_alpha = std::max<real_type>( m_params.localCorrectionAdaptiveAlpha, 0.0 );
+    }
+  }
+
+  if( local_alpha != 0.0 )
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["block local solve"] : nullptr );
+    m_blockLocalPreconditioner->apply( m_cprResidual.data(),
+                                       m_cprLocalCorrection.data() );
+  }
+  else
+  {
+    std::fill( m_cprLocalCorrection.begin(), m_cprLocalCorrection.end(), 0.0 );
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["combine"] : nullptr );
+    for( int_t i = 0; i < local_size; ++i )
+    {
+      x_data[i] = m_cprPressureCorrection[i] + local_alpha * m_cprLocalCorrection[i];
+    }
+  }
+
+  return 0;
 }
 
 int LinearSolver::applyCompositePreconditioner(HYPRE_ParCSRMatrix A,
@@ -1131,10 +2057,40 @@ int LinearSolver::applyCompositePreconditioner(HYPRE_ParCSRMatrix A,
     return HYPRE_MGRSolve( m_activeMGRPrecond, A, b, x );
   }
 
+  real_type local_alpha = std::max<real_type>( m_params.localCorrectionAlpha, 0.0 );
+  if( blockLocalPreconditionerReady() )
+  {
+    const real_type fallback_ratio = m_blockLocalPreconditioner->fallbackRatio();
+    if( m_params.localCorrectionAdaptiveFallbackThresholdHigh >= 0.0 &&
+        fallback_ratio >= m_params.localCorrectionAdaptiveFallbackThresholdHigh )
+    {
+      local_alpha = std::max<real_type>( m_params.localCorrectionAdaptiveAlphaHigh, 0.0 );
+    }
+    else if( m_params.localCorrectionAdaptiveFallbackThreshold >= 0.0 &&
+             fallback_ratio >= m_params.localCorrectionAdaptiveFallbackThreshold )
+    {
+      local_alpha = std::max<real_type>( m_params.localCorrectionAdaptiveAlpha, 0.0 );
+    }
+  }
+
   if( m_params.compositeMode == CompositePreconditionerMode::localOnly )
   {
-    ScopedTimer local_timer( mgr_timer ? &mgr_timer->node["block local solve"] : nullptr );
-    m_blockLocalPreconditioner->apply( b_data, x_data );
+    if( local_alpha == 0.0 )
+    {
+      HYPRE_ParVectorSetConstantValues( x, 0.0 );
+      return 0;
+    }
+    {
+      ScopedTimer local_timer( mgr_timer ? &mgr_timer->node["block local solve"] : nullptr );
+      m_blockLocalPreconditioner->apply( b_data, x_data );
+    }
+    if( local_alpha != 1.0 )
+    {
+      for( int_t i = 0; i < local_size; ++i )
+      {
+        x_data[i] *= local_alpha;
+      }
+    }
     return 0;
   }
 
@@ -1148,6 +2104,10 @@ int LinearSolver::applyCompositePreconditioner(HYPRE_ParCSRMatrix A,
   {
     return rc;
   }
+  if( local_alpha == 0.0 )
+  {
+    return 0;
+  }
 
   {
     ScopedTimer residual_timer( mgr_timer ? &mgr_timer->node["BCSR residual"] : nullptr );
@@ -1159,14 +2119,16 @@ int LinearSolver::applyCompositePreconditioner(HYPRE_ParCSRMatrix A,
   }
 
   {
-    ScopedTimer local_timer( mgr_timer ? &mgr_timer->node["block local solve"] : nullptr );
-    m_blockLocalPreconditioner->apply( m_compositeResidual.data(),
-                                       m_compositeCorrection.data() );
-  }
+    {
+      ScopedTimer local_timer( mgr_timer ? &mgr_timer->node["block local solve"] : nullptr );
+      m_blockLocalPreconditioner->apply( m_compositeResidual.data(),
+                                         m_compositeCorrection.data() );
+    }
 
-  for( int_t i = 0; i < local_size; ++i )
-  {
-    x_data[i] += m_compositeCorrection[i];
+    for( int_t i = 0; i < local_size; ++i )
+    {
+      x_data[i] += local_alpha * m_compositeCorrection[i];
+    }
   }
   return 0;
 }
@@ -2198,6 +3160,150 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
   return results;
 }
 
+SolverResults LinearSolver::solveGMRES_BCSRCPR()
+{
+  SolverResults results;
+  if( !bcsrCPRPreconditionerReady() )
+  {
+    std::cerr << "Error: BCSR CPR preconditioner is not ready" << std::endl;
+    results.converged = false;
+    results.finalResidual = std::numeric_limits<real_type>::infinity();
+    results.iterations = 0;
+    return results;
+  }
+
+  HYPRE_Solver gmres_solver;
+  HYPRE_ParCSRGMRESCreate( MPI_COMM_WORLD, &gmres_solver );
+  HYPRE_ParCSRGMRESSetMaxIter( gmres_solver, m_params.maxIter );
+  HYPRE_ParCSRGMRESSetTol( gmres_solver, m_params.tolerance );
+  HYPRE_ParCSRGMRESSetKDim( gmres_solver, m_params.kdim );
+  HYPRE_ParCSRGMRESSetPrintLevel( gmres_solver, m_params.logLevel );
+  HYPRE_ParCSRGMRESSetLogging( gmres_solver, 1 );
+
+  const auto setup_start = std::chrono::high_resolution_clock::now();
+  m_activeKrylovName = "GMRES";
+  HYPRE_ParCSRGMRESSetPrecond( gmres_solver,
+                               LinearSolver::bcsrCPRPreconditionerSolve,
+                               LinearSolver::bcsrCPRPreconditionerSetup,
+                               reinterpret_cast<HYPRE_Solver>( this ) );
+  const auto setup_end = std::chrono::high_resolution_clock::now();
+  results.setupTime = std::chrono::duration<double>( setup_end - setup_start ).count();
+  m_setupTime = results.setupTime;
+
+  const auto solve_start = std::chrono::high_resolution_clock::now();
+  {
+    ScopedTimer timer( solveTimerNode( "GMRES", "GMRES setup" ) );
+    HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
+  {
+    ScopedTimer timer( solveTimerNode( "GMRES", "GMRES solve" ) );
+    HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
+  const auto solve_end = std::chrono::high_resolution_clock::now();
+  results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
+  m_solveTime = results.solveTime;
+
+  int_t num_iterations = 0;
+  real_type final_res_norm = 0.0;
+  HYPRE_GMRESGetNumIterations( gmres_solver, &num_iterations );
+  HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+  results.iterations = num_iterations;
+  setConvergenceFromResidual( results, final_res_norm );
+
+  const int_t num_rows = m_matrix.global_num_rows;
+  m_solution.resize( num_rows );
+  std::vector<bigint_t> rows( num_rows );
+  for( int_t i = 0; i < num_rows; ++i )
+  {
+    rows[i] = i;
+  }
+  HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
+  const bool apply_scaling = scalingActive( static_cast<int_t>( m_solution.size() ) );
+  if( apply_scaling )
+  {
+    for( size_t i = 0; i < m_solution.size(); ++i )
+    {
+      m_solution[i] *= m_colScaling[i];
+    }
+  }
+
+  m_activeKrylovName.clear();
+  HYPRE_ParCSRGMRESDestroy( gmres_solver );
+  return results;
+}
+
+SolverResults LinearSolver::solveFlexGMRES_BCSRCPR()
+{
+  SolverResults results;
+  if( !bcsrCPRPreconditionerReady() )
+  {
+    std::cerr << "Error: BCSR CPR preconditioner is not ready" << std::endl;
+    results.converged = false;
+    results.finalResidual = std::numeric_limits<real_type>::infinity();
+    results.iterations = 0;
+    return results;
+  }
+
+  HYPRE_Solver gmres_solver;
+  HYPRE_ParCSRFlexGMRESCreate( MPI_COMM_WORLD, &gmres_solver );
+  HYPRE_ParCSRFlexGMRESSetMaxIter( gmres_solver, m_params.maxIter );
+  HYPRE_ParCSRFlexGMRESSetTol( gmres_solver, m_params.tolerance );
+  HYPRE_ParCSRFlexGMRESSetKDim( gmres_solver, m_params.kdim );
+  HYPRE_ParCSRFlexGMRESSetPrintLevel( gmres_solver, m_params.logLevel );
+  HYPRE_ParCSRFlexGMRESSetLogging( gmres_solver, 1 );
+
+  const auto setup_start = std::chrono::high_resolution_clock::now();
+  m_activeKrylovName = "FlexGMRES";
+  HYPRE_ParCSRFlexGMRESSetPrecond( gmres_solver,
+                                   LinearSolver::bcsrCPRPreconditionerSolve,
+                                   LinearSolver::bcsrCPRPreconditionerSetup,
+                                   reinterpret_cast<HYPRE_Solver>( this ) );
+  const auto setup_end = std::chrono::high_resolution_clock::now();
+  results.setupTime = std::chrono::duration<double>( setup_end - setup_start ).count();
+  m_setupTime = results.setupTime;
+
+  const auto solve_start = std::chrono::high_resolution_clock::now();
+  {
+    ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES setup" ) );
+    HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
+  {
+    ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES solve" ) );
+    HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+  }
+  const auto solve_end = std::chrono::high_resolution_clock::now();
+  results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
+  m_solveTime = results.solveTime;
+
+  int_t num_iterations = 0;
+  real_type final_res_norm = 0.0;
+  HYPRE_ParCSRFlexGMRESGetNumIterations( gmres_solver, &num_iterations );
+  HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+  results.iterations = num_iterations;
+  setConvergenceFromResidual( results, final_res_norm );
+
+  const int_t num_rows = m_matrix.global_num_rows;
+  m_solution.resize( num_rows );
+  std::vector<bigint_t> rows( num_rows );
+  for( int_t i = 0; i < num_rows; ++i )
+  {
+    rows[i] = i;
+  }
+  HYPRE_IJVectorGetValues( m_ijSol, num_rows, rows.data(), m_solution.data() );
+  const bool apply_scaling = scalingActive( static_cast<int_t>( m_solution.size() ) );
+  if( apply_scaling )
+  {
+    for( size_t i = 0; i < m_solution.size(); ++i )
+    {
+      m_solution[i] *= m_colScaling[i];
+    }
+  }
+
+  m_activeKrylovName.clear();
+  HYPRE_ParCSRFlexGMRESDestroy( gmres_solver );
+  return results;
+}
+
 SolverResults LinearSolver::solveGMRES_AMG()
 {
 
@@ -2402,6 +3508,8 @@ SolverResults LinearSolver::solveFlexGMRES_AMG()
 
 void LinearSolver::cleanup()
 {
+  clearBCSRCPRPreconditioner();
+
   if( m_ijMatrix )
   {
     HYPRE_IJMatrixDestroy( m_ijMatrix );
@@ -2623,6 +3731,11 @@ int_t LinearSolver::setup( int_t max_iters, double tolerance )
   // Compute matrix/RHS scaling if enabled.
   computeScaling();
   setupBlockLocalPreconditioner();
+  if( !setupBCSRCPRPreconditioner() )
+  {
+    std::cerr << "Error: Failed to setup BCSR CPR preconditioner" << std::endl;
+    return -1;
+  }
 
   // Create HYPRE matrix from BlockCSR
   if( !createHYPREMatrix() )
@@ -2697,7 +3810,11 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
   }
 
   // Choose solver based on parameters
-  if( m_params.useMGR && m_strategy )
+  if( m_params.useBCSRCPR )
+  {
+    m_lastResults = use_flex ? solveFlexGMRES_BCSRCPR() : solveGMRES_BCSRCPR();
+  }
+  else if( m_params.useMGR && m_strategy )
   {
     m_lastResults = use_flex ? solveFlexGMRES_MGR() : solveGMRES_MGR();
   }
