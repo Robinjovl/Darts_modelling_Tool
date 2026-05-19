@@ -330,6 +330,172 @@ after N linear failures; escalate `kdim`/levels on rising iteration counts.
   to a known-good release for build stability).
 - **Open item OI-3** — exact home of the `darts/solvers/` package vs the renamed `_solvers`
   extension (build-system rename in C7).
+- **Open item OI-4** — the unified matrix layout (§12) is design-gated: the in-tree GPU
+  build is intentionally **not** completed with a tactical bridge; it lands as a
+  consequence of the §12 migration. `Decision 8` (§12.2) should be promoted into §4.
+
+---
+
+## 12. Unified matrix layout & backend adapters (axis-1 design)
+
+*Added 2026-05-19. Supersedes §7.3's "rewire the engine GPU path" item and reshapes the
+item-7 `csr_matrix` GPU layer. Design-first: per OI-4 the GPU build is deliberately not
+rushed until this contract is settled and implemented.*
+
+### 12.1 Problem
+
+The engine assembles the Jacobian/residual every Newton iteration; the linear solvers
+consume it. Today there are *two* un-unified matrix formats — the open-DARTS
+`csr_matrix` (`std::vector` host storage, abstract base) and the proprietary
+`csr_matrix_base` (raw host + device pointer members) — and the GPU engine is written
+against the latter. No single layout is simultaneously (a) optimal to *assemble into*
+and (b) cheap to *hand to* HYPRE / bos / PETSc / Pardiso / cuSPARSE+AMGX. The GPU-build
+breakage is a symptom of this gap, not an isolated bug.
+
+### 12.2 Scope decision — one canonical format, adapters at the edge
+
+**Decision 8.** The engine assembles into **one** canonical in-memory format; each
+backend receives it through a thin adapter. The rejected alternative — a pluggable
+per-backend storage policy — would multiply the assembly path by the backend count,
+leak backend knowledge into the engine, and forfeit a shared sparsity structure.
+Single-format wins on every count that matters for performance and scalability:
+
+- one assembly kernel — a single code path to optimise, vectorise, and port to GPU;
+- **zero-copy** for the block-native backends (bos, PETSc BAIJ, cuSPARSE BSR, AMGX) —
+  i.e. every performance-critical GPU path;
+- a **single, structure-cached** conversion for the scalar-CSR backends (HYPRE, Pardiso);
+- one sparsity structure shared by the Jacobian, the CPR pressure matrix, and the cached
+  CSR expansion.
+
+### 12.3 Canonical format — block-CSR (BSR)
+
+Block-CSR with `nb × nb` dense blocks (`nb` = equations per cell = `N_VARS`):
+
+- **structure** — `row_ptr[n_block_rows+1]`, `col_ind[nnzb]`, `diag_ind[n_block_rows]`
+  (location of each row's diagonal block — always stored), `row_thread_starts` (parallel
+  partition). 0-based (HYPRE/PETSc/cuSPARSE/AMGX native; Pardiso via `iparm`).
+- **values** — `nnzb · nb · nb` contiguous doubles, **row-major within each block**
+  (matches `CUSPARSE_DIRECTION_ROW` and PETSc BAIJ).
+- BSR is the common denominator: bos / PETSc-BAIJ / cuSPARSE / AMGX are block-CSR
+  natively; HYPRE / Pardiso take a structural BSR→CSR expansion.
+
+### 12.4 Layered class design
+
+Four separated concerns — each independently testable, no virtual dispatch in the
+assembly hot path:
+
+```cpp
+// (1) Structure — built once from mesh connectivity, immutable across a Newton solve.
+//     Ref-counted: shared by the Jacobian, the CPR pressure matrix, and the cached
+//     scalar-CSR expansion.
+struct sparsity_pattern {
+  index_t n_block_rows, n_block_cols, nnzb;
+  dual_array<index_t> row_ptr, col_ind, diag_ind, row_thread_starts;
+  index_t global_row_start = 0, global_n_rows = 0;   // distributed-ready (§12.7)
+  mutable std::shared_ptr<csr_expansion> csr_view;    // lazy, cached BSR->CSR structure
+};
+
+// (2) Host/device storage primitive — §12.5.
+template <class T> class dual_array { /* ... */ };
+
+// (3) The unified matrix — CONCRETE, non-templated. What the engine assembles into and
+//     what every solver receives. Block size is a runtime field.
+class csr_matrix_base {                       // rename candidate: `block_sparse_matrix`
+  std::shared_ptr<sparsity_pattern> structure_;
+  dual_array<mat_float> values_;
+  int block_size_;
+ public:
+  // raw typed views — assembly hot path & adapters; no bounds checks, no virtuals
+  mat_float* values_host()   noexcept;
+  mat_float* values_device() noexcept;        // WITH_GPU
+  const index_t* row_ptr() const noexcept;    // ... col_ind / diag_ind
+  const sparsity_pattern& structure() const noexcept;
+};
+
+// (4) Typed view — zero-overhead compile-time-`nb` lens for the templated engine.
+//     Non-owning: it does NOT hold storage, it views a csr_matrix_base.
+template <uint8_t N> class csr_matrix {
+  csr_matrix_base& m_;
+ public:
+  explicit csr_matrix(csr_matrix_base& m) : m_(m) {}
+  std::span<mat_float, N*N> block(index_t i, index_t j) noexcept;  // fully inlined
+};
+```
+
+This **reverses** the current ownership (today: abstract base, `csr_matrix<N>` owns
+storage). Concrete-base-owns-storage is what lets a `csr_matrix_base&` be read by any
+backend with no knowledge of `nb`, and it dissolves the `std::vector`-vs-raw-pointer
+clash: storage lives once, `csr_matrix<N>` is a typed accessor over it.
+
+### 12.5 Host/device storage — `dual_array<T>`
+
+`dual_array<T>` owns a host buffer and (lazily, `WITH_GPU` only) a device buffer, tracks
+which side is dirty, and exposes `sync_to_device()` / `sync_to_host()`,
+`host_data()` / `device_data()`. It is the **single home** of every `cudaMalloc` /
+`cudaMemcpy`; the rest of the matrix code is device-agnostic. Under a non-GPU build it
+degrades to the host buffer with zero overhead.
+
+This is the deliberate **axis-2 seam** (see the RAJA/Kokkos evaluation): `dual_array`
+has the shape of a `Kokkos::DualView` / CHAI `ManagedArray`. If a performance-portability
+layer is adopted later, it is swapped in *behind this type* — the matrix public API and
+every adapter are unaffected.
+
+### 12.6 Backend adapters
+
+A backend adapter takes a `csr_matrix_base&`, presents the backend's expected handle, and
+is owned by the solver wrapper (built in the wrapper's `setup()`):
+
+| Adapter | Mechanism | Copy? |
+|---|---|---|
+| bos | block-CSR is identical | zero-copy |
+| cuSPARSE BSR | device pointers + descriptor | zero-copy |
+| AMGX | `AMGX_matrix_upload_all` (block dims) | device upload only |
+| PETSc | `MatCreateBAIJWithArrays` (`bs = nb`) | zero-copy wrap |
+| HYPRE | BSR→CSR expand → IJ / ParCSR | values-only per setup* |
+| Pardiso | BSR→CSR expand, `iparm` index base | values-only per setup* |
+
+*The scalar-CSR **structure** is a pure function of the BSR sparsity pattern → built once
+and cached on `sparsity_pattern::csr_view`. Each Newton `setup()` then performs only the
+fixed `nnzb·nb·nb → nnz` value gather — never a structural rebuild.
+
+### 12.7 Assembly performance & scalability
+
+- **Block locality** — each `nb×nb` block is one contiguous span; assembly streams it,
+  no scatter. `diag_ind` gives O(1) diagonal-block access (Newton chop, CPR `D_ss`).
+- **Parallel partition** — `row_thread_starts` gives each thread a contiguous,
+  write-disjoint row (hence values) range — lock-free CPU assembly, one thread/warp per
+  row on GPU, identical array layout on both sides.
+- **One assembly function** — templated on `nb`, instantiated per execution space; this
+  is the future plug point for an axis-2 portability layer, but the *format* is fixed
+  here independently of that choice.
+- **Distributed-ready** — `sparsity_pattern` carries (initially trivial) global row
+  ownership so HYPRE ParCSR / PETSc MPIBAIJ adapters need no later format change.
+
+### 12.8 Engineering standards
+
+RAII storage ownership (`dual_array` frees device memory in its destructor);
+`sparsity_pattern` shared via `shared_ptr`; matrices movable, non-copyable (explicit
+`clone()`); `[[nodiscard]]` + a status enum on fallible operations (no bare `int`);
+`assert` for invariants (block-size match) compiled out in Release; the entire device
+layer behind `#ifdef WITH_GPU` with the host-only `dual_array` fallback; no exceptions
+across the CUDA boundary; const-correct accessors. Each layer 12.4 (1)–(4) is
+unit-tested in isolation; adapters are tested by round-tripping a known matrix through
+each backend and checking an SpMV against a reference.
+
+### 12.9 Migration roadmap (post-MR, design-gated)
+
+1. `dual_array<T>` — host-only + `WITH_GPU` device buffer; unit tests.
+2. `sparsity_pattern` — structural type + cached BSR→CSR expansion.
+3. Refactor `csr_matrix_base` → concrete (owns structure + values); `csr_matrix<N>` →
+   typed non-owning view. Reshapes the item-7 device layer — moves it onto `dual_array`.
+4. Backend adapters: bos & cuSPARSE/AMGX (zero-copy) first, then PETSc-BAIJ, then the
+   HYPRE / Pardiso scalar-CSR expansion.
+5. Engine: assemble through `csr_matrix<N_VARS>`; make the Jacobian a **member**
+   (composition) — drop `engine_base_gpu : public csr_matrix_base`.
+6. Wire adapters into the solver wrappers behind the existing registry (§7.1).
+
+Each step is an independently reviewable commit. The GPU build is completed as a
+*consequence* of steps 3–5, not as a separate patch.
 
 ---
 
