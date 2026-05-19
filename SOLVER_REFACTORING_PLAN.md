@@ -553,11 +553,29 @@ the engine and the solvers onto it. Key facts that shape the plan:
   *has-a* Jacobian.
 - B5. CPU build, iterate; then GPU build, iterate.
 
-**Phase C — cleanup**
+**Phase C — cleanup** (status after the engine migration)
 
-- C1. Retire the open-DARTS `csr_matrix<N>` / `csr_matrix_base` and the item-7
-  device layer (subsumed by `dual_array` + the A3 SpMV adapter).
-- C2. Update `tests/cpp/unit/linear_solvers` to the new types.
+- C1. ~~Retire `csr_matrix<N>` / `csr_matrix_base`.~~ **Re-scoped.**
+  `csr_matrix_base` is *kept* — it is the unified polymorphic interface that
+  `block_csr_matrix` (and the GPU engine, for the matrix-free path) implement;
+  the solver wrappers all take `csr_matrix_base*`. `csr_matrix<N>` cannot be
+  retired yet — it is still load-bearing in three places:
+  - the GPU engine Jacobian (`engine_base_gpu::init_base`) still constructs
+    `csr_matrix<N>`; it carries the proven cuSPARSE BSR device layer. A future
+    pass migrates it to `block_csr_matrix` once `gpu_bsr_spmv` supports
+    in-place device assembly.
+  - the mechanics engines (`engine_pm`, `engine_elasticity`,
+    `engine_super_elastic`) still construct `csr_matrix<N>`. A trial migration
+    to `block_csr_matrix` regressed `engine_pm` (segfault), so it was reverted;
+    the mechanics Jacobian structure needs its own investigation.
+  - the adjoint scalar scratch matrices (`csr_matrix<1>` `Temp`/`T1`/`T2`,
+    `dg_dx_*`) and the `linsolv_iface_bos` down-casts.
+- C1-done. The adjoint block->scalar expansion was UB after the migration
+  (`to_nb_1(static_cast<csr_matrix<N>*>(Jacobian))` on a `block_csr_matrix`):
+  fixed with a polymorphic `csr_matrix<1>::to_nb_1(csr_matrix_base*)`.
+- C2. `tests/cpp/unit/linear_solvers` — the new-type tests (`block_csr_matrix`,
+  `dual_array`, `sparsity_pattern`, `scalar_csr_adapter`, `block_csr_view_spmv`)
+  exist and pass; `to_nb_1` test extended with a `csr_matrix_base*` case.
 
 ---
 
