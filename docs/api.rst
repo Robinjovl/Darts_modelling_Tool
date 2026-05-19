@@ -27,6 +27,15 @@ Solver specifications
    :show-inheritance:
    :special-members: __init__
 
+Python-resident solvers (PETSc / Pardiso)
+*****************************************
+
+.. automodule:: darts.solvers.python_solvers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
 Adaptive solver switching
 *************************
 

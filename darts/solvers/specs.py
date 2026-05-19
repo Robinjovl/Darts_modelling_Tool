@@ -157,6 +157,65 @@ class SuperLUSolverSpec(LinearSolverSpec):
     registry_name: ClassVar[str] = "superlu"
 
 
+@dataclass
+class PythonLinearSolverSpec(LinearSolverSpec):
+    """Base spec for the Python-resident solvers (PETSc / Pardiso).
+
+    Unlike the engine-resident specs, :meth:`build` returns a
+    :class:`~darts.solvers.python_solvers.PythonLinearSolver` -- a stateful
+    object that runs the solve in the Python process and is owned by the model,
+    not injected into the C++ engine. See ``SOLVER_REFACTORING_PLAN.md``
+    section 13.
+    """
+
+    def build(self, block_size: int):  # noqa: D102 -- see subclasses
+        raise NotImplementedError(f"{type(self).__name__} must override build()")
+
+
+@dataclass
+class PETScSolverSpec(PythonLinearSolverSpec):
+    """PETSc (``petsc4py``) Krylov solver.
+
+    Builds the system matrix as a PETSc ``BAIJ`` matrix directly from the
+    engine's block-CSR Jacobian -- no block->scalar expansion.
+
+    :param variant: ``"cpr"`` -- CPR preconditioner for flow; ``"fs"`` --
+        fixed-stress fieldsplit for poromechanics.
+    """
+
+    variant: str = "cpr"
+
+    def build(self, block_size: int):
+        """Return a configured :class:`PETScSolver`."""
+        from .python_solvers import PETScSolver
+
+        return PETScSolver(
+            variant=self.variant,
+            tolerance=self.tolerance,
+            max_iterations=self.max_iterations,
+            print_level=self.print_level,
+        )
+
+
+@dataclass
+class PardisoSolverSpec(PythonLinearSolverSpec):
+    """Pardiso (``pypardiso`` / Intel MKL) sparse direct solver.
+
+    The block-CSR Jacobian is expanded to scalar CSR once; per Newton iteration
+    only the values are gathered into the scalar layout.
+    """
+
+    def build(self, block_size: int):
+        """Return a configured :class:`PardisoSolver`."""
+        from .python_solvers import PardisoSolver
+
+        return PardisoSolver(
+            tolerance=self.tolerance,
+            max_iterations=self.max_iterations,
+            print_level=self.print_level,
+        )
+
+
 def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
     """Return the default linear-solver spec for a platform.
 

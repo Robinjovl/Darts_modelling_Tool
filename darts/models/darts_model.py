@@ -32,6 +32,7 @@ try:
     from darts.solvers import (
         AdaptiveSolverSpec,
         LinearSolverSpec,
+        PythonLinearSolverSpec,
         SolverSwitchContext,
         default_linear_solver,
     )
@@ -254,6 +255,9 @@ class DartsModel:
         In proprietary builds, or on GPU, this is a no-op and the engine's
         factory selects the solver from ``params.linear_type``.
         """
+        # Python-resident solver (PETSc / Pardiso); None unless a
+        # PythonLinearSolverSpec is selected. Reset on every (re)build.
+        self._python_solver = None
         if not _HAVE_SOLVER_REGISTRY or getattr(self, "platform", "cpu") != "cpu":
             return
         spec = getattr(self.data_ts, "linear_solver", None)
@@ -264,8 +268,19 @@ class DartsModel:
         # Reset adaptive-switching state whenever the solver is (re)built.
         self._adaptive_solver_index = 0
         self._adaptive_failures = 0
-        # Keep a reference so the solver object outlives the engine that uses it.
-        self._linear_solver = spec.build(self.physics.n_vars)
+        if isinstance(spec, PythonLinearSolverSpec):
+            # PETSc / Pardiso run in the Python process and are owned by the
+            # model (invoked from _solve_linear_equation). The engine still
+            # needs a C++ solver to satisfy engine.init(); inject the CPU
+            # default -- it is constructed but never used at solve time.
+            self._python_solver = spec.build(self.physics.n_vars)
+            self._linear_solver = default_linear_solver("cpu").build(
+                self.physics.n_vars
+            )
+        else:
+            # Engine-resident solver: keep a reference so it outlives the
+            # engine that uses it.
+            self._linear_solver = spec.build(self.physics.n_vars)
         self.physics.engine.set_linear_solver(self._linear_solver)
 
     def _maybe_switch_linear_solver(self, timestep_converged: bool):
@@ -1394,13 +1409,24 @@ class DartsModel:
     def _solve_linear_equation(self):
         """Solve the current Newton linear system with the configured solver.
 
-        Single dispatch point between the Python-side solvers (PETSc / Pardiso,
-        selected through ``data_ts.linear_type``) and the C++ engine solver
-        (the registry-built solver injected by :meth:`_apply_linear_solver_spec`,
-        or a compile-time solver). Centralised here so the Newton loop -- and
-        the live-plotting loop -- carry a single call instead of duplicating
-        the branch.
+        Single dispatch point between three solver kinds:
+
+        * a Python-resident solver built from a
+          :class:`~darts.solvers.specs.PythonLinearSolverSpec` (PETSc / Pardiso)
+          -- the recommended unified path;
+        * the legacy Python solvers selected through ``data_ts.linear_type``
+          (kept for backward compatibility);
+        * the C++ engine solver.
+
+        Centralised here so the Newton loop -- and the live-plotting loop --
+        carry a single call instead of duplicating the branch.
         """
+        python_solver = getattr(self, "_python_solver", None)
+        if python_solver is not None:
+            # Unified Python-resident solver (PETSc / Pardiso); stateful, it
+            # performs its one-time setup on the first call.
+            python_solver.solve_system(self.physics.engine)
+            return
         if isinstance(self.data_ts.linear_type, linear_solver_types):
             # solvers driven from Python
             if self.data_ts.linear_type in (

@@ -30,11 +30,19 @@ from .enums import (  # noqa: F401
     Restriction,
     VariableRole,
 )
+from .python_solvers import (  # noqa: F401
+    PardisoSolver,
+    PETScSolver,
+    PythonLinearSolver,
+)
 from .solvers import *  # noqa: F401,F403
 from .specs import (  # noqa: F401
     LinearSolverSpec,
     MGRLevelSpec,
     MGRSolverSpec,
+    PardisoSolverSpec,
+    PETScSolverSpec,
+    PythonLinearSolverSpec,
     SuperLUSolverSpec,
     default_linear_solver,
 )
