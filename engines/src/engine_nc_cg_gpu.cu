@@ -503,12 +503,12 @@ template <uint8_t NC, uint8_t NP>
 int engine_nc_cg_gpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
   timer->node["jacobian assembly"].node["kernel"].start_gpu();
-  //cudaMemset(jacobian->values_d, 0, jacobian->rows_ptr[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
+  //cudaMemset(jac_values_d(), 0, jac_rows_ptr()[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
 
   assemble_jacobian_array_kernel<NC, NP, N_VARS, P_VAR, N_OPS, N_PHASE_OPS, ACC_OP, FLUX_OP, DENS_OP, PC_OP>
       KERNEL_1D(mesh->n_blocks, N_VARS * N_VARS, ASSEMBLY_N_VARS_N_VARS_BLOCK_SIZE)(mesh->n_blocks, dt,
                                                                                     X_d, RHS_d,
-                                                                                    jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
+                                                                                    jac_rows_ptr_d(), jac_cols_ind_d(), jac_values_d(), jac_diag_ind_d(),
                                                                                     op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
                                                                                     mesh_tran_d, PV_d, mesh_grav_coef_d);
 
@@ -528,12 +528,12 @@ int engine_nc_cg_gpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
   for (ms_well *w : wells)
   {
     copy_data_within_device(RHS_d + N_VARS * w->well_head_idx, RHS_wells_d + N_VARS * w->well_head_idx, N_VARS);
-    copy_data_within_device(jacobian->values_d + jacobian->rows_ptr[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
+    copy_data_within_device(jac_values_d() + jac_rows_ptr()[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
     i_w++;
   }
   timer->node["jacobian assembly"].node["wells"].stop_gpu();
 
-  // copy_data_to_host(jacobian->values, jacobian->values_d, N_VARS * N_VARS * jacobian->rows_ptr[mesh->n_blocks]);
+  // copy_data_to_host(jac_values(), jac_values_d(), N_VARS * N_VARS * jac_rows_ptr()[mesh->n_blocks]);
   // jacobian->write_matrix_to_file("jac_nc_dar_gpu.csr");
   //exit(0);
 
@@ -547,14 +547,14 @@ int engine_nc_cg_gpu<NC, NP>::matrix_vector_product_d0(const value_t *v_d, value
   assemble_jacobian_array_spmv0<NC, NP, N_VARS, P_VAR, N_OPS, N_PHASE_OPS, ACC_OP, FLUX_OP, DENS_OP, PC_OP>
       KERNEL_1D(mesh->n_blocks, N_VARS, ASSEMBLY_N_VARS_BLOCK_SIZE)(mesh->n_blocks, dt,
                                                                     X_d, RHS_d,
-                                                                    Jacobian->rows_ptr_d, Jacobian->cols_ind_d, Jacobian->values_d, Jacobian->diag_ind_d,
+                                                                    jac_rows_ptr_d(), jac_cols_ind_d(), jac_values_d(), jac_diag_ind_d(),
                                                                     op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
                                                                     mesh_tran_d, PV_d, mesh_grav_coef_d, v_d, r_d);
 
   // lay SPMV result from correct well constraint jacobian over r_d
   jacobian_wells_spmv0<N_VARS>
       KERNEL_1D(wells.size(), N_VARS, ASSEMBLY_N_VARS_BLOCK_SIZE)(wells.size(), jac_well_head_idxs_d,
-                                                                  Jacobian->rows_ptr_d, Jacobian->cols_ind_d, jac_wells_d, v_d, r_d);
+                                                                  jac_rows_ptr_d(), jac_cols_ind_d(), jac_wells_d, v_d, r_d);
 
   return 0;
 }
@@ -566,14 +566,14 @@ int engine_nc_cg_gpu<NC, NP>::calc_lin_comb_d(value_t alpha, value_t beta, value
   assemble_jacobian_array_lincomb<NC, NP, N_VARS, P_VAR, N_OPS, N_PHASE_OPS, ACC_OP, FLUX_OP, DENS_OP, PC_OP>
       KERNEL_1D(mesh->n_blocks, N_VARS, ASSEMBLY_N_VARS_BLOCK_SIZE)(mesh->n_blocks, dt,
                                                                     X_d, RHS_d,
-                                                                    Jacobian->rows_ptr_d, Jacobian->cols_ind_d, Jacobian->values_d, Jacobian->diag_ind_d,
+                                                                    jac_rows_ptr_d(), jac_cols_ind_d(), jac_values_d(), jac_diag_ind_d(),
                                                                     op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
                                                                     mesh_tran_d, PV_d, mesh_grav_coef_d,
                                                                     alpha, beta, u_d, v_d, r_d);
   // lay SPMV result from correct well constraint jacobian over r_d
   jacobian_wells_lincomb<N_VARS>
       KERNEL_1D(wells.size(), N_VARS, ASSEMBLY_N_VARS_BLOCK_SIZE)(wells.size(), jac_well_head_idxs_d,
-                                                                  Jacobian->rows_ptr_d, Jacobian->cols_ind_d, jac_wells_d, alpha, beta, u_d, v_d, r_d);
+                                                                  jac_rows_ptr_d(), jac_cols_ind_d(), jac_wells_d, alpha, beta, u_d, v_d, r_d);
   return 0;
 }
 

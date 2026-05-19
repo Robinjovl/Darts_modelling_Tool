@@ -97,6 +97,46 @@ public:
   virtual int convert_to_ELL() { return 0; };
   virtual csr_matrix_base *get_csr_matrix() { return Jacobian; };
 
+  // Jacobian device/host pointer accessors -- bridge the unified
+  // block_csr_matrix (OPENDARTS_LINEAR_SOLVERS) and the legacy/bos
+  // csr_matrix, so the *_gpu.cu kernels stay free of #ifdef branching.
+  value_t *jac_values_d()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    return static_cast<block_csr_matrix *>(Jacobian)->values_device();
+#else
+    return Jacobian->values_d;
+#endif
+  }
+  index_t *jac_rows_ptr_d()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    return const_cast<index_t *>(static_cast<block_csr_matrix *>(Jacobian)->row_ptr_device());
+#else
+    return Jacobian->rows_ptr_d;
+#endif
+  }
+  index_t *jac_cols_ind_d()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    return const_cast<index_t *>(static_cast<block_csr_matrix *>(Jacobian)->col_ind_device());
+#else
+    return Jacobian->cols_ind_d;
+#endif
+  }
+  index_t *jac_diag_ind_d()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    return const_cast<index_t *>(static_cast<block_csr_matrix *>(Jacobian)->diag_ind_device());
+#else
+    return Jacobian->diag_ind_d;
+#endif
+  }
+  // Host structure / values -- the get_*() accessors are csr_matrix_base
+  // virtuals available in both builds.
+  index_t *jac_rows_ptr() { return Jacobian->get_rows_ptr(); }
+  value_t *jac_values() { return Jacobian->get_values(); }
+
   // GPU-specific data (_d postfix means device data)
 
   // linear system

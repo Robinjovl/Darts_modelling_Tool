@@ -272,7 +272,7 @@ int engine_nce_g_gpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
   assemble_jacobian_array_kernel<NC, NP, N_VARS, P_VAR, E_VAR, N_OPS, ACC_OP, FLUX_OP, FE_ACC_OP, FE_FLUX_OP, FE_COND_OP, DENS_OP, TEMP_OP>
       KERNEL_1D_THREAD(mesh->n_blocks, KERNEL_BLOCK_SIZE)(mesh->n_blocks, dt,
                                                           X_d, RHS_d,
-                                                          jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
+                                                          jac_rows_ptr_d(), jac_cols_ind_d(), jac_values_d(), jac_diag_ind_d(),
                                                           op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
                                                           mesh_tran_d, PV_d,
                                                           mesh_tranD_d, RV_d,
@@ -294,12 +294,12 @@ int engine_nce_g_gpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
   for (ms_well *w : wells)
   {
     copy_data_within_device(RHS_d + N_VARS * w->well_head_idx, RHS_wells_d + N_VARS * w->well_head_idx, N_VARS);
-    copy_data_within_device(jacobian->values_d + jacobian->rows_ptr[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
+    copy_data_within_device(jac_values_d() + jac_rows_ptr()[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
     i_w++;
   }
   timer->node["jacobian assembly"].node["wells"].stop_gpu();
 
-  // copy_data_to_host(jacobian->values, jacobian->values_d, N_VARS * N_VARS * jacobian->rows_ptr[mesh->n_blocks]);
+  // copy_data_to_host(jac_values(), jac_values_d(), N_VARS * N_VARS * jac_rows_ptr()[mesh->n_blocks]);
   // jacobian->write_matrix_to_file("jac_nc_dar_gpu.csr");
   // exit(0);
 
