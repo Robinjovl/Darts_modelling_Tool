@@ -24,7 +24,9 @@
 #endif
 
 /// This class defines infrastructure for simulation
-class engine_base_gpu : public engine_base, public csr_matrix_base
+// The GPU engine has-a Jacobian (engine_base::Jacobian); it is no longer a
+// csr_matrix_base itself (section 12.10 B4).
+class engine_base_gpu : public engine_base
 {
   // methods
 public:
@@ -395,6 +397,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 	  linear_solver_type_str = "GPU_GMRES_ILU0";
       break;
     }
+#ifdef OPENDARTS_GPU_HAS_AMGX
     case sim_params::GPU_BICGSTAB_CPR_AMGX:
     {
       linear_solver = new linsolv_bicgstab<N_VARS>();
@@ -408,6 +411,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 	  linear_solver_type_str = "GPU_BICGSTAB_CPR_AMGX";
       break;
     }
+#endif // OPENDARTS_GPU_HAS_AMGX
     default:
     {
       std::cerr << "Linear solver type " << params->linear_type << " is not supported for " << engine_name << std::endl << std::flush;
