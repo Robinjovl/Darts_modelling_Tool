@@ -882,8 +882,8 @@ class StructReservoir(ReservoirBase):
         output_directory: str,
         filename: str = "wells.vtk",
         first_perforation_only: bool = True,
-        prolongation_up: float = 1000.0,
-        well_diameter: float = 70.0,
+        prolongation_up: float | None = None,
+        well_diameter: float | None = None,
         tube_sides: int = 50,
         tube_capping: bool = True,
         invert_z: bool = True,
@@ -904,10 +904,13 @@ class StructReservoir(ReservoirBase):
             of each well. If ``False``, export all perforations.
         :type first_perforation_only: bool
         :param prolongation_up: Upward extension (in model length units) applied to
-            the first exported perforation segment of each well.
-        :type prolongation_up: float
-        :param well_diameter: Tube diameter in model length units.
-        :type well_diameter: float
+            the first exported perforation segment of each well. If ``None``, it is
+            derived from the reservoir horizontal extent so wells stay proportional
+            to the model regardless of its absolute size.
+        :type prolongation_up: float, optional
+        :param well_diameter: Tube diameter in model length units. If ``None``, it is
+            derived from the reservoir horizontal extent (see ``prolongation_up``).
+        :type well_diameter: float, optional
         :param tube_sides: Number of circumferential sides used by ``vtkTubeFilter``.
         :type tube_sides: int
         :param tube_capping: If ``True``, cap tube ends.
@@ -930,18 +933,17 @@ class StructReservoir(ReservoirBase):
             raise RuntimeError(
                 "StructReservoir discretizer is not initialized. Run discretize/init_reservoir first."
             )
-        if well_diameter <= 0:
-            raise ValueError(f"well_diameter must be positive, got {well_diameter}.")
         if tube_sides < 3:
             raise ValueError(f"tube_sides must be >= 3, got {tube_sides}.")
-        if prolongation_up < 0:
+        if well_diameter is not None and well_diameter <= 0:
+            raise ValueError(f"well_diameter must be positive, got {well_diameter}.")
+        if prolongation_up is not None and prolongation_up < 0:
             raise ValueError(f"prolongation_up must be >= 0, got {prolongation_up}.")
 
         os.makedirs(output_directory, exist_ok=True)
         well_vtk_filename = os.path.abspath(os.path.join(output_directory, filename))
 
         append_filter = vtk.vtkAppendPolyData()
-        tube_radius = float(well_diameter) * 0.5
         local_to_global = np.asarray(self.discretizer.local_to_global, dtype=np.int64)
         centroids = np.asarray(self.discretizer.centroids_all_cells)
 
@@ -950,9 +952,34 @@ class StructReservoir(ReservoirBase):
                 "StructReservoir discretizer centroids_all_cells has unexpected shape."
             )
 
-        def _create_tube(center_xyz, prolongation: float):
-            x, y, z = center_xyz
-            z_vtk = -z if invert_z else z
+        # Reservoir block depths in the same convention used by the mesh VTK
+        # export. Anchoring wells to ``mesh.depth`` (instead of the discretizer
+        # centroid z) keeps wells aligned with the reservoir body even when the
+        # model is built with ``start_z`` differing from ``depth`` -- otherwise
+        # the centroid z is shifted by the reference depth and the well tube
+        # floats above the grid (a non-deterministic, model-spec-dependent gap).
+        mesh_depth = None
+        if hasattr(self, "mesh") and getattr(self.mesh, "depth", None) is not None:
+            mesh_depth = np.array(self.mesh.depth, copy=False)
+
+        # Derive tube geometry from the reservoir horizontal extent so wells stay
+        # visually proportional for any model size. Defaults: tube diameter ~2 %
+        # and upward prolongation ~12 % of the horizontal bounding-box diagonal.
+        if centroids.shape[0] > 0:
+            extent_x = float(np.ptp(centroids[:, 0]))
+            extent_y = float(np.ptp(centroids[:, 1]))
+        else:
+            extent_x = extent_y = 0.0
+        horizontal_diag = float(np.hypot(extent_x, extent_y))
+        if well_diameter is None:
+            well_diameter = max(0.5, 0.02 * horizontal_diag)
+        if prolongation_up is None:
+            prolongation_up = max(float(well_diameter), 0.12 * horizontal_diag)
+
+        tube_radius = float(well_diameter) * 0.5
+
+        def _create_tube(x, y, depth, prolongation: float):
+            z_vtk = -depth if invert_z else depth
 
             points = vtk.vtkPoints()
             points.InsertNextPoint(x, y, z_vtk + float(prolongation))
@@ -989,9 +1016,18 @@ class StructReservoir(ReservoirBase):
                 if global_idx < 0 or global_idx >= centroids.shape[0]:
                     continue
                 centroid_xyz = centroids[global_idx]
+                if mesh_depth is not None and 0 <= res_block_local < mesh_depth.size:
+                    block_depth = float(mesh_depth[res_block_local])
+                else:
+                    block_depth = float(centroid_xyz[2])
                 segment_prolongation = float(prolongation_up) if first_segment else 0.0
                 append_filter.AddInputData(
-                    _create_tube(centroid_xyz, prolongation=segment_prolongation)
+                    _create_tube(
+                        float(centroid_xyz[0]),
+                        float(centroid_xyz[1]),
+                        block_depth,
+                        prolongation=segment_prolongation,
+                    )
                 )
                 segments_added += 1
                 first_segment = False
