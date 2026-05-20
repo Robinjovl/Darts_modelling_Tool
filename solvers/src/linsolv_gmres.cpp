@@ -170,7 +170,9 @@ namespace opendarts
 
       // Workspace layout (single contiguous block):
       //   w[n], p[(m+1) * n], r[n], s[m], c[m], rs[m+1], hh[(m+2)*(m+1)]
-      const std::size_t nw = n * (m + 3) + (m + 2) * (m + 1) + 2 * m;
+      // Required total: n*(m+3) + 2m + (m+1) + (m+2)*(m+1)
+      //              = n*(m+3) + (m+2)*(m+1) + 3m + 1.
+      const std::size_t nw = n * (m + 3) + (m + 2) * (m + 1) + 3 * m + 1;
       if (wksp_.size() < nw)
         wksp_.assign(nw, 0.0);
 
@@ -263,11 +265,7 @@ namespace opendarts
           cur_h[i - 1] = c[i - 1] * cur_h[i - 1] + s[i - 1] * cur_h[i];
           r_norm = std::fabs(rs[i]);
           if (r_norm <= tol_scaled)
-          {
-            ++iter;
-            ++i;
-            break;
-          }
+            break;  // i = number of completed Arnoldi steps; do not over-increment.
         }
         if (i == m || iter == max_iter)
           i = i - 1;

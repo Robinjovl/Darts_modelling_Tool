@@ -261,20 +261,25 @@ class PardisoSolverSpec(PythonLinearSolverSpec):
 def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
     """Return the default linear-solver spec for a platform.
 
-    This is the single source of truth for the default solver, replacing the
-    defaults previously scattered across ``sim_params``, ``DartsModel.init`` and
-    the GPU engine. CPU builds default to HYPRE MGR.
+    Single source of truth for the default solver. The CPU default is HYPRE
+    MGR -- it is itself a Flex-GMRES-based solver with a strong block
+    preconditioner, so it already fills the role the legacy
+    ``linsolv_bos_gmres + linsolv_bos_cpr_amg`` stack played in the proprietary
+    build. Use :class:`GMRESSolverSpec` explicitly when wrapping a non-MGR
+    inner preconditioner with an outer Krylov.
 
     :param platform: ``"cpu"`` or ``"gpu"``.
 
     .. note::
-       The GPU default -- the legacy AMGX-CPR path -- becomes available once
-       the GPU solver specs are absorbed (later in this MR); requesting it now
-       raises :class:`NotImplementedError`.
+       The GPU default -- the open-source GPU BiCGStab + cuSPARSE-ILU outer
+       solver -- is wired directly in the GPU engine factory (``engine_base_gpu``);
+       it does not flow through a ``LinearSolverSpec`` and ``data_ts.linear_solver``
+       is unused on GPU. Requesting the GPU default through this function
+       therefore raises :class:`NotImplementedError`.
     """
     if platform.lower() == "gpu":
         raise NotImplementedError(
-            "GPU default solver spec is not available yet "
-            "(GPU solvers are absorbed later in this MR)."
+            "GPU default solver is configured in the GPU engine factory, not "
+            "through a LinearSolverSpec (see engine_base_gpu)."
         )
     return MGRSolverSpec()
