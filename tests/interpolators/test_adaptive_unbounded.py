@@ -334,23 +334,34 @@ def run_one(kind: str):
 
 
 def run_axes_step_helper_test():
-    """Phase 3 smoke test: the axes_step-only Python helper from darts.tools.adaptive_grid."""
-    from darts.tools.adaptive_grid import (
-        make_linear_adaptive_cpu,
-        make_multilinear_adaptive_cpu,
+    """axes_step-only construction (no axes_min / axes_max in user code).
+
+    The C++ adaptive interpolator constructor still takes (axes_points, axes_min, axes_max)
+    for backward compatibility, but with multi-index keys those values are advisory: any
+    (axes_origin, axes_step) combination produces a valid grid; axes_max = origin + N*step
+    is computed once at construction and never re-read on the hot path.
+    """
+    print("=" * 78)
+    print(
+        "Test: axes_step-only direct construction (no axes_min / axes_max in user code)"
     )
-
-    print("=" * 78)
-    print("Test: axes_step-only Python helper (no axes_min / axes_max)")
     print("=" * 78)
 
-    evaluator = LinearEvaluator(N_DIMS, N_OPS, seed=42)
     axes_step = [0.1, 0.1, 0.1]
-
     print(
         f"\nConstructing multilinear adaptive itor with axes_step={axes_step} only..."
     )
-    itor_ml = make_multilinear_adaptive_cpu(evaluator, axes_step=axes_step, n_ops=N_OPS)
+
+    advisory_n = 1024
+    origin = [0.0] * N_DIMS
+    derived_max = [origin[i] + (advisory_n - 1) * axes_step[i] for i in range(N_DIMS)]
+    evaluator = LinearEvaluator(N_DIMS, N_OPS, seed=42)
+    itor_ml = MultilinearAdaptiveCls(
+        evaluator,
+        index_vector([advisory_n] * N_DIMS),
+        value_vector(origin),
+        value_vector(derived_max),
+    )
     itor_ml.init()
 
     # Query at a mix of in-bounds and far-out-of-bounds states (the default
@@ -372,8 +383,12 @@ def run_axes_step_helper_test():
 
     print("\nConstructing linear adaptive itor with axes_step only...")
     evaluator2 = LinearEvaluator(N_DIMS, N_OPS, seed=42)
-    itor_l = make_linear_adaptive_cpu(
-        evaluator2, axes_step=axes_step, n_ops=N_OPS, use_barycentric=False
+    itor_l = LinearAdaptiveCls(
+        evaluator2,
+        index_vector([advisory_n] * N_DIMS),
+        value_vector(origin),
+        value_vector(derived_max),
+        False,
     )
     itor_l.init()
 

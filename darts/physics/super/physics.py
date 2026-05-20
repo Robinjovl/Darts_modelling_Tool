@@ -15,13 +15,16 @@ from darts.physics.super.operator_evaluator import ReservoirOperators, WellOpera
 
 class Compositional(PhysicsBase):
     """
-    This is the Physics class for Compositional simulation.
+    Physics class for compositional simulation.
 
-    It includes:
-    - Creating Reservoir, Well, Rate and Property operators and interpolators for P-z or P-T-z compositional simulation
-    - Initializing the :class:`super_engine`
-    - Setting well controls (rate, bhp)
-    - Defining initial and boundary conditions
+    Creates reservoir, well, rate and property operators and interpolators for
+    P-z or P-T-z compositional simulation; initializes the :class:`super_engine`;
+    sets well controls; and defines initial / boundary conditions.
+
+    The OBL grid is defined by ``axes_step`` (per-axis cell size) and an optional
+    ``axes_origin`` (default zeros, with ``epsilon_z`` added on composition axes).
+    The adaptive multi-index-keyed interpolator caches cells on demand wherever
+    the solver lands; there is no fixed grid window.
     """
 
     def __init__(
@@ -29,67 +32,34 @@ class Compositional(PhysicsBase):
         components: list,
         phases: list,
         timer: timer_node,
-        # NEW PRIMARY API: per-axis cell size [p_step, z_step_1, ..., z_step_{nc-1}, t_step?].
-        # When provided, takes precedence over (n_points, max_p, max_z, max_t) for grid resolution.
-        axes_step: list = None,
-        # Origin of the OBL grid per axis. With the adaptive interpolator the cache extends
-        # past this freely; min_p / min_z / min_t serve as the integer-key reference point only.
-        min_p: float = None,
-        max_p: float = None,
-        min_z: float = None,
-        max_z: float = None,
+        axes_step: list,
+        axes_origin: list = None,
         epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
-        min_t: float = None,
-        max_t: float = None,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
-        # Legacy / advisory cell count. Optional when `axes_step` is given.
-        n_points: int = None,
-        # Fully-explicit legacy API (still supported)
-        axes_min=None,
-        axes_max=None,
-        n_axes_points=None,
     ):
         """
-        Constructor of the Compositional Physics class.
-
-        It defines the OBL grid for P-z or P-T-z compositional simulation. Two API styles
-        are supported:
-
-        * **New (recommended):** pass ``axes_step`` (per-axis cell size) plus ``min_p``,
-          ``min_z`` (and ``min_t`` if thermal) as the grid origin. ``max_*`` and
-          ``n_points`` are derived and become advisory — the adaptive interpolator caches
-          new cells on demand outside any prescribed window.
-
-        * **Legacy:** pass ``n_points`` + ``min_p``, ``max_p``, ``min_z``, ``max_z`` (and
-          optionally ``min_t``, ``max_t``); ``axes_step`` is derived per axis as
-          ``(max - min) / (n_points - 1)``. Or pass ``axes_min``, ``axes_max``,
-          ``n_axes_points`` directly for fully non-uniform legacy behavior.
-
-        :param components: List of components
-        :param phases: List of phases
-        :param timer: :class:`darts.engines.timer_node`
-        :param axes_step: (preferred) per-axis cell size, length n_vars
-        :type axes_step: list or None
-        :param min_p, max_p: Pressure axis origin / advisory upper bound
-        :param min_z, max_z: Composition axis origin / advisory upper bound
-        :param epsilon_z: Offset added to the composition axis origin (min_z + epsilon_z)
-        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps
-        :param extrapolation_flag: Enable extrapolation logic (z[last] < 0 for nc >= 3)
-        :param min_t, max_t: Thermal axis origin / advisory upper bound
-        :param state_spec: P / PT / PH
-        :param cache: Switch to cache operator values
-        :param n_points: (advisory) cells per axis; defaults to 1024 if `axes_step` is provided
-        :param axes_min, axes_max, n_axes_points: fully-explicit legacy override
+        :param components: List of components.
+        :param phases: List of phases.
+        :param timer: Timer object.
+        :param axes_step: Per-axis cell size [p_step, z_step_1, ..., z_step_{nc-1}, t_step?].
+            For ``extrapolation_flag=True`` the composition steps must all be equal.
+        :param axes_origin: Per-axis grid origin. Defaults to
+            ``[0.0, epsilon_z, ..., epsilon_z, 0.0?]`` — pressure origin 0, composition
+            origin offset by ``epsilon_z`` to avoid the boundary, thermal origin 0.
+        :param epsilon_z: Composition-axis offset (default 1e-9).
+        :param sim_eps_multiplier: Multiplier on ``epsilon_z`` to obtain ``sim_eps``.
+        :param extrapolation_flag: Enable extrapolation logic (z[last] < 0 if nc >= 3).
+        :param state_spec: P (default), PT, or PH.
+        :param cache: Cache supporting points to disk between runs.
         """
-        # Define nc, nph and (iso)thermal
         nc = len(components)
         nph = len(phases)
         self.thermal = state_spec > PhysicsBase.StateSpecification.P
 
-        # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature/enthalpy
+        # State variables: pressure, nc-1 components, optional thermal var.
         variables = ["pressure"] + components[:-1]
         if self.thermal:
             variables += (
@@ -99,148 +69,50 @@ class Compositional(PhysicsBase):
             )
 
         n_vars = len(variables)
-        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP * /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
-        # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*LAMBDA*/ + NP /*SAT*/ + NP /*enthalpy*/
-        # + 2 /*temperature and pressure*/
-        # = NE * (2 * nph + 2) + 6 * nph + 3
-
+        # NE * (2 * nph + 2) + 7 * nph + 3
         n_ops = n_vars * (2 * nph + 2) + 7 * nph + 3
 
-        # ── Reconcile new (axes_step) vs legacy (n_points + min/max) inputs ────────
-        if axes_step is not None:
-            assert len(axes_step) == n_vars, (
-                f"axes_step must have {n_vars} entries (one per variable), got {len(axes_step)}"
-            )
-            # Build origin from per-thing minimums (composition axes still shifted by epsilon_z).
-            assert min_p is not None, "min_p (pressure origin) must be provided"
-            axz_min = (
-                [min_z + epsilon_z for _ in range(nc - 1)]
-                if (min_z is None or np.isscalar(min_z))
-                else [min_z[i] + epsilon_z for i in range(nc - 1)]
-            )
-            if min_z is None:
-                axz_min = [epsilon_z for _ in range(nc - 1)]
+        assert len(axes_step) == n_vars, (
+            f"axes_step must have {n_vars} entries, got {len(axes_step)}"
+        )
+        assert sim_eps_multiplier > 1, (
+            "sim_eps_multiplier must be > 1 for consistent OBL axes / solution clipping"
+        )
+
+        if axes_origin is None:
+            # Default origin: pressure 0, composition shifted by epsilon_z, thermal 0.
+            axes_origin = [0.0] + [epsilon_z] * (nc - 1)
             if self.thermal:
-                assert min_t is not None, "min_t (thermal axis origin) must be provided"
-                origin = [min_p] + axz_min + [min_t]
-            else:
-                origin = [min_p] + axz_min
-
-            # Advisory cell count
-            advisory_n = (
-                n_points
-                if n_points is not None
-                else PhysicsBase.DEFAULT_ADVISORY_N_AXES_POINTS
-            )
-            if n_axes_points is None:
-                n_axes_points = index_vector([advisory_n] * n_vars)
-            else:
-                n_axes_points = index_vector(n_axes_points)
-
-            self.dz = axes_step[1] if nc > 1 else None
-            self.extrapolation_flag = extrapolation_flag
-            if self.extrapolation_flag and nc > 1:
-                for i in range(nc - 1):
-                    assert abs(axes_step[1 + i] - self.dz) < 1e-15, (
-                        "To use extrapolation logic, dz must be equal along all compositional axes"
-                    )
-
-            assert sim_eps_multiplier > 1
-            # Pass via the new PhysicsBase axes_step entry point
-            super().__init__(
-                state_spec=state_spec,
-                variables=variables,
-                components=components,
-                phases=phases,
-                n_ops=n_ops,
-                timer=timer,
-                axes_step=list(axes_step),
-                axes_min=origin,
-                n_axes_points=n_axes_points,
-                sim_eps=epsilon_z * sim_eps_multiplier,
-                cache=cache,
-            )
-            return
-
-        # ── Legacy path: derive axes_step from (n_points + min/max) or explicit axes_min/max
-        # axes_min
-        if axes_min is None:
-            axz_min = (
-                [min_z + epsilon_z for i in range(nc - 1)]
-                if np.isscalar(min_z)
-                else [min_z[i] + epsilon_z for i in range(nc - 1)]
-            )
-            if self.thermal:
-                axes_min = [min_p] + axz_min + [min_t]
-            else:
-                axes_min = [min_p] + axz_min
-
-        # axes_max
-        if axes_max is None:
-            axz_max = (
-                [max_z - (nc - 1) * epsilon_z for i in range(nc - 1)]
-                if np.isscalar(min_z)
-                else [max_z[i] - (nc - 1) * epsilon_z for i in range(nc - 1)]
-            )
-            if self.thermal:
-                axes_max = [max_p] + axz_max + [max_t]
-            else:
-                axes_max = [max_p] + axz_max
-
-        # n_axes_points
-        if n_axes_points is None:
-            assert n_points is not None, (
-                "Legacy API requires either `n_points` or `n_axes_points`"
-            )
-            n_axes_points = index_vector([n_points] * n_vars)
-        else:
-            n_axes_points = index_vector(n_axes_points)
+                axes_origin.append(0.0)
+        assert len(axes_origin) == n_vars
 
         self.extrapolation_flag = extrapolation_flag
-        self.dz = (
-            (axes_max[1] - axes_min[1]) / (n_axes_points[1] - 1) if nc > 1 else None
-        )
-        if self.extrapolation_flag:
-            # ASSERT EQUAL DZ FOR EACH COMPOSITION AXIS
+        self.dz = axes_step[1] if nc > 1 else None
+        if extrapolation_flag and nc > 1:
             for i in range(nc - 1):
-                assert (
-                    np.abs(
-                        (axes_max[i + 1] - axes_min[i + 1]) / (n_axes_points[i + 1] - 1)
-                        - self.dz
-                    )
-                    < 1e-15
-                ), (
-                    "To use extrapolation logic, dz should be equal along all compositional axes"
+                assert abs(axes_step[1 + i] - self.dz) < 1e-15, (
+                    "extrapolation requires equal dz across all composition axes"
                 )
 
-        assert sim_eps_multiplier > 1, (
-            "Multiplier for epsilon must be greater than 1 to have consistent "
-            "OBL axes/solution vector in engine"
-        )
-
-        # Call PhysicsBase constructor (legacy)
         super().__init__(
             state_spec=state_spec,
             variables=variables,
             components=components,
             phases=phases,
             n_ops=n_ops,
-            axes_min=axes_min,
-            axes_max=axes_max,
-            sim_eps=epsilon_z * sim_eps_multiplier,
-            n_axes_points=n_axes_points,
             timer=timer,
+            axes_step=list(axes_step),
+            axes_origin=list(axes_origin),
+            sim_eps=epsilon_z * sim_eps_multiplier,
             cache=cache,
         )
 
     def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):
         """
-        Function to set :class:`engine_super` object.
+        :class:`engine_super` factory.
 
-        :param discr_type: Type of discretization, 'tpfa' (default) or 'mpfa'
-        :type discr_type: str
-        :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
-        :type platform: str
+        :param discr_type: 'tpfa' (default) or 'mpfa'.
+        :param platform: 'cpu' (default) or 'gpu'.
         """
         if discr_type == "mpfa":
             if self.thermal:
@@ -255,9 +127,9 @@ class Compositional(PhysicsBase):
 
     def set_operators(self):
         """
-        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
-        and a :class:`PropertyOperator` for the evaluation of properties.
+        Set operator objects: :class:`ReservoirOperators` per region, :class:`WellOperators`
+        for well segments, :class:`WellCtrlOperators` for well controls, and a
+        :class:`PropertyOperator` for property evaluation.
         """
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
@@ -534,11 +406,11 @@ class Compositional(PhysicsBase):
                 state_spec[spec]
                 if state_spec[spec] is not None
                 else (
-                    np.linspace(
-                        self.axes_min[spec_idx],
-                        self.axes_max[spec_idx],
-                        int(self.n_axes_points[spec_idx] / obl_interval_multiplier),
+                    np.arange(
+                        PhysicsBase.ADVISORY_N_AXES_POINTS // obl_interval_multiplier
                     )
+                    * (self.axes_step[spec_idx] * obl_interval_multiplier)
+                    + self.axes_origin[spec_idx]
                 )
             )
 
@@ -565,11 +437,11 @@ class Compositional(PhysicsBase):
                 compositions[comp]
                 if compositions[comp] is not None
                 else (
-                    np.linspace(
-                        self.axes_min[i + 1],
-                        self.axes_max[i + 1],
-                        int(self.n_axes_points[i + 1] / obl_interval_multiplier),
+                    np.arange(
+                        PhysicsBase.ADVISORY_N_AXES_POINTS // obl_interval_multiplier
                     )
+                    * (self.axes_step[i + 1] * obl_interval_multiplier)
+                    + self.axes_origin[i + 1]
                 )
             )
 

@@ -1,4 +1,4 @@
-from darts.engines import timer_node, value_vector
+from darts.engines import timer_node
 from darts.physics.base.operators_base import (
     PropertyOperators as BasePropertyOperators,
 )
@@ -25,15 +25,9 @@ class ElementBasedReactiveFlow(Compositional):
         timer: timer_node,
         elements: list[str],
         phases: list[str],
-        epsilon_z: float,
-        # NEW PRIMARY API: per-axis cell size [p_step, z_step_1, ..., z_step_{n_el-1}]
-        axes_step: list = None,
-        # Origin (default: derived from axes_min if given)
-        min_p: float = None,
-        # Legacy / advisory
-        n_points: int | list[int] = None,
-        axes_min: list[float] = None,
-        axes_max: list[float] = None,
+        axes_step: list,
+        axes_origin: list = None,
+        epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
         cache: bool = True,
@@ -41,62 +35,31 @@ class ElementBasedReactiveFlow(Compositional):
         """
         Constructor for ElementBasedReactiveFlow class.
 
-        Two API styles supported:
-
-        * **New (recommended):** pass ``axes_step`` (per-axis cell size) plus ``min_p``.
-          Composition axis origin defaults to ``epsilon_z`` (after Compositional's offset).
-        * **Legacy:** pass ``n_points``, ``axes_min``, ``axes_max`` (explicit per-axis bounds).
-
-        :param timer: Timer object
-        :param elements: List of elements
-        :param phases: List of phases
-        :param epsilon_z: Composition axis offset
-        :param axes_step: (preferred) per-axis cell size
-        :param min_p: Pressure axis origin (preferred path)
-        :param n_points: Advisory cell count per axis (legacy)
-        :param axes_min, axes_max: Legacy explicit bounds
-        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps
-        :param extrapolation_flag: Extrapolation logic for z[last] < 0 if n_el >= 3
-        :param cache: Cache flag
+        :param timer: Timer object.
+        :param elements: List of elements.
+        :param phases: List of phases.
+        :param axes_step: Per-axis cell size [p_step, z_step_1, ..., z_step_{n_el-1}].
+        :param axes_origin: Per-axis grid origin (defaults via Compositional).
+        :param epsilon_z: Composition axis offset (default 1e-9).
+        :param sim_eps_multiplier: Multiplier on epsilon_z to obtain sim_eps.
+        :param extrapolation_flag: Enable extrapolation logic for z[last] < 0 (n_el >= 3).
+        :param cache: Cache supporting points to disk between runs.
         """
         vars = ["p"] + elements[:-1]
         self.initial_operators = {}
         self.output_property_containers = {}
 
-        if axes_step is not None:
-            super().__init__(
-                components=elements,
-                phases=phases,
-                axes_step=axes_step,
-                min_p=min_p
-                if min_p is not None
-                else (axes_min[0] if axes_min is not None else None),
-                min_z=epsilon_z if axes_min is None else axes_min[1] - epsilon_z,
-                n_points=n_points,
-                epsilon_z=epsilon_z,
-                sim_eps_multiplier=sim_eps_multiplier,
-                extrapolation_flag=extrapolation_flag,
-                timer=timer,
-                cache=cache,
-            )
-        else:
-            super().__init__(
-                components=elements,
-                phases=phases,
-                n_points=n_points,
-                min_p=axes_min[0],
-                max_p=axes_max[0],
-                min_z=axes_min[1],
-                max_z=1 - axes_min[1],
-                axes_min=axes_min,
-                axes_max=axes_max,
-                n_axes_points=n_points,
-                epsilon_z=epsilon_z,
-                sim_eps_multiplier=sim_eps_multiplier,
-                extrapolation_flag=extrapolation_flag,
-                timer=timer,
-                cache=cache,
-            )
+        super().__init__(
+            components=elements,
+            phases=phases,
+            axes_step=axes_step,
+            axes_origin=axes_origin,
+            epsilon_z=epsilon_z,
+            sim_eps_multiplier=sim_eps_multiplier,
+            extrapolation_flag=extrapolation_flag,
+            timer=timer,
+            cache=cache,
+        )
         self.vars = vars
 
     def set_operators(self):
@@ -205,8 +168,6 @@ class ElementBasedReactiveFlow(Compositional):
                 evaluator=self.reservoir_operators[region],
                 timer_name='reservoir interpolation',
                 n_ops=self.n_ops,
-                axes_min=self.axes_min,
-                axes_max=self.axes_max,
                 platform=platform,
                 algorithm=itor_type,
                 mode=itor_mode,
@@ -220,8 +181,6 @@ class ElementBasedReactiveFlow(Compositional):
                 evaluator=self.initial_operators[region],
                 timer_name=f'comp {region} interpolation',
                 n_ops=len(self.initial_operators[region].props_name),
-                axes_min=self.axes_min,
-                axes_max=self.axes_max,
                 platform=platform,
                 algorithm=itor_type,
                 mode=itor_mode,
@@ -236,8 +195,6 @@ class ElementBasedReactiveFlow(Compositional):
                 evaluator=self.property_operators[region],
                 timer_name=f'property {region} interpolation',
                 n_ops=len(self.property_operators[region].props_name),
-                axes_min=self.axes_min,
-                axes_max=self.axes_max,
                 platform=platform,
                 algorithm=itor_type,
                 mode=itor_mode,
@@ -250,8 +207,6 @@ class ElementBasedReactiveFlow(Compositional):
         self.well_ctrl_itor, n_well_ctrl_ops = self.create_interpolator(
             self.well_ctrl_operators,
             n_ops=self.well_ctrl_operators.n_ops,
-            axes_min=self.axes_min,
-            axes_max=self.axes_max,
             timer_name='well controls interpolation',
             platform=platform,
             algorithm=itor_type,
@@ -262,8 +217,6 @@ class ElementBasedReactiveFlow(Compositional):
         self.thermal_var_itor, n_thermal_var_ops = self.create_interpolator(
             self.thermal_var_operator,
             n_ops=self.thermal_var_operator.n_ops,
-            axes_min=value_vector(self.PT_axes_min),
-            axes_max=value_vector(self.PT_axes_max),
             timer_name='well initialization',
             platform=platform,
             algorithm=itor_type,

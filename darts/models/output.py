@@ -228,8 +228,6 @@ class Output:
                     self.physics.create_interpolator(
                         self.physics.property_operators[region],
                         n_ops=self.physics.n_ops,
-                        axes_min=self.physics.axes_min,
-                        axes_max=self.physics.axes_max,
                         platform='cpu',
                         algorithm='multilinear',
                         mode='adaptive',
@@ -284,8 +282,6 @@ class Output:
                     self.physics.create_interpolator(
                         self.physics.property_operators[region],
                         n_ops=self.physics.property_operators[region].n_ops,
-                        axes_min=self.physics.axes_min,
-                        axes_max=self.physics.axes_max,
                         platform='cpu',
                         algorithm='multilinear',
                         mode='adaptive',
@@ -341,8 +337,6 @@ class Output:
                 self.physics.create_interpolator(
                     self.physics.property_operators[region],
                     n_ops=self.physics.n_ops,
-                    axes_min=self.physics.axes_min,
-                    axes_max=self.physics.axes_max,
                     platform='cpu',
                     algorithm='multilinear',
                     mode='adaptive',
@@ -597,14 +591,11 @@ class Output:
                 f.write("-- State specification:\n")
                 f.write(f"{self.physics.state_spec}\n")
 
-                f.write("-- OBL axes minimums:\n")
-                f.write(f"{self.physics.axes_min[:]}\n")
+                f.write("-- OBL axes origin (per axis):\n")
+                f.write(f"{list(self.physics.axes_origin)}\n")
 
-                f.write("-- OBL axes maximums:\n")
-                f.write(f"{self.physics.axes_max[:]}\n")
-
-                f.write("-- OBL axes maximums:\n")
-                f.write(f"{self.physics.n_axes_points[:]}\n")
+                f.write("-- OBL axes step (per axis):\n")
+                f.write(f"{list(self.physics.axes_step)}\n")
 
                 f.write("-- Regions:\n")
                 f.write(f"{self.physics.regions}\n")
@@ -2300,11 +2291,8 @@ class Output:
         states_m = h5_well_data["dynamic"]["X"][time_idx, cell_m]
         states_p = h5_well_data["dynamic"]["X"][time_idx, cell_p]
 
-        if self.precision == "s":
-            axes_min = np.array(physics.axes_min)
-            axes_max = np.array(physics.axes_max)
-            states_m = np.clip(states_m, axes_min, axes_max)
-            states_p = np.clip(states_p, axes_min, axes_max)
+        # State clipping to the OBL window has been removed — adaptive interpolators
+        # cache cells on demand wherever the solver lands.
 
         states_m_2d = states_m.reshape(batch_size, n_vars)
         states_p_2d = states_p.reshape(batch_size, n_vars)
@@ -2427,20 +2415,11 @@ class Output:
                 well_ops_p[:, op_start : op_start + pc.nph],
             )
 
-            # Calculate dead operators
+            # Calculate dead operators at standard surface conditions
             p_dead = 1.01325  # Dead pressure (1 atm)
             T_dead = 273.15 + 15  # Dead temperature (15 deg C)
-
-            if not (
-                self.physics.PT_axes_min[p_idx]
-                <= p_dead
-                <= self.physics.PT_axes_max[p_idx]
-                and self.physics.PT_axes_min[t_idx]
-                <= T_dead
-                <= self.physics.PT_axes_max[t_idx]
-            ):
-                # Since the dead pressure or temperature for well advective heat rate calculation is outside the OBL bounds, leave it zero.
-                return np.zeros((n_ts, n_conns, pc.nph))
+            # The legacy PT-window bounds check was removed — adaptive interpolators
+            # cache the dead state on demand wherever it falls in state space.
 
             states_m_dead = states_m_2d.copy()
             states_p_dead = states_p_2d.copy()

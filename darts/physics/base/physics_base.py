@@ -61,10 +61,12 @@ class PhysicsBase:
                 return self.value < other.value
             return NotImplemented
 
-    # Default advisory cells per axis when only `axes_step` is given. With adaptive
-    # interpolators the cache grows past this window on demand; the value only governs
-    # the legacy integer-keyed pickle export filter and `n_axes_points` diagnostic.
-    DEFAULT_ADVISORY_N_AXES_POINTS = 1024
+    # Advisory cell count per axis used to derive a legacy (axes_min, axes_max) window
+    # for the C++ interpolator constructor and for the integer-keyed pickle-export filter.
+    # The adaptive interpolator cache grows past this window on demand, so the value is
+    # not load-bearing; it only affects pickle export of in-bounds cells and the legacy
+    # `axes_hypercube_mult` packing reach.
+    ADVISORY_N_AXES_POINTS = 1024
 
     def __init__(
         self,
@@ -74,52 +76,31 @@ class PhysicsBase:
         phases: list,
         n_ops: int,
         timer: timer_node,
-        # New primary API: per-axis cell size (length = n_vars). Defines the grid spacing
-        # exactly. Origin defaults to axes_min if given, else zeros.
-        axes_step: list = None,
-        # Legacy API (still supported): explicit (min, max, n_points) per axis.
-        axes_min: value_vector = None,
-        axes_max: value_vector = None,
-        n_axes_points: index_vector = None,
+        axes_step: list,
+        axes_origin: list = None,
         sim_eps: float = None,
         cache: bool = False,
     ):
         """
-        Constructor of the PhysicsBase class. It creates a `simulation` timer node and initializes caching.
+        Constructor of the PhysicsBase class. Defines the OBL grid by per-axis cell size
+        plus an optional origin offset; creates a `simulation` timer node and initializes
+        caching.
 
-        Accepts either of two API styles to define the OBL grid:
-
-        * **New (recommended):** pass `axes_step` (per-axis cell size). The grid origin
-          defaults to zeros (or to `axes_min` if also given). The advisory cell-count
-          defaults to :attr:`DEFAULT_ADVISORY_N_AXES_POINTS` (~1024 per axis) and
-          controls only the integer-keyed pickle export filter — adaptive caches grow
-          past it on demand. `axes_max` is derived as `origin + (n_points-1)*step`.
-
-        * **Legacy:** pass `axes_min`, `axes_max`, and `n_axes_points`. `axes_step` is
-          derived as `(axes_max - axes_min) / (n_axes_points - 1)`. This style remains
-          supported for backward compatibility.
+        Adaptive interpolators key on a signed multi-index, so the grid is fully
+        defined by ``axes_step`` (per-axis cell size) and ``axes_origin`` (per-axis
+        offset). The cache grows past any prescribed window on demand.
 
         :param state_spec: State specification - 0) P, 1) PT, 2) PH
         :type state_spec: StateSpecification
-        :param variables: List of independent variables
-        :type variables: list
-        :param components: Components
-        :type components: list
-        :param phases: List of phases
-        :type phases: list
-        :param n_ops: Number of operators
-        :type n_ops: int
-        :param timer: Timer object
-        :param axes_step: Per-axis cell size; preferred new entry point.
-        :type axes_step: list or None
-        :param axes_min, axes_max: Legacy minimum / maximum per OBL axis.
-        :type axes_min, axes_max: :class:`darts.interpolators.value_vector`
-        :param n_axes_points: Advisory cell count per axis (legacy). Defaults to ``DEFAULT_ADVISORY_N_AXES_POINTS`` if `axes_step` is used.
-        :type n_axes_points: index_vector
-        :param sim_eps: Epsilon composition for simulation that solution should remain away from OBL bounds.
-        :type sim_eps: float
-        :param cache: Switch to cache operator values.
-        :type cache: bool
+        :param variables: Independent variables.
+        :param components: Components.
+        :param phases: Phases.
+        :param n_ops: Number of operators.
+        :param timer: Timer object.
+        :param axes_step: Per-axis cell size, length n_vars. Required.
+        :param axes_origin: Per-axis grid origin (default: zeros).
+        :param sim_eps: Epsilon below which the Newton update is clipped to the physical [0,1] simplex.
+        :param cache: Switch to cache operator values to disk between runs.
         """
         # Define variables and number of operators
         self.state_spec = state_spec
@@ -134,56 +115,19 @@ class PhysicsBase:
         self.nph = len(phases)
         self.n_ops = n_ops
 
-        # Reconcile new (axes_step) vs legacy (axes_min/axes_max/n_axes_points) inputs.
-        # The interpolators only care about (origin, step); axes_max and n_axes_points
-        # are advisory after Phase 1+2 (cache grows past them on demand).
-        if axes_step is not None:
-            axes_step_arr = np.asarray(axes_step, dtype=np.float64)
-            assert len(axes_step_arr) == self.n_vars, (
-                f"axes_step must have {self.n_vars} entries (one per variable), got {len(axes_step_arr)}"
-            )
-            origin = (
-                np.asarray(axes_min, dtype=np.float64)
-                if axes_min is not None
-                else np.zeros(self.n_vars, dtype=np.float64)
-            )
-            assert len(origin) == self.n_vars
-            n_pts = (
-                list(n_axes_points)
-                if n_axes_points is not None
-                else [self.DEFAULT_ADVISORY_N_AXES_POINTS] * self.n_vars
-            )
-            assert len(n_pts) == self.n_vars
-            # advisory max = origin + (n_points - 1) * step; preserves legacy code that reads it
-            derived_max = (origin + (np.asarray(n_pts) - 1) * axes_step_arr).tolist()
-            self.PT_axes_min = value_vector(origin.tolist())
-            self.PT_axes_max = (
-                value_vector(axes_max)
-                if axes_max is not None
-                else value_vector(derived_max)
-            )
-            self.n_axes_points = index_vector(n_pts)
-            self.axes_step = axes_step_arr.tolist()
-        else:
-            # Legacy path: derive axes_step from (axes_min, axes_max, n_axes_points)
-            assert (
-                axes_min is not None
-                and axes_max is not None
-                and n_axes_points is not None
-            ), (
-                "PhysicsBase: pass either `axes_step` (new API) "
-                "or `axes_min` + `axes_max` + `n_axes_points` (legacy)"
-            )
-            self.PT_axes_min = axes_min
-            self.PT_axes_max = axes_max
-            self.n_axes_points = n_axes_points
-            mn = np.asarray(list(axes_min), dtype=np.float64)
-            mx = np.asarray(list(axes_max), dtype=np.float64)
-            npts = np.asarray(list(n_axes_points), dtype=np.float64)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                self.axes_step = np.where(
-                    npts > 1, (mx - mn) / np.maximum(npts - 1, 1), 0.0
-                ).tolist()
+        # OBL grid: cell size + origin per axis. With multi-index-keyed adaptive
+        # interpolators these two are the only state the cache needs; no max/n_points.
+        assert axes_step is not None, "axes_step is required"
+        assert len(axes_step) == self.n_vars, (
+            f"axes_step must have {self.n_vars} entries, got {len(axes_step)}"
+        )
+        self.axes_step = [float(s) for s in axes_step]
+        if axes_origin is None:
+            axes_origin = [0.0] * self.n_vars
+        assert len(axes_origin) == self.n_vars, (
+            f"axes_origin must have {self.n_vars} entries, got {len(axes_origin)}"
+        )
+        self.axes_origin = [float(o) for o in axes_origin]
 
         self.sim_eps = sim_eps if sim_eps is not None else 1e-12
 
@@ -235,16 +179,9 @@ class PhysicsBase:
         :param n_solid: Number of solid minerals for element-based reactive flow
         :type n_solid: int
         """
-        # Define OBL axes
-        self.axes_min, self.axes_max = self.determine_obl_bounds(
-            min_p=self.PT_axes_min[0],
-            max_p=self.PT_axes_max[0],
-            min_t=self.PT_axes_min[-1],
-            max_t=self.PT_axes_max[-1],
-            min_z=self.PT_axes_min[1 : self.nc],
-            max_z=self.PT_axes_max[1 : self.nc],
-            state_spec=self.state_spec,
-        )
+        # OBL grid is fully defined by (axes_origin, axes_step) — see __init__.
+        # No more determine_obl_bounds() call: the adaptive interpolator caches cells
+        # on demand wherever the solver lands.
 
         # set engine, operators and create interpolators
         self.engine = self.set_engine(discr_type, platform)
@@ -377,15 +314,15 @@ class PhysicsBase:
                     n_workers=n_workers,
                 )
 
-        # self.n_ops = self.engine.get_n_ops()
+        # All interpolators share the same (axes_origin, axes_step) grid for compositional
+        # variables. The thermal-var interpolator uses a separate PT-based grid (handled
+        # internally by derived physics classes via thermal_var_axes_step/_origin).
         self.acc_flux_itor = {}
         self.property_itor = {}
         for region in self.regions:
             self.acc_flux_itor[region], _ = self.create_interpolator(
                 self.reservoir_operators[region],
                 n_ops=self.n_ops,
-                axes_min=self.axes_min,
-                axes_max=self.axes_max,
                 platform=platform,
                 algorithm=itor_type,
                 mode=itor_mode,
@@ -398,8 +335,6 @@ class PhysicsBase:
             self.property_itor[region], _ = self.create_interpolator(
                 self.property_operators[region],
                 n_ops=self.n_ops,
-                axes_min=self.axes_min,
-                axes_max=self.axes_max,
                 platform=platform,
                 algorithm=itor_type,
                 mode=itor_mode,
@@ -412,8 +347,6 @@ class PhysicsBase:
         self.acc_flux_w_itor, _ = self.create_interpolator(
             self.well_operators,
             n_ops=self.n_ops,
-            axes_min=self.axes_min,
-            axes_max=self.axes_max,
             timer_name='well interpolation',
             platform=platform,
             algorithm=itor_type,
@@ -426,8 +359,6 @@ class PhysicsBase:
         self.well_ctrl_itor, self.n_well_ctrl_itor_ops = self.create_interpolator(
             self.well_ctrl_operators,
             n_ops=self.well_ctrl_operators.n_ops,
-            axes_min=self.axes_min,
-            axes_max=self.axes_max,
             timer_name='well controls interpolation',
             platform=platform,
             algorithm=itor_type,
@@ -435,11 +366,16 @@ class PhysicsBase:
             precision=itor_precision,
             is_barycentric=is_barycentric,
         )
+        # Thermal-var interpolator uses a PT-based grid; the derived physics class may
+        # set self.thermal_var_axes_step / self.thermal_var_axes_origin to override the
+        # default (which mirrors the main grid).
+        thermal_step = getattr(self, 'thermal_var_axes_step', None)
+        thermal_origin = getattr(self, 'thermal_var_axes_origin', None)
         self.thermal_var_itor, _ = self.create_interpolator(
             self.thermal_var_operator,
             n_ops=self.thermal_var_operator.n_ops,
-            axes_min=value_vector(self.PT_axes_min),
-            axes_max=value_vector(self.PT_axes_max),
+            axes_step=thermal_step,
+            axes_origin=thermal_origin,
             timer_name='well initialization',
             platform=platform,
             algorithm=itor_type,
@@ -546,72 +482,11 @@ class PhysicsBase:
 
         return
 
-    def determine_obl_bounds(
-        self,
-        min_p: float,
-        max_p: float,
-        min_z: float = None,
-        max_z: float = None,
-        min_t: float = None,
-        max_t: float = None,
-        state_spec: StateSpecification = StateSpecification.PH,
-    ):
-        """
-        Function to compute bounds of OBL grid for different state specifications
-
-        :param min_p: Minimum pressure [bar]
-        :param max_p: Maximum pressure [bar]
-        :param min_z: Minimum composition, can be scalar or list
-        :param max_z: Maximum composition, can be scalar or list
-        :param min_t: Minimum temperature [K]
-        :param max_t: Maximum temperature [K]
-        :param state_spec: StateSpecification, P, PT or PH
-        """
-        assert np.isscalar(min_z) or len(min_z) == self.nc - 1, (
-            "min_z must be a scalar or a vector of length nc-1."
-        )
-        assert np.isscalar(max_z) or len(max_z) == self.nc - 1, (
-            "max_z must be a scalar or a vector of length nc-1."
-        )
-
-        if state_spec <= PhysicsBase.StateSpecification.PT:
-            axes_min, axes_max = (
-                value_vector(self.PT_axes_min),
-                value_vector(self.PT_axes_max),
-            )
-
-        elif state_spec == PhysicsBase.StateSpecification.PH:
-            pz_axes_min = [min_p] + (
-                [min_z for i in range(self.nc - 1)]
-                if np.isscalar(min_z)
-                else list(min_z)
-            )
-            pz_axes_max = [max_p] + (
-                [max_z for i in range(self.nc - 1)]
-                if np.isscalar(max_z)
-                else list(max_z)
-            )
-
-            min_h, max_h = np.nan, np.nan
-            for i in range(self.nc):
-                for pres in [min_p, max_p]:
-                    for temp in [min_t, max_t]:
-                        zi = np.array(
-                            [1.0 if i == ii else 0.0 for ii in range(self.nc - 1)]
-                        )
-                        hi = self.property_containers[0].compute_total_enthalpy(
-                            state_pt=np.array([pres] + list(zi) + [temp])
-                        )
-                        min_h = hi if hi < min_h or np.isnan(min_h) else min_h
-                        max_h = hi if hi > max_h or np.isnan(max_h) else max_h
-
-            axes_min = value_vector(pz_axes_min + [min_h])
-            axes_max = value_vector(pz_axes_max + [max_h])
-
-        else:
-            raise RuntimeError(f"Unknown state specification: {state_spec}")
-
-        return axes_min, axes_max
+    # determine_obl_bounds() was removed. With the multi-index-keyed adaptive
+    # interpolator the OBL grid is fully defined by (axes_origin, axes_step); cells
+    # outside any prescribed window are materialized on demand. For state_spec=PH the
+    # enthalpy origin/step are supplied directly by the user (or derived in the
+    # derived physics class).
 
     @abc.abstractmethod
     def set_initial_conditions_from_depth_table(
@@ -661,10 +536,10 @@ class PhysicsBase:
     def create_interpolator(
         self,
         evaluator: operator_set_evaluator_iface,
-        axes_min: value_vector,
-        axes_max: value_vector,
         timer_name: str,
         n_ops: int,
+        axes_step: list = None,
+        axes_origin: list = None,
         algorithm: str = 'multilinear',
         mode: str = 'adaptive',
         platform: str = 'cpu',
@@ -673,58 +548,47 @@ class PhysicsBase:
         is_barycentric: bool = False,
     ):
         """
-        Create interpolator object according to specified parameters
+        Create an interpolator object using (axes_origin, axes_step) to define the grid.
 
-        :param evaluator: State operators to be interpolated. Evaluator object is used to generate supporting points
-        :type evaluator: darts.interpolators.operator_set_evaluator_iface
-        :param timer_name: Name of timer object
-        :type timer_name: str
-        :param n_ops: Number of operators
-        :type n_ops: int
-        :param axes_min: Minimal bounds of OBL axes
-        :type axes_min: value_vector
-        :param axes_max: Maximal bounds of OBL axes
-        :type axes_max: value_vector
-        :param algorithm: interpolator type:
-            'multilinear' (default) - piecewise multilinear generalization of piecewise bilinear interpolation on rectangles;
-            'linear' - a piecewise linear generalization of piecewise linear interpolation on triangles
-        :type algorithm: str
-        :param mode: interpolator mode:
-            'adaptive' (default) - only supporting points required to perform interpolation are evaluated on-the-fly;
-            'static' - all supporting points are evaluated during itor object construction
-        :type mode: str
-        :param platform: platform used for interpolation calculations :
-            'cpu' (default) - interpolation happens on CPU;
-            'gpu' - interpolation happens on GPU
-        :type platform: str
-        :param precision: precision used in interpolation calculations:
-            'd' (default) - supporting points are stored and interpolation is performed using double precision;
-            's' - supporting points are stored and interpolation is performed using single precision
-        :type precision: str
-        :type region: str
-        :param region: str(region index) for reservoir operator, str(-1) for well operator, '' for others
-        needed to make different filenames for cache as self.well_operators has the same type ReservoirOperators
-        :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
-        :type is_barycentric: bool
+        Defaults to ``self.axes_step`` / ``self.axes_origin`` from PhysicsBase. The
+        legacy (axes_min, axes_max, n_axes_points) tuple passed to the C++ constructor
+        is derived from these as ``axes_min = origin``, ``axes_max = origin + (N-1)*step``
+        for an advisory N = :attr:`ADVISORY_N_AXES_POINTS`; the cache extends past freely.
 
-        :returns: tuple (interpolator, effective_n_ops)
-        :rtype: tuple[operator_set_gradient_evaluator_iface, int]
+        :param evaluator: Operator-set evaluator used to materialize supporting points.
+        :param timer_name: Name of the timer subnode for this interpolator.
+        :param n_ops: Number of operators.
+        :param axes_step: Per-axis cell size (defaults to self.axes_step).
+        :param axes_origin: Per-axis grid origin (defaults to self.axes_origin).
+        :param algorithm: 'multilinear' (default) or 'linear'.
+        :param mode: 'adaptive' (default) or 'static'.
+        :param platform: 'cpu' (default) or 'gpu'.
+        :param precision: 'd' (default) or 's'.
+        :param region: Per-region tag used to disambiguate cache file names.
+        :param is_barycentric: Enable Delaunay-based barycentric interpolation.
+        :returns: (interpolator, effective_n_ops)
         """
-        # check input OBL props
-        if axes_min is None:
-            axes_min = self.axes_min
-        if axes_max is None:
-            axes_max = self.axes_max
+        if axes_step is None:
+            axes_step = self.axes_step
+        if axes_origin is None:
+            axes_origin = self.axes_origin
+        assert len(axes_step) == self.n_vars, (
+            f"axes_step length {len(axes_step)} != n_vars {self.n_vars}"
+        )
+        assert len(axes_origin) == self.n_vars
 
-        # verify then inputs are valid
-        assert len(self.n_axes_points) == self.n_vars
-        assert len(axes_min) == self.n_vars
-        assert len(axes_max) == self.n_vars
-        for n_p in self.n_axes_points:
-            assert n_p > 1
+        # Derive the (n_axes_points, axes_min, axes_max) tuple required by the C++
+        # interpolator ctor. The advisory window sets the integer-key reach for the
+        # legacy pickle export; cells past it still cache on demand via multi-index keys.
+        n_dims = self.n_vars
+        advisory_n = PhysicsBase.ADVISORY_N_AXES_POINTS
+        n_axes_points = index_vector([advisory_n] * n_dims)
+        axes_min_vec = value_vector(list(axes_origin))
+        axes_max_vec = value_vector(
+            [axes_origin[i] + (advisory_n - 1) * axes_step[i] for i in range(n_dims)]
+        )
 
         # calculate object name using 32 bit index type (i)
-        n_dims = self.n_vars
         itor_name = f"{algorithm}_{mode}_{platform}_interpolator_i_{precision}_{n_dims:d}_{n_ops:d}"
         itor = None
         general = False
@@ -734,30 +598,28 @@ class PhysicsBase:
         try:
             if algorithm == 'linear':
                 itor = eval(itor_name)(
-                    evaluator, self.n_axes_points, axes_min, axes_max, is_barycentric
+                    evaluator, n_axes_points, axes_min_vec, axes_max_vec, is_barycentric
                 )
             else:
                 itor = eval(itor_name)(
-                    evaluator, self.n_axes_points, axes_min, axes_max
+                    evaluator, n_axes_points, axes_min_vec, axes_max_vec
                 )
         except (ValueError, NameError):
-            # 32-bit index type did not succeed: either total amount of points is out of range
-            # or this (n_dims, n_ops) pair was not compiled. Fall back to 64-bit; the adaptive
-            # multi-index storage is unaffected by integer-key overflow (legacy pickle export
-            # for in-bounds cells is still valid up to uint64 range, ~1.8e19 cells).
+            # 32-bit index overflow or this (n_dims, n_ops) pair was not compiled.
+            # Fall back to 64-bit; multi-index storage is unaffected.
             itor_name = itor_name.replace('interpolator_i', 'interpolator_l')
             try:
                 if algorithm == 'linear':
                     itor = eval(itor_name)(
                         evaluator,
-                        self.n_axes_points,
-                        axes_min,
-                        axes_max,
+                        n_axes_points,
+                        axes_min_vec,
+                        axes_max_vec,
                         is_barycentric,
                     )
                 else:
                     itor = eval(itor_name)(
-                        evaluator, self.n_axes_points, axes_min, axes_max
+                        evaluator, n_axes_points, axes_min_vec, axes_max_vec
                     )
             except (ValueError, NameError) as err:
                 # Try to find a templatized interpolator with the same name pattern
@@ -785,14 +647,14 @@ class PhysicsBase:
                         selected_cls = getattr(engines_module, selected_name)
                         if algorithm == 'multilinear':
                             itor = selected_cls(
-                                evaluator, self.n_axes_points, axes_min, axes_max
+                                evaluator, n_axes_points, axes_min_vec, axes_max_vec
                             )
                         elif algorithm == 'linear':
                             itor = selected_cls(
                                 evaluator,
-                                self.n_axes_points,
-                                axes_min,
-                                axes_max,
+                                n_axes_points,
+                                axes_min_vec,
+                                axes_max_vec,
                                 is_barycentric,
                             )
                         else:
@@ -812,9 +674,9 @@ class PhysicsBase:
                     try:
                         itor = eval("multilinear_adaptive_cpu_interpolator_general")(
                             evaluator,
-                            self.n_axes_points,
-                            axes_min,
-                            axes_max,
+                            n_axes_points,
+                            axes_min_vec,
+                            axes_max_vec,
                             n_dims,
                             n_ops,
                         )
@@ -838,10 +700,9 @@ class PhysicsBase:
             # a cache. The legacy fmtv1 suffix lets us distinguish the new tuple-keyed
             # pickle format from old integer-keyed caches.
             for dim in range(n_dims):
-                step = (axes_max[dim] - axes_min[dim]) / max(
-                    self.n_axes_points[dim] - 1, 1
+                itor_cache_signature += (
+                    f"_origin={axes_origin[dim]:e}_step={axes_step[dim]:e}"
                 )
-                itor_cache_signature += f"_origin={axes_min[dim]:e}_step={step:e}"
             itor_cache_signature += "_fmtv2"
             # compute signature hash to uniquely identify itor parameters and load correct cache
             itor_cache_signature_hash = str(
@@ -1048,7 +909,7 @@ class PhysicsBase:
             self.processed_body_idxs = set()
             for id in range(self.n_vars):
                 fp.write(
-                    f"{self.n_axes_points[id]:d} {self.axes_min[id]:f} {self.axes_max[id]:f} {self.vars[id]}\n"
+                    f"{self.axes_origin[id]:f} {self.axes_step[id]:f} {self.vars[id]}\n"
                 )
             fp.write('Body Index Data\n')
 

@@ -198,21 +198,21 @@ class DartsModelWithLivePlots(DartsModel):
             p_idx = self.physics.vars.index("pressure")
             h_idx = self.physics.vars.index("enthalpy")
 
-            # Get the bounds of the OBL domain
-            p_bounds = (
-                self.physics.PT_axes_min[p_idx],
-                self.physics.PT_axes_max[p_idx],
-            )
-            h_bounds = (self.physics.axes_min[h_idx], self.physics.axes_max[h_idx])
+            # PH-diagram axes derived from (axes_origin, axes_step) and the advisory
+            # window size (PhysicsBase.ADVISORY_N_AXES_POINTS).
+            from darts.physics.base.physics_base import PhysicsBase
 
-            # Resolution of the PH diagram
-            n_p, n_h = (
-                self.physics.n_axes_points[p_idx],
-                self.physics.n_axes_points[h_idx],
+            n_p = n_h = PhysicsBase.ADVISORY_N_AXES_POINTS
+            p_range = (
+                self.physics.axes_origin[p_idx]
+                + np.arange(n_p) * self.physics.axes_step[p_idx]
             )
-
-            p_range = np.linspace(p_bounds[0], p_bounds[1], n_p)
-            h_range = np.linspace(h_bounds[0], h_bounds[1], n_h)
+            h_range = (
+                self.physics.axes_origin[h_idx]
+                + np.arange(n_h) * self.physics.axes_step[h_idx]
+            )
+            p_bounds = (p_range[0], p_range[-1])
+            h_bounds = (h_range[0], h_range[-1])
 
             # Calculate the property matrix
             prop_matrix = np.empty((n_p, n_h))

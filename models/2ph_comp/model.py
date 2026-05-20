@@ -63,17 +63,15 @@ class Model(CICDModel):
         """ Activate physics """
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        # New axes_step-based API: pass per-axis cell size directly. With the adaptive
-        # multi-index-keyed interpolator the cache extends past any prescribed window on
-        # demand, so axes_max / n_points become advisory. The step values below
-        # reproduce the legacy grid exactly (n_points=200 over P in [1, 300] and z in [0, 1]).
-        n_points = 200
-        p_step = (300 - 1) / (n_points - 1)
-        z_step = (1 - 3 * epsilon) / (n_points - 1)
+        # axes_step-based API: per-axis cell size + per-axis origin. The adaptive
+        # multi-index-keyed interpolator caches cells on demand wherever the solver
+        # lands; no axes_max, no n_points, no min_p needed.
+        p_step = (300 - 1) / (200 - 1)
+        z_step = (1 - 3 * epsilon) / (200 - 1)
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[p_step, z_step, z_step],
-                                     min_p=1, min_z=0., epsilon_z=epsilon,
-                                     n_points=n_points,  # advisory: drives legacy pickle export window
+                                     axes_origin=[1.0, epsilon, epsilon],
+                                     epsilon_z=epsilon,
                                      extrapolation_flag=True)
         # property_container.output_props = {
         #     "sat0": lambda: property_container.sat[0],
@@ -95,7 +93,7 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_well_controls(self):
-        zero = self.physics.axes_min[1]
+        zero = self.physics.axes_origin[1]
         inj_composition = [1.0 - 2 * zero*10, zero*10]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:

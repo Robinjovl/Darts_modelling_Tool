@@ -323,7 +323,8 @@ class THMCModel(DartsModel):
         perf_data['reservoir blocks'] = self.reservoir.mesh.n_blocks
 
         if is_last_ts:
-            perf_data['OBL resolution'] = list(self.physics.n_axes_points)
+            perf_data['OBL axes_step'] = list(self.physics.axes_step)
+            perf_data['OBL axes_origin'] = list(self.physics.axes_origin)
             perf_data['operators'] = self.physics.n_ops
             perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
             perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted

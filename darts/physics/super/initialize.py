@@ -119,11 +119,17 @@ class Initialize:
             extrapolation_flag=self.physics.extrapolation_flag,
             dz=self.physics.dz,
         )
+        # PT-parametrization for the initialization itor: use the main grid by default,
+        # but with a thermal-var override (T in [273.15, 273.15 + 300] step ~1 K) for
+        # geothermal-derived physics. Defaults to physics.axes_step / physics.axes_origin
+        # when no override is set.
+        thermal_step = getattr(self.physics, 'thermal_var_axes_step', None)
+        thermal_origin = getattr(self.physics, 'thermal_var_axes_origin', None)
         self.itor, n_ops = physics.create_interpolator(
             evaluator=self.etor,
             n_ops=physics.n_ops,
-            axes_min=value_vector(self.physics.PT_axes_min),
-            axes_max=value_vector(self.physics.PT_axes_max),
+            axes_step=thermal_step,
+            axes_origin=thermal_origin,
             timer_name='initialization itor',
             algorithm=algorithm,
             mode=mode,

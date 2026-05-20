@@ -27,130 +27,59 @@ class Geothermal(PhysicsBase):
     def __init__(
         self,
         timer: timer_node,
-        # NEW PRIMARY API: per-axis cell size [p_step, e_step]
-        axes_step: list = None,
-        # Origin of the OBL grid per axis. With the adaptive interpolator the cache grows
-        # past these freely; min_p / min_e serve as origin only.
-        min_p: float = None,
-        max_p: float = None,
-        min_e: float = None,
-        max_e: float = None,
+        axes_step: list,
+        axes_origin: list = None,
+        thermal_var_axes_step: list = None,
+        thermal_var_axes_origin: list = None,
         cache: bool = False,
-        # Legacy advisory cell count
-        n_points: int = None,
     ):
         """
         Constructor of the Geothermal Physics class. Defines the OBL grid for P-H simulation.
 
-        Two API styles supported:
-
-        * **New (recommended):** pass ``axes_step=[p_step, e_step]`` plus ``min_p``,
-          ``min_e``. ``max_*`` and ``n_points`` are advisory.
-
-        * **Legacy:** pass ``n_points``, ``min_p``, ``max_p``, ``min_e``, ``max_e``;
-          ``axes_step`` is derived per axis as ``(max - min) / (n_points - 1)``.
-
-        :param timer: Timer object
-        :param axes_step: (preferred) per-axis cell size, [p_step, e_step]
-        :param min_p, max_p: Pressure axis origin / advisory upper bound
-        :param min_e, max_e: Enthalpy axis origin / advisory upper bound
-        :param cache: Switch to cache operator values
-        :param n_points: (advisory) cells per axis; defaults to 1024 if `axes_step` is provided
+        :param timer: Timer object.
+        :param axes_step: [p_step, e_step] — per-axis cell size for the pressure-enthalpy grid.
+        :param axes_origin: [p_origin, e_origin] grid origin (default: [0.0, 0.0]).
+        :param thermal_var_axes_step: [p_step, T_step] for the ThermalVarOperator grid
+            (P–T parametrization). Default ``[axes_step[0], 1.0]`` (1 K per cell).
+        :param thermal_var_axes_origin: [p_origin, T_origin] origin for the ThermalVarOperator
+            grid. Default ``[axes_origin[0], 273.15]``.
+        :param cache: Cache supporting points to disk between runs.
         """
-        # Set nc=1, thermal=True
         components = ["H2O"]
-
-        # Define phases and variables
         phases = ['water', 'steam']
         variables = ['pressure', 'enthalpy']
         state_spec = PhysicsBase.StateSpecification.PH
 
-        # Number of operators:
         # N_OPS = NC + NC*NP + 2 + NP + NP + 1 = 10
         n_ops = 10
 
-        if axes_step is not None:
-            assert len(axes_step) == 2, (
-                "axes_step must have 2 entries: [p_step, e_step]"
-            )
-            assert min_p is not None and min_e is not None, (
-                "min_p and min_e (origin) must be provided when using axes_step"
-            )
-            origin = [min_p, min_e]
-            advisory_n = (
-                n_points
-                if n_points is not None
-                else PhysicsBase.DEFAULT_ADVISORY_N_AXES_POINTS
-            )
-            n_axes_points = index_vector([advisory_n] * len(variables))
-            self.axes_min = value_vector(origin)
-            self.axes_max = value_vector(
-                [
-                    origin[i] + (advisory_n - 1) * axes_step[i]
-                    for i in range(len(variables))
-                ]
-            )
+        assert len(axes_step) == 2, "axes_step must have 2 entries: [p_step, e_step]"
+        if axes_origin is None:
+            axes_origin = [0.0, 0.0]
+        assert len(axes_origin) == 2
 
-            super().__init__(
-                state_spec=state_spec,
-                variables=variables,
-                components=components,
-                phases=phases,
-                n_ops=n_ops,
-                timer=timer,
-                axes_step=list(axes_step),
-                axes_min=origin,
-                n_axes_points=n_axes_points,
-                cache=cache,
-            )
-        else:
-            # Legacy path
-            assert (
-                n_points is not None
-                and min_p is not None
-                and max_p is not None
-                and min_e is not None
-                and max_e is not None
-            ), "Legacy API requires n_points, min_p, max_p, min_e, max_e"
-            self.axes_min = value_vector([min_p, min_e])
-            self.axes_max = value_vector([max_p, max_e])
-            n_axes_points = index_vector([n_points] * len(variables))
+        # ThermalVarOperator (P-T) grid setup — store on self so PhysicsBase.set_interpolators
+        # picks it up via getattr.
+        if thermal_var_axes_step is None:
+            thermal_var_axes_step = [axes_step[0], 1.0]
+        if thermal_var_axes_origin is None:
+            thermal_var_axes_origin = [axes_origin[0], 273.15]
+        self.thermal_var_axes_step = list(thermal_var_axes_step)
+        self.thermal_var_axes_origin = list(thermal_var_axes_origin)
 
-            super().__init__(
-                state_spec=state_spec,
-                variables=variables,
-                components=components,
-                phases=phases,
-                n_ops=n_ops,
-                axes_min=self.axes_min,
-                axes_max=self.axes_max,
-                n_axes_points=n_axes_points,
-                timer=timer,
-                cache=cache,
-            )
-
-        # PT bounds for ThermalVarOperator
-        self.PT_axes_min = value_vector([min_p, 273.15])
-        self.PT_axes_max = value_vector(
-            [max_p if max_p is not None else min_p + 100.0, 273.15 + 300.0]
+        super().__init__(
+            state_spec=state_spec,
+            variables=variables,
+            components=components,
+            phases=phases,
+            n_ops=n_ops,
+            timer=timer,
+            axes_step=list(axes_step),
+            axes_origin=list(axes_origin),
+            cache=cache,
         )
 
         self.thermal = True
-
-    def determine_obl_bounds(
-        self,
-        min_p: float,
-        max_p: float,
-        min_z: float = None,
-        max_z: float = None,
-        min_t: float = None,
-        max_t: float = None,
-        state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.PH,
-    ):
-        """
-        Overload determine_obl_bounds() method to hardcode OBL axes of pressure-enthalpy and PT-axes for ThermalVarOperator
-        """
-        return self.axes_min, self.axes_max
 
     def set_operators(self):
         """
