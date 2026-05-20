@@ -6,7 +6,7 @@ from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus, bound_cond
-from darts.input.input_data import InputData, linear_solver_types
+from darts.input.input_data import InputData
 
 
 class Model(THMCModel):
@@ -235,14 +235,12 @@ class Model(THMCModel):
             max_dt = 30  # timestep length, days
             self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
 
-        # optional: use PETSc linear solver
+        # optional: use PETSc / Pardiso linear solver
+        #   from darts.solvers import PETScSolverSpec, PardisoSolverSpec
+        #   self.idata.sim.DataTS.linear_solver = PETScSolverSpec(variant="fs")
+        #   self.idata.sim.DataTS.linear_solver = PardisoSolverSpec()
         from darts.models.darts_model import DataTS
         self.idata.sim.DataTS = DataTS(n_vars=0)
-        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
-        #self.idata.sim.DataTS.linear_print_level = 0
-
-        # optional: use PARDISO linear solver
-        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PARDISO
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9

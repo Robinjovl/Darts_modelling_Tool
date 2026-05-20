@@ -55,7 +55,13 @@ What changes for downstream users / packagers:
   Identical iteration counts to MGR across four flow models with lower per-iter
   overhead. `MGRSolverSpec` stays the recommended fallback.
 * **One Python knob** for solver selection: `data_ts.linear_solver = <Spec>`.
-  Legacy `data_ts.linear_type` enum kept for back-compat only.
+  The legacy `linear_solver_types` Python enum (`CPU_PETSC_CPR`, `CPU_PETSC_FS`,
+  `CPU_PARDISO` in `darts.input.input_data`) and the matching
+  `petsc_solve_linear_equation` / `pardiso_solve_linear_equation` branches in
+  the Newton loop are **deleted**; use `PETScSolverSpec` / `PardisoSolverSpec`
+  via `data_ts.linear_solver`. `data_ts.linear_type` (the C++ engine factory
+  enum) is retained only for proprietary `-a` builds, where it selects the
+  bos solver.
 * **Adaptive / mid-run solver switching** — `AdaptiveSolverSpec` +
   `SolverSwitchContext` + `fallback_on_failure` policy. The solver can change
   during a run based on failure / iter-count signals.
@@ -709,19 +715,26 @@ This split is the deliberate, performance-justified deviation: a Python-resident
 solver keeps the matrix on the Python side and is free to wrap it in the format
 its backend consumes natively, with no round-trip through the C++ solver ABI.
 
-### 13.2 Current cost (what the redesign removes)
+### 13.2 Current cost (what the redesign removed)
 
-Per Newton iteration the legacy `petsc_solve_linear_equation` /
-`pardiso_solve_linear_equation`:
+Before the unification, `petsc_solve_linear_equation` /
+`pardiso_solve_linear_equation` ran on every Newton iteration and:
 
-1. `get_linear_system()` runs `scipy.bsr_matrix(...).tocsr()` — a full
+1. `get_linear_system()` ran `scipy.bsr_matrix(...).tocsr()` — a full
    **block→scalar CSR expansion copy** (TODO-flagged in the source).
-2. PETSc rebuilds the system matrix with `Mat().createAIJ(csr=...)` — copying the
-   scalar CSR into PETSc storage.
-3. The KSP **and** the PC (AMG / CPR / fieldsplit) are rebuilt from scratch every
-   iteration — including the AMG setup, the dominant cost — even though the
-   sparsity pattern is fixed for the whole run (`MATRIX_TYPE_CSR_FIXED_STRUCTURE`).
-4. Pardiso re-runs the symbolic analysis on every `spsolve`.
+2. PETSc rebuilt the system matrix with `Mat().createAIJ(csr=...)` — copying
+   the scalar CSR into PETSc storage.
+3. The KSP **and** the PC (AMG / CPR / fieldsplit) were rebuilt from scratch
+   every iteration — including the AMG setup, the dominant cost — even though
+   the sparsity pattern is fixed for the whole run
+   (`MATRIX_TYPE_CSR_FIXED_STRUCTURE`).
+4. Pardiso re-ran the symbolic analysis on every `spsolve`.
+
+The legacy `petsc_solve_linear_equation` / `pardiso_solve_linear_equation`
+methods on `DartsModel`, the `linear_solver_types` enum that selected them
+(`darts.input.input_data`), and the dispatch branch in
+`_solve_linear_equation` are **all deleted** as part of this MR. The only path
+is now `data_ts.linear_solver = <PETScSolverSpec | PardisoSolverSpec>`.
 
 ### 13.3 Design — `PythonLinearSolver`
 
@@ -793,10 +806,7 @@ block→scalar expansion is unavoidable, but it is lifted out of the hot path:
   injection); engine-resident specs are injected into the engine as before.
 - `DartsModel._solve_linear_equation()` — dispatches to the model's
   `PythonLinearSolver` when one is set (lazy `setup()` on first call), else to
-  `engine.solve_linear_equation()`.
-- Backward compatible: the legacy `data_ts.linear_type ∈ linear_solver_types`
-  path with `petsc_solve_linear_equation` / `pardiso_solve_linear_equation`
-  remains; the `LinearSolverSpec` path is the recommended interface.
+  `engine.solve_linear_equation()`. No back-compat branch.
 
 ---
 
@@ -847,7 +857,7 @@ unit tests were run.
 | **C5** 5 GPU solver wrappers in-tree | done | `linsolv_{bicgstab,cusparse_ilu,cusolv,amgx,bos_cpr_gpu}` build from open-source sources |
 | **C6** AMGX submodule + `WITH_GPU` decoupled from `BOS_SOLVERS_DIR` | done | `thirdparty/AMGX` submodule; `WITH_AMGX` opt-in CMake option; GPU builds in-tree with no `BOS_SOLVERS_DIR`. AMGX-absent builds gate AMGX behind `OPENDARTS_GPU_HAS_AMGX` and fall back to the BiCGStab + cuSPARSE-ILU solver. |
 | **C7** `darts/solvers/` Python package | done | `specs.py` (`LinearSolverSpec`, `MGRSolverSpec`, `SuperLUSolverSpec`, `MGRLevelSpec`, `default_linear_solver`), `enums.py`, `adaptive.py`; compiled `solvers` pybind module installed in `darts/solvers/` |
-| **C8** Unified dispatch | done | `DartsModel._apply_linear_solver_spec()` builds the solver from `data_ts.linear_solver` and injects it; `default_linear_solver()` returns `MGRSolverSpec` for CPU; the Newton-loop solve branch is collapsed into `DartsModel._solve_linear_equation()`. PETSc / Pardiso are unified as `LinearSolverSpec` subclasses (`PETScSolverSpec`, `PardisoSolverSpec`, §13); both share a `_BlockToScalarExpander` that builds the scalar CSR structure + a block→scalar values gather index once, so each Newton iteration only does an `np.take` instead of `scipy.sparse.bsr_matrix(...).tocsr()`. The legacy `data_ts.linear_type` path is kept for backward compatibility. **Verified end-to-end** on `2ph_comp` (block size 3): `PardisoSolverSpec` and `PETScSolverSpec(variant="cpr")` both run 19 timesteps, 35 Newton iterations, identical to the engine MGR path; `PETScSolverSpec(variant="fs")` exercises the FS code path cleanly (does not converge on this flow problem, as expected — physics mismatch). |
+| **C8** Unified dispatch | done | `DartsModel._apply_linear_solver_spec()` builds the solver from `data_ts.linear_solver` and injects it; `default_linear_solver()` returns `GMRESSolverSpec(prec=CPRSolverSpec())` for CPU; the Newton-loop solve branch is collapsed into `DartsModel._solve_linear_equation()`. PETSc / Pardiso are unified as `LinearSolverSpec` subclasses (`PETScSolverSpec`, `PardisoSolverSpec`, §13); both share a `_BlockToScalarExpander` that builds the scalar CSR structure + a block→scalar values gather index once, so each Newton iteration only does an `np.take` instead of `scipy.sparse.bsr_matrix(...).tocsr()`. The legacy `linear_solver_types` enum (`darts.input.input_data`) and the matching `petsc_solve_linear_equation` / `pardiso_solve_linear_equation` methods on `DartsModel` are **deleted**. **Verified end-to-end** on `2ph_comp` (block size 3): `PardisoSolverSpec` and `PETScSolverSpec(variant="cpr")` both run 19 timesteps, 35 Newton iterations, identical to the engine MGR path; `PETScSolverSpec(variant="fs")` exercises the FS code path cleanly (does not converge on this flow problem, as expected — physics mismatch). |
 | **C9** Adaptive / mid-run switching | done | `darts/solvers/adaptive.py` — `AdaptiveSolverSpec`, `SolverSwitchContext`, `fallback_on_failure` policy; `DartsModel._maybe_switch_linear_solver()` re-injects after a timestep |
 | **C10** CI | done, partial | GPU-from-source job (`build-linux-gpu` / `test-linux-gpu`); cross-path solver coverage via `test-linux` (proprietary `-a`) vs `test-linux-ODLS` (open-source registry solvers) over the model suite. **Deferred:** a dedicated per-solver micro-benchmark job (the dual-path suite run already exercises both solver stacks). |
 | **C11** Cleanup | done | OD-6 assert (`assert(A->n_row_size == N_BLOCK_SIZE)`) guards the `linsolv_iface_bos` down-casts; orphan `CMakeLists.txt` removed (`solvers/linear_solvers/`, `engines/lib/`); the `darts.solvers` classes carry docstrings and are autodocumented in `docs/api.rst`. |

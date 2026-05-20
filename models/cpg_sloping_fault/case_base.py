@@ -1,7 +1,7 @@
 import numpy as np
 import os
 
-from darts.input.input_data import InputData, linear_solver_types
+from darts.input.input_data import InputData
 from darts.models.darts_model import DataTS
 from darts.engines import sim_params
 
@@ -36,13 +36,12 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.DataTS.dt_max = 92
     idata.sim.DataTS.newton_tol = 1e-2
     idata.sim.DataTS.linear_tol = 1e-4
-    # use direct linear solver:
-    #idata.sim.DataTS.linear_type = sim_params.linear_solver_t.cpu_superlu
-    # optional: use PETSc linear solver
-    #idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_CPR
-    #idata.sim.DataTS.linear_print_level = 0
-    # optional: use PARDISO linear solver
-    #idata.sim.DataTS.linear_type = linear_solver_types.CPU_PARDISO
+    # optional: choose a non-default linear solver via the Spec interface,
+    # e.g.
+    #   from darts.solvers import SuperLUSolverSpec, PETScSolverSpec, PardisoSolverSpec
+    #   idata.sim.DataTS.linear_solver = SuperLUSolverSpec()
+    #   idata.sim.DataTS.linear_solver = PETScSolverSpec(variant="cpr")
+    #   idata.sim.DataTS.linear_solver = PardisoSolverSpec()
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()

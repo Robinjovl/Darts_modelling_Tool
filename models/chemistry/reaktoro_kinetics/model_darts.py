@@ -13,7 +13,6 @@ from darts.physics.chemistry.property_container import (
 )
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.input.input_data import linear_solver_types
 from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
@@ -324,22 +323,9 @@ class Model(CICDModel):
                 if i > 0:  # min_i_newton
                     break
 
-            if (
-                type(self.data_ts.linear_type) is linear_solver_types
-            ):  # solvers via Python interface
-                if self.data_ts.linear_type in [
-                    linear_solver_types.CPU_PETSC_CPR,
-                    linear_solver_types.CPU_PETSC_FS,
-                ]:
-                    self.petsc_solve_linear_equation()
-                elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                    self.pardiso_solve_linear_equation()
-                else:
-                    raise Exception(
-                        "Unknown linear solver type", self.data_ts.linear_type
-                    )
-            else:  # compile-tyme C++ linear solvers
-                self.physics.engine.solve_linear_equation()
+            # Python-resident solver (PETSc / Pardiso) is dispatched via
+            # data_ts.linear_solver = PETScSolverSpec() / PardisoSolverSpec().
+            self._solve_linear_equation()
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()

@@ -3,8 +3,9 @@
 This package exposes:
 
 * the compiled ``solvers`` extension -- the solver registry, the MGR API and
-  the C++ configuration objects (re-exported here for backward compatibility,
-  so ``from darts import solvers; solvers.create_linear_solver(...)`` works);
+  the C++ configuration objects (flattened into the ``darts.solvers``
+  namespace so ``from darts import solvers; solvers.create_linear_solver(...)``
+  works);
 * the Python :mod:`~darts.solvers.specs` configuration classes
   (:class:`~darts.solvers.specs.MGRSolverSpec`, ``SuperLUSolverSpec``, ...);
 * the HYPRE :mod:`~darts.solvers.enums` integer-code enumerations.

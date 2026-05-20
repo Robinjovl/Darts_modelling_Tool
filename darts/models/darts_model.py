@@ -20,7 +20,6 @@ from darts.engines import (
     value_vector,
 )
 from darts.engines import print_build_info as engines_pbi
-from darts.input.input_data import linear_solver_types
 from darts.interpolators import op_vector
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
@@ -569,10 +568,7 @@ class DartsModel:
         self.params.tolerance_linear = self.data_ts.linear_tol
         self.params.max_i_linear = self.data_ts.linear_max_iter
         if self.data_ts.linear_type is not None:
-            if (
-                type(self.data_ts.linear_type) is not linear_solver_types
-            ):  # it's not needed to copy it to params for PETSC option
-                self.params.linear_type = self.data_ts.linear_type
+            self.params.linear_type = self.data_ts.linear_type
 
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """
@@ -1409,178 +1405,21 @@ class DartsModel:
     def _solve_linear_equation(self):
         """Solve the current Newton linear system with the configured solver.
 
-        Single dispatch point between three solver kinds:
+        Two solver kinds are dispatched here:
 
         * a Python-resident solver built from a
           :class:`~darts.solvers.specs.PythonLinearSolverSpec` (PETSc / Pardiso)
-          -- the recommended unified path;
-        * the legacy Python solvers selected through ``data_ts.linear_type``
-          (kept for backward compatibility);
-        * the C++ engine solver.
+          via ``data_ts.linear_solver``;
+        * the C++ engine solver (the default path).
 
         Centralised here so the Newton loop -- and the live-plotting loop --
         carry a single call instead of duplicating the branch.
         """
         python_solver = getattr(self, "_python_solver", None)
         if python_solver is not None:
-            # Unified Python-resident solver (PETSc / Pardiso); stateful, it
-            # performs its one-time setup on the first call.
+            # Python-resident solver (PETSc / Pardiso); stateful, it performs
+            # its one-time setup on the first call.
             python_solver.solve_system(self.physics.engine)
             return
-        if isinstance(self.data_ts.linear_type, linear_solver_types):
-            # solvers driven from Python
-            if self.data_ts.linear_type in (
-                linear_solver_types.CPU_PETSC_CPR,
-                linear_solver_types.CPU_PETSC_FS,
-            ):
-                self.petsc_solve_linear_equation()
-            elif self.data_ts.linear_type == linear_solver_types.CPU_PARDISO:
-                self.pardiso_solve_linear_equation()
-            else:
-                raise Exception("Unknown linear solver type", self.data_ts.linear_type)
-        else:
-            # C++ linear solver held by the engine
-            self.physics.engine.solve_linear_equation()
-
-    def petsc_solve_linear_equation(self):
-        print_level = self.data_ts.linear_print_level
-
-        mat, rhs, sol = self.get_linear_system()
-
-        # TODO the variable might be used somewhere, but could not set it here since it was not exposed to python
-        # self.physics.engine.linear_solver_error_last_dt = 0
-
-        import petsc4py
-
-        # Petsc Command-Line arguments, there are different ways to pass them as well
-        args = ""
-        # Monitor residual
-        if print_level >= 2:
-            args += "-ksp_monitor_short "
-        if print_level >= 5:
-            args += "-omp_view "  # print number of OpenMP threads
-        # Right preconditioner
-        args += "-ksp_pc_side right "
-        # Iteration limit and tolerance
-        args += "-ksp_max_it " + str(self.data_ts.linear_max_iter) + " "
-        args += "-ksp_rtol " + str(self.data_ts.linear_tol) + " "
-
-        if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
-            # Setting up CPR as a composite pc. 1st stage - fieldsplit, 2nd stage - ilu
-            args += "-pc_type composite -pc_composite_type multiplicative -pc_composite_pcs fieldsplit,ilu "
-            # 1st stage will do AMG on pressure block and "nothing" on transport block
-            args += "-sub_0_pc_fieldsplit_type schur -sub_0_pc_fieldsplit_schur_fact_type upper "
-            # We build a schur complement diagonal approximation to "decouple" pressure from transport
-            args += "-sub_0_pc_fieldsplit_schur_precondition selfp "
-            # transport subsolver (for some reason "do nothing" does not work, so do one jacobi iteration)
-            args += "-sub_0_fieldsplit_transport_ksp_type preonly "
-            args += "-sub_0_fieldsplit_transport_pc_type jacobi "
-            # # pressure subsolver (do AMG)
-            args += "-sub_0_fieldsplit_pressure_ksp_type preonly "
-            args += "-sub_0_fieldsplit_pressure_pc_type gamg "
-        elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
-            # Use U^-1 D^-1 as a preconditioner in block LDU factorization
-            args += "-pc_type fieldsplit -pc_fieldsplit_type schur -pc_fieldsplit_schur_fact_type upper "
-            # Use diagonal to approximate S. This should be replaced by the fixed stress approx.
-            args += "-pc_fieldsplit_schur_precondition selfp "
-            # displacement subsolver
-            args += "-fieldsplit_displacement_ksp_type preonly "
-            args += "-fieldsplit_displacement_pc_type gamg "
-            # pressure subsolver
-            args += "-fieldsplit_pressure_ksp_type preonly "
-            args += "-fieldsplit_pressure_pc_type gamg "
-        else:
-            raise AssertionError('Unknown linear solver type for PETSC')
-
-        petsc4py.init(args)
-        # Important to import PETSc after petsc4py.init
-        from petsc4py import PETSc
-
-        # Create matrix
-        petsc_mat = PETSc.Mat().createAIJ(
-            size=mat.shape, csr=(mat.indptr, mat.indices, mat.data)
-        )
-        petsc_mat.setFromOptions()
-        petsc_mat.setUp()
-
-        # Create rhs
-        petsc_rhs = PETSc.Vec().createWithArray(rhs, rhs.size)
-        petsc_rhs.setFromOptions()
-        petsc_rhs.setUp()
-
-        # Create sol
-        petsc_sol = PETSc.Vec().createWithArray(sol, sol.size)
-        petsc_sol.setFromOptions()
-        petsc_sol.setUp()
-
-        # Create petsc linear solver
-        petsc_ksp = PETSc.KSP().create()
-        petsc_ksp.setFromOptions()
-        petsc_ksp.setOperators(petsc_mat, petsc_mat)
-
-        # Inform petsc about our fields
-        if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
-            pressure_idx = np.arange(0, mat.shape[0], 2)
-            transport_idx = np.arange(1, mat.shape[0], 2)
-            petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
-            petsc_is_transport = PETSc.IS().createGeneral(transport_idx.astype("int32"))
-
-            # Getting Composite PC
-            petsc_pc = petsc_ksp.getPC()
-            petsc_pc.setUp()
-            # Getting the 1st stage (fieldsplit)
-            petsc_pc_1st_stage = petsc_pc.getCompositePC(0)
-            petsc_pc_1st_stage.setFieldSplitIS(
-                ("transport", petsc_is_transport), ("pressure", petsc_is_pressure)
-            )
-
-            # Here, AMG setup happens
-            petsc_pc_1st_stage.setOperators(petsc_mat, petsc_mat)
-            petsc_pc_1st_stage.setUp()
-            # ILU setup
-            petsc_pc_2nd_stage = petsc_pc.getCompositePC(1)
-            petsc_pc_2nd_stage.setUp()
-        elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
-            pressure_idx = np.arange(0, mat.shape[0], 4)
-            displacement_idx = np.stack(
-                [
-                    np.arange(1, mat.shape[0], 4),
-                    np.arange(2, mat.shape[0], 4),
-                    np.arange(3, mat.shape[0], 4),
-                ]
-            ).ravel(order="F")
-            petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
-            petsc_is_displacement = PETSc.IS().createGeneral(
-                displacement_idx.astype("int32")
-            )
-            # Displacement is a vector problem
-            petsc_is_displacement.setBlockSize(3)
-
-            # Setting fieldsplit fields
-            petsc_pc = petsc_ksp.getPC()
-            petsc_pc.setFromOptions()
-            petsc_pc.setFieldSplitIS(
-                ("displacement", petsc_is_displacement), ("pressure", petsc_is_pressure)
-            )
-
-        petsc_ksp.setUp()
-
-        # This prints the solver information to stdout
-        if print_level >= 4:
-            petsc_ksp.view()
-
-        if print_level >= 1:
-            print("PETSC: start solving")
-
-        petsc_ksp.solve(petsc_rhs, petsc_sol)
-
-        if print_level >= 1:
-            print('PETSC: True residual =', np.linalg.norm(mat.dot(sol) - rhs))
-
-        # TODO check when solver fails https://petsc.org/main/petsc4py/reference/petsc4py.PETSc.KSP.html#petsc4py.PETSc.KSP.solve
-
-    def pardiso_solve_linear_equation(self):
-        import pypardiso
-
-        mat, rhs, sol = self.get_linear_system()
-        sol[:] = pypardiso.spsolve(mat, rhs)
+        # C++ linear solver held by the engine
+        self.physics.engine.solve_linear_equation()
