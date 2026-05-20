@@ -9,10 +9,9 @@ fit the unified :class:`~darts.solvers.specs.LinearSolverSpec` framework.
 The key idea (see ``SOLVER_REFACTORING_PLAN.md`` section 13) is the
 *setup-once / solve-many* split: the sparsity pattern is fixed for a whole run
 (``MATRIX_TYPE_CSR_FIXED_STRUCTURE``), so the expensive structural work --
-PETSc's KSP/PC construction, Pardiso's symbolic analysis, the block->scalar
-sparsity expansion -- happens once in :meth:`PythonLinearSolver.setup`, and only
-the matrix *values* are refreshed per Newton iteration in
-:meth:`PythonLinearSolver.solve`.
+Pardiso's symbolic analysis and the block->scalar sparsity expansion -- happens
+once in :meth:`PythonLinearSolver.setup`, and only the matrix *values* are
+refreshed per Newton iteration in :meth:`PythonLinearSolver.solve`.
 
 The :mod:`petsc4py` / :mod:`pypardiso` imports are deferred into ``setup`` /
 ``solve`` so this module imports cleanly when those optional packages are
@@ -44,9 +43,53 @@ def _extract_block_csr(engine):
         "(PETSc / Pardiso) needs the engine Jacobian; this happens e.g. when a "
         "direct C++ solver is selected instead."
     )
-    # vals holds n_blocks_nnz blocks of block_size x block_size scalars.
     block_size = int(round((vals.size / n_blocks_nnz) ** 0.5))
     return rows, cols, vals, rhs, sol, block_size
+
+
+class _BlockToScalarExpander:
+    """Block-CSR -> scalar CSR expansion with a precomputed values gather.
+
+    The structure (scalar ``row_ptr`` / ``col_ind``) and the block->scalar value
+    permutation are computed once from the fixed block sparsity pattern. Each
+    :meth:`refresh` call only gathers the current block values into the scalar
+    layout, so the per-Newton-iteration cost is one ``np.take`` -- no
+    allocation, no symbolic work.
+
+    This replaces the legacy ``scipy.sparse.bsr_matrix(...).tocsr()`` round-trip
+    inside the Newton loop.
+    """
+
+    def __init__(self, rows, cols, block_size):
+        n_block_rows = rows.size - 1
+        b = block_size
+        b2 = b * b
+        nnz_blocks = cols.size
+
+        self.scalar_rows = np.empty(n_block_rows * b + 1, dtype=np.int32)
+        self.scalar_cols = np.empty(nnz_blocks * b2, dtype=np.int32)
+        self._gather_idx = np.empty(nnz_blocks * b2, dtype=np.int64)
+        self.scalar_vals = np.empty(nnz_blocks * b2, dtype=np.float64)
+        self.n = n_block_rows * b
+        self.block_size = b
+
+        self.scalar_rows[0] = 0
+        pos = 0
+        for ib in range(n_block_rows):
+            blk_start, blk_end = rows[ib], rows[ib + 1]
+            for r in range(b):
+                for bi in range(blk_start, blk_end):
+                    jb = cols[bi]
+                    for c in range(b):
+                        self.scalar_cols[pos] = jb * b + c
+                        self._gather_idx[pos] = bi * b2 + r * b + c
+                        pos += 1
+                self.scalar_rows[ib * b + r + 1] = pos
+
+    def refresh(self, block_vals):
+        """Gather the current block values into ``scalar_vals`` (in place)."""
+        np.take(block_vals.ravel(), self._gather_idx, out=self.scalar_vals)
+        return self.scalar_vals
 
 
 class PythonLinearSolver:
@@ -80,12 +123,7 @@ class PythonLinearSolver:
 
     # -- entry point -------------------------------------------------------
     def solve_system(self, engine):
-        """Solve the engine's current Newton linear system.
-
-        Extracts the block-CSR Jacobian, performs the one-time :meth:`setup` on
-        the first call, then :meth:`solve`. ``sol`` (engine ``dX``) is written
-        in place.
-        """
+        """Solve the engine's current Newton linear system."""
         rows, cols, vals, rhs, sol, block_size = _extract_block_csr(engine)
         if not self._is_set_up:
             self.setup(rows, cols, block_size)
@@ -96,11 +134,13 @@ class PythonLinearSolver:
 class PETScSolver(PythonLinearSolver):
     """PETSc (petsc4py) Krylov solver wrapped for the unified framework.
 
-    The engine Jacobian is block-CSR, which is exactly PETSc's ``BAIJ`` layout,
-    so the system matrix is built as a ``BAIJ`` matrix with ``bsize`` equal to
-    the cell block size -- no block->scalar (``.tocsr()``) expansion. The KSP
-    and its preconditioner are constructed once in :meth:`setup`; each
-    :meth:`solve` re-uploads the block values and solves.
+    The CPR / fixed-stress preconditioners split *within* each cell-block
+    (pressure vs transport / displacement), which PETSc's PCFIELDSPLIT requires
+    a scalar (AIJ) matrix for -- BAIJ is rejected for sub-block splits. The
+    block-CSR Jacobian is therefore expanded to scalar CSR, but the structural
+    expansion happens once in :meth:`setup` and per-Newton-iteration only a
+    values gather (``np.take``) is needed -- the legacy
+    ``scipy.sparse.bsr_matrix(...).tocsr()`` round-trip is eliminated.
 
     :param variant: ``"cpr"`` (CPR for flow) or ``"fs"`` (fixed-stress
         fieldsplit for poromechanics).
@@ -112,12 +152,16 @@ class PETScSolver(PythonLinearSolver):
             raise ValueError(f"PETScSolver: unknown variant {variant!r}")
         self.variant = variant
         self._PETSc = None
-        self._ksp = None
-        self._block_size = None
-        self._n_scalar = None
+        self._expander = None
 
     def _petsc_args(self) -> str:
-        """Assemble the PETSc command-line option string for this variant."""
+        """Assemble the PETSc command-line option string for this variant.
+
+        PETSc's composite / fieldsplit preconditioner configuration is driven
+        by the option database -- petsc4py exposes no programmatic
+        ``addCompositePC``. The fieldsplit *index sets* are still attached
+        programmatically (they depend on runtime indices).
+        """
         args = ""
         if self.print_level >= 2:
             args += "-ksp_monitor_short "
@@ -127,7 +171,8 @@ class PETScSolver(PythonLinearSolver):
         args += f"-ksp_max_it {self.max_iterations} "
         args += f"-ksp_rtol {self.tolerance} "
         if self.variant == "cpr":
-            # CPR: composite PC -- fieldsplit (AMG on pressure) then ILU.
+            # CPR: composite PC -- fieldsplit (AMG on pressure, jacobi on
+            # transport) then ILU on the full system.
             args += (
                 "-pc_type composite -pc_composite_type multiplicative "
                 "-pc_composite_pcs fieldsplit,ilu "
@@ -153,33 +198,14 @@ class PETScSolver(PythonLinearSolver):
         return args
 
     def setup(self, rows, cols, block_size):
-        """Initialise petsc4py and record the fixed pattern dimensions.
-
-        The KSP / PC are built lazily on the first :meth:`solve`, where the
-        BAIJ matrix (needed to attach the fieldsplit index sets) is available.
-        """
+        """Initialise petsc4py once and precompute the block->scalar gather."""
         import petsc4py
 
         petsc4py.init(self._petsc_args())
         from petsc4py import PETSc
 
         self._PETSc = PETSc
-        self._block_size = block_size
-        self._n_scalar = (rows.size - 1) * block_size
-
-    def _build_baij(self, rows, cols, vals, block_size):
-        """Wrap the block-CSR Jacobian as a PETSc BAIJ matrix (no expansion)."""
-        PETSc = self._PETSc
-        n = self._n_scalar
-        # BAIJ block values, block-row-major -- the engine's native layout.
-        block_vals = vals.reshape(cols.size, block_size, block_size)
-        mat = PETSc.Mat().createBAIJ(
-            size=(n, n),
-            bsize=block_size,
-            csr=(rows.astype("int32"), cols.astype("int32"), block_vals),
-        )
-        mat.assemble()
-        return mat
+        self._expander = _BlockToScalarExpander(rows, cols, block_size)
 
     def _field_index_sets(self, block_size):
         """Build the fieldsplit index sets (pressure / transport|displacement).
@@ -188,7 +214,7 @@ class PETScSolver(PythonLinearSolver):
         are transport (CPR) or displacement (FS).
         """
         PETSc = self._PETSc
-        n = self._n_scalar
+        n = self._expander.n
         pressure_idx = np.arange(0, n, block_size, dtype="int32")
         other_idx = np.concatenate(
             [np.arange(v, n, block_size, dtype="int32") for v in range(1, block_size)]
@@ -200,103 +226,85 @@ class PETScSolver(PythonLinearSolver):
             is_other.setBlockSize(block_size - 1)
         return is_pressure, is_other
 
+    def _build_aij(self, block_size):
+        """Wrap the current scalar-expanded values as a PETSc AIJ matrix."""
+        PETSc = self._PETSc
+        exp = self._expander
+        n = exp.n
+        return PETSc.Mat().createAIJ(
+            size=(n, n),
+            csr=(exp.scalar_rows, exp.scalar_cols, exp.scalar_vals),
+        )
+
     def solve(self, rows, cols, vals, block_size, rhs, sol):
         PETSc = self._PETSc
+        self._expander.refresh(vals)
 
-        mat = self._build_baij(rows, cols, vals, block_size)
+        mat = self._build_aij(block_size)
+        mat.assemble()
         petsc_rhs = PETSc.Vec().createWithArray(rhs, rhs.size)
         petsc_sol = PETSc.Vec().createWithArray(sol, sol.size)
 
-        if self._ksp is None:
-            # One-time KSP / PC construction (the structural, expensive part).
-            ksp = PETSc.KSP().create()
-            ksp.setFromOptions()
-            ksp.setOperators(mat, mat)
-            is_pressure, is_other = self._field_index_sets(block_size)
-            pc = ksp.getPC()
-            pc.setUp()
-            if self.variant == "cpr":
-                stage = pc.getCompositePC(0)
-                stage.setFieldSplitIS(
-                    ("transport", is_other), ("pressure", is_pressure)
-                )
-                stage.setOperators(mat, mat)
-                stage.setUp()
-                pc.getCompositePC(1).setUp()
-            else:  # fs
-                pc.setFromOptions()
-                pc.setFieldSplitIS(
-                    ("displacement", is_other), ("pressure", is_pressure)
-                )
-            self._ksp = ksp
-        else:
-            # Subsequent iterations: same pattern, refreshed block values.
-            self._ksp.setOperators(mat, mat)
+        # Build the KSP. Composite / fieldsplit *types* come from the option
+        # database (see _petsc_args); the fieldsplit *index sets* are attached
+        # programmatically here because they depend on the runtime layout.
+        ksp = PETSc.KSP().create()
+        ksp.setFromOptions()
+        ksp.setOperators(mat, mat)
 
-        self._ksp.setUp()
+        is_pressure, is_other = self._field_index_sets(block_size)
+        pc = ksp.getPC()
+
+        if self.variant == "cpr":
+            # Composite PC: setUp() first to materialise the inner PCs, then
+            # attach the fieldsplit IS to stage 0 (the fieldsplit Schur PC).
+            pc.setUp()
+            stage = pc.getCompositePC(0)
+            stage.setFieldSplitIS(("transport", is_other), ("pressure", is_pressure))
+            stage.setOperators(mat, mat)
+            stage.setUp()
+            pc.getCompositePC(1).setUp()
+        else:  # fs
+            # The PC *is* the fieldsplit -- attach the IS before setUp(),
+            # otherwise PETSc errors with "must have at least two fields".
+            pc.setFieldSplitIS(
+                ("displacement", is_other), ("pressure", is_pressure)
+            )
+
+        ksp.setUp()
         if self.print_level >= 4:
-            self._ksp.view()
-        self._ksp.solve(petsc_rhs, petsc_sol)
+            ksp.view()
+        ksp.solve(petsc_rhs, petsc_sol)
         if self.print_level >= 1:
-            true_res = np.linalg.norm(mat * petsc_sol - petsc_rhs)
-            print(f"PETSc: solved, true residual = {true_res:.3e}")
+            print(
+                f"PETSc {self.variant}: solved, "
+                f"its={ksp.getIterationNumber()}, "
+                f"rnorm={ksp.getResidualNorm():.3e}",
+                flush=True,
+            )
         mat.destroy()
         petsc_rhs.destroy()
         petsc_sol.destroy()
+        ksp.destroy()
 
 
 class PardisoSolver(PythonLinearSolver):
     """Pardiso (pypardiso / Intel MKL) sparse direct solver.
 
-    Pardiso is a scalar solver, so the block-CSR Jacobian must be expanded to
-    scalar CSR. The expansion *structure* (scalar ``row_ptr`` / ``col_ind``) and
-    a block->scalar value **gather index** are computed once in :meth:`setup`;
-    each :meth:`solve` only gathers the current block values into the scalar
-    value array, so no structural work or allocation happens in the hot path.
-    The :class:`pypardiso.PyPardisoSolver` is persistent and reuses its symbolic
-    analysis across iterations.
+    The block-CSR Jacobian is expanded to scalar CSR via the shared
+    :class:`_BlockToScalarExpander` (structure built once, per-iteration
+    values-only gather). The :class:`pypardiso.PyPardisoSolver` is persistent
+    and reuses its symbolic analysis across iterations.
     """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._pardiso = None
-        self._scalar_rows = None
-        self._scalar_cols = None
-        self._gather_idx = None
-        self._scalar_vals = None
-        self._n_scalar = None
+        self._expander = None
 
     def setup(self, rows, cols, block_size):
-        """Expand the block sparsity to scalar CSR and precompute the gather."""
-        n_block_rows = rows.size - 1
-        b = block_size
-        b2 = b * b
-        n_scalar = n_block_rows * b
-        nnz_blocks = cols.size
-
-        scalar_rows = np.empty(n_scalar + 1, dtype=np.int32)
-        scalar_cols = np.empty(nnz_blocks * b2, dtype=np.int32)
-        gather_idx = np.empty(nnz_blocks * b2, dtype=np.int64)
-
-        scalar_rows[0] = 0
-        pos = 0
-        for ib in range(n_block_rows):
-            blk_start, blk_end = rows[ib], rows[ib + 1]
-            for r in range(b):
-                for bi in range(blk_start, blk_end):
-                    jb = cols[bi]
-                    for c in range(b):
-                        scalar_cols[pos] = jb * b + c
-                        # block value (bi, r, c) in the flat engine layout
-                        gather_idx[pos] = bi * b2 + r * b + c
-                        pos += 1
-                scalar_rows[ib * b + r + 1] = pos
-
-        self._scalar_rows = scalar_rows
-        self._scalar_cols = scalar_cols
-        self._gather_idx = gather_idx
-        self._scalar_vals = np.empty(nnz_blocks * b2, dtype=np.float64)
-        self._n_scalar = n_scalar
+        """Expand the block sparsity to scalar CSR and create the Pardiso solver."""
+        self._expander = _BlockToScalarExpander(rows, cols, block_size)
 
         import pypardiso
 
@@ -305,11 +313,11 @@ class PardisoSolver(PythonLinearSolver):
     def solve(self, rows, cols, vals, block_size, rhs, sol):
         from scipy.sparse import csr_matrix
 
-        # Values-only refresh: gather block values into the scalar layout.
-        np.take(vals.ravel(), self._gather_idx, out=self._scalar_vals)
+        exp = self._expander
+        exp.refresh(vals)
         mat = csr_matrix(
-            (self._scalar_vals, self._scalar_cols, self._scalar_rows),
-            shape=(self._n_scalar, self._n_scalar),
+            (exp.scalar_vals, exp.scalar_cols, exp.scalar_rows),
+            shape=(exp.n, exp.n),
             copy=False,
         )
         # PyPardisoSolver reuses its symbolic analysis when the pattern is

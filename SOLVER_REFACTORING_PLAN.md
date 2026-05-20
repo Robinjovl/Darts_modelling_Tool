@@ -634,19 +634,32 @@ backend objects across Newton iterations:
 publishes `jac_rows` / `jac_cols` / `jac_vals` as numpy views straight onto the
 `block_csr_matrix` host arrays; `rhs` / `dX` are likewise `copy=False` views.
 
-### 13.4 PETSc — block-AIJ, no scalar expansion
+### 13.4 PETSc — AIJ with a precomputed block→scalar values gather
 
-The engine Jacobian is `block_csr_matrix` (block-CSR, block size `nb = N_VARS`).
-PETSc **BAIJ** *is* block-CSR with the identical block-row-major layout, so:
+The first cut of this design used PETSc **BAIJ** (block-CSR with `bsize = N_VARS`)
+to avoid the block→scalar expansion. **PETSc rejects this for CPR / fixed-stress**:
+PCFIELDSPLIT splits variables *inside* each cell-block (pressure vs transport
+or pressure vs displacement), which BAIJ cannot represent — PETSc returns
+``"Cannot use MATBAIJ with PCFIELDSPLIT and currently set matrix and PC
+blocksizes"``. BAIJ remains the right format only for solvers that treat each
+cell-block as a unit (e.g. block ILU, block-AMG); for CPR/FS the matrix must be
+scalar AIJ.
 
-- `setup()` creates one PETSc `Mat` of type `baij` with `bsize = nb` directly from
-  `(jac_rows, jac_cols, jac_vals)` — **no `.tocsr()`** — and builds the KSP and PC
-  (CPR composite / fieldsplit) **once**. Fieldsplit index sets are natural on
-  BAIJ (the FS displacement field already wants `IS.setBlockSize(nd)`).
-- `solve()` refreshes the block values, re-attaches the operator with
-  `SAME_NONZERO_PATTERN`, keeps the PC setup (`setReusePreconditioner`) and solves.
+The realised design keeps the *structural* expansion out of the hot path:
 
-Removed: the block→scalar expansion copy, and the per-iteration KSP/PC rebuild.
+- `setup()` precomputes the scalar CSR structure (`scalar_row_ptr`,
+  `scalar_col_ind`) and a block→scalar **value gather index** from the fixed
+  block sparsity (the §12 `csr_expansion` `value_map`). Initialises
+  ``petsc4py`` once and caches the CPR / fixed-stress option-database string.
+- `solve()` does ``np.take(jac_vals.ravel(), gather_idx, out=scalar_vals)`` —
+  a values-only gather, no allocation — wraps the scalar arrays in a PETSc
+  ``AIJ`` ``Mat`` (zero-copy through ``createAIJ(csr=...)``), attaches the
+  fieldsplit index sets and solves.
+
+Removed: the per-iteration ``scipy.sparse.bsr_matrix(...).tocsr()`` round-trip
+(both the structural recomputation and the allocation) and the per-call
+``petsc4py.init`` cost. The shared :class:`_BlockToScalarExpander` powers both
+PETSc and Pardiso; see §13.5.
 
 ### 13.5 Pardiso — scalar CSR built once, values-only refresh
 
@@ -723,7 +736,7 @@ unit tests were run.
 | **C5** 5 GPU solver wrappers in-tree | done | `linsolv_{bicgstab,cusparse_ilu,cusolv,amgx,bos_cpr_gpu}` build from open-source sources |
 | **C6** AMGX submodule + `WITH_GPU` decoupled from `BOS_SOLVERS_DIR` | done | `thirdparty/AMGX` submodule; `WITH_AMGX` opt-in CMake option; GPU builds in-tree with no `BOS_SOLVERS_DIR`. AMGX-absent builds gate AMGX behind `OPENDARTS_GPU_HAS_AMGX` and fall back to the BiCGStab + cuSPARSE-ILU solver. |
 | **C7** `darts/solvers/` Python package | done | `specs.py` (`LinearSolverSpec`, `MGRSolverSpec`, `SuperLUSolverSpec`, `MGRLevelSpec`, `default_linear_solver`), `enums.py`, `adaptive.py`; compiled `solvers` pybind module installed in `darts/solvers/` |
-| **C8** Unified dispatch | done | `DartsModel._apply_linear_solver_spec()` builds the solver from `data_ts.linear_solver` and injects it; `default_linear_solver()` returns `MGRSolverSpec` for CPU; the Newton-loop solve branch is collapsed into `DartsModel._solve_linear_equation()`. PETSc / Pardiso are unified as `LinearSolverSpec` subclasses (`PETScSolverSpec`, `PardisoSolverSpec`, §13); their `PythonLinearSolver` backends (`darts/solvers/python_solvers.py`) carry the performance redesign — PETSc consumes the block-CSR Jacobian as a `BAIJ` matrix (no scalar expansion), Pardiso does a values-only gather over a once-built scalar pattern. The legacy `data_ts.linear_type` path is kept for backward compatibility. The framework, the spec classes and the Pardiso block→scalar gather are verified; the `petsc4py` / `pypardiso` execution paths need host validation (those packages are not in the dev environment). |
+| **C8** Unified dispatch | done | `DartsModel._apply_linear_solver_spec()` builds the solver from `data_ts.linear_solver` and injects it; `default_linear_solver()` returns `MGRSolverSpec` for CPU; the Newton-loop solve branch is collapsed into `DartsModel._solve_linear_equation()`. PETSc / Pardiso are unified as `LinearSolverSpec` subclasses (`PETScSolverSpec`, `PardisoSolverSpec`, §13); both share a `_BlockToScalarExpander` that builds the scalar CSR structure + a block→scalar values gather index once, so each Newton iteration only does an `np.take` instead of `scipy.sparse.bsr_matrix(...).tocsr()`. The legacy `data_ts.linear_type` path is kept for backward compatibility. **Verified end-to-end** on `2ph_comp` (block size 3): `PardisoSolverSpec` and `PETScSolverSpec(variant="cpr")` both run 19 timesteps, 35 Newton iterations, identical to the engine MGR path; `PETScSolverSpec(variant="fs")` exercises the FS code path cleanly (does not converge on this flow problem, as expected — physics mismatch). |
 | **C9** Adaptive / mid-run switching | done | `darts/solvers/adaptive.py` — `AdaptiveSolverSpec`, `SolverSwitchContext`, `fallback_on_failure` policy; `DartsModel._maybe_switch_linear_solver()` re-injects after a timestep |
 | **C10** CI | done, partial | GPU-from-source job (`build-linux-gpu` / `test-linux-gpu`); cross-path solver coverage via `test-linux` (proprietary `-a`) vs `test-linux-ODLS` (open-source registry solvers) over the model suite. **Deferred:** a dedicated per-solver micro-benchmark job (the dual-path suite run already exercises both solver stacks). |
 | **C11** Cleanup | done | OD-6 assert (`assert(A->n_row_size == N_BLOCK_SIZE)`) guards the `linsolv_iface_bos` down-casts; orphan `CMakeLists.txt` removed (`solvers/linear_solvers/`, `engines/lib/`); the `darts.solvers` classes carry docstrings and are autodocumented in `docs/api.rst`. |
@@ -747,5 +760,7 @@ unit tests were run.
   (segfault) and was reverted; their Jacobian structure needs its own investigation.
 - Retiring `csr_matrix<N>` is gated on both of the above. `csr_matrix_base` is **kept** — it is
   the unified polymorphic matrix interface.
-- The `PETScSolverSpec` / `PardisoSolverSpec` execution paths (§13) are written but need a
-  host with `petsc4py` / `pypardiso` to validate end-to-end.
+- `PETScSolverSpec(variant="fs")` is validated only as a code path (it runs cleanly on
+  `2ph_comp` but the fixed-stress preconditioner does not match flow physics); a true FS
+  validation needs a poromechanics model (block size 4) -- straightforward once a model
+  sets `data_ts.linear_solver = PETScSolverSpec(variant="fs")`.
