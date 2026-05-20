@@ -897,16 +897,12 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;
 
-	if (params->log_transform == 0)
-	{
-		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-	}
-	else if (params->log_transform == 1)
-	{
-		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-	}
+	// Composition is clipped to the physical simplex [0, 1] ± sim_eps. The adaptive
+	// interpolator cache grows on demand outside the prescribed OBL window, so the
+	// solver may freely explore state space; (min_axis_z, max_axis_z) now reflect
+	// only the physical bound, not the OBL grid.
+	min_axis_z = 0.0;
+	max_axis_z = 1.0;
 	min_sim_z = min_axis_z + params->sim_eps;
 	max_sim_z = max_axis_z - params->sim_eps;
 
@@ -985,18 +981,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	op_axis_min.resize(acc_flux_op_set_list.size());
 	op_axis_max.resize(acc_flux_op_set_list.size());
 
-	// initialize arrays for every operator set
-
+	// op_axis_min/op_axis_max are intentionally left empty (default-constructed inner
+	// vectors with .size() == 0). The size() == 0 check in apply_newton_update gates
+	// apply_obl_axis_local_correction, so leaving these empty disables the per-axis
+	// clamp — Newton may freely explore state space and the adaptive cache grows on
+	// demand. The per-region block_idxs map below is still populated normally.
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
 		block_idxs[r].clear();
-		op_axis_min[r].resize(n_vars);
-		op_axis_max[r].resize(n_vars);
-		for (int j = 0; j < n_vars; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
 	}
 
 	// create a block list for every operator set

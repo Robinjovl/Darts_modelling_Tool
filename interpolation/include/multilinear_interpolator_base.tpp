@@ -21,12 +21,26 @@ multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_inte
       axes_step_internal(axes_step),
       axes_step_inv_internal(axes_step_inv)
 {
+  // The legacy mixed-radix integer encoding used by axis_point_mult / axis_hypercube_mult
+  // overflows index_t when n_points_total exceeds its range. For the adaptive path this
+  // only affects the legacy point_data integer-keyed pickle export (cells indexed past
+  // the overflow are still valid in-memory via cell_key_t<N_DIMS>, just not exportable
+  // through the legacy dict). For the static path it is a hard limit on the dense
+  // vector storage. We emit a warning and let the caller decide; the static class
+  // re-checks and throws if it actually needs the dense storage.
   double int_type_max = static_cast<double>(std::numeric_limits<index_t>::max());
   if (n_points_total_fp > int_type_max)
   {
-    std::string error = "Error: The total requested amount of points (" + std::to_string(n_points_total_fp) +
-                        ") exceeds the limit in index type (" + std::to_string(int_type_max) + ")\n";
-    throw std::range_error(error);
+    static thread_local bool warned_once = false;
+    if (!warned_once)
+    {
+      fprintf(stderr,
+              "OBL note: total advisory point count (%g) exceeds the legacy index_t range (%g).\n"
+              "  Adaptive interpolators are unaffected (storage is keyed on multi-index).\n"
+              "  Static interpolators and legacy integer-keyed pickle exports will be incorrect for cells past this range.\n",
+              n_points_total_fp, int_type_max);
+      warned_once = true;
+    }
   }
   axis_point_mult.resize(N_DIMS);
   axis_hypercube_mult.resize(N_DIMS);

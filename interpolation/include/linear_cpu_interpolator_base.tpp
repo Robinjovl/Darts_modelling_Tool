@@ -31,12 +31,23 @@ linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_ba
         for (int dim_i = vertex_i; dim_i < N_DIMS; dim_i++)
             standard_simplex[vertex_i][dim_i] = 1;
 
+    // Legacy mixed-radix integer encoding overflow check. For the adaptive variant this
+    // only affects the legacy point_data integer-keyed pickle export (in-memory storage
+    // uses cell_key_t<N_DIMS>). For static interpolators it limits dense storage; the
+    // static class re-checks and throws in init() if needed.
     double int_type_max = static_cast<double>(std::numeric_limits<index_t>::max());
     if (n_points_total_fp > int_type_max)
     {
-        std::string error = "Error: The total requested amount of points (" + std::to_string(n_points_total_fp) +
-                            ") exceeds the limit in index type (" + std::to_string(int_type_max) + ")\n";
-        throw std::range_error(error);
+        static thread_local bool warned_once = false;
+        if (!warned_once)
+        {
+            fprintf(stderr,
+                    "OBL note: total advisory point count (%g) exceeds the legacy index_t range (%g).\n"
+                    "  Adaptive interpolators are unaffected (storage is keyed on multi-index).\n"
+                    "  Static interpolators and legacy integer-keyed pickle exports will be incorrect for cells past this range.\n",
+                    n_points_total_fp, int_type_max);
+            warned_once = true;
+        }
     }
 
     transform_last_axis = 1;
@@ -182,8 +193,20 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::find_hypercube(const 
             point = axes_max[i] - (point - axes_min[i]);
         }
         scaled_point[i] = (point - axes_min[i]) * axes_step_inv[i];
-        hypercube[i] = (int)scaled_point[i];
-        scaled_point[i] -= hypercube[i];
+        if (use_unbounded_axis_index)
+        {
+            // Signed floor: stores int32 bit-pattern into index_t. Negative values become
+            // large unsigned values, which is intended — the adaptive cell_key map decodes
+            // them back as int32 in get_supporting_point.
+            const int32_t floor_idx = static_cast<int32_t>(std::floor(scaled_point[i]));
+            hypercube[i] = static_cast<index_t>(static_cast<uint32_t>(floor_idx));
+            scaled_point[i] -= static_cast<double>(floor_idx);
+        }
+        else
+        {
+            hypercube[i] = (int)scaled_point[i];
+            scaled_point[i] -= hypercube[i];
+        }
     }
 }
 
@@ -413,7 +436,19 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::get_point_from_vertex
                                                                                  std::vector<double> &point)
 {
     for (int i = 0; i < N_DIMS; i++)
-        point[i] = static_cast<double>(vertex[i]) * axes_step[i] + axes_min[i];
+    {
+        double axis_idx_d;
+        if (use_unbounded_axis_index)
+        {
+            // Decode int32 bit-pattern stored in index_t (see find_hypercube).
+            axis_idx_d = static_cast<double>(static_cast<int32_t>(static_cast<uint32_t>(vertex[i])));
+        }
+        else
+        {
+            axis_idx_d = static_cast<double>(vertex[i]);
+        }
+        point[i] = axis_idx_d * axes_step[i] + axes_min[i];
+    }
     if (transform_last_axis)
         point[N_DIMS - 1] = axes_max[N_DIMS - 1] - (point[N_DIMS - 1] - axes_min[N_DIMS - 1]);
 }

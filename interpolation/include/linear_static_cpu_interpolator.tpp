@@ -1,3 +1,7 @@
+#include <limits>
+#include <stdexcept>
+#include <string>
+
 #include "linear_static_cpu_interpolator.hpp"
 
 template <typename index_t, int N_DIMS, int N_OPS>
@@ -17,6 +21,19 @@ int linear_static_cpu_interpolator<index_t, N_DIMS, N_OPS>::init()
 {
     // initialize base class first
     interpolator_base::init();
+
+    // Static interpolator requires a bounded grid (dense vector storage).
+    {
+        double int_type_max = static_cast<double>(std::numeric_limits<index_t>::max());
+        if (this->n_points_total_fp > int_type_max)
+        {
+            throw std::range_error(
+                "static linear interpolator requires a bounded grid; n_points_total (" +
+                std::to_string(this->n_points_total_fp) +
+                ") exceeds index_t range (" + std::to_string(int_type_max) +
+                "). Use the adaptive variant for unbounded grids.");
+        }
+    }
 
     // now evaluate points unless they were already assigned via Python
     if (point_data.size() == 0)

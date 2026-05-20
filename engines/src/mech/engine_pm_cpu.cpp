@@ -296,14 +296,8 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   op_axis_max.resize(acc_flux_op_set_list.size());
   for (int r = 0; r < acc_flux_op_set_list.size(); r++)
   {
+	// op_axis_min/op_axis_max left empty — disables apply_obl_axis_local_correction
 	block_idxs[r].clear();
-	op_axis_min[r].resize(nc);
-	op_axis_max[r].resize(nc);
-	for (int j = 0; j < nc; j++)
-	{
-	  op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-	  op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-	}
   }
 
   // create a block list for every operator set

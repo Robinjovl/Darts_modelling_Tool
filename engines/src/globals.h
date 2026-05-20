@@ -44,10 +44,6 @@ static std::ofstream log_stream;
 extern int device_num;
 #endif
 
-// __uint128_t emulation (MSVC), numeric_limits, hash, and to_string
-// are now provided solely by interpolation_config.h (included
-// transitively via evaluator_iface.h → interpolation_config.h).
-
 /// Main simulation parameters including tolerances
 class sim_params
 {

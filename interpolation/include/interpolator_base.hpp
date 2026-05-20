@@ -153,9 +153,9 @@ protected:
     std::vector<double> axes_step_inv; ///< inverse of step (to avoid division)
 
     uint64_t n_interpolations; ///< Number of interpolations that took place
-    __uint128_t n_points_total;   ///< Total number of parametrization points
-    double n_points_total_fp;  ///< Total number of parametrization points in floating point format, to detect index overflow in derived classes
-    __uint128_t n_points_used;    ///< Number of parametrization points which were used (equal to n_points_total for static interpolators)
+    uint64_t n_points_total;   ///< Total number of parametrization points (advisory; may saturate for huge grids — n_points_total_fp is authoritative)
+    double n_points_total_fp;  ///< Total number of parametrization points in floating point format, used for diagnostics and overflow detection
+    uint64_t n_points_used;    ///< Number of parametrization points which were used (equal to n_points_total for static interpolators)
 
     std::vector<double> new_point_coords;    ///< intermediate storage for supporting point generation
     std::vector<double> new_operator_values; ///< intermediate storage for supporting point generation

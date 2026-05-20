@@ -1,3 +1,4 @@
+#include <cmath>
 #include "linear_adaptive_cpu_interpolator.hpp"
 
 template <typename index_t, int N_DIMS, int N_OPS>
@@ -9,51 +10,107 @@ linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::linear_adaptive_cpu_in
     bool _use_barycentric_interpolation)
     : linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>(supporting_point_evaluator_, axes_points_, axes_min_, axes_max_, _use_barycentric_interpolation)
 {
+    // Enable signed-floor axis indexing in find_hypercube / get_point_from_vertex so the
+    // adaptive cache can grow outside the prescribed (axes_min, axes_max) window.
+    this->use_unbounded_axis_index = true;
+}
+
+// ─── multi-index key utilities ──────────────────────────────────────────────────
+
+template <typename index_t, int N_DIMS, int N_OPS>
+typename linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::key_t
+linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::key_from_vertex(const std::array<index_t, N_DIMS> &vertex) const
+{
+    key_t k;
+    for (int i = 0; i < N_DIMS; ++i)
+    {
+        // vertex[i] holds an int32 bit-pattern in the low 32 bits — decode through uint32.
+        k.idx[i] = static_cast<int32_t>(static_cast<uint32_t>(vertex[i]));
+    }
+    return k;
 }
 
 template <typename index_t, int N_DIMS, int N_OPS>
-void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::get_supporting_point(const std::array<index_t, N_DIMS> &vertex, std::array<double, N_OPS> &values)
+index_t linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::to_int_key(const key_t &k) const
 {
-    index_t index = this->get_index_from_vertex(vertex);
-    auto search = point_data.find(index);
-    if (search == point_data.end()) ///< std::unordered_map<...>::contains is supported since C++20
+    index_t int_key = 0;
+    for (int i = 0; i < N_DIMS; ++i)
     {
-        if (this->timer) this->timer->node["point generation"].start();
-        this->get_point_from_vertex(vertex, this->new_point_coords);
-        this->supporting_point_evaluator->evaluate(this->new_point_coords, this->new_operator_values);
-        for (int j = 0; j < N_OPS; j++)
-        {
-            point_data[index][j] = this->new_operator_values[j];
-            values[j] = this->new_operator_values[j];
-            if (isnan(this->new_operator_values[j]))
-            {
-                printf("OBL generation warning: nan operator detected! Operator %d for point (", j);
-                for (int a = 0; a < N_DIMS; a++)
-                {
-                    printf("%lf, ", this->new_point_coords[a]);
-                }
-                printf(") is %lf\n", this->new_operator_values[j]);
-            }
-        }
-        if (this->timer) this->timer->node["point generation"].stop();
-        this->n_points_used++;
+        int_key += static_cast<index_t>(k.idx[i]) * this->axes_mult[i];
     }
-    else
-    {
-        for (int j = 0; j < N_OPS; j++)
-        {
-            values[j] = search->second[j];
-        }
-    }
+    return int_key;
 }
+
+template <typename index_t, int N_DIMS, int N_OPS>
+typename linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::key_t
+linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::from_int_key(index_t int_key) const
+{
+    key_t k;
+    index_t remainder = int_key;
+    for (int i = 0; i < N_DIMS; ++i)
+    {
+        k.idx[i] = static_cast<int32_t>(remainder / this->axes_mult[i]);
+        remainder = remainder % this->axes_mult[i];
+    }
+    return k;
+}
+
+template <typename index_t, int N_DIMS, int N_OPS>
+bool linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::is_in_bounds(const key_t &k) const
+{
+    for (int i = 0; i < N_DIMS; ++i)
+    {
+        if (k.idx[i] < 0 || k.idx[i] >= static_cast<int32_t>(this->axes_points[i]))
+            return false;
+    }
+    return true;
+}
+
+// ─── adaptive supporting-point lookup ──────────────────────────────────────────
+
+template <typename index_t, int N_DIMS, int N_OPS>
+void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::get_supporting_point(
+    const std::array<index_t, N_DIMS> &vertex, std::array<double, N_OPS> &values)
+{
+    const key_t k = this->key_from_vertex(vertex);
+    auto search = point_data.find(k);
+    if (search != point_data.end())
+    {
+        for (int j = 0; j < N_OPS; j++)
+            values[j] = search->second[j];
+        return;
+    }
+
+    if (this->timer) this->timer->node["point generation"].start();
+    this->get_point_from_vertex(vertex, this->new_point_coords);
+    this->supporting_point_evaluator->evaluate(this->new_point_coords, this->new_operator_values);
+    auto &slot = point_data[k];
+    for (int j = 0; j < N_OPS; j++)
+    {
+        slot[j] = this->new_operator_values[j];
+        values[j] = this->new_operator_values[j];
+        if (std::isnan(this->new_operator_values[j]))
+        {
+            printf("OBL generation warning: nan operator detected! Operator %d for point (", j);
+            for (int a = 0; a < N_DIMS; a++)
+            {
+                printf("%lf, ", this->new_point_coords[a]);
+            }
+            printf(") is %lf\n", this->new_operator_values[j]);
+        }
+    }
+    if (this->timer) this->timer->node["point generation"].stop();
+    this->n_points_used++;
+}
+
+// ─── batch materialization ─────────────────────────────────────────────────────
 
 template <typename index_t, int N_DIMS, int N_OPS>
 void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::materialize_missing_points(
     const std::vector<double> &points, const std::vector<int> &points_idxs)
 {
-    // Phase 1: Scan all cells, find their simplex vertices, collect unique missing point indices.
-    std::unordered_set<index_t> missing_set;
-    std::vector<index_t> missing_indices;
+    std::unordered_set<key_t, key_hash_t> missing_set;
+    std::vector<key_t> missing_keys;
     std::vector<double> batch_coords;
 
     for (std::size_t point_i = 0; point_i < points_idxs.size(); point_i++)
@@ -93,12 +150,12 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::materialize_missi
         // Check each simplex vertex for cache miss
         for (int v = 0; v <= N_DIMS; v++)
         {
-            index_t idx = this->get_index_from_vertex(simplex[v]);
-            if (point_data.find(idx) == point_data.end() && missing_set.find(idx) == missing_set.end())
+            const key_t k = this->key_from_vertex(simplex[v]);
+            if (point_data.find(k) == point_data.end() && missing_set.find(k) == missing_set.end())
             {
-                missing_set.insert(idx);
-                missing_indices.push_back(idx);
-                // Compute and store coordinates for this vertex
+                missing_set.insert(k);
+                missing_keys.push_back(k);
+                // Compute physical coordinates for this vertex
                 this->get_point_from_vertex(simplex[v], this->new_point_coords);
                 batch_coords.insert(batch_coords.end(),
                                     this->new_point_coords.begin(),
@@ -107,28 +164,24 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::materialize_missi
         }
     }
 
-    if (missing_indices.empty()) return;
+    if (missing_keys.empty()) return;
 
-    // Phase 2: Batch-evaluate all missing points through a single evaluate_batch() call.
-    //          The evaluator's evaluate_batch() may dispatch to a multiprocessing pool
-    //          (ParallelEvaluator) or fall back to serial per-point evaluate() (default).
     if (this->timer) this->timer->node["point generation"].start();
 
-    const size_t n_missing = missing_indices.size();
+    const size_t n_missing = missing_keys.size();
     std::vector<double> batch_values(n_missing * N_OPS);
     this->supporting_point_evaluator->evaluate_batch(
         batch_coords, static_cast<int>(n_missing), batch_values, N_OPS);
 
-    // Unpack results into point_data cache
     point_data.reserve(point_data.size() + n_missing);
     for (size_t i = 0; i < n_missing; i++)
     {
-        const index_t idx = missing_indices[i];
+        auto &slot = point_data[missing_keys[i]];
         for (int op = 0; op < N_OPS; op++)
         {
             double val = batch_values[i * N_OPS + op];
-            point_data[idx][op] = val;
-            if (isnan(val))
+            slot[op] = val;
+            if (std::isnan(val))
             {
                 printf("OBL generation warning: nan operator detected! Operator %d for point (", op);
                 for (int a = 0; a < N_DIMS; a++)

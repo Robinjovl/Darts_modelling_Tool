@@ -78,6 +78,16 @@ public:
     };
 
     bool use_barycentric_interpolation; ///< flag that enables barycentric interpolation on Delaunay simplices
+    /**
+     * When true, find_hypercube produces signed (floor()-style) per-axis indices stored in
+     * index_t via the int32 bit-pattern convention; get_point_from_vertex decodes those bits
+     * as int32 before mapping to coordinates. Used by adaptive interpolators that no longer
+     * need axes_min/axes_max to bound the index space.
+     *
+     * Static interpolators leave this false — their dense point storage requires a non-negative
+     * vertex index.
+     */
+    bool use_unbounded_axis_index = false;
 protected:
     std::array<std::array<index_t, N_DIMS>, N_DIMS + 1> standard_simplex; ///< a standard simplex
     std::array<index_t, N_DIMS> axes_mult;                            ///< multiplication factor used for transferring supporting point to point index

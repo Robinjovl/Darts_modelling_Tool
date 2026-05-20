@@ -673,15 +673,11 @@ class PhysicsBase:
                     evaluator, self.n_axes_points, axes_min, axes_max
                 )
         except (ValueError, NameError):
-            # 32-bit index type did not succeed: either total amount of points is out of range or has not been compiled
-            # try 64 bit now raising exception this time if goes wrong:
-            if (
-                np.prod(np.array(self.n_axes_points), dtype=np.float64)
-                < np.iinfo(np.int64).max
-            ):
-                itor_name = itor_name.replace('interpolator_i', 'interpolator_l')
-            else:
-                itor_name = itor_name.replace('interpolator_i', 'interpolator_ll')
+            # 32-bit index type did not succeed: either total amount of points is out of range
+            # or this (n_dims, n_ops) pair was not compiled. Fall back to 64-bit; the adaptive
+            # multi-index storage is unaffected by integer-key overflow (legacy pickle export
+            # for in-bounds cells is still valid up to uint64 range, ~1.8e19 cells).
+            itor_name = itor_name.replace('interpolator_i', 'interpolator_l')
             try:
                 if algorithm == 'linear':
                     itor = eval(itor_name)(
@@ -766,10 +762,19 @@ class PhysicsBase:
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
+            # Cache identity is (axes_origin, axes_step) per axis — these define WHICH
+            # physical points the cache contains, which is what matters for cache reuse.
+            # axes_max and n_points are merely advisory in adaptive mode (cache grows
+            # past them) so we omit them from the signature; two runs with identical
+            # (origin, step) and different (n_points, axes_max) windows can now share
+            # a cache. The legacy fmtv1 suffix lets us distinguish the new tuple-keyed
+            # pickle format from old integer-keyed caches.
             for dim in range(n_dims):
-                itor_cache_signature += (
-                    f"_{self.n_axes_points[dim]:d}_{axes_min[dim]:e}_{axes_max[dim]:e}"
+                step = (axes_max[dim] - axes_min[dim]) / max(
+                    self.n_axes_points[dim] - 1, 1
                 )
+                itor_cache_signature += f"_origin={axes_min[dim]:e}_step={step:e}"
+            itor_cache_signature += "_fmtv2"
             # compute signature hash to uniquely identify itor parameters and load correct cache
             itor_cache_signature_hash = str(
                 hashlib.md5(itor_cache_signature.encode()).hexdigest()
@@ -788,8 +793,25 @@ class PhysicsBase:
                 )
                 loaded_point_data = self._safe_pickle_load(itor_cache_filename)
                 if loaded_point_data is not None:
-                    itor.point_data = loaded_point_data
-                    print(len(itor.point_data.keys()), "points loaded")
+                    # Prefer the tuple-keyed full export (preserves out-of-window cells)
+                    # when available on the interpolator; fall back to the legacy
+                    # integer-keyed view otherwise.
+                    if (
+                        loaded_point_data
+                        and hasattr(itor, "point_data_full")
+                        and isinstance(next(iter(loaded_point_data)), tuple)
+                    ):
+                        itor.point_data_full = loaded_point_data
+                        print(
+                            len(itor.point_data_full.keys()),
+                            "points loaded (full multi-index format)",
+                        )
+                    else:
+                        itor.point_data = loaded_point_data
+                        print(
+                            len(itor.point_data.keys()),
+                            "points loaded (legacy integer-key format)",
+                        )
                     cache_loaded = 1
                 else:
                     print("Cached point data is invalid, ignoring.")
@@ -865,7 +887,13 @@ class PhysicsBase:
                     prev_term = signal.signal(signal.SIGTERM, signal.SIG_IGN)
                 except Exception:
                     prev_term = None
-                self._atomic_pickle_dump(itor.point_data, filename)
+                # Prefer the tuple-keyed full export to preserve out-of-window cells.
+                # Falls back to the legacy integer-keyed view for interpolators that
+                # do not expose the full view (e.g. static interpolators).
+                if hasattr(itor, "point_data_full"):
+                    self._atomic_pickle_dump(itor.point_data_full, filename)
+                else:
+                    self._atomic_pickle_dump(itor.point_data, filename)
             finally:
                 if prev_int is not None:
                     try:

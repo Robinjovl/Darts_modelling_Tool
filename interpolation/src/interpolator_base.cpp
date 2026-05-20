@@ -1,5 +1,6 @@
 #include <numeric>
 #include <algorithm>
+#include <limits>
 #include <assert.h>
 #include "interpolator_base.hpp"
 
@@ -23,13 +24,19 @@ interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_po
         axes_step_inv[dim] = 1 / axes_step[dim];
     }
 
-    //use double to avoid overflow
-    n_points_total_fp = 1;
-    n_points_total = 1;
+    // Compute n_points_total_fp (double, overflow-safe) first as the authoritative
+    // diagnostic. n_points_total mirrors it in uint64_t for legacy callers, with
+    // saturation at uint64::max for huge grids — adaptive code paths don't depend
+    // on n_points_total being exact (cell_key_t is the identity).
+    n_points_total_fp = 1.0;
     for (int dim = 0; dim < n_dims; dim++)
-      n_points_total *= axes_points_[dim];
+      n_points_total_fp *= static_cast<double>(axes_points_[dim]);
 
-    n_points_total_fp = static_cast<double>(n_points_total);
+    if (n_points_total_fp > static_cast<double>(std::numeric_limits<uint64_t>::max()))
+      n_points_total = std::numeric_limits<uint64_t>::max();
+    else
+      n_points_total = static_cast<uint64_t>(n_points_total_fp);
+
     n_points_used = 0;
     n_interpolations = 0;
 }
@@ -101,10 +108,10 @@ uint64_t interpolator_base::get_n_interpolations() const
 
 uint64_t interpolator_base::get_n_points_total() const
 {
-    return static_cast<uint64_t>(n_points_total);
+    return n_points_total;
 }
 
 uint64_t interpolator_base::get_n_points_used() const
 {
-    return static_cast<uint64_t>(n_points_used);
+    return n_points_used;
 }
