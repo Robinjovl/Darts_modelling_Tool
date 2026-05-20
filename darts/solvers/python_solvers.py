@@ -267,9 +267,7 @@ class PETScSolver(PythonLinearSolver):
         else:  # fs
             # The PC *is* the fieldsplit -- attach the IS before setUp(),
             # otherwise PETSc errors with "must have at least two fields".
-            pc.setFieldSplitIS(
-                ("displacement", is_other), ("pressure", is_pressure)
-            )
+            pc.setFieldSplitIS(("displacement", is_other), ("pressure", is_pressure))
 
         ksp.setUp()
         if self.print_level >= 4:

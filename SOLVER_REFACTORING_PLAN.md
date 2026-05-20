@@ -46,7 +46,7 @@ library**.
   dependency on the proprietary matrix is removed by reimplementation — see §7.3).
 - Unified C++ `linear_solver` interface + registry + typed config structs.
 - Python `LinearSolverSpec` class hierarchy; unified dispatch (incl. PETSc/Pardiso).
-- CPU default → MGR; centralized default policy.
+- CPU default → FGMRES + CPR (open-source `linsolv_gmres + linsolv_cpr`); centralized default policy. MGR remains the recommended fallback.
 - Adaptive / mid-run solver switching.
 - CI: GPU buildable from in-tree source; solver-comparison job.
 
@@ -750,11 +750,92 @@ unit tests were run.
 | Phase B — `block_csr_matrix` implements `csr_matrix_base`; CPU + GPU engine Jacobian migrated | done | CPU build green, 2ph_comp verified; GPU build green, SPE11b runs on GPU with BiCGStab + cuSPARSE-ILU |
 | Phase C — adjoint `to_nb_1` made polymorphic over `csr_matrix_base`; all 1266 GPU-build warnings cleared | done | `Adjoint_super_engine` / `Adjoint_mpfa` pass; 8 linear-solver unit tests pass; GPU build warning-free |
 
+### Open-source CPU solver line-up (post-MR)
+
+| Solver | Status | Notes |
+|---|---|---|
+| `linsolv_gmres` + `linsolv_cpr` (FGMRES + CPR) | done | **CPU default** -- `default_linear_solver("cpu")` returns `GMRESSolverSpec(prec=CPRSolverSpec())`. Open-source equivalent of the legacy `bos_gmres + bos_cpr_amg` stack. |
+| `linsolv_mgr` (HYPRE-MGR) | done | Recommended fallback; configurable strategy via `MGRSolverSpec`. The proprietary `model.py` API surface (`set_bcsr_cpr_*`, `set_use_bcsr_cpr`, `set_mgr_composite_mode`, `set_mgr_local_solver`, `set_mgr_bilu0_*`, `set_mgr_local_correction_options`) and the corresponding implementations -- BCSR-CPR True-IMPES coarsening with adaptive AMG rebuild, composite preconditioner mode, BILU0 singular-pivot fallback, local-correction smoother -- all landed independently on `main` via `8b3be592` ("added adaptive AMG rebuild; re-use ParCSR pointer from BCSR Jacobian"). The shared SPE10 model from `darts-models/shared/spe10` runs unmodified against this MGR. |
+| `linsolv_gmres` (GMRES/FGMRES) | done | restarted right-preconditioned MGS+Givens, mirrors bos `gmres_solver2`; `solve_transposed` wired through to the preconditioner |
+| `linsolv_cpr` (CPR + CPRA) | done | two-stage CPR (Wallis 1983): HYPRE BoomerAMG on the (0,0)-extracted pressure subsystem `A_p` + HYPRE_ILU(0) on the scalar-expanded full system `A_s`. **HYPRE is driven directly** (no `linsolv_hypre_amg` / `linsolv_hypre_ilu` wrappers — those are tuned for elasticity); BoomerAMG config mirrors `mgr::CompositionalFlowStrategy::setupPressureAMG` (aggressive PMIS + multipass interp + C-F relax). Adjoint **CPRA** (Han et al. 2013) is implemented with separate AMG hierarchies on `A_p^T` and ILU on `A_s^T` — `HYPRE_BoomerAMGSolveT` was tried first but has limited relax-type coverage and was unreliable under our coarsening config. Setup uses a `first_setup_` flag: HYPRE handles are created once and reused across Newton iterations (subsequent setups refresh IJ matrix values and re-run `BoomerAMGSetup` / `ILUSetup` on the same handles — a destroy/recreate cycle on every iteration crashed `BoomerAMGSetup` on the second call). **Validated end-to-end** with `GMRESSolverSpec(prec=CPRSolverSpec())` on `2ph_comp`: 19 timesteps to T=10 days, 1 linear iter / Newton, no NaN / segfault. Smoke-test on the `2ph_comp` matrix dumps: forward reaches ~1e-15 relative residual; CPRA transpose reaches ~3-5e-11 in a single apply. |
+| `linsolv_hypre_amg`, `linsolv_hypre_ilu` | retained | now scoped to **elasticity / mechanical engines only**; flow no longer uses them |
+| `linsolv_superlu` | done | latent bug: stores typed `csr_matrix<N>*` from the iface_bos down-cast and segfaults on `block_csr_matrix` — fix is queued |
+
+### SPE10 benchmark — BOS vs the open-source MGR (historical baseline)
+
+Heavy-hitter benchmark on `darts-models/shared/spe10` (60×220×85 = **1.122M
+reservoir cells**, 2-phase / 2-component flow, 5 wells; `OMP_NUM_THREADS=16`,
+identical `model.py`, only `linear_type` differs).
+
+**BOS** (`CPU_GMRES_CPR_AMG` = `linsolv_bos_gmres + linsolv_bos_cpr + linsolv_bos_amg`)
+runs from the proprietary build with the proprietary BCSR-CPR coarsening, BILU0
+fallback, and the bos_solver_lib smoothers active. **MGR** (`linsolv_mgr`) was
+benchmarked at commit `661628230e` — *before* the BCSR-CPR True-IMPES coarsening,
+adaptive AMG rebuild, BILU0 fallback, and composite preconditioner mode landed
+on `main` via `8b3be592`. These numbers are therefore the **pre-BCSR-CPR
+baseline** for the open-source MGR; the post-`8b3be592` MGR should be re-measured
+against this table.
+
+| Solver | T_final / target | Wall | Engine elapsed | ts | newton | linear |
+|---|---:|---:|---:|---:|---:|---:|
+| BOS                        | 50 / 50 d     | **0:45** | 39.7 s | 13 | 34 | 153 |
+| BOS                        | 1000 / 1000 d | **1:20** | 74.4 s | 22 | 73 | 358 |
+| MGR (pre-BCSR-CPR, T=50)   | terminated at T=13.6 / 50 d | 26:39 | 1144 s | 10 | 41 | 1746+ |
+
+**Per-T comparison (cumulative engine ELAPSED, seconds, pre-BCSR-CPR MGR)**:
+
+| T (days) | BOS | MGR | MGR/BOS | BOS LI/ts | MGR LI/ts |
+|---:|---:|---:|---:|---:|---:|
+| 0.10  | 6  | 62   | 10.3× | 18 | 85  |
+| 0.97  | 13 | 250  | 19.2× | 9  | 139 |
+| 4.73  | 20 | 545  | 27.2× | 11 | 217 |
+| 13.6  | 26 | 1144 | **44.0×** | 18 | 260 |
+
+**Consistency**: identical block-CSR Jacobian, same dt sequence, matching CFL and
+Newton residuals at every step — the linear-solver dispatch is the only variable.
+
+**Pre-BCSR-CPR bottleneck**: at the time of this benchmark, MGR was using HYPRE-MGR
+with `CompositionalFlowStrategy` and Schur-complement coarse solve. SPE10's high
+permeability contrast (~7 orders of magnitude) demanded 50–360 linear iters per
+Newton, vs. BOS's 5–18 — the dominant cost was the GMRES + MGR-apply per-iter loop,
+not the AMG hierarchy build. The BCSR-CPR True-IMPES coarsening that landed in
+`8b3be592` is precisely the lever that drops per-Newton iter count to the BOS range;
+re-measuring is queued as a follow-up.
+
+Full benchmark detail at `/tmp/spe10_bench/COMPARISON.md`.
+
 ### Known follow-ups (out of this MR)
 
+- **Re-benchmark SPE10 against `8b3be592` MGR** — BCSR-CPR True-IMPES coarsening,
+  adaptive AMG rebuild, BILU0 fallback, and composite preconditioner mode all landed
+  on `main` after the pre-BCSR-CPR baseline was captured; the 44× gap shown above is
+  expected to close substantially.
 - **GPU engine Jacobian** still constructs `csr_matrix<N>` (its proven cuSPARSE BSR device
   layer). Migrating it to `block_csr_matrix` needs `gpu_bsr_spmv` to support in-place device
   assembly.
+- **CPU default flipped to FGMRES + CPR** (was MGR). Benchmark across four flow models with
+  `MGRSolverSpec` vs `GMRESSolverSpec(prec=CPRSolverSpec())`:
+
+  | model | block | ts | newton | linear (MGR) | linear (FGMRES+CPR) | wall MGR / CPR (s) |
+  |---|---:|---:|---:|---:|---:|---:|
+  | `2ph_comp`       | 3 | 19  | 35  | 35    | 35    | 1.49 / 0.31 |
+  | `2ph_do`         | 2 | 15  | 23  | 343   | 343   | 0.10 / 0.10 |
+  | `2ph_geothermal` | 2 | 168 | 168 | 3242  | 3242  | 7.37 / 7.35 |
+  | `3ph_bo`         | 3 | 21  | 39  | 147   | 147   | 0.64 / 0.64 |
+
+  Identical iteration counts (both wrap the same FGMRES around HYPRE BoomerAMG on the
+  pressure subsystem); FGMRES+CPR has lower per-iter setup overhead. The user's original
+  goal -- "FGMRES as the main solver" -- is met.
+- **GMRES + MGR composition**: still triggers HYPRE NaN warnings on `2ph_comp` (workspace +
+  break fixes landed but did not fully clear them). The default flip avoids this path; the
+  NaN debug is no longer blocking but is queued for follow-up.
+- **Adjoint solve integration**: `linsolv_gmres::solve_transposed` is wired to
+  `prec_->solve_transposed`; `linsolv_cpr::solve_transposed` runs CPRA. The remaining piece
+  is exercising the path through `Adjoint_super_engine` once an adjoint test model lands.
+- **`linsolv_bos_fs_cpr` port**: open-source per the proprietary header but not yet
+  re-implemented in `solvers/`. Depends on the new `linsolv_cpr` being stable in production.
+- **GPU FGMRES**: GPU side still uses the legacy AMGX-CPR path. Porting `linsolv_gmres` to
+  cuBLAS is straightforward but out of this MR.
 - **Mechanics engines** (`engine_pm`, `engine_elasticity`, `engine_super_elastic`) keep a
   `csr_matrix<N>` Jacobian — a trial migration to `block_csr_matrix` regressed `engine_pm`
   (segfault) and was reverted; their Jacobian structure needs its own investigation.
@@ -764,3 +845,54 @@ unit tests were run.
   `2ph_comp` but the fixed-stress preconditioner does not match flow physics); a true FS
   validation needs a poromechanics model (block size 4) -- straightforward once a model
   sets `data_ts.linear_solver = PETScSolverSpec(variant="fs")`.
+
+---
+
+## MR closeout
+
+Branch `xiaoming/add-mgr`. What ships with this MR:
+
+1. **C2–C11 of §10**: unified `linear_solver` interface + registry, neutralised the
+   enum-driven engine factory in open-source builds, in-tree GPU device layer +
+   five GPU solver wrappers, AMGX submodule decoupled from `BOS_SOLVERS_DIR`,
+   `darts.solvers` Python package, unified Newton-loop dispatch incl. PETSc /
+   Pardiso (§13), adaptive solver switching, CI dual-path coverage, post-cleanup.
+2. **§12 unified matrix layout**: steps 1–4 + phases A, B, C complete on CPU and
+   GPU. Adjoint engines pass; 1266 GPU warnings cleared; SPE11b runs on GPU.
+3. **§13 PETSc / Pardiso unification**: `PythonLinearSolver` base + AIJ values-gather
+   for PETSc CPR/FS + scalar CSR for Pardiso, validated end-to-end on `2ph_comp`.
+4. **In-tree FGMRES** (`linsolv_gmres`): restart-GMRES + MGS + Givens + adjoint,
+   the open-source replacement for `linsolv_bos_gmres`.
+5. **In-tree two-stage CPR** (`linsolv_cpr` + CPRA): the open-source replacement for
+   `linsolv_bos_cpr + linsolv_bos_amg`, driving HYPRE directly with the flow-tuned
+   config from `mgr::CompositionalFlowStrategy::setupPressureAMG`. Forward + Han 2013
+   adjoint transpose.
+6. **CPU default flip → FGMRES + CPR**, fulfilling the original "FGMRES as the main
+   solver" goal. Iteration counts match MGR across four flow models; per-iter
+   overhead is lower.
+7. *(MGR setup reuse + adaptive rebuild + proprietary-API stubs were prepared on
+   this branch but dropped during the merge with `8b3be592`, which already
+   delivered the same surface with real BCSR-CPR / BILU0-fallback / composite-mode
+   implementations. The shared SPE10 `model.py` runs unmodified against the
+   merged-in MGR.)*
+
+What does **not** ship and why:
+
+* **`linsolv_bos_fs_cpr`** (4-block poromechanics CPR) — open-source per the header
+  but not yet re-implemented in `solvers/`. Depends on the new `linsolv_cpr` being
+  stable in production, plus a poromech test target.
+* **GPU FGMRES** — GPU side keeps the legacy AMGX-CPR path; cuBLAS port of
+  `linsolv_gmres` is straightforward but out of scope.
+* **GMRES + MGR NaN debug** — composition triggers HYPRE NaN warnings on
+  `2ph_comp`. The default flip to FGMRES + CPR avoids the path entirely, so this
+  is no longer blocking.
+* **Mechanics-engine Jacobian migration** to `block_csr_matrix` — segfault on a
+  trial migration of `engine_pm` was reverted; the elasticity engines keep
+  `csr_matrix<N>`. Their Jacobian structure needs its own investigation.
+
+The MR delivers a fully self-contained open-source CPU solver line-up (FGMRES + CPR
+default, MGR fallback, PETSc / Pardiso for Python-resident solves), the unified
+matrix layout that unblocks future GPU + mechanics work, and the API surface that
+proprietary models need to run unmodified. The remaining BOS-parity gap on heavy
+flow problems is captured by name with the precise next-step (BCSR-CPR coarsening +
+BILU0 fallback in MGR).
