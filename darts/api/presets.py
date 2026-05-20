@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterator
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -461,6 +462,12 @@ def _register_default_directory_bindings() -> None:
     except Exception:  # pragma: no cover - defensive
         pass
     try:
+        from darts.reservoirs.cpg_reservoir import CPGReservoirConfig
+
+        register_preset_directory_binding("reservoirs/cpg", CPGReservoirConfig)
+    except Exception:  # pragma: no cover - defensive
+        pass
+    try:
         from darts.models.darts_model import SimParamsConfig
 
         register_preset_directory_binding("sim_params", SimParamsConfig)
@@ -479,27 +486,35 @@ def _register_default_directory_bindings() -> None:
 def _ensure_default_root_loaded() -> None:
     """Lazily load the default preset root on first registry access.
 
-    The search path is (first existing wins, all are loaded if multiple exist):
-    1. ``DARTS_PRESET_ROOT`` env var — explicit override, useful when open-darts
-       is installed as a wheel and the source tree lives elsewhere.
-    2. ``DEFAULT_PRESET_ROOT`` — ``<repo>/models/presets`` relative to this file
-       (works for editable / source installs).
+    The load order is bottom-up: lower-priority roots first, higher-priority
+    roots last.  Because ``_load_preset_from_file`` overwrites entries in
+    ``_PRESET_REGISTRY`` by qualified name, the *last* root to load a given
+    name is the one that wins — so loading ``DARTS_PRESET_ROOT`` after the
+    shipped default delivers the documented "env var has first priority"
+    behavior.
+
+    Effective precedence (highest first):
+
+    1. ``DARTS_PRESET_ROOT`` env var — explicit override, useful when
+       open-darts is installed as a wheel and the source tree lives
+       elsewhere, or to ship a per-project preset library that overrides
+       individual default presets.
+    2. ``DEFAULT_PRESET_ROOT`` — resolved via
+       ``importlib.resources.files("darts.api") / "presets_data"`` so it
+       works for both editable and wheel installs.
     """
     _register_default_directory_bindings()
 
-    roots_to_try: list[Path] = []
+    # Always load the shipped default first so the env-var root's presets
+    # overwrite same-name shipped ones when both are present.
+    if DEFAULT_PRESET_ROOT not in _SEARCH_ROOTS and DEFAULT_PRESET_ROOT.is_dir():
+        load_preset_dir(DEFAULT_PRESET_ROOT)
 
     env_override = os.environ.get("DARTS_PRESET_ROOT")
     if env_override:
-        roots_to_try.append(Path(env_override).expanduser().resolve())
-
-    roots_to_try.append(DEFAULT_PRESET_ROOT)
-
-    for root in roots_to_try:
-        if root in _SEARCH_ROOTS:
-            continue
-        if root.is_dir():
-            load_preset_dir(root)
+        env_root = Path(env_override).expanduser().resolve()
+        if env_root not in _SEARCH_ROOTS and env_root.is_dir():
+            load_preset_dir(env_root)
 
 
 # ---------------------------------------------------------------------------
@@ -613,6 +628,213 @@ def docs(qualified_name: str) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Section-level preset resolution
+# ---------------------------------------------------------------------------
+# A ModelSpec JSON may use ``{"preset": "<name>", ...overrides}`` inside any
+# top-level section (``reservoir``, ``physics``, ``sim_params``, ...).  The
+# pre-pass below expands those shorthand references into full section payloads
+# *before* Pydantic validation, so the single-JSON workflow (``darts --json
+# model.json``) accepts the same modular composition that the MCP server
+# resolves on its side via ``build_*_patch`` helpers.
+# ---------------------------------------------------------------------------
+
+
+# Mapping from physics ``kind`` discriminator (the ``kind`` literal on a
+# physics Config like CompositionalConfig / BlackOilConfig) to the registered
+# plugin ``type_id`` used inside ``physics.plugin.type_id``.  Mirrors the map
+# used by the MCP adapter (mcp-server-langchain/server/model_adapter.py).
+_PHYSICS_KIND_TO_TYPE_ID: dict[str, str] = {
+    "compositional": "physics/Compositional@v1",
+    "black_oil": "physics/BlackOil@v1",
+    "dead_oil": "physics/DeadOil@v1",
+    "geothermal": "physics/Geothermal@v1",
+}
+
+
+def _expand_physics_preset(
+    preset: Preset, overrides: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Turn a physics preset into a ``StrictPhysicsSpec``-shaped dict.
+
+    Lifts ``components``/``phases`` (defined on the preset's Config so
+    presets can ship a default composition) to the top-level PhysicsSpec
+    fields, wraps the remaining Config fields inside ``plugin.config`` keyed
+    by the discriminator-derived ``type_id``, and carries
+    ``preset.property_regions`` through.  ``overrides`` are merge-patched on
+    top so callers can override ``n_points``, ``components``, etc.
+
+    :param preset: loaded physics preset
+    :type preset: Preset
+    :param overrides: the original section dict with ``preset`` key removed
+    :type overrides: dict[str, Any]
+    :return: ``(physics_dict, plugin_registry_dict_or_None)`` — the second
+        value, when not ``None``, must be merged into the spec-level
+        ``plugin_registry`` (preset-supplied plugin entries live alongside
+        ``physics`` in ModelSpec, not inside it)
+    :rtype: tuple[dict[str, Any], dict[str, Any] | None]
+    """
+    from darts.api.spec_utils import json_merge_patch
+
+    preset_dict = preset.config.model_dump(exclude_none=True)
+    kind = preset_dict.pop("kind", None)
+    components = preset_dict.pop("components", None)
+    phases = preset_dict.pop("phases", None)
+    type_id = _PHYSICS_KIND_TO_TYPE_ID.get(kind, f"physics/{kind}@v1") if kind else None
+    if type_id is None:
+        raise ValueError(
+            f"Physics preset '{preset.qualified_name}' has no 'kind' "
+            f"discriminator on its config; cannot derive plugin.type_id."
+        )
+    physics_payload: dict[str, Any] = {
+        "plugin": {"type_id": type_id, "config": preset_dict},
+    }
+    if components is not None:
+        physics_payload["components"] = components
+    if phases is not None:
+        physics_payload["phases"] = phases
+    if preset.property_regions is not None:
+        physics_payload["property_regions"] = [
+            dict(region) for region in preset.property_regions
+        ]
+    if overrides:
+        physics_payload = json_merge_patch(physics_payload, overrides)
+    return physics_payload, preset.plugin_registry
+
+
+def _expand_generic_preset(preset: Preset, overrides: dict[str, Any]) -> dict[str, Any]:
+    """Expand a non-physics preset by dumping its config and merging overrides.
+
+    Works for any section whose preset Config maps 1-to-1 onto the section
+    schema — reservoir (``StructReservoirConfig`` / ``CPGReservoirConfig``),
+    ``sim_params`` (``SimParamsConfig``), etc.
+
+    :param preset: loaded preset
+    :type preset: Preset
+    :param overrides: the original section dict with ``preset`` key removed
+    :type overrides: dict[str, Any]
+    :return: expanded section dict, ready for Pydantic validation
+    :rtype: dict[str, Any]
+    """
+    from darts.api.spec_utils import json_merge_patch
+
+    payload = preset.config.model_dump(exclude_none=True)
+    if overrides:
+        payload = json_merge_patch(payload, overrides)
+    return payload
+
+
+# Section keys that may carry a ``"preset"`` shorthand and the expander to
+# apply.  Sections not listed pass through untouched.  Physics is handled
+# separately because it must also surface a sibling ``plugin_registry``.
+_GENERIC_PRESET_SECTIONS: tuple[str, ...] = (
+    "reservoir",
+    "sim_params",
+    "wells",
+    "initial_conditions",
+    "well_controls",
+    "output",
+)
+
+
+def resolve_section_presets(spec_dict: dict[str, Any]) -> dict[str, Any]:
+    """Expand every ``{"preset": "<name>", ...overrides}`` section in a raw
+    ModelSpec dict.
+
+    Walks the top-level section keys of ``spec_dict`` (``reservoir``,
+    ``physics``, ``sim_params``, ...) and for each section dict whose first
+    key is ``"preset"`` (or which contains a ``"preset"`` key), loads the
+    referenced preset, builds the section-appropriate payload, and merges
+    any sibling keys on top as RFC-7396 overrides.  Returns a new dict;
+    the input is not mutated.
+
+    For physics presets, any ``plugin_registry`` block shipped by the preset
+    is merged into ``spec_dict["plugin_registry"]`` (modules + entries are
+    concatenated; explicit caller-provided entries take precedence by
+    ``type_id``).  This mirrors the MCP adapter's
+    :func:`build_physics_patch` so the single-JSON path is symmetric.
+
+    :param spec_dict: raw JSON-decoded ModelSpec dict
+    :type spec_dict: dict[str, Any]
+    :return: expanded dict with all section-level presets resolved
+    :rtype: dict[str, Any]
+    """
+    result = deepcopy(spec_dict)
+    surfaced_plugin_registry: dict[str, Any] | None = None
+
+    # Physics: special expansion + may surface a sibling plugin_registry.
+    physics = result.get("physics")
+    if isinstance(physics, dict) and "preset" in physics:
+        preset_name = physics["preset"]
+        overrides = {k: v for k, v in physics.items() if k != "preset"}
+        preset = load_preset(preset_name)
+        expanded, surfaced_plugin_registry = _expand_physics_preset(preset, overrides)
+        result["physics"] = expanded
+
+    # Generic sections: dump preset config, merge overrides.
+    for section_key in _GENERIC_PRESET_SECTIONS:
+        section = result.get(section_key)
+        if isinstance(section, dict) and "preset" in section:
+            preset_name = section["preset"]
+            overrides = {k: v for k, v in section.items() if k != "preset"}
+            preset = load_preset(preset_name)
+            result[section_key] = _expand_generic_preset(preset, overrides)
+
+    # Merge any preset-supplied plugin_registry into the spec-level one.
+    if surfaced_plugin_registry is not None:
+        existing = result.get("plugin_registry")
+        result["plugin_registry"] = _merge_plugin_registries(
+            surfaced_plugin_registry, existing
+        )
+
+    return result
+
+
+def _merge_plugin_registries(
+    preset_block: dict[str, Any], caller_block: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Concatenate ``modules`` and ``entries`` from preset and caller blocks.
+
+    Caller-provided entries take precedence over preset-provided entries on
+    the same ``type_id`` (caller wins, in keeping with override semantics
+    elsewhere in the pre-pass).
+
+    :param preset_block: plugin_registry from a physics preset (constructor
+        paths already absolutized at preset load time)
+    :type preset_block: dict[str, Any]
+    :param caller_block: plugin_registry the caller put in the ModelSpec
+        alongside ``physics`` (may be ``None``)
+    :type caller_block: dict[str, Any] | None
+    :return: merged plugin_registry dict
+    :rtype: dict[str, Any]
+    """
+    caller_block = caller_block or {}
+    preset_modules = list(preset_block.get("modules") or [])
+    caller_modules = list(caller_block.get("modules") or [])
+    merged_modules = preset_modules + [
+        m for m in caller_modules if m not in preset_modules
+    ]
+    preset_entries = list(preset_block.get("entries") or [])
+    caller_entries = list(caller_block.get("entries") or [])
+    caller_type_ids = {e.get("type_id") for e in caller_entries if isinstance(e, dict)}
+    merged_entries: list[dict[str, Any]] = [
+        e
+        for e in preset_entries
+        if not (isinstance(e, dict) and e.get("type_id") in caller_type_ids)
+    ]
+    merged_entries.extend(caller_entries)
+    merged: dict[str, Any] = {}
+    if merged_modules:
+        merged["modules"] = merged_modules
+    if merged_entries:
+        merged["entries"] = merged_entries
+    # Preserve any extra caller-only keys (e.g. future schema additions).
+    for k, v in caller_block.items():
+        if k not in ("modules", "entries"):
+            merged.setdefault(k, v)
+    return merged
+
+
 __all__ = [
     "DEFAULT_PRESET_ROOT",
     "Preset",
@@ -625,4 +847,5 @@ __all__ = [
     "load_preset_dir",
     "register_preset",
     "register_preset_directory_binding",
+    "resolve_section_presets",
 ]

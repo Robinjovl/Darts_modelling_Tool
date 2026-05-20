@@ -1,7 +1,7 @@
 {
   "_meta": {
     "name": "spe1_isothermal",
-    "description": "Isothermal SPE1 black-oil physics with 5001-point OBL grid (1-450 bar). Requires user to override pvt_path with the model-local PVT data file.",
+    "description": "Isothermal SPE1 black-oil physics with 5001-point OBL grid (1-450 bar). BlackOil builds its own evaluator stack (densities, viscosities, rel-perms, capillary pressures, rock compaction) from the PVT data file at construction time, so this preset deliberately ships NO property_regions block — the caller only needs to override pvt_path with the model-local PVT data file. components/phases are shipped so callers don't need to repeat them at PhysicsSpec level.",
     "references": [
       "Odeh (1981) — SPE 9723, SPE Comparative Solution Project (SPE1)"
     ],
@@ -22,6 +22,8 @@
     "min_t": -10.0,
     "max_t": 100.0,
     "min_z": 0.0,
-    "max_z": 1.0
+    "max_z": 1.0,
+    "components": ["g", "o", "w"],
+    "phases": ["gas", "oil", "water"]
   }
 }

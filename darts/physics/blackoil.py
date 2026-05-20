@@ -62,6 +62,19 @@ class BlackOilConfig(BaseModel):
     max_t: Annotated[float, Field(description="Maximum OBL temperature [°C]")] = 100.0
     min_z: Annotated[float, Field(ge=0, description="Minimum OBL composition")] = 0.0
     max_z: Annotated[float, Field(ge=0, description="Maximum OBL composition")] = 1.0
+    components: Annotated[
+        list[str] | None,
+        Field(
+            description="Component names; metadata-only on BlackOilConfig "
+            "(BlackOil.__init__ derives the canonical components from the PVT "
+            "file). Lets a JSON preset ship the names so PhysicsSpec.components "
+            "doesn't need to be repeated by the caller.",
+        ),
+    ] = None
+    phases: Annotated[
+        list[str] | None,
+        Field(description="Phase names; same semantics as ``components``."),
+    ] = None
 
 
 class BlackOil(Compositional):

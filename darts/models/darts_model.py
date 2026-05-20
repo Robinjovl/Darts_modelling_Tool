@@ -1814,14 +1814,22 @@ class DartsModel:
 
     # Convenience: apply a validated ModelSpec to this model instance
     def apply_model_spec(self, spec_dict: dict):
+        """Resolve section-level ``{"preset": ...}`` refs, validate, and
+        apply.  Keeps the entry point symmetric with
+        ``ModelBuilder.apply_dict`` and ``JsonModelAdapter.apply_spec_dict``
+        so the same single-JSON spec works no matter which entry point a
+        caller uses.
+        """
         try:
             from darts.api import ModelBuilder, ModelSpec
+            from darts.api.presets import resolve_section_presets
         except Exception as err:
             raise RuntimeError("darts.api is required to use apply_model_spec") from err
+        expanded = resolve_section_presets(spec_dict)
         try:
-            spec = ModelSpec.model_validate(spec_dict)  # pydantic v2
+            spec = ModelSpec.model_validate(expanded)  # pydantic v2
         except Exception:
-            spec = ModelSpec.parse_obj(spec_dict)  # pydantic v1
+            spec = ModelSpec.parse_obj(expanded)  # pydantic v1
         ModelBuilder.apply(spec, self)
 
     def set_well_controls_idata(self, time: float = 0.0, verbose=True):

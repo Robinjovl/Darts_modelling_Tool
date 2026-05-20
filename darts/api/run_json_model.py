@@ -14,6 +14,7 @@ import sys
 
 from darts.api import ModelBuilder, ModelSpec
 from darts.api.json_model import JsonModel
+from darts.api.presets import resolve_section_presets
 from darts.tools.cli import get_darts_path, get_lib_search_var, get_lib_var
 
 
@@ -46,6 +47,12 @@ def main():
 
     with open(args.json) as fp:
         spec_dict = json.load(fp)
+
+    try:
+        spec_dict = resolve_section_presets(spec_dict)
+    except Exception as e:
+        print('Failed to resolve section presets:', e)
+        sys.exit(1)
 
     try:
         spec = ModelSpec.model_validate(spec_dict)

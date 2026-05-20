@@ -2,7 +2,7 @@ import warnings
 from typing import Literal
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from scipy.interpolate import interp1d
 
 from darts.engines import *
@@ -20,7 +20,14 @@ class CompositionalConfig(BaseModel):
 
     Fields mirror ``Compositional.__init__`` parameters (excluding
     ``components``, ``phases``, and ``timer`` which are provided separately).
+
+    ``extra="forbid"`` mirrors the contract documented for every section
+    Config in ``docs/for_developers/json_input_and_presets.md`` — unknown
+    keys raise a Pydantic validation error so typos surface immediately
+    instead of being silently dropped.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     kind: Literal["compositional"] = Field(
         default="compositional",

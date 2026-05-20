@@ -31,7 +31,9 @@ from darts.api.presets import (
     load_preset_config,
     load_preset_dir,
     register_preset,
+    resolve_section_presets,
 )
+from darts.api.schemas import ModelSpec
 
 # ---------------------------------------------------------------------------
 # Shipped presets validate
@@ -257,6 +259,210 @@ class TestRuntimeRegistration:
         _write(200.0)
         load_preset_dir(tmp_path)
         assert load_preset("evaluators/density/scratch").config.dens0 == 200.0
+
+
+# ---------------------------------------------------------------------------
+# Regression: DataRef survives validation on reservoir property fields
+# ---------------------------------------------------------------------------
+
+
+class TestDataRefOnReservoirFields:
+    """DataRef on per-cell reservoir fields must not raise during validation.
+
+    Regression for the broken ``Field(gt=0, ...)`` constraint that used to
+    sit on ``ReservoirValue | DataRef`` unions and triggered
+    ``TypeError: Unable to apply constraint`` against the DataRef branch.
+    """
+
+    def test_permx_as_dataref_validates(self) -> None:
+        from darts.api.schemas import StrictReservoirSpec
+
+        spec = StrictReservoirSpec.model_validate(
+            {
+                "type": "structured",
+                "nx": 1,
+                "ny": 1,
+                "nz": 1,
+                "dx": 1.0,
+                "dy": 1.0,
+                "dz": 1.0,
+                "permx": {"kind": "path", "value": "permx.json"},
+                "permy": 1.0,
+                "permz": 1.0,
+                "poro": 0.3,
+                "depth": 1000.0,
+            }
+        )
+        # permx should land as a DataRef-shaped value, not a number.
+        assert spec.permx.kind == "path"
+        assert spec.permx.value == "permx.json"
+
+
+# ---------------------------------------------------------------------------
+# Regression: DARTS_PRESET_ROOT actually overrides shipped presets
+# ---------------------------------------------------------------------------
+
+
+class TestPresetRootPrecedence:
+    """The env-var preset root must win over the shipped default.
+
+    Regression for the prior load order that registered the env root
+    *before* the default root; the default-root files then overwrote
+    same-name env-root entries in ``_PRESET_REGISTRY`` because
+    ``_load_preset_from_file`` always writes by qualified name.
+    """
+
+    def test_env_root_overrides_shipped_default(self, tmp_path, monkeypatch) -> None:
+        from darts.api import presets as presets_mod
+
+        # Spell the override exactly the way the shipped preset is named so
+        # we know it conflicts with a real default-root entry.
+        override = {
+            "_meta": {"name": "co2_brine", "description": "test override"},
+            "config": {
+                "kind": "density_basic",
+                "dens0": 9876.0,
+                "compr": 0.0,
+            },
+        }
+        target = tmp_path / "evaluators" / "density" / "co2_brine.json"
+        target.parent.mkdir(parents=True)
+        target.write_text(json.dumps(override))
+
+        # Force a clean re-bootstrap so the env-root takes effect.
+        monkeypatch.setenv("DARTS_PRESET_ROOT", str(tmp_path))
+        presets_mod._PRESET_REGISTRY.clear()
+        presets_mod._SEARCH_ROOTS.clear()
+        try:
+            loaded = load_preset("evaluators/density/co2_brine")
+            assert loaded.config.dens0 == 9876.0
+            assert str(loaded.source_path).startswith(str(tmp_path))
+        finally:
+            # Restore the registry from the shipped tree for downstream tests.
+            presets_mod._PRESET_REGISTRY.clear()
+            presets_mod._SEARCH_ROOTS.clear()
+
+
+# ---------------------------------------------------------------------------
+# Section-level preset resolution (single-JSON pre-pass)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveSectionPresets:
+    """Pre-pass that expands ``{"preset": "...", ...overrides}`` in a raw
+    ModelSpec dict before Pydantic validation.
+
+    Mirrors what the MCP adapter does on the server side
+    (``build_physics_patch`` / ``build_reservoir_patch``) so the single-JSON
+    workflow accepts the same modular composition idiom.
+    """
+
+    def test_reservoir_preset_expands_with_overrides(self) -> None:
+        """Reservoir preset expands to a ReservoirUnion-validatable dict,
+        with caller overrides applied on top.
+        """
+        spec = {
+            "reservoir": {
+                "preset": "reservoirs/cpg/brugge",
+                "grid_file": "/abs/path/to/grid.grdecl",
+                "prop_file": "/abs/path/to/reservoir.in",
+            }
+        }
+        expanded = resolve_section_presets(spec)
+        assert expanded["reservoir"]["type"] == "cpg"
+        assert expanded["reservoir"]["grid_file"] == "/abs/path/to/grid.grdecl"
+        # Numerical guards from the preset are preserved.
+        assert expanded["reservoir"]["minpv"] == 1e-05
+
+    def test_physics_preset_lifts_components_and_carries_property_regions(
+        self,
+    ) -> None:
+        """Physics preset builds the PhysicsSpec envelope: kind →
+        plugin.type_id, components/phases lifted to top level,
+        property_regions and plugin_registry surfaced.
+        """
+        spec = {"physics": {"preset": "physics/dead_oil/cpg_deadoil_brugge"}}
+        expanded = resolve_section_presets(spec)
+        assert expanded["physics"]["plugin"]["type_id"] == "physics/Compositional@v1"
+        assert expanded["physics"]["components"] == ["w", "o"]
+        assert expanded["physics"]["phases"] == ["wat", "oil"]
+        assert len(expanded["physics"]["property_regions"]) == 1
+        # Preset-supplied plugin_registry is bubbled up to the spec level.
+        assert "plugin_registry" in expanded
+        assert expanded["plugin_registry"]["entries"][0]["type_id"] == (
+            "pc/ModelProperties@v1"
+        )
+
+    def test_full_brugge_composition_validates_as_modelspec(self) -> None:
+        """The headline use case: a six-line ModelSpec composed entirely
+        from presets must validate against StrictModelSpec.
+        """
+        spec = {
+            "reservoir": {
+                "preset": "reservoirs/cpg/brugge",
+                "grid_file": "/abs/path/to/grid.grdecl",
+                "prop_file": "/abs/path/to/reservoir.in",
+            },
+            "physics": {"preset": "physics/dead_oil/cpg_deadoil_brugge"},
+            "sim_params": {
+                "preset": "sim_params/default_implicit",
+                "runtime": 365.0,
+            },
+        }
+        expanded = resolve_section_presets(spec)
+        model = ModelSpec.model_validate(expanded)
+        assert model.reservoir.type == "cpg"
+        assert model.physics.plugin.type_id == "physics/Compositional@v1"
+        # Override took effect on top of the preset baseline.
+        assert model.sim_params.runtime == 365.0
+        # Plugin registry was hoisted from physics preset to spec level.
+        assert model.plugin_registry is not None
+        assert len(model.plugin_registry.entries) == 1
+
+    def test_sections_without_preset_pass_through_unchanged(self) -> None:
+        """Sections that don't use the ``preset`` shorthand are left intact —
+        no false positives on raw dicts that happen to mention preset-like
+        keys elsewhere.
+        """
+        raw_reservoir = {
+            "type": "structured",
+            "nx": 10,
+            "ny": 10,
+            "nz": 1,
+            "dx": 10.0,
+            "dy": 10.0,
+            "dz": 10.0,
+            "permx": 100.0,
+            "permy": 100.0,
+            "permz": 10.0,
+            "poro": 0.3,
+            "depth": 1000.0,
+        }
+        spec = {"reservoir": raw_reservoir}
+        expanded = resolve_section_presets(spec)
+        assert expanded["reservoir"] == raw_reservoir
+
+    def test_caller_plugin_registry_entries_win_on_type_id_collision(self) -> None:
+        """When the caller supplies a ``plugin_registry`` alongside a physics
+        preset that ships its own, caller-provided entries override preset
+        ones on the same ``type_id``.
+        """
+        spec = {
+            "physics": {"preset": "physics/dead_oil/cpg_deadoil_brugge"},
+            "plugin_registry": {
+                "entries": [
+                    {
+                        "type_id": "pc/ModelProperties@v1",
+                        "kind": "pc",
+                        "constructor": "/caller/path.py:CustomPC",
+                    }
+                ]
+            },
+        }
+        expanded = resolve_section_presets(spec)
+        entries = expanded["plugin_registry"]["entries"]
+        assert len(entries) == 1
+        assert entries[0]["constructor"] == "/caller/path.py:CustomPC"
 
 
 # ---------------------------------------------------------------------------

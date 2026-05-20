@@ -18,6 +18,7 @@ import os
 from typing import Any, Protocol, runtime_checkable
 
 from darts.api.data_refs import resolve_data_ref
+from darts.api.presets import resolve_section_presets
 from darts.api.schemas import (
     CPGReservoirSpec,
     DataRef,
@@ -59,6 +60,37 @@ class ModelBuilder:
     # ------------------------------------------------------------------
     # Full-model orchestrator
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def apply_dict(
+        spec_dict: dict[str, Any],
+        model: DartsModelProtocol,
+        *,
+        base_path: str | None = None,
+        object_store: dict[str, Any] | None = None,
+    ) -> None:
+        """Resolve section-level ``{"preset": ...}`` refs, validate, and apply.
+
+        This is the canonical entry point for the single-JSON workflow
+        (``darts --json model.json``) and any caller working from a raw
+        ``dict``.  It mirrors the MCP adapter's per-section preset
+        resolution (``build_physics_patch`` / ``build_reservoir_patch``)
+        so the modular composition idiom — ``{"physics": {"preset":
+        "...", "components": [...]}}`` — works in both transports.
+
+        :param spec_dict: raw JSON-decoded ModelSpec dict
+        :type spec_dict: dict[str, Any]
+        :param model: target DARTS model instance
+        :type model: DartsModelProtocol
+        :param base_path: directory used to resolve relative data refs
+        :type base_path: str | None
+        :param object_store: optional in-memory object store for DataRef
+            resolution
+        :type object_store: dict[str, Any] | None
+        """
+        expanded = resolve_section_presets(spec_dict)
+        spec = ModelSpec.model_validate(expanded)
+        ModelBuilder.apply(spec, model, base_path=base_path, object_store=object_store)
 
     @staticmethod
     def apply(

@@ -174,32 +174,30 @@ class StrictReservoirLayerSpec(ReservoirLayerConfig):
     Identical to the native config except per-cell fields accept
     :class:`DataRef` in addition to scalars/arrays. The builder resolves
     DataRefs before constructing the native :class:`ReservoirLayerConfig`.
+
+    Numeric bounds intentionally omitted on union fields — see the note
+    on :class:`StrictReservoirSpec` for why ``Field(gt=0, ...)`` on a
+    ``ReservoirValue | DataRef`` union breaks DataRef validation.
     """
 
-    dx: Annotated[
-        ReservoirValue | None, Field(gt=0, description="Cell size in x [m]")
-    ] = None
-    dy: Annotated[
-        ReservoirValue | None, Field(gt=0, description="Cell size in y [m]")
-    ] = None
-    dz: Annotated[
-        ReservoirValue | None, Field(gt=0, description="Cell size in z [m]")
-    ] = None
+    dx: Annotated[ReservoirValue | None, Field(description="Cell size in x [m]")] = None
+    dy: Annotated[ReservoirValue | None, Field(description="Cell size in y [m]")] = None
+    dz: Annotated[ReservoirValue | None, Field(description="Cell size in z [m]")] = None
     permx: Annotated[
-        ReservoirValue | None, Field(gt=0, description="Permeability in x [mD]")
+        ReservoirValue | None, Field(description="Permeability in x [mD]")
     ] = None
     permy: Annotated[
-        ReservoirValue | None, Field(gt=0, description="Permeability in y [mD]")
+        ReservoirValue | None, Field(description="Permeability in y [mD]")
     ] = None
     permz: Annotated[
-        ReservoirValue | None, Field(gt=0, description="Permeability in z [mD]")
+        ReservoirValue | None, Field(description="Permeability in z [mD]")
     ] = None
     poro: Annotated[
         ReservoirValue | None,
-        Field(ge=0, le=1, description="Porosity [fraction]"),
+        Field(description="Porosity [fraction]"),
     ] = None
     depth: Annotated[
-        ReservoirValue | None, Field(ge=0, description="Reference depth [m]")
+        ReservoirValue | None, Field(description="Reference depth [m]")
     ] = None
 
 
@@ -233,48 +231,58 @@ class StrictReservoirSpec(StructReservoirConfig):
     JSON-transport concern) leaks into a reservoir spec. The builder
     resolves DataRefs and then constructs the native
     :class:`StructReservoirConfig`.
+
+    Numeric bounds (``gt=0`` / ``ge=0`` / ``le=1``) deliberately do NOT
+    appear here even though they would be natural for cell sizes,
+    permeabilities, and porosity.  Pydantic applies field constraints
+    member-by-member across the ``ReservoirValue | DataRef`` union and
+    raises ``TypeError: Unable to apply constraint`` against the DataRef
+    branch (which carries no numeric value at validation time), so any
+    such constraint at this layer would break the documented DataRef
+    workflow.  Validation of resolved numeric values happens in the
+    builder after DataRef resolution.
     """
 
     # Override property fields to accept DataRef in addition to plain scalars/arrays
     dx: Annotated[
         ReservoirValue | None,
-        Field(gt=0, description="Cell size in x direction [m]"),
+        Field(description="Cell size in x direction [m]"),
     ] = None
     dy: Annotated[
         ReservoirValue | None,
-        Field(gt=0, description="Cell size in y direction [m]"),
+        Field(description="Cell size in y direction [m]"),
     ] = None
     dz: Annotated[
         ReservoirValue | None,
-        Field(gt=0, description="Cell size in z direction [m]"),
+        Field(description="Cell size in z direction [m]"),
     ] = None
     permx: Annotated[
         ReservoirValue | None,
-        Field(gt=0, description="Permeability in x direction [mD]"),
+        Field(description="Permeability in x direction [mD]"),
     ] = None
     permy: Annotated[
         ReservoirValue | None,
-        Field(gt=0, description="Permeability in y direction [mD]"),
+        Field(description="Permeability in y direction [mD]"),
     ] = None
     permz: Annotated[
         ReservoirValue | None,
-        Field(gt=0, description="Permeability in z direction [mD]"),
+        Field(description="Permeability in z direction [mD]"),
     ] = None
     poro: Annotated[
         ReservoirValue | None,
-        Field(ge=0, le=1, description="Porosity [fraction]"),
+        Field(description="Porosity [fraction]"),
     ] = None
     depth: Annotated[
         ReservoirValue | None,
-        Field(ge=0, description="Reference depth [m]"),
+        Field(description="Reference depth [m]"),
     ] = None
     hcap: Annotated[
         ReservoirValue | None,
-        Field(ge=0, description="Heat capacity [J/kg-K], 0 = non-thermal"),
+        Field(description="Heat capacity [J/kg-K], 0 = non-thermal"),
     ] = None
     rcond: Annotated[
         ReservoirValue | None,
-        Field(ge=0, description="Rock thermal conductivity [W/m-K], 0 = non-thermal"),
+        Field(description="Rock thermal conductivity [W/m-K], 0 = non-thermal"),
     ] = None
     layers: Annotated[
         list[StrictReservoirLayerSpec] | None,

@@ -122,10 +122,18 @@ def _extract_reference_from_log(log_path):
 
 
 def _parse_model_spec(json_path):
+    """Load a JSON ModelSpec, resolve any section-level ``{"preset": ...}``
+    refs, and validate against StrictModelSpec.
+
+    Resolution happens before validation so the regression suite accepts
+    the same modular preset composition documented for the runtime API.
+    """
     from darts.api import ModelSpec
+    from darts.api.presets import resolve_section_presets
 
     with open(json_path) as fp:
         spec_dict = json.load(fp)
+    spec_dict = resolve_section_presets(spec_dict)
 
     if hasattr(ModelSpec, "model_validate"):
         return ModelSpec.model_validate(spec_dict)

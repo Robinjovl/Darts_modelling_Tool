@@ -82,10 +82,19 @@ class JsonModelAdapter(ModelAdapter):
         )
 
     def apply_spec_dict(self, spec_dict: dict[str, Any]) -> None:
+        """Resolve section-level ``{"preset": ...}`` refs, then validate
+        and apply.  Mirrors the MCP adapter's per-section preset
+        resolution so the same modular composition idiom works whether a
+        caller sends a single JSON file or assembles the spec
+        programmatically.
+        """
+        from darts.api.presets import resolve_section_presets
+
+        expanded = resolve_section_presets(spec_dict)
         if hasattr(ModelSpec, "model_validate"):
-            spec = ModelSpec.model_validate(spec_dict)
+            spec = ModelSpec.model_validate(expanded)
         else:
-            spec = ModelSpec(**spec_dict)
+            spec = ModelSpec(**expanded)
         self.apply_spec(spec)
 
 
@@ -93,10 +102,16 @@ class MCPModelAdapter(ModelAdapter):
     """Adapter for tool-by-tool configuration (MCP)."""
 
     def build_model(self) -> None:
+        """Resolve section-level ``{"preset": ...}`` refs in the
+        accumulated spec, validate, and apply.
+        """
+        from darts.api.presets import resolve_section_presets
+
+        expanded = resolve_section_presets(self._spec)
         if hasattr(ModelSpec, "model_validate"):
-            spec = ModelSpec.model_validate(self._spec)
+            spec = ModelSpec.model_validate(expanded)
         else:
-            spec = ModelSpec(**self._spec)
+            spec = ModelSpec(**expanded)
         ModelBuilder.apply(
             spec,
             self.model,
