@@ -5,6 +5,7 @@ import os
 import pickle
 import signal
 import tempfile
+import threading
 from enum import Enum
 from functools import total_ordering
 
@@ -126,7 +127,10 @@ class PhysicsBase:
         # is used on destruction to save cache data
         if self.cache:
             self.created_itors = []
-            atexit.register(self.write_cache)
+            self._cache_finalized = False
+            self._last_flushed_sizes = {}
+            atexit.register(self._finalize_cache)
+            self._install_signal_handlers()
 
         self.regions = []
         self.property_containers = {}
@@ -831,12 +835,12 @@ class PhysicsBase:
         )
 
     def write_cache(self):
-        # this function can be called two ways
-        #   1. Destructor (__del__) method
-        #   2. Via atexit function, before interpreter exits
-        # In either case it should only be invoked by the earliest call (which can be 1 or 2 depending on situation)
-        # Switch cache off to prevent the second call
-        self.cache = False
+        # Safe to call repeatedly. Per-itor skip when point_data has not grown since
+        # the previous flush so per-snapshot calls during model.run() are cheap.
+        if not getattr(self, 'created_itors', None):
+            return
+        if not hasattr(self, '_last_flushed_sizes'):
+            self._last_flushed_sizes = {}
         for itor, fname in self.created_itors:
             filename = fname
             if hasattr(self, 'cache_dir'):
@@ -844,7 +848,15 @@ class PhysicsBase:
                     os.path.basename(fname) == fname
                 ):  # could already have a folder in fname
                     filename = os.path.join(self.cache_dir, fname)
-            print("Writing point data for ", type(itor).__name__, 'to', filename)
+            cur_size = len(itor.point_data)
+            if self._last_flushed_sizes.get(id(itor), -1) == cur_size:
+                continue
+            print(
+                "Writing point data for ",
+                type(itor).__name__,
+                f'({cur_size} points) to',
+                filename,
+            )
             # Temporarily ignore SIGINT/SIGTERM to avoid partial writes during sudden termination
             prev_int = None
             prev_term = None
@@ -858,6 +870,7 @@ class PhysicsBase:
                 except Exception:
                     prev_term = None
                 self._atomic_pickle_dump(itor.point_data, filename)
+                self._last_flushed_sizes[id(itor)] = cur_size
             finally:
                 if prev_int is not None:
                     try:
@@ -869,6 +882,48 @@ class PhysicsBase:
                         signal.signal(signal.SIGTERM, prev_term)
                     except Exception:
                         pass
+
+    def _finalize_cache(self):
+        # Single-shot wrapper around write_cache used by atexit and __del__.
+        if getattr(self, '_cache_finalized', False):
+            return
+        self._cache_finalized = True
+        self.write_cache()
+
+    def _install_signal_handlers(self):
+        # Flush OBL cache on SIGTERM/SIGINT before re-raising, so adaptive point data
+        # survives external termination (job timeout, manual kill). SIGKILL cannot be intercepted.
+        # Signal handlers can only be installed from the main thread.
+        if threading.current_thread() is not threading.main_thread():
+            return
+        if not hasattr(self, '_prev_signal_handlers'):
+            self._prev_signal_handlers = {}
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                prev = signal.getsignal(sig)
+                if prev is self._signal_flush_handler:
+                    continue
+                self._prev_signal_handlers[sig] = prev
+                signal.signal(sig, self._signal_flush_handler)
+            except (ValueError, OSError):
+                pass
+
+    def _signal_flush_handler(self, signum, frame):
+        try:
+            self._finalize_cache()
+        except Exception as exc:
+            try:
+                print(f"OBL cache flush on signal {signum} failed: {exc}")
+            except Exception:
+                pass
+        # Restore previous handler and re-raise so original termination semantics take effect
+        # (default action on SIGTERM, KeyboardInterrupt on SIGINT).
+        prev = self._prev_signal_handlers.get(signum, signal.SIG_DFL)
+        try:
+            signal.signal(signum, prev if prev is not None else signal.SIG_DFL)
+        except Exception:
+            pass
+        os.kill(os.getpid(), signum)
 
     def _atomic_pickle_dump(self, obj, final_path: str):
         """
@@ -967,7 +1022,7 @@ class PhysicsBase:
     def __del__(self):
         # first write cache
         if self.cache:
-            self.write_cache()
+            self._finalize_cache()
         # Now destroy all objects in physics
         for name in list(vars(self).keys()):
             delattr(self, name)

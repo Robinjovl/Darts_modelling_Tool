@@ -748,6 +748,10 @@ class DartsModel:
         if save_reservoir_data:
             self.output.save_data_to_h5(kind="reservoir")
 
+        # Flush OBL adaptive cache between snapshots so progress survives SIGTERM / job cancel.
+        if getattr(self.physics, 'cache', False):
+            self.physics.write_cache()
+
         if verbose:
             print(
                 f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
