@@ -75,8 +75,8 @@ namespace opendarts
       // max_iters: set to 1 if ILU is used as preconditioner
       // tolerance: set to 0.0 if ILU is used as preconditioner
 
-      // Setup Hypre solver
-      const int print_level = 2;  // print level
+      // Setup Hypre solver -- using HYPRE-ILU's local-only sequential mode.
+      const int print_level = 0;  // 0 = quiet (was 2 = HYPRE diagnostics)
 
       check_result(HYPRE_ILUCreate(&(this->solver)));
     	check_result(HYPRE_ILUSetPrintLevel(this->solver, print_level));
@@ -99,7 +99,7 @@ namespace opendarts
       this->A = A_in;
 
       // Setup right hand side and solution vectors
-      const int print_level = 2;  // print level in Hypre
+      const int print_level = 0;  // 0 = quiet (was 2 = HYPRE diagnostics) in Hypre
       opendarts::config::index_t n_rows = this->A->n_cols;;  // number of rows in vector must
                                                              // be the same as number of columns
                                                              // of system matrix
@@ -183,7 +183,7 @@ namespace opendarts
       //       For other values of the block size a full copy of the data must be
       //       done and some temporary storage needs to be arranged.
 
-      const int print_level = 2;  // print level
+      const int print_level = 0;  // 0 = quiet (was 2 = HYPRE diagnostics)
 
       // Convert csr_matrix A to Hypre ij_matrix
       opendarts::config::index_t ilower, iupper;

@@ -129,8 +129,8 @@ namespace opendarts
     {
       // Ensure HYPRE is initialised; linsolv_hypre_amg / linsolv_hypre_ilu
       // assume it (MGR's compositionalFlowStrategy already does this -- when
-      // CPR is used without MGR in the process the wrappers would otherwise
-      // hit "[Generic error]" out of HYPRE's diagnostic layer).
+      // CPR is used without MGR alive in the process the wrappers would
+      // otherwise hit "[Generic error]" out of HYPRE's diagnostic layer).
       if (!HYPRE_Initialized())
         HYPRE_Initialize();
 
