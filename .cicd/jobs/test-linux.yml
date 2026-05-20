@@ -31,9 +31,9 @@
         - echo "run_test_suite2 returned" $?
         - cd ..
         # test interpolators
-        - cd tests/engines/src/interpolation
+        - cd tests/interpolators
         - darts test_interpolation.py
-        - cd ../../../..
+        - cd ../..
         # test API primitives and composable specs
         - darts tests/python/test_primitives.py
         # test discretizer

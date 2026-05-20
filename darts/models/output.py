@@ -690,13 +690,14 @@ class Output:
         :param sol_filepath: Path of the HDF5 file to create.
         :param cell_ids: Cell/block indices to include in the dynamic output.
         :param description: Text description stored as the file attribute ``description``.
-        :param add_static_data: If True, also write ``/static/block_m`` and ``/static/block_p``. Default is False.
+        :param add_static_data: If True, also write ``/static/block_m``, ``/static/block_p`` and
+            ``/static/grav_coef``. Default is False.
 
         .. rubric:: HDF5 layout
         **/static** (optional)
 
             - ``cell_centers``: ``(n_blocks, dim)`` float. Written only when ``cell_ids`` covers all reservoir blocks.
-            - ``block_m``, ``block_p``: arrays. Written when ``add_static_data=True``.
+            - ``block_m``, ``block_p``, ``grav_coef``: arrays. Written when ``add_static_data=True``.
 
         **/dynamic**
 
@@ -733,8 +734,10 @@ class Output:
             if add_static_data:
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
+                grav_coef = np.array(self.reservoir.mesh.grav_coef, copy=False)
                 static_group.create_dataset("block_m", data=block_m)
                 static_group.create_dataset("block_p", data=block_p)
+                static_group.create_dataset("grav_coef", data=grav_coef)
 
             # add dynamic data group
             dynamic_group = f.create_group("dynamic")
@@ -2303,6 +2306,50 @@ class Output:
             time_data_dict[f"well_{well.name}_BHP"] = BHP
             time_data_dict[f"well_{well.name}_BHT"] = BHT
 
+    @staticmethod
+    def get_gravity_and_capillary_pressure_ops(
+        physics,
+        reservoir_operator,
+        reservoir_ops: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Return phase density and capillary-pressure operators for phase rate calculation.
+
+        Super engine operators expose explicit gravity and capillary-pressure
+        operators. The geothermal engine stores molar density in its density
+        operator slice and has no capillary-pressure operator, so convert molar density
+        to mass density to match the phase-potential term used by the engine.
+        """
+        pc = physics.property_containers[0]
+
+        if hasattr(reservoir_operator, "GRAV_OP"):
+            grav_start = reservoir_operator.GRAV_OP
+            grav = reservoir_ops[:, grav_start : grav_start + pc.nph]
+
+            if hasattr(reservoir_operator, "PC_OP"):
+                pc_start = reservoir_operator.PC_OP
+                capillary = reservoir_ops[:, pc_start : pc_start + pc.nph]
+            else:
+                capillary = np.zeros_like(grav)
+            return grav, capillary
+
+        if isinstance(physics, Geothermal):
+            if hasattr(reservoir_operator, "DENS_OP"):
+                dens_start = reservoir_operator.DENS_OP
+            else:
+                dens_start = pc.nc + pc.nc * pc.nph + pc.nph + 2
+
+            molar_density = reservoir_ops[:, dens_start : dens_start + pc.nph]
+            phase_mw = np.asarray(pc.Mw)[0]  # Geothermal engine supports pure water
+            grav = molar_density * phase_mw
+            capillary = np.zeros_like(grav)
+            return grav, capillary
+
+        raise AttributeError(
+            "Reservoir operators must expose GRAV_OP/PC_OP or a supported "
+            "engine-specific density layout for rate calculation."
+        )
+
     def calc_rates_at_conns(
         self,
         h5_well_data: dict,
@@ -2314,6 +2361,9 @@ class Output:
         """
         Calculate different types of rates at perforations or wellhead connections of wells.
         This function is used in the method store_well_time_data of the current class.
+
+        To calculate connection rates, gravity is included, while capillary pressure is ignored in this
+        postprocessing calculation.
 
         :param h5_well_data: Well data stored in the HDF5 file
         :type h5_well_data: dict
@@ -2359,30 +2409,63 @@ class Output:
                 "The model is isothermal, so advective heat rate cannot be calculated for it!"
             )
 
-        p = h5_well_data["dynamic"]["X"][:, :, p_idx]
-        dp = p[:, cell_p] - p[:, cell_m]
-        idx_upwind = np.where(dp < 0, cell_m, cell_p)
-
         # This adds a new axis, turning a 1D array into a 2D column vector
         time_idx = np.arange(n_ts)[:, None]
 
-        states = h5_well_data["dynamic"]["X"][time_idx, idx_upwind]
-
-        if self.precision == "s":
-            states = np.clip(
-                states,
-                np.array(physics.axes_min),
-                np.array(physics.axes_max),
-            )
-
         batch_size = n_ts * n_conns
-        n_well_ctrl_ops = physics.well_ctrl_operators.n_ops
+        # Use the actual interpolator size because fallback interpolators can pad the logical well ctrl operators.
+        n_well_ctrl_ops = getattr(
+            physics, "n_well_ctrl_itor_ops", physics.well_ctrl_operators.n_ops
+        )
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
         n_vars = physics.n_vars
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
-        states_2d = states.reshape(batch_size, n_vars)
 
-        states_vec = value_vector(states_2d.ravel())
+        states_m = h5_well_data["dynamic"]["X"][time_idx, cell_m]
+        states_p = h5_well_data["dynamic"]["X"][time_idx, cell_p]
+
+        if self.precision == "s":
+            axes_min = np.array(physics.axes_min)
+            axes_max = np.array(physics.axes_max)
+            states_m = np.clip(states_m, axes_min, axes_max)
+            states_p = np.clip(states_p, axes_min, axes_max)
+
+        states_m_2d = states_m.reshape(batch_size, n_vars)
+        states_p_2d = states_p.reshape(batch_size, n_vars)
+
+        def evaluate_ops(states_2d, n_ops, evaluator):
+            values = value_vector(np.zeros(batch_size * n_ops))
+            dvalues = value_vector(np.zeros((batch_size * n_ops) * n_vars))
+            evaluator.evaluate_with_derivatives(
+                value_vector(states_2d.ravel()), block_idx, values, dvalues
+            )
+            return np.asarray(values).reshape(batch_size, n_ops)
+
+        reservoir_ops_m = evaluate_ops(
+            states_m_2d, n_reservoir_ops, physics.acc_flux_itor[0]
+        )
+        reservoir_ops_p = evaluate_ops(
+            states_p_2d, n_reservoir_ops, physics.acc_flux_itor[0]
+        )
+
+        p = h5_well_data["dynamic"]["X"][:, :, p_idx]
+        dp = p[:, cell_p] - p[:, cell_m]
+
+        reservoir_operator = physics.reservoir_operators[0]
+        grav_m, _ = self.get_gravity_and_capillary_pressure_ops(
+            physics, reservoir_operator, reservoir_ops_m
+        )
+        grav_p, _ = self.get_gravity_and_capillary_pressure_ops(
+            physics, reservoir_operator, reservoir_ops_p
+        )
+        grav_m = grav_m.reshape(n_ts, n_conns, pc.nph)
+        grav_p = grav_p.reshape(n_ts, n_conns, pc.nph)
+
+        grav_coef = h5_well_data["static"]["grav_coef"]
+        grav_coef = np.asarray(grav_coef)[conn_idxs][None, :, None]
+
+        phase_p_diff = dp[:, :, None] + 0.5 * (grav_m + grav_p) * grav_coef
+        upwind_m = phase_p_diff.reshape(batch_size, pc.nph) < 0
 
         if rate_type in [
             "phase_molar_rates",
@@ -2390,46 +2473,50 @@ class Output:
             "phase_volumetric_rates",
             "advective_heat_rates",
         ]:
-            values = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
-            dvalues = value_vector(np.zeros((batch_size * n_well_ctrl_ops) * n_vars))
-
-            physics.well_ctrl_itor.evaluate_with_derivatives(
-                states_vec, block_idx, values, dvalues
+            well_ops_m = evaluate_ops(
+                states_m_2d, n_well_ctrl_ops, physics.well_ctrl_itor
             )
-
-            values_reshaped = np.asarray(values).reshape(batch_size, n_well_ctrl_ops)
-
-        elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            values = value_vector(np.zeros(batch_size * n_reservoir_ops))
-            dvalues = value_vector(np.zeros((batch_size * n_reservoir_ops) * n_vars))
-
-            physics.acc_flux_itor[0].evaluate_with_derivatives(
-                states_vec, block_idx, values, dvalues
+            well_ops_p = evaluate_ops(
+                states_p_2d, n_well_ctrl_ops, physics.well_ctrl_itor
             )
-
-            values_reshaped = np.asarray(values).reshape(batch_size, n_reservoir_ops)
-
-        else:
+        elif rate_type not in ["component_molar_rates", "component_mass_rates"]:
             raise Exception(
                 "The rate type is not entered correctly or is not supported!"
             )
 
         if rate_type == "phase_molar_rates":
             start = int(well_control_iface.MOLAR_RATE) * pc.nph
-            ops = values_reshaped[:, start : start + pc.nph]
+            ops = np.where(
+                upwind_m,
+                well_ops_m[:, start : start + pc.nph],
+                well_ops_p[:, start : start + pc.nph],
+            )
         elif rate_type == "phase_mass_rates":
             start = int(well_control_iface.MASS_RATE) * pc.nph
-            ops = values_reshaped[:, start : start + pc.nph]
+            ops = np.where(
+                upwind_m,
+                well_ops_m[:, start : start + pc.nph],
+                well_ops_p[:, start : start + pc.nph],
+            )
         elif rate_type == "phase_volumetric_rates":
             op_start = int(well_control_iface.VOLUMETRIC_RATE) * pc.nph
-            ops = values_reshaped[:, op_start : op_start + pc.nph]
+            ops = np.where(
+                upwind_m,
+                well_ops_m[:, op_start : op_start + pc.nph],
+                well_ops_p[:, op_start : op_start + pc.nph],
+            )
         elif rate_type == "component_molar_rates":
-            op_start = physics.reservoir_operators[0].FLUX_OP
-            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
-            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+            op_start = reservoir_operator.FLUX_OP
+            flux_ops_m = reservoir_ops_m[:, op_start : op_start + ne * pc.nph]
+            flux_ops_p = reservoir_ops_p[:, op_start : op_start + ne * pc.nph]
+            flux_ops_m = flux_ops_m.reshape(batch_size, pc.nph, ne)
+            flux_ops_p = flux_ops_p.reshape(batch_size, pc.nph, ne)
+            flux_ops = np.where(upwind_m[:, :, None], flux_ops_m, flux_ops_p)
 
-            op_start = physics.reservoir_operators[0].LAMBDA_OP
-            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            op_start = reservoir_operator.LAMBDA_OP
+            lambda_op_m = reservoir_ops_m[:, op_start : op_start + pc.nph]
+            lambda_op_p = reservoir_ops_p[:, op_start : op_start + pc.nph]
+            lambda_op = np.where(upwind_m, lambda_op_m, lambda_op_p)
             lambda_op = lambda_op[:, :, np.newaxis]
 
             molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
@@ -2437,12 +2524,17 @@ class Output:
 
             ops = molar_ops
         elif rate_type == "component_mass_rates":
-            op_start = physics.reservoir_operators[0].FLUX_OP
-            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
-            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+            op_start = reservoir_operator.FLUX_OP
+            flux_ops_m = reservoir_ops_m[:, op_start : op_start + ne * pc.nph]
+            flux_ops_p = reservoir_ops_p[:, op_start : op_start + ne * pc.nph]
+            flux_ops_m = flux_ops_m.reshape(batch_size, pc.nph, ne)
+            flux_ops_p = flux_ops_p.reshape(batch_size, pc.nph, ne)
+            flux_ops = np.where(upwind_m[:, :, None], flux_ops_m, flux_ops_p)
 
-            op_start = physics.reservoir_operators[0].LAMBDA_OP
-            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            op_start = reservoir_operator.LAMBDA_OP
+            lambda_op_m = reservoir_ops_m[:, op_start : op_start + pc.nph]
+            lambda_op_p = reservoir_ops_p[:, op_start : op_start + pc.nph]
+            lambda_op = np.where(upwind_m, lambda_op_m, lambda_op_p)
             lambda_op = lambda_op[:, :, np.newaxis]
 
             molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
@@ -2453,78 +2545,94 @@ class Output:
             ops = molar_ops * mw_tiled
         elif rate_type == "advective_heat_rates":
             op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-            ops = values_reshaped[:, op_start : op_start + pc.nph]
+            ops = np.where(
+                upwind_m,
+                well_ops_m[:, op_start : op_start + pc.nph],
+                well_ops_p[:, op_start : op_start + pc.nph],
+            )
 
             # Calculate dead operators
             p_dead = 1.01325  # Dead pressure (1 atm)
             T_dead = 273.15 + 15  # Dead temperature (15 deg C)
+
             if not (
                 self.physics.PT_axes_min[p_idx]
                 <= p_dead
                 <= self.physics.PT_axes_max[p_idx]
-            ):
-                warnings.warn(
-                    f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
-                    stacklevel=1,
-                )
-            if not (
-                self.physics.PT_axes_min[t_idx]
+                and self.physics.PT_axes_min[t_idx]
                 <= T_dead
                 <= self.physics.PT_axes_max[t_idx]
             ):
-                warnings.warn(
-                    f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
-                    stacklevel=1,
-                )
+                # Since the dead pressure or temperature for well advective heat rate calculation is outside the OBL bounds, leave it zero.
+                return np.zeros((n_ts, n_conns, pc.nph))
 
-            states_2d[:, p_idx] = p_dead
-            states_2d[:, t_idx] = T_dead
-            states_vec_dead = value_vector(states_2d.ravel())
+            states_m_dead = states_m_2d.copy()
+            states_p_dead = states_p_2d.copy()
+            states_m_dead[:, p_idx] = p_dead
+            states_p_dead[:, p_idx] = p_dead
+            states_m_dead[:, t_idx] = T_dead
+            states_p_dead[:, t_idx] = T_dead
 
             # Calculate heat operators at the dead state (1 atm and 15 deg C)
             if physics.state_spec == physics.StateSpecification.PT:
-                values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
-                dvalues_dead = value_vector(
-                    np.zeros((batch_size * n_well_ctrl_ops) * n_vars)
+                values_dead_m = evaluate_ops(
+                    states_m_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
-
-                physics.well_ctrl_itor.evaluate_with_derivatives(
-                    states_vec_dead, block_idx, values_dead, dvalues_dead
+                values_dead_p = evaluate_ops(
+                    states_p_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-                values_reshaped_dead = np.asarray(values_dead).reshape(
-                    batch_size, n_well_ctrl_ops
+                ops_dead = np.where(
+                    upwind_m,
+                    values_dead_m[:, op_start : op_start + pc.nph],
+                    values_dead_p[:, op_start : op_start + pc.nph],
                 )
-                ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif physics.state_spec == physics.StateSpecification.PH:
                 # Calculate enthalpy for the dead state with temperature as the thermal variable
                 n_thermal_var_op = physics.thermal_var_operator.n_ops
-                enthalpies_dead = value_vector(np.zeros(batch_size * n_thermal_var_op))
-                denthalpies_dead = value_vector(
+
+                enthalpies_dead_m = value_vector(
+                    np.zeros(batch_size * n_thermal_var_op)
+                )
+                denthalpies_dead_m = value_vector(
                     np.zeros((batch_size * n_thermal_var_op) * n_vars)
                 )
-
                 physics.thermal_var_itor.evaluate_with_derivatives(
-                    states_vec_dead, block_idx, enthalpies_dead, denthalpies_dead
+                    value_vector(states_m_dead.ravel()),
+                    block_idx,
+                    enthalpies_dead_m,
+                    denthalpies_dead_m,
+                )
+                enthalpies_dead_p = value_vector(
+                    np.zeros(batch_size * n_thermal_var_op)
+                )
+                denthalpies_dead_p = value_vector(
+                    np.zeros((batch_size * n_thermal_var_op) * n_vars)
+                )
+                physics.thermal_var_itor.evaluate_with_derivatives(
+                    value_vector(states_p_dead.ravel()),
+                    block_idx,
+                    enthalpies_dead_p,
+                    denthalpies_dead_p,
                 )
 
                 # Update the dead state array (containing temperatures) with calculated enthalpies
-                np.asarray(states_vec_dead)[t_idx::n_vars] = np.asarray(enthalpies_dead)
+                states_m_dead[:, t_idx] = np.asarray(enthalpies_dead_m)
+                states_p_dead[:, t_idx] = np.asarray(enthalpies_dead_p)
 
                 # Now pass the dead state array with enthalpies to the well control interpolator
-                values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
-                dvalues_dead = value_vector(
-                    np.zeros((batch_size * n_well_ctrl_ops) * n_vars)
+                values_dead_m = evaluate_ops(
+                    states_m_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
-
-                physics.well_ctrl_itor.evaluate_with_derivatives(
-                    states_vec_dead, block_idx, values_dead, dvalues_dead
+                values_dead_p = evaluate_ops(
+                    states_p_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-                values_reshaped_dead = np.asarray(values_dead).reshape(
-                    batch_size, n_well_ctrl_ops
+                ops_dead = np.where(
+                    upwind_m,
+                    values_dead_m[:, op_start : op_start + pc.nph],
+                    values_dead_p[:, op_start : op_start + pc.nph],
                 )
-                ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
 
             ops = ops - ops_dead
 
@@ -2541,8 +2649,11 @@ class Output:
             ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
 
         tran = trans[None, :, None]
-        dpr = dp[:, :, None]
-        rates = -ops_reshaped * tran * dpr
+        if rate_type in ["component_molar_rates", "component_mass_rates"]:
+            pressure_term = np.repeat(phase_p_diff, pc.nc_fl, axis=2)
+        else:
+            pressure_term = phase_p_diff
+        rates = -ops_reshaped * tran * pressure_term
 
         return rates
 

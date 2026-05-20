@@ -37,9 +37,9 @@
         - darts run_test_suite2.py LOG
         - cd ..
         # test interpolators
-        - cd tests\engines\src\interpolation
+        - cd tests\interpolators
         - python test_interpolation.py
-        - cd ..\..\..\..
+        - cd ..\..
         # test API primitives and composable specs
         - darts tests\python\test_primitives.py
         # test discretizer

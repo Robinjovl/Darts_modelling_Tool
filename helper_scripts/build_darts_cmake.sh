@@ -159,12 +159,14 @@ if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
 fi
 # ------------------------------------------------------------------------------
 
-rm -rf dist
-rm -rf darts/*.so
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
-    echo '\n   Cleaning build folder'
+    echo -e '\n   Cleaning build folder'
     rm -rf build
+    rm -rf dist
+    rm -rf darts/*.so
+else
+    rm -rf dist
 fi
 
 
@@ -262,7 +264,6 @@ echo -e "=======================================================================
 # Setup build folder
 mkdir -p build
 cd build
-rm -f CMakeCache.txt  # ensures Cmake doesn't work on outdated configuration
 
 # If valgrind requested, force Debug
 if [[ "$valgrind" = true ]]; then
@@ -306,11 +307,23 @@ if [[ ! -z "$CUDA_ARCH" ]]; then
     cmake_options+=" -D CUDA_ARCH=${CUDA_ARCH}"
 fi
 
+if [[ -n "${OD_CMAKE_ARGS:-}" ]]; then
+    cmake_options+=" ${OD_CMAKE_ARGS}"
+fi
+
 echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
 # Build and install openDARTS
-make install -j $NT 2>> ../make_darts.log
+# Under valgrind (-O2 -g) the auto-generated super_part*.cpp interpolator TUs
+# can OOM-kill g++ at high -j. Pre-build the interpolators target with reduced
+# parallelism; the subsequent full build skips already-compiled objects.
+if [[ "$valgrind" == true && "$NT" -gt 1 ]]; then
+    HEAVY_NT=$(( NT / 2 ))
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT (valgrind OOM mitigation)"
+    make interpolators -j $HEAVY_NT 2>> ../make_darts.log
+fi
+cmake --build . --target install --parallel "$NT" 2>&1 | tee -a ../make_darts.log
 
 # Test
 if [[ "$testing" == true ]]; then

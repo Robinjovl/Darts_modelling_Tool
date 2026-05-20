@@ -6,7 +6,7 @@ description: Run the mandatory verification stack when changes affect runtime co
 # Verify open-DARTS
 
 Use this skill to choose and run the minimum required validation before handoff.
-Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
+Use the session conda environment. If the prompt defines one, use it. Otherwise, create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 

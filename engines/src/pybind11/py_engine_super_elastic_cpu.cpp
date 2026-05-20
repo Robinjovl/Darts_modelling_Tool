@@ -32,7 +32,7 @@ struct engine_super_elastic_exposer
 			(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, operator_set_gradient_evaluator_iface*, sim_params*, timer_node*)) &engine_super_elastic_cpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 6>())
 			.def("calc_newton_dev", &engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev) \
 			.def("apply_newton_update", &engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update) \
-			.def("post_newtonloop", &engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop) \
+			.def("post_newtonloop", (int (engine_super_elastic_cpu<NC, NP, THERMAL>::*)(value_t, value_t, index_t)) &engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop) \
 			.def("set_discretizer", (void (engine_super_elastic_cpu<NC, NP, THERMAL>::*)
 			(typename engine_super_elastic_cpu<NC, NP, THERMAL>::DiscretizerType*)) &engine_super_elastic_cpu<NC, NP, THERMAL>::set_discretizer) \
 			.def("eval_stresses_and_velocities", &engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities) \

@@ -8,8 +8,20 @@
 
 #include "globals.h"
 #include "conn_mesh.h"
-#include "interpolator_base.hpp"
-#include "pybind11/py_globals.h"
+#include "evaluator_iface.h"
+
+#include <pybind11/numpy.h>
+namespace py = pybind11;
+
+template <typename T>
+inline py::array_t<T> get_raw_array(T* arr, size_t size) {
+  return py::array_t<T>(
+    { size },
+    { sizeof(T) },
+    arr,
+    py::capsule(arr, [](void* /*f*/) {})
+  );
+}
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/data_types.hpp"
@@ -47,7 +59,6 @@ using namespace opendarts::linear_solvers;
 #endif
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -956,11 +967,12 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	for (ms_well *w : wells)
 	{
-		// initialize the state of well blocks of the type EPM
+		// initialize the state of well segments
 		if (w->ms_type == ms_well::MS_Type::EPM)
-			w->initialize_control(X_init);
-		// initialize the state of well blocks of the type DFM
-		else if (w->ms_type == ms_well::MS_Type::DFM)
+			w->initialize_control_epm(X_init);
+		else if (w->ms_type == ms_well::MS_Type::DFM && w->control.get_well_control_type() > well_control_iface::WellControlType::NONE)
+			w->initialize_control_dfm(X_init);
+		else if (w->ms_type == ms_well::MS_Type::DFM && w->control.get_well_control_type() == well_control_iface::WellControlType::NONE)
 			std::copy(w->init_state.begin(), w->init_state.end(), X_init.begin() + w->well_head_idx * n_vars);
 	}
 

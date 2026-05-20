@@ -125,7 +125,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     if not(m.idata.supress_all_output):
         # compute and save well time data
-        td = m.output.store_well_time_data(save_output_files=True)
+        td = m.output.store_well_time_data(save_output_files=False)
         time_data = pd.DataFrame.from_dict(td)
         # add_columns_time_data(time_data)
 
@@ -145,9 +145,6 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data_report.xlsx'))
         time_data_report.to_excel(writer, sheet_name='time_data_report')
         writer.close()
-
-        m.output.store_well_time_data(save_output_files=True)
-        m.output.plot_well_time_data()
 
     m.print_timers()
 

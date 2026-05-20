@@ -6,7 +6,7 @@ description: Lint and format open-DARTS code using Ruff and pre-commit, matching
 # Lint and Format
 
 Use this skill to apply the same checks used in CI.
-Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
+Use the session conda environment. If the prompt defines one, use it. Otherwise, create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 

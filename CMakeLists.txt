@@ -108,7 +108,6 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 
 # Determine the type of compiler we have and set compiler flags and other compiler
 # specific flags
-
 if(DEFINED BOS_SOLVERS_DIR)
   add_compile_definitions(WITH_HYPRE)
 endif()
@@ -154,7 +153,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # Using LTO as it seems to reduce compile time
   # No need for manual optimization flag, CMake build types automatically handle it.
   # Debug: O0    Release: 03
-  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-pipe;-std=c++20")
 
   # Linker flags
   set(opendarts_cxx_linker_flags "")
@@ -278,16 +277,25 @@ if(CUDA)
 
     if(CUDAToolkit_FOUND)
         message(STATUS "CUDA found. Enabling CUDA support.")
-        enable_language(CUDA)
-        set(CMAKE_CUDA_STANDARD 20)
-        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         cmake_minimum_required (VERSION 3.24)  # 3.24 is needed for architecture native
+        # Set architecture BEFORE enable_language(CUDA) so CMake can detect the compiler
         if(DEFINED CUDA_ARCH)
             message(STATUS "Using CUDA architecture(s): ${CUDA_ARCH}")
             set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH})
         else()
             set(CMAKE_CUDA_ARCHITECTURES native)
         endif()
+        # Use nvcc discovered by find_package(CUDAToolkit) when it is not in PATH
+        if(NOT DEFINED CMAKE_CUDA_COMPILER AND DEFINED CUDAToolkit_BIN_DIR)
+            find_program(_NVCC_PATH nvcc PATHS "${CUDAToolkit_BIN_DIR}" NO_DEFAULT_PATH)
+            if(_NVCC_PATH)
+                set(CMAKE_CUDA_COMPILER "${_NVCC_PATH}" CACHE FILEPATH "CUDA compiler")
+                message(STATUS "Using CUDA compiler: ${_NVCC_PATH}")
+            endif()
+        endif()
+        enable_language(CUDA)
+        set(CMAKE_CUDA_STANDARD 20)
+        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --expt-relaxed-constexpr -allow-unsupported-compiler")
         # Workaround for CUDA 13.2 + gcc 13 + CCCL ambiguity in cub/block/block_load_to_shared.cuh
@@ -349,6 +357,13 @@ target_link_options(opendarts_compiler_flags
 # openDARTS Linear solvers -----------------------------------------------------
 if(NOT DEFINED BOS_SOLVERS_DIR)
   add_subdirectory(solvers)
+endif()
+# ------------------------------------------------------------------------------
+
+
+# Interpolation ----------------------------------------------------------------
+if(NOT ONLY_SOLVERS)
+  add_subdirectory(interpolation)
 endif()
 # ------------------------------------------------------------------------------
 

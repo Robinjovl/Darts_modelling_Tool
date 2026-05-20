@@ -32,7 +32,6 @@ inline value_t safe_denominator(value_t denom)
 }
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -1008,33 +1007,25 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
             else
                 upstream_idx = w->well_body_idx; // producer
 
-            //index_t nc = n_vars;
-            //index_t n_ops = 2 * nc;
-
             std::vector<value_t> state;
             std::vector<index_t> block_idx = { 0 };
-            std::vector<value_t> rates;
-            std::vector<value_t> rates_derivs;
+            std::vector<value_t> well_ctrl_ops;
+            std::vector<value_t> well_ctrl_ops_derivs;
 
-            //rates.resize(w->n_phases);
-            //rates_derivs.resize(w->n_phases * n_vars);
+			index_t n_well_ctrl_ops = w->control.get_n_well_ctrl_ops();
 
+			well_ctrl_ops.resize(n_well_ctrl_ops);
+			well_ctrl_ops_derivs.resize(n_well_ctrl_ops * n_vars);
 
-			index_t n_ops_well = w->control.get_well_n_ops();
-			index_t n_vars_well = w->control.get_well_n_vars();
-
-			rates.resize(n_ops_well);
-			rates_derivs.resize(n_ops_well * n_vars_well);
-
-            state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars_well);
-            w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
+            state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
+            w->well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
 
 
 
 
             //uint8_t c = component_index[0];
             double ders_term, vals_term;
-            for (uint8_t v = 0; v < n_vars_well; v++)
+            for (uint8_t v = 0; v < n_vars; v++)
             {
                 ders_term = 0.0;
                 vals_term = 0.0;
@@ -1048,8 +1039,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                         if (opt_phase == phase)
                         {
                             // adding minus sign on "q_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-                            ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->well_transmissibility * (-q_Q[ww][p]);
-                            vals_term += rates[p_idx] * w->well_transmissibility * (-q_Q[ww][p]);
+                            ders_term += well_ctrl_ops_derivs[p_idx * n_vars + v] * p_diff * w->well_transmissibility * (-q_Q[ww][p]);
+                            vals_term += well_ctrl_ops[p_idx] * w->well_transmissibility * (-q_Q[ww][p]);
                         }
                         p++;
                     }
@@ -1061,21 +1052,21 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                 // corresponding to ms_well::check_constraints
 				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
                 {
-                    Temp_dj_dx[upstream_idx * n_vars_well + v] += -ders_term;
+                    Temp_dj_dx[upstream_idx * n_vars + v] += -ders_term;
                     if (v == 0)  // derivatives w.r.t. pressure
                     {
-                        Temp_dj_dx[w->well_body_idx * n_vars_well + v] += vals_term;
+                        Temp_dj_dx[w->well_body_idx * n_vars + v] += vals_term;
                     }
                 }
                 else  // rate control
                 {
                     //;  // all zero
 
-                    Temp_dj_dx[upstream_idx * n_vars_well + v] += -ders_term;
+                    Temp_dj_dx[upstream_idx * n_vars + v] += -ders_term;
                     if (v == 0)  // derivatives w.r.t. pressure
                     {
-                        Temp_dj_dx[w->well_body_idx * n_vars_well + v] += vals_term;
-                        Temp_dj_dx[w->well_head_idx * n_vars_well + v] += -vals_term; // add extra term on well head
+                        Temp_dj_dx[w->well_body_idx * n_vars + v] += vals_term;
+                        Temp_dj_dx[w->well_head_idx * n_vars + v] += -vals_term; // add extra term on well head
                     }
                 }
 
@@ -1123,32 +1114,25 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			else
 				upstream_idx = w->well_body_idx; // producer
 
-			//index_t nc = n_vars;
-			//index_t n_ops = 2 * nc;
-
 			std::vector<value_t> state;
 			std::vector<index_t> block_idx = { 0 };
-			std::vector<value_t> rates;
-			std::vector<value_t> rates_derivs;
+			std::vector<value_t> well_ctrl_ops;
+			std::vector<value_t> well_ctrl_ops_derivs;
 
-			//rates.resize(w->n_phases);
-			//rates_derivs.resize(w->n_phases * n_vars);
+			index_t n_well_ctrl_ops = w->control.get_n_well_ctrl_ops();
 
-			index_t n_ops_well = w->control.get_well_n_ops();
-			index_t n_vars_well = w->control.get_well_n_vars();
+			well_ctrl_ops.resize(n_well_ctrl_ops);
+			well_ctrl_ops_derivs.resize(n_well_ctrl_ops * n_vars);
 
-			rates.resize(n_ops_well);
-			rates_derivs.resize(n_ops_well* n_vars_well);
-
-			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars_well);
-			w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
+			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
+			w->well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
 
 
 
 
 			//uint8_t c = component_index[0];
 			double ders_term, vals_term;
-			for (uint8_t v = 0; v < n_vars_well; v++)
+			for (uint8_t v = 0; v < n_vars; v++)
 			{
 				ders_term = 0.0;
 				vals_term = 0.0;
@@ -1162,8 +1146,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 						if (opt_phase == phase)
 						{
                             // adding minus sign on "q_inj_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-							ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->well_transmissibility * (-q_inj_Q[ww][p]);
-							vals_term += rates[p_idx] * w->well_transmissibility * (-q_inj_Q[ww][p]);
+							ders_term += well_ctrl_ops_derivs[p_idx * n_vars + v] * p_diff * w->well_transmissibility * (-q_inj_Q[ww][p]);
+							vals_term += well_ctrl_ops[p_idx] * w->well_transmissibility * (-q_inj_Q[ww][p]);
 						}
                         p++;
 					}
@@ -1172,21 +1156,21 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
 				{
-					Temp_dj_dx[upstream_idx * n_vars_well + v] += ders_term;
+					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
 					if (v == 0)  // derivatives w.r.t. pressure
 					{
-						Temp_dj_dx[w->well_body_idx * n_vars_well + v] += -vals_term;
+						Temp_dj_dx[w->well_body_idx * n_vars + v] += -vals_term;
 					}
 				}
 				else  // rate control
 				{
 					//;  // all zero
 
-					Temp_dj_dx[upstream_idx * n_vars_well + v] += ders_term;
+					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
 					if (v == 0)  // derivatives w.r.t. pressure
 					{
-						Temp_dj_dx[w->well_body_idx * n_vars_well + v] += -vals_term;
-						Temp_dj_dx[w->well_head_idx * n_vars_well + v] += vals_term;
+						Temp_dj_dx[w->well_body_idx * n_vars + v] += -vals_term;
+						Temp_dj_dx[w->well_head_idx * n_vars + v] += vals_term;
 					}
 				}
 			}
@@ -1275,20 +1259,18 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			}
 			else
 			{
-				//index_t nc = n_vars;
-				//index_t n_ops = 2 * nc;
-
 				std::vector<value_t> state;
 				std::vector<index_t> block_idx = { 0 };
-				std::vector<value_t> rates;
-				std::vector<value_t> rates_derivs;
+				std::vector<value_t> well_ctrl_ops;
+				std::vector<value_t> well_ctrl_ops_derivs;
 
-				rates.resize(w->n_phases);
-				rates_derivs.resize(w->n_phases * n_vars);
+				index_t n_well_ctrl_ops = w->control.get_n_well_ctrl_ops();
+
+				well_ctrl_ops.resize(n_well_ctrl_ops);
+				well_ctrl_ops_derivs.resize(n_well_ctrl_ops * n_vars);
 
 				state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
-				w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
-
+				w->well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
 
 				double ders_term, vals_term;
 				for (uint8_t v = 0; v < n_vars; v++)
@@ -1302,7 +1284,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 						if (phase == "temperature")
 						{
 							// adding minus sign on "wt_WT" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-							ders_term += rates_derivs[p_idx * n_vars + v] * (-wt_WT[ww]);
+							ders_term += well_ctrl_ops_derivs[p_idx * n_vars + v] * (-wt_WT[ww]);
 							//vals_term += rates[p] * (-wt_WT[ww]);
 						}
 						p_idx++;

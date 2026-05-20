@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from darts.engines import property_evaluator_iface
+from darts.interpolators import property_evaluator_iface
 from darts.physics.properties.evaluator_base import (
     EvaluatorBase,
     EvaluatorConfigBase,

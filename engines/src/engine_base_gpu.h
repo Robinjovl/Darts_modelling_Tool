@@ -504,7 +504,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   int iw = 0;
   for (ms_well *w : wells)
   {
-    w->initialize_control(X_init);
+    w->initialize_control_epm(X_init);
     jac_well_head_idxs[iw++] = w->well_head_idx;
   }
 
