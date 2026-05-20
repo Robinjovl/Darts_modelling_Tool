@@ -297,12 +297,19 @@ class PardisoSolverSpec(PythonLinearSolverSpec):
 def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
     """Return the default linear-solver spec for a platform.
 
-    Single source of truth for the default solver. The CPU default is HYPRE
-    MGR -- it is itself a Flex-GMRES-based solver with a strong block
-    preconditioner, so it already fills the role the legacy
-    ``linsolv_bos_gmres + linsolv_bos_cpr_amg`` stack played in the proprietary
-    build. Use :class:`GMRESSolverSpec` explicitly when wrapping a non-MGR
-    inner preconditioner with an outer Krylov.
+    Single source of truth for the default solver. The CPU default is
+    **FGMRES + open-source CPR** -- the in-tree restart-GMRES wrapped around
+    the two-stage CPR preconditioner (HYPRE BoomerAMG on the pressure
+    subsystem + HYPRE_ILU(0) on the full system). This is the open-source
+    equivalent of the legacy ``linsolv_bos_gmres + linsolv_bos_cpr_amg`` stack
+    that the proprietary build used as its default. Validated against MGR
+    across ``2ph_comp``, ``2ph_do``, ``2ph_geothermal``, and ``3ph_bo``: same
+    Newton / linear iteration counts as MGR, with lower per-iteration setup
+    overhead.
+
+    :class:`MGRSolverSpec` remains the recommended fallback for matrices
+    where the CPR pressure extraction is a bad fit; set
+    ``data_ts.linear_solver = MGRSolverSpec()`` to use it.
 
     :param platform: ``"cpu"`` or ``"gpu"``.
 
@@ -318,4 +325,4 @@ def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
             "GPU default solver is configured in the GPU engine factory, not "
             "through a LinearSolverSpec (see engine_base_gpu)."
         )
-    return MGRSolverSpec()
+    return GMRESSolverSpec(restart=50, prec=CPRSolverSpec())
