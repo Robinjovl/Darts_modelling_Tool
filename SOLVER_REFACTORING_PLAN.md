@@ -1,7 +1,86 @@
 # open-DARTS Linear Solver — Consolidation & Refactoring Plan
 
 Branch: `xiaoming/add-mgr`. One MR, delivered as a **stacked series of commits**.
-Status: planning complete, implementation starting. Last updated: 2026-05-18.
+Status: implementation complete; see Appendix C for the per-item completion table.
+Last updated: 2026-05-20.
+
+---
+
+## 0. Crucial changes (TL;DR)
+
+The MR is fundamentally a **dependency unwinding + unified interface** delivery.
+What changes for downstream users / packagers:
+
+* **Open-source solver implementations moved into `open-darts/solvers/`** — were
+  shipped only via the proprietary `darts-linear-solvers/`. Open-DARTS no longer
+  needs `BOS_SOLVERS_DIR` to have a working CPU + GPU iterative-solver stack.
+* **AMGX added as a thirdparty submodule** (`thirdparty/AMGX`), opt-in via the
+  `WITH_AMGX` CMake option. GPU builds with AMGX absent fall back to the
+  in-tree BiCGStab + cuSPARSE-ILU solver.
+* **HYPRE tracks latest release**, version-pin logic removed from build scripts.
+* **Five GPU solvers absorbed in-tree**: `linsolv_amgx`, `linsolv_bicgstab`,
+  `linsolv_bos_cpr_gpu`, `linsolv_cusparse_ilu`, `linsolv_cusolv`. The GPU device
+  layer is a freshly-written cuSPARSE BSR layer on open-DARTS' own `csr_matrix`,
+  so the GPU solvers no longer depend on the proprietary `csr_matrix`.
+* **Three new in-tree CPU iterative solvers** (open-source):
+  - `linsolv_gmres` — restarted right-preconditioned GMRES / FlexGMRES with
+    MGS + Givens; in-tree replacement for `linsolv_bos_gmres`. Adjoint mode
+    (`solve_transposed`) wired through to the preconditioner.
+  - `linsolv_cpr` — two-stage CPR (Wallis 1983) with HYPRE BoomerAMG on the
+    extracted pressure subsystem + HYPRE_ILU(0) on the scalar-expanded full
+    system. In-tree replacement for `linsolv_bos_cpr + linsolv_bos_amg`.
+    Adjoint **CPRA** (Han et al. 2013) implemented with separate transposed
+    AMG and ILU hierarchies.
+  - `linsolv_mgr` — HYPRE-MGR via `mgr::CompositionalFlowStrategy`, plus
+    BCSR-CPR True-IMPES coarsening, adaptive AMG rebuild, BILU0
+    singular-pivot fallback, composite preconditioner mode, local-correction
+    smoother. The first viable open-source iterative CPU solver.
+* **Unified C++ `linear_solver` interface + name-based registry** — adding a
+  solver no longer requires editing an enum or a switch. The old
+  `linsolv_iface` / `linsolv_iface_bos<N>` / `linear_solver_base` /
+  `mgr::*` hierarchies collapse to one entry point.
+* **Per-solver typed config + Python `LinearSolverSpec` classes**:
+  `MGRSolverSpec`, `GMRESSolverSpec`, `CPRSolverSpec`, `SuperLUSolverSpec`,
+  `PETScSolverSpec`, `PardisoSolverSpec`, `AdaptiveSolverSpec`.
+* **PETSc / Pardiso unified into the same Spec mechanism** — `PythonLinearSolver`
+  base class; the Newton loop's `isinstance` branch is collapsed into a single
+  `_solve_linear_equation()` path. PETSc uses AIJ + a precomputed
+  block→scalar values gather (no per-iter BSR→CSR conversion); Pardiso uses
+  scalar CSR built once, values-only refresh per iter.
+* **§12 unified matrix layout**: `sparsity_pattern`, `dual_array<T>` (host/device
+  storage primitive), `block_csr_matrix`, `block_csr_view<N>`; CPU + GPU engine
+  Jacobians both migrated; GPU BSR SpMV adapter; polymorphic
+  `csr_matrix<1>::to_nb_1(csr_matrix_base*)` for adjoint.
+* **CPU default flipped to FGMRES + CPR** (`GMRESSolverSpec(prec=CPRSolverSpec())`).
+  Identical iteration counts to MGR across four flow models with lower per-iter
+  overhead. `MGRSolverSpec` stays the recommended fallback.
+* **One Python knob** for solver selection: `data_ts.linear_solver = <Spec>`.
+  Legacy `data_ts.linear_type` enum kept for back-compat only.
+* **Adaptive / mid-run solver switching** — `AdaptiveSolverSpec` +
+  `SolverSwitchContext` + `fallback_on_failure` policy. The solver can change
+  during a run based on failure / iter-count signals.
+* **Engine factory enum-driven solver creation is neutralised** in the
+  open-source build — requires an explicit `engine.set_linear_solver(...)` /
+  spec injection. The proprietary build keeps the legacy factory.
+* **CI dual-path coverage** — one job exercises the proprietary `-a` artifact
+  stack, a sibling job exercises the open-source in-tree registry; the same
+  model suite covers both.
+* **Dropped**: `samg`, `amg1r5`, `aips`, `linsolv_adgprs_nf` + `lib/AD-GPRS-NF/`
+  (commercial / binary-only / dead code; no model in the suite depends on them).
+* **Kept proprietary, unchanged**: `linsolv_bos_gmres/cpr/bilu0/amg/fs_cpr`,
+  `bos_linear_solver_lib`, the proprietary `csr_matrix`. The MR explicitly does
+  **not** touch the proprietary CPU stack; `BOS_SOLVERS_DIR` still wires it in.
+
+What remains queued (out of MR scope, captured in Appendix C):
+
+* `linsolv_bos_fs_cpr` (poromechanics 4-block CPR) — open-source per the header
+  but not yet re-implemented; depends on a poromech test target.
+* GPU FGMRES — `linsolv_gmres` ported to cuBLAS.
+* GMRES + MGR composition triggers HYPRE NaN warnings — the default flip
+  to FGMRES + CPR avoids the path; no longer blocking.
+* Mechanics-engine Jacobian migration to `block_csr_matrix`.
+* `linsolv_superlu` typed `csr_matrix<N>*` assumption — latent bug on
+  `block_csr_matrix` input.
 
 ---
 
@@ -19,21 +98,32 @@ Deliver a **unified, extensible linear-solver subsystem** for open-DARTS that:
    primary configuration surface (PETSc/Pardiso are the model for this).
 4. Makes the subsystem **extensible** (add a solver without editing an enum or a switch) and
    **adaptive** (change solver type during a run).
-5. Makes **HYPRE/MGR the default CPU solver**; the GPU default stays the legacy AMGX-CPR path.
+5. Makes the in-tree **FGMRES + CPR** (`linsolv_gmres + linsolv_cpr`) the default
+   CPU solver -- the open-source equivalent of the proprietary
+   `linsolv_bos_gmres + linsolv_bos_cpr_amg` stack. `MGRSolverSpec` (HYPRE-MGR)
+   remains the recommended fallback. The GPU default stays the legacy AMGX-CPR
+   path (in-tree BiCGStab + cuSPARSE-ILU when AMGX is absent).
 6. Is fully covered by CI/CD, including cross-solver comparison.
 
 ---
 
 ## 2. Background
 
-The open-source CPU build currently has **no working iterative solver**: the `linsolv_bos_*`
-classes in `solvers/` are stubs printing `"NOT IMPLEMENTED"`; the real implementations are
-proprietary and external. The only working open-source CPU solvers are SuperLU (direct) and the
-new HYPRE MGR solver — repaired in commit `9139da28` ("solved the problem of Jacobian
-updating"). MGR is the first viable open-source iterative CPU solver and becomes the new CPU
-default. The GPU solver stack also lives only in `darts-linear-solvers`; its open-source GPU
-portion is brought in-tree by this MR so that **GPU builds no longer require the external
-library**.
+**Before this MR**, the open-source CPU build had **no working iterative solver**:
+the `linsolv_bos_*` classes in `solvers/` were stubs printing `"NOT IMPLEMENTED"`;
+the real implementations lived in the proprietary `darts-linear-solvers/`. The
+only working open-source CPU solver was SuperLU (direct). The open-source GPU
+solver stack also lived only in `darts-linear-solvers`, so GPU builds required
+`BOS_SOLVERS_DIR` to be wired up.
+
+**This MR** delivers three new open-source iterative CPU solvers in-tree
+(`linsolv_mgr`, `linsolv_gmres`, `linsolv_cpr` with CPRA adjoint), the five GPU
+solvers brought in-tree on a freshly-written cuSPARSE BSR layer, the unified
+`linear_solver` C++ interface + registry, and the `LinearSolverSpec` Python
+class hierarchy. The CPU default becomes `GMRESSolverSpec(prec=CPRSolverSpec())`
+-- iteration counts identical to MGR on flow models, lower per-iter overhead
+-- with MGR as the recommended fallback. GPU builds no longer require the
+external proprietary library.
 
 ---
 
@@ -42,13 +132,28 @@ library**.
 ### In scope
 - Absorb the **5 open-source GPU solvers**: `linsolv_amgx`, `linsolv_bicgstab`,
   `linsolv_bos_cpr_gpu`, `linsolv_cusparse_ilu`, `linsolv_cusolv`.
+- **AMGX** added as a thirdparty submodule (`thirdparty/AMGX`); GPU builds with
+  AMGX absent fall back to BiCGStab + cuSPARSE-ILU.
 - Reimplement a **GPU device layer on open-DARTS' own `csr_matrix`** (the GPU solvers'
   dependency on the proprietary matrix is removed by reimplementation — see §7.3).
+- Add **three new in-tree open-source CPU iterative solvers**:
+  - `linsolv_gmres` (restart-GMRES / FlexGMRES + adjoint),
+  - `linsolv_cpr` (two-stage CPR + Han-2013 CPRA transpose),
+  - `linsolv_mgr` (HYPRE-MGR via `CompositionalFlowStrategy`, with BCSR-CPR
+    True-IMPES coarsening, adaptive AMG rebuild, BILU0 fallback, composite
+    preconditioner mode, local-correction smoother).
 - Unified C++ `linear_solver` interface + registry + typed config structs.
-- Python `LinearSolverSpec` class hierarchy; unified dispatch (incl. PETSc/Pardiso).
-- CPU default → FGMRES + CPR (open-source `linsolv_gmres + linsolv_cpr`); centralized default policy. MGR remains the recommended fallback.
+- Python `LinearSolverSpec` class hierarchy (`MGRSolverSpec`, `GMRESSolverSpec`,
+  `CPRSolverSpec`, `SuperLUSolverSpec`, `PETScSolverSpec`, `PardisoSolverSpec`,
+  `AdaptiveSolverSpec`); unified dispatch incl. PETSc / Pardiso.
+- **§12 unified matrix layout**: `sparsity_pattern`, `dual_array<T>`,
+  `block_csr_matrix`, `block_csr_view<N>`, GPU BSR SpMV adapter; CPU + GPU
+  engine Jacobians both migrated.
+- CPU default → FGMRES + CPR (open-source `linsolv_gmres + linsolv_cpr`);
+  centralized default policy. MGR remains the recommended fallback.
 - Adaptive / mid-run solver switching.
-- CI: GPU buildable from in-tree source; solver-comparison job.
+- CI: GPU buildable from in-tree source; dual-path coverage (proprietary `-a`
+  vs open-source registry) over the model suite.
 
 ### Out of scope (deliberately kept as-is)
 - The **proprietary CPU `bos` solvers** (`linsolv_bos_gmres/cpr/bilu0/amg/fs_cpr`): stay
@@ -103,7 +208,7 @@ and dead code: `WITH_ADGPRS_NF` is never defined).
 - **R3** — One typed config object per solver (C++ struct ⇄ Python class), fully documented.
 - **R4** — One Python knob: `data_ts.linear_solver = <SolverSpec>`. PETSc & Pardiso unified into
   the same mechanism.
-- **R5** — Default policy in one place: CPU ⇒ MGR; GPU ⇒ legacy AMGX-CPR.
+- **R5** — Default policy in one place: CPU ⇒ `GMRESSolverSpec(prec=CPRSolverSpec())` (FGMRES + CPR); GPU ⇒ legacy AMGX-CPR (in-tree BiCGStab + cuSPARSE-ILU when AMGX absent). `MGRSolverSpec` is the recommended fallback on CPU.
 - **R6** — Mid-run / adaptive solver switching is a first-class feature.
 - **R7** — The open-source GPU solvers live in-tree; **GPU builds without the external library**.
 - **R8** — The proprietary CPU `bos` path keeps working unchanged (`BOS_SOLVERS_DIR` / `-a`).
@@ -243,12 +348,18 @@ deleted.
 ### 7.6 Default-solver policy
 
 ```python
-def default_linear_solver(platform: str) -> LinearSolverSpec:
-    return MGRSolverSpec() if platform == "cpu" else AMGXSolverSpec()
+def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
+    if platform.lower() == "gpu":
+        # GPU default is wired in the GPU engine factory (engine_base_gpu),
+        # not through a LinearSolverSpec.
+        raise NotImplementedError(...)
+    return GMRESSolverSpec(restart=50, prec=CPRSolverSpec())
 ```
 
-Single source of truth. Remove the `CPU_SUPERLU` default at `globals.h:116-120`, the override
-at `darts_model.py:187-188`, and the coercion at `engine_base_gpu.h:160-163`.
+Single source of truth ([`darts/solvers/specs.py`](darts/solvers/specs.py)).
+Validated against `MGRSolverSpec` across four flow models -- identical Newton /
+linear iteration counts, lower per-iter overhead. `MGRSolverSpec` remains the
+recommended fallback (set `data_ts.linear_solver = MGRSolverSpec()`).
 
 ### 7.7 Adaptive / mid-run switching
 
