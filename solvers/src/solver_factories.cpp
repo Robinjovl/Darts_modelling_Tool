@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "linsolv_gmres.hpp"
 #include "linsolv_iface.hpp"
 #include "linsolv_mgr.hpp"
 #include "linsolv_superlu.hpp"
@@ -192,6 +193,55 @@ namespace opendarts
       {
         return build_superlu_for_block_size(block_size);
       }
+      // ---- GMRES (open-source restarted Krylov, see linsolv_gmres) ---------
+
+      template <uint8_t N_BLOCK_SIZE>
+      solver_handle build_gmres(const opendarts::linear_solvers::gmres_solver_config &config)
+      {
+        auto solver = std::make_shared<opendarts::linear_solvers::linsolv_gmres<N_BLOCK_SIZE>>();
+        solver->set_restart(config.restart);
+        // tolerance / max_iterations are honoured through init(); the engine
+        // calls linear_solver->init(matrix, max_iters, tol) which forwards
+        // them. We store nothing else here.
+        return solver;
+      }
+
+      solver_handle build_gmres_for_block_size(int block_size,
+          const opendarts::linear_solvers::gmres_solver_config &config)
+      {
+        switch (block_size)
+        {
+          case 1:  return build_gmres<1>(config);
+          case 2:  return build_gmres<2>(config);
+          case 3:  return build_gmres<3>(config);
+          case 4:  return build_gmres<4>(config);
+          case 5:  return build_gmres<5>(config);
+          case 6:  return build_gmres<6>(config);
+          case 7:  return build_gmres<7>(config);
+          case 8:  return build_gmres<8>(config);
+          case 9:  return build_gmres<9>(config);
+          case 10: return build_gmres<10>(config);
+          case 11: return build_gmres<11>(config);
+          case 12: return build_gmres<12>(config);
+          case 13: return build_gmres<13>(config);
+          default:
+            throw std::runtime_error("GMRES solver: unsupported block size " +
+                std::to_string(block_size) + " (supported: " +
+                std::to_string(MIN_BLOCK_SIZE) + ".." + std::to_string(MAX_BLOCK_SIZE) + ").");
+        }
+      }
+
+      // Factory registered under the name "gmres".
+      solver_handle make_gmres_solver(
+          const opendarts::linear_solvers::solver_config &config, int block_size)
+      {
+        const opendarts::linear_solvers::gmres_solver_config default_config;
+        const opendarts::linear_solvers::gmres_solver_config *gmres_config =
+            dynamic_cast<const opendarts::linear_solvers::gmres_solver_config *>(&config);
+        if (gmres_config == nullptr)
+          gmres_config = &default_config;
+        return build_gmres_for_block_size(block_size, *gmres_config);
+      }
     } // anonymous namespace
 
     void register_builtin_solvers()
@@ -200,6 +250,7 @@ namespace opendarts
       // which makes repeated calls to register_builtin_solvers() harmless.
       register_solver("mgr", make_mgr_solver);
       register_solver("superlu", make_superlu_solver);
+      register_solver("gmres", make_gmres_solver);
     }
   } // namespace linear_solvers
 } // namespace opendarts

@@ -105,6 +105,7 @@ set(OD_LINEAR_SOLVERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_cpr.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_fs_cpr.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_gmres.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_gmres.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_registry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_iface_adapter.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_factories.cpp
@@ -135,6 +136,7 @@ set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_cpr.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_fs_cpr.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_gmres.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_gmres.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linear_solvers_data_types.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/LinearSolver.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/MGRStrategy.hpp

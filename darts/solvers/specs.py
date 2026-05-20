@@ -158,6 +158,48 @@ class SuperLUSolverSpec(LinearSolverSpec):
 
 
 @dataclass
+class GMRESSolverSpec(LinearSolverSpec):
+    """Open-source restarted GMRES outer Krylov solver (``linsolv_gmres``).
+
+    Right-preconditioned restart-GMRES with modified Gram-Schmidt and Givens
+    rotations -- the in-tree replacement for the legacy ``linsolv_bos_gmres``.
+    Combine it with any other :class:`LinearSolverSpec` (MGR, HYPRE AMG / ILU,
+    SuperLU, ...) via :attr:`prec` to build a full preconditioned solver.
+
+    :param restart: Krylov subspace dimension (restart length).
+    :param prec: inner preconditioner spec (any :class:`LinearSolverSpec`);
+        ``None`` runs unpreconditioned GMRES.
+    """
+
+    registry_name: ClassVar[str] = "gmres"
+
+    restart: int = 30
+    prec: LinearSolverSpec | None = None
+
+    def _make_config(self) -> solvers.GMRESSolverConfig:
+        config = solvers.GMRESSolverConfig()
+        config.tolerance = self.tolerance
+        config.max_iterations = self.max_iterations
+        config.print_level = self.print_level
+        config.restart = self.restart
+        return config
+
+    def build(self, block_size: int):
+        """Build the GMRES solver, attach the inner preconditioner if any.
+
+        The inner solver is also stored on this spec so it outlives any local
+        reference at the call site -- the C++ GMRES holds a raw pointer to it.
+        """
+        gmres = solvers.create_linear_solver(
+            self.registry_name, self._make_config(), block_size
+        )
+        if self.prec is not None:
+            self._built_prec = self.prec.build(block_size)
+            gmres.set_prec(self._built_prec)
+        return gmres
+
+
+@dataclass
 class PythonLinearSolverSpec(LinearSolverSpec):
     """Base spec for the Python-resident solvers (PETSc / Pardiso).
 

@@ -86,6 +86,17 @@ namespace opendarts
       std::optional<mgr_level_config> pressure_level;     // overrides the pressure level
       std::vector<mgr_level_config> custom_levels;        // user-defined extra reduction levels
     };
+
+    /** Configuration for the open-source GMRES outer Krylov solver (linsolv_gmres).
+     *
+     *  Inherits max_iterations / tolerance / print_level from solver_config; the
+     *  preconditioner is composed on the Python side (see GMRESSolverSpec).
+     *  C++ counterpart of the Python GMRESSolverSpec.
+     */
+    struct gmres_solver_config : opendarts::linear_solvers::solver_config
+    {
+      int restart = 30;  // Krylov subspace dimension (restart length)
+    };
   } // namespace linear_solvers
 } // namespace opendarts
 

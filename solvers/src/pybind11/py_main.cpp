@@ -311,6 +311,12 @@ void bind_unified_solver_api(py::module &m)
         .def_readwrite("pressure_level", &mgr_solver_config::pressure_level)
         .def_readwrite("custom_levels", &mgr_solver_config::custom_levels);
 
+    // Open-source GMRES outer Krylov solver configuration.
+    py::class_<gmres_solver_config, solver_config>(m, "GMRESSolverConfig",
+        "Configuration for the open-source GMRES outer Krylov solver.")
+        .def(py::init<>())
+        .def_readwrite("restart", &gmres_solver_config::restart);
+
     // Unified solver handle returned by create_linear_solver().
     py::class_<linear_solver, std::shared_ptr<linear_solver>>(m, "LinearSolver",
         "Unified linear-solver handle produced by create_linear_solver().")
@@ -342,7 +348,12 @@ PYBIND11_MODULE(solvers, m)
         m, "LinearSolverInterface",
         "Abstract interface for linear solvers")
         .def("get_n_iters", &linsolv_iface::get_n_iters)
-        .def("get_residual", &linsolv_iface::get_residual);
+        .def("get_residual", &linsolv_iface::get_residual)
+        // set_prec stores a raw pointer to the preconditioner; tell pybind11
+        // to keep the prec alive as long as the outer solver lives.
+        .def("set_prec", &linsolv_iface::set_prec,
+             "Attach a preconditioner (kept alive by the outer solver).",
+             py::arg("prec"), py::keep_alive<1, 2>());
 
     // Bind linsolv_iface_bos specializations for block sizes 1-13
     bind_linsolv_iface_bos_specialization<1>(m, "LinearSolverBOS_1");
