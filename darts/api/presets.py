@@ -81,6 +81,13 @@ class Preset:
         ``property_regions`` separately).  ``$preset`` refs inside this
         payload are resolved during load.
     :type property_regions: list[dict] | None
+    :param plugin_registry: optional plugin-registry block alongside
+        ``config`` (lets a preset ship its own code-plugin entries —
+        e.g. a custom property container — without the caller naming a
+        legacy ``model_type`` template).  Relative ``constructor`` paths
+        are rewritten to absolute paths at load time, anchored at the
+        preset file's directory.
+    :type plugin_registry: dict | None
     """
 
     qualified_name: str
@@ -88,6 +95,7 @@ class Preset:
     config: BaseModel
     source_path: Path | None = field(default=None)
     property_regions: list[dict[str, Any]] | None = field(default=None)
+    plugin_registry: dict[str, Any] | None = field(default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -303,15 +311,68 @@ def _load_preset_from_file(
             )
         property_regions = resolved
 
+    # Optional plugin_registry block — lets a preset ship its own code
+    # plugin entries (e.g. a custom property container) without the user
+    # naming a ``model_type`` template.  Relative constructor paths are
+    # rewritten to absolute paths anchored at the preset file's directory
+    # so the server can dispatch them after the in-memory preset is
+    # detached from its filesystem location.
+    plugin_registry: dict[str, Any] | None = None
+    if "plugin_registry" in raw:
+        plugin_registry = _resolve_preset_refs(
+            raw["plugin_registry"], (*_seen, qualified_name)
+        )
+        if not isinstance(plugin_registry, dict):
+            raise ValueError(
+                f"Preset '{qualified_name}': 'plugin_registry' must be a JSON "
+                f"object; got {type(plugin_registry).__name__}"
+            )
+        plugin_registry = _resolve_plugin_registry_paths(plugin_registry, path.parent)
+
     preset = Preset(
         qualified_name=qualified_name,
         meta=meta,
         config=config,
         source_path=path,
         property_regions=property_regions,
+        plugin_registry=plugin_registry,
     )
     _PRESET_REGISTRY[qualified_name] = preset
     return preset
+
+
+def _resolve_plugin_registry_paths(
+    block: dict[str, Any], base_dir: Path
+) -> dict[str, Any]:
+    """Rewrite relative ``constructor`` paths in a preset ``plugin_registry``
+    block to absolute paths anchored at ``base_dir``.
+
+    A constructor string is of the form ``"<path>:<symbol>"`` where
+    ``<path>`` may be relative.  Absolute paths and paths that don't
+    resolve to an existing file are left untouched (the latter so the
+    downstream resolver can produce a clear error message).
+    """
+    entries = block.get("entries")
+    if not isinstance(entries, list):
+        return block
+    out_entries: list[dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            out_entries.append(entry)
+            continue
+        constructor = entry.get("constructor")
+        if isinstance(constructor, str) and ":" in constructor:
+            ctor_path, _, symbol = constructor.partition(":")
+            ctor_path_obj = Path(ctor_path)
+            if not ctor_path_obj.is_absolute():
+                candidate = (base_dir / ctor_path_obj).resolve()
+                if candidate.is_file():
+                    entry = {
+                        **entry,
+                        "constructor": f"{candidate}:{symbol}",
+                    }
+        out_entries.append(entry)
+    return {**block, "entries": out_entries}
 
 
 def load_preset_dir(root: str | os.PathLike[str]) -> list[str]:
@@ -379,6 +440,16 @@ def _register_default_directory_bindings() -> None:
         from darts.physics.blackoil import BlackOilConfig
 
         register_preset_directory_binding("physics/black_oil", BlackOilConfig)
+    except Exception:  # pragma: no cover - defensive
+        pass
+    try:
+        # ``physics/dead_oil`` presets validate against ``CompositionalConfig``
+        # because dead-oil physics is dispatched through the Compositional
+        # plugin family (matching the legacy templates under
+        # ``models/cpg_deadoil_brugge``, ``models/2ph_do_thermal`` etc).
+        from darts.physics.super.physics import CompositionalConfig
+
+        register_preset_directory_binding("physics/dead_oil", CompositionalConfig)
     except Exception:  # pragma: no cover - defensive
         pass
     try:
