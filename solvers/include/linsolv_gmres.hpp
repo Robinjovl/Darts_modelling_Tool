@@ -78,6 +78,13 @@ namespace opendarts
       int solve(opendarts::config::mat_float *B,
           opendarts::config::mat_float *X) override;
 
+      /** Adjoint solve A^T x = b. Drives the Arnoldi iteration with the
+       *  transpose SpMV and forwards the preconditioner application to
+       *  ``prec->solve_transposed`` (per Han et al. 2013, CPR-for-adjoint).
+       */
+      int solve_transposed(opendarts::config::mat_float *B,
+          opendarts::config::mat_float *X) override;
+
       int get_n_iters() override { return n_iters_; }
       opendarts::config::mat_float get_residual() override { return final_resid_; }
 
@@ -86,6 +93,11 @@ namespace opendarts
       int get_restart() const { return restart_m_; }
 
     private:
+      // Shared implementation: forward (transpose=false) or adjoint (true).
+      int solve_impl(opendarts::config::mat_float *B,
+          opendarts::config::mat_float *X,
+          bool transpose);
+
       opendarts::linear_solvers::csr_matrix_base *A_;
       opendarts::linear_solvers::linsolv_iface *prec_;
       int max_iters_;

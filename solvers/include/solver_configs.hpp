@@ -97,6 +97,21 @@ namespace opendarts
     {
       int restart = 30;  // Krylov subspace dimension (restart length)
     };
+
+    /** Configuration for the open-source CPR two-stage preconditioner (linsolv_cpr).
+     *
+     *  CPR is the in-tree replacement for the proprietary ``linsolv_bos_cpr``:
+     *  pressure-subsystem AMG correction followed by full-system ILU(0). It is
+     *  intended as the inner preconditioner of an outer Krylov solver (typically
+     *  ``GMRESSolverSpec``). The transposed apply (CPRA, Han et al. 2013) is
+     *  used by the adjoint Newton step.
+     */
+    struct cpr_solver_config : opendarts::linear_solvers::solver_config
+    {
+      int amg_max_iters = 2;          // AMG sweeps on the pressure subsystem per CPR apply
+      opendarts::config::mat_float amg_tolerance = 1e-2;
+      int ilu_fill_level = 0;         // full-system ILU(k)
+    };
   } // namespace linear_solvers
 } // namespace opendarts
 

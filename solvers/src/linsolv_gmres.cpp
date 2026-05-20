@@ -58,7 +58,39 @@ namespace opendarts
         }
       }
 
+      // Block-CSR transpose mat-vec: r += A^T * v.
+      // Walking the rows of A scatters each block contribution to A^T's rows.
+      template <uint8_t N>
+      inline void block_csr_spmv_t_add(csr_matrix_base *A,
+          const mat_float *v,
+          mat_float *r)
+      {
+        const index_t *rows = A->get_rows_ptr();
+        const index_t *cols = A->get_cols_ind();
+        const mat_float *vals = A->get_values();
+        const index_t n_block_rows = A->n_rows;
+        constexpr int Ni = static_cast<int>(N);
+        const std::size_t b2 = static_cast<std::size_t>(Ni) * Ni;
+        for (index_t i = 0; i < n_block_rows; ++i)
+        {
+          const mat_float *vi = v + static_cast<std::size_t>(i) * Ni;
+          for (index_t jb = rows[i]; jb < rows[i + 1]; ++jb)
+          {
+            const mat_float *blk = vals + static_cast<std::size_t>(jb) * b2;
+            mat_float *rj = r + static_cast<std::size_t>(cols[jb]) * Ni;
+            for (int w = 0; w < Ni; ++w)
+            {
+              mat_float acc = 0;
+              for (int e = 0; e < Ni; ++e)
+                acc += blk[e * Ni + w] * vi[e];
+              rj[w] += acc;
+            }
+          }
+        }
+      }
+
       // r = alpha * A * u + beta * v  (matches bos mv_calc_lin_comb<N>).
+      // When transpose=true, A^T is used in place of A.
       template <uint8_t N>
       inline void block_csr_lin_comb(csr_matrix_base *A,
           mat_float alpha,
@@ -66,7 +98,8 @@ namespace opendarts
           const mat_float *u,
           const mat_float *v,
           mat_float *r,
-          std::size_t n_scalar)
+          std::size_t n_scalar,
+          bool transpose = false)
       {
         const mat_float eps = 1.0e-12;
         if (std::fabs(beta) > eps)
@@ -83,7 +116,10 @@ namespace opendarts
         }
         if (std::fabs(alpha) > eps)
         {
-          block_csr_spmv_add<N>(A, u, r);
+          if (transpose)
+            block_csr_spmv_t_add<N>(A, u, r);
+          else
+            block_csr_spmv_add<N>(A, u, r);
           if (alpha != 1.0)
             for (std::size_t i = 0; i < n_scalar; ++i)
               r[i] *= alpha;
@@ -158,6 +194,18 @@ namespace opendarts
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_gmres<N_BLOCK_SIZE>::solve(mat_float *rhs, mat_float *sol)
     {
+      return solve_impl(rhs, sol, /*transpose=*/false);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::solve_transposed(mat_float *rhs, mat_float *sol)
+    {
+      return solve_impl(rhs, sol, /*transpose=*/true);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::solve_impl(mat_float *rhs, mat_float *sol, bool transpose)
+    {
       if (!A_)
         return -1;
       const int N = static_cast<int>(N_BLOCK_SIZE);
@@ -186,7 +234,7 @@ namespace opendarts
 
       // sol = 0; p_0 = rhs - A * sol = rhs (since sol = 0)
       std::memset(sol, 0, n * sizeof(mat_float));
-      block_csr_lin_comb<N_BLOCK_SIZE>(A_, -1.0, 1.0, sol, rhs, p, n);
+      block_csr_lin_comb<N_BLOCK_SIZE>(A_, -1.0, 1.0, sol, rhs, p, n, transpose);
 
       const mat_float b_norm = std::sqrt(dot(rhs, rhs, n));
       mat_float r_norm = std::sqrt(dot(p, p, n));
@@ -220,7 +268,12 @@ namespace opendarts
           // r_buf = M^{-1} p_{i-1}; if no prec, r_buf = p_{i-1}.
           if (prec_)
           {
-            if (prec_->solve(p + static_cast<std::size_t>(i - 1) * n, r_buf))
+            const int prec_rc = transpose
+                ? prec_->solve_transposed(
+                    p + static_cast<std::size_t>(i - 1) * n, r_buf)
+                : prec_->solve(
+                    p + static_cast<std::size_t>(i - 1) * n, r_buf);
+            if (prec_rc)
               return -3;
           }
           else
@@ -229,9 +282,12 @@ namespace opendarts
                 n * sizeof(mat_float));
           }
 
-          // p_i = A * r_buf  (block CSR SpMV, zero-out then accumulate).
+          // p_i = (A or A^T) * r_buf  (block CSR SpMV, zero-out then accumulate).
           std::memset(cur_p_i, 0, n * sizeof(mat_float));
-          block_csr_spmv_add<N_BLOCK_SIZE>(A_, r_buf, cur_p_i);
+          if (transpose)
+            block_csr_spmv_t_add<N_BLOCK_SIZE>(A_, r_buf, cur_p_i);
+          else
+            block_csr_spmv_add<N_BLOCK_SIZE>(A_, r_buf, cur_p_i);
 
           // Modified Gram-Schmidt: orthogonalise p_i against p_0..p_{i-1}.
           mat_float *cur_h = hh + static_cast<std::size_t>(i - 1) * (m + 1);
@@ -289,7 +345,10 @@ namespace opendarts
         // Apply the preconditioner once more to the linear combination.
         if (prec_)
         {
-          if (prec_->solve(w, r_buf))
+          const int prec_rc = transpose
+              ? prec_->solve_transposed(w, r_buf)
+              : prec_->solve(w, r_buf);
+          if (prec_rc)
             return -5;
         }
         else
@@ -301,7 +360,7 @@ namespace opendarts
         // If predicted convergence reached, verify on the actual residual.
         if (r_norm <= tol_scaled)
         {
-          block_csr_lin_comb<N_BLOCK_SIZE>(A_, -1.0, 1.0, sol, rhs, r_buf, n);
+          block_csr_lin_comb<N_BLOCK_SIZE>(A_, -1.0, 1.0, sol, rhs, r_buf, n, transpose);
           r_norm = std::sqrt(dot(r_buf, r_buf, n));
           if (r_norm <= tol_scaled)
             break;

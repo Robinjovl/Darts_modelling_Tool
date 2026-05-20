@@ -200,6 +200,42 @@ class GMRESSolverSpec(LinearSolverSpec):
 
 
 @dataclass
+class CPRSolverSpec(LinearSolverSpec):
+    """Open-source CPR (Constrained Pressure Residual) two-stage preconditioner.
+
+    The in-tree replacement for the proprietary ``linsolv_bos_cpr``: HYPRE
+    BoomerAMG on the scalar pressure subsystem followed by HYPRE ILU(0) on the
+    full system. Intended as the inner preconditioner of an outer Krylov
+    solver, e.g.::
+
+        GMRESSolverSpec(prec=CPRSolverSpec(), tolerance=1e-5)
+
+    Transposed apply (CPRA, Han et al. 2013) is selected automatically when
+    the outer GMRES calls ``solve_transposed`` for the adjoint Newton step.
+
+    :param amg_max_iters: AMG sweeps on the pressure subsystem per CPR apply.
+    :param amg_tolerance: AMG inner tolerance (relaxed -- AMG is used as a prec).
+    :param ilu_fill_level: full-system ILU(k) fill level (currently 0).
+    """
+
+    registry_name: ClassVar[str] = "cpr"
+
+    amg_max_iters: int = 2
+    amg_tolerance: float = 1e-2
+    ilu_fill_level: int = 0
+
+    def _make_config(self) -> solvers.CPRSolverConfig:
+        config = solvers.CPRSolverConfig()
+        config.tolerance = self.tolerance
+        config.max_iterations = self.max_iterations
+        config.print_level = self.print_level
+        config.amg_max_iters = self.amg_max_iters
+        config.amg_tolerance = self.amg_tolerance
+        config.ilu_fill_level = self.ilu_fill_level
+        return config
+
+
+@dataclass
 class PythonLinearSolverSpec(LinearSolverSpec):
     """Base spec for the Python-resident solvers (PETSc / Pardiso).
 

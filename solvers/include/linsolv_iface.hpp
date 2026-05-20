@@ -62,6 +62,17 @@ namespace opendarts
 
       virtual int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) = 0;
 
+      // Adjoint solve: solve A^T x = b (or apply the transpose preconditioner
+      // M^{-T} when this solver is used as a preconditioner). Required for the
+      // backward / adjoint Newton step (see Han et al. 2013 for the CPR-for-
+      // adjoint preconditioner). Default returns -1 ("not supported");
+      // implement explicitly where transpose is meaningful.
+      virtual int solve_transposed(opendarts::config::mat_float * /*B*/,
+          opendarts::config::mat_float * /*X*/)
+      {
+        return -1;
+      }
+
       virtual int get_n_iters() = 0;
 
       virtual opendarts::config::mat_float get_residual() = 0;

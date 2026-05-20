@@ -37,6 +37,7 @@ from .python_solvers import (  # noqa: F401
 )
 from .solvers import *  # noqa: F401,F403
 from .specs import (  # noqa: F401
+    CPRSolverSpec,
     GMRESSolverSpec,
     LinearSolverSpec,
     MGRLevelSpec,

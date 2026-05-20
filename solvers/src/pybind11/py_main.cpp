@@ -317,6 +317,14 @@ void bind_unified_solver_api(py::module &m)
         .def(py::init<>())
         .def_readwrite("restart", &gmres_solver_config::restart);
 
+    // Open-source CPR two-stage preconditioner configuration.
+    py::class_<cpr_solver_config, solver_config>(m, "CPRSolverConfig",
+        "Configuration for the open-source CPR two-stage preconditioner.")
+        .def(py::init<>())
+        .def_readwrite("amg_max_iters", &cpr_solver_config::amg_max_iters)
+        .def_readwrite("amg_tolerance", &cpr_solver_config::amg_tolerance)
+        .def_readwrite("ilu_fill_level", &cpr_solver_config::ilu_fill_level);
+
     // Unified solver handle returned by create_linear_solver().
     py::class_<linear_solver, std::shared_ptr<linear_solver>>(m, "LinearSolver",
         "Unified linear-solver handle produced by create_linear_solver().")
