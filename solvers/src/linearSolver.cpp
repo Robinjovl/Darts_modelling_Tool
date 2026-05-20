@@ -1137,6 +1137,13 @@ LinearSolver::LinearSolver()
   m_params.bcsrCPRReduction = BCSRCPRReductionType::trueIMPES;
   m_params.bcsrCPRPressureVariable = 0;
   m_params.bcsrCPRWeightMax = 1.0e6;
+  m_params.bcsrCPRReuseAMGHierarchy = false;
+  m_params.bcsrCPRAMGRebuildInterval = 1;
+  m_params.bcsrCPRAdaptiveAMGRebuild = false;
+  m_params.bcsrCPRAdaptiveLIThreshold = 80;
+  m_params.bcsrCPRAdaptiveLIGrowthFactor = 2.0;
+  m_params.bcsrCPRAdaptiveMinReuseSetups = 1;
+  m_params.bcsrCPRAdaptiveMaxReuseSetups = 0;
 }
 
 LinearSolver::~LinearSolver()
@@ -1334,6 +1341,37 @@ void LinearSolver::clearCompositeWorkVectors()
   m_compositeCorrection.clear();
 }
 
+void LinearSolver::clearHYPRESystemObjects()
+{
+  if( m_ijMatrix )
+  {
+    HYPRE_IJMatrixDestroy( m_ijMatrix );
+    m_ijMatrix = nullptr;
+  }
+
+  if( m_ijRHS )
+  {
+    HYPRE_IJVectorDestroy( m_ijRHS );
+    m_ijRHS = nullptr;
+  }
+
+  if( m_ijSol )
+  {
+    HYPRE_IJVectorDestroy( m_ijSol );
+    m_ijSol = nullptr;
+  }
+
+  m_parMatrix = nullptr;
+  m_parRHS = nullptr;
+  m_parSol = nullptr;
+  m_hypreSystemDirectUpdateReady = false;
+  m_hypreSystemParCSRDiagDataIndex.clear();
+  m_matrixLoaded = false;
+  m_matrixAssembled = false;
+  m_activeMGRPrecond = nullptr;
+  m_activeKrylovName.clear();
+}
+
 bool LinearSolver::blockLocalPreconditionerReady() const
 {
   return m_blockLocalPreconditioner && m_blockLocalPreconditioner->ready();
@@ -1347,6 +1385,14 @@ bool LinearSolver::bcsrCPRPreconditionerReady() const
 
 void LinearSolver::clearBCSRCPRPreconditioner()
 {
+  const bool had_state = m_cprPressureAMG || m_cprPressureIJMatrix ||
+                         m_cprPressureIJRHS || m_cprPressureIJSol ||
+                         m_bcsrCPRReady || m_cprPressureRows > 0;
+  if( had_state )
+  {
+    ++m_cprClearCount;
+  }
+
   if( m_cprPressureAMG )
   {
     HYPRE_BoomerAMGDestroy( m_cprPressureAMG );
@@ -1372,13 +1418,41 @@ void LinearSolver::clearBCSRCPRPreconditioner()
   m_cprPressureParSol = nullptr;
   m_bcsrCPRReady = false;
   m_cprPressureRows = 0;
+  m_cprPressureSetupCount = 0;
+  m_cprPressurePatternReady = false;
+  m_cprPressureMatrixAssembled = false;
+  m_cprPressureVectorsReady = false;
+  m_cprPressureAMGSetupDone = false;
+  m_cprSetupsSinceAMGSetup = 0;
+  m_cprLastLinearIterations = -1;
+  m_cprLastAMGSetupLinearIterations = -1;
+  m_cprLastLinearConverged = true;
+  m_cprAMGSetupForCurrentSolve = false;
+  m_cprLastAMGRebuildReason.clear();
+  m_cprPressureDirectUpdateReady = false;
+  m_cprPressureParCSRDiagDataIndex.clear();
   m_cprPressureWeights.clear();
+  m_cprPressureRowIndices.clear();
+  m_cprPressureRowNCols.clear();
+  m_cprPressureRowOffsets.clear();
+  m_cprPressureCols.clear();
+  m_cprPressureValues.clear();
   m_cprPressureRHSValues.clear();
   m_cprPressureSolution.clear();
   m_cprPressureCorrection.clear();
   m_cprResidual.clear();
   m_cprAx.clear();
   m_cprLocalCorrection.clear();
+}
+
+void LinearSolver::recordBCSRCPRLinearIterations(int_t iterations, bool converged)
+{
+  m_cprLastLinearIterations = iterations;
+  m_cprLastLinearConverged = converged;
+  if( m_cprAMGSetupForCurrentSolve )
+  {
+    m_cprLastAMGSetupLinearIterations = iterations;
+  }
 }
 
 void LinearSolver::computeBCSRCPRPressureWeights()
@@ -1541,33 +1615,71 @@ void LinearSolver::computeBCSRCPRPressureWeights()
   }
 }
 
-bool LinearSolver::createBCSRCPRPressureMatrix()
+void LinearSolver::buildBCSRCPRPressurePattern()
 {
-  if( m_cprPressureRows <= 0 )
+  m_cprPressurePatternReady = false;
+  m_cprPressureRowIndices.resize( m_cprPressureRows );
+  m_cprPressureRowNCols.assign( m_cprPressureRows, 0 );
+  m_cprPressureRowOffsets.assign( m_cprPressureRows + 1, 0 );
+
+  for( int_t row = 0; row < m_cprPressureRows; ++row )
   {
-    return false;
+    m_cprPressureRowIndices[row] = row;
+    int_t count = 0;
+    for( int_t block = m_matrix.row_ptr[row]; block < m_matrix.row_ptr[row + 1]; ++block )
+    {
+      const int_t col_cell = m_matrix.col_ind[block];
+      if( col_cell >= 0 && col_cell < m_cprPressureRows )
+      {
+        ++count;
+      }
+    }
+    if( count == 0 )
+    {
+      count = 1;
+    }
+    m_cprPressureRowNCols[row] = count;
+    m_cprPressureRowOffsets[row + 1] = m_cprPressureRowOffsets[row] + count;
   }
 
-  ScopedTimer timer( setupTimerNode( "BCSR CPR pressure matrix" ) );
+  const int_t nnz = m_cprPressureRowOffsets[m_cprPressureRows];
+  m_cprPressureCols.assign( nnz, 0 );
+  m_cprPressureValues.assign( nnz, 0.0 );
 
+  for( int_t row = 0; row < m_cprPressureRows; ++row )
+  {
+    int_t out = m_cprPressureRowOffsets[row];
+    int_t added = 0;
+    for( int_t block = m_matrix.row_ptr[row]; block < m_matrix.row_ptr[row + 1]; ++block )
+    {
+      const int_t col_cell = m_matrix.col_ind[block];
+      if( col_cell < 0 || col_cell >= m_cprPressureRows )
+      {
+        continue;
+      }
+      m_cprPressureCols[out++] = col_cell;
+      ++added;
+    }
+    if( added == 0 )
+    {
+      m_cprPressureCols[m_cprPressureRowOffsets[row]] = row;
+    }
+  }
+
+  m_cprPressurePatternReady = true;
+}
+
+void LinearSolver::fillBCSRCPRPressureMatrixValues()
+{
   const int_t block_size = m_matrix.block_size;
   const int_t pressure_var =
       std::clamp<int_t>( m_params.bcsrCPRPressureVariable, 0, block_size - 1 );
   const bool apply_scaling = scalingActive( m_matrix.global_num_rows );
 
-  HYPRE_IJMatrixCreate( MPI_COMM_WORLD,
-                        0,
-                        m_cprPressureRows - 1,
-                        0,
-                        m_cprPressureRows - 1,
-                        &m_cprPressureIJMatrix );
-  HYPRE_IJMatrixSetObjectType( m_cprPressureIJMatrix, HYPRE_PARCSR );
-  HYPRE_IJMatrixInitialize( m_cprPressureIJMatrix );
-
   for( int_t row = 0; row < m_cprPressureRows; ++row )
   {
-    std::vector<bigint_t> cols;
-    std::vector<real_type> vals;
+    int_t out = m_cprPressureRowOffsets[row];
+    int_t added = 0;
     const real_type * weights = &m_cprPressureWeights[row * block_size];
 
     for( int_t block = m_matrix.row_ptr[row]; block < m_matrix.row_ptr[row + 1]; ++block )
@@ -1594,29 +1706,239 @@ bool LinearSolver::createBCSRCPRPressureMatrix()
                  m_matrix.values[block_offset + r * block_size + pressure_var] *
                  row_scale * col_scale;
       }
-      cols.push_back( col_cell );
-      vals.push_back( value );
+      m_cprPressureValues[out++] = value;
+      ++added;
     }
 
-    if( cols.empty() )
+    if( added == 0 )
     {
-      cols.push_back( row );
-      vals.push_back( 1.0 );
+      m_cprPressureValues[m_cprPressureRowOffsets[row]] = 1.0;
     }
+  }
+}
 
-    bigint_t hypre_row = row;
-    int_t ncols = static_cast<int_t>( cols.size() );
-    HYPRE_IJMatrixSetValues( m_cprPressureIJMatrix,
-                             1,
-                             &ncols,
-                             &hypre_row,
-                             cols.data(),
-                             vals.data() );
+bool LinearSolver::prepareBCSRCPRPressureDirectUpdate()
+{
+  m_cprPressureDirectUpdateReady = false;
+  m_cprPressureParCSRDiagDataIndex.clear();
+
+  if( !m_cprPressureParMatrix || m_cprPressureRows <= 0 ||
+      m_cprPressureRowOffsets.empty() || m_cprPressureCols.empty() )
+  {
+    return false;
   }
 
-  HYPRE_IJMatrixAssemble( m_cprPressureIJMatrix );
-  HYPRE_IJMatrixGetObject( m_cprPressureIJMatrix,
-                           reinterpret_cast<void **>( &m_cprPressureParMatrix ) );
+  hypre_CSRMatrix * diag = hypre_ParCSRMatrixDiag( m_cprPressureParMatrix );
+  hypre_CSRMatrix * offd = hypre_ParCSRMatrixOffd( m_cprPressureParMatrix );
+  if( !diag || !hypre_CSRMatrixI( diag ) || !hypre_CSRMatrixJ( diag ) ||
+      !hypre_CSRMatrixData( diag ) )
+  {
+    return false;
+  }
+
+  const HYPRE_Int offd_nnz =
+      offd ? hypre_CSRMatrixNumNonzeros( offd ) : 0;
+  const int_t expected_nnz = m_cprPressureRowOffsets[m_cprPressureRows];
+  if( offd_nnz != 0 ||
+      static_cast<int_t>( hypre_CSRMatrixNumRows( diag ) ) != m_cprPressureRows ||
+      static_cast<int_t>( hypre_CSRMatrixNumNonzeros( diag ) ) != expected_nnz )
+  {
+    return false;
+  }
+
+  const HYPRE_Int * diag_i = hypre_CSRMatrixI( diag );
+  const HYPRE_Int * diag_j = hypre_CSRMatrixJ( diag );
+  const HYPRE_BigInt first_col = hypre_ParCSRMatrixFirstColDiag( m_cprPressureParMatrix );
+
+  m_cprPressureParCSRDiagDataIndex.assign( expected_nnz, -1 );
+  for( int_t row = 0; row < m_cprPressureRows; ++row )
+  {
+    const int_t expected_begin = m_cprPressureRowOffsets[row];
+    const int_t expected_end = m_cprPressureRowOffsets[row + 1];
+    const HYPRE_Int diag_begin = diag_i[row];
+    const HYPRE_Int diag_end = diag_i[row + 1];
+
+    if( diag_end < diag_begin ||
+        static_cast<int_t>( diag_end - diag_begin ) != expected_end - expected_begin )
+    {
+      m_cprPressureParCSRDiagDataIndex.clear();
+      return false;
+    }
+
+    for( int_t k = expected_begin; k < expected_end; ++k )
+    {
+      const HYPRE_BigInt global_col =
+          static_cast<HYPRE_BigInt>( m_cprPressureCols[k] );
+      const HYPRE_BigInt local_col_big = global_col - first_col;
+      if( local_col_big < 0 ||
+          local_col_big > static_cast<HYPRE_BigInt>( std::numeric_limits<HYPRE_Int>::max() ) )
+      {
+        m_cprPressureParCSRDiagDataIndex.clear();
+        return false;
+      }
+      const HYPRE_Int local_col = static_cast<HYPRE_Int>( local_col_big );
+
+      int_t matched = -1;
+      for( HYPRE_Int p = diag_begin; p < diag_end; ++p )
+      {
+        if( diag_j[p] == local_col )
+        {
+          matched = static_cast<int_t>( p );
+          break;
+        }
+      }
+      if( matched < 0 )
+      {
+        m_cprPressureParCSRDiagDataIndex.clear();
+        return false;
+      }
+      m_cprPressureParCSRDiagDataIndex[k] = matched;
+    }
+  }
+
+  m_cprPressureDirectUpdateReady =
+      static_cast<int_t>( m_cprPressureParCSRDiagDataIndex.size() ) == expected_nnz;
+  return m_cprPressureDirectUpdateReady;
+}
+
+bool LinearSolver::updateBCSRCPRPressureMatrixDirect()
+{
+  if( !m_cprPressureDirectUpdateReady && !prepareBCSRCPRPressureDirectUpdate() )
+  {
+    return false;
+  }
+
+  hypre_CSRMatrix * diag = hypre_ParCSRMatrixDiag( m_cprPressureParMatrix );
+  if( !diag || !hypre_CSRMatrixData( diag ) ||
+      m_cprPressureParCSRDiagDataIndex.size() != m_cprPressureValues.size() )
+  {
+    m_cprPressureDirectUpdateReady = false;
+    return false;
+  }
+
+  HYPRE_Complex * diag_data = hypre_CSRMatrixData( diag );
+  for( std::size_t i = 0; i < m_cprPressureValues.size(); ++i )
+  {
+    const int_t data_index = m_cprPressureParCSRDiagDataIndex[i];
+    if( data_index < 0 )
+    {
+      m_cprPressureDirectUpdateReady = false;
+      return false;
+    }
+    diag_data[data_index] = static_cast<HYPRE_Complex>( m_cprPressureValues[i] );
+  }
+
+  ++m_cprPressureMatrixDirectUpdateCount;
+  ++m_cprPressureMatrixUpdateCount;
+  return true;
+}
+
+bool LinearSolver::createBCSRCPRPressureMatrix()
+{
+  if( m_cprPressureRows <= 0 )
+  {
+    return false;
+  }
+
+  ScopedTimer timer( setupTimerNode( "BCSR CPR pressure matrix" ) );
+
+  if( !m_cprPressurePatternReady )
+  {
+    buildBCSRCPRPressurePattern();
+  }
+  fillBCSRCPRPressureMatrixValues();
+
+  if( !m_cprPressureIJMatrix )
+  {
+    HYPRE_IJMatrixCreate( MPI_COMM_WORLD,
+                          0,
+                          m_cprPressureRows - 1,
+                          0,
+                          m_cprPressureRows - 1,
+                          &m_cprPressureIJMatrix );
+    HYPRE_IJMatrixSetObjectType( m_cprPressureIJMatrix, HYPRE_PARCSR );
+    HYPRE_IJMatrixInitialize( m_cprPressureIJMatrix );
+    ++m_cprPressureMatrixCreateCount;
+  }
+
+  const bool updating_existing_matrix = m_cprPressureMatrixAssembled;
+  if( updating_existing_matrix && updateBCSRCPRPressureMatrixDirect() )
+  {
+    return m_cprPressureParMatrix != nullptr;
+  }
+
+  HYPRE_Int rc = HYPRE_IJMatrixSetValues( m_cprPressureIJMatrix,
+                                          m_cprPressureRows,
+                                          m_cprPressureRowNCols.data(),
+                                          m_cprPressureRowIndices.data(),
+                                          m_cprPressureCols.data(),
+                                          m_cprPressureValues.data() );
+  ++m_cprPressureMatrixSetValuesCount;
+  if( rc != 0 )
+  {
+    if( updating_existing_matrix )
+    {
+      if( m_params.logLevel >= 1 )
+      {
+        std::cerr << "[MGR] Warning: HYPRE rejected value update on assembled "
+                  << "BCSR CPR pressure matrix, rc=" << rc << " ("
+                  << describeHypreError( rc ) << "); recreating pressure matrix."
+                  << std::endl;
+      }
+      if( m_cprPressureAMG )
+      {
+        HYPRE_BoomerAMGDestroy( m_cprPressureAMG );
+        m_cprPressureAMG = nullptr;
+      }
+      HYPRE_IJMatrixDestroy( m_cprPressureIJMatrix );
+      m_cprPressureIJMatrix = nullptr;
+      m_cprPressureParMatrix = nullptr;
+      m_cprPressureMatrixAssembled = false;
+      m_cprPressureAMGSetupDone = false;
+      m_cprPressureDirectUpdateReady = false;
+      m_cprPressureParCSRDiagDataIndex.clear();
+
+      HYPRE_IJMatrixCreate( MPI_COMM_WORLD,
+                            0,
+                            m_cprPressureRows - 1,
+                            0,
+                            m_cprPressureRows - 1,
+                            &m_cprPressureIJMatrix );
+      HYPRE_IJMatrixSetObjectType( m_cprPressureIJMatrix, HYPRE_PARCSR );
+      HYPRE_IJMatrixInitialize( m_cprPressureIJMatrix );
+      ++m_cprPressureMatrixCreateCount;
+      rc = HYPRE_IJMatrixSetValues( m_cprPressureIJMatrix,
+                                    m_cprPressureRows,
+                                    m_cprPressureRowNCols.data(),
+                                    m_cprPressureRowIndices.data(),
+                                    m_cprPressureCols.data(),
+                                    m_cprPressureValues.data() );
+      ++m_cprPressureMatrixSetValuesCount;
+    }
+    if( rc != 0 )
+    {
+      std::cerr << "[MGR] Error: failed to set BCSR CPR pressure matrix values, rc="
+                << rc << " (" << describeHypreError( rc ) << ")." << std::endl;
+      return false;
+    }
+  }
+  else if( updating_existing_matrix )
+  {
+    ++m_cprPressureMatrixUpdateCount;
+  }
+
+  if( !m_cprPressureMatrixAssembled )
+  {
+    HYPRE_IJMatrixAssemble( m_cprPressureIJMatrix );
+    HYPRE_IJMatrixGetObject( m_cprPressureIJMatrix,
+                             reinterpret_cast<void **>( &m_cprPressureParMatrix ) );
+    m_cprPressureMatrixAssembled = m_cprPressureParMatrix != nullptr;
+    if( m_cprPressureMatrixAssembled )
+    {
+      prepareBCSRCPRPressureDirectUpdate();
+    }
+    ++m_cprPressureMatrixAssembleCount;
+  }
   return m_cprPressureParMatrix != nullptr;
 }
 
@@ -1628,6 +1950,22 @@ bool LinearSolver::createBCSRCPRPressureVectors()
   }
 
   ScopedTimer timer( setupTimerNode( "BCSR CPR pressure vectors" ) );
+
+  if( m_cprPressureVectorsReady )
+  {
+    ++m_cprPressureVectorReuseCount;
+    return m_cprPressureParRHS != nullptr && m_cprPressureParSol != nullptr;
+  }
+  if( m_cprPressureRowIndices.empty() )
+  {
+    m_cprPressureRowIndices.resize( m_cprPressureRows );
+    for( int_t i = 0; i < m_cprPressureRows; ++i )
+    {
+      m_cprPressureRowIndices[i] = i;
+    }
+  }
+  m_cprPressureRHSValues.assign( m_cprPressureRows, 0.0 );
+  m_cprPressureSolution.assign( m_cprPressureRows, 0.0 );
 
   HYPRE_IJVectorCreate( MPI_COMM_WORLD,
                         0,
@@ -1643,34 +1981,34 @@ bool LinearSolver::createBCSRCPRPressureVectors()
   HYPRE_IJVectorSetObjectType( m_cprPressureIJSol, HYPRE_PARCSR );
   HYPRE_IJVectorInitialize( m_cprPressureIJSol );
 
-  std::vector<bigint_t> rows( m_cprPressureRows );
-  std::vector<real_type> zeros( m_cprPressureRows, 0.0 );
-  for( int_t i = 0; i < m_cprPressureRows; ++i )
-  {
-    rows[i] = i;
-  }
   HYPRE_IJVectorSetValues( m_cprPressureIJRHS,
                            m_cprPressureRows,
-                           rows.data(),
-                           zeros.data() );
+                           m_cprPressureRowIndices.data(),
+                           m_cprPressureRHSValues.data() );
   HYPRE_IJVectorSetValues( m_cprPressureIJSol,
                            m_cprPressureRows,
-                           rows.data(),
-                           zeros.data() );
+                           m_cprPressureRowIndices.data(),
+                           m_cprPressureSolution.data() );
   HYPRE_IJVectorAssemble( m_cprPressureIJRHS );
   HYPRE_IJVectorAssemble( m_cprPressureIJSol );
   HYPRE_IJVectorGetObject( m_cprPressureIJRHS,
                            reinterpret_cast<void **>( &m_cprPressureParRHS ) );
   HYPRE_IJVectorGetObject( m_cprPressureIJSol,
                            reinterpret_cast<void **>( &m_cprPressureParSol ) );
-  return m_cprPressureParRHS != nullptr && m_cprPressureParSol != nullptr;
+  m_cprPressureVectorsReady =
+      m_cprPressureParRHS != nullptr && m_cprPressureParSol != nullptr;
+  if( m_cprPressureVectorsReady )
+  {
+    ++m_cprPressureVectorCreateCount;
+  }
+  return m_cprPressureVectorsReady;
 }
 
 bool LinearSolver::setupBCSRCPRPreconditioner()
 {
-  clearBCSRCPRPreconditioner();
   if( !m_params.useBCSRCPR )
   {
+    clearBCSRCPRPreconditioner();
     return true;
   }
   if( !blockLocalPreconditionerReady() )
@@ -1691,7 +2029,41 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
     return false;
   }
 
+  const bool preserve_cpr_objects =
+      m_params.bcsrCPRReuseAMGHierarchy && !m_matrixStructureChanged;
+  if( m_cprPressureRows != reservoir_rows || !m_cprPressureIJMatrix ||
+      !m_cprPressureIJRHS || !m_cprPressureIJSol || !preserve_cpr_objects )
+  {
+    ++m_cprPressureStructureResetCount;
+    if( m_params.logLevel >= 2 )
+    {
+      std::cerr << "[MGR] BCSR CPR structure reset: reservoir_rows="
+                << reservoir_rows
+                << ", previous_rows=" << m_cprPressureRows
+                << ", reuse_amg=" << m_params.bcsrCPRReuseAMGHierarchy
+                << ", matrix_structure_changed=" << m_matrixStructureChanged
+                << "." << std::endl;
+    }
+    clearBCSRCPRPreconditioner();
+  }
+  else
+  {
+    ++m_cprPressureStructureReuseCount;
+  }
   m_cprPressureRows = reservoir_rows;
+
+  const int_t setup_count_before = m_cprPressureSetupCount;
+  const int_t matrix_create_before = m_cprPressureMatrixCreateCount;
+  const int_t matrix_set_before = m_cprPressureMatrixSetValuesCount;
+  const int_t matrix_assemble_before = m_cprPressureMatrixAssembleCount;
+  const int_t matrix_update_before = m_cprPressureMatrixUpdateCount;
+  const int_t matrix_direct_update_before = m_cprPressureMatrixDirectUpdateCount;
+  const int_t vector_create_before = m_cprPressureVectorCreateCount;
+  const int_t vector_reuse_before = m_cprPressureVectorReuseCount;
+  const int_t amg_create_before = m_cprPressureAMGCreateCount;
+  const int_t amg_setup_before = m_cprPressureAMGSetupCount;
+  const int_t amg_reuse_before = m_cprPressureAMGReuseCount;
+
   computeBCSRCPRPressureWeights();
   if( !createBCSRCPRPressureMatrix() || !createBCSRCPRPressureVectors() )
   {
@@ -1701,14 +2073,92 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
     return false;
   }
 
+  if( !m_cprPressureAMG )
   {
-    ScopedTimer timer( setupTimerNode( "BCSR CPR AMG setup" ) );
     m_cprPressureAMG = setupAMGPreconditioner();
+    if( m_cprPressureAMG )
+    {
+      ++m_cprPressureAMGCreateCount;
+    }
     if( !m_cprPressureAMG )
     {
       clearBCSRCPRPreconditioner();
       return false;
     }
+  }
+
+  const int_t reuse_age_before = m_cprSetupsSinceAMGSetup;
+  const int_t min_reuse_setups =
+      std::max<int_t>( m_params.bcsrCPRAdaptiveMinReuseSetups, 0 );
+  const int_t max_reuse_setups = m_params.bcsrCPRAdaptiveMaxReuseSetups;
+  bool setup_amg = false;
+  std::ostringstream rebuild_reason;
+
+  if( !m_cprPressureAMGSetupDone )
+  {
+    setup_amg = true;
+    rebuild_reason << "initial";
+  }
+  else if( !m_params.bcsrCPRReuseAMGHierarchy )
+  {
+    setup_amg = true;
+    rebuild_reason << "reuse_disabled";
+  }
+  else if( m_params.bcsrCPRAdaptiveAMGRebuild )
+  {
+    const bool min_reuse_satisfied = reuse_age_before >= min_reuse_setups;
+    if( max_reuse_setups > 0 && reuse_age_before >= max_reuse_setups )
+    {
+      setup_amg = true;
+      rebuild_reason << "adaptive_max_age";
+    }
+    else if( min_reuse_satisfied && m_cprLastLinearIterations >= 0 &&
+             !m_cprLastLinearConverged )
+    {
+      setup_amg = true;
+      rebuild_reason << "adaptive_not_converged";
+    }
+    else if( min_reuse_satisfied && m_cprLastLinearIterations >= 0 &&
+             m_params.bcsrCPRAdaptiveLIThreshold > 0 &&
+             m_cprLastLinearIterations >= m_params.bcsrCPRAdaptiveLIThreshold )
+    {
+      setup_amg = true;
+      rebuild_reason << "adaptive_li_threshold";
+    }
+    else if( min_reuse_satisfied && m_cprLastLinearIterations >= 0 &&
+             m_cprLastAMGSetupLinearIterations > 0 &&
+             m_params.bcsrCPRAdaptiveLIGrowthFactor > 1.0 )
+    {
+      const real_type growth_limit =
+          std::ceil( m_params.bcsrCPRAdaptiveLIGrowthFactor *
+                     static_cast<real_type>( m_cprLastAMGSetupLinearIterations ) );
+      if( static_cast<real_type>( m_cprLastLinearIterations ) >= growth_limit )
+      {
+        setup_amg = true;
+        rebuild_reason << "adaptive_li_growth";
+      }
+    }
+
+    if( !setup_amg )
+    {
+      rebuild_reason << ( min_reuse_satisfied ? "adaptive_reuse"
+                                               : "adaptive_min_age" );
+    }
+  }
+  else if( m_params.bcsrCPRAMGRebuildInterval > 0 &&
+           ( m_cprPressureSetupCount % m_params.bcsrCPRAMGRebuildInterval ) == 0 )
+  {
+    setup_amg = true;
+    rebuild_reason << "fixed_interval";
+  }
+  else
+  {
+    rebuild_reason << "fixed_reuse";
+  }
+
+  if( setup_amg )
+  {
+    ScopedTimer timer( setupTimerNode( "BCSR CPR AMG setup" ) );
     const HYPRE_Int rc = HYPRE_BoomerAMGSetup( m_cprPressureAMG,
                                                m_cprPressureParMatrix,
                                                m_cprPressureParRHS,
@@ -1720,15 +2170,95 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
       clearBCSRCPRPreconditioner();
       return false;
     }
+    m_cprPressureAMGSetupDone = true;
+    m_cprAMGSetupForCurrentSolve = true;
+    m_cprSetupsSinceAMGSetup = 0;
+    ++m_cprPressureAMGSetupCount;
+  }
+  else
+  {
+    ScopedTimer timer( setupTimerNode( "BCSR CPR AMG setup reused" ) );
+    m_cprAMGSetupForCurrentSolve = false;
+    ++m_cprSetupsSinceAMGSetup;
+    ++m_cprPressureAMGReuseCount;
+  }
+  m_cprLastAMGRebuildReason = rebuild_reason.str();
+  ++m_cprPressureSetupCount;
+
+  if( m_params.logLevel >= 1 )
+  {
+    std::cerr << "[MGR] BCSR CPR reuse diagnostics: setup_call="
+              << m_cprPressureSetupCount
+              << ", local_setup_index=" << ( setup_count_before + 1 )
+              << ", structure="
+              << ( preserve_cpr_objects ? "reused" : "reset" )
+              << ", matrix(created="
+              << ( m_cprPressureMatrixCreateCount - matrix_create_before )
+              << ", set_values="
+              << ( m_cprPressureMatrixSetValuesCount - matrix_set_before )
+              << ", value_updates="
+              << ( m_cprPressureMatrixUpdateCount - matrix_update_before )
+              << ", direct_updates="
+              << ( m_cprPressureMatrixDirectUpdateCount - matrix_direct_update_before )
+              << ", assembled="
+              << ( m_cprPressureMatrixAssembleCount - matrix_assemble_before )
+              << "), vectors(created="
+              << ( m_cprPressureVectorCreateCount - vector_create_before )
+              << ", reused="
+              << ( m_cprPressureVectorReuseCount - vector_reuse_before )
+              << "), amg(created="
+              << ( m_cprPressureAMGCreateCount - amg_create_before )
+              << ", setup="
+              << ( m_cprPressureAMGSetupCount - amg_setup_before )
+              << ", reused="
+              << ( m_cprPressureAMGReuseCount - amg_reuse_before )
+              << "), adaptive(enabled="
+              << ( m_params.bcsrCPRAdaptiveAMGRebuild ? 1 : 0 )
+              << ", reason=" << m_cprLastAMGRebuildReason
+              << ", age_before=" << reuse_age_before
+              << ", age_after=" << m_cprSetupsSinceAMGSetup
+              << ", last_li=" << m_cprLastLinearIterations
+              << ", last_converged=" << ( m_cprLastLinearConverged ? 1 : 0 )
+              << ", last_amg_li=" << m_cprLastAMGSetupLinearIterations
+              << ", threshold=" << m_params.bcsrCPRAdaptiveLIThreshold
+              << ", growth=" << m_params.bcsrCPRAdaptiveLIGrowthFactor
+              << ", min_age=" << min_reuse_setups
+              << ", max_age=" << max_reuse_setups
+              << "), totals(clears=" << m_cprClearCount
+              << ", structure_resets=" << m_cprPressureStructureResetCount
+              << ", structure_reuses=" << m_cprPressureStructureReuseCount
+              << ")." << std::endl;
   }
 
   const int_t n = m_matrix.global_num_rows;
-  m_cprPressureRHSValues.assign( m_cprPressureRows, 0.0 );
-  m_cprPressureSolution.assign( m_cprPressureRows, 0.0 );
-  m_cprPressureCorrection.assign( n, 0.0 );
-  m_cprResidual.assign( n, 0.0 );
-  m_cprAx.assign( n, 0.0 );
-  m_cprLocalCorrection.assign( n, 0.0 );
+  if( static_cast<int_t>( m_cprPressureRHSValues.size() ) != m_cprPressureRows )
+  {
+    m_cprPressureRHSValues.assign( m_cprPressureRows, 0.0 );
+  }
+  if( static_cast<int_t>( m_cprPressureSolution.size() ) != m_cprPressureRows )
+  {
+    m_cprPressureSolution.assign( m_cprPressureRows, 0.0 );
+  }
+  if( static_cast<int_t>( m_cprPressureCorrection.size() ) != n )
+  {
+    m_cprPressureCorrection.assign( n, 0.0 );
+  }
+  else
+  {
+    std::fill( m_cprPressureCorrection.begin(), m_cprPressureCorrection.end(), 0.0 );
+  }
+  if( static_cast<int_t>( m_cprResidual.size() ) != n )
+  {
+    m_cprResidual.assign( n, 0.0 );
+  }
+  if( static_cast<int_t>( m_cprAx.size() ) != n )
+  {
+    m_cprAx.assign( n, 0.0 );
+  }
+  if( static_cast<int_t>( m_cprLocalCorrection.size() ) != n )
+  {
+    m_cprLocalCorrection.assign( n, 0.0 );
+  }
   m_bcsrCPRReady = true;
   return true;
 }
@@ -1916,6 +2446,23 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
   const int_t pressure_var =
       std::clamp<int_t>( m_params.bcsrCPRPressureVariable, 0, block_size - 1 );
 
+  hypre_Vector * pressure_rhs_local =
+      hypre_ParVectorLocalVector( m_cprPressureParRHS );
+  hypre_Vector * pressure_sol_local =
+      hypre_ParVectorLocalVector( m_cprPressureParSol );
+  if( !pressure_rhs_local || !pressure_sol_local ||
+      static_cast<int_t>( hypre_VectorSize( pressure_rhs_local ) ) != m_cprPressureRows ||
+      static_cast<int_t>( hypre_VectorSize( pressure_sol_local ) ) != m_cprPressureRows )
+  {
+    return 1;
+  }
+  real_type * pressure_rhs_data = hypre_VectorData( pressure_rhs_local );
+  real_type * pressure_sol_data = hypre_VectorData( pressure_sol_local );
+  if( !pressure_rhs_data || !pressure_sol_data )
+  {
+    return 1;
+  }
+
   {
     ScopedTimer timer( cpr_timer ? &cpr_timer->node["pressure RHS"] : nullptr );
     for( int_t row = 0; row < m_cprPressureRows; ++row )
@@ -1927,29 +2474,13 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
       {
         value += weights[r] * rhs_block[r];
       }
-      m_cprPressureRHSValues[row] = value;
-      m_cprPressureSolution[row] = 0.0;
+      pressure_rhs_data[row] = value;
+      pressure_sol_data[row] = 0.0;
     }
-  }
-
-  std::vector<bigint_t> pressure_rows( m_cprPressureRows );
-  for( int_t i = 0; i < m_cprPressureRows; ++i )
-  {
-    pressure_rows[i] = i;
   }
 
   {
     ScopedTimer timer( cpr_timer ? &cpr_timer->node["AMG pressure solve"] : nullptr );
-    HYPRE_IJVectorSetValues( m_cprPressureIJRHS,
-                             m_cprPressureRows,
-                             pressure_rows.data(),
-                             m_cprPressureRHSValues.data() );
-    HYPRE_IJVectorSetValues( m_cprPressureIJSol,
-                             m_cprPressureRows,
-                             pressure_rows.data(),
-                             m_cprPressureSolution.data() );
-    HYPRE_IJVectorAssemble( m_cprPressureIJRHS );
-    HYPRE_IJVectorAssemble( m_cprPressureIJSol );
     const HYPRE_Int rc = HYPRE_BoomerAMGSolve( m_cprPressureAMG,
                                                m_cprPressureParMatrix,
                                                m_cprPressureParRHS,
@@ -1958,19 +2489,14 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
     {
       return rc;
     }
-    HYPRE_IJVectorGetValues( m_cprPressureIJSol,
-                             m_cprPressureRows,
-                             pressure_rows.data(),
-                             m_cprPressureSolution.data() );
   }
 
   {
     ScopedTimer timer( cpr_timer ? &cpr_timer->node["pressure injection"] : nullptr );
-    std::fill( m_cprPressureCorrection.begin(), m_cprPressureCorrection.end(), 0.0 );
     for( int_t row = 0; row < m_cprPressureRows; ++row )
     {
       m_cprPressureCorrection[row * block_size + pressure_var] =
-          m_cprPressureSolution[row];
+          pressure_sol_data[row];
     }
   }
 
@@ -2133,6 +2659,173 @@ int LinearSolver::applyCompositePreconditioner(HYPRE_ParCSRMatrix A,
   return 0;
 }
 
+bool LinearSolver::prepareHYPRESystemDirectUpdate()
+{
+  m_hypreSystemDirectUpdateReady = false;
+  m_hypreSystemParCSRDiagDataIndex.clear();
+
+  if( !m_parMatrix || m_matrix.global_num_rows <= 0 ||
+      m_matrix.block_size <= 0 || m_matrix.num_rows <= 0 )
+  {
+    return false;
+  }
+
+  hypre_CSRMatrix * diag = hypre_ParCSRMatrixDiag( m_parMatrix );
+  hypre_CSRMatrix * offd = hypre_ParCSRMatrixOffd( m_parMatrix );
+  if( !diag || !hypre_CSRMatrixI( diag ) || !hypre_CSRMatrixJ( diag ) ||
+      !hypre_CSRMatrixData( diag ) )
+  {
+    return false;
+  }
+
+  if( offd && hypre_CSRMatrixNumNonzeros( offd ) != 0 )
+  {
+    return false;
+  }
+
+  const int_t num_rows = m_matrix.global_num_rows;
+  const int_t block_size = m_matrix.block_size;
+  const int_t expected_nnz =
+      m_matrix.num_nonzero_blocks * block_size * block_size;
+
+  if( hypre_CSRMatrixNumRows( diag ) != num_rows ||
+      hypre_CSRMatrixNumNonzeros( diag ) != expected_nnz )
+  {
+    return false;
+  }
+
+  const HYPRE_Int * diag_i = hypre_CSRMatrixI( diag );
+  const HYPRE_Int * diag_j = hypre_CSRMatrixJ( diag );
+  const HYPRE_BigInt first_col = hypre_ParCSRMatrixFirstColDiag( m_parMatrix );
+
+  m_hypreSystemParCSRDiagDataIndex.assign( expected_nnz, -1 );
+
+  for( int_t cell = 0; cell < m_matrix.num_rows; ++cell )
+  {
+    const int_t row_block_start = m_matrix.row_ptr[cell];
+    const int_t row_block_end = m_matrix.row_ptr[cell + 1];
+    const int_t expected_row_ncols =
+        ( row_block_end - row_block_start ) * block_size;
+
+    for( int_t i = 0; i < block_size; ++i )
+    {
+      const int_t scalar_row = cell * block_size + i;
+      const HYPRE_Int row_begin = diag_i[scalar_row];
+      const HYPRE_Int row_end = diag_i[scalar_row + 1];
+      if( row_end - row_begin != expected_row_ncols )
+      {
+        m_hypreSystemParCSRDiagDataIndex.clear();
+        return false;
+      }
+
+      for( int_t block_idx = row_block_start;
+           block_idx < row_block_end;
+           ++block_idx )
+      {
+        const int_t col_cell = m_matrix.col_ind[block_idx];
+        for( int_t j = 0; j < block_size; ++j )
+        {
+          const HYPRE_BigInt global_col =
+              static_cast<HYPRE_BigInt>( col_cell * block_size + j );
+          const HYPRE_BigInt local_col_big = global_col - first_col;
+          if( local_col_big < 0 ||
+              local_col_big >
+                  static_cast<HYPRE_BigInt>(
+                      std::numeric_limits<HYPRE_Int>::max() ) )
+          {
+            m_hypreSystemParCSRDiagDataIndex.clear();
+            return false;
+          }
+
+          const HYPRE_Int local_col =
+              static_cast<HYPRE_Int>( local_col_big );
+          int_t matched = -1;
+          for( HYPRE_Int p = row_begin; p < row_end; ++p )
+          {
+            if( diag_j[p] == local_col )
+            {
+              matched = p;
+              break;
+            }
+          }
+
+          if( matched < 0 )
+          {
+            m_hypreSystemParCSRDiagDataIndex.clear();
+            return false;
+          }
+
+          const int_t value_index =
+              block_idx * block_size * block_size + i * block_size + j;
+          m_hypreSystemParCSRDiagDataIndex[value_index] = matched;
+        }
+      }
+    }
+  }
+
+  m_hypreSystemDirectUpdateReady =
+      static_cast<int_t>( m_hypreSystemParCSRDiagDataIndex.size() ) ==
+      expected_nnz;
+  return m_hypreSystemDirectUpdateReady;
+}
+
+bool LinearSolver::updateHYPRESystemMatrixDirect()
+{
+  if( !m_hypreSystemDirectUpdateReady || !m_parMatrix ||
+      m_hypreSystemParCSRDiagDataIndex.size() != m_matrix.values.size() )
+  {
+    return false;
+  }
+
+  hypre_CSRMatrix * diag = hypre_ParCSRMatrixDiag( m_parMatrix );
+  if( !diag || !hypre_CSRMatrixData( diag ) )
+  {
+    return false;
+  }
+
+  HYPRE_Complex * diag_data = hypre_CSRMatrixData( diag );
+  const int_t block_size = m_matrix.block_size;
+  const bool apply_scaling = scalingActive( m_matrix.global_num_rows );
+
+  for( int_t cell = 0; cell < m_matrix.num_rows; ++cell )
+  {
+    for( int_t block_idx = m_matrix.row_ptr[cell];
+         block_idx < m_matrix.row_ptr[cell + 1];
+         ++block_idx )
+    {
+      const int_t col_cell = m_matrix.col_ind[block_idx];
+      const int_t block_start = block_idx * block_size * block_size;
+      for( int_t i = 0; i < block_size; ++i )
+      {
+        const int_t global_row = cell * block_size + i;
+        const real_type row_scale =
+            apply_scaling ? m_rowScaling[global_row] : 1.0;
+        for( int_t j = 0; j < block_size; ++j )
+        {
+          const int_t value_index = block_start + i * block_size + j;
+          const int_t data_index =
+              m_hypreSystemParCSRDiagDataIndex[value_index];
+          if( data_index < 0 )
+          {
+            return false;
+          }
+
+          real_type value = m_matrix.values[value_index];
+          if( apply_scaling )
+          {
+            const int_t global_col = col_cell * block_size + j;
+            value *= row_scale * m_colScaling[global_col];
+          }
+          diag_data[data_index] = value;
+        }
+      }
+    }
+  }
+
+  ++m_hypreSystemMatrixDirectUpdateCount;
+  return true;
+}
+
 bool LinearSolver::createHYPREMatrix()
 {
   ScopedTimer timer( setupTimerNode( "HYPRE IJ matrix" ) );
@@ -2142,10 +2835,32 @@ bool LinearSolver::createHYPREMatrix()
   const bool apply_scaling = scalingActive( num_rows );
   int_t num_cells = m_matrix.num_rows;
   int_t block_size = m_matrix.block_size;
+
+  if( m_ijMatrix && m_parMatrix && !m_matrixStructureChanged &&
+      updateHYPRESystemMatrixDirect() )
+  {
+    if( m_params.logLevel >= 1 )
+    {
+      std::cerr << "[MGR] HYPRE system matrix direct ParCSR value update used."
+                << std::endl;
+    }
+    return true;
+  }
+
+  if( m_ijMatrix )
+  {
+    HYPRE_IJMatrixDestroy( m_ijMatrix );
+    m_ijMatrix = nullptr;
+    m_parMatrix = nullptr;
+    m_hypreSystemDirectUpdateReady = false;
+    m_hypreSystemParCSRDiagDataIndex.clear();
+  }
+
   // Create IJ matrix
   HYPRE_IJMatrixCreate( MPI_COMM_WORLD, 0, num_rows - 1, 0, num_cols - 1, &m_ijMatrix );
   HYPRE_IJMatrixSetObjectType( m_ijMatrix, HYPRE_PARCSR );
   HYPRE_IJMatrixInitialize( m_ijMatrix );
+  ++m_hypreSystemMatrixCreateCount;
 
   // Fill matrix (row-wise)
   int_t total_nonzeros = 0;
@@ -2189,13 +2904,16 @@ bool LinearSolver::createHYPREMatrix()
       {
         HYPRE_IJMatrixSetValues( m_ijMatrix, 1, &ncols,
                                  &global_row, cols.data(), vals.data() );
+        ++m_hypreSystemMatrixSetValuesCount;
       }
     }
   }
 
   // Assemble matrix
   HYPRE_IJMatrixAssemble( m_ijMatrix );
+  ++m_hypreSystemMatrixAssembleCount;
   HYPRE_IJMatrixGetObject( m_ijMatrix, (void**)&m_parMatrix );
+  prepareHYPRESystemDirectUpdate();
 
 
   return true;
@@ -2207,6 +2925,24 @@ bool LinearSolver::createHYPREVectors()
 
   int_t num_rows = m_matrix.global_num_rows;
   const bool apply_scaling = scalingActive( num_rows );
+
+  if( m_ijRHS && m_ijSol && m_parRHS && m_parSol )
+  {
+    return true;
+  }
+
+  if( m_ijRHS )
+  {
+    HYPRE_IJVectorDestroy( m_ijRHS );
+    m_ijRHS = nullptr;
+    m_parRHS = nullptr;
+  }
+  if( m_ijSol )
+  {
+    HYPRE_IJVectorDestroy( m_ijSol );
+    m_ijSol = nullptr;
+    m_parSol = nullptr;
+  }
 
   // Create RHS vector
   HYPRE_IJVectorCreate( MPI_COMM_WORLD, 0, num_rows - 1, &m_ijRHS );
@@ -3209,6 +3945,7 @@ SolverResults LinearSolver::solveGMRES_BCSRCPR()
   HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
   results.iterations = num_iterations;
   setConvergenceFromResidual( results, final_res_norm );
+  recordBCSRCPRLinearIterations( num_iterations, results.converged );
 
   const int_t num_rows = m_matrix.global_num_rows;
   m_solution.resize( num_rows );
@@ -3281,6 +4018,7 @@ SolverResults LinearSolver::solveFlexGMRES_BCSRCPR()
   HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
   results.iterations = num_iterations;
   setConvergenceFromResidual( results, final_res_norm );
+  recordBCSRCPRLinearIterations( num_iterations, results.converged );
 
   const int_t num_rows = m_matrix.global_num_rows;
   m_solution.resize( num_rows );
@@ -3509,35 +4247,10 @@ SolverResults LinearSolver::solveFlexGMRES_AMG()
 void LinearSolver::cleanup()
 {
   clearBCSRCPRPreconditioner();
-
-  if( m_ijMatrix )
-  {
-    HYPRE_IJMatrixDestroy( m_ijMatrix );
-    m_ijMatrix = nullptr;
-  }
-
-  if( m_ijRHS )
-  {
-    HYPRE_IJVectorDestroy( m_ijRHS );
-    m_ijRHS = nullptr;
-  }
-
-  if( m_ijSol )
-  {
-    HYPRE_IJVectorDestroy( m_ijSol );
-    m_ijSol = nullptr;
-  }
-
-  m_parMatrix = nullptr;
-  m_parRHS = nullptr;
-  m_parSol = nullptr;
-  m_matrixLoaded = false;
-  m_matrixAssembled = false;
+  clearHYPRESystemObjects();
   m_scaling.clear();
   m_rowScaling.clear();
   m_colScaling.clear();
-  m_activeMGRPrecond = nullptr;
-  m_activeKrylovName.clear();
   if( m_blockLocalPreconditioner )
   {
     m_blockLocalPreconditioner->clear();
@@ -3613,6 +4326,34 @@ bool LinearSolver::setMatrixFromCSR( int_t num_rows,
     return false;
   }
 
+  bool structure_changed =
+      m_matrix.num_rows != num_rows ||
+      m_matrix.num_cols != num_cols ||
+      m_matrix.block_size != block_size ||
+      m_matrix.num_nonzero_blocks != num_nonzero_blocks ||
+      static_cast<int_t>( m_matrix.row_ptr.size() ) != num_rows + 1 ||
+      static_cast<int_t>( m_matrix.col_ind.size() ) != num_nonzero_blocks;
+  if( !structure_changed )
+  {
+    structure_changed =
+        !std::equal( row_ptr, row_ptr + num_rows + 1, m_matrix.row_ptr.begin() ) ||
+        !std::equal( col_ind, col_ind + num_nonzero_blocks, m_matrix.col_ind.begin() );
+  }
+  if( !structure_changed )
+  {
+    if( diag_ind )
+    {
+      structure_changed =
+          static_cast<int_t>( m_matrix.diag_ind.size() ) != num_rows ||
+          !std::equal( diag_ind, diag_ind + num_rows, m_matrix.diag_ind.begin() );
+    }
+    else
+    {
+      structure_changed = !m_matrix.diag_ind.empty();
+    }
+  }
+  m_matrixStructureChanged = structure_changed;
+
   // Copy data into BlockCSRMatrix structure
   m_matrix.num_rows = num_rows;
   m_matrix.num_cols = num_cols;
@@ -3645,7 +4386,8 @@ bool LinearSolver::setMatrixFromCSR( int_t num_rows,
     m_matrix.diag_ind.clear();
   }
 
-  // New matrix values invalidate any previously assembled HYPRE objects.
+  // New matrix values invalidate full-system HYPRE objects; CPR objects can be
+  // reused when the block sparsity portrait above did not change.
   m_matrixLoaded = false;
   m_matrixAssembled = false;
 
@@ -3682,6 +4424,37 @@ bool LinearSolver::setMatrixFromVector( int_t num_rows,
     return false;
   }
 
+  bool structure_changed =
+      m_matrix.num_rows != num_rows ||
+      m_matrix.num_cols != num_cols ||
+      m_matrix.block_size != block_size ||
+      m_matrix.num_nonzero_blocks != num_nonzero_blocks ||
+      static_cast<int_t>( m_matrix.row_ptr.size() ) < num_rows + 1 ||
+      static_cast<int_t>( m_matrix.col_ind.size() ) < num_nonzero_blocks;
+  if( !structure_changed )
+  {
+    structure_changed =
+        !std::equal( row_ptr.begin(), row_ptr.begin() + num_rows + 1,
+                     m_matrix.row_ptr.begin() ) ||
+        !std::equal( col_ind.begin(), col_ind.begin() + num_nonzero_blocks,
+                     m_matrix.col_ind.begin() );
+  }
+  if( !structure_changed )
+  {
+    if( !diag_ind.empty() )
+    {
+      structure_changed =
+          static_cast<int_t>( m_matrix.diag_ind.size() ) < num_rows ||
+          !std::equal( diag_ind.begin(), diag_ind.begin() + num_rows,
+                       m_matrix.diag_ind.begin() );
+    }
+    else
+    {
+      structure_changed = !m_matrix.diag_ind.empty();
+    }
+  }
+  m_matrixStructureChanged = structure_changed;
+
   // Copy data into BlockCSRMatrix structure
   m_matrix.num_rows = num_rows;
   m_matrix.num_cols = num_cols;
@@ -3710,7 +4483,8 @@ bool LinearSolver::setMatrixFromVector( int_t num_rows,
     m_matrix.diag_ind.clear();
   }
 
-  // New matrix values invalidate any previously assembled HYPRE objects.
+  // New matrix values invalidate full-system HYPRE objects; CPR objects can be
+  // reused when the block sparsity portrait above did not change.
   m_matrixLoaded = false;
   m_matrixAssembled = false;
 
@@ -3725,8 +4499,24 @@ int_t LinearSolver::setup( int_t max_iters, double tolerance )
   m_params.maxIter = max_iters;
   m_params.tolerance = tolerance;
 
-  // Rebuild from the latest matrix contents on every setup().
-  cleanup();
+  // The block portrait is fixed for most reservoir simulations. Preserve the
+  // full-system ParCSR object when the portrait is unchanged and update only
+  // values; fall back to full IJ rebuild when direct update is not available.
+  if( m_matrixStructureChanged )
+  {
+    clearHYPRESystemObjects();
+  }
+  else
+  {
+    m_matrixLoaded = false;
+    m_matrixAssembled = false;
+    m_activeMGRPrecond = nullptr;
+    m_activeKrylovName.clear();
+  }
+  if( !m_params.bcsrCPRReuseAMGHierarchy || m_matrixStructureChanged )
+  {
+    clearBCSRCPRPreconditioner();
+  }
 
   // Compute matrix/RHS scaling if enabled.
   computeScaling();
@@ -3753,6 +4543,7 @@ int_t LinearSolver::setup( int_t max_iters, double tolerance )
 
   m_matrixLoaded = true;
   m_matrixAssembled = true;
+  m_matrixStructureChanged = false;
 
   return 0;
 }

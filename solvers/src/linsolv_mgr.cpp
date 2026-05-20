@@ -86,6 +86,13 @@ namespace opendarts
       , bcsr_cpr_reduction_type_cached(static_cast<int>(mgr::BCSRCPRReductionType::trueIMPES))
       , bcsr_cpr_pressure_variable_cached(0)
       , bcsr_cpr_weight_max_cached(1.0e6)
+      , bcsr_cpr_reuse_amg_hierarchy_cached(false)
+      , bcsr_cpr_amg_rebuild_interval_cached(1)
+      , bcsr_cpr_adaptive_amg_rebuild_cached(false)
+      , bcsr_cpr_adaptive_li_threshold_cached(80)
+      , bcsr_cpr_adaptive_li_growth_factor_cached(2.0)
+      , bcsr_cpr_adaptive_min_reuse_setups_cached(1)
+      , bcsr_cpr_adaptive_max_reuse_setups_cached(0)
       , n_reservoir_blocks_cached(0)
       , mgr_strategy_config_cached()
     {
@@ -304,6 +311,50 @@ namespace opendarts
           static_cast<mgr::BCSRCPRReductionType>(bcsr_cpr_reduction_type_cached);
       params.bcsrCPRPressureVariable = bcsr_cpr_pressure_variable_cached;
       params.bcsrCPRWeightMax = bcsr_cpr_weight_max_cached;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_bcsr_cpr_reuse_options(
+        bool reuse_amg_hierarchy,
+        opendarts::config::index_t amg_rebuild_interval)
+    {
+      bcsr_cpr_reuse_amg_hierarchy_cached = reuse_amg_hierarchy;
+      bcsr_cpr_amg_rebuild_interval_cached = amg_rebuild_interval;
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.bcsrCPRReuseAMGHierarchy = bcsr_cpr_reuse_amg_hierarchy_cached;
+      params.bcsrCPRAMGRebuildInterval = bcsr_cpr_amg_rebuild_interval_cached;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_bcsr_cpr_adaptive_rebuild_options(
+        bool adaptive_amg_rebuild,
+        opendarts::config::index_t li_threshold,
+        opendarts::config::mat_float li_growth_factor,
+        opendarts::config::index_t min_reuse_setups,
+        opendarts::config::index_t max_reuse_setups)
+    {
+      bcsr_cpr_adaptive_amg_rebuild_cached = adaptive_amg_rebuild;
+      bcsr_cpr_adaptive_li_threshold_cached =
+          std::max<opendarts::config::index_t>(li_threshold, 0);
+      bcsr_cpr_adaptive_li_growth_factor_cached =
+          std::max<opendarts::config::mat_float>(li_growth_factor, 1.0);
+      bcsr_cpr_adaptive_min_reuse_setups_cached =
+          std::max<opendarts::config::index_t>(min_reuse_setups, 0);
+      bcsr_cpr_adaptive_max_reuse_setups_cached =
+          std::max<opendarts::config::index_t>(max_reuse_setups, 0);
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.bcsrCPRAdaptiveAMGRebuild = bcsr_cpr_adaptive_amg_rebuild_cached;
+      params.bcsrCPRAdaptiveLIThreshold = bcsr_cpr_adaptive_li_threshold_cached;
+      params.bcsrCPRAdaptiveLIGrowthFactor =
+          bcsr_cpr_adaptive_li_growth_factor_cached;
+      params.bcsrCPRAdaptiveMinReuseSetups =
+          bcsr_cpr_adaptive_min_reuse_setups_cached;
+      params.bcsrCPRAdaptiveMaxReuseSetups =
+          bcsr_cpr_adaptive_max_reuse_setups_cached;
       mgr_solver.setParameters(params);
     }
 
@@ -700,6 +751,48 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    bool linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_reuse_amg_hierarchy() const
+    {
+      return bcsr_cpr_reuse_amg_hierarchy_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_amg_rebuild_interval() const
+    {
+      return bcsr_cpr_amg_rebuild_interval_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    bool linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_adaptive_amg_rebuild() const
+    {
+      return bcsr_cpr_adaptive_amg_rebuild_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_adaptive_li_threshold() const
+    {
+      return bcsr_cpr_adaptive_li_threshold_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::mat_float linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_adaptive_li_growth_factor() const
+    {
+      return bcsr_cpr_adaptive_li_growth_factor_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_adaptive_min_reuse_setups() const
+    {
+      return bcsr_cpr_adaptive_min_reuse_setups_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_adaptive_max_reuse_setups() const
+    {
+      return bcsr_cpr_adaptive_max_reuse_setups_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     opendarts::config::index_t linsolv_mgr<N_BLOCK_SIZE>::get_n_reservoir_blocks() const
     {
       return n_reservoir_blocks_cached;
@@ -798,6 +891,16 @@ namespace opendarts
           static_cast<mgr::BCSRCPRReductionType>(bcsr_cpr_reduction_type_cached);
       params.bcsrCPRPressureVariable = bcsr_cpr_pressure_variable_cached;
       params.bcsrCPRWeightMax = bcsr_cpr_weight_max_cached;
+      params.bcsrCPRReuseAMGHierarchy = bcsr_cpr_reuse_amg_hierarchy_cached;
+      params.bcsrCPRAMGRebuildInterval = bcsr_cpr_amg_rebuild_interval_cached;
+      params.bcsrCPRAdaptiveAMGRebuild = bcsr_cpr_adaptive_amg_rebuild_cached;
+      params.bcsrCPRAdaptiveLIThreshold = bcsr_cpr_adaptive_li_threshold_cached;
+      params.bcsrCPRAdaptiveLIGrowthFactor =
+          bcsr_cpr_adaptive_li_growth_factor_cached;
+      params.bcsrCPRAdaptiveMinReuseSetups =
+          bcsr_cpr_adaptive_min_reuse_setups_cached;
+      params.bcsrCPRAdaptiveMaxReuseSetups =
+          bcsr_cpr_adaptive_max_reuse_setups_cached;
       params.localReservoirBlockCount = n_reservoir_blocks_cached;
       params.krylovType = use_flex_gmres_cached ? mgr::KrylovType::flexgmres
                                                : mgr::KrylovType::gmres;

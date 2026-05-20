@@ -70,6 +70,14 @@ namespace opendarts
       void set_bcsr_cpr_options(int reduction_type,
                                 int pressure_variable,
                                 opendarts::config::mat_float weight_max);
+      void set_bcsr_cpr_reuse_options(bool reuse_amg_hierarchy,
+                                      opendarts::config::index_t amg_rebuild_interval);
+      void set_bcsr_cpr_adaptive_rebuild_options(
+          bool adaptive_amg_rebuild,
+          opendarts::config::index_t li_threshold,
+          opendarts::config::mat_float li_growth_factor,
+          opendarts::config::index_t min_reuse_setups,
+          opendarts::config::index_t max_reuse_setups);
       void set_mgr_pressure_amg_options(int coarsen_type,
                                         int interp_type,
                                         int relax_type,
@@ -143,6 +151,13 @@ namespace opendarts
       int get_bcsr_cpr_reduction_type() const;
       int get_bcsr_cpr_pressure_variable() const;
       opendarts::config::mat_float get_bcsr_cpr_weight_max() const;
+      bool get_bcsr_cpr_reuse_amg_hierarchy() const;
+      opendarts::config::index_t get_bcsr_cpr_amg_rebuild_interval() const;
+      bool get_bcsr_cpr_adaptive_amg_rebuild() const;
+      opendarts::config::index_t get_bcsr_cpr_adaptive_li_threshold() const;
+      opendarts::config::mat_float get_bcsr_cpr_adaptive_li_growth_factor() const;
+      opendarts::config::index_t get_bcsr_cpr_adaptive_min_reuse_setups() const;
+      opendarts::config::index_t get_bcsr_cpr_adaptive_max_reuse_setups() const;
       opendarts::config::index_t get_n_reservoir_blocks() const;
       bool get_mgr_enable_well_level() const;
       bool get_mgr_enable_composition_level() const;
@@ -191,6 +206,13 @@ namespace opendarts
       int bcsr_cpr_reduction_type_cached;
       int bcsr_cpr_pressure_variable_cached;
       opendarts::config::mat_float bcsr_cpr_weight_max_cached;
+      bool bcsr_cpr_reuse_amg_hierarchy_cached;
+      opendarts::config::index_t bcsr_cpr_amg_rebuild_interval_cached;
+      bool bcsr_cpr_adaptive_amg_rebuild_cached;
+      opendarts::config::index_t bcsr_cpr_adaptive_li_threshold_cached;
+      opendarts::config::mat_float bcsr_cpr_adaptive_li_growth_factor_cached;
+      opendarts::config::index_t bcsr_cpr_adaptive_min_reuse_setups_cached;
+      opendarts::config::index_t bcsr_cpr_adaptive_max_reuse_setups_cached;
       opendarts::config::index_t n_reservoir_blocks_cached;
       mgr::strategies::CompositionalFlowStrategyConfig mgr_strategy_config_cached;
 

@@ -75,6 +75,18 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Set experimental BCSR CPR options (reduction type, pressure variable, max row weight)",
              py::arg("reduction_type"), py::arg("pressure_variable") = 0,
              py::arg("weight_max") = 1.0e6)
+        .def("set_bcsr_cpr_reuse_options", &linsolv_mgr<N>::set_bcsr_cpr_reuse_options,
+             "Set experimental BCSR CPR reuse options (reuse AMG hierarchy, rebuild interval; <=0 means first setup only)",
+             py::arg("reuse_amg_hierarchy") = false,
+             py::arg("amg_rebuild_interval") = 1)
+        .def("set_bcsr_cpr_adaptive_rebuild_options",
+             &linsolv_mgr<N>::set_bcsr_cpr_adaptive_rebuild_options,
+             "Set adaptive BCSR CPR pressure AMG rebuild options driven by previous LI",
+             py::arg("adaptive_amg_rebuild") = false,
+             py::arg("li_threshold") = 80,
+             py::arg("li_growth_factor") = 2.0,
+             py::arg("min_reuse_setups") = 1,
+             py::arg("max_reuse_setups") = 0)
         .def("set_mgr_pressure_amg_options", &linsolv_mgr<N>::set_mgr_pressure_amg_options,
              "Set key BoomerAMG options for the pressure coarse solver",
              py::arg("coarsen_type"), py::arg("interp_type"), py::arg("relax_type"),
@@ -184,6 +196,27 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Get BCSR CPR pressure variable index")
         .def("get_bcsr_cpr_weight_max", &linsolv_mgr<N>::get_bcsr_cpr_weight_max,
              "Get BCSR CPR maximum accepted True-IMPES row weight")
+        .def("get_bcsr_cpr_reuse_amg_hierarchy",
+             &linsolv_mgr<N>::get_bcsr_cpr_reuse_amg_hierarchy,
+             "Get whether BCSR CPR reuses the pressure AMG hierarchy")
+        .def("get_bcsr_cpr_amg_rebuild_interval",
+             &linsolv_mgr<N>::get_bcsr_cpr_amg_rebuild_interval,
+             "Get BCSR CPR pressure AMG rebuild interval")
+        .def("get_bcsr_cpr_adaptive_amg_rebuild",
+             &linsolv_mgr<N>::get_bcsr_cpr_adaptive_amg_rebuild,
+             "Get whether adaptive BCSR CPR pressure AMG rebuild is enabled")
+        .def("get_bcsr_cpr_adaptive_li_threshold",
+             &linsolv_mgr<N>::get_bcsr_cpr_adaptive_li_threshold,
+             "Get adaptive BCSR CPR LI threshold")
+        .def("get_bcsr_cpr_adaptive_li_growth_factor",
+             &linsolv_mgr<N>::get_bcsr_cpr_adaptive_li_growth_factor,
+             "Get adaptive BCSR CPR LI growth factor")
+        .def("get_bcsr_cpr_adaptive_min_reuse_setups",
+             &linsolv_mgr<N>::get_bcsr_cpr_adaptive_min_reuse_setups,
+             "Get adaptive BCSR CPR minimum reuse setups")
+        .def("get_bcsr_cpr_adaptive_max_reuse_setups",
+             &linsolv_mgr<N>::get_bcsr_cpr_adaptive_max_reuse_setups,
+             "Get adaptive BCSR CPR maximum reuse setups")
         .def("get_n_reservoir_blocks", &linsolv_mgr<N>::get_n_reservoir_blocks,
              "Get configured number of reservoir blocks")
         .def("get_mgr_enable_well_level", &linsolv_mgr<N>::get_mgr_enable_well_level,

@@ -142,6 +142,13 @@ struct SolverParameters
   BCSRCPRReductionType bcsrCPRReduction = BCSRCPRReductionType::trueIMPES;
   int_t bcsrCPRPressureVariable = 0;
   real_type bcsrCPRWeightMax = 1.0e6;
+  bool bcsrCPRReuseAMGHierarchy = false;
+  int_t bcsrCPRAMGRebuildInterval = 1;
+  bool bcsrCPRAdaptiveAMGRebuild = false;
+  int_t bcsrCPRAdaptiveLIThreshold = 80;
+  real_type bcsrCPRAdaptiveLIGrowthFactor = 2.0;
+  int_t bcsrCPRAdaptiveMinReuseSetups = 1;
+  int_t bcsrCPRAdaptiveMaxReuseSetups = 0;
 
 };
 
@@ -458,6 +465,12 @@ private:
   HYPRE_ParCSRMatrix m_parMatrix;       ///< HYPRE parallel matrix
   HYPRE_ParVector m_parRHS;             ///< HYPRE parallel RHS vector
   HYPRE_ParVector m_parSol;             ///< HYPRE parallel solution vector
+  bool m_hypreSystemDirectUpdateReady = false;
+  int_t m_hypreSystemMatrixCreateCount = 0;
+  int_t m_hypreSystemMatrixSetValuesCount = 0;
+  int_t m_hypreSystemMatrixAssembleCount = 0;
+  int_t m_hypreSystemMatrixDirectUpdateCount = 0;
+  std::vector<int_t> m_hypreSystemParCSRDiagDataIndex;
 
   HYPRE_IJMatrix m_cprPressureIJMatrix = nullptr;
   HYPRE_IJVector m_cprPressureIJRHS = nullptr;
@@ -468,7 +481,39 @@ private:
   HYPRE_Solver m_cprPressureAMG = nullptr;
   bool m_bcsrCPRReady = false;
   int_t m_cprPressureRows = 0;
+  int_t m_cprPressureSetupCount = 0;
+  bool m_matrixStructureChanged = true;
+  bool m_cprPressurePatternReady = false;
+  bool m_cprPressureMatrixAssembled = false;
+  bool m_cprPressureVectorsReady = false;
+  bool m_cprPressureAMGSetupDone = false;
+  int_t m_cprClearCount = 0;
+  int_t m_cprPressureMatrixCreateCount = 0;
+  int_t m_cprPressureMatrixSetValuesCount = 0;
+  int_t m_cprPressureMatrixAssembleCount = 0;
+  int_t m_cprPressureMatrixUpdateCount = 0;
+  int_t m_cprPressureMatrixDirectUpdateCount = 0;
+  int_t m_cprPressureVectorCreateCount = 0;
+  int_t m_cprPressureVectorReuseCount = 0;
+  int_t m_cprPressureAMGCreateCount = 0;
+  int_t m_cprPressureAMGSetupCount = 0;
+  int_t m_cprPressureAMGReuseCount = 0;
+  int_t m_cprPressureStructureReuseCount = 0;
+  int_t m_cprPressureStructureResetCount = 0;
+  int_t m_cprSetupsSinceAMGSetup = 0;
+  int_t m_cprLastLinearIterations = -1;
+  int_t m_cprLastAMGSetupLinearIterations = -1;
+  bool m_cprLastLinearConverged = true;
+  bool m_cprAMGSetupForCurrentSolve = false;
+  std::string m_cprLastAMGRebuildReason;
+  bool m_cprPressureDirectUpdateReady = false;
+  std::vector<int_t> m_cprPressureParCSRDiagDataIndex;
   std::vector<real_type> m_cprPressureWeights;
+  std::vector<bigint_t> m_cprPressureRowIndices;
+  std::vector<int_t> m_cprPressureRowNCols;
+  std::vector<int_t> m_cprPressureRowOffsets;
+  std::vector<bigint_t> m_cprPressureCols;
+  std::vector<real_type> m_cprPressureValues;
   std::vector<real_type> m_cprPressureRHSValues;
   std::vector<real_type> m_cprPressureSolution;
   std::vector<real_type> m_cprPressureCorrection;
@@ -521,14 +566,22 @@ private:
                                const std::string& name) const;
 
   void setupBlockLocalPreconditioner();
+  void clearHYPRESystemObjects();
+  bool prepareHYPRESystemDirectUpdate();
+  bool updateHYPRESystemMatrixDirect();
   void clearCompositeWorkVectors();
   bool blockLocalPreconditionerReady() const;
   bool setupBCSRCPRPreconditioner();
   void clearBCSRCPRPreconditioner();
   bool bcsrCPRPreconditionerReady() const;
   void computeBCSRCPRPressureWeights();
+  void buildBCSRCPRPressurePattern();
+  void fillBCSRCPRPressureMatrixValues();
+  bool prepareBCSRCPRPressureDirectUpdate();
+  bool updateBCSRCPRPressureMatrixDirect();
   bool createBCSRCPRPressureMatrix();
   bool createBCSRCPRPressureVectors();
+  void recordBCSRCPRLinearIterations(int_t iterations, bool converged);
   int applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix A,
                                  HYPRE_ParVector b,
                                  HYPRE_ParVector x);
