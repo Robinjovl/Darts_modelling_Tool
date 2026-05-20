@@ -317,11 +317,14 @@ void bind_unified_solver_api(py::module &m)
 
     // Base configuration shared by every solver.
     py::class_<solver_config>(m, "SolverConfig",
-        "Base linear-solver configuration (tolerance, iterations, verbosity).")
+        "Base linear-solver configuration (max_iterations, tolerance). For "
+        "engine-resident solvers these are subsequently overridden by the "
+        "engine's init() call from data_ts.linear_tol / linear_max_iter. "
+        "Per-solver verbosity is exposed by the solver-specific config, e.g. "
+        "MGRSolverConfig.log_level.")
         .def(py::init<>())
         .def_readwrite("max_iterations", &solver_config::max_iterations)
-        .def_readwrite("tolerance", &solver_config::tolerance)
-        .def_readwrite("print_level", &solver_config::print_level);
+        .def_readwrite("tolerance", &solver_config::tolerance);
 
     // One HYPRE MGR reduction level.
     py::class_<mgr_level_config>(m, "MGRLevelConfig",
@@ -364,10 +367,11 @@ void bind_unified_solver_api(py::module &m)
 
     // Open-source CPR two-stage preconditioner configuration.
     py::class_<cpr_solver_config, solver_config>(m, "CPRSolverConfig",
-        "Configuration for the open-source CPR two-stage preconditioner.")
+        "Configuration for the open-source CPR two-stage preconditioner. "
+        "BoomerAMG is run with tol=0 as a preconditioner stage, so there is "
+        "no inner AMG tolerance knob -- amg_max_iters sets the sweep budget.")
         .def(py::init<>())
         .def_readwrite("amg_max_iters", &cpr_solver_config::amg_max_iters)
-        .def_readwrite("amg_tolerance", &cpr_solver_config::amg_tolerance)
         .def_readwrite("ilu_fill_level", &cpr_solver_config::ilu_fill_level);
 
     // Unified solver handle returned by create_linear_solver().

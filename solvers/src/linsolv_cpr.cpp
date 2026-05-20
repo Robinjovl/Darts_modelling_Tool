@@ -201,7 +201,6 @@ namespace opendarts
         ilu_T_(nullptr),
         ilu_T_setup_done_(false),
         amg_max_iters_(2),       // AMG used as a prec -- a couple of V-cycles
-        amg_tolerance_(1.0e-2),
         ilu_fill_level_(0),
         max_iters_(50),
         tolerance_(1.0e-5),

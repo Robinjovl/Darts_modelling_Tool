@@ -35,10 +35,18 @@ namespace opendarts
     {
       opendarts::config::index_t max_iterations = 50;       // max linear iterations
       opendarts::config::mat_float tolerance = 1e-5;        // relative convergence tolerance
-      int print_level = 0;                                  // 0 = silent, higher = more verbose
 
       virtual ~solver_config() = default;  // polymorphic: enables safe down-cast in factories
     };
+
+    // Note: ``max_iterations`` / ``tolerance`` on the spec are forwarded into
+    // ``solver_config`` so a directly-built C++ solver picks them up, but for
+    // engine-resident solvers they are subsequently overridden by the engine's
+    // call ``linear_solver->init(matrix, params->max_i_linear, params->tolerance_linear)``
+    // -- the authoritative source on the Newton loop is
+    // ``data_ts.linear_tol`` / ``data_ts.linear_max_iter``. Per-solver
+    // verbosity is solver-specific (e.g. ``mgr_solver_config::log_level``);
+    // there is intentionally no generic ``print_level`` here.
 
     /** Outcome of the last solve, reported uniformly by every linear solver. */
     struct solver_stats

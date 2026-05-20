@@ -109,8 +109,10 @@ namespace opendarts
     struct cpr_solver_config : opendarts::linear_solvers::solver_config
     {
       int amg_max_iters = 2;          // AMG sweeps on the pressure subsystem per CPR apply
-      opendarts::config::mat_float amg_tolerance = 1e-2;
       int ilu_fill_level = 0;         // full-system ILU(k)
+      // No amg_tolerance: BoomerAMG is configured with tol=0 since it is used
+      // as a preconditioner stage of CPR; convergence is driven by the outer
+      // Krylov, the AMG sweep budget is set by amg_max_iters.
     };
   } // namespace linear_solvers
 } // namespace opendarts

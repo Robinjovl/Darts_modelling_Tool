@@ -22,6 +22,16 @@ class LinearSolverSpec:
     Subclasses set the class attribute :attr:`registry_name` (the name the
     solver is registered under in C++) and, if they have extra parameters,
     override :meth:`_make_config`.
+
+    ``tolerance`` and ``max_iterations`` are honoured by the Python-resident
+    solvers (PETSc / Pardiso). For engine-resident solvers (MGR / GMRES / CPR /
+    SuperLU) the engine's ``linear_solver->init()`` call subsequently overrides
+    them with ``data_ts.linear_tol`` / ``data_ts.linear_max_iter`` -- those are
+    the authoritative knobs on the Newton loop.
+
+    ``print_level`` controls Python-resident solver verbosity. Engine-resident
+    solvers expose their own verbosity knob through the solver-specific spec
+    (e.g. :attr:`MGRSolverSpec.log_level`).
     """
 
     tolerance: float = 1e-5
@@ -36,7 +46,6 @@ class LinearSolverSpec:
         config = solvers.SolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
-        config.print_level = self.print_level
         return config
 
     def build(self, block_size: int):
@@ -116,7 +125,6 @@ class MGRSolverSpec(LinearSolverSpec):
         config = solvers.MGRSolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
-        config.print_level = self.print_level
         config.kdim = self.kdim
         config.use_mgr = self.use_mgr
         config.log_level = self.log_level
@@ -180,7 +188,6 @@ class GMRESSolverSpec(LinearSolverSpec):
         config = solvers.GMRESSolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
-        config.print_level = self.print_level
         config.restart = self.restart
         return config
 
@@ -214,23 +221,21 @@ class CPRSolverSpec(LinearSolverSpec):
     the outer GMRES calls ``solve_transposed`` for the adjoint Newton step.
 
     :param amg_max_iters: AMG sweeps on the pressure subsystem per CPR apply.
-    :param amg_tolerance: AMG inner tolerance (relaxed -- AMG is used as a prec).
+        BoomerAMG is configured with tol=0 (preconditioner stage); the sweep
+        budget is the only AMG knob -- the outer Krylov drives convergence.
     :param ilu_fill_level: full-system ILU(k) fill level (currently 0).
     """
 
     registry_name: ClassVar[str] = "cpr"
 
     amg_max_iters: int = 2
-    amg_tolerance: float = 1e-2
     ilu_fill_level: int = 0
 
     def _make_config(self) -> solvers.CPRSolverConfig:
         config = solvers.CPRSolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
-        config.print_level = self.print_level
         config.amg_max_iters = self.amg_max_iters
-        config.amg_tolerance = self.amg_tolerance
         config.ilu_fill_level = self.ilu_fill_level
         return config
 

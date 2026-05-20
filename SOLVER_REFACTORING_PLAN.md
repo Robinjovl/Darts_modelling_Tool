@@ -996,6 +996,22 @@ Branch `xiaoming/add-mgr`. What ships with this MR:
    delivered the same surface with real BCSR-CPR / BILU0-fallback / composite-mode
    implementations. The shared SPE10 `model.py` runs unmodified against the
    merged-in MGR.)*
+8. **Solver config / spec surface cleanup** -- dead parameters removed from both
+   the C++ structs and the Python Spec classes:
+   * `solver_config::print_level` (C++) -- written by every spec but never read
+     by any C++ factory or solver. Removed. Per-solver verbosity is exposed by
+     the solver-specific config when it exists (e.g.
+     `mgr_solver_config::log_level`); `LinearSolverSpec.print_level` (Python)
+     stays because the Python-resident solvers (PETSc / Pardiso) consume it.
+   * `cpr_solver_config::amg_tolerance` + `linsolv_cpr::set_amg_tolerance` +
+     the matching `CPRSolverSpec.amg_tolerance` -- BoomerAMG inside CPR is
+     always run with `tol=0` since it is a preconditioner stage; the sweep
+     budget (`amg_max_iters`) is the only AMG knob.
+   * `LinearSolverSpec.tolerance` / `max_iterations` docstring -- now spells
+     out that for engine-resident solvers the engine's `init()` call overrides
+     these from `data_ts.linear_tol` / `data_ts.linear_max_iter` (the
+     authoritative Newton-loop knobs); for Python-resident solvers the spec
+     values are used directly.
 
 What does **not** ship and why:
 

@@ -251,7 +251,6 @@ namespace opendarts
       {
         auto solver = std::make_shared<opendarts::linear_solvers::linsolv_cpr<N_BLOCK_SIZE>>();
         solver->set_amg_max_iters(config.amg_max_iters);
-        solver->set_amg_tolerance(config.amg_tolerance);
         solver->set_ilu_fill_level(config.ilu_fill_level);
         return solver;
       }

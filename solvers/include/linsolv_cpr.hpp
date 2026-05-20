@@ -107,7 +107,6 @@ namespace opendarts
       /** Maximum HYPRE-AMG iterations on the pressure subsystem per CPR apply.
        *  AMG is used as a preconditioner stage -- a few sweeps usually suffice. */
       void set_amg_max_iters(int n) { amg_max_iters_ = n; }
-      void set_amg_tolerance(opendarts::config::mat_float t) { amg_tolerance_ = t; }
       void set_ilu_fill_level(int k) { ilu_fill_level_ = k; }
 
     private:
@@ -192,7 +191,6 @@ namespace opendarts
 
       // Configuration.
       int amg_max_iters_;
-      opendarts::config::mat_float amg_tolerance_;
       int ilu_fill_level_;
       int max_iters_;
       opendarts::config::mat_float tolerance_;
