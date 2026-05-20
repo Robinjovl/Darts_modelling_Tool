@@ -61,6 +61,11 @@ class PhysicsBase:
                 return self.value < other.value
             return NotImplemented
 
+    # Default advisory cells per axis when only `axes_step` is given. With adaptive
+    # interpolators the cache grows past this window on demand; the value only governs
+    # the legacy integer-keyed pickle export filter and `n_axes_points` diagnostic.
+    DEFAULT_ADVISORY_N_AXES_POINTS = 1024
+
     def __init__(
         self,
         state_spec: StateSpecification,
@@ -68,15 +73,31 @@ class PhysicsBase:
         components: list,
         phases: list,
         n_ops: int,
-        axes_min: value_vector,
-        axes_max: value_vector,
-        n_axes_points: index_vector,
         timer: timer_node,
+        # New primary API: per-axis cell size (length = n_vars). Defines the grid spacing
+        # exactly. Origin defaults to axes_min if given, else zeros.
+        axes_step: list = None,
+        # Legacy API (still supported): explicit (min, max, n_points) per axis.
+        axes_min: value_vector = None,
+        axes_max: value_vector = None,
+        n_axes_points: index_vector = None,
         sim_eps: float = None,
         cache: bool = False,
     ):
         """
-        This is the constructor of the PhysicsBase class. It creates a `simulation` timer node and initializes caching.
+        Constructor of the PhysicsBase class. It creates a `simulation` timer node and initializes caching.
+
+        Accepts either of two API styles to define the OBL grid:
+
+        * **New (recommended):** pass `axes_step` (per-axis cell size). The grid origin
+          defaults to zeros (or to `axes_min` if also given). The advisory cell-count
+          defaults to :attr:`DEFAULT_ADVISORY_N_AXES_POINTS` (~1024 per axis) and
+          controls only the integer-keyed pickle export filter — adaptive caches grow
+          past it on demand. `axes_max` is derived as `origin + (n_points-1)*step`.
+
+        * **Legacy:** pass `axes_min`, `axes_max`, and `n_axes_points`. `axes_step` is
+          derived as `(axes_max - axes_min) / (n_axes_points - 1)`. This style remains
+          supported for backward compatibility.
 
         :param state_spec: State specification - 0) P, 1) PT, 2) PH
         :type state_spec: StateSpecification
@@ -88,16 +109,16 @@ class PhysicsBase:
         :type phases: list
         :param n_ops: Number of operators
         :type n_ops: int
-        :param axes_min, axes_max: Minimum, maximum of each OBL axis
-        :type axes_min, axes_max: :class:`darts.interpolators.value_vector`
-        :param n_axes_points: Number of OBL points along axes
-        :type n_axes_points: index_vector
         :param timer: Timer object
-        :param sim_eps: Epsilon composition for simulation that solution should remain away from OBL bounds
-                        (in engine, min_sim_z = min_axis_z + sim_eps, max_sim_z = max_axis_z - sim_eps)
+        :param axes_step: Per-axis cell size; preferred new entry point.
+        :type axes_step: list or None
+        :param axes_min, axes_max: Legacy minimum / maximum per OBL axis.
+        :type axes_min, axes_max: :class:`darts.interpolators.value_vector`
+        :param n_axes_points: Advisory cell count per axis (legacy). Defaults to ``DEFAULT_ADVISORY_N_AXES_POINTS`` if `axes_step` is used.
+        :type n_axes_points: index_vector
+        :param sim_eps: Epsilon composition for simulation that solution should remain away from OBL bounds.
         :type sim_eps: float
-        :type cache: :class:`darts.interpolators.timer_node`
-        :param cache: Switch to cache operator values
+        :param cache: Switch to cache operator values.
         :type cache: bool
         """
         # Define variables and number of operators
@@ -113,10 +134,57 @@ class PhysicsBase:
         self.nph = len(phases)
         self.n_ops = n_ops
 
-        # Define PTz bounds for OBL grid
-        self.PT_axes_min = axes_min
-        self.PT_axes_max = axes_max
-        self.n_axes_points = n_axes_points
+        # Reconcile new (axes_step) vs legacy (axes_min/axes_max/n_axes_points) inputs.
+        # The interpolators only care about (origin, step); axes_max and n_axes_points
+        # are advisory after Phase 1+2 (cache grows past them on demand).
+        if axes_step is not None:
+            axes_step_arr = np.asarray(axes_step, dtype=np.float64)
+            assert len(axes_step_arr) == self.n_vars, (
+                f"axes_step must have {self.n_vars} entries (one per variable), got {len(axes_step_arr)}"
+            )
+            origin = (
+                np.asarray(axes_min, dtype=np.float64)
+                if axes_min is not None
+                else np.zeros(self.n_vars, dtype=np.float64)
+            )
+            assert len(origin) == self.n_vars
+            n_pts = (
+                list(n_axes_points)
+                if n_axes_points is not None
+                else [self.DEFAULT_ADVISORY_N_AXES_POINTS] * self.n_vars
+            )
+            assert len(n_pts) == self.n_vars
+            # advisory max = origin + (n_points - 1) * step; preserves legacy code that reads it
+            derived_max = (origin + (np.asarray(n_pts) - 1) * axes_step_arr).tolist()
+            self.PT_axes_min = value_vector(origin.tolist())
+            self.PT_axes_max = (
+                value_vector(axes_max)
+                if axes_max is not None
+                else value_vector(derived_max)
+            )
+            self.n_axes_points = index_vector(n_pts)
+            self.axes_step = axes_step_arr.tolist()
+        else:
+            # Legacy path: derive axes_step from (axes_min, axes_max, n_axes_points)
+            assert (
+                axes_min is not None
+                and axes_max is not None
+                and n_axes_points is not None
+            ), (
+                "PhysicsBase: pass either `axes_step` (new API) "
+                "or `axes_min` + `axes_max` + `n_axes_points` (legacy)"
+            )
+            self.PT_axes_min = axes_min
+            self.PT_axes_max = axes_max
+            self.n_axes_points = n_axes_points
+            mn = np.asarray(list(axes_min), dtype=np.float64)
+            mx = np.asarray(list(axes_max), dtype=np.float64)
+            npts = np.asarray(list(n_axes_points), dtype=np.float64)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                self.axes_step = np.where(
+                    npts > 1, (mx - mn) / np.maximum(npts - 1, 1), 0.0
+                ).tolist()
+
         self.sim_eps = sim_eps if sim_eps is not None else 1e-12
 
         # Initialize timer for simulation and caching

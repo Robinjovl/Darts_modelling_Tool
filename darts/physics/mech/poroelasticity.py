@@ -26,12 +26,14 @@ class Poroelasticity(Compositional):
         components: list,
         phases: list,
         timer: timer_node,
-        n_points: int,
-        min_p: float,
-        max_p: float,
-        min_z: float,
-        max_z: float,
-        epsilon_z: float,
+        # NEW PRIMARY API: per-axis cell size; legacy n_points/min/max accepted via Compositional
+        axes_step: list = None,
+        n_points: int = None,
+        min_p: float = None,
+        max_p: float = None,
+        min_z: float = None,
+        max_z: float = None,
+        epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
         min_t: float = None,
@@ -82,11 +84,12 @@ class Poroelasticity(Compositional):
         :param n_axes_points: Number of points over OBL axes
         :type n_axes_points: list or np.ndarray
         """
-        # Define nc, nph and (iso)thermal
+        # Forward to Compositional; both API styles propagate through unchanged.
         super().__init__(
             components=components,
             phases=phases,
             timer=timer,
+            axes_step=axes_step,
             n_points=n_points,
             min_p=min_p,
             max_p=max_p,

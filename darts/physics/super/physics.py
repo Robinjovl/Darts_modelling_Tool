@@ -29,59 +29,60 @@ class Compositional(PhysicsBase):
         components: list,
         phases: list,
         timer: timer_node,
-        n_points: int,
-        min_p: float,
-        max_p: float,
-        min_z: float,
-        max_z: float,
-        epsilon_z: float,
+        # NEW PRIMARY API: per-axis cell size [p_step, z_step_1, ..., z_step_{nc-1}, t_step?].
+        # When provided, takes precedence over (n_points, max_p, max_z, max_t) for grid resolution.
+        axes_step: list = None,
+        # Origin of the OBL grid per axis. With the adaptive interpolator the cache extends
+        # past this freely; min_p / min_z / min_t serve as the integer-key reference point only.
+        min_p: float = None,
+        max_p: float = None,
+        min_z: float = None,
+        max_z: float = None,
+        epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
         min_t: float = None,
         max_t: float = None,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
+        # Legacy / advisory cell count. Optional when `axes_step` is given.
+        n_points: int = None,
+        # Fully-explicit legacy API (still supported)
         axes_min=None,
         axes_max=None,
         n_axes_points=None,
     ):
         """
-        This is the constructor of the Compositional Physics class.
+        Constructor of the Compositional Physics class.
 
-        It defines the OBL grid for P-z or P-T-z compositional simulation.
-        Use axes_min, axes_max, n_axes_points to define non-uniform OBL properties for different compositions.
+        It defines the OBL grid for P-z or P-T-z compositional simulation. Two API styles
+        are supported:
+
+        * **New (recommended):** pass ``axes_step`` (per-axis cell size) plus ``min_p``,
+          ``min_z`` (and ``min_t`` if thermal) as the grid origin. ``max_*`` and
+          ``n_points`` are derived and become advisory — the adaptive interpolator caches
+          new cells on demand outside any prescribed window.
+
+        * **Legacy:** pass ``n_points`` + ``min_p``, ``max_p``, ``min_z``, ``max_z`` (and
+          optionally ``min_t``, ``max_t``); ``axes_step`` is derived per axis as
+          ``(max - min) / (n_points - 1)``. Or pass ``axes_min``, ``axes_max``,
+          ``n_axes_points`` directly for fully non-uniform legacy behavior.
 
         :param components: List of components
-        :type components: list
         :param phases: List of phases
-        :type phases: list
-        :param timer: Timer object
-        :type timer: :class:`darts.engines.timer_node`
-        :param n_points: Number of OBL points along axes
-        :type n_points: int
-        :param min_p, max_p: Minimum, maximum pressure
-        :type min_p, max_p: float
-        :param min_z, max_z: Minimum, maximum composition
-        :type min_z, max_z: float
-        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
-        :type epsilon_z: float
-        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
-                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
-        :type sim_eps_multiplier: float
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :type extrapolation_flag: bool
-        :param min_t, max_t: Minimum, maximum temperature, default is None
-        :type min_t, max_t: float
-        :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
-        :type state_spec: StateSpecification
+        :param timer: :class:`darts.engines.timer_node`
+        :param axes_step: (preferred) per-axis cell size, length n_vars
+        :type axes_step: list or None
+        :param min_p, max_p: Pressure axis origin / advisory upper bound
+        :param min_z, max_z: Composition axis origin / advisory upper bound
+        :param epsilon_z: Offset added to the composition axis origin (min_z + epsilon_z)
+        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps
+        :param extrapolation_flag: Enable extrapolation logic (z[last] < 0 for nc >= 3)
+        :param min_t, max_t: Thermal axis origin / advisory upper bound
+        :param state_spec: P / PT / PH
         :param cache: Switch to cache operator values
-        :type cache: bool
-        :param axes_min: (optional) Minimum bounds of OBL axes
-        :type axes_min: (optional) list or np.ndarray
-        :param axes_max: (optional) Maximum bounds of OBL axes
-        :type axes_max: (optional) list or np.ndarray
-        :param n_axes_points: (optional) Number of points over OBL axes
-        :type n_axes_points: (optional) list or np.ndarray
+        :param n_points: (advisory) cells per axis; defaults to 1024 if `axes_step` is provided
+        :param axes_min, axes_max, n_axes_points: fully-explicit legacy override
         """
         # Define nc, nph and (iso)thermal
         nc = len(components)
@@ -105,6 +106,63 @@ class Compositional(PhysicsBase):
 
         n_ops = n_vars * (2 * nph + 2) + 7 * nph + 3
 
+        # ── Reconcile new (axes_step) vs legacy (n_points + min/max) inputs ────────
+        if axes_step is not None:
+            assert len(axes_step) == n_vars, (
+                f"axes_step must have {n_vars} entries (one per variable), got {len(axes_step)}"
+            )
+            # Build origin from per-thing minimums (composition axes still shifted by epsilon_z).
+            assert min_p is not None, "min_p (pressure origin) must be provided"
+            axz_min = (
+                [min_z + epsilon_z for _ in range(nc - 1)]
+                if (min_z is None or np.isscalar(min_z))
+                else [min_z[i] + epsilon_z for i in range(nc - 1)]
+            )
+            if min_z is None:
+                axz_min = [epsilon_z for _ in range(nc - 1)]
+            if self.thermal:
+                assert min_t is not None, "min_t (thermal axis origin) must be provided"
+                origin = [min_p] + axz_min + [min_t]
+            else:
+                origin = [min_p] + axz_min
+
+            # Advisory cell count
+            advisory_n = (
+                n_points
+                if n_points is not None
+                else PhysicsBase.DEFAULT_ADVISORY_N_AXES_POINTS
+            )
+            if n_axes_points is None:
+                n_axes_points = index_vector([advisory_n] * n_vars)
+            else:
+                n_axes_points = index_vector(n_axes_points)
+
+            self.dz = axes_step[1] if nc > 1 else None
+            self.extrapolation_flag = extrapolation_flag
+            if self.extrapolation_flag and nc > 1:
+                for i in range(nc - 1):
+                    assert abs(axes_step[1 + i] - self.dz) < 1e-15, (
+                        "To use extrapolation logic, dz must be equal along all compositional axes"
+                    )
+
+            assert sim_eps_multiplier > 1
+            # Pass via the new PhysicsBase axes_step entry point
+            super().__init__(
+                state_spec=state_spec,
+                variables=variables,
+                components=components,
+                phases=phases,
+                n_ops=n_ops,
+                timer=timer,
+                axes_step=list(axes_step),
+                axes_min=origin,
+                n_axes_points=n_axes_points,
+                sim_eps=epsilon_z * sim_eps_multiplier,
+                cache=cache,
+            )
+            return
+
+        # ── Legacy path: derive axes_step from (n_points + min/max) or explicit axes_min/max
         # axes_min
         if axes_min is None:
             axz_min = (
@@ -131,6 +189,9 @@ class Compositional(PhysicsBase):
 
         # n_axes_points
         if n_axes_points is None:
+            assert n_points is not None, (
+                "Legacy API requires either `n_points` or `n_axes_points`"
+            )
             n_axes_points = index_vector([n_points] * n_vars)
         else:
             n_axes_points = index_vector(n_axes_points)
@@ -157,7 +218,7 @@ class Compositional(PhysicsBase):
             "OBL axes/solution vector in engine"
         )
 
-        # Call PhysicsBase constructor
+        # Call PhysicsBase constructor (legacy)
         super().__init__(
             state_spec=state_spec,
             variables=variables,

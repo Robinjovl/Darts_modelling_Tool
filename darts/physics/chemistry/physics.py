@@ -25,59 +25,78 @@ class ElementBasedReactiveFlow(Compositional):
         timer: timer_node,
         elements: list[str],
         phases: list[str],
-        n_points: int | list[int],
-        axes_min: list[float],
-        axes_max: list[float],
         epsilon_z: float,
+        # NEW PRIMARY API: per-axis cell size [p_step, z_step_1, ..., z_step_{n_el-1}]
+        axes_step: list = None,
+        # Origin (default: derived from axes_min if given)
+        min_p: float = None,
+        # Legacy / advisory
+        n_points: int | list[int] = None,
+        axes_min: list[float] = None,
+        axes_max: list[float] = None,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
         cache: bool = True,
     ):
         """
         Constructor for ElementBasedReactiveFlow class.
+
+        Two API styles supported:
+
+        * **New (recommended):** pass ``axes_step`` (per-axis cell size) plus ``min_p``.
+          Composition axis origin defaults to ``epsilon_z`` (after Compositional's offset).
+        * **Legacy:** pass ``n_points``, ``axes_min``, ``axes_max`` (explicit per-axis bounds).
+
         :param timer: Timer object
-        :type timer: timer_node
         :param elements: List of elements
-        :type elements: list
         :param phases: List of phases
-        :type phases: List
-        :param n_points: Number of points
-        :type n_points: int
-        :param axes_min: Minimum axes values
-        :type axes_min: list
-        :param axes_max: Maximum axes values
-        :type axes_max: list
-        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
-        :type epsilon_z: float
-        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
-                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
-        :type sim_eps_multiplier: float
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :type extrapolation_flag: bool
+        :param epsilon_z: Composition axis offset
+        :param axes_step: (preferred) per-axis cell size
+        :param min_p: Pressure axis origin (preferred path)
+        :param n_points: Advisory cell count per axis (legacy)
+        :param axes_min, axes_max: Legacy explicit bounds
+        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps
+        :param extrapolation_flag: Extrapolation logic for z[last] < 0 if n_el >= 3
         :param cache: Cache flag
-        :type cache: bool
         """
         vars = ["p"] + elements[:-1]
         self.initial_operators = {}
         self.output_property_containers = {}
 
-        super().__init__(
-            components=elements,
-            phases=phases,
-            n_points=n_points,
-            min_p=axes_min[0],
-            max_p=axes_max[0],
-            min_z=axes_min[1],
-            max_z=1 - axes_min[1],
-            axes_min=axes_min,
-            axes_max=axes_max,
-            n_axes_points=n_points,
-            epsilon_z=epsilon_z,
-            sim_eps_multiplier=sim_eps_multiplier,
-            extrapolation_flag=extrapolation_flag,
-            timer=timer,
-            cache=cache,
-        )
+        if axes_step is not None:
+            super().__init__(
+                components=elements,
+                phases=phases,
+                axes_step=axes_step,
+                min_p=min_p
+                if min_p is not None
+                else (axes_min[0] if axes_min is not None else None),
+                min_z=epsilon_z if axes_min is None else axes_min[1] - epsilon_z,
+                n_points=n_points,
+                epsilon_z=epsilon_z,
+                sim_eps_multiplier=sim_eps_multiplier,
+                extrapolation_flag=extrapolation_flag,
+                timer=timer,
+                cache=cache,
+            )
+        else:
+            super().__init__(
+                components=elements,
+                phases=phases,
+                n_points=n_points,
+                min_p=axes_min[0],
+                max_p=axes_max[0],
+                min_z=axes_min[1],
+                max_z=1 - axes_min[1],
+                axes_min=axes_min,
+                axes_max=axes_max,
+                n_axes_points=n_points,
+                epsilon_z=epsilon_z,
+                sim_eps_multiplier=sim_eps_multiplier,
+                extrapolation_flag=extrapolation_flag,
+                timer=timer,
+                cache=cache,
+            )
         self.vars = vars
 
     def set_operators(self):

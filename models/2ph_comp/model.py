@@ -63,8 +63,17 @@ class Model(CICDModel):
         """ Activate physics """
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        # New axes_step-based API: pass per-axis cell size directly. With the adaptive
+        # multi-index-keyed interpolator the cache extends past any prescribed window on
+        # demand, so axes_max / n_points become advisory. The step values below
+        # reproduce the legacy grid exactly (n_points=200 over P in [1, 300] and z in [0, 1]).
+        n_points = 200
+        p_step = (300 - 1) / (n_points - 1)
+        z_step = (1 - 3 * epsilon) / (n_points - 1)
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=200, min_p=1, max_p=300, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     axes_step=[p_step, z_step, z_step],
+                                     min_p=1, min_z=0., epsilon_z=epsilon,
+                                     n_points=n_points,  # advisory: drives legacy pickle export window
                                      extrapolation_flag=True)
         # property_container.output_props = {
         #     "sat0": lambda: property_container.sat[0],

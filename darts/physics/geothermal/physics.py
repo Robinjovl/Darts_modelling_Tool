@@ -27,28 +27,35 @@ class Geothermal(PhysicsBase):
     def __init__(
         self,
         timer: timer_node,
-        n_points: int,
-        min_p: float,
-        max_p: float,
-        min_e: float,
-        max_e: float,
+        # NEW PRIMARY API: per-axis cell size [p_step, e_step]
+        axes_step: list = None,
+        # Origin of the OBL grid per axis. With the adaptive interpolator the cache grows
+        # past these freely; min_p / min_e serve as origin only.
+        min_p: float = None,
+        max_p: float = None,
+        min_e: float = None,
+        max_e: float = None,
         cache: bool = False,
+        # Legacy advisory cell count
+        n_points: int = None,
     ):
         """
-        This is the constructor of the Geothermal Physics class.
+        Constructor of the Geothermal Physics class. Defines the OBL grid for P-H simulation.
 
-        It defines the OBL grid for P-H simulation.
+        Two API styles supported:
+
+        * **New (recommended):** pass ``axes_step=[p_step, e_step]`` plus ``min_p``,
+          ``min_e``. ``max_*`` and ``n_points`` are advisory.
+
+        * **Legacy:** pass ``n_points``, ``min_p``, ``max_p``, ``min_e``, ``max_e``;
+          ``axes_step`` is derived per axis as ``(max - min) / (n_points - 1)``.
 
         :param timer: Timer object
-        :type timer: :class:`darts.engines.timer_node`
-        :param n_points: Number of OBL points along axes
-        :type n_points: int
-        :param min_p, max_p: Minimum, maximum pressure
-        :type min_p, max_p: float
-        :param min_e, max_e: Minimum, maximum enthalpy
-        :type min_e, max_e: float
+        :param axes_step: (preferred) per-axis cell size, [p_step, e_step]
+        :param min_p, max_p: Pressure axis origin / advisory upper bound
+        :param min_e, max_e: Enthalpy axis origin / advisory upper bound
         :param cache: Switch to cache operator values
-        :type cache: bool
+        :param n_points: (advisory) cells per axis; defaults to 1024 if `axes_step` is provided
         """
         # Set nc=1, thermal=True
         components = ["H2O"]
@@ -58,31 +65,75 @@ class Geothermal(PhysicsBase):
         variables = ['pressure', 'enthalpy']
         state_spec = PhysicsBase.StateSpecification.PH
 
-        # Define OBL axes
-        self.axes_min = value_vector([min_p, min_e])
-        self.axes_max = value_vector([max_p, max_e])
-        n_axes_points = index_vector([n_points] * len(variables))
-
-        # Define number of operators:
-        # N_OPS = NC /*acc*/ + NC * NP /*flux*/ + 2 + NP /*energy acc, flux, cond*/ + NP /*density*/ + 1 /*temperature*/
-        # = nc + nc*NP + 2 + NP + NP + 1 = 10
+        # Number of operators:
+        # N_OPS = NC + NC*NP + 2 + NP + NP + 1 = 10
         n_ops = 10
 
-        # Call PhysicsBase constructor
-        super().__init__(
-            state_spec=state_spec,
-            variables=variables,
-            components=components,
-            phases=phases,
-            n_ops=n_ops,
-            axes_min=self.axes_min,
-            axes_max=self.axes_max,
-            n_axes_points=n_axes_points,
-            timer=timer,
-            cache=cache,
-        )
+        if axes_step is not None:
+            assert len(axes_step) == 2, (
+                "axes_step must have 2 entries: [p_step, e_step]"
+            )
+            assert min_p is not None and min_e is not None, (
+                "min_p and min_e (origin) must be provided when using axes_step"
+            )
+            origin = [min_p, min_e]
+            advisory_n = (
+                n_points
+                if n_points is not None
+                else PhysicsBase.DEFAULT_ADVISORY_N_AXES_POINTS
+            )
+            n_axes_points = index_vector([advisory_n] * len(variables))
+            self.axes_min = value_vector(origin)
+            self.axes_max = value_vector(
+                [
+                    origin[i] + (advisory_n - 1) * axes_step[i]
+                    for i in range(len(variables))
+                ]
+            )
+
+            super().__init__(
+                state_spec=state_spec,
+                variables=variables,
+                components=components,
+                phases=phases,
+                n_ops=n_ops,
+                timer=timer,
+                axes_step=list(axes_step),
+                axes_min=origin,
+                n_axes_points=n_axes_points,
+                cache=cache,
+            )
+        else:
+            # Legacy path
+            assert (
+                n_points is not None
+                and min_p is not None
+                and max_p is not None
+                and min_e is not None
+                and max_e is not None
+            ), "Legacy API requires n_points, min_p, max_p, min_e, max_e"
+            self.axes_min = value_vector([min_p, min_e])
+            self.axes_max = value_vector([max_p, max_e])
+            n_axes_points = index_vector([n_points] * len(variables))
+
+            super().__init__(
+                state_spec=state_spec,
+                variables=variables,
+                components=components,
+                phases=phases,
+                n_ops=n_ops,
+                axes_min=self.axes_min,
+                axes_max=self.axes_max,
+                n_axes_points=n_axes_points,
+                timer=timer,
+                cache=cache,
+            )
+
+        # PT bounds for ThermalVarOperator
         self.PT_axes_min = value_vector([min_p, 273.15])
-        self.PT_axes_max = value_vector([max_p, 273.15 + 300.0])
+        self.PT_axes_max = value_vector(
+            [max_p if max_p is not None else min_p + 100.0, 273.15 + 300.0]
+        )
 
         self.thermal = True
 
