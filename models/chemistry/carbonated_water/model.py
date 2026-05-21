@@ -261,10 +261,10 @@ class Model(CICDModel):
             self.n_points = list(self.n_obl_mult * np.array([101, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.02, 0.37]
+                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 1 - self.obl_min, 1 - self.obl_min, 0.01, 0.01, 0.02, 0.37]
             else:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.25]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.1, 0.37]
+                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 1 - self.obl_min, 1 - self.obl_min, 0.01, 0.01, 0.1, 0.37]
 
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],    # Solid_CaCO3
@@ -357,6 +357,12 @@ class Model(CICDModel):
         self.inj_stream = convert_composition(self.inj_stream_components, self.E)
         self.inj_stream = correct_composition(self.inj_stream, self.min_z)
 
+    # NOTE: get_evaluator_factory() is intentionally NOT overridden here.
+    # The DartsModel default (ModelEvaluatorFactory) reconstructs this model from
+    # its constructor arguments and reuses set_physics()/PropertyContainer, so the
+    # parallel evaluator needs no model-specific factory. See
+    # docs/for_developers/parallel_operators.md.
+
     def set_reservoir(self, domain, nx, mesh_filename, poro_filename):
         self.domain = domain
 
@@ -391,9 +397,9 @@ class Model(CICDModel):
                 self.solid_sat[:, 0] = (1 - true_initial_mean_poro) * 0.45
                 self.solid_sat[:, 1] = (1 - true_initial_mean_poro) * 0.55
             elif set(self.minerals) == {'calcite', 'dolomite', 'magnesite'}:
-                self.solid_sat[:, 0] = (1 - true_initial_mean_poro) * 0.35
-                self.solid_sat[:, 1] = (1 - true_initial_mean_poro) * 0.45
-                self.solid_sat[:, 2] = (1 - true_initial_mean_poro) * 0.2
+                self.solid_sat[:, 0] = (1 - true_initial_mean_poro) * 0.4
+                self.solid_sat[:, 1] = (1 - true_initial_mean_poro) * 0.2
+                self.solid_sat[:, 2] = (1 - true_initial_mean_poro) * 0.4
             self.inj_cells = np.array([0])
 
             self.volume = np.prod(self.domain_sizes)

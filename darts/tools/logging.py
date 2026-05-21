@@ -5,6 +5,7 @@ original_stdout = os.dup(1)
 
 
 def redirect_all_output(log_file, append=True):
+    sys.stdout.flush()
     if append:
         log_stream = open(log_file, "a+")
     else:
@@ -15,6 +16,8 @@ def redirect_all_output(log_file, append=True):
 
 
 def abort_redirection(log_stream):
+    sys.stdout.flush()
+    log_stream.flush()
     os.dup2(original_stdout, sys.stdout.fileno())
     log_stream.close()
 

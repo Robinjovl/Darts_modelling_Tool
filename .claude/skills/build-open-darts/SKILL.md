@@ -6,7 +6,7 @@ description: Build and install open-DARTS C++ extensions and Python wheels acros
 # Build open-DARTS
 
 Use this skill for deterministic build and install workflows.
-Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
+Use the session conda environment. If the prompt defines one, use it. Otherwise, create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 
