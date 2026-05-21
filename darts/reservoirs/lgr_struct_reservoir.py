@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from math import pi
 from typing import Any
 
+import meshio
 import numpy as np
 
 from darts.engines import conn_mesh, index_vector, ms_well, timer_node, value_vector
@@ -475,9 +477,33 @@ class LGRStructReservoir(ReservoirBase):
         return int(np.argmin(distances))
 
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
-        raise NotImplementedError(
-            "VTK output for LGRStructReservoir is not implemented yet."
-        )
+        """
+        Initialize VTK output for the assembled parent/LGR grid.
+
+        The LGR grid is nonconforming, so it is exported as an unstructured
+        hexahedral VTU mesh instead of a structured-grid extent.
+
+        :param output_directory: Path for output.
+        :type output_directory: str
+        :param export_grid_data: Switch for mesh properties output, default is True.
+        :type export_grid_data: bool
+        """
+        self._require_vtk_cells()
+        os.makedirs(output_directory, exist_ok=True)
+
+        self.vtk_initialized = True
+        self.vtk_filenames_and_times = {}
+        self.vtk_points, self.vtk_cells = self._build_vtk_geometry()
+
+        if export_grid_data:
+            meshio.write(
+                os.path.join(output_directory, "mesh.vtu"),
+                meshio.Mesh(
+                    points=self.vtk_points,
+                    cells=self.vtk_cells,
+                    cell_data=self._wrap_vtk_cell_data(self._vtk_static_cell_data()),
+                ),
+            )
 
     def output_to_vtk(
         self,
@@ -487,9 +513,147 @@ class LGRStructReservoir(ReservoirBase):
         prop_names: list,
         data: dict,
     ):
-        raise NotImplementedError(
-            "VTK output for LGRStructReservoir is not implemented yet."
+        """
+        Export LGR reservoir results at timestamp t into `.vtu` format.
+
+        :param ith_step: i'th reporting step.
+        :type ith_step: int
+        :param t: Current time [days].
+        :type t: float
+        :param output_directory: Path to save .vtk file.
+        :type output_directory: str
+        :param prop_names: List of keys for properties.
+        :type prop_names: list
+        :param data: Data for output.
+        :type data: dict
+        """
+        from pyevtk.vtk import VtkGroup
+
+        os.makedirs(output_directory, exist_ok=True)
+        if not self.vtk_initialized:
+            self.init_vtk(output_directory)
+
+        cell_data = self._vtk_identity_cell_data()
+        for i, name in enumerate(prop_names):
+            values = np.asarray(data[i])
+            if values.ndim > 1:
+                values = values.reshape(-1)
+            if values.size != len(self.cells):
+                raise ValueError(
+                    f"VTK property {name!r} has {values.size} values, "
+                    f"expected {len(self.cells)}."
+                )
+            cell_data[prop_names[name]] = values
+
+        vtk_file_name = os.path.join(output_directory, f"solution_ts{ith_step}.vtu")
+        meshio.write(
+            vtk_file_name,
+            meshio.Mesh(
+                points=self.vtk_points,
+                cells=self.vtk_cells,
+                cell_data=self._wrap_vtk_cell_data(cell_data),
+            ),
         )
+
+        self.vtk_filenames_and_times[vtk_file_name] = t
+        vtk_group = VtkGroup(os.path.join(output_directory, "solution"))
+        for fname, sim_t in self.vtk_filenames_and_times.items():
+            vtk_group.addFile(fname, sim_t)
+        vtk_group.save()
+
+    def _require_vtk_cells(self) -> None:
+        if not self.cells or self.centroids_all_cells is None:
+            raise RuntimeError(
+                "LGRStructReservoir must be discretized before VTK output."
+            )
+
+    def _build_vtk_geometry(self) -> tuple[np.ndarray, list[tuple[str, np.ndarray]]]:
+        points = np.empty((8 * len(self.cells), 3), dtype=float)
+        hexahedra = np.empty((len(self.cells), 8), dtype=np.int32)
+
+        for i, cell in enumerate(self.cells):
+            point_offset = 8 * i
+            # ParaView uses z-positive upward; DARTS stores depth positive downward.
+            z_top = -cell.z_min
+            z_bottom = -cell.z_max
+            points[point_offset : point_offset + 8] = (
+                (cell.x_min, cell.y_min, z_top),
+                (cell.x_max, cell.y_min, z_top),
+                (cell.x_max, cell.y_max, z_top),
+                (cell.x_min, cell.y_max, z_top),
+                (cell.x_min, cell.y_min, z_bottom),
+                (cell.x_max, cell.y_min, z_bottom),
+                (cell.x_max, cell.y_max, z_bottom),
+                (cell.x_min, cell.y_max, z_bottom),
+            )
+            hexahedra[i] = np.arange(point_offset, point_offset + 8, dtype=np.int32)
+
+        return points, [("hexahedron", hexahedra)]
+
+    def _vtk_identity_cell_data(self) -> dict[str, np.ndarray]:
+        lgr_ids = {patch.name: i + 1 for i, patch in enumerate(self.lgrs)}
+        lgr_ijk = np.asarray(
+            [
+                cell.lgr_ijk if cell.lgr_ijk is not None else (0, 0, 0)
+                for cell in self.cells
+            ],
+            dtype=np.int32,
+        )
+
+        return {
+            "cell_index": np.arange(len(self.cells), dtype=np.int32),
+            "parent_global": np.asarray(
+                [
+                    -1 if cell.parent_global is None else cell.parent_global
+                    for cell in self.cells
+                ],
+                dtype=np.int32,
+            ),
+            "is_lgr": np.asarray(
+                [cell.lgr_name is not None for cell in self.cells], dtype=np.int32
+            ),
+            "lgr_id": np.asarray(
+                [
+                    0 if cell.lgr_name is None else lgr_ids[cell.lgr_name]
+                    for cell in self.cells
+                ],
+                dtype=np.int32,
+            ),
+            "lgr_i": lgr_ijk[:, 0],
+            "lgr_j": lgr_ijk[:, 1],
+            "lgr_k": lgr_ijk[:, 2],
+        }
+
+    def _vtk_static_cell_data(self) -> dict[str, np.ndarray]:
+        cell_data = self._vtk_identity_cell_data()
+        centers = np.asarray(self.centroids_all_cells, dtype=float)
+        cell_data.update(
+            {
+                "center_x": centers[:, 0],
+                "center_y": centers[:, 1],
+                "center_z": centers[:, 2],
+                "dx": self.dx,
+                "dy": self.dy,
+                "dz": self.dz,
+                "poro": self.poro,
+                "permx": self.permx,
+                "permy": self.permy,
+                "permz": self.permz,
+                "rcond": self.rcond,
+                "hcap": self.hcap,
+                "depth": self.depth,
+                "volume": np.asarray(self.volume, dtype=float),
+                "op_num": self.op_num,
+                "actnum": self.actnum,
+            }
+        )
+        return cell_data
+
+    @staticmethod
+    def _wrap_vtk_cell_data(
+        cell_data: dict[str, np.ndarray],
+    ) -> dict[str, list[np.ndarray]]:
+        return {name: [np.asarray(values)] for name, values in cell_data.items()}
 
     def _build_cells(self) -> None:
         self._validate_lgrs()
