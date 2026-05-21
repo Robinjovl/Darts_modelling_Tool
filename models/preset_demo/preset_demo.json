@@ -1,0 +1,32 @@
+{
+  "reservoir": {"preset": "reservoirs/structured/quarter_5spot_2d"},
+  "physics": {"preset": "physics/compositional/co2_brine_isothermal"},
+  "sim_params": {
+    "preset": "sim_params/long_storage_simulation",
+    "runtime": 3650.0
+  },
+  "wells": {
+    "wells": [
+      {
+        "name": "INJ",
+        "perforations": [{"ijk": [1, 1, 1]}],
+        "controls": {
+          "inj_bhp": 200,
+          "inj_composition": [0.99999998, 1e-08]
+        }
+      },
+      {
+        "name": "PROD",
+        "perforations": [{"ijk": [50, 50, 1]}],
+        "controls": {"prod_bhp": 80}
+      }
+    ]
+  },
+  "initial_conditions": {
+    "by_array": {"pressure": 100, "CO2": 0.001, "C1": 0.001}
+  },
+  "output": {
+    "folder": "output",
+    "precision": "d"
+  }
+}

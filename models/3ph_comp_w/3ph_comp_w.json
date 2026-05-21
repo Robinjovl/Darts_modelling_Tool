@@ -149,17 +149,13 @@
             },
             "wat": {
               "type_id": "viscosity/ConstFunc@v1",
-              "config": {
-                "value": 0.5
-              }
+              "config": {"$preset": "evaluators/viscosity/water_constant"}
             }
           },
           "rel_perm_ev": {
             "gas": {
               "type_id": "relperm/PhaseRelPerm@v1",
-              "config": {
-                "phase": "gas"
-              }
+              "config": {"$preset": "evaluators/rel_perm/quadratic_gas"}
             },
             "oil": {
               "type_id": "relperm/PhaseRelPerm@v1",

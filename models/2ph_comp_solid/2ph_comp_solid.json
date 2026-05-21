@@ -139,9 +139,7 @@
           "rel_perm_ev": {
             "gas": {
               "type_id": "relperm/PhaseRelPerm@v1",
-              "config": {
-                "phase": "gas"
-              }
+              "config": {"$preset": "evaluators/rel_perm/quadratic_gas"}
             },
             "wat": {
               "type_id": "relperm/PhaseRelPerm@v1",

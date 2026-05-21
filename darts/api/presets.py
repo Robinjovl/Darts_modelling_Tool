@@ -754,12 +754,18 @@ def resolve_section_presets(spec_dict: dict[str, Any]) -> dict[str, Any]:
     ``type_id``).  This mirrors the MCP adapter's
     :func:`build_physics_patch` so the single-JSON path is symmetric.
 
+    Nested ``{"$preset": "<name>"}`` markers anywhere inside ``spec_dict`` are
+    also resolved up-front using the same loader path that runs inside preset
+    files — so user-written JSONs can swap individual evaluator/sub-config
+    blocks for a preset reference without restating the full payload.
+
     :param spec_dict: raw JSON-decoded ModelSpec dict
     :type spec_dict: dict[str, Any]
     :return: expanded dict with all section-level presets resolved
     :rtype: dict[str, Any]
     """
-    result = deepcopy(spec_dict)
+    _ensure_default_root_loaded()
+    result = _resolve_preset_refs(deepcopy(spec_dict))
     surfaced_plugin_registry: dict[str, Any] | None = None
 
     # Physics: special expansion + may surface a sibling plugin_registry.
