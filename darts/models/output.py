@@ -199,11 +199,9 @@ class Output:
                 for i, name in enumerate(phase_props_labels):
                     for j in range(len(pc.phase_props[i])):
                         temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].phase_props[
-                                ii
-                            ][jj]
+                            lambda ii=i, jj=j, rr=region: (
+                                self.physics.property_containers[rr].phase_props[ii][jj]
+                            )
                         )
 
                 # Add molar phase fractions
@@ -211,10 +209,8 @@ class Output:
                     for j in range(pc.x.shape[0]):
                         temp_dict[
                             f"x_{self.physics.phases[j]}_{pc.components_name[i]}"
-                        ] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].x[jj, ii]
+                        ] = lambda ii=i, jj=j, rr=region: (
+                            self.physics.property_containers[rr].x[jj, ii]
                         )
 
                 self.physics.property_operators[region] = PropertyOperators(
@@ -268,11 +264,9 @@ class Output:
                 for i, name in enumerate(phase_props_labels):
                     for j in range(self.physics.property_containers[region].nph):
                         temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].phase_props[
-                                ii
-                            ][jj]
+                            lambda ii=i, jj=j, rr=region: (
+                                self.physics.property_containers[rr].phase_props[ii][jj]
+                            )
                         )
 
                 self.physics.property_operators[region] = PropertyOperators(
@@ -713,21 +707,20 @@ class Output:
 
         with h5py.File(sol_filepath, "w") as f:
             # add static data group
-            # need_static = add_static_data or (
-            #     cell_ids.size == self.reservoir.mesh.n_res_blocks
-            # )
-            # static_group = f.require_group("static") if need_static else None
-            # if cell_ids.size == self.reservoir.mesh.n_res_blocks:
-            #     cell_centers = self._get_output_cell_centers().astype(
-            #         self.precision_map[self.precision], copy=False
-            #     )
-            #     static_group.create_dataset(
-            #         "cell_centers",
-            #         data=cell_centers,
-            #         dtype=self.precision_map[self.precision],
-            #     )
+            need_static = add_static_data or (
+                cell_ids.size == self.reservoir.mesh.n_res_blocks
+            )
+            static_group = f.require_group("static") if need_static else None
+            if cell_ids.size == self.reservoir.mesh.n_res_blocks:
+                cell_centers = self._get_output_cell_centers().astype(
+                    self.precision_map[self.precision], copy=False
+                )
+                static_group.create_dataset(
+                    "cell_centers",
+                    data=cell_centers,
+                    dtype=self.precision_map[self.precision],
+                )
             if add_static_data:
-                static_group = f.create_group("static")
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
                 grav_coef = np.array(self.reservoir.mesh.grav_coef, copy=False)
