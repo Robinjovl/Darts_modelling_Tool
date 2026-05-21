@@ -127,7 +127,7 @@ class _Face:
     hi1: float
 
 
-class LGRStructReservoir(ReservoirBase):
+class StructReservoirWithLGR(ReservoirBase):
     """
     Structured reservoir assembled from a parent grid and local refinements.
 
@@ -155,7 +155,7 @@ class LGRStructReservoir(ReservoirBase):
         super().__init__(timer, cache)
         if parent.is_cpg:
             raise NotImplementedError(
-                "LGRStructReservoir currently supports non-CPG structured grids only."
+                "StructReservoirWithLGR currently supports non-CPG structured grids only."
             )
 
         self.parent = parent
@@ -564,7 +564,7 @@ class LGRStructReservoir(ReservoirBase):
     def _require_vtk_cells(self) -> None:
         if not self.cells or self.centroids_all_cells is None:
             raise RuntimeError(
-                "LGRStructReservoir must be discretized before VTK output."
+                "StructReservoirWithLGR must be discretized before VTK output."
             )
 
     def _build_vtk_geometry(self) -> tuple[np.ndarray, list[tuple[str, np.ndarray]]]:
