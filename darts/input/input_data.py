@@ -443,18 +443,22 @@ class WellData:
 
 class OBLParams:
     """
-    OBL range, number of points
+    OBL grid resolution + origin per axis.
+
+    With the multi-index-keyed adaptive interpolator the cache extends past the
+    prescribed window on demand; only (step, origin) per axis are load-bearing.
     """
 
     def __init__(self):
         self.zero = None
-        self.n_points = None
-        self.min_p = None
-        self.max_p = None
-        self.min_t = None
-        self.max_t = None
-        self.min_z = None
-        self.max_z = None
+        self.p_step = None
+        self.p_origin = None
+        self.z_step = None
+        self.z_origin = None
+        self.t_step = None
+        self.t_origin = None
+        self.e_step = None  # enthalpy step (geothermal P-H grid)
+        self.e_origin = None
         self.epsilon_z = None
 
 

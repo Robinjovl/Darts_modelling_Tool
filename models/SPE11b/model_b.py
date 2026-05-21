@@ -95,7 +95,7 @@ class Model(DartsModel):
         self.salinity = 0
 
         """Define physics"""
-        self.set_physics(temperature=specs['temperature'], n_points=1001)
+        self.set_physics(temperature=specs['temperature'])
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4, tol_newton=1e-3,
                             it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
         self.params.newton_params[0] = 0.05
@@ -214,7 +214,7 @@ class Model(DartsModel):
         #     # return rhs
         #     pass
 
-    def set_physics(self, temperature: float = None, n_points: int = 1001):
+    def set_physics(self, temperature: float = None):
         """Physical properties"""
 
         # define the Corey parameters for each layer (rock type) according to the technical description of the CSP
@@ -262,15 +262,19 @@ class Model(DartsModel):
             state_spec = Compositional.StateSpecification.P
 
         pres_in = 210 # (pressure at depth of well 1 will be 300 bar)
-        min_t = 273.15 if temperature is None else None
-        max_t = 373.15 if temperature is None else None
+        # 1 p axis + (nc-1) z axes + optional T axis
+        nz = len(self.components) - 1
+        ax_step = [0.25] + [1e-3] * nz
+        ax_origin = [200.0] + [self.zero / 10] * nz
+        if thermal:
+            ax_step.append(0.1)
+            ax_origin.append(273.15)
         self.physics = Compositional(self.components, phases, timer=self.timer,
-                                     n_points=n_points, min_p=200, max_p=450,
-                                     min_z=0., max_z=1., epsilon_z=self.zero/10, min_t=min_t, max_t=max_t,
-                                     state_spec = state_spec,
-                                     extrapolation_flag = False,
+                                     axes_step=ax_step, axes_origin=ax_origin,
+                                     epsilon_z=self.zero / 10,
+                                     state_spec=state_spec,
+                                     extrapolation_flag=False,
                                      cache=False)
-        self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
 
         dispersivity = 10.
         self.physics.dispersivity = {}

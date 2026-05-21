@@ -21,12 +21,8 @@ class ModelGeothermal(Model_CPG):
             self.physics = Geothermal(self.idata, self.timer)  # IAPWS
         else:
             self.physics = GeothermalPH(self.idata, self.timer)  # Flash
-            self.physics.determine_obl_bounds(
-                min_p=self.idata.obl.min_p,
-                max_p=self.idata.obl.max_p,
-                min_t=250.,
-                max_t=575.,
-            )
+            # determine_obl_bounds() was removed; the GeothermalPH grid is defined
+            # entirely by (axes_origin, axes_step) via OBLParams now.
 
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
@@ -162,8 +158,7 @@ class ModelGeothermal(Model_CPG):
         else:
             assert False, 'Unknown wctrl_type' +  case
 
-        self.idata.obl.n_points = 100
-        self.idata.obl.min_p = 50.
-        self.idata.obl.max_p = 400.
-        self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
-        self.idata.obl.max_e = 25000.  # kJ/kmol, will be overwritten in PHFlash physics
+        self.idata.obl.p_step = 3.5   # bar
+        self.idata.obl.p_origin = 50.0
+        self.idata.obl.e_step = 250.0  # kJ/kmol
+        self.idata.obl.e_origin = 1000.0
