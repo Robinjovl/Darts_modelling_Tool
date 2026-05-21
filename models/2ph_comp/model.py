@@ -26,9 +26,16 @@ class Model(CICDModel):
                             it_newton=20, it_linear=50, newton_type=sim_params.newton_local_chop)
         self.params.linear_type = sim_params.cpu_gmres_mgr
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic (default), 2 = verbose
+        self.solver = None
+        self.use_bcsr_cpr_pressureguard_thr10_profile()
         self.set_solver()
 
         self.timer.node["initialization"].stop()
+
+    def use_bcsr_cpr_pressureguard_thr10_profile(self):
+        self.use_mgr_cpr_pressureguard_thr10 = True
+        if getattr(self, "solver", None) is not None:
+            self.set_solver()
 
     def set_reservoir(self):
         nx = 1000
@@ -81,29 +88,73 @@ class Model(CICDModel):
 
         return
 
+    def set_sim_params(self, *args, **kwargs):
+        super().set_sim_params(*args, **kwargs)
+
+        self.data_ts.linear_type = sim_params.cpu_gmres_mgr
+        if self.data_ts.linear_print_level is None:
+            self.data_ts.linear_print_level = 0
+
+        self.params.linear_type = sim_params.cpu_gmres_mgr
+        self.params.linear_print_level = self.data_ts.linear_print_level
+
+        if getattr(self, "use_mgr_cpr_pressureguard_thr10", False):
+            self.set_solver()
+
     def set_solver(self):
         # Create MGR solver with correct block size (pressure + n_components - 1)
         # n_vars = 1 (pressure) + len(components) - 1 (component fractions)
         block_size = self.physics.n_vars  # pressure + (n_components - 1) fractions = n_components
         self.solver = solvers.create_mgr_solver_for_block_size(block_size)
 
-        # Configure solver parameters
+        mesh = getattr(self.reservoir, "mesh", None)
+        reservoir_blocks = mesh.n_res_blocks if mesh is not None else None
+
         self.solver.set_max_iterations(self.params.max_i_linear)
         self.solver.set_tolerance(self.params.tolerance_linear)
         self.solver.set_log_level(self.params.linear_print_level)
-        self.solver.set_kdim(50)  # Krylov subspace dimension
-        self.solver.set_use_mgr(True)  # Use MGR preconditioner
+        self.solver.set_kdim(150)
+        self.solver.set_use_mgr(True)
+        self.solver.set_use_flex_gmres(True)
+        self.solver.set_use_physics_scaling(True)
+        self.solver.set_mgr_composite_mode(1)
 
-        # Single-level MGR: skip well and composition reduction levels, then
-        # reduce directly to the pressure/well-pressure coarse system.
-        self.solver.set_mgr_enable_well_level(False)
-        self.solver.set_mgr_enable_composition_level(False)
+        self.solver.set_mgr_local_solver(
+            getattr(sim_params, "mgrLocalSolverBlockILU0", 2)
+        )
+        self.solver.set_mgr_bilu0_pivot_shift(1e-12)
+        self.solver.set_mgr_bilu0_fallback_options(
+            sim_params.mgrBilu0FallbackIdentity,
+            1e-4,
+            1e-4,
+            100.0,
+        )
+        self.solver.set_mgr_local_correction_options(1.0, -1.0, 0.0, -1.0, 0.0)
+        self.solver.set_mgr_local_correction_quality_options(False, 0.0)
 
-        reservoir_roles = [sim_params.mgrVarPressure] + [sim_params.mgrVarComposition] * (block_size - 1)
-        well_roles = [sim_params.mgrVarWellPressure] + [sim_params.mgrVarWellSecondary] * (block_size - 1)
+        self.solver.set_mgr_pressure_amg_options(6, 6, 6, 1, 6, 20, 1)
+        self.solver.set_mgr_pressure_amg_solve_options(1, 0.0)
+
+        self.solver.set_use_bcsr_cpr(True)
+        self.solver.set_bcsr_cpr_options(
+            sim_params.mgrCprReductionTrueIMPES,
+            0,
+            1e6,
+        )
+        self.solver.set_bcsr_cpr_reuse_options(True, 0)
+        self.solver.set_bcsr_cpr_adaptive_rebuild_options(True, 15, 1.5, 1, 2)
+        self.solver.set_bcsr_cpr_adaptive_quality_options(-1.0, -1.0, -1.0)
+        self.solver.set_bcsr_cpr_diagnostics_options(True, 100, 0)
+        self.solver.set_bcsr_cpr_pressure_correction_options(1.0, 10.0, 0.05)
+
+        reservoir_roles = [sim_params.mgrVarPressure] + [
+            sim_params.mgrVarComposition
+        ] * (block_size - 1)
+        well_roles = [sim_params.mgrVarWellPressure] + [
+            sim_params.mgrVarWellSecondary
+        ] * (block_size - 1)
         self.solver.set_mgr_reservoir_variable_roles(reservoir_roles)
         self.solver.set_mgr_well_variable_roles(well_roles)
-
         self.solver.set_mgr_pressure_level_options(
             sim_params.mgrFRelaxNone,
             0,
@@ -114,9 +165,12 @@ class Model(CICDModel):
             1,
         )
 
-        mesh = getattr(self.reservoir, "mesh", None)
-        if mesh is not None:
-            self.solver.set_n_reservoir_blocks(mesh.n_res_blocks)
+        if reservoir_blocks is not None:
+            self.solver.set_n_reservoir_blocks(reservoir_blocks)
+
+        self.solver.set_mgr_enable_well_level(False)
+        self.solver.set_mgr_enable_composition_level(False)
+
         return
 
     def init(self, *args, **kwargs):

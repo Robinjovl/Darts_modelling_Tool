@@ -105,6 +105,78 @@ real_type safeRatio( real_type numerator, real_type denominator )
   return numerator / std::max( denominator, floor );
 }
 
+const char * boolLabel( bool value )
+{
+  return value ? "true" : "false";
+}
+
+const char * krylovLabel( KrylovType value )
+{
+  switch( value )
+  {
+    case KrylovType::gmres: return "gmres";
+    case KrylovType::flexgmres: return "flexgmres";
+  }
+  return "unknown";
+}
+
+const char * scalingLabel( ScalingType value )
+{
+  switch( value )
+  {
+    case ScalingType::none: return "none";
+    case ScalingType::physics: return "physics";
+    case ScalingType::rowColOneNorm: return "row_col_one_norm";
+    case ScalingType::diagonal: return "diagonal";
+  }
+  return "unknown";
+}
+
+const char * compositeModeLabel( CompositePreconditionerMode value )
+{
+  switch( value )
+  {
+    case CompositePreconditionerMode::mgrOnly: return "mgr_only";
+    case CompositePreconditionerMode::mgrThenLocal: return "mgr_then_local";
+    case CompositePreconditionerMode::localOnly: return "local_only";
+  }
+  return "unknown";
+}
+
+const char * localPreconditionerLabel( LocalPreconditionerType value )
+{
+  switch( value )
+  {
+    case LocalPreconditionerType::none: return "none";
+    case LocalPreconditionerType::blockJacobi: return "block_jacobi";
+    case LocalPreconditionerType::blockILU0: return "block_ilu0";
+    case LocalPreconditionerType::blockILU1: return "block_ilu1";
+  }
+  return "unknown";
+}
+
+const char * localFallbackLabel( LocalFallbackStrategy value )
+{
+  switch( value )
+  {
+    case LocalFallbackStrategy::identity: return "identity";
+    case LocalFallbackStrategy::shiftedDense: return "shifted_dense";
+    case LocalFallbackStrategy::boundedDiagonal: return "bounded_diagonal";
+    case LocalFallbackStrategy::shiftedDenseThenDiagonal: return "shifted_dense_then_diagonal";
+  }
+  return "unknown";
+}
+
+const char * bcsrCPRReductionLabel( BCSRCPRReductionType value )
+{
+  switch( value )
+  {
+    case BCSRCPRReductionType::pressureRow: return "pressure_row";
+    case BCSRCPRReductionType::trueIMPES: return "true_impes";
+  }
+  return "unknown";
+}
+
 void logMGRSetupContext( const char * stage,
                          int_t block_size,
                          int_t num_levels,
@@ -1578,6 +1650,120 @@ bool LinearSolver::blockLocalPreconditionerReady() const
   return m_blockLocalPreconditioner && m_blockLocalPreconditioner->ready();
 }
 
+void LinearSolver::logMGRConfigurationOnce(const char* stage)
+{
+  if( m_mgrConfigurationLogged )
+  {
+    return;
+  }
+  m_mgrConfigurationLogged = true;
+
+  std::ostream & config_log = std::cout;
+  config_log << "[MGR] Effective MGR/BCSR CPR configuration"
+            << " (" << ( stage ? stage : "setup" ) << "):" << std::endl;
+  config_log << "[MGR]   solver: use_mgr=" << boolLabel( m_params.useMGR )
+            << ", krylov=" << krylovLabel( m_params.krylovType )
+            << ", max_iter=" << m_params.maxIter
+            << ", tolerance=" << m_params.tolerance
+            << ", kdim=" << m_params.kdim
+            << ", log_level=" << m_params.logLevel
+            << "." << std::endl;
+  config_log << "[MGR]   matrix: block_rows=" << m_matrix.num_rows
+            << ", block_cols=" << m_matrix.num_cols
+            << ", block_size=" << m_matrix.block_size
+            << ", scalar_rows=" << m_matrix.global_num_rows
+            << ", nnz_blocks=" << m_matrix.num_nonzero_blocks
+            << ", reservoir_blocks=" << m_params.localReservoirBlockCount
+            << ", cpr_pressure_rows=" << m_cprPressureRows
+            << "." << std::endl;
+  config_log << "[MGR]   scaling: enabled="
+            << boolLabel( m_params.usePhysicsScaling )
+            << ", type=" << scalingLabel( m_params.scalingType )
+            << "(" << static_cast<int_t>( m_params.scalingType ) << ")"
+            << "." << std::endl;
+  config_log << "[MGR]   composite/local: mode="
+            << compositeModeLabel( m_params.compositeMode )
+            << "(" << static_cast<int_t>( m_params.compositeMode ) << ")"
+            << ", local_solver="
+            << localPreconditionerLabel( m_params.localPreconditioner )
+            << "(" << static_cast<int_t>( m_params.localPreconditioner ) << ")"
+            << ", pivot_shift=" << m_params.localPivotShift
+            << ", fallback=" << localFallbackLabel( m_params.localFallbackStrategy )
+            << "(" << static_cast<int_t>( m_params.localFallbackStrategy ) << ")"
+            << ", diagonal_tolerance="
+            << m_params.localFallbackDiagonalTolerance
+            << ", shifted_max=" << m_params.localFallbackShiftMax
+            << ", shifted_growth=" << m_params.localFallbackShiftGrowth
+            << "." << std::endl;
+  config_log << "[MGR]   local_correction: alpha="
+            << m_params.localCorrectionAlpha
+            << ", adaptive_fallback_threshold="
+            << m_params.localCorrectionAdaptiveFallbackThreshold
+            << ", adaptive_alpha=" << m_params.localCorrectionAdaptiveAlpha
+            << ", adaptive_fallback_threshold_high="
+            << m_params.localCorrectionAdaptiveFallbackThresholdHigh
+            << ", adaptive_alpha_high="
+            << m_params.localCorrectionAdaptiveAlphaHigh
+            << ", quality_gate="
+            << boolLabel( m_params.localCorrectionQualityGate )
+            << ", quality_min_alpha="
+            << m_params.localCorrectionQualityMinAlpha
+            << "." << std::endl;
+  config_log << "[MGR]   bcsr_cpr: enabled="
+            << boolLabel( m_params.useBCSRCPR )
+            << ", reduction="
+            << bcsrCPRReductionLabel( m_params.bcsrCPRReduction )
+            << "(" << static_cast<int_t>( m_params.bcsrCPRReduction ) << ")"
+            << ", pressure_variable=" << m_params.bcsrCPRPressureVariable
+            << ", weight_max=" << m_params.bcsrCPRWeightMax
+            << "." << std::endl;
+  config_log << "[MGR]   bcsr_cpr_reuse: reuse_amg="
+            << boolLabel( m_params.bcsrCPRReuseAMGHierarchy )
+            << ", rebuild_interval=" << m_params.bcsrCPRAMGRebuildInterval
+            << ", adaptive_rebuild="
+            << boolLabel( m_params.bcsrCPRAdaptiveAMGRebuild )
+            << ", li_threshold=" << m_params.bcsrCPRAdaptiveLIThreshold
+            << ", li_growth_factor="
+            << m_params.bcsrCPRAdaptiveLIGrowthFactor
+            << ", min_reuse_setups="
+            << m_params.bcsrCPRAdaptiveMinReuseSetups
+            << ", max_reuse_setups="
+            << m_params.bcsrCPRAdaptiveMaxReuseSetups
+            << "." << std::endl;
+  config_log << "[MGR]   bcsr_cpr_quality: pressure_overshoot_threshold="
+            << m_params.bcsrCPRAdaptivePressureOvershootThreshold
+            << ", final_proxy_threshold="
+            << m_params.bcsrCPRAdaptiveFinalProxyThreshold
+            << ", fallback_threshold="
+            << m_params.bcsrCPRAdaptiveFallbackThreshold
+            << "." << std::endl;
+  config_log << "[MGR]   pressure_amg: coarsen_type="
+            << m_params.pressureAMGCoarsenType
+            << ", interp_type=" << m_params.pressureAMGInterpType
+            << ", relax_type=" << m_params.pressureAMGRelaxType
+            << ", agg_num_levels=" << m_params.pressureAMGAggNumLevels
+            << ", agg_interp_type=" << m_params.pressureAMGAggInterpType
+            << ", agg_pmax_elmts=" << m_params.pressureAMGAggPMaxElmts
+            << ", relax_order=" << m_params.pressureAMGRelaxOrder
+            << ", max_iter=" << m_params.pressureAMGMaxIter
+            << ", tolerance=" << m_params.pressureAMGTolerance
+            << "." << std::endl;
+  config_log << "[MGR]   pressure_correction: alpha="
+            << m_params.bcsrCPRPressureCorrectionAlpha
+            << ", guard_threshold="
+            << m_params.bcsrCPRPressureCorrectionGuardThreshold
+            << ", guard_min_alpha="
+            << m_params.bcsrCPRPressureCorrectionGuardMinAlpha
+            << "." << std::endl;
+  config_log << "[MGR]   diagnostics: enabled="
+            << boolLabel( m_params.bcsrCPRDiagnostics )
+            << ", apply_interval="
+            << m_params.bcsrCPRDiagnosticApplyInterval
+            << ", matrix_interval="
+            << m_params.bcsrCPRDiagnosticMatrixInterval
+            << "." << std::endl;
+}
+
 bool LinearSolver::bcsrCPRPreconditionerReady() const
 {
   return m_bcsrCPRReady && m_cprPressureAMG && m_cprPressureParMatrix &&
@@ -2460,6 +2646,7 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
     ++m_cprPressureStructureReuseCount;
   }
   m_cprPressureRows = reservoir_rows;
+  logMGRConfigurationOnce( "BCSR CPR setup" );
 
   const int_t setup_count_before = m_cprPressureSetupCount;
   const int_t matrix_create_before = m_cprPressureMatrixCreateCount;
@@ -4061,6 +4248,8 @@ HYPRE_Solver LinearSolver::setupMGRPreconditioner()
                         m_params );
     return nullptr;
   }
+
+  logMGRConfigurationOnce( "MGR setup" );
 
   std::vector<int_t> num_labels( num_levels );
   std::vector<int_t*> label_ptrs( num_levels );

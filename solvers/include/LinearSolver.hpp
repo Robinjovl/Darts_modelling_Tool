@@ -564,6 +564,7 @@ private:
   bool m_matrixLoaded;                  ///< Matrix loaded flag
   bool m_matrixAssembled;               ///< Matrix assembled flag
   int_t m_mgrBlockSize = 0;             ///< Block size override for MGR (0 = use matrix)
+  bool m_mgrConfigurationLogged = false; ///< Print current MGR/BCSR CPR configuration once per parameter set.
 
   /**
    * @brief Create HYPRE matrix from Block CSR
@@ -605,6 +606,7 @@ private:
   bool updateHYPRESystemMatrixDirect();
   void clearCompositeWorkVectors();
   bool blockLocalPreconditionerReady() const;
+  void logMGRConfigurationOnce(const char* stage);
   bool setupBCSRCPRPreconditioner();
   void clearBCSRCPRPreconditioner();
   bool bcsrCPRPreconditionerReady() const;
