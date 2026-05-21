@@ -315,13 +315,24 @@ echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
 # Build and install openDARTS
-# Under valgrind (-O2 -g) the auto-generated super_part*.cpp interpolator TUs
-# can OOM-kill g++ at high -j. Pre-build the interpolators target with reduced
-# parallelism; the subsequent full build skips already-compiled objects.
-if [[ "$valgrind" == true && "$NT" -gt 1 ]]; then
-    HEAVY_NT=$(( NT / 2 ))
-    echo "-- Pre-building interpolators target with -j $HEAVY_NT (valgrind OOM mitigation)"
-    make interpolators -j $HEAVY_NT 2>> ../make_darts.log
+# Under valgrind (-O2 -g) the auto-generated super_part*.cpp / rates_part*.cpp /
+# all_part*.cpp interpolator TUs peak 2-4 GB resident per cc1plus due to massive
+# template stamping (recursive_exposer over MAX_DIMS x N_OPS combinations). On a
+# typical 8 GB CI runner with -j 8 the OOM killer truncates cc1plus mid-write,
+# leaving the assembler choking on a partial pseudo-op (".uleb12" instead of
+# ".uleb128"). The mitigation has two parts:
+#   1. Pre-build interpolators with -j 2 max — each cc1plus instance gets enough
+#      headroom regardless of NT or runner memory profile.
+#   2. The follow-up full-build pass at -j NT then only links / copies the already
+#      compiled interpolator objects; no large recompiles happen there.
+# Also pass -l so make backs off if the system load average climbs (extra safety
+# when the runner is shared).
+if [[ "$valgrind" == true ]]; then
+    HEAVY_NT=2
+    if [[ "$NT" -lt "$HEAVY_NT" ]]; then HEAVY_NT="$NT"; fi
+    LOAD_LIMIT=$(( NT / 2 > 0 ? NT / 2 : 1 ))
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT -l $LOAD_LIMIT (valgrind OOM mitigation)"
+    make interpolators -j "$HEAVY_NT" -l "$LOAD_LIMIT" 2>&1 | tee -a ../make_darts.log
 fi
 cmake --build . --target install --parallel "$NT" 2>&1 | tee -a ../make_darts.log
 
