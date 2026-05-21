@@ -73,7 +73,7 @@ class Model(CICDModel):
         self.idata.well_data.add_inj_rate_control(
             name="I1",
             rate=200.0,
-            rate_type=well_control_iface.MOLAR_RATE,
+            rate_ctrl_type=well_control_iface.MOLAR_RATE,
             phase_name="gas",
             inj_composition=inj_composition,
             time=0.0,

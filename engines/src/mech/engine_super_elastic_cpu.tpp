@@ -1818,6 +1818,9 @@ double engine_super_elastic_cpu<NC, NP, THERMAL>::calc_well_residual_L2()
 		// and then add RHS for well control equations
 		for (int v = 0; v < NE; v++)
 		{
+			// Scale only the rate-control residual (v == 0), which represents the
+			// difference between the computed and target well rate, so high target rates
+			// do not dominate the residual norm.
 			const value_t residual_scale = (v == 0) ? w->control.get_rate_ctrl_residual_scale(params->well_rate_ctrl_absolute_residual_scale, params->well_rate_ctrl_relative_residual_scale) : 1.0;
 			// well constraints should not be normalized, so pre-multiply by norm
 			value_t scaled_residual = RHS[w->well_head_idx * n_vars + v] / residual_scale;
