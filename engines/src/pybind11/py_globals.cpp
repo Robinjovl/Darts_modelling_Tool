@@ -239,6 +239,11 @@ void pybind_globals(py::module &m)
   sim_params.attr("mgrBilu0FallbackBoundedDiagonal") = py::int_(2);
   sim_params.attr("mgrBilu0FallbackShiftedDenseThenDiagonal") = py::int_(3);
 
+  sim_params.attr("mgrLocalSolverNone") = py::int_(0);
+  sim_params.attr("mgrLocalSolverBlockJacobi") = py::int_(1);
+  sim_params.attr("mgrLocalSolverBlockILU0") = py::int_(2);
+  sim_params.attr("mgrLocalSolverBlockILU1") = py::int_(3);
+
   sim_params.attr("mgrCprReductionPressureRow") = py::int_(0);
   sim_params.attr("mgrCprReductionTrueIMPES") = py::int_(1);
 

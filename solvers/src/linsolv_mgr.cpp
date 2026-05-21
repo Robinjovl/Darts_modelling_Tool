@@ -82,6 +82,8 @@ namespace opendarts
       , local_correction_adaptive_alpha_cached(0.0)
       , local_correction_adaptive_fallback_threshold_high_cached(-1.0)
       , local_correction_adaptive_alpha_high_cached(0.0)
+      , local_correction_quality_gate_cached(false)
+      , local_correction_quality_min_alpha_cached(0.0)
       , use_bcsr_cpr_cached(false)
       , bcsr_cpr_reduction_type_cached(static_cast<int>(mgr::BCSRCPRReductionType::trueIMPES))
       , bcsr_cpr_pressure_variable_cached(0)
@@ -93,6 +95,17 @@ namespace opendarts
       , bcsr_cpr_adaptive_li_growth_factor_cached(2.0)
       , bcsr_cpr_adaptive_min_reuse_setups_cached(1)
       , bcsr_cpr_adaptive_max_reuse_setups_cached(0)
+      , bcsr_cpr_adaptive_pressure_overshoot_threshold_cached(-1.0)
+      , bcsr_cpr_adaptive_final_proxy_threshold_cached(-1.0)
+      , bcsr_cpr_adaptive_fallback_threshold_cached(-1.0)
+      , bcsr_cpr_diagnostics_cached(false)
+      , bcsr_cpr_diagnostic_apply_interval_cached(0)
+      , bcsr_cpr_diagnostic_matrix_interval_cached(0)
+      , bcsr_cpr_pressure_correction_alpha_cached(1.0)
+      , bcsr_cpr_pressure_correction_guard_threshold_cached(-1.0)
+      , bcsr_cpr_pressure_correction_guard_min_alpha_cached(0.0)
+      , pressure_amg_max_iter_cached(1)
+      , pressure_amg_tolerance_cached(0.0)
       , n_reservoir_blocks_cached(0)
       , mgr_strategy_config_cached()
     {
@@ -279,6 +292,22 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_local_correction_quality_options(
+        bool enabled,
+        opendarts::config::mat_float min_alpha)
+    {
+      local_correction_quality_gate_cached = enabled;
+      local_correction_quality_min_alpha_cached =
+          std::clamp<opendarts::config::mat_float>(min_alpha, 0.0, 1.0);
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.localCorrectionQualityGate = local_correction_quality_gate_cached;
+      params.localCorrectionQualityMinAlpha =
+          local_correction_quality_min_alpha_cached;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     void linsolv_mgr<N_BLOCK_SIZE>::set_use_bcsr_cpr(bool use_bcsr_cpr)
     {
       use_bcsr_cpr_cached = use_bcsr_cpr;
@@ -359,6 +388,70 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_bcsr_cpr_adaptive_quality_options(
+        opendarts::config::mat_float pressure_overshoot_threshold,
+        opendarts::config::mat_float final_proxy_threshold,
+        opendarts::config::mat_float fallback_threshold)
+    {
+      bcsr_cpr_adaptive_pressure_overshoot_threshold_cached =
+          pressure_overshoot_threshold;
+      bcsr_cpr_adaptive_final_proxy_threshold_cached = final_proxy_threshold;
+      bcsr_cpr_adaptive_fallback_threshold_cached = fallback_threshold;
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.bcsrCPRAdaptivePressureOvershootThreshold =
+          bcsr_cpr_adaptive_pressure_overshoot_threshold_cached;
+      params.bcsrCPRAdaptiveFinalProxyThreshold =
+          bcsr_cpr_adaptive_final_proxy_threshold_cached;
+      params.bcsrCPRAdaptiveFallbackThreshold =
+          bcsr_cpr_adaptive_fallback_threshold_cached;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_bcsr_cpr_diagnostics_options(
+        bool diagnostics,
+        opendarts::config::index_t apply_interval,
+        opendarts::config::index_t matrix_interval)
+    {
+      bcsr_cpr_diagnostics_cached = diagnostics;
+      bcsr_cpr_diagnostic_apply_interval_cached =
+          std::max<opendarts::config::index_t>(apply_interval, 0);
+      bcsr_cpr_diagnostic_matrix_interval_cached =
+          std::max<opendarts::config::index_t>(matrix_interval, 0);
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.bcsrCPRDiagnostics = bcsr_cpr_diagnostics_cached;
+      params.bcsrCPRDiagnosticApplyInterval =
+          bcsr_cpr_diagnostic_apply_interval_cached;
+      params.bcsrCPRDiagnosticMatrixInterval =
+          bcsr_cpr_diagnostic_matrix_interval_cached;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_bcsr_cpr_pressure_correction_options(
+        opendarts::config::mat_float alpha,
+        opendarts::config::mat_float guard_threshold,
+        opendarts::config::mat_float guard_min_alpha)
+    {
+      bcsr_cpr_pressure_correction_alpha_cached =
+          std::clamp<opendarts::config::mat_float>(alpha, 0.0, 1.0);
+      bcsr_cpr_pressure_correction_guard_threshold_cached = guard_threshold;
+      bcsr_cpr_pressure_correction_guard_min_alpha_cached =
+          std::clamp<opendarts::config::mat_float>(guard_min_alpha, 0.0, 1.0);
+
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.bcsrCPRPressureCorrectionAlpha =
+          bcsr_cpr_pressure_correction_alpha_cached;
+      params.bcsrCPRPressureCorrectionGuardThreshold =
+          bcsr_cpr_pressure_correction_guard_threshold_cached;
+      params.bcsrCPRPressureCorrectionGuardMinAlpha =
+          bcsr_cpr_pressure_correction_guard_min_alpha_cached;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_pressure_amg_options(int coarsen_type,
                                                                  int interp_type,
                                                                  int relax_type,
@@ -374,6 +467,29 @@ namespace opendarts
       mgr_strategy_config_cached.pressureAmgAggInterpType = agg_interp_type;
       mgr_strategy_config_cached.pressureAmgAggPMaxElmts = std::max(0, agg_pmax_elmts);
       mgr_strategy_config_cached.pressureAmgRelaxOrder = relax_order;
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.pressureAMGCoarsenType = mgr_strategy_config_cached.pressureAmgCoarsenType;
+      params.pressureAMGInterpType = mgr_strategy_config_cached.pressureAmgInterpType;
+      params.pressureAMGRelaxType = mgr_strategy_config_cached.pressureAmgRelaxType;
+      params.pressureAMGAggNumLevels = mgr_strategy_config_cached.pressureAmgAggNumLevels;
+      params.pressureAMGAggInterpType = mgr_strategy_config_cached.pressureAmgAggInterpType;
+      params.pressureAMGAggPMaxElmts = mgr_strategy_config_cached.pressureAmgAggPMaxElmts;
+      params.pressureAMGRelaxOrder = mgr_strategy_config_cached.pressureAmgRelaxOrder;
+      mgr_solver.setParameters(params);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_pressure_amg_solve_options(
+        opendarts::config::index_t max_iter,
+        opendarts::config::mat_float tolerance)
+    {
+      pressure_amg_max_iter_cached = std::max<opendarts::config::index_t>(max_iter, 1);
+      pressure_amg_tolerance_cached = std::max<opendarts::config::mat_float>(tolerance, 0.0);
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.pressureAMGMaxIter = pressure_amg_max_iter_cached;
+      params.pressureAMGTolerance = pressure_amg_tolerance_cached;
+      mgr_solver.setParameters(params);
       first_solve = true;
     }
 
@@ -886,6 +1002,10 @@ namespace opendarts
       params.localCorrectionAdaptiveFallbackThresholdHigh =
           local_correction_adaptive_fallback_threshold_high_cached;
       params.localCorrectionAdaptiveAlphaHigh = local_correction_adaptive_alpha_high_cached;
+      params.localCorrectionQualityGate =
+          local_correction_quality_gate_cached;
+      params.localCorrectionQualityMinAlpha =
+          local_correction_quality_min_alpha_cached;
       params.useBCSRCPR = use_bcsr_cpr_cached;
       params.bcsrCPRReduction =
           static_cast<mgr::BCSRCPRReductionType>(bcsr_cpr_reduction_type_cached);
@@ -901,6 +1021,32 @@ namespace opendarts
           bcsr_cpr_adaptive_min_reuse_setups_cached;
       params.bcsrCPRAdaptiveMaxReuseSetups =
           bcsr_cpr_adaptive_max_reuse_setups_cached;
+      params.bcsrCPRAdaptivePressureOvershootThreshold =
+          bcsr_cpr_adaptive_pressure_overshoot_threshold_cached;
+      params.bcsrCPRAdaptiveFinalProxyThreshold =
+          bcsr_cpr_adaptive_final_proxy_threshold_cached;
+      params.bcsrCPRAdaptiveFallbackThreshold =
+          bcsr_cpr_adaptive_fallback_threshold_cached;
+      params.bcsrCPRDiagnostics = bcsr_cpr_diagnostics_cached;
+      params.bcsrCPRDiagnosticApplyInterval =
+          bcsr_cpr_diagnostic_apply_interval_cached;
+      params.bcsrCPRDiagnosticMatrixInterval =
+          bcsr_cpr_diagnostic_matrix_interval_cached;
+      params.bcsrCPRPressureCorrectionAlpha =
+          bcsr_cpr_pressure_correction_alpha_cached;
+      params.bcsrCPRPressureCorrectionGuardThreshold =
+          bcsr_cpr_pressure_correction_guard_threshold_cached;
+      params.bcsrCPRPressureCorrectionGuardMinAlpha =
+          bcsr_cpr_pressure_correction_guard_min_alpha_cached;
+      params.pressureAMGMaxIter = pressure_amg_max_iter_cached;
+      params.pressureAMGTolerance = pressure_amg_tolerance_cached;
+      params.pressureAMGCoarsenType = mgr_strategy_config_cached.pressureAmgCoarsenType;
+      params.pressureAMGInterpType = mgr_strategy_config_cached.pressureAmgInterpType;
+      params.pressureAMGRelaxType = mgr_strategy_config_cached.pressureAmgRelaxType;
+      params.pressureAMGAggNumLevels = mgr_strategy_config_cached.pressureAmgAggNumLevels;
+      params.pressureAMGAggInterpType = mgr_strategy_config_cached.pressureAmgAggInterpType;
+      params.pressureAMGAggPMaxElmts = mgr_strategy_config_cached.pressureAmgAggPMaxElmts;
+      params.pressureAMGRelaxOrder = mgr_strategy_config_cached.pressureAmgRelaxOrder;
       params.localReservoirBlockCount = n_reservoir_blocks_cached;
       params.krylovType = use_flex_gmres_cached ? mgr::KrylovType::flexgmres
                                                : mgr::KrylovType::gmres;

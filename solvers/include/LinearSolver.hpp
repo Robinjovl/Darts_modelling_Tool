@@ -50,7 +50,8 @@ enum class LocalPreconditionerType : int
 {
   none = 0,
   blockJacobi = 1,
-  blockILU0 = 2
+  blockILU0 = 2,
+  blockILU1 = 3
 };
 
 enum class LocalFallbackStrategy : int
@@ -134,6 +135,8 @@ struct SolverParameters
   real_type localCorrectionAdaptiveAlpha = 0.0;
   real_type localCorrectionAdaptiveFallbackThresholdHigh = -1.0;
   real_type localCorrectionAdaptiveAlphaHigh = 0.0;
+  bool localCorrectionQualityGate = false;
+  real_type localCorrectionQualityMinAlpha = 0.0;
   int_t localReservoirBlockCount = 0;
 
   // Experimental BCSR-native CPR prototype:
@@ -149,6 +152,24 @@ struct SolverParameters
   real_type bcsrCPRAdaptiveLIGrowthFactor = 2.0;
   int_t bcsrCPRAdaptiveMinReuseSetups = 1;
   int_t bcsrCPRAdaptiveMaxReuseSetups = 0;
+  real_type bcsrCPRAdaptivePressureOvershootThreshold = -1.0;
+  real_type bcsrCPRAdaptiveFinalProxyThreshold = -1.0;
+  real_type bcsrCPRAdaptiveFallbackThreshold = -1.0;
+  int_t pressureAMGMaxIter = 1;
+  real_type pressureAMGTolerance = 0.0;
+  int_t pressureAMGCoarsenType = 6;
+  int_t pressureAMGInterpType = 6;
+  int_t pressureAMGRelaxType = 6;
+  int_t pressureAMGAggNumLevels = 1;
+  int_t pressureAMGAggInterpType = 6;
+  int_t pressureAMGAggPMaxElmts = 20;
+  int_t pressureAMGRelaxOrder = 1;
+  real_type bcsrCPRPressureCorrectionAlpha = 1.0;
+  real_type bcsrCPRPressureCorrectionGuardThreshold = -1.0;
+  real_type bcsrCPRPressureCorrectionGuardMinAlpha = 0.0;
+  bool bcsrCPRDiagnostics = false;
+  int_t bcsrCPRDiagnosticApplyInterval = 0;
+  int_t bcsrCPRDiagnosticMatrixInterval = 0;
 
 };
 
@@ -505,8 +526,21 @@ private:
   int_t m_cprLastAMGSetupLinearIterations = -1;
   bool m_cprLastLinearConverged = true;
   bool m_cprAMGSetupForCurrentSolve = false;
+  bool m_cprAdaptiveQualityRebuildRequested = false;
+  real_type m_cprLastPressureOvershootRel = 0.0;
+  real_type m_cprLastFinalProxyRel = 0.0;
+  real_type m_cprLastFallbackRatio = 0.0;
   std::string m_cprLastAMGRebuildReason;
   bool m_cprPressureDirectUpdateReady = false;
+  int_t m_cprApplyCount = 0;
+  int_t m_cprPressureMatrixDiagnosticCount = 0;
+  int_t m_cprWeightTrueIMPESRows = 0;
+  int_t m_cprWeightFallbackRows = 0;
+  int_t m_cprWeightMissingDiagRows = 0;
+  int_t m_cprWeightSolveFailureRows = 0;
+  int_t m_cprWeightNonFiniteRows = 0;
+  int_t m_cprWeightLimitedRows = 0;
+  real_type m_cprWeightMaxAbs = 0.0;
   std::vector<int_t> m_cprPressureParCSRDiagDataIndex;
   std::vector<real_type> m_cprPressureWeights;
   std::vector<bigint_t> m_cprPressureRowIndices;
@@ -579,6 +613,7 @@ private:
   void fillBCSRCPRPressureMatrixValues();
   bool prepareBCSRCPRPressureDirectUpdate();
   bool updateBCSRCPRPressureMatrixDirect();
+  void logBCSRCPRPressureMatrixDiagnostics() const;
   bool createBCSRCPRPressureMatrix();
   bool createBCSRCPRPressureVectors();
   void recordBCSRCPRLinearIterations(int_t iterations, bool converged);

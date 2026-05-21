@@ -66,6 +66,8 @@ namespace opendarts
                                             opendarts::config::mat_float adaptive_alpha,
                                             opendarts::config::mat_float adaptive_fallback_threshold_high,
                                             opendarts::config::mat_float adaptive_alpha_high);
+      void set_mgr_local_correction_quality_options(bool enabled,
+                                                    opendarts::config::mat_float min_alpha);
       void set_use_bcsr_cpr(bool use_bcsr_cpr);
       void set_bcsr_cpr_options(int reduction_type,
                                 int pressure_variable,
@@ -78,6 +80,18 @@ namespace opendarts
           opendarts::config::mat_float li_growth_factor,
           opendarts::config::index_t min_reuse_setups,
           opendarts::config::index_t max_reuse_setups);
+      void set_bcsr_cpr_adaptive_quality_options(
+          opendarts::config::mat_float pressure_overshoot_threshold,
+          opendarts::config::mat_float final_proxy_threshold,
+          opendarts::config::mat_float fallback_threshold);
+      void set_bcsr_cpr_diagnostics_options(
+          bool diagnostics,
+          opendarts::config::index_t apply_interval,
+          opendarts::config::index_t matrix_interval);
+      void set_bcsr_cpr_pressure_correction_options(
+          opendarts::config::mat_float alpha,
+          opendarts::config::mat_float guard_threshold,
+          opendarts::config::mat_float guard_min_alpha);
       void set_mgr_pressure_amg_options(int coarsen_type,
                                         int interp_type,
                                         int relax_type,
@@ -85,6 +99,8 @@ namespace opendarts
                                         int agg_interp_type,
                                         int agg_pmax_elmts,
                                         int relax_order);
+      void set_mgr_pressure_amg_solve_options(opendarts::config::index_t max_iter,
+                                              opendarts::config::mat_float tolerance);
       void set_n_reservoir_blocks(opendarts::config::index_t n_reservoir_blocks);
       void set_mgr_enable_well_level(bool enable_well_level);
       void set_mgr_enable_composition_level(bool enable_composition_level);
@@ -202,6 +218,8 @@ namespace opendarts
       opendarts::config::mat_float local_correction_adaptive_alpha_cached;
       opendarts::config::mat_float local_correction_adaptive_fallback_threshold_high_cached;
       opendarts::config::mat_float local_correction_adaptive_alpha_high_cached;
+      bool local_correction_quality_gate_cached;
+      opendarts::config::mat_float local_correction_quality_min_alpha_cached;
       bool use_bcsr_cpr_cached;
       int bcsr_cpr_reduction_type_cached;
       int bcsr_cpr_pressure_variable_cached;
@@ -213,6 +231,17 @@ namespace opendarts
       opendarts::config::mat_float bcsr_cpr_adaptive_li_growth_factor_cached;
       opendarts::config::index_t bcsr_cpr_adaptive_min_reuse_setups_cached;
       opendarts::config::index_t bcsr_cpr_adaptive_max_reuse_setups_cached;
+      opendarts::config::mat_float bcsr_cpr_adaptive_pressure_overshoot_threshold_cached;
+      opendarts::config::mat_float bcsr_cpr_adaptive_final_proxy_threshold_cached;
+      opendarts::config::mat_float bcsr_cpr_adaptive_fallback_threshold_cached;
+      bool bcsr_cpr_diagnostics_cached;
+      opendarts::config::index_t bcsr_cpr_diagnostic_apply_interval_cached;
+      opendarts::config::index_t bcsr_cpr_diagnostic_matrix_interval_cached;
+      opendarts::config::mat_float bcsr_cpr_pressure_correction_alpha_cached;
+      opendarts::config::mat_float bcsr_cpr_pressure_correction_guard_threshold_cached;
+      opendarts::config::mat_float bcsr_cpr_pressure_correction_guard_min_alpha_cached;
+      opendarts::config::index_t pressure_amg_max_iter_cached;
+      opendarts::config::mat_float pressure_amg_tolerance_cached;
       opendarts::config::index_t n_reservoir_blocks_cached;
       mgr::strategies::CompositionalFlowStrategyConfig mgr_strategy_config_cached;
 

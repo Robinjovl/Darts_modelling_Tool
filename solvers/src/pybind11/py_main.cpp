@@ -53,7 +53,7 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Set composite preconditioner mode (0=MGR only, 1=MGR then local, 2=local only)",
              py::arg("composite_mode"))
         .def("set_mgr_local_solver", &linsolv_mgr<N>::set_mgr_local_solver,
-             "Set full-system BCSR local solver (0=none, 1=block Jacobi, 2=block ILU(0))",
+             "Set full-system BCSR local solver (0=none, 1=block Jacobi, 2=block ILU(0), 3=block ILU(1))",
              py::arg("local_solver"))
         .def("set_mgr_bilu0_pivot_shift", &linsolv_mgr<N>::set_mgr_bilu0_pivot_shift,
              "Set relative diagonal shift used when inverting BILU0 dense diagonal blocks",
@@ -68,6 +68,10 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              py::arg("adaptive_alpha") = 0.0,
              py::arg("adaptive_fallback_threshold_high") = -1.0,
              py::arg("adaptive_alpha_high") = 0.0)
+        .def("set_mgr_local_correction_quality_options",
+             &linsolv_mgr<N>::set_mgr_local_correction_quality_options,
+             "Enable residual-minimizing scalar damping for the BCSR local correction",
+             py::arg("enabled") = false, py::arg("min_alpha") = 0.0)
         .def("set_use_bcsr_cpr", &linsolv_mgr<N>::set_use_bcsr_cpr,
              "Enable/disable experimental BCSR-native CPR preconditioner",
              py::arg("use_bcsr_cpr"))
@@ -87,11 +91,33 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              py::arg("li_growth_factor") = 2.0,
              py::arg("min_reuse_setups") = 1,
              py::arg("max_reuse_setups") = 0)
+        .def("set_bcsr_cpr_adaptive_quality_options",
+             &linsolv_mgr<N>::set_bcsr_cpr_adaptive_quality_options,
+             "Set adaptive BCSR CPR pressure AMG rebuild quality signals",
+             py::arg("pressure_overshoot_threshold") = -1.0,
+             py::arg("final_proxy_threshold") = -1.0,
+             py::arg("fallback_threshold") = -1.0)
+        .def("set_bcsr_cpr_diagnostics_options",
+             &linsolv_mgr<N>::set_bcsr_cpr_diagnostics_options,
+             "Set BCSR CPR diagnostic logging options",
+             py::arg("diagnostics") = false,
+             py::arg("apply_interval") = 0,
+             py::arg("matrix_interval") = 0)
+        .def("set_bcsr_cpr_pressure_correction_options",
+             &linsolv_mgr<N>::set_bcsr_cpr_pressure_correction_options,
+             "Set BCSR CPR pressure correction damping and overshoot guard options",
+             py::arg("alpha") = 1.0,
+             py::arg("guard_threshold") = -1.0,
+             py::arg("guard_min_alpha") = 0.0)
         .def("set_mgr_pressure_amg_options", &linsolv_mgr<N>::set_mgr_pressure_amg_options,
              "Set key BoomerAMG options for the pressure coarse solver",
              py::arg("coarsen_type"), py::arg("interp_type"), py::arg("relax_type"),
              py::arg("agg_num_levels"), py::arg("agg_interp_type"),
              py::arg("agg_pmax_elmts"), py::arg("relax_order"))
+        .def("set_mgr_pressure_amg_solve_options",
+             &linsolv_mgr<N>::set_mgr_pressure_amg_solve_options,
+             "Set BoomerAMG solve options for the pressure coarse solver",
+             py::arg("max_iter") = 1, py::arg("tolerance") = 0.0)
         .def("set_n_reservoir_blocks", &linsolv_mgr<N>::set_n_reservoir_blocks,
              "Set number of reservoir blocks before appended well blocks", py::arg("n_reservoir_blocks"))
         .def("set_mgr_enable_well_level", &linsolv_mgr<N>::set_mgr_enable_well_level,

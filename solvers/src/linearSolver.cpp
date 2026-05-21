@@ -79,6 +79,32 @@ std::string describeHypreError( HYPRE_Int rc )
   return std::string( description );
 }
 
+bool isHypreConvergenceError( HYPRE_Int rc )
+{
+  return ( rc & HYPRE_ERROR_CONV ) != 0;
+}
+
+real_type vectorL2Norm( const real_type * values, int_t size )
+{
+  if( values == nullptr || size <= 0 )
+  {
+    return 0.0;
+  }
+
+  real_type sum = 0.0;
+  for( int_t i = 0; i < size; ++i )
+  {
+    sum += values[i] * values[i];
+  }
+  return std::sqrt( sum );
+}
+
+real_type safeRatio( real_type numerator, real_type denominator )
+{
+  const real_type floor = std::numeric_limits<real_type>::min();
+  return numerator / std::max( denominator, floor );
+}
+
 void logMGRSetupContext( const char * stage,
                          int_t block_size,
                          int_t num_levels,
@@ -263,49 +289,23 @@ public:
     m_fallbackDiagonalTolerance = std::max<real_type>( fallback_diagonal_tolerance, 0.0 );
     m_fallbackShiftMax = std::max<real_type>( fallback_shift_max, 0.0 );
     m_fallbackShiftGrowth = std::max<real_type>( fallback_shift_growth, 1.0 );
-    m_rowPtr = matrix.row_ptr;
-    m_colInd = matrix.col_ind;
-    m_diagInd.assign( m_numRows, -1 );
+    m_originalRowPtr = matrix.row_ptr;
+    m_originalColInd = matrix.col_ind;
 
-    if( static_cast<int_t>( m_rowPtr.size() ) < m_numRows + 1 ||
-        static_cast<int_t>( m_colInd.size() ) < matrix.num_nonzero_blocks ||
+    if( static_cast<int_t>( m_originalRowPtr.size() ) < m_numRows + 1 ||
+        static_cast<int_t>( m_originalColInd.size() ) < matrix.num_nonzero_blocks ||
         static_cast<int_t>( matrix.values.size() ) < matrix.num_nonzero_blocks * m_blockSizeSquared )
     {
       clear();
       return false;
     }
 
-    for( int_t row = 0; row < m_numRows; ++row )
-    {
-      int_t diag = -1;
-      if( static_cast<int_t>( matrix.diag_ind.size() ) > row )
-      {
-        const int_t candidate = matrix.diag_ind[row];
-        if( candidate >= m_rowPtr[row] && candidate < m_rowPtr[row + 1] &&
-            m_colInd[candidate] == row )
-        {
-          diag = candidate;
-        }
-      }
-      if( diag < 0 )
-      {
-        diag = findBlock( row, row );
-      }
-      if( diag < 0 )
-      {
-        clear();
-        return false;
-      }
-      m_diagInd[row] = diag;
-    }
-
     m_originalValues.resize( matrix.num_nonzero_blocks * m_blockSizeSquared );
-    m_luValues.resize( matrix.num_nonzero_blocks * m_blockSizeSquared );
     for( int_t row = 0; row < m_numRows; ++row )
     {
-      for( int_t block = m_rowPtr[row]; block < m_rowPtr[row + 1]; ++block )
+      for( int_t block = m_originalRowPtr[row]; block < m_originalRowPtr[row + 1]; ++block )
       {
-        const int_t col = m_colInd[block];
+        const int_t col = m_originalColInd[block];
         const int_t block_offset = block * m_blockSizeSquared;
         for( int_t r = 0; r < m_blockSize; ++r )
         {
@@ -325,7 +325,63 @@ public:
         }
       }
     }
-    m_luValues = m_originalValues;
+
+    if( m_type == LocalPreconditionerType::blockILU1 )
+    {
+      if( !buildBlockILU1Pattern() )
+      {
+        clear();
+        return false;
+      }
+      m_luValues.assign( static_cast<size_t>( m_colInd.size() ) * m_blockSizeSquared,
+                         0.0 );
+      for( int_t row = 0; row < m_numRows; ++row )
+      {
+        for( int_t block = m_originalRowPtr[row]; block < m_originalRowPtr[row + 1]; ++block )
+        {
+          const int_t lu_block = findBlock( row, m_originalColInd[block] );
+          if( lu_block < 0 )
+          {
+            clear();
+            return false;
+          }
+          std::copy( &m_originalValues[block * m_blockSizeSquared],
+                     &m_originalValues[( block + 1 ) * m_blockSizeSquared],
+                     &m_luValues[lu_block * m_blockSizeSquared] );
+        }
+      }
+    }
+    else
+    {
+      m_rowPtr = m_originalRowPtr;
+      m_colInd = m_originalColInd;
+      m_fillLevel.assign( m_colInd.size(), 0 );
+      m_diagInd.assign( m_numRows, -1 );
+      for( int_t row = 0; row < m_numRows; ++row )
+      {
+        int_t diag = -1;
+        if( static_cast<int_t>( matrix.diag_ind.size() ) > row )
+        {
+          const int_t candidate = matrix.diag_ind[row];
+          if( candidate >= m_rowPtr[row] && candidate < m_rowPtr[row + 1] &&
+              m_colInd[candidate] == row )
+          {
+            diag = candidate;
+          }
+        }
+        if( diag < 0 )
+        {
+          diag = findBlock( row, row );
+        }
+        if( diag < 0 )
+        {
+          clear();
+          return false;
+        }
+        m_diagInd[row] = diag;
+      }
+      m_luValues = m_originalValues;
+    }
 
     m_diagInverse.assign( m_numRows * m_blockSizeSquared, 0.0 );
     m_blockWork.assign( m_blockSizeSquared, 0.0 );
@@ -336,7 +392,7 @@ public:
     }
     else
     {
-      factorBlockILU0();
+      factorBlockILU();
     }
 
     m_forwardWork.assign( m_numRows * m_blockSize, 0.0 );
@@ -373,7 +429,10 @@ public:
     m_ready = false;
     m_rowPtr.clear();
     m_colInd.clear();
+    m_fillLevel.clear();
     m_diagInd.clear();
+    m_originalRowPtr.clear();
+    m_originalColInd.clear();
     m_originalValues.clear();
     m_luValues.clear();
     m_diagInverse.clear();
@@ -481,7 +540,15 @@ public:
 
   const char * name() const
   {
-    return m_type == LocalPreconditionerType::blockJacobi ? "block Jacobi" : "block ILU(0)";
+    if( m_type == LocalPreconditionerType::blockJacobi )
+    {
+      return "block Jacobi";
+    }
+    if( m_type == LocalPreconditionerType::blockILU1 )
+    {
+      return "block ILU(1)";
+    }
+    return "block ILU(0)";
   }
 
   void matvec( const real_type * x, real_type * y ) const
@@ -491,10 +558,10 @@ public:
     for( int_t row = 0; row < m_numRows; ++row )
     {
       real_type * y_block = y + row * m_blockSize;
-      for( int_t p = m_rowPtr[row]; p < m_rowPtr[row + 1]; ++p )
+      for( int_t p = m_originalRowPtr[row]; p < m_originalRowPtr[row + 1]; ++p )
       {
         const real_type * block = &m_originalValues[p * m_blockSizeSquared];
-        const real_type * x_block = x + m_colInd[p] * m_blockSize;
+        const real_type * x_block = x + m_originalColInd[p] * m_blockSize;
         for( int_t r = 0; r < m_blockSize; ++r )
         {
           real_type sum = 0.0;
@@ -524,7 +591,7 @@ public:
         y[r] = rhs_block[r];
       }
 
-      if( m_type == LocalPreconditionerType::blockILU0 )
+      if( usesILUFactorization() )
       {
         for( int_t p = m_rowPtr[row]; p < m_rowPtr[row + 1]; ++p )
         {
@@ -548,7 +615,7 @@ public:
         m_backwardBlock[r] = m_forwardWork[row * m_blockSize + r];
       }
 
-      if( m_type == LocalPreconditionerType::blockILU0 )
+      if( usesILUFactorization() )
       {
         for( int_t p = m_rowPtr[row]; p < m_rowPtr[row + 1]; ++p )
         {
@@ -575,6 +642,12 @@ public:
   }
 
 private:
+  bool usesILUFactorization() const
+  {
+    return m_type == LocalPreconditionerType::blockILU0 ||
+           m_type == LocalPreconditionerType::blockILU1;
+  }
+
   int_t findBlock( int_t row, int_t col ) const
   {
     for( int_t p = m_rowPtr[row]; p < m_rowPtr[row + 1]; ++p )
@@ -587,6 +660,103 @@ private:
     return -1;
   }
 
+  bool buildBlockILU1Pattern()
+  {
+    m_rowPtr.assign( m_numRows + 1, 0 );
+    m_colInd.clear();
+    m_fillLevel.clear();
+    m_diagInd.assign( m_numRows, -1 );
+
+    std::vector<std::pair<int_t, int_t>> candidates;
+    candidates.reserve( 64 );
+    for( int_t row = 0; row < m_numRows; ++row )
+    {
+      candidates.clear();
+      for( int_t block = m_originalRowPtr[row]; block < m_originalRowPtr[row + 1]; ++block )
+      {
+        candidates.emplace_back( m_originalColInd[block], 0 );
+      }
+
+      for( int_t block = m_originalRowPtr[row]; block < m_originalRowPtr[row + 1]; ++block )
+      {
+        const int_t pivot_row = m_originalColInd[block];
+        if( pivot_row >= row )
+        {
+          continue;
+        }
+        for( int_t pivot_block = m_originalRowPtr[pivot_row];
+             pivot_block < m_originalRowPtr[pivot_row + 1]; ++pivot_block )
+        {
+          const int_t col = m_originalColInd[pivot_block];
+          if( col > pivot_row )
+          {
+            candidates.emplace_back( col, 1 );
+          }
+        }
+      }
+
+      std::sort( candidates.begin(), candidates.end(),
+                 []( const auto & lhs, const auto & rhs )
+                 {
+                   if( lhs.first != rhs.first )
+                   {
+                     return lhs.first < rhs.first;
+                   }
+                   return lhs.second < rhs.second;
+                 } );
+
+      m_rowPtr[row] = static_cast<int_t>( m_colInd.size() );
+      int_t previous_col = -1;
+      int_t previous_level = 0;
+      bool have_previous = false;
+      for( const auto & candidate : candidates )
+      {
+        const int_t col = candidate.first;
+        const int_t level = candidate.second;
+        if( col < 0 || col >= m_numRows )
+        {
+          continue;
+        }
+        if( !have_previous )
+        {
+          previous_col = col;
+          previous_level = level;
+          have_previous = true;
+          continue;
+        }
+        if( col == previous_col )
+        {
+          previous_level = std::min( previous_level, level );
+          continue;
+        }
+        appendPatternBlock( row, previous_col, previous_level );
+        previous_col = col;
+        previous_level = level;
+      }
+      if( have_previous )
+      {
+        appendPatternBlock( row, previous_col, previous_level );
+      }
+      m_rowPtr[row + 1] = static_cast<int_t>( m_colInd.size() );
+      if( m_diagInd[row] < 0 )
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void appendPatternBlock( int_t row, int_t col, int_t level )
+  {
+    const int_t pos = static_cast<int_t>( m_colInd.size() );
+    m_colInd.push_back( col );
+    m_fillLevel.push_back( level );
+    if( col == row )
+    {
+      m_diagInd[row] = pos;
+    }
+  }
+
   void factorBlockJacobi()
   {
     for( int_t row = 0; row < m_numRows; ++row )
@@ -595,8 +765,10 @@ private:
     }
   }
 
-  void factorBlockILU0()
+  void factorBlockILU()
   {
+    const int_t max_fill_level =
+        m_type == LocalPreconditionerType::blockILU1 ? 1 : 0;
     std::vector<int_t> lower_blocks;
     for( int_t row = 0; row < m_numRows; ++row )
     {
@@ -624,6 +796,12 @@ private:
         {
           const int_t col = m_colInd[upper_pos];
           if( col <= pivot_row )
+          {
+            continue;
+          }
+          if( m_type == LocalPreconditionerType::blockILU1 &&
+              m_fillLevel[lower_pos] + m_fillLevel[upper_pos] + 1 >
+                  max_fill_level )
           {
             continue;
           }
@@ -1086,7 +1264,10 @@ private:
   bool m_ready = false;
   std::vector<int_t> m_rowPtr;
   std::vector<int_t> m_colInd;
+  std::vector<int_t> m_fillLevel;
   std::vector<int_t> m_diagInd;
+  std::vector<int_t> m_originalRowPtr;
+  std::vector<int_t> m_originalColInd;
   std::vector<real_type> m_originalValues;
   std::vector<real_type> m_luValues;
   std::vector<real_type> m_diagInverse;
@@ -1133,6 +1314,8 @@ LinearSolver::LinearSolver()
   m_params.localCorrectionAdaptiveAlpha = 0.0;
   m_params.localCorrectionAdaptiveFallbackThresholdHigh = -1.0;
   m_params.localCorrectionAdaptiveAlphaHigh = 0.0;
+  m_params.localCorrectionQualityGate = false;
+  m_params.localCorrectionQualityMinAlpha = 0.0;
   m_params.useBCSRCPR = false;
   m_params.bcsrCPRReduction = BCSRCPRReductionType::trueIMPES;
   m_params.bcsrCPRPressureVariable = 0;
@@ -1144,6 +1327,24 @@ LinearSolver::LinearSolver()
   m_params.bcsrCPRAdaptiveLIGrowthFactor = 2.0;
   m_params.bcsrCPRAdaptiveMinReuseSetups = 1;
   m_params.bcsrCPRAdaptiveMaxReuseSetups = 0;
+  m_params.bcsrCPRAdaptivePressureOvershootThreshold = -1.0;
+  m_params.bcsrCPRAdaptiveFinalProxyThreshold = -1.0;
+  m_params.bcsrCPRAdaptiveFallbackThreshold = -1.0;
+  m_params.pressureAMGMaxIter = 1;
+  m_params.pressureAMGTolerance = 0.0;
+  m_params.pressureAMGCoarsenType = 6;
+  m_params.pressureAMGInterpType = 6;
+  m_params.pressureAMGRelaxType = 6;
+  m_params.pressureAMGAggNumLevels = 1;
+  m_params.pressureAMGAggInterpType = 6;
+  m_params.pressureAMGAggPMaxElmts = 20;
+  m_params.pressureAMGRelaxOrder = 1;
+  m_params.bcsrCPRPressureCorrectionAlpha = 1.0;
+  m_params.bcsrCPRPressureCorrectionGuardThreshold = -1.0;
+  m_params.bcsrCPRPressureCorrectionGuardMinAlpha = 0.0;
+  m_params.bcsrCPRDiagnostics = false;
+  m_params.bcsrCPRDiagnosticApplyInterval = 0;
+  m_params.bcsrCPRDiagnosticMatrixInterval = 0;
 }
 
 LinearSolver::~LinearSolver()
@@ -1428,8 +1629,21 @@ void LinearSolver::clearBCSRCPRPreconditioner()
   m_cprLastAMGSetupLinearIterations = -1;
   m_cprLastLinearConverged = true;
   m_cprAMGSetupForCurrentSolve = false;
+  m_cprAdaptiveQualityRebuildRequested = false;
+  m_cprLastPressureOvershootRel = 0.0;
+  m_cprLastFinalProxyRel = 0.0;
+  m_cprLastFallbackRatio = 0.0;
   m_cprLastAMGRebuildReason.clear();
   m_cprPressureDirectUpdateReady = false;
+  m_cprApplyCount = 0;
+  m_cprPressureMatrixDiagnosticCount = 0;
+  m_cprWeightTrueIMPESRows = 0;
+  m_cprWeightFallbackRows = 0;
+  m_cprWeightMissingDiagRows = 0;
+  m_cprWeightSolveFailureRows = 0;
+  m_cprWeightNonFiniteRows = 0;
+  m_cprWeightLimitedRows = 0;
+  m_cprWeightMaxAbs = 0.0;
   m_cprPressureParCSRDiagDataIndex.clear();
   m_cprPressureWeights.clear();
   m_cprPressureRowIndices.clear();
@@ -1464,8 +1678,13 @@ void LinearSolver::computeBCSRCPRPressureWeights()
   const real_type weight_max = std::max<real_type>( m_params.bcsrCPRWeightMax, 1.0 );
 
   m_cprPressureWeights.assign( m_cprPressureRows * block_size, 0.0 );
-  int_t fallback_rows = 0;
-  int_t true_impes_rows = 0;
+  m_cprWeightTrueIMPESRows = 0;
+  m_cprWeightFallbackRows = 0;
+  m_cprWeightMissingDiagRows = 0;
+  m_cprWeightSolveFailureRows = 0;
+  m_cprWeightNonFiniteRows = 0;
+  m_cprWeightLimitedRows = 0;
+  m_cprWeightMaxAbs = 0.0;
 
   for( int_t row = 0; row < m_cprPressureRows; ++row )
   {
@@ -1502,7 +1721,8 @@ void LinearSolver::computeBCSRCPRPressureWeights()
     }
     if( diag < 0 )
     {
-      ++fallback_rows;
+      ++m_cprWeightFallbackRows;
+      ++m_cprWeightMissingDiagRows;
       continue;
     }
 
@@ -1579,23 +1799,43 @@ void LinearSolver::computeBCSRCPRPressureWeights()
                                             solution );
     if( !ok )
     {
-      ++fallback_rows;
+      ++m_cprWeightFallbackRows;
+      ++m_cprWeightSolveFailureRows;
       continue;
     }
 
     bool accept = true;
+    bool nonfinite_weight = false;
+    bool limited_weight = false;
     for( int_t a = 0; a < n_f; ++a )
     {
-      if( !std::isfinite( solution[a] ) ||
-          std::abs( solution[a] ) > weight_max )
+      const real_type abs_weight = std::abs( solution[a] );
+      if( std::isfinite( abs_weight ) )
       {
+        m_cprWeightMaxAbs = std::max( m_cprWeightMaxAbs, abs_weight );
+      }
+      if( !std::isfinite( solution[a] ) )
+      {
+        nonfinite_weight = true;
         accept = false;
-        break;
+      }
+      else if( abs_weight > weight_max )
+      {
+        limited_weight = true;
+        accept = false;
       }
     }
     if( !accept )
     {
-      ++fallback_rows;
+      ++m_cprWeightFallbackRows;
+      if( nonfinite_weight )
+      {
+        ++m_cprWeightNonFiniteRows;
+      }
+      if( limited_weight )
+      {
+        ++m_cprWeightLimitedRows;
+      }
       continue;
     }
 
@@ -1603,14 +1843,27 @@ void LinearSolver::computeBCSRCPRPressureWeights()
     {
       weights[f_vars[a]] = solution[a];
     }
-    ++true_impes_rows;
+    ++m_cprWeightTrueIMPESRows;
   }
 
-  if( m_params.logLevel >= 1 )
+  if( m_params.bcsrCPRDiagnostics )
+  {
+    std::cerr << "[MGR] BCSR CPR pressure weight diagnostics: rows="
+              << m_cprPressureRows
+              << ", true_impes=" << m_cprWeightTrueIMPESRows
+              << ", fallback=" << m_cprWeightFallbackRows
+              << ", missing_diag=" << m_cprWeightMissingDiagRows
+              << ", dense_solve_failure=" << m_cprWeightSolveFailureRows
+              << ", nonfinite_weight=" << m_cprWeightNonFiniteRows
+              << ", weight_limited=" << m_cprWeightLimitedRows
+              << ", max_abs_weight=" << m_cprWeightMaxAbs
+              << "." << std::endl;
+  }
+  else if( m_params.logLevel >= 1 )
   {
     std::cerr << "[MGR] BCSR CPR pressure weights: rows=" << m_cprPressureRows
-              << ", true_impes=" << true_impes_rows
-              << ", pressure_row_fallback=" << fallback_rows
+              << ", true_impes=" << m_cprWeightTrueIMPESRows
+              << ", pressure_row_fallback=" << m_cprWeightFallbackRows
               << "." << std::endl;
   }
 }
@@ -1715,6 +1968,160 @@ void LinearSolver::fillBCSRCPRPressureMatrixValues()
       m_cprPressureValues[m_cprPressureRowOffsets[row]] = 1.0;
     }
   }
+
+  if( m_params.bcsrCPRDiagnostics &&
+      m_params.bcsrCPRDiagnosticMatrixInterval > 0 )
+  {
+    ++m_cprPressureMatrixDiagnosticCount;
+    if( m_cprPressureMatrixDiagnosticCount <= 3 ||
+        ( m_cprPressureMatrixDiagnosticCount %
+          m_params.bcsrCPRDiagnosticMatrixInterval ) == 0 )
+    {
+      logBCSRCPRPressureMatrixDiagnostics();
+    }
+  }
+}
+
+void LinearSolver::logBCSRCPRPressureMatrixDiagnostics() const
+{
+  const int_t rows = m_cprPressureRows;
+  const int_t nnz = rows > 0 && !m_cprPressureRowOffsets.empty()
+                    ? m_cprPressureRowOffsets[rows] : 0;
+
+  int_t missing_diag_rows = 0;
+  int_t near_zero_diag_rows = 0;
+  int_t weak_diag_rows = 0;
+  int_t positive_diag_rows = 0;
+  int_t negative_diag_rows = 0;
+  int_t diagnosed_diag_rows = 0;
+  int_t positive_offdiag = 0;
+  int_t negative_offdiag = 0;
+  int_t nonfinite_values = 0;
+  real_type min_diag_abs = std::numeric_limits<real_type>::infinity();
+  real_type max_diag_abs = 0.0;
+  real_type min_dominance = std::numeric_limits<real_type>::infinity();
+  real_type max_dominance = 0.0;
+  real_type sum_dominance = 0.0;
+  real_type max_row_sum_ratio = 0.0;
+  real_type sum_row_sum_ratio = 0.0;
+
+  for( int_t row = 0; row < rows; ++row )
+  {
+    bool has_diag = false;
+    real_type diag = 0.0;
+    real_type offdiag_abs_sum = 0.0;
+    real_type row_abs_sum = 0.0;
+    real_type row_sum = 0.0;
+
+    for( int_t p = m_cprPressureRowOffsets[row];
+         p < m_cprPressureRowOffsets[row + 1]; ++p )
+    {
+      const real_type value = m_cprPressureValues[p];
+      if( !std::isfinite( value ) )
+      {
+        ++nonfinite_values;
+        continue;
+      }
+
+      const real_type abs_value = std::abs( value );
+      row_abs_sum += abs_value;
+      row_sum += value;
+
+      if( m_cprPressureCols[p] == row )
+      {
+        has_diag = true;
+        diag += value;
+      }
+      else
+      {
+        offdiag_abs_sum += abs_value;
+        if( value > 0.0 )
+        {
+          ++positive_offdiag;
+        }
+        else if( value < 0.0 )
+        {
+          ++negative_offdiag;
+        }
+      }
+    }
+
+    if( !has_diag )
+    {
+      ++missing_diag_rows;
+      continue;
+    }
+    ++diagnosed_diag_rows;
+
+    if( diag > 0.0 )
+    {
+      ++positive_diag_rows;
+    }
+    else if( diag < 0.0 )
+    {
+      ++negative_diag_rows;
+    }
+
+    const real_type diag_abs = std::abs( diag );
+    const real_type scale = std::max<real_type>( row_abs_sum, 1.0 );
+    const real_type near_zero_tol =
+        std::numeric_limits<real_type>::epsilon() * scale * 100.0;
+    if( diag_abs <= near_zero_tol )
+    {
+      ++near_zero_diag_rows;
+    }
+    if( diag_abs < offdiag_abs_sum )
+    {
+      ++weak_diag_rows;
+    }
+
+    min_diag_abs = std::min( min_diag_abs, diag_abs );
+    max_diag_abs = std::max( max_diag_abs, diag_abs );
+
+    const real_type dominance =
+        diag_abs / std::max( offdiag_abs_sum, std::numeric_limits<real_type>::min() );
+    min_dominance = std::min( min_dominance, dominance );
+    max_dominance = std::max( max_dominance, dominance );
+    sum_dominance += dominance;
+
+    const real_type row_sum_ratio =
+        std::abs( row_sum ) / std::max( row_abs_sum, std::numeric_limits<real_type>::min() );
+    max_row_sum_ratio = std::max( max_row_sum_ratio, row_sum_ratio );
+    sum_row_sum_ratio += row_sum_ratio;
+  }
+
+  if( diagnosed_diag_rows <= 0 )
+  {
+    min_diag_abs = 0.0;
+    min_dominance = 0.0;
+  }
+
+  std::ostringstream out;
+  out << std::scientific << std::setprecision( 3 )
+      << "[MGR] BCSR CPR pressure matrix diagnostics: call="
+      << m_cprPressureMatrixDiagnosticCount
+      << ", rows=" << rows
+      << ", nnz=" << nnz
+      << ", diag_abs(min=" << min_diag_abs
+      << ", max=" << max_diag_abs
+      << "), diag_sign(pos=" << positive_diag_rows
+      << ", neg=" << negative_diag_rows
+      << "), missing_diag=" << missing_diag_rows
+      << ", near_zero_diag=" << near_zero_diag_rows
+      << ", weak_diag=" << weak_diag_rows
+      << ", dominance(min=" << min_dominance
+      << ", avg=" << ( diagnosed_diag_rows > 0
+                        ? sum_dominance / diagnosed_diag_rows : 0.0 )
+      << ", max=" << max_dominance
+      << "), offdiag_sign(pos=" << positive_offdiag
+      << ", neg=" << negative_offdiag
+      << "), row_sum_ratio(avg="
+      << ( diagnosed_diag_rows > 0
+           ? sum_row_sum_ratio / diagnosed_diag_rows : 0.0 )
+      << ", max=" << max_row_sum_ratio
+      << "), nonfinite_values=" << nonfinite_values
+      << ".";
+  std::cerr << out.str() << std::endl;
 }
 
 bool LinearSolver::prepareBCSRCPRPressureDirectUpdate()
@@ -1867,6 +2274,7 @@ bool LinearSolver::createBCSRCPRPressureMatrix()
     return m_cprPressureParMatrix != nullptr;
   }
 
+  HYPRE_ClearAllErrors();
   HYPRE_Int rc = HYPRE_IJMatrixSetValues( m_cprPressureIJMatrix,
                                           m_cprPressureRows,
                                           m_cprPressureRowNCols.data(),
@@ -1907,6 +2315,7 @@ bool LinearSolver::createBCSRCPRPressureMatrix()
       HYPRE_IJMatrixSetObjectType( m_cprPressureIJMatrix, HYPRE_PARCSR );
       HYPRE_IJMatrixInitialize( m_cprPressureIJMatrix );
       ++m_cprPressureMatrixCreateCount;
+      HYPRE_ClearAllErrors();
       rc = HYPRE_IJMatrixSetValues( m_cprPressureIJMatrix,
                                     m_cprPressureRows,
                                     m_cprPressureRowNCols.data(),
@@ -2118,6 +2527,14 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
       setup_amg = true;
       rebuild_reason << "adaptive_not_converged";
     }
+    else if( min_reuse_satisfied && m_cprAdaptiveQualityRebuildRequested )
+    {
+      setup_amg = true;
+      rebuild_reason << "adaptive_quality"
+                     << "(pressure_rel=" << m_cprLastPressureOvershootRel
+                     << ", final_rel=" << m_cprLastFinalProxyRel
+                     << ", fallback=" << m_cprLastFallbackRatio << ")";
+    }
     else if( min_reuse_satisfied && m_cprLastLinearIterations >= 0 &&
              m_params.bcsrCPRAdaptiveLIThreshold > 0 &&
              m_cprLastLinearIterations >= m_params.bcsrCPRAdaptiveLIThreshold )
@@ -2159,6 +2576,7 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
   if( setup_amg )
   {
     ScopedTimer timer( setupTimerNode( "BCSR CPR AMG setup" ) );
+    HYPRE_ClearAllErrors();
     const HYPRE_Int rc = HYPRE_BoomerAMGSetup( m_cprPressureAMG,
                                                m_cprPressureParMatrix,
                                                m_cprPressureParRHS,
@@ -2173,6 +2591,10 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
     m_cprPressureAMGSetupDone = true;
     m_cprAMGSetupForCurrentSolve = true;
     m_cprSetupsSinceAMGSetup = 0;
+    m_cprAdaptiveQualityRebuildRequested = false;
+    m_cprLastPressureOvershootRel = 0.0;
+    m_cprLastFinalProxyRel = 0.0;
+    m_cprLastFallbackRatio = 0.0;
     ++m_cprPressureAMGSetupCount;
   }
   else
@@ -2220,6 +2642,11 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
               << ", last_li=" << m_cprLastLinearIterations
               << ", last_converged=" << ( m_cprLastLinearConverged ? 1 : 0 )
               << ", last_amg_li=" << m_cprLastAMGSetupLinearIterations
+              << ", quality_rebuild_pending="
+              << ( m_cprAdaptiveQualityRebuildRequested ? 1 : 0 )
+              << ", last_pressure_rel=" << m_cprLastPressureOvershootRel
+              << ", last_final_rel=" << m_cprLastFinalProxyRel
+              << ", last_fallback=" << m_cprLastFallbackRatio
               << ", threshold=" << m_params.bcsrCPRAdaptiveLIThreshold
               << ", growth=" << m_params.bcsrCPRAdaptiveLIGrowthFactor
               << ", min_age=" << min_reuse_setups
@@ -2284,7 +2711,9 @@ void LinearSolver::setupBlockLocalPreconditioner()
 
   const char * timer_name =
       m_params.localPreconditioner == LocalPreconditionerType::blockJacobi
-      ? "block Jacobi setup" : "block ILU(0) setup";
+      ? "block Jacobi setup"
+      : ( m_params.localPreconditioner == LocalPreconditionerType::blockILU1
+          ? "block ILU(1) setup" : "block ILU(0) setup" );
   ScopedTimer timer( setupTimerNode( timer_name ) );
 
   const bool apply_scaling = scalingActive( m_matrix.global_num_rows );
@@ -2445,6 +2874,36 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
   const int_t block_size = m_matrix.block_size;
   const int_t pressure_var =
       std::clamp<int_t>( m_params.bcsrCPRPressureVariable, 0, block_size - 1 );
+  ++m_cprApplyCount;
+  const bool log_apply_diagnostics =
+      m_params.bcsrCPRDiagnostics &&
+      m_params.bcsrCPRDiagnosticApplyInterval > 0 &&
+      ( m_cprApplyCount <= 3 ||
+        ( m_cprApplyCount % m_params.bcsrCPRDiagnosticApplyInterval ) == 0 );
+  const bool pressure_guard_enabled =
+      m_params.bcsrCPRPressureCorrectionGuardThreshold > 0.0;
+  const bool adaptive_pressure_signal_enabled =
+      m_params.bcsrCPRAdaptivePressureOvershootThreshold > 0.0;
+  const bool adaptive_final_signal_enabled =
+      m_params.bcsrCPRAdaptiveFinalProxyThreshold > 0.0;
+  const bool adaptive_fallback_signal_enabled =
+      m_params.bcsrCPRAdaptiveFallbackThreshold > 0.0;
+  const bool need_pressure_norms =
+      log_apply_diagnostics || pressure_guard_enabled || adaptive_pressure_signal_enabled;
+  const bool need_final_proxy =
+      log_apply_diagnostics || adaptive_final_signal_enabled;
+  const real_type input_norm =
+      need_pressure_norms ? vectorL2Norm( b_data, local_size ) : 0.0;
+  real_type pressure_rhs_norm = 0.0;
+  real_type pressure_correction_norm = 0.0;
+  real_type pressure_residual_norm = 0.0;
+  real_type local_correction_norm = 0.0;
+  real_type correction_norm = 0.0;
+  real_type final_residual_norm = 0.0;
+  real_type pressure_alpha =
+      std::clamp<real_type>( m_params.bcsrCPRPressureCorrectionAlpha, 0.0, 1.0 );
+  real_type pressure_guard_raw_rel = 0.0;
+  bool pressure_guard_triggered = false;
 
   hypre_Vector * pressure_rhs_local =
       hypre_ParVectorLocalVector( m_cprPressureParRHS );
@@ -2477,17 +2936,35 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
       pressure_rhs_data[row] = value;
       pressure_sol_data[row] = 0.0;
     }
+    if( log_apply_diagnostics )
+    {
+      pressure_rhs_norm = vectorL2Norm( pressure_rhs_data, m_cprPressureRows );
+    }
   }
 
   {
     ScopedTimer timer( cpr_timer ? &cpr_timer->node["AMG pressure solve"] : nullptr );
+    HYPRE_ClearAllErrors();
     const HYPRE_Int rc = HYPRE_BoomerAMGSolve( m_cprPressureAMG,
                                                m_cprPressureParMatrix,
                                                m_cprPressureParRHS,
                                                m_cprPressureParSol );
     if( rc != 0 )
     {
-      return rc;
+      if( isHypreConvergenceError( rc ) )
+      {
+        if( m_params.logLevel >= 2 )
+        {
+          std::cerr << "[MGR] Warning: BCSR CPR pressure AMG reached its "
+                    << "inner iteration limit; using the current correction, rc="
+                    << rc << " (" << describeHypreError( rc ) << ")." << std::endl;
+        }
+        HYPRE_ClearAllErrors();
+      }
+      else
+      {
+        return rc;
+      }
     }
   }
 
@@ -2504,16 +2981,88 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
     ScopedTimer timer( cpr_timer ? &cpr_timer->node["BCSR residual"] : nullptr );
     m_blockLocalPreconditioner->matvec( m_cprPressureCorrection.data(),
                                         m_cprAx.data() );
-    for( int_t i = 0; i < local_size; ++i )
+    auto update_pressure_residual = [&]( real_type alpha )
     {
-      m_cprResidual[i] = b_data[i] - m_cprAx[i];
+      for( int_t i = 0; i < local_size; ++i )
+      {
+        m_cprResidual[i] = b_data[i] - alpha * m_cprAx[i];
+      }
+    };
+
+    update_pressure_residual( pressure_alpha );
+    if( need_pressure_norms )
+    {
+      pressure_residual_norm = vectorL2Norm( m_cprResidual.data(), local_size );
+    }
+
+    if( pressure_guard_enabled || adaptive_pressure_signal_enabled )
+    {
+      pressure_guard_raw_rel = safeRatio( pressure_residual_norm, input_norm );
+      if( adaptive_pressure_signal_enabled &&
+          std::isfinite( pressure_guard_raw_rel ) )
+      {
+        m_cprLastPressureOvershootRel =
+            std::max( m_cprLastPressureOvershootRel, pressure_guard_raw_rel );
+        if( pressure_guard_raw_rel >
+            m_params.bcsrCPRAdaptivePressureOvershootThreshold )
+        {
+          m_cprAdaptiveQualityRebuildRequested = true;
+        }
+      }
+      if( pressure_guard_enabled &&
+          std::isfinite( pressure_guard_raw_rel ) &&
+          pressure_guard_raw_rel >
+              m_params.bcsrCPRPressureCorrectionGuardThreshold )
+      {
+        const real_type requested_alpha =
+            pressure_alpha *
+            m_params.bcsrCPRPressureCorrectionGuardThreshold /
+            pressure_guard_raw_rel;
+        const real_type min_alpha = std::clamp<real_type>(
+            m_params.bcsrCPRPressureCorrectionGuardMinAlpha, 0.0, 1.0 );
+        const real_type guarded_alpha =
+            std::clamp<real_type>( std::max( requested_alpha, min_alpha ),
+                                   0.0, pressure_alpha );
+        pressure_guard_triggered = guarded_alpha < pressure_alpha;
+        pressure_alpha = guarded_alpha;
+        update_pressure_residual( pressure_alpha );
+        if( need_pressure_norms )
+        {
+          pressure_residual_norm =
+              vectorL2Norm( m_cprResidual.data(), local_size );
+        }
+      }
     }
   }
 
+  if( pressure_alpha != 1.0 )
+  {
+    for( int_t i = 0; i < local_size; ++i )
+    {
+      m_cprPressureCorrection[i] *= pressure_alpha;
+    }
+  }
+  if( log_apply_diagnostics )
+  {
+    pressure_correction_norm =
+        vectorL2Norm( m_cprPressureCorrection.data(), local_size );
+  }
+
   real_type local_alpha = std::max<real_type>( m_params.localCorrectionAlpha, 0.0 );
+  real_type fallback_ratio = -1.0;
+  real_type local_quality_raw_alpha = 0.0;
+  real_type local_quality_after_rel = 0.0;
+  bool local_quality_enabled = false;
+  bool local_quality_valid = false;
   if( blockLocalPreconditionerReady() )
   {
-    const real_type fallback_ratio = m_blockLocalPreconditioner->fallbackRatio();
+    fallback_ratio = m_blockLocalPreconditioner->fallbackRatio();
+    m_cprLastFallbackRatio = std::max( m_cprLastFallbackRatio, fallback_ratio );
+    if( adaptive_fallback_signal_enabled &&
+        fallback_ratio > m_params.bcsrCPRAdaptiveFallbackThreshold )
+    {
+      m_cprAdaptiveQualityRebuildRequested = true;
+    }
     if( m_params.localCorrectionAdaptiveFallbackThresholdHigh >= 0.0 &&
         fallback_ratio >= m_params.localCorrectionAdaptiveFallbackThresholdHigh )
     {
@@ -2531,6 +3080,67 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
     ScopedTimer timer( cpr_timer ? &cpr_timer->node["block local solve"] : nullptr );
     m_blockLocalPreconditioner->apply( m_cprResidual.data(),
                                        m_cprLocalCorrection.data() );
+    if( log_apply_diagnostics )
+    {
+      local_correction_norm =
+          vectorL2Norm( m_cprLocalCorrection.data(), local_size );
+    }
+
+    local_quality_enabled = m_params.localCorrectionQualityGate;
+    if( local_quality_enabled )
+    {
+      ScopedTimer quality_timer(
+          cpr_timer ? &cpr_timer->node["block local quality"] : nullptr );
+      m_blockLocalPreconditioner->matvec( m_cprLocalCorrection.data(),
+                                          m_cprAx.data() );
+      real_type dot_residual_correction = 0.0;
+      real_type correction_image_sq = 0.0;
+      real_type pressure_residual_sq = 0.0;
+      for( int_t i = 0; i < local_size; ++i )
+      {
+        dot_residual_correction += m_cprResidual[i] * m_cprAx[i];
+        correction_image_sq += m_cprAx[i] * m_cprAx[i];
+        pressure_residual_sq += m_cprResidual[i] * m_cprResidual[i];
+      }
+
+      if( correction_image_sq > std::numeric_limits<real_type>::epsilon() &&
+          std::isfinite( dot_residual_correction ) &&
+          std::isfinite( correction_image_sq ) )
+      {
+        local_quality_raw_alpha =
+            dot_residual_correction / correction_image_sq;
+        real_type gated_alpha = std::clamp<real_type>( local_quality_raw_alpha,
+                                                       0.0, local_alpha );
+        const real_type min_alpha = std::min<real_type>(
+            std::clamp<real_type>( m_params.localCorrectionQualityMinAlpha,
+                                   0.0, 1.0 ),
+            local_alpha );
+        if( gated_alpha > 0.0 && gated_alpha < min_alpha )
+        {
+          gated_alpha = min_alpha;
+        }
+        local_alpha = gated_alpha;
+        local_quality_valid = true;
+
+        if( log_apply_diagnostics )
+        {
+          real_type gated_residual_sq = 0.0;
+          for( int_t i = 0; i < local_size; ++i )
+          {
+            const real_type residual =
+                m_cprResidual[i] - local_alpha * m_cprAx[i];
+            gated_residual_sq += residual * residual;
+          }
+          local_quality_after_rel =
+              safeRatio( std::sqrt( gated_residual_sq ),
+                         std::sqrt( pressure_residual_sq ) );
+        }
+      }
+      else
+      {
+        local_alpha = 0.0;
+      }
+    }
   }
   else
   {
@@ -2543,6 +3153,61 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
     {
       x_data[i] = m_cprPressureCorrection[i] + local_alpha * m_cprLocalCorrection[i];
     }
+  }
+
+  if( need_final_proxy )
+  {
+    if( log_apply_diagnostics )
+    {
+      correction_norm = vectorL2Norm( x_data, local_size );
+    }
+    {
+      ScopedTimer timer( cpr_timer ? &cpr_timer->node["diagnostic residual"] : nullptr );
+      m_blockLocalPreconditioner->matvec( x_data, m_cprAx.data() );
+    }
+    real_type final_residual_sq = 0.0;
+    for( int_t i = 0; i < local_size; ++i )
+    {
+      const real_type residual = b_data[i] - m_cprAx[i];
+      final_residual_sq += residual * residual;
+    }
+    final_residual_norm = std::sqrt( final_residual_sq );
+    const real_type final_proxy_rel = safeRatio( final_residual_norm, input_norm );
+    m_cprLastFinalProxyRel = std::max( m_cprLastFinalProxyRel, final_proxy_rel );
+    if( adaptive_final_signal_enabled && std::isfinite( final_proxy_rel ) &&
+        final_proxy_rel > m_params.bcsrCPRAdaptiveFinalProxyThreshold )
+    {
+      m_cprAdaptiveQualityRebuildRequested = true;
+    }
+  }
+
+  if( log_apply_diagnostics )
+  {
+    std::ostringstream out;
+    out << std::scientific << std::setprecision( 3 )
+        << "[MGR] BCSR CPR stage diagnostics: apply=" << m_cprApplyCount
+        << ", input_norm=" << input_norm
+        << ", pressure_rhs_norm=" << pressure_rhs_norm
+        << ", pressure_correction_norm=" << pressure_correction_norm
+        << ", after_pressure_norm=" << pressure_residual_norm
+        << ", after_pressure_rel=" << safeRatio( pressure_residual_norm, input_norm )
+        << ", pressure_alpha=" << pressure_alpha
+        << ", pressure_guard_triggered=" << ( pressure_guard_triggered ? 1 : 0 )
+        << ", pressure_guard_raw_rel=" << pressure_guard_raw_rel
+        << ", adaptive_rebuild_pending="
+        << ( m_cprAdaptiveQualityRebuildRequested ? 1 : 0 )
+        << ", local_alpha=" << local_alpha
+        << ", local_quality_enabled=" << ( local_quality_enabled ? 1 : 0 )
+        << ", local_quality_valid=" << ( local_quality_valid ? 1 : 0 )
+        << ", local_quality_raw_alpha=" << local_quality_raw_alpha
+        << ", local_quality_after_rel=" << local_quality_after_rel
+        << ", local_fallback_ratio=" << fallback_ratio
+        << ", local_correction_norm=" << local_correction_norm
+        << ", correction_norm=" << correction_norm
+        << ", final_proxy_norm=" << final_residual_norm
+        << ", final_proxy_rel=" << safeRatio( final_residual_norm, input_norm )
+        << ".";
+    std::cerr << out.str() << std::endl;
   }
 
   return 0;
@@ -3560,14 +4225,31 @@ HYPRE_Solver LinearSolver::setupAMGPreconditioner()
   HYPRE_BoomerAMGCreate( &amg_precond );
 
   // Configure as preconditioner
-  HYPRE_BoomerAMGSetTol( amg_precond, 0.0 );
-  HYPRE_BoomerAMGSetMaxIter( amg_precond, 1 );
+  HYPRE_BoomerAMGSetTol( amg_precond, m_params.pressureAMGTolerance );
+  HYPRE_BoomerAMGSetMaxIter( amg_precond,
+                             static_cast<HYPRE_Int>(
+                                 std::max<int_t>( m_params.pressureAMGMaxIter, 1 ) ) );
   HYPRE_BoomerAMGSetPrintLevel( amg_precond, 0 );
 
   // For non-symmetric systems
-  HYPRE_BoomerAMGSetCoarsenType( amg_precond, 6 );     // PMIS
-  HYPRE_BoomerAMGSetInterpType( amg_precond, 6 );      // Direct interpolation
-  HYPRE_BoomerAMGSetRelaxType( amg_precond, 6 );       // Hybrid GS/GMRES
+  HYPRE_BoomerAMGSetCoarsenType( amg_precond,
+                                 static_cast<HYPRE_Int>( m_params.pressureAMGCoarsenType ) );
+  HYPRE_BoomerAMGSetInterpType( amg_precond,
+                                static_cast<HYPRE_Int>( m_params.pressureAMGInterpType ) );
+  HYPRE_BoomerAMGSetRelaxType( amg_precond,
+                               static_cast<HYPRE_Int>( m_params.pressureAMGRelaxType ) );
+  HYPRE_BoomerAMGSetAggNumLevels(
+      amg_precond,
+      static_cast<HYPRE_Int>( std::max<int_t>( m_params.pressureAMGAggNumLevels, 0 ) ) );
+  HYPRE_BoomerAMGSetAggInterpType(
+      amg_precond,
+      static_cast<HYPRE_Int>( m_params.pressureAMGAggInterpType ) );
+  HYPRE_BoomerAMGSetAggPMaxElmts(
+      amg_precond,
+      static_cast<HYPRE_Int>( std::max<int_t>( m_params.pressureAMGAggPMaxElmts, 0 ) ) );
+  HYPRE_BoomerAMGSetRelaxOrder(
+      amg_precond,
+      static_cast<HYPRE_Int>( m_params.pressureAMGRelaxOrder ) );
 
   return amg_precond;
 }
