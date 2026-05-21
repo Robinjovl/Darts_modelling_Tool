@@ -31,24 +31,12 @@ linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_ba
         for (int dim_i = vertex_i; dim_i < N_DIMS; dim_i++)
             standard_simplex[vertex_i][dim_i] = 1;
 
-    // Legacy mixed-radix integer encoding overflow check. For the adaptive variant this
-    // only affects the legacy point_data integer-keyed pickle export (in-memory storage
-    // uses cell_key_t<N_DIMS>). For static interpolators it limits dense storage; the
-    // static class re-checks and throws in init() if needed.
-    double int_type_max = static_cast<double>(std::numeric_limits<index_t>::max());
-    if (n_points_total_fp > int_type_max)
-    {
-        static thread_local bool warned_once = false;
-        if (!warned_once)
-        {
-            fprintf(stderr,
-                    "OBL note: total advisory point count (%g) exceeds the legacy index_t range (%g).\n"
-                    "  Adaptive interpolators are unaffected (storage is keyed on multi-index).\n"
-                    "  Static interpolators and legacy integer-keyed pickle exports will be incorrect for cells past this range.\n",
-                    n_points_total_fp, int_type_max);
-            warned_once = true;
-        }
-    }
+    // n_points_total may exceed index_t range when ADVISORY_N_AXES_POINTS yields a huge
+    // hypercube product. That only matters for the static variant (dense vector storage)
+    // and the legacy integer-keyed pickle export — both of which guard themselves: the
+    // static `init()` throws on overflow; the adaptive pickle filter drops out-of-bounds
+    // cells silently. The actual per-axis index overflow (cell_key_t::idx is int32_t) is
+    // detected at evaluation time in get_axis_interval_index_unbounded.
 
     transform_last_axis = 1;
 

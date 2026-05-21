@@ -21,27 +21,12 @@ multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_inte
       axes_step_internal(axes_step),
       axes_step_inv_internal(axes_step_inv)
 {
-  // The legacy mixed-radix integer encoding used by axis_point_mult / axis_hypercube_mult
-  // overflows index_t when n_points_total exceeds its range. For the adaptive path this
-  // only affects the legacy point_data integer-keyed pickle export (cells indexed past
-  // the overflow are still valid in-memory via cell_key_t<N_DIMS>, just not exportable
-  // through the legacy dict). For the static path it is a hard limit on the dense
-  // vector storage. We emit a warning and let the caller decide; the static class
-  // re-checks and throws if it actually needs the dense storage.
-  double int_type_max = static_cast<double>(std::numeric_limits<index_t>::max());
-  if (n_points_total_fp > int_type_max)
-  {
-    static thread_local bool warned_once = false;
-    if (!warned_once)
-    {
-      fprintf(stderr,
-              "OBL note: total advisory point count (%g) exceeds the legacy index_t range (%g).\n"
-              "  Adaptive interpolators are unaffected (storage is keyed on multi-index).\n"
-              "  Static interpolators and legacy integer-keyed pickle exports will be incorrect for cells past this range.\n",
-              n_points_total_fp, int_type_max);
-      warned_once = true;
-    }
-  }
+  // n_points_total may exceed index_t range when ADVISORY_N_AXES_POINTS yields a huge
+  // hypercube product. That only matters for the static variant (dense vector storage)
+  // and the legacy integer-keyed pickle export — both of which guard themselves: the
+  // static `init()` throws on overflow; the adaptive pickle filter drops out-of-bounds
+  // cells silently. The actual per-axis index overflow (cell_key_t::idx is int32_t) is
+  // detected at evaluation time in get_axis_interval_index_unbounded.
   axis_point_mult.resize(N_DIMS);
   axis_hypercube_mult.resize(N_DIMS);
   axis_point_mult[N_DIMS - 1] = 1;

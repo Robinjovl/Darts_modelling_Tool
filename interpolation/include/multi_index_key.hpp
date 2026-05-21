@@ -2,10 +2,13 @@
 #define DARTS_INTERPOLATION_MULTI_INDEX_KEY_HPP
 
 #include <array>
+#include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <cmath>
+#include <limits>
 
 // define those to avoid warnings on non-NVCC compilers
 #ifndef __NVCC__
@@ -111,7 +114,33 @@ struct cell_key_hash
  * to physical excursions of ~2e7 units, far beyond any realistic state. If a
  * future model needs cells past this range, widen cell_key_t::idx to int64_t
  * (key size doubles, accompanying hashmap memory grows linearly).
+ *
+ * Overflow is detected at runtime: the floor()ed value is range-checked against
+ * INT32_MIN/MAX before the cast. If a cell falls outside the representable
+ * range we emit a once-per-process warning (host only) and clamp the index to
+ * the limit so the hash/map operation stays well-defined.
  */
+#ifndef __CUDA_ARCH__
+inline void warn_axis_index_overflow_once(double scaled, double axis_value, double axis_origin, double axis_step_inv)
+{
+    static std::atomic<bool> warned{false};
+    bool expected = false;
+    if (warned.compare_exchange_strong(expected, true))
+    {
+        const double step = (axis_step_inv != 0.0) ? (1.0 / axis_step_inv) : 0.0;
+        fprintf(stderr,
+                "OBL warning: per-axis cell index (%g) does not fit in int32_t.\n"
+                "  axis_value=%g, axis_origin=%g, axis_step=%g, capacity=%g\n"
+                "  Subsequent overflowing indices are clamped to INT32_MIN/MAX.\n"
+                "  Widen axes_step or move axes_origin closer to the visited range;\n"
+                "  if the model genuinely needs >2.1e9 cells along one axis, widen\n"
+                "  cell_key_t::idx to int64_t.\n",
+                scaled, axis_value, axis_origin, step,
+                step * static_cast<double>(std::numeric_limits<int32_t>::max()));
+    }
+}
+#endif
+
 template <typename value_t>
 __forceinline__ __host__ __device__ static int32_t get_axis_interval_index_unbounded(double axis_value,
                                                                                       value_t axis_origin,
@@ -119,7 +148,28 @@ __forceinline__ __host__ __device__ static int32_t get_axis_interval_index_unbou
 {
     const double scaled = (axis_value - static_cast<double>(axis_origin)) * static_cast<double>(axis_step_inv);
     // floor() handles negative values correctly; int() would truncate toward zero
-    return static_cast<int32_t>(floor(scaled));
+    const double floored = floor(scaled);
+    const double i32_min = static_cast<double>(std::numeric_limits<int32_t>::min());
+    const double i32_max = static_cast<double>(std::numeric_limits<int32_t>::max());
+    if (floored < i32_min)
+    {
+#ifndef __CUDA_ARCH__
+        warn_axis_index_overflow_once(floored, axis_value,
+                                      static_cast<double>(axis_origin),
+                                      static_cast<double>(axis_step_inv));
+#endif
+        return std::numeric_limits<int32_t>::min();
+    }
+    if (floored > i32_max)
+    {
+#ifndef __CUDA_ARCH__
+        warn_axis_index_overflow_once(floored, axis_value,
+                                      static_cast<double>(axis_origin),
+                                      static_cast<double>(axis_step_inv));
+#endif
+        return std::numeric_limits<int32_t>::max();
+    }
+    return static_cast<int32_t>(floored);
 }
 
 /**
