@@ -340,8 +340,48 @@ class _AutoSpecState:
             # Clean empty property_regions
             if not phy.get("property_regions"):
                 phy.pop("property_regions", None)
+        cleaned = _sanitize_for_json(self.spec)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.spec, f, indent=2)
+            json.dump(cleaned, f, indent=2)
+
+
+def _sanitize_for_json(value: Any) -> Any:
+    """Recursively convert non-JSON-serializable values into JSON-safe forms.
+
+    Handles numpy scalars/arrays (cast to native Python via ``.tolist()`` /
+    ``.item()``), pydantic models (dump to dict), and pass-through for
+    primitives. Walks dicts and lists.
+
+    Needed because autospec captures values directly from DARTS constructor
+    kwargs, which sometimes pass numpy arrays (per-cell property fields) or
+    pydantic Config instances — both of which break ``json.dump`` with
+    ``TypeError: Object of type ... is not JSON serializable``.
+    """
+    if value is None or isinstance(value, str | bool | int | float):
+        return value
+    if isinstance(value, dict):
+        return {k: _sanitize_for_json(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_sanitize_for_json(v) for v in value]
+    # Pydantic v2 models
+    if hasattr(value, "model_dump"):
+        try:
+            return _sanitize_for_json(value.model_dump())
+        except Exception:
+            pass
+    # numpy scalars/arrays — local import so autospec stays importable
+    # without numpy at hand (defensive; numpy is a hard dep elsewhere).
+    try:
+        import numpy as np  # type: ignore
+
+        if isinstance(value, np.ndarray):
+            return _sanitize_for_json(value.tolist())
+        if isinstance(value, np.generic):
+            return value.item()
+    except ImportError:  # pragma: no cover - numpy is a hard dependency
+        pass
+    # Fall back to repr — caller can spot non-serializable types in output.
+    return repr(value)
 
 
 _STATE = _AutoSpecState()

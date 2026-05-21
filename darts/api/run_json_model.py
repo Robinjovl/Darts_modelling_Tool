@@ -12,7 +12,7 @@ import json
 import os
 import sys
 
-from darts.api import ModelBuilder, ModelSpec
+from darts.api import ModelBuilder, ModelSpec, autospec
 from darts.api.json_model import JsonModel
 from darts.api.presets import resolve_section_presets
 from darts.tools.cli import get_darts_path, get_lib_search_var, get_lib_var
@@ -60,6 +60,25 @@ def main():
         print('Invalid ModelSpec:', e)
         sys.exit(1)
 
+    # Opt-in resolved-spec emission. autospec records a snapshot of *what
+    # actually ran* (presets inlined, defaults expanded, DataRefs resolved)
+    # and writes it next to the simulation outputs. Off by default because
+    # autospec has known coverage gaps that can break specific models at
+    # init (notably solid-phase ConstFunc density evaluators) — enable
+    # explicitly with ``DARTS_EMIT_RESOLVED_SPEC=1`` once the LangGraph
+    # qa_check workflow wants the artifact.
+    emit_resolved_spec = os.environ.get("DARTS_EMIT_RESOLVED_SPEC", "0") in (
+        "1",
+        "true",
+        "True",
+    )
+    if emit_resolved_spec:
+        try:
+            autospec.enable_autorecording()
+        except Exception as e:  # noqa: BLE001 — non-fatal
+            print("autospec disabled (could not enable recording):", e)
+            emit_resolved_spec = False
+
     m = JsonModel()
     ModelBuilder.apply(spec, m, base_path=os.path.dirname(args.json))
     m.init(platform='cpu')
@@ -79,6 +98,16 @@ def main():
         m.set_output(output_folder=folder, precision=precision)
     else:
         m.set_output()
+        folder = 'output'
+
+    # Schedule the resolved-spec dump at interpreter exit so it sits next
+    # to the simulation outputs.
+    if emit_resolved_spec:
+        try:
+            os.makedirs(folder, exist_ok=True)
+            autospec.emit_on_exit(os.path.join(folder, "resolved_spec.json"))
+        except Exception as e:  # noqa: BLE001 — non-fatal
+            print("Resolved spec emission disabled:", e)
     if args.days is None:
         m.run()
         m.print_stat()
