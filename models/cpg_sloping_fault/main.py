@@ -90,8 +90,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             #print('timestep', ith_step, 'output_properties:', output_properties)
             timesteps, property_array = m.output.output_properties(output_properties=output_properties, ts_idx=ith_step, engine=False)
             if ith_step == 0:
-                centers_x, centers_y, centers_z = m.reservoir.get_centers()
-                property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})
+                pts = m.reservoir.get_centers()
+                property_array.update({'centers_x': pts[:, 0].reshape(1, -1), 'centers_y': pts[:, 1].reshape(1, -1), 'centers_z': pts[:, 2].reshape(1, -1)})
 
             if 0:
                 # save properties in its own *.h5 file

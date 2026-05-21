@@ -4,11 +4,10 @@ import warnings
 
 import h5py
 import matplotlib.pyplot as plt
+import meshio
 import numpy as np
 import pandas as pd
-import vtk
 import xarray as xr
-from vtk.util.numpy_support import numpy_to_vtk
 
 from darts.engines import (
     index_vector,
@@ -1803,52 +1802,25 @@ class Output:
         npts = coords.shape[0]
         nseg = npts - 1
 
-        # Points
-        vtk_points = vtk.vtkPoints()
-        vtk_points.SetNumberOfPoints(npts)
-        for i, (x, y, z) in enumerate(coords):
-            vtk_points.SetPoint(i, float(x), float(y), float(z))
-
-        # Lines
-        vtk_lines = vtk.vtkCellArray()
-        for i in range(nseg):
-            vtk_lines.InsertNextCell(2)
-            vtk_lines.InsertCellPoint(i)
-            vtk_lines.InsertCellPoint(i + 1)
-
-        poly = vtk.vtkPolyData()
-        poly.SetPoints(vtk_points)
-        poly.SetLines(vtk_lines)
-
-        # Add time
-        tarr = vtk.vtkDoubleArray()
-        tarr.SetName("TimeValue")
-        tarr.SetNumberOfTuples(1)
-        tarr.SetValue(0, float(time))
-        poly.GetFieldData().AddArray(tarr)
+        # Build segment connectivity
+        lines = np.column_stack([np.arange(nseg), np.arange(1, nseg + 1)])
 
         # Cell data (segment-based)
-        cd = poly.GetCellData()
+        cell_data = {}
         for name, vals in output_properties.items():
-            arr = np.asarray(vals).reshape((-1, 1))
+            arr = np.asarray(vals).ravel()
             if arr.shape[0] != nseg:
                 raise ValueError(f"'{name}' length {arr.shape[0]} != Nseg {nseg}")
-            vtk_arr = numpy_to_vtk(arr.astype(float), deep=True)
-            vtk_arr.SetName(name)
-            cd.AddArray(vtk_arr)
+            cell_data[name] = [arr.astype(float)]
 
-        if active is None and output_properties:
-            active = next(iter(output_properties.keys()))
-        if active is not None:
-            cd.SetActiveScalars(active)
-
-        # Write
-        writer = vtk.vtkXMLPolyDataWriter()
-        output_file_name = f"solution_well_{well_name}_ts{ith_step:d}.vtp"
+        mesh = meshio.Mesh(
+            points=coords,
+            cells=[("line", lines)],
+            cell_data=cell_data,
+        )
+        output_file_name = f"solution_well_{well_name}_ts{ith_step:d}.vtu"
         output_file_path = os.path.join(output_directory, output_file_name)
-        writer.SetFileName(output_file_path)
-        writer.SetInputData(poly)
-        writer.Write()
+        meshio.write(output_file_path, mesh)
 
     def store_well_time_data(
         self,
