@@ -20,4 +20,4 @@ if __name__ == '__main__':
     n.print_stat()
 
     # compute and save well time data
-    time_data_dict = n.output.store_well_time_data(save_output_files=True)
+    # time_data_dict = n.output.store_well_time_data(save_output_files=True)
