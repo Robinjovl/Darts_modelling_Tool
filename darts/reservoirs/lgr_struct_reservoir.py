@@ -575,7 +575,9 @@ class LGRStructReservoir(ReservoirBase):
         parent_volume = np.asarray(self.parent.volume, dtype=float)
         for local_idx, parent_global in enumerate(disc.local_to_global):
             arrays["volume"][parent_global] = parent_volume[local_idx]
-        arrays["centers"] = np.asarray(disc.centroids_all_cells, dtype=float)
+        centers = np.array(disc.centroids_all_cells, dtype=float, copy=True)
+        centers[:, 2] = arrays["depth"]
+        arrays["centers"] = centers
         return arrays
 
     def _append_parent_cell(
