@@ -88,33 +88,36 @@ public:
   virtual csr_matrix_base *get_csr_matrix() { return Jacobian; };
 
   // GPU-specific data (_d postfix means device data)
+  // All device pointers are default-initialized to nullptr so the destructor
+  // can safely free_device_data() even when init() didn't run (e.g. model
+  // construction raised). cudaFree(nullptr) is documented as a no-op.
 
   // linear system
-  value_t *X_d, *Xn_d, *dX_d, *RHS_d;      // [N_VARS * n_blocks] arrays for solution, previous timestep solution, update, and right hand side
-  value_t *RHS_wells_d;                    // [N_VARS * n_blocks] temporary device storage for RHS_wells copied async from host while main assembly is done
-  std::vector<value_t> jac_wells;          // [n_wells * 2 * N_VARS * N_VARS ] temporary host storage for well equations
-  value_t *jac_wells_d;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary device storage for well equations
-  std::vector<index_t> jac_well_head_idxs; // [n_wells] well head indexes in jacobian values array
-  index_t *jac_well_head_idxs_d;           // [n_wells] device storage for well head indexes in jacobian values array
+  value_t *X_d = nullptr, *Xn_d = nullptr, *dX_d = nullptr, *RHS_d = nullptr;      // [N_VARS * n_blocks] arrays for solution, previous timestep solution, update, and right hand side
+  value_t *RHS_wells_d = nullptr;                    // [N_VARS * n_blocks] temporary device storage for RHS_wells copied async from host while main assembly is done
+  std::vector<value_t> jac_wells;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary host storage for well equations
+  value_t *jac_wells_d = nullptr;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary device storage for well equations
+  std::vector<index_t> jac_well_head_idxs;           // [n_wells] well head indexes in jacobian values array
+  index_t *jac_well_head_idxs_d = nullptr;           // [n_wells] device storage for well head indexes in jacobian values array
 
   // interpolation
-  value_t *op_vals_arr_d;   // [N_OPS * n_blocks] array of values of operators
-  value_t *op_ders_arr_d;   // [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
-  value_t *op_vals_arr_n_d; // [N_OPS * n_blocks] array of values of operators from the last timestep
+  value_t *op_vals_arr_d = nullptr;   // [N_OPS * n_blocks] array of values of operators
+  value_t *op_ders_arr_d = nullptr;   // [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
+  value_t *op_vals_arr_n_d = nullptr; // [N_OPS * n_blocks] array of values of operators from the last timestep
 
   std::vector<index_t *> block_idxs_d; // [N_OP_NUM][?] vector of arrays of block indexes corresponding to given operator set
 
   // input data
-  value_t *RV_d, *PV_d;                // [n_blocks] rock and pore volumes for each block
-  value_t *mesh_tran_d, *mesh_tranD_d; // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
-  value_t *mesh_hcap_d;                // [n_blocks] rock heat capacity for each block
+  value_t *RV_d = nullptr, *PV_d = nullptr;                // [n_blocks] rock and pore volumes for each block
+  value_t *mesh_tran_d = nullptr, *mesh_tranD_d = nullptr; // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
+  value_t *mesh_hcap_d = nullptr;                          // [n_blocks] rock heat capacity for each block
 
-  value_t *molar_weights_d;            // [n_regions * NC] molar weights of components for reconstruction of Darcy velocities
-  value_t *darcy_velocities_d;         // [n_res_blocks * NP * ND] array of phase Darcy velocities for every reservoir cell
-  value_t *mesh_velocity_appr_d;       // coefficients of approximation of Darcy phase velocities over fluxes
-  index_t *mesh_velocity_offset_d;     // offsets in the approximation of Darcy phase velocities over fluxes
-  index_t *mesh_op_num_d;              // regions indices for every cell
-  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory
+  value_t *molar_weights_d = nullptr;          // [n_regions * NC] molar weights of components for reconstruction of Darcy velocities
+  value_t *darcy_velocities_d = nullptr;       // [n_res_blocks * NP * ND] array of phase Darcy velocities for every reservoir cell
+  value_t *mesh_velocity_appr_d = nullptr;     // coefficients of approximation of Darcy phase velocities over fluxes
+  index_t *mesh_velocity_offset_d = nullptr;   // offsets in the approximation of Darcy phase velocities over fluxes
+  index_t *mesh_op_num_d = nullptr;            // regions indices for every cell
+  value_t *dispersivity_d = nullptr;           // [n_regions * NP * NC] dispersivity coefficients stored in device memory
 };
 
 template <uint8_t N_VARS>

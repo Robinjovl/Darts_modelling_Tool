@@ -930,9 +930,13 @@ class PhysicsBase:
             self.processed_body_idxs = all_idxs
 
     def __del__(self):
-        # first write cache
-        if self.cache:
-            self.write_cache()
-        # Now destroy all objects in physics
+        # __del__ may fire on a partially-constructed object (an exception in
+        # __init__ before self.cache was assigned still triggers cleanup), so
+        # read attributes defensively rather than asserting they exist.
+        if getattr(self, 'cache', False):
+            try:
+                self.write_cache()
+            except Exception:
+                pass
         for name in list(vars(self).keys()):
             delattr(self, name)

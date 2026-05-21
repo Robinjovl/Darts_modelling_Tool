@@ -97,14 +97,16 @@ public:
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override;
 
 public:
-  value_t *RV_d;              // [n_blocks] rock volumes for each block
-  value_t *mesh_tranD_d;      // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
-  value_t *mesh_hcap_d;       // [n_blocks] rock heat capacity for each block
-  value_t *mesh_rcond_d;      // [n_blocks] rock heat conduction for each block
-  value_t *mesh_poro_d;       // [n_blocks] porosity for each block
-  value_t *mesh_kin_factor_d; // [n_blocks] kin factor for each block
-  value_t *mesh_grav_coef_d;  // [n_conns] porosity for each block
-  value_t *mesh_cell_spe_d;   // [n_blocks] specific potential energy for each block
+  // Default-initialized so the destructor can free_device_data() safely even
+  // when init() did not run. cudaFree(nullptr) is a documented no-op.
+  value_t *RV_d = nullptr;              // [n_blocks] rock volumes for each block
+  value_t *mesh_tranD_d = nullptr;      // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
+  value_t *mesh_hcap_d = nullptr;       // [n_blocks] rock heat capacity for each block
+  value_t *mesh_rcond_d = nullptr;      // [n_blocks] rock heat conduction for each block
+  value_t *mesh_poro_d = nullptr;       // [n_blocks] porosity for each block
+  value_t *mesh_kin_factor_d = nullptr; // [n_blocks] kin factor for each block
+  value_t *mesh_grav_coef_d = nullptr;  // [n_conns] porosity for each block
+  value_t *mesh_cell_spe_d = nullptr;   // [n_blocks] specific potential energy for each block
 };
 
 #include "engine_super_gpu.tpp"

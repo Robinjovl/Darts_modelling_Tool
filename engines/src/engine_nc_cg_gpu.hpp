@@ -73,6 +73,8 @@ public:
   virtual int calc_lin_comb_d(value_t alpha, value_t beta, value_t *u_d, value_t *v_d, value_t *r_d);
 
 public:
-  value_t *mesh_grav_coef_d; // [n_conns] gravity coefficient for each block
+  // Default-initialized so the destructor can free_device_data() safely even
+  // when init() did not run. cudaFree(nullptr) is a documented no-op.
+  value_t *mesh_grav_coef_d = nullptr; // [n_conns] gravity coefficient for each block
 };
 #endif
