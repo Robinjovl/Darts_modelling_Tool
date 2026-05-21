@@ -1,6 +1,8 @@
 #ifndef WELL_CONTROLS_H
 #define WELL_CONTROLS_H
 
+#include <algorithm>
+#include <cmath>
 #include <vector>
 #include <optional>
 #include "globals.h"
@@ -88,6 +90,21 @@ public:
     WellControlType get_well_control_type() { return this->control_type; }
     std::string get_well_control_type_str();
     std::string get_well_control_target_str();
+
+    // Identify rate controls because only rate-control residuals need scaling.
+    // For non-rate controls (BHP control), the residual scale remains 1.0.
+    bool is_rate_control() const { return this->control_type > WellControlType::BHP && this->control_type < WellControlType::NUMBER_OF_RATE_TYPES; }
+    value_t get_target() const { return this->target; }
+    value_t get_rate_ctrl_residual_scale(value_t absolute_scale, value_t relative_scale) const
+    {
+        if (!this->is_rate_control())
+        {
+            return 1.0;
+        }
+        const value_t abs_scale = std::max(static_cast<value_t>(0.0), absolute_scale);
+        const value_t rel_scale = std::max(static_cast<value_t>(0.0), relative_scale);
+        return std::max(static_cast<value_t>(1.0e-30), std::max(abs_scale, std::fabs(this->target) * rel_scale));
+    }
 
     index_t get_n_well_ctrl_ops() { return this->n_well_ctrl_ops; }
     index_t get_rate_ctrl_op_idx(WellControlType ctrl_type, index_t phase_idx_, bool is_dfm_well) const;

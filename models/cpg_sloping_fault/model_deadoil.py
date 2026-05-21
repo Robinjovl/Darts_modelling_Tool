@@ -140,18 +140,18 @@ class ModelDeadOil(Model_CPG):
         elif 'wrate' in case:
             for w in wells:
                 if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=250)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(name=w, rate=1e6, rate_ctrl_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=250)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=100)  # kmol/day | bars
+                    wdata.add_prd_rate_control(name=w, rate=1e6, rate_ctrl_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=100)  # kmol/day | bars
         elif 'wperiodic' in case:
             y2d = 365.25
             for w in wells:
                 if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
-                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(time=0*y2d, name=w, rate=1e5, rate_ctrl_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, rate_ctrl_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
-                    wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
+                    wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, rate_ctrl_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
+                    wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, rate_ctrl_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13

@@ -40,6 +40,12 @@ class DataTS:
         self.dt_max = 10.0  # maximal allowed timestep [days]
         self.newton_tol = 1e-2  # newton solver residual
         self.newton_tol_wel_mult = 100.0  # used to compute the newton solver residual for wells = tol_res * tol_wel_mult
+        self.well_rate_ctrl_absolute_residual_scale = (
+            1.0  # absolute residual scale for well rate controls
+        )
+        self.well_rate_ctrl_relative_residual_scale = (
+            1e-5  # relative residual scale for well rate controls
+        )
         self.newton_tol_stationary = 1e-3  # tolerance for stationary point detection in the newton solver (by residual)
         self.newton_max_iter = 20  # maximum newton iterations allowed
         self.linear_tol = 1e-5
@@ -452,6 +458,8 @@ class DartsModel:
         newton_type=None,
         newton_params=None,
         line_search: bool = False,
+        well_rate_ctrl_absolute_residual_scale: float = None,
+        well_rate_ctrl_relative_residual_scale: float = None,
         coupled_well_res_norm_method: int = 1,
     ):
         """
@@ -475,6 +483,10 @@ class DartsModel:
         :type it_linear: int
         :param newton_type:
         :param newton_params:
+        :param well_rate_ctrl_absolute_residual_scale: Absolute residual scale for well rate-control equations
+        :type well_rate_ctrl_absolute_residual_scale: float
+        :param well_rate_ctrl_relative_residual_scale: Relative residual scale for well rate-control equations
+        :type well_rate_ctrl_relative_residual_scale: float
         :param coupled_well_res_norm_method: Method of norm evaluation of residuals for the coupled well-reservoir model
         :type coupled_well_res_norm_method: int
         """
@@ -504,6 +516,16 @@ class DartsModel:
         )
 
         self.data_ts.line_search = line_search
+        self.data_ts.well_rate_ctrl_absolute_residual_scale = (
+            well_rate_ctrl_absolute_residual_scale
+            if well_rate_ctrl_absolute_residual_scale is not None
+            else self.data_ts.well_rate_ctrl_absolute_residual_scale
+        )
+        self.data_ts.well_rate_ctrl_relative_residual_scale = (
+            well_rate_ctrl_relative_residual_scale
+            if well_rate_ctrl_relative_residual_scale is not None
+            else self.data_ts.well_rate_ctrl_relative_residual_scale
+        )
 
         # Linear solver parameters. if None, default value will be used
         self.data_ts.linear_tol = (
@@ -529,6 +551,12 @@ class DartsModel:
         self.params.mult_ts = self.data_ts.dt_mult
         self.params.tolerance_newton = self.data_ts.newton_tol
         self.params.max_i_newton = self.data_ts.newton_max_iter
+        self.params.well_rate_ctrl_absolute_residual_scale = (
+            self.data_ts.well_rate_ctrl_absolute_residual_scale
+        )
+        self.params.well_rate_ctrl_relative_residual_scale = (
+            self.data_ts.well_rate_ctrl_relative_residual_scale
+        )
         self.params.tolerance_linear = self.data_ts.linear_tol
         self.params.max_i_linear = self.data_ts.linear_max_iter
         if self.data_ts.linear_type is not None:
@@ -632,6 +660,11 @@ class DartsModel:
         :param save_well_data_after_run: Switch to save well data only after runtime of `days`
         :param save_reservoir_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
         :type save_reservoir_data: bool
+
+        If the model defines scheduled controls in idata.well_data, this method applies
+        them at timestep starts through set_well_controls_idata(). The timestep
+        is also shortened to stop at the next scheduled well-control time, so
+        rate ramp-up points are not skipped by large timesteps.
         """
         assert hasattr(self, 'output'), (
             "self.output does not exist, please call m.set_output() after m.init()"
@@ -682,6 +715,15 @@ class DartsModel:
         ts_counter = 0
 
         while t < stop_time:
+            if self._has_well_control_schedule():
+                self.set_well_controls_idata(time=t, verbose=False)
+                next_well_control_time = self._next_well_control_time_after(t)
+                if (
+                    next_well_control_time is not None
+                    and next_well_control_time < stop_time
+                ):
+                    dt = min(dt, next_well_control_time - t)
+
             # need to copy since Xn will be updated Xn = X
             xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
             converged = self.run_timestep(dt, t, verbose)
@@ -1264,8 +1306,14 @@ class DartsModel:
 
     def set_well_controls_idata(self, time: float = 0.0, verbose=True):
         """
-        :param time: simulation time, [days]
-        :return:
+        Apply scheduled well controls from idata.well_data up to time.
+
+        The method consumes all controls with control_time <= time for each well.
+        This is important for ramp-up schedules because a timestep may otherwise
+        pass multiple scheduled rate targets before the next control update.
+
+        :param time: Simulation time [days]
+        :param verbose: Print selected controls and constraints.
         """
         from darts.engines import well_control_iface
 
@@ -1284,6 +1332,7 @@ class DartsModel:
                 if wctrl_t[0] <= time:
                     wctrl = wctrl_t[1]
                     self.idata.well_data.wells_next_control_idx[w.name] += 1
+                else:
                     break
             if wctrl is None:  # no control is defined for the current timestep
                 continue
@@ -1293,7 +1342,7 @@ class DartsModel:
                     # Control
                     self.physics.set_well_controls(
                         wctrl=w.control,
-                        control_type=wctrl.rate_type,
+                        control_type=wctrl.rate_ctrl_type,
                         is_inj=True,
                         target=wctrl.rate,
                         phase_name=wctrl.phase_name,
@@ -1320,14 +1369,14 @@ class DartsModel:
                         inj_temp=inj_temp,
                     )
                 else:
-                    print("Unknown well ctrl.mode", wctrl.mode)
+                    print("Unknown well ctrl mode", wctrl.mode)
                     exit(1)
             elif wctrl.type == "prod":  # PROD well
                 if wctrl.mode == "rate":  # rate control
                     # Control
                     self.physics.set_well_controls(
                         wctrl=w.control,
-                        control_type=wctrl.rate_type,
+                        control_type=wctrl.rate_ctrl_type,
                         is_inj=False,
                         target=-np.abs(wctrl.rate),
                         phase_name=wctrl.phase_name,
@@ -1351,7 +1400,7 @@ class DartsModel:
                     print("Unknown well ctrl.mode", wctrl.mode)
                     exit(1)
             else:
-                print("Unknown well ctrl.type", wctrl.type)
+                print("Unknown well ctrl type", wctrl.type)
                 exit(1)
             if verbose:
                 print(
@@ -1378,6 +1427,36 @@ class DartsModel:
                 and "rate" in w.control.get_well_control_type_str()
             ):
                 print('A constraint for the well ' + w.name + ' is not initialized!')
+
+    def _has_well_control_schedule(self):
+        """
+        Return True when all reservoir wells have idata.well_data controls.
+        """
+        if not hasattr(self, "idata") or not hasattr(self.idata, "well_data"):
+            return False
+        if not hasattr(self.idata.well_data, "wells"):
+            return False
+        return all(
+            w.name in self.idata.well_data.wells
+            and len(self.idata.well_data.wells[w.name].controls) > 0
+            for w in self.reservoir.wells
+        )
+
+    def _next_well_control_time_after(self, time: float):
+        """
+        Return the next scheduled well-control time after the supplied time.
+        """
+        eps = 1e-12
+        next_time = None
+        for w in self.reservoir.wells:
+            well_data = self.idata.well_data.wells[w.name]
+            start_idx = self.idata.well_data.wells_next_control_idx.get(w.name, 0)
+            for ctrl_time, _ in well_data.controls[start_idx:]:
+                if ctrl_time > time + eps:
+                    if next_time is None or ctrl_time < next_time:
+                        next_time = ctrl_time
+                    break
+        return next_time
 
     def get_linear_system(self):
         # returns scipy sparse matrix and pointers to RHS and dX
