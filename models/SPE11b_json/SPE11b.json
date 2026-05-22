@@ -213,6 +213,8 @@
   "output": {
     "folder": "output_json",
     "precision": "d",
-    "save_initial": true
+    "save_initial": true,
+	"verbose": true,
+	"sol_filename": "spe_solution.h5"
   }
 }

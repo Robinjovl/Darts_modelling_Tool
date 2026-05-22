@@ -85,7 +85,14 @@ class TestPrimitiveValidation:
         data = _load(os.path.join(PRIMITIVES, "output_default.json"))
         spec = OutputSpec.model_validate(data)
         assert spec.folder == "output"
+        assert spec.sol_filename == "reservoir_solution_custom.h5"
+        assert spec.well_filename == "well_data_custom.h5"
+        assert spec.save_initial is False
+        assert spec.all_phase_props is True
         assert spec.precision == "d"
+        assert spec.compression == "gzip"
+        assert spec.compression_level == 4
+        assert spec.verbose is True
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +175,17 @@ class TestPrimitiveApply:
         model = self._make_model()
         ModelBuilder.apply_output(spec, model)
         assert model._output_spec.folder == "output"
+        assert model._output_spec.to_set_output_kwargs() == {
+            "output_folder": "output",
+            "sol_filename": "reservoir_solution_custom.h5",
+            "well_filename": "well_data_custom.h5",
+            "save_initial": False,
+            "all_phase_props": True,
+            "precision": "d",
+            "compression": "gzip",
+            "compression_level": 4,
+            "verbose": True,
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import sys
 from darts.api import ModelBuilder, ModelSpec, autospec
 from darts.api.json_model import JsonModel
 from darts.api.presets import resolve_section_presets
+from darts.engines import redirect_darts_output
 from darts.tools.cli import get_darts_path, get_lib_search_var, get_lib_var
 
 
@@ -82,23 +83,12 @@ def main():
     m = JsonModel()
     ModelBuilder.apply(spec, m, base_path=os.path.dirname(args.json))
     m.init(platform='cpu')
-    # Configure output based on spec if provided, or fallback to defaults
     out_spec = getattr(m, '_output_spec', None)
-    if out_spec is not None:
-        folder = (
-            out_spec.folder
-            if getattr(out_spec, 'folder', None) is not None
-            else 'output'
-        )
-        precision = (
-            out_spec.precision
-            if getattr(out_spec, 'precision', None) is not None
-            else 'd'
-        )
-        m.set_output(output_folder=folder, precision=precision)
-    else:
-        m.set_output()
-        folder = 'output'
+    out_kwargs = out_spec.to_set_output_kwargs() if out_spec is not None else {}
+    folder = out_kwargs.get('output_folder', 'output')
+
+    redirect_darts_output(os.path.join(folder, 'run.log'))
+    m.set_output(**out_kwargs)
 
     # Schedule the resolved-spec dump at interpreter exit so it sits next
     # to the simulation outputs.

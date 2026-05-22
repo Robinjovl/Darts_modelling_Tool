@@ -72,7 +72,7 @@ class ModelConfig(BaseModel):
         default=None, description="Solver and timestepping parameters"
     )
     output: OutputConfig | None = Field(
-        default=None, description="Output folder, precision, initial-state toggle"
+        default=None, description="Output files, precision, compression, and verbosity"
     )
     extensions: ExtensionsConfig = Field(
         default_factory=ExtensionsConfig,

@@ -5,7 +5,7 @@ from math import fabs
 from typing import Any, Literal
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from darts.models.output import Output
 
@@ -334,16 +334,70 @@ class OutputConfig(BaseModel):
 
     model_config = ConfigDict(
         extra="forbid",
+        populate_by_name=True,
         json_schema_extra={
-            "examples": [{"folder": "output", "precision": "d", "save_initial": True}]
+            "examples": [
+                {
+                    "output_folder": "output",
+                    "sol_filename": "reservoir_solution.h5",
+                    "well_filename": "well_data.h5",
+                    "save_initial": True,
+                    "all_phase_props": False,
+                    "precision": "d",
+                    "compression": "gzip",
+                    "compression_level": 0,
+                    "verbose": False,
+                }
+            ]
         },
     )
 
-    folder: str | None = Field(None, description="Output folder")
+    folder: str | None = Field(
+        None,
+        alias="output_folder",
+        validation_alias=AliasChoices("output_folder", "folder"),
+        description="Output folder",
+    )
+    sol_filename: str | None = Field(
+        None, description="HDF5 filename for reservoir block data"
+    )
+    well_filename: str | None = Field(None, description="HDF5 filename for well data")
+    save_initial: bool | None = Field(None, description="Save initial state to output")
+    all_phase_props: bool | None = Field(
+        None,
+        description="Evaluate and save the extended phase-properties output set",
+    )
     precision: Literal["s", "d"] | None = Field(
         None, description="Output precision (s=single, d=double)"
     )
-    save_initial: bool | None = Field(None, description="Save initial state to output")
+    compression: str | None = Field(None, description="HDF5 compression algorithm")
+    compression_level: int | None = Field(
+        None,
+        ge=0,
+        le=9,
+        description="Compression level from 0 (fastest) to 9 (smallest files)",
+    )
+    verbose: bool | None = Field(None, description="Enable verbose output logging")
+
+    def to_set_output_kwargs(self) -> dict[str, Any]:
+        """Translate config fields to :meth:`DartsModel.set_output` kwargs."""
+        kwargs: dict[str, Any] = {}
+        if self.folder is not None:
+            kwargs["output_folder"] = self.folder
+        for key in (
+            "sol_filename",
+            "well_filename",
+            "save_initial",
+            "all_phase_props",
+            "precision",
+            "compression",
+            "compression_level",
+            "verbose",
+        ):
+            value = getattr(self, key)
+            if value is not None:
+                kwargs[key] = value
+        return kwargs
 
 
 class ExtensionsConfig(BaseModel):
@@ -917,8 +971,13 @@ class DartsModel:
             self.set_sim_params_from_config(config.sim_params)
         if getattr(config, "output", None) is not None:
             out = config.output
+            self._output_spec = out
             if out.folder is not None:
                 self.output_folder = out.folder
+            if out.sol_filename is not None:
+                self.sol_filename = out.sol_filename
+            if out.well_filename is not None:
+                self.well_filename = out.well_filename
             if out.save_initial is not None:
                 self.save_initial_solution = out.save_initial
             if out.precision is not None:

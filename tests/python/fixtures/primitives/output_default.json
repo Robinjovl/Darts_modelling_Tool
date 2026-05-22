@@ -1,4 +1,11 @@
 {
-  "folder": "output",
-  "precision": "d"
+  "output_folder": "output",
+  "sol_filename": "reservoir_solution_custom.h5",
+  "well_filename": "well_data_custom.h5",
+  "save_initial": false,
+  "all_phase_props": true,
+  "precision": "d",
+  "compression": "gzip",
+  "compression_level": 4,
+  "verbose": true
 }

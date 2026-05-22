@@ -104,10 +104,14 @@ def main() -> None:
     model.init(platform="cpu")
 
     out_spec = getattr(model, "_output_spec", None)
-    folder = (out_spec.folder if out_spec and out_spec.folder else "output_json")
+    out_kwargs = out_spec.to_set_output_kwargs() if out_spec is not None else {}
+    out_kwargs.setdefault("output_folder", "output_json")
+    folder = out_kwargs["output_folder"]
     precision = (out_spec.precision if out_spec and out_spec.precision else "d")
     os.makedirs(folder, exist_ok=True)
-    model.set_output(output_folder=folder, precision=precision)
+    if "precision" not in out_kwargs:
+        out_kwargs["precision"] = precision
+    model.set_output(**out_kwargs)
 
     inj_composition = [0.01]   # z_H2O in the injected stream (length nc-1)
     inj_temp = 283.15           # 10 °C

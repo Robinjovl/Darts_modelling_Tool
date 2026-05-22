@@ -142,18 +142,8 @@ def _parse_model_spec(json_path):
 
 def _configure_output(model):
     out_spec = getattr(model, "_output_spec", None)
-    if out_spec is not None:
-        folder = (
-            out_spec.folder if getattr(out_spec, "folder", None) is not None else "output"
-        )
-        precision = (
-            out_spec.precision
-            if getattr(out_spec, "precision", None) is not None
-            else "d"
-        )
-        model.set_output(output_folder=folder, precision=precision)
-    else:
-        model.set_output()
+    out_kwargs = out_spec.to_set_output_kwargs() if out_spec is not None else {}
+    model.set_output(**out_kwargs)
 
 
 def _run_single_json_model(json_path, days=None):
