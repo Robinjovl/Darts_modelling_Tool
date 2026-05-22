@@ -9,11 +9,18 @@ import meshio
 import numpy as np
 
 from darts.engines import conn_mesh, index_vector, ms_well, timer_node, value_vector
+from darts.reservoirs.lgr_flow_upscaling import (
+    CoarseFineConnection,
+    LGRCoarseFineFlowBasedUpscaler,
+    scale_by_raw_distribution,
+    thermal_scale_from_physical_conductance,
+)
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.reservoirs.struct_reservoir import StructReservoir
 
 _MIN_TRAN = 1e-5
+_LGR_COARSE_FINE_TRANSMISSIBILITY_MODES = {"normal", "flow_based"}
 
 
 @dataclass
@@ -141,6 +148,11 @@ class StructReservoirWithLGR(ReservoirBase):
     :type parent: StructReservoir
     :param lgrs: Local refinement patches.
     :type lgrs: list[LGRPatch]
+    :param lgr_coarse_fine_transmissibility_mode: Coarse-fine LGR transmissibility mode. Use "normal" for the standard
+                                                  face-overlap transmissibility or "flow_based" for local flow-based upscaling.
+    :type lgr_coarse_fine_transmissibility_mode: str
+    :param lgr_flow_upscaling_padding: Number of parent cells used around LGR sides for local flow-based upscaling.
+    :type lgr_flow_upscaling_padding: int
     :param cache: Reservoir cache flag.
     :type cache: bool
     """
@@ -150,6 +162,8 @@ class StructReservoirWithLGR(ReservoirBase):
         timer: timer_node,
         parent: StructReservoir,
         lgrs: list[LGRPatch],
+        lgr_coarse_fine_transmissibility_mode: str = "normal",
+        lgr_flow_upscaling_padding: int = 2,
         cache: bool = False,
     ):
         super().__init__(timer, cache)
@@ -157,9 +171,24 @@ class StructReservoirWithLGR(ReservoirBase):
             raise NotImplementedError(
                 "StructReservoirWithLGR currently supports non-CPG structured grids only."
             )
+        if (
+            lgr_coarse_fine_transmissibility_mode
+            not in _LGR_COARSE_FINE_TRANSMISSIBILITY_MODES
+        ):
+            valid_modes = ", ".join(sorted(_LGR_COARSE_FINE_TRANSMISSIBILITY_MODES))
+            raise ValueError(
+                "lgr_coarse_fine_transmissibility_mode must be one of "
+                f"{valid_modes}; got {lgr_coarse_fine_transmissibility_mode!r}."
+            )
+        if lgr_flow_upscaling_padding < 1:
+            raise ValueError("lgr_flow_upscaling_padding must be positive.")
 
         self.parent = parent
         self.lgrs = list(lgrs)
+        self.lgr_coarse_fine_transmissibility_mode = (
+            lgr_coarse_fine_transmissibility_mode
+        )
+        self.lgr_flow_upscaling_padding = int(lgr_flow_upscaling_padding)
         self.nx = parent.nx
         self.ny = parent.ny
         self.nz = parent.nz
@@ -174,9 +203,11 @@ class StructReservoirWithLGR(ReservoirBase):
         self.lgr_offsets: dict[str, int] = {}
         self.centroids_all_cells: np.ndarray | None = None
         self.centroids: np.ndarray | None = None
+        self.lgr_coarse_fine_transmissibility_diagnostics: list[dict[str, Any]] = []
 
         self.global_data: dict[str, Any] = {}
         self.actnum = None
+        self._lgr_parent_arrays: dict[str, np.ndarray] | None = None
 
     def discretize(self, cache: bool = False, verbose: bool = False) -> conn_mesh:
         self.parent.boundary_volumes = dict(self.boundary_volumes)
@@ -658,6 +689,7 @@ class StructReservoirWithLGR(ReservoirBase):
     def _build_cells(self) -> None:
         self._validate_lgrs()
         parent_arrays = self._parent_arrays()
+        self._lgr_parent_arrays = parent_arrays
         active_parent_cells = set(
             np.asarray(self.parent.discretizer.local_to_global, dtype=int)
         )
@@ -667,6 +699,7 @@ class StructReservoirWithLGR(ReservoirBase):
         self.refined_parent_cells = {}
         self.lgr_cell_maps = {}
         self.lgr_offsets = {}
+        self.lgr_coarse_fine_transmissibility_diagnostics = []
 
         patch_by_parent = self._patch_by_parent_cell()
         for parent_global in sorted(active_parent_cells):
@@ -937,6 +970,7 @@ class StructReservoirWithLGR(ReservoirBase):
         cell_p: list[int] = []
         tran: list[float] = []
         tran_thermal: list[float] = []
+        coarse_fine_connections: list[CoarseFineConnection] = []
         for axis in range(3):
             minus_faces, plus_faces = self._faces_by_axis(axis)
             for plane, faces_m in minus_faces.items():
@@ -950,16 +984,124 @@ class StructReservoirWithLGR(ReservoirBase):
                             face_m.cell, face_p.cell, axis, area
                         )
                         if tm > _MIN_TRAN or tt > _MIN_TRAN:
+                            conn_idx = len(cell_m)
                             cell_m.append(face_m.cell.idx)
                             cell_p.append(face_p.cell.idx)
                             tran.append(tm)
                             tran_thermal.append(tt)
+                            coarse_fine_connection = self._coarse_fine_connection_info(
+                                conn_idx,
+                                face_m.cell,
+                                face_p.cell,
+                                axis,
+                                tm,
+                                tt,
+                            )
+                            if coarse_fine_connection is not None:
+                                coarse_fine_connections.append(coarse_fine_connection)
+        if self.lgr_coarse_fine_transmissibility_mode == "flow_based":
+            self._apply_flow_based_coarse_fine_transmissibility(
+                coarse_fine_connections, tran, tran_thermal
+            )
         return (
             np.asarray(cell_m, dtype=np.int32),
             np.asarray(cell_p, dtype=np.int32),
             np.asarray(tran, dtype=float),
             np.asarray(tran_thermal, dtype=float),
         )
+
+    def _coarse_fine_connection_info(
+        self,
+        conn_idx: int,
+        cell_m: _Cell,
+        cell_p: _Cell,
+        axis: int,
+        tran: float,
+        tran_thermal: float,
+    ) -> CoarseFineConnection | None:
+        m_is_lgr = cell_m.lgr_name is not None
+        p_is_lgr = cell_p.lgr_name is not None
+        if m_is_lgr == p_is_lgr:
+            return None
+
+        lgr_cell = cell_m if m_is_lgr else cell_p
+        coarse_cell = cell_p if m_is_lgr else cell_m
+        lgr_center = lgr_cell.center[axis]
+        coarse_center = coarse_cell.center[axis]
+        side = -1 if coarse_center < lgr_center else 1
+        return CoarseFineConnection(
+            index=conn_idx,
+            patch_name=lgr_cell.lgr_name,
+            axis=axis,
+            side=side,
+            lgr_cell_idx=lgr_cell.idx,
+            coarse_cell_idx=coarse_cell.idx,
+            raw_tran=float(tran),
+            raw_tran_thermal=float(tran_thermal),
+        )
+
+    def _apply_flow_based_coarse_fine_transmissibility(
+        self,
+        coarse_fine_connections: list[CoarseFineConnection],
+        tran: list[float],
+        tran_thermal: list[float],
+    ) -> None:
+        if not coarse_fine_connections:
+            return
+        if self._lgr_parent_arrays is None:
+            raise RuntimeError("Parent arrays are required for LGR flow upscaling.")
+
+        patch_by_name = {patch.name: patch for patch in self.lgrs}
+        grouped: dict[tuple[str, int, int], list[CoarseFineConnection]] = {}
+        for conn in coarse_fine_connections:
+            grouped.setdefault((conn.patch_name, conn.axis, conn.side), []).append(conn)
+
+        upscaler = LGRCoarseFineFlowBasedUpscaler(
+            reservoir=self,
+            parent_arrays=self._lgr_parent_arrays,
+            connection_transmissibility=self._connection_transmissibility,
+            padding=self.lgr_flow_upscaling_padding,
+        )
+        diagnostics = []
+        for (patch_name, axis, side), group in sorted(grouped.items()):
+            patch = patch_by_name[patch_name]
+            result = upscaler.effective_transmissibility(patch, axis, side)
+            raw_tran = np.asarray([conn.raw_tran for conn in group], dtype=float)
+            raw_tran_thermal = np.asarray(
+                [conn.raw_tran_thermal for conn in group], dtype=float
+            )
+
+            scaled_tran = scale_by_raw_distribution(raw_tran, result.hydraulic_total)
+            thermal_scale = thermal_scale_from_physical_conductance(
+                self.cells,
+                group,
+                raw_tran_thermal,
+                result.thermal_physical_total,
+            )
+            scaled_tran_thermal = raw_tran_thermal * thermal_scale
+
+            for conn, tm, tt in zip(
+                group, scaled_tran, scaled_tran_thermal, strict=True
+            ):
+                tran[conn.index] = float(tm)
+                tran_thermal[conn.index] = float(tt)
+
+            diagnostics.append(
+                {
+                    "patch": patch_name,
+                    "axis": axis,
+                    "side": side,
+                    "n_connections": len(group),
+                    "n_interface_links": result.n_interface_links,
+                    "raw_tran_total": float(np.sum(raw_tran)),
+                    "scaled_tran_total": float(np.sum(scaled_tran)),
+                    "raw_tran_thermal_total": float(np.sum(raw_tran_thermal)),
+                    "scaled_tran_thermal_total": float(np.sum(scaled_tran_thermal)),
+                    "thermal_physical_total": result.thermal_physical_total,
+                }
+            )
+
+        self.lgr_coarse_fine_transmissibility_diagnostics = diagnostics
 
     def _faces_by_axis(
         self, axis: int

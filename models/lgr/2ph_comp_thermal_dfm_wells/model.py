@@ -66,7 +66,12 @@ class Model(CICDModel):
             LGRPatch("inj_lgr", (2, 2), (1, 1), (1, 1), (7, 7, 1)),
             LGRPatch("prod_lgr", (9, 9), (1, 1), (1, 1), (7, 7, 1)),
         ]
-        self.reservoir = StructReservoirWithLGR(self.timer, parent, lgrs)
+        self.reservoir = StructReservoirWithLGR(
+            self.timer,
+            parent,
+            lgrs,
+            lgr_coarse_fine_transmissibility_mode="flow_based",
+        )
 
     def set_physics(self):
         epsilon = 1e-9
