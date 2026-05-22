@@ -1,6 +1,5 @@
-import numpy as np
-
 from darts.engines import sim_params, well_control_iface
+
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -8,8 +7,8 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import ConstantK
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.reservoirs.lgr_struct_reservoir import LGRPatch, LGRStructReservoir
 from darts.reservoirs.struct_reservoir import StructReservoir
+from darts.reservoirs.struct_reservoir_with_lgr import LGRPatch, StructReservoirWithLGR
 
 
 class Model(CICDModel):
@@ -24,8 +23,8 @@ class Model(CICDModel):
         self.set_sim_params(
             first_ts=1e-4,
             mult_ts=2,
-            max_ts=0.025,
-            runtime=0.05,
+            max_ts=0.5,
+            runtime=50,
             tol_newton=1e-3,
             tol_linear=1e-4,
             it_newton=12,
@@ -53,10 +52,10 @@ class Model(CICDModel):
             rcond=120.0,
         )
         lgrs = [
-            LGRPatch("inj_lgr", (2, 2), (1, 1), (1, 1), (2, 1, 1)),
-            LGRPatch("prod_lgr", (9, 9), (1, 1), (1, 1), (2, 1, 1)),
+            LGRPatch("inj_lgr", (2, 2), (1, 1), (1, 1), (7, 7, 1)),
+            LGRPatch("prod_lgr", (9, 9), (1, 1), (1, 1), (7, 7, 1)),
         ]
-        self.reservoir = LGRStructReservoir(self.timer, parent, lgrs)
+        self.reservoir = StructReservoirWithLGR(self.timer, parent, lgrs)
 
     def set_physics(self):
         epsilon = 1e-9
@@ -86,20 +85,36 @@ class Model(CICDModel):
             "G": PhaseRelPerm("gas"),
             "L": PhaseRelPerm("oil"),
         }
+        # EnthalpyBasic is multiplied by molar density in the energy operators,
+        # so heat capacities are specified in kJ/kmol/K.
         property_container.enthalpy_ev = {
-            "G": EnthalpyBasic(hcap=0.04),
-            "L": EnthalpyBasic(hcap=4.18),
+            "G": EnthalpyBasic(hcap=37.0),
+            "L": EnthalpyBasic(hcap=75.3),
         }
         property_container.conductivity_ev = {
             "G": ConstFunc(3.5),
             "L": ConstFunc(75.0),
         }
         property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
-        property_container.output_props = {
-            "temperature": lambda: property_container.temperature,
-            "sG": lambda: property_container.sat[0],
-            "sL": lambda: property_container.sat[1],
-        }
+
+        property_container.output_props = {}
+        property_container.output_props['temperature'] = lambda: (
+            property_container.temperature
+        )
+        for j, ph in enumerate(phases):
+            property_container.output_props['s' + ph] = lambda jj=j: (
+                property_container.sat[jj]
+            )
+            property_container.output_props['rho' + ph] = lambda jj=j: (
+                property_container.dens[jj]
+            )
+            property_container.output_props['miu' + ph] = lambda jj=j: (
+                property_container.mu[jj]
+            )
+            for i, comp in enumerate(components):
+                property_container.output_props[f'x{comp}_in_{ph}_mass'] = (
+                    lambda jj=j, ii=i: property_container.x_mass[jj, ii]
+                )
 
         self.physics = Compositional(
             components,
@@ -123,7 +138,7 @@ class Model(CICDModel):
         self.reservoir.add_perforation(
             "I1",
             lgr_name="inj_lgr",
-            lgr_cell_idx=(1, 1, 1),
+            lgr_cell_idx=(4, 4, 1),
             well_diameter=0.1524,
             well_indexD=None,
         )
@@ -132,7 +147,7 @@ class Model(CICDModel):
         self.reservoir.add_perforation(
             "P1",
             lgr_name="prod_lgr",
-            lgr_cell_idx=(2, 1, 1),
+            lgr_cell_idx=(4, 4, 1),
             well_diameter=0.1524,
             well_indexD=None,
         )

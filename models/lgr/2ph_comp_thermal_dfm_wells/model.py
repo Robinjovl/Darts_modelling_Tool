@@ -1,6 +1,6 @@
 import numpy as np
-
 from darts.engines import ms_well, sim_params, value_vector, well_control_iface
+
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -9,10 +9,11 @@ from darts.physics.properties.flash import ConstantK
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 from darts.pipes.define_pipe_geometry import PipeGeometry
+from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.pipe import Pipe
-from darts.pipes.set_initial_conditions import SingleAmbientTemperature
-from darts.reservoirs.lgr_struct_reservoir import LGRPatch, LGRStructReservoir
+from darts.pipes.set_initial_conditions import LinearAmbientTemperature
 from darts.reservoirs.struct_reservoir import StructReservoir
+from darts.reservoirs.struct_reservoir_with_lgr import LGRPatch, StructReservoirWithLGR
 
 
 class Model(CICDModel):
@@ -29,7 +30,7 @@ class Model(CICDModel):
             first_ts=1e-7,
             mult_ts=2,
             max_ts=1e-4,
-            runtime=1e-4,
+            runtime=0.01,
             tol_newton=1e-3,
             tol_linear=1e-4,
             it_newton=12,
@@ -53,15 +54,19 @@ class Model(CICDModel):
             permy=100.0,
             permz=10.0,
             poro=0.3,
-            depth=1000.0,
+            depth=2005.0,
             hcap=2200.0,
             rcond=120.0,
         )
+        # TODO: Using large boundary cells below is required because the production well does not produce without a pump. Pump implementation is required.
+        parent.boundary_volumes["yz_minus"] = 1e20
+        parent.boundary_volumes["yz_plus"] = 1e20
+
         lgrs = [
-            LGRPatch("inj_lgr", (2, 2), (1, 1), (1, 1), (2, 1, 1)),
-            LGRPatch("prod_lgr", (9, 9), (1, 1), (1, 1), (2, 1, 1)),
+            LGRPatch("inj_lgr", (2, 2), (1, 1), (1, 1), (7, 7, 1)),
+            LGRPatch("prod_lgr", (9, 9), (1, 1), (1, 1), (7, 7, 1)),
         ]
-        self.reservoir = LGRStructReservoir(self.timer, parent, lgrs)
+        self.reservoir = StructReservoirWithLGR(self.timer, parent, lgrs)
 
     def set_physics(self):
         epsilon = 1e-9
@@ -91,30 +96,40 @@ class Model(CICDModel):
             "G": PhaseRelPerm("gas"),
             "L": PhaseRelPerm("oil"),
         }
+        # EnthalpyBasic is multiplied by molar density in the energy operators,
+        # so heat capacities are specified in kJ/kmol/K. With the old heat capacities,
+        # the injection well with both WHP and rate control failed because of unexpected
+        # temperature increase of the block below the top segment during injection.
         property_container.enthalpy_ev = {
-            "G": EnthalpyBasic(hcap=0.04),
-            "L": EnthalpyBasic(hcap=4.18),
+            "G": EnthalpyBasic(hcap=37.0),
+            "L": EnthalpyBasic(hcap=75.3),
         }
         property_container.conductivity_ev = {
             "G": ConstFunc(3.5),
             "L": ConstFunc(75.0),
         }
         property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
-        property_container.output_props = {
-            "temperature": lambda: property_container.temperature,
-            "sG": lambda: property_container.sat[0],
-            "sL": lambda: property_container.sat[1],
-            "rhoG": lambda: property_container.dens[0],
-            "rhoL": lambda: property_container.dens[1],
-            "miuG": lambda: property_container.mu[0],
-            "miuL": lambda: property_container.mu[1],
-            "xCO2_in_G_mass": lambda: property_container.x_mass[0, 0],
-            "xC1_in_G_mass": lambda: property_container.x_mass[0, 1],
-            "xH2O_in_G_mass": lambda: property_container.x_mass[0, 2],
-            "xCO2_in_L_mass": lambda: property_container.x_mass[1, 0],
-            "xC1_in_L_mass": lambda: property_container.x_mass[1, 1],
-            "xH2O_in_L_mass": lambda: property_container.x_mass[1, 2],
-        }
+
+        property_container.IFT_ev = IFT_multicomponent_MCM(components)
+
+        property_container.output_props = {}
+        property_container.output_props['temperature'] = lambda: (
+            property_container.temperature
+        )
+        for j, ph in enumerate(phases):
+            property_container.output_props['s' + ph] = lambda jj=j: (
+                property_container.sat[jj]
+            )
+            property_container.output_props['rho' + ph] = lambda jj=j: (
+                property_container.dens[jj]
+            )
+            property_container.output_props['miu' + ph] = lambda jj=j: (
+                property_container.mu[jj]
+            )
+            for i, comp in enumerate(components):
+                property_container.output_props[f'x{comp}_in_{ph}_mass'] = (
+                    lambda jj=j, ii=i: property_container.x_mass[jj, ii]
+                )
 
         self.physics = Compositional(
             components,
@@ -138,12 +153,12 @@ class Model(CICDModel):
         self._add_dfm_well(
             well_name="I1",
             lgr_name="inj_lgr",
-            lgr_cell_idx=(1, 1, 1),
+            lgr_cell_idx=(4, 4, 1),
         )
         self._add_dfm_well(
             well_name="P1",
             lgr_name="prod_lgr",
-            lgr_cell_idx=(2, 1, 1),
+            lgr_cell_idx=(4, 4, 1),
         )
 
     def _add_dfm_well(
@@ -152,23 +167,30 @@ class Model(CICDModel):
         lgr_name: str,
         lgr_cell_idx: tuple[int, int, int],
     ):
+        segments_lengths = 50 * np.ones(40)
+        segments_lengths = np.append(segments_lengths, 10)  # 10 is the reservoir thickness
         well_diameter = 0.1524
         well_geometry = PipeGeometry(
             well_name,
-            [5.0, 5.0, 10.0],
+            segments_lengths,
             well_diameter,
             inclination_angle=0.0,
         )
-        initial_conditions = SingleAmbientTemperature(
+        pipe_head_pressure = 1.0
+        pipe_head_temperature = 25 + 273.15  # Kelvin
+        temp_grad = 0.03  # deg C/meter
+        pipe_head_segment_index = 0
+        initial_conditions = LinearAmbientTemperature(
             pipe_name=well_name,
             pipe_geom=well_geometry,
             physics=self.physics,
-            ambient_temperature=350.0,
-            pipe_head_pressure=100.0,
-            pipe_head_segment_index=0,
+            pipe_head_pressure=pipe_head_pressure,
+            pipe_head_temperature=pipe_head_temperature,
+            temp_grad=temp_grad,
+            pipe_head_segment_index=pipe_head_segment_index,
             initial_conditions_dict={
                 "phases_names": ["L"],
-                "phases_compositions": [[0.1, 0.2, 0.7]],
+                "phases_compositions": [[0.01, 0.01, 0.98]],
                 "pipe_intervals": [[0.0, well_geometry.pipe_length]],
             },
         )
@@ -178,8 +200,6 @@ class Model(CICDModel):
             self.physics,
             self.reservoir,
             initial_conditions,
-            enable_drift_velocity=False,
-            enable_profile_parameter=False,
         )
 
         self.reservoir.add_well(
@@ -199,10 +219,10 @@ class Model(CICDModel):
 
     def set_initial_conditions(self):
         input_distribution = {
-            self.physics.vars[0]: 100.0,
-            self.physics.vars[1]: 0.1,
-            self.physics.vars[2]: 0.2,
-            self.physics.vars[3]: 350.0,
+            self.physics.vars[0]: 118.74907,
+            self.physics.vars[1]: 0.01,
+            self.physics.vars[2]: 0.01,
+            self.physics.vars[3]: 358.15000,
         }
         self.physics.set_initial_conditions_from_array(
             mesh=self.reservoir.mesh,
@@ -215,14 +235,14 @@ class Model(CICDModel):
             )
 
     def set_well_controls(self):
-        injection_composition = [0.3, 0.2]
+        injection_composition = [0.90, 0.099]
         for idx, well in enumerate(self.reservoir.wells):
             if idx == 0:
                 self.physics.set_well_controls(
                     wctrl=well.control,
-                    control_type=well_control_iface.BHP,
+                    control_type=well_control_iface.MASS_RATE,
                     is_inj=True,
-                    target=101.0,
+                    target=5 * 24 * 60 * 60,
                     inj_composition=injection_composition,
                     inj_temp=345.0,
                 )
@@ -231,5 +251,5 @@ class Model(CICDModel):
                     wctrl=well.control,
                     control_type=well_control_iface.BHP,
                     is_inj=False,
-                    target=99.0,
+                    target=1.0,
                 )
