@@ -139,13 +139,17 @@ class Model(DartsModel):
     def set_reservoir(self):
         # set heterogeneous egg model
         self.lgrs = self.define_lgr()
-        (nx,ny,nz) = (self.cfg["reservoir"]["nx"], self.cfg["reservoir"]["ny"], self.cfg["reservoir"]["nz"])
+        reservoir_cfg = self.cfg["reservoir"]
+        (nx,ny,nz) = (reservoir_cfg["nx"], reservoir_cfg["ny"], reservoir_cfg["nz"])
         nb = nx*ny*nz
 
-        dx = self.cfg["reservoir"]["dx"]
-        dy = self.cfg["reservoir"]["dy"]
+        dx = reservoir_cfg["dx"]
+        dy = reservoir_cfg["dy"]
         # dz0 = np.array([10,70,10])
-        dz = self.cfg["reservoir"]["dz"]
+        dz = reservoir_cfg["dz"]
+        start_z0 = reservoir_cfg.get("start_z", 490.0)
+        rcond_res = reservoir_cfg.get("rcond", 181.44)
+        poro_res = reservoir_cfg.get("poro", 0.2)
 
         burden = self.cfg["burden"]
 
@@ -196,9 +200,9 @@ class Model(DartsModel):
         mask_under = k_index0 >= (nz_over + nz_res)
 
         # --- reshape Egg model permeability to reservoir part only ---
-        permx_res = 800
-        permy_res = 800
-        permz_res = 80
+        permx_res = reservoir_cfg.get("permx", 800.0)
+        permy_res = reservoir_cfg.get("permy", permx_res)
+        permz_res = reservoir_cfg.get("permz", 0.1 * permx_res)
 
 
 
@@ -209,19 +213,19 @@ class Model(DartsModel):
 
         # --- thermal properties ---
         rcon0_full[mask_over] = rcond_over
-        rcon0_full[mask_res] = 500
+        rcon0_full[mask_res] = rcond_res
         rcon0_full[mask_under] = rcond_under
         hcap0_full[mask_over] = hcap_over
         hcap0_full[mask_res] = 2200
         hcap0_full[mask_under] = hcap_under
 
-        poro0_full[mask_res] =self.cfg["reservoir"]["poro"]
+        poro0_full[mask_res] = poro_res
 
 
 
         actnum0 = self.create_actnum_with_lgr(nx, ny, nz, refined_cells_ijk)
         self.level0 = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
-                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full, depth=None, start_z=490,
+                                      permx=kx0_full, permy=ky0_full, permz=kz0_full, poro=poro0_full, depth=None, start_z=start_z0,
                                       hcap=hcap0_full, rcond=rcon0_full, actnum=actnum0)
 
         v_big = 1e20
@@ -273,7 +277,8 @@ class Model(DartsModel):
                 permy_f[:,:,kk] = self.level0.global_data['permy'][ip,jp,pk]
                 permz_f[:,:,kk] = self.level0.global_data['permz'][ip,jp,pk]
 
-            poro_f = np.ones((nx1, ny1, nz1), dtype=float) * 0.2
+            lgr_start_z = start_z0 + nz_over * dz
+            poro_f = np.ones((nx1, ny1, nz1), dtype=float) * poro_res
 
             self.level1[name] = StructReservoir(
                 self.timer,
@@ -282,8 +287,8 @@ class Model(DartsModel):
                 permx=permx_f, permy=permy_f, permz=permz_f,
                 poro=poro_f,
                 depth=None,
-                start_z=500,
-                rcond=500,
+                start_z=lgr_start_z,
+                rcond=rcond_res,
                 hcap=2200,
             )
 
@@ -299,7 +304,7 @@ class Model(DartsModel):
             permx_im = np.empty((nx_im, ny_im, nz_im), dtype=float)
             permy_im = np.empty((nx_im, ny_im, nz_im), dtype=float)
             permz_im = np.empty((nx_im, ny_im, nz_im), dtype=float)
-            poro_im = np.full((nx_im, ny_im, nz_im), 0.2, dtype=float)
+            poro_im = np.full((nx_im, ny_im, nz_im), poro_res, dtype=float)
 
             # Find the properties of the refined cells in the parent grid to assign to the LGR grid and imaginary grids
             for kk, k in enumerate(range(k1, k2 + 1)):
@@ -359,7 +364,7 @@ class Model(DartsModel):
 
 
             self.level1_imag[name] = StructReservoir(self.timer, nx=nx1+2, ny=ny1+2, nz=nz1, dx=dx_imag, dy=dy_imag, dz=dz_imag,
-                                        permx=permx_im, permy=permy_im, permz=permz_im, poro=poro_im, depth= None, start_z=500, rcond=500, hcap=2200)
+                                        permx=permx_im, permy=permy_im, permz=permz_im, poro=poro_im, depth= None, start_z=lgr_start_z, rcond=rcond_res, hcap=2200)
 
 
             # top vertical imaginary grid for overburden connection(5,5,2)
@@ -389,16 +394,16 @@ class Model(DartsModel):
             permy_top[:, :, 1] = self.level0.global_data['permy'][ip, jp, pk_top_res]
             permz_top[:, :, 1] = self.level0.global_data['permz'][ip, jp, pk_top_res]
 
-            rcond_top[:, :, 1] = 500
+            rcond_top[:, :, 1] = rcond_res
             hcap_top[:, :, 1]  = 2200
             self.level1_imag_z_top[name] = StructReservoir(
                 self.timer,
                 nx=nx1, ny=ny1, nz=2,
                 dx=dx_top, dy=dy_top, dz=dz_top,
                 permx=permx_top, permy=permy_top, permz=permz_top,
-                poro=0.2,
+                poro=poro_res,
                 depth=None,
-                start_z=490,
+                start_z=start_z0,
                 rcond=rcond_top,
                 hcap=hcap_top
             )
@@ -424,8 +429,8 @@ class Model(DartsModel):
             permx_bot[:, :, 0] = self.level0.global_data['permx'][ip, jp, pk_bot_res]
             permy_bot[:, :, 0] = self.level0.global_data['permy'][ip, jp, pk_bot_res]
             permz_bot[:, :, 0] = self.level0.global_data['permz'][ip, jp, pk_bot_res]
-            poro_bot[:, :, 0]  = 0.2
-            rcond_bot[:, :, 0] = 500
+            poro_bot[:, :, 0]  = poro_res
+            rcond_bot[:, :, 0] = rcond_res
             hcap_bot[:, :, 0]  = 2200
 
             permx_bot[:, :, 1] = self.level0.global_data['permx'][ip, jp, pk_under]
@@ -442,7 +447,7 @@ class Model(DartsModel):
                 permx=permx_bot, permy=permy_bot, permz=permz_bot,
                 poro=poro_bot,
                 depth=None,
-                start_z=490 + (nz_over + nz_res - 1) * dz,
+                start_z=start_z0 + (nz_over + nz_res - 1) * dz,
                 rcond=rcond_bot,
                 hcap=hcap_bot
             )
@@ -496,7 +501,7 @@ class Model(DartsModel):
             # volume: structured fine grid, direct from discretized volume is safer
             volume_list.append(dx_f * dy_f * dz_f)
 
-            rcond_list.append(np.ones(self.level1[name].n, dtype=float)*500)
+            rcond_list.append(np.ones(self.level1[name].n, dtype=float)*rcond_res)
             hcap_list.append(np.ones(self.level1[name].n, dtype=float) * 2200)
 
 

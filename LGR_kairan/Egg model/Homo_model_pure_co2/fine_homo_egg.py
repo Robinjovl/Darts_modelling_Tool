@@ -91,7 +91,7 @@ class Model(DartsModel):
 
         # thermal properties
         rcond_res = 181.44 # KJ/m/day/k
-        hcap_res = 2650 # kJ/m3/K assume reservoir density here
+        hcap_res = 2200.0
         rcond_over, rcond_under = 149.54, 149.54
         hcap_over, hcap_under = 2347.29, 2347.29
 
@@ -120,10 +120,10 @@ class Model(DartsModel):
 
         # --- thermal properties ---
         rcon0_full[mask_over] = rcond_over
-        rcon0_full[mask_res] = 500
+        rcon0_full[mask_res] = rcond_res
         rcon0_full[mask_under] = rcond_under
         hcap0_full[mask_over] = hcap_over
-        hcap0_full[mask_res] = 2200
+        hcap0_full[mask_res] = hcap_res
         hcap0_full[mask_under] = hcap_under
 
         poro0_full[mask_res] = 0.2

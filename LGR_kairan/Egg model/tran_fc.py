@@ -108,7 +108,9 @@ class FlowUpscalingModel(DartsModel):
 
     def __init__(self, kx_patch_c, ky_patch_c, kz_patch_c,
                  refine=(5, 5), dx_parent=30.0, dy_parent=30.0, dz_parent=10.0,
-                 start_z=500.0, poro=0.2, rcond=500.0, hcap=2200.0):
+                 start_z=500.0, poro=0.2, rcond=181.44, hcap=2200.0,
+                 initial_pressure=200.0, initial_temperature=356.15,
+                 reference_depth=2000.0):
         super().__init__()
 
         self.kx_patch_c = kx_patch_c
@@ -134,6 +136,11 @@ class FlowUpscalingModel(DartsModel):
         self.patch_center_1b = (self.nx // 2 + 1, self.ny // 2 + 1)
         self.start_z = float(start_z)
         self.poro = float(poro)
+        self.rcond = float(rcond)
+        self.hcap = float(hcap)
+        self.initial_pressure = float(initial_pressure)
+        self.initial_temperature = float(initial_temperature)
+        self.reference_depth = float(reference_depth)
 
         self.zero = 1e-10
 
@@ -175,8 +182,8 @@ class FlowUpscalingModel(DartsModel):
             poro=self.poro,
             depth=None,
             start_z=self.start_z,
-            rcond=500.0,
-            hcap=2200.0,
+            rcond=self.rcond,
+            hcap=self.hcap,
         )
 
         self.reservoir.discretize()
@@ -254,15 +261,15 @@ class FlowUpscalingModel(DartsModel):
         init = Initialize(self.physics)
 
         boundary_state = {
-            "pressure": 50,          # bar
-            "temperature": 32.0 + 273.15,
+            "pressure": self.initial_pressure,
+            "temperature": self.initial_temperature,
         }
 
         primary_specs = {}
         for comp in self.physics.components[:-1]:
             primary_specs[comp] = np.ones(int(self.reservoir.nz))
 
-        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=self.start_z,
+        X = init.solve_up_and_downwards(depth_bottom=max_depth, depth_top=min_depth, depth_known=self.reference_depth,
                                         boundary_state=boundary_state, primary_specs=primary_specs, nb=int(self.reservoir.nz),
                                         dTdh=34.0 / 1000.0)
 
@@ -283,7 +290,7 @@ class FlowUpscalingModel(DartsModel):
                     is_inj=True,
                     target=10.0,               # kg/day or simulator-consistent unit in your setup
                     inj_composition=inj_composition,
-                    inj_temp=14.7 + 273.15,
+                    inj_temp=40 + 273.15,
                 )
 
 
@@ -303,6 +310,19 @@ def compute_eff_tran_for_one_lgr_layer(
     cfg = model.lgrs[lgr_name]["lgr_coords_in_parent_grid"]
     ic = int(cfg['i_range'][0])
     jc = int(cfg['j_range'][0])
+    i0 = ic - 1
+    j0 = jc - 1
+    k0 = int(k_1b) - 1
+
+    def level0_cell_value(prop):
+        data = np.asarray(model.level0.global_data[prop], dtype=float)
+        nx = int(model.level0.nx)
+        ny = int(model.level0.ny)
+        if data.ndim == 0:
+            return float(data)
+        if data.ndim == 1:
+            return float(data[i0 + nx * (j0 + ny * k0)])
+        return float(data[i0, j0, k0])
 
     kx_patch_c, ky_patch_c, kz_patch_c = extract_coarse_patch_from_level0(
         model=model,
@@ -312,15 +332,21 @@ def compute_eff_tran_for_one_lgr_layer(
         coarse_patch_size=coarse_patch_size,
     )
 
+    dx_parent = level0_cell_value("dx")
+    dy_parent = level0_cell_value("dy")
+    dz_parent = level0_cell_value("dz")
+    layer_center_depth = level0_cell_value("depth")
+    layer_top_depth = layer_center_depth - 0.5 * dz_parent
+
     effective_2d_model = FlowUpscalingModel(
         kx_patch_c=kx_patch_c,
         ky_patch_c=ky_patch_c,
         kz_patch_c=kz_patch_c,
         refine=refine,
-        dx_parent=float(model.level0.global_data["dx"][0,0,0]),
-        dy_parent=float(model.level0.global_data["dy"][0,0,0]),
-        dz_parent=float(model.level0.global_data["dz"][0,0,0]),
-        start_z=float(model.level0.global_data["start_z"]) + k_1b * float(model.level0.global_data["dz"][0,0,0]),
+        dx_parent=dx_parent,
+        dy_parent=dy_parent,
+        dz_parent=dz_parent,
+        start_z=layer_top_depth,
         poro=float(model.level1[lgr_name].global_data["poro"][0,0,0]),
     )
 

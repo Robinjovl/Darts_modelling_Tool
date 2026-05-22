@@ -22,7 +22,8 @@ from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from dartsflash.components import CompData
-from dartsflash.libflash import AQEoS, CubicEoS
+from dartsflash.libflash import EoS
+from dartsflash.mixtures import DARTSFlash, VLAq
 
 
 class TableKFlash(Flash):
@@ -224,7 +225,7 @@ class Model(DartsModel):
 
         self.level0 = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
                                       permx=kx, permy=ky, permz=kz, poro=poro, depth=None,
-                                      start_z=1990.0, rcond=rcond, hcap=hcap, actnum=actnum)
+                                      start_z=990.0, rcond=rcond, hcap=hcap, actnum=actnum)
 
         self.level0.boundary_volumes = {"xy_minus": 1e20,
                                         "xy_plus": 1e20,
@@ -253,7 +254,7 @@ class Model(DartsModel):
                                                 permy=self.make_lgr_array("permy", i_parent, j_parent, (k1, k2), prop_shape),
                                                 permz=self.make_lgr_array("permz", i_parent, j_parent, (k1, k2), prop_shape),
                                                 poro=self.make_lgr_array("poro", i_parent, j_parent, (k1, k2), prop_shape),
-                                                depth=None, start_z=2000.0,
+                                                depth=None, start_z=1000.0,
                                                 rcond=self.make_lgr_array("rcond", i_parent, j_parent, (k1, k2), prop_shape),
                                                 hcap=self.make_lgr_array("hcap", i_parent, j_parent, (k1, k2), prop_shape))
 
@@ -267,7 +268,7 @@ class Model(DartsModel):
                                                      permy=self.make_lateral_imag_array("permy", i_parent, j_parent, (k1, k2), prop_shape),
                                                      permz=self.make_lateral_imag_array("permz", i_parent, j_parent, (k1, k2), prop_shape),
                                                      poro=self.make_lateral_imag_array("poro", i_parent, j_parent, (k1, k2), prop_shape),
-                                                     depth=None, start_z=2000.0,
+                                                     depth=None, start_z=1000.0,
                                                      rcond=self.make_lateral_imag_array("rcond", i_parent, j_parent, (k1, k2), prop_shape),
                                                      hcap=self.make_lateral_imag_array("hcap", i_parent, j_parent, (k1, k2), prop_shape))
 
@@ -283,7 +284,7 @@ class Model(DartsModel):
                                                            permy=self.make_lgr_array("permy", i_parent, j_parent, top_range, prop_shape),
                                                            permz=self.make_lgr_array("permz", i_parent, j_parent, top_range, prop_shape),
                                                            poro=self.make_lgr_array("poro", i_parent, j_parent, top_range, prop_shape),
-                                                           depth=None, start_z=1990.0,
+                                                           depth=None, start_z=990.0,
                                                            rcond=self.make_lgr_array("rcond", i_parent, j_parent, top_range, prop_shape),
                                                            hcap=self.make_lgr_array("hcap", i_parent, j_parent, top_range, prop_shape))
             self.level1_imag_z_bot[name] = StructReservoir(self.timer, nx=rx, ny=ry, nz=2, dx=dx_z, dy=dy_z, dz=dz_z,
@@ -291,7 +292,7 @@ class Model(DartsModel):
                                                            permy=self.make_lgr_array("permy", i_parent, j_parent, bot_range, prop_shape),
                                                            permz=self.make_lgr_array("permz", i_parent, j_parent, bot_range, prop_shape),
                                                            poro=self.make_lgr_array("poro", i_parent, j_parent, bot_range, prop_shape),
-                                                           depth=None, start_z=1990.0 + (nz_over + nz_res - 1) * dz,
+                                                           depth=None, start_z=990.0 + (nz_over + nz_res - 1) * dz,
                                                            rcond=self.make_lgr_array("rcond", i_parent, j_parent, bot_range, prop_shape),
                                                            hcap=self.make_lgr_array("hcap", i_parent, j_parent, bot_range, prop_shape))
 
@@ -349,10 +350,29 @@ class Model(DartsModel):
         self.components = components
         eps = self.zero / 10.0
         comp_data = CompData(components, setprops=True)
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003, AQEoS.solute: AQEoS.Ziabakhsh2012})
         pc = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, eps_z=eps)
-        pc.flash_ev = TableKFlash(2, Path(__file__).resolve().parent / "K_values.csv", eps)
+
+        # pc.flash_ev = TableKFlash(2, Path(__file__).resolve().parent / "K_values.csv", eps)
+        pc.flash_ev = VLAq(comp_data, hybrid=True)
+        pc.flash_ev.set_vl_eos(
+            "PR",
+            root_order=[EoS.STABLE],
+            trial_comps=[i for i in range(len(components))],
+            stability_tol=1e-20,
+            switch_tol=1e-2,
+            max_iter=50,
+            use_gmix=False,
+        )
+        pc.flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+        pc.flash_ev.init_flash(
+            flash_type=DARTSFlash.FlashType.PTFlash,
+            eos_order=["VL", "Aq"],
+            t_min=270.,
+            t_max=430.,
+            t_init=300.,
+        )
+        pr = pc.flash_ev.eos["VL"]
+        aq = pc.flash_ev.eos["Aq"]
         pc.density_ev = {"CO2_rich": EoSDensity(eos=pr, Mw=comp_data.Mw),
                          "aqueous": Garcia2001(components)}
         pc.viscosity_ev = {"CO2_rich": Fenghour1998(),
@@ -370,7 +390,7 @@ class Model(DartsModel):
                                      state_spec=Compositional.StateSpecification.PT,
                                      n_points=400, min_p=1, max_p=1000, min_z=eps,
                                      max_z=1.0 - eps,
-                                     epsilon_z=eps, min_t=273.15, max_t=400+273.15)
+                                     epsilon_z=eps, min_t=273.15, max_t=430)
         pc.output_props = {"satG": lambda: pc.sat[0],
                            "satAq": lambda: pc.sat[1],
                            "rhoG": lambda: pc.dens[0],
@@ -383,9 +403,9 @@ class Model(DartsModel):
         depths = np.asarray(self.reservoir.mesh.depth)
         init = Initialize(self.physics)
         primary_specs = {"CO2": self.zero}
-        boundary_state = {"pressure": 200.0, "CO2": self.zero, "temperature": 83+273.15}
+        boundary_state = {"pressure": 100.0, "CO2": self.zero, "temperature": 49+273.15}
         x = init.solve_up_and_downwards(depth_bottom=float(np.max(depths)), depth_top=float(np.min(depths)),
-                                        depth_known=2000.0, boundary_state=boundary_state,
+                                        depth_known=1000.0, boundary_state=boundary_state,
                                         primary_specs=primary_specs, nb=int(self.level0.nz), dTdh=34.0 / 1000.0)
         self.physics.set_initial_conditions_from_depth_table(
             mesh=self.reservoir.mesh, input_depth=init.depths,
@@ -396,12 +416,12 @@ class Model(DartsModel):
             if well.name.startswith("I"):
                 self.physics.set_well_controls(wctrl=well.control, control_type=well_control_iface.MASS_RATE,
                                                is_inj=True, target=4.32e6, phase_name="CO2_rich",
-                                               inj_composition=[1.0 - self.zero], inj_temp=40+273.15)
+                                               inj_composition=[1.0 - self.zero], inj_temp=29+273.15)
                 # self.physics.set_well_controls(wctrl=well.constraint, control_type=well_control_iface.BHP,
                 #                                is_inj=True, target=300, phase_name="CO2_rich",
                 #                                inj_composition=[1.0 - self.zero], inj_temp=40+273.15)
             else:
                 self.physics.set_well_controls(wctrl=well.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=190.0)
-                # self.physics.set_well_controls(wctrl=well.constraint, control_type=well_control_iface.MASS_RATE,
-                #                                   is_inj=False, target=0, phase_name="CO2_rich")
+                                               is_inj=False, target=90)
+                # self.physics.set_well_controls(wctrl=well.constraint, control_type=well_control_iface.BHP,
+                #                                   is_inj=False, target=90)

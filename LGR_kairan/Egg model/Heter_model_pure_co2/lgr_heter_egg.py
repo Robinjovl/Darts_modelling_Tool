@@ -216,7 +216,7 @@ class Model(DartsModel):
 
         # --- thermal properties ---
         rcon0_full[mask_over] = rcond_over
-        rcon0_full[mask_res] = 500
+        rcon0_full[mask_res] = 181.44
         rcon0_full[mask_under] = rcond_under
         hcap0_full[mask_over] = hcap_over
         hcap0_full[mask_res] = 2200
@@ -289,7 +289,7 @@ class Model(DartsModel):
                 poro=poro_f,
                 depth=None,
                 start_z=2000,
-                rcond=500,
+                rcond=181.44,
                 hcap=2200,
             )
 
@@ -365,7 +365,7 @@ class Model(DartsModel):
 
 
             self.level1_imag[name] = StructReservoir(self.timer, nx=nx1+2, ny=ny1+2, nz=nz1, dx=dx_imag, dy=dy_imag, dz=dz_imag,
-                                        permx=permx_im, permy=permy_im, permz=permz_im, poro=poro_im, depth= None, start_z=2000, rcond=500, hcap=2200)
+                                        permx=permx_im, permy=permy_im, permz=permz_im, poro=poro_im, depth= None, start_z=2000, rcond=181.44, hcap=2200)
 
 
             # top vertical imaginary grid for overburden connection(5,5,2)
@@ -395,7 +395,7 @@ class Model(DartsModel):
             permy_top[:, :, 1] = self.level0.global_data['permy'][ip, jp, pk_top_res]
             permz_top[:, :, 1] = self.level0.global_data['permz'][ip, jp, pk_top_res]
 
-            rcond_top[:, :, 1] = 500
+            rcond_top[:, :, 1] = 181.44
             hcap_top[:, :, 1]  = 2200
             self.level1_imag_z_top[name] = StructReservoir(
                 self.timer,
@@ -431,7 +431,7 @@ class Model(DartsModel):
             permy_bot[:, :, 0] = self.level0.global_data['permy'][ip, jp, pk_bot_res]
             permz_bot[:, :, 0] = self.level0.global_data['permz'][ip, jp, pk_bot_res]
             poro_bot[:, :, 0]  = 0.2
-            rcond_bot[:, :, 0] = 500
+            rcond_bot[:, :, 0] = 181.44
             hcap_bot[:, :, 0]  = 2200
 
             permx_bot[:, :, 1] = self.level0.global_data['permx'][ip, jp, pk_under]
@@ -502,7 +502,7 @@ class Model(DartsModel):
             # volume: structured fine grid, direct from discretized volume is safer
             volume_list.append(dx_f * dy_f * dz_f)
 
-            rcond_list.append(np.ones(self.level1[name].n, dtype=float)*500)
+            rcond_list.append(np.ones(self.level1[name].n, dtype=float)*181.44)
             hcap_list.append(np.ones(self.level1[name].n, dtype=float) * 2200)
 
 

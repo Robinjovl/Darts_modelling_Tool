@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import argparse
 from datetime import datetime
-from Homo_model_aquifer.uni_coarse_aquifer import Model
+from Heter_model_aquifer.lgr_aquifer import Model
 
 from darts.engines import value_vector, redirect_darts_output
 from darts.physics.base.operators_base import PropertyOperators as props
@@ -168,14 +168,14 @@ if __name__ == '__main__':
     # USE_LGR = args.use_lgr
 
     Perm_file_name = "PERM66_ECL.INC"
-    Nt=50
+    Nt=5
     Dt = 365.0
     INJECTION_ONLY_STEPS = 3
-    USE_LGR = False
+    USE_LGR = True
     Fine = False
-    lgr_output_dir = "output_lgr_open_aquifer_new"
-    fine_output_dir = "output_fine_open_aquifer_new"
-    coarse_output_dir = "output_coarse_open_aquifer_new_3yr_inj"
+    lgr_output_dir = "output_perm66_correct_depth"
+    fine_output_dir = "output_fine_VLAq_3yr_inj_perm66"
+    coarse_output_dir = "output_coarse_VLAq_3yr_inj_perm66"
     output_dir = lgr_output_dir if USE_LGR else fine_output_dir if Fine else coarse_output_dir
     Refine = (5, 5, 1)
     RHO_PROP = "rhoG"
@@ -206,8 +206,9 @@ if __name__ == '__main__':
 
         cfg_inj_only = make_injector_only_cfg(cfg)
         redirect_darts_output(stage1_log_path)
-        injection_model = Model(cfg_inj_only)
+        injection_model = Model(cfg_inj_only,perm_file_name=Perm_file_name)
         injection_model.init(platform="cpu")
+        print("raw T data:", injection_model.lgr_fc_debug_df)
         injection_model.set_output(output_folder=stage1_output_dir)
         injection_model.run(
             INJECTION_ONLY_STEPS * Dt,
@@ -218,7 +219,7 @@ if __name__ == '__main__':
 
         stage2_log_path = os.path.join(output_dir, "run.log")
         redirect_darts_output(stage2_log_path)
-        darts_model = Model(cfg)
+        darts_model = Model(cfg,perm_file_name=Perm_file_name)
         darts_model.init(platform="cpu", restart=True)
         darts_model.set_output(output_folder=output_dir)
         darts_model.load_restart_data(restart_file, ts_idx=-1)
@@ -229,7 +230,7 @@ if __name__ == '__main__':
         stage1_log_path = os.path.join(stage1_output_dir, "run.log")
 
         redirect_darts_output(stage1_log_path)
-        injection_model = Model(include_producer=False)
+        injection_model = Model(include_producer=False, perm_file_name=Perm_file_name)
         injection_model.init(platform="cpu")
         injection_model.set_output(output_folder=stage1_output_dir)
         injection_model.run(
@@ -241,7 +242,7 @@ if __name__ == '__main__':
 
         run_log_path = os.path.join(output_dir, "run.log")
         redirect_darts_output(run_log_path)
-        darts_model = Model(include_producer=True)
+        darts_model = Model(include_producer=True, perm_file_name=Perm_file_name)
         darts_model.init(platform="cpu", restart=True)
         darts_model.set_output(output_folder=output_dir)
         darts_model.load_restart_data(restart_file, ts_idx=-1)
@@ -326,8 +327,8 @@ if __name__ == '__main__':
         )
 
 
-    Tmin = 35 + 273.15
-    Tmax = 90 + 273.15
+    Tmin = 25 + 273.15
+    Tmax = 50 + 273.15
     t0_vmin, t0_vmax = get_padded_limits(temperature0)
 
     plot_primary_xy_xz(

@@ -71,7 +71,7 @@ def assemble_lgr_connections(self):
         lgr_offsets=lgr_offsets,
         verbose=True,
     )
-
+    self.lgr_fc_debug_df = fc_debug_df
 
     # fc_cm = []
     # fc_cp = []
@@ -707,7 +707,7 @@ class LGRReservoir(ReservoirBase):
             cell_data["rcond"] = np.asarray(self.rcond, dtype=float)[:n]
         if hasattr(self, "hcap"):
             cell_data["hcap"] = np.asarray(self.hcap, dtype=float)[:n]
-            
+
         # Add useful diagnostics at every timestep
         cell_data["cell_id"] = np.arange(n, dtype=np.int32)
         if hasattr(self, "dx") and hasattr(self, "dy"):

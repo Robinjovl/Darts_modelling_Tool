@@ -16,7 +16,8 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.tools.keyword_file_tools import load_single_keyword
 from dartsflash.components import CompData
-from dartsflash.libflash import AQEoS, CubicEoS
+from dartsflash.libflash import EoS
+from dartsflash.mixtures import DARTSFlash, VLAq
 
 
 class TableKFlash(Flash):
@@ -169,12 +170,30 @@ class Model(DartsModel):
         self.components = components
         eps = self.zero / 10.0
         comp_data = CompData(components, setprops=True)
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003, AQEoS.solute: AQEoS.Ziabakhsh2012})
 
         pc = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, eps_z=eps)
 
-        pc.flash_ev = TableKFlash(2, Path(__file__).resolve().parent / "K_values.csv", eps)
+        # pc.flash_ev = TableKFlash(2, Path(__file__).resolve().parent / "K_values.csv", eps)
+        pc.flash_ev = VLAq(comp_data, hybrid=True)
+        pc.flash_ev.set_vl_eos(
+            "PR",
+            root_order=[EoS.STABLE],
+            trial_comps=[i for i in range(len(components))],
+            stability_tol=1e-20,
+            switch_tol=1e-2,
+            max_iter=50,
+            use_gmix=False,
+        )
+        pc.flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+        pc.flash_ev.init_flash(
+            flash_type=DARTSFlash.FlashType.PTFlash,
+            eos_order=["VL", "Aq"],
+            t_min=270.,
+            t_max=700.,
+            t_init=300.,
+        )
+        pr = pc.flash_ev.eos["VL"]
+        aq = pc.flash_ev.eos["Aq"]
         pc.density_ev = {"CO2_rich": EoSDensity(eos=pr, Mw=comp_data.Mw),
                          "aqueous": Garcia2001(components)}
         pc.viscosity_ev = {"CO2_rich": Fenghour1998(), "aqueous": Islam2012(components)}

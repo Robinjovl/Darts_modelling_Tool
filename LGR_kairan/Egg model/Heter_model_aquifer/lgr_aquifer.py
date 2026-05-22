@@ -23,69 +23,70 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.tools.keyword_file_tools import load_single_keyword
 from dartsflash.components import CompData
-from dartsflash.libflash import AQEoS, CubicEoS
+from dartsflash.libflash import EoS
+from dartsflash.mixtures import DARTSFlash, VLAq
 
-class TableKFlash(Flash):
-    def __init__(self, nc, table_path, eps=1e-11):
-        super().__init__(nph=2, nc=nc)
-        self.rr_eps = eps
-        df = pd.read_csv(table_path)
-        self.p_axis = np.sort(df["P_bar"].unique())
-        self.t_axis = np.sort(df["T_K"].unique())
-        self.k_co2 = np.zeros((len(self.p_axis), len(self.t_axis)))
-        self.k_h2o = np.zeros_like(self.k_co2)
-        for i, p in enumerate(self.p_axis):
-            df_p = df[df["P_bar"] == p].sort_values("T_K")
-            self.k_co2[i, :] = df_p["K_CO2"].values
-            self.k_h2o[i, :] = df_p["K_H2O"].values
+# class TableKFlash(Flash):
+#     def __init__(self, nc, table_path, eps=1e-11):
+#         super().__init__(nph=2, nc=nc)
+#         self.rr_eps = eps
+#         df = pd.read_csv(table_path)
+#         self.p_axis = np.sort(df["P_bar"].unique())
+#         self.t_axis = np.sort(df["T_K"].unique())
+#         self.k_co2 = np.zeros((len(self.p_axis), len(self.t_axis)))
+#         self.k_h2o = np.zeros_like(self.k_co2)
+#         for i, p in enumerate(self.p_axis):
+#             df_p = df[df["P_bar"] == p].sort_values("T_K")
+#             self.k_co2[i, :] = df_p["K_CO2"].values
+#             self.k_h2o[i, :] = df_p["K_H2O"].values
 
-    def evaluate(self, pressure, temperature, zc):
-        self.K_values = self.get_k_values(pressure, temperature)
-        self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
-        if self.nu[0] < 0.:
-            self.nu = [0., 1.]
-            self.X = [[0., 0.], zc]
-        elif self.nu[0] > 1.:
-            self.nu = [1., 0.]
-            self.X = [zc, [0., 0.]]
-        self.temperature = temperature
-        return 0
+#     def evaluate(self, pressure, temperature, zc):
+#         self.K_values = self.get_k_values(pressure, temperature)
+#         self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
+#         if self.nu[0] < 0.:
+#             self.nu = [0., 1.]
+#             self.X = [[0., 0.], zc]
+#         elif self.nu[0] > 1.:
+#             self.nu = [1., 0.]
+#             self.X = [zc, [0., 0.]]
+#         self.temperature = temperature
+#         return 0
 
-    def get_k_values(self, pressure, temperature):
-        pi0, pi1, wp = self._bounds(self.p_axis, pressure)
-        ti0, ti1, wt = self._bounds(self.t_axis, temperature)
-        return np.array(
-            [
-                self._interp(self.k_co2, pi0, pi1, ti0, ti1, wp, wt),
-                self._interp(self.k_h2o, pi0, pi1, ti0, ti1, wp, wt),
-            ]
-        )
+#     def get_k_values(self, pressure, temperature):
+#         pi0, pi1, wp = self._bounds(self.p_axis, pressure)
+#         ti0, ti1, wt = self._bounds(self.t_axis, temperature)
+#         return np.array(
+#             [
+#                 self._interp(self.k_co2, pi0, pi1, ti0, ti1, wp, wt),
+#                 self._interp(self.k_h2o, pi0, pi1, ti0, ti1, wp, wt),
+#             ]
+#         )
 
-    @staticmethod
-    def _bounds(axis, value):
-        i1 = np.searchsorted(axis, value)
-        if i1 == 0:
-            return 0, 0, 0.0
-        if i1 >= len(axis):
-            i = len(axis) - 1
-            return i, i, 0.0
-        i0 = i1 - 1
-        return i0, i1, (value - axis[i0]) / (axis[i1] - axis[i0])
+#     @staticmethod
+#     def _bounds(axis, value):
+#         i1 = np.searchsorted(axis, value)
+#         if i1 == 0:
+#             return 0, 0, 0.0
+#         if i1 >= len(axis):
+#             i = len(axis) - 1
+#             return i, i, 0.0
+#         i0 = i1 - 1
+#         return i0, i1, (value - axis[i0]) / (axis[i1] - axis[i0])
 
-    @staticmethod
-    def _interp(table, pi0, pi1, ti0, ti1, wp, wt):
-        if pi0 == pi1 and ti0 == ti1:
-            return float(table[pi0, ti0])
-        if pi0 == pi1:
-            return float(table[pi0, ti0] * (1.0 - wt) + table[pi0, ti1] * wt)
-        if ti0 == ti1:
-            return float(table[pi0, ti0] * (1.0 - wp) + table[pi1, ti0] * wp)
-        return float(
-            table[pi0, ti0] * (1.0 - wp) * (1.0 - wt)
-            + table[pi1, ti0] * wp * (1.0 - wt)
-            + table[pi0, ti1] * (1.0 - wp) * wt
-            + table[pi1, ti1] * wp * wt
-        )
+#     @staticmethod
+#     def _interp(table, pi0, pi1, ti0, ti1, wp, wt):
+#         if pi0 == pi1 and ti0 == ti1:
+#             return float(table[pi0, ti0])
+#         if pi0 == pi1:
+#             return float(table[pi0, ti0] * (1.0 - wt) + table[pi0, ti1] * wt)
+#         if ti0 == ti1:
+#             return float(table[pi0, ti0] * (1.0 - wp) + table[pi1, ti0] * wp)
+#         return float(
+#             table[pi0, ti0] * (1.0 - wp) * (1.0 - wt)
+#             + table[pi1, ti0] * wp * (1.0 - wt)
+#             + table[pi0, ti1] * (1.0 - wp) * wt
+#             + table[pi1, ti1] * wp * wt
+#         )
 
 class Model(DartsModel):
     def __init__(self, cfg: dict, perm_file_name: str):
@@ -482,10 +483,28 @@ class Model(DartsModel):
         self.components = components
         eps = self.zero / 10.0
         comp_data = CompData(components, setprops=True)
-        pr = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003, AQEoS.solute: AQEoS.Ziabakhsh2012})
         pc = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, eps_z=eps)
-        pc.flash_ev = TableKFlash(2, Path(__file__).resolve().parent / "K_values.csv", eps)
+        # pc.flash_ev = TableKFlash(2, Path(__file__).resolve().parent / "K_values.csv", eps)
+        pc.flash_ev = VLAq(comp_data, hybrid=True)
+        pc.flash_ev.set_vl_eos(
+            "PR",
+            root_order=[EoS.STABLE],
+            trial_comps=[i for i in range(len(components))],
+            stability_tol=1e-20,
+            switch_tol=1e-2,
+            max_iter=50,
+            use_gmix=False,
+        )
+        pc.flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+        pc.flash_ev.init_flash(
+            flash_type=DARTSFlash.FlashType.PTFlash,
+            eos_order=["VL", "Aq"],
+            t_min=270.,
+            t_max=430.,
+            t_init=300.,
+        )
+        pr = pc.flash_ev.eos["VL"]
+        aq = pc.flash_ev.eos["Aq"]
         pc.density_ev = {"CO2_rich": EoSDensity(eos=pr, Mw=comp_data.Mw),
                          "aqueous": Garcia2001(components)}
         pc.viscosity_ev = {"CO2_rich": Fenghour1998(),
@@ -510,7 +529,7 @@ class Model(DartsModel):
             max_z=1.0 - eps,
             epsilon_z=eps,
             min_t=273.15,
-            max_t=400+273.15,
+            max_t=430,
         )
         pc.output_props = {
             "satG": lambda: pc.sat[0],
