@@ -238,6 +238,8 @@ class ModelBuilder:
             "depth",
             "hcap",
             "rcond",
+            "op_num",
+            "actnum",
         )
 
         def _resolve_val(val: Any) -> Any:

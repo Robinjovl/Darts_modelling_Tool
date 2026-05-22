@@ -142,6 +142,27 @@ class StructReservoirConfig(BaseModel):
         description="Pore thermal expansion coefficient [1/K]",
     )
 
+    # Per-face boundary volume multipliers (applied after discretization).
+    # Mirrors the dict keys consumed by :meth:`StructReservoir.set_boundary_volume`.
+    boundary_volumes: (
+        dict[
+            Literal[
+                "xy_minus", "xy_plus", "yz_minus", "yz_plus", "xz_minus", "xz_plus"
+            ],
+            float,
+        ]
+        | None
+    ) = Field(
+        default=None,
+        description=(
+            "Per-face boundary volume multipliers applied after discretization. "
+            "Keys are 'xy_minus'/'xy_plus' (z-direction faces), "
+            "'yz_minus'/'yz_plus' (x-direction faces), "
+            "'xz_minus'/'xz_plus' (y-direction faces). Use to emulate "
+            "an infinite-aquifer side boundary."
+        ),
+    )
+
     _PROPERTY_FIELDS = ("dx", "dy", "dz", "permx", "permy", "permz", "poro")
 
     def _assert_geomech_complete(self) -> None:
@@ -334,6 +355,7 @@ class StructReservoir(ReservoirBase):
             "biot",
             "th_expn",
             "th_expn_poro",
+            "boundary_volumes",
         }
         kwargs = {
             k: v
@@ -388,7 +410,13 @@ class StructReservoir(ReservoirBase):
             if isinstance(val, list):
                 kwargs[key] = np.asarray(val)
 
-        return cls(timer=timer, **kwargs)
+        reservoir = cls(timer=timer, **kwargs)
+        if config.boundary_volumes:
+            # ``set_boundary_volume`` reads every key; fill omitted faces with None.
+            full_bv = dict.fromkeys(reservoir.boundary_volumes.keys())
+            full_bv.update(config.boundary_volumes)
+            reservoir.boundary_volumes = full_bv
+        return reservoir
 
     def to_config(self) -> StructReservoirConfig:
         """Return the configuration that would reproduce this reservoir."""

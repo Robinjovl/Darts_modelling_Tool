@@ -288,6 +288,17 @@ class StrictReservoirSpec(StructReservoirConfig):
         list[StrictReservoirLayerSpec] | None,
         Field(description="Layered overrides for per-cell properties"),
     ] = None
+    # ``op_num`` and ``actnum`` are integer-typed in the native config; the
+    # JSON layer widens them to also accept a DataRef so large per-cell index
+    # arrays can be referenced by path instead of inlined in the JSON.
+    op_num: Annotated[
+        int | list[int] | DataRef | None,
+        Field(description="Operator region number per cell (PVTNUM, SCALNUM, ...)"),
+    ] = 0
+    actnum: Annotated[
+        int | list[int] | DataRef | None,
+        Field(description="Active cell indicator per cell"),
+    ] = 1
 
 
 StrictCPGReservoirSpec = CPGReservoirConfig

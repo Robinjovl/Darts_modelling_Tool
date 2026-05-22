@@ -67,9 +67,16 @@ class SimParamsConfig(BaseModel):
     it_linear: int | None = Field(
         None, ge=1, description="Maximum number of linear iterations"
     )
-    newton_type: Literal["newton_local_chop", "default"] | None = Field(
-        None, description="Newton type identifier"
-    )
+    newton_type: (
+        Literal[
+            "newton_std",
+            "newton_local_chop",
+            "newton_global_chop",
+            "newton_inflection_point",
+            "default",
+        ]
+        | None
+    ) = Field(None, description="Newton type identifier")
     line_search: bool | None = Field(
         None, description="Enable line search for Newton solver"
     )
@@ -250,18 +257,75 @@ class WellsConfig(BaseModel):
     )
 
 
-class InitialConditionsConfig(BaseModel):
-    """Initial conditions mapping for physics variables."""
+class InitialConditionsByDepthTable(BaseModel):
+    """Initial conditions specified as a depth-indexed table.
+
+    Maps onto ``Physics.set_initial_conditions_from_depth_table``: ``input_depth``
+    is a list of reference depths (typically just ``[depth_top, depth_bottom]``
+    for a two-point linear gradient), and ``input_distribution`` carries one
+    list of equal length per state variable (pressure, component fractions,
+    optionally temperature for thermal physics).
+    """
 
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
-            "examples": [{"by_array": {"pressure": 50.0, "CO2": 0.1, "C1": 0.2}}]
+            "examples": [
+                {
+                    "input_depth": [0.0, 1200.0],
+                    "input_distribution": {
+                        "pressure": [212.0, 329.3],
+                        "H2O": [0.9999999998, 0.9999999998],
+                        "temperature": [313.15, 343.15],
+                    },
+                }
+            ]
         },
     )
 
-    by_array: dict[str, Any] = Field(
-        description="Initial state variables (pressure, compositions, etc.)"
+    input_depth: list[float] = Field(
+        min_length=2, description="Reference depths [m] for the depth table"
+    )
+    input_distribution: dict[str, list[float]] = Field(
+        description=(
+            "Per-variable depth-indexed values; each list must match the "
+            "length of ``input_depth``"
+        )
+    )
+
+
+class InitialConditionsConfig(BaseModel):
+    """Initial conditions mapping for physics variables.
+
+    Exactly one of ``by_array`` (per-cell or scalar values) or ``by_depth_table``
+    (linear interpolation between reference depths) must be provided.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"by_array": {"pressure": 50.0, "CO2": 0.1, "C1": 0.2}},
+                {
+                    "by_depth_table": {
+                        "input_depth": [0.0, 1200.0],
+                        "input_distribution": {
+                            "pressure": [212.0, 329.3],
+                            "H2O": [0.9999999998, 0.9999999998],
+                        },
+                    }
+                },
+            ]
+        },
+    )
+
+    by_array: dict[str, Any] | None = Field(
+        default=None,
+        description="Initial state variables (pressure, compositions, etc.)",
+    )
+    by_depth_table: InitialConditionsByDepthTable | None = Field(
+        default=None,
+        description="Depth-indexed initial conditions (linear interpolation between depths)",
     )
 
 
@@ -889,8 +953,14 @@ class DartsModel:
         # Map newton_type string → engine enum.  "default" means "leave the
         # engine's built-in default newton solver" — do NOT forward the
         # string to the C++ bindings (which expect ``newton_solver_t`` enum).
-        if config.newton_type == "newton_local_chop":
-            kwargs["newton_type"] = sim_params.newton_local_chop
+        _NEWTON_TYPE_MAP = {
+            "newton_std": sim_params.newton_std,
+            "newton_local_chop": sim_params.newton_local_chop,
+            "newton_global_chop": sim_params.newton_global_chop,
+            "newton_inflection_point": sim_params.newton_inflection_point,
+        }
+        if config.newton_type in _NEWTON_TYPE_MAP:
+            kwargs["newton_type"] = _NEWTON_TYPE_MAP[config.newton_type]
         # Any other value (including ``"default"``) is intentionally ignored.
 
         self.set_sim_params(**kwargs)
@@ -932,12 +1002,24 @@ class DartsModel:
     def set_initial_conditions_from_dict(self, ic_dict: dict[str, Any]) -> None:
         """Set initial conditions from a dict matching InitialConditionsSpec.
 
-        Normalises variable names (pressure synonyms, z-indexed composition,
-        case-insensitive component names) and auto-fills missing component
-        variables with 0.0.
+        Supports two variants:
 
-        :param ic_dict: ``{"by_array": {"pressure": 50, "CO2": 0.1, ...}}``
+        * ``by_array`` — per-cell or scalar values keyed by state variable.
+          Variable names are normalised (pressure synonyms, z-indexed
+          composition, case-insensitive component names) and missing
+          component variables are auto-filled with 0.0.
+        * ``by_depth_table`` — depth-indexed table (``input_depth`` +
+          ``input_distribution``) forwarded to
+          ``Physics.set_initial_conditions_from_depth_table``. Keys are
+          name-normalised the same way; missing components are auto-filled.
+
+        :param ic_dict: e.g. ``{"by_array": {"pressure": 50, "CO2": 0.1}}``
+            or ``{"by_depth_table": {"input_depth": [...], "input_distribution": {...}}}``
         """
+        depth_table = ic_dict.get("by_depth_table")
+        if depth_table is not None:
+            self._set_initial_conditions_from_depth_table(depth_table)
+            return
         by_array = dict(ic_dict.get("by_array", {}))
         expected_vars = list(self.physics.vars)
         expected_lower = {v.lower(): v for v in expected_vars}
@@ -971,6 +1053,58 @@ class DartsModel:
 
         self.physics.set_initial_conditions_from_array(
             mesh=self.reservoir.mesh, input_distribution=norm
+        )
+
+    def _set_initial_conditions_from_depth_table(
+        self, depth_table: dict[str, Any]
+    ) -> None:
+        """Apply a depth-indexed initial-conditions table via Physics.
+
+        Variable names in ``input_distribution`` are normalised against
+        ``self.physics.vars`` using the same rules as ``by_array`` (pressure
+        synonyms, z-indexed compositions, case-insensitive components), and
+        missing component variables default to a zero list of the same
+        length as ``input_depth``.
+        """
+        input_depth = depth_table.get("input_depth")
+        raw_distribution = dict(depth_table.get("input_distribution") or {})
+        if input_depth is None:
+            raise ValueError(
+                "by_depth_table requires 'input_depth' (list of reference depths)"
+            )
+
+        expected_vars = list(self.physics.vars)
+        expected_lower = {v.lower(): v for v in expected_vars}
+        comp_vars = expected_vars[1:]
+        n_depth = len(input_depth)
+
+        norm: dict[str, list[float]] = {}
+        for k, v in raw_distribution.items():
+            kl = str(k).strip().lower()
+            if kl in ("p", "pressure"):
+                norm[expected_lower.get("pressure", "pressure")] = list(v)
+                continue
+            m = re.fullmatch(r"z\s*_?(\d+)", kl)
+            if m:
+                idx = int(m.group(1))
+                if 0 <= idx < len(comp_vars):
+                    norm[comp_vars[idx]] = list(v)
+                continue
+            if kl in expected_lower:
+                norm[expected_lower[kl]] = list(v)
+                continue
+            # Pass through unknown keys (e.g. 'temperature', 'enthalpy') so the
+            # downstream physics method can decide how to use them.
+            norm[k] = list(v) if isinstance(v, list | tuple) else v
+
+        for var in comp_vars:
+            if var not in norm:
+                norm[var] = [0.0] * n_depth
+
+        self.physics.set_initial_conditions_from_depth_table(
+            mesh=self.reservoir.mesh,
+            input_distribution=norm,
+            input_depth=list(input_depth),
         )
 
     def set_well_controls_from_dict(

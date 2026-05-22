@@ -27,7 +27,11 @@ class JsonModel(DartsModel):
 
     def set_initial_conditions(self):
         ic_spec = getattr(self, '_initial_conditions_spec', None)
-        if not ic_spec or not getattr(ic_spec, 'by_array', None):
+        if not ic_spec:
+            return
+        if not getattr(ic_spec, 'by_array', None) and not getattr(
+            ic_spec, 'by_depth_table', None
+        ):
             return
         self.set_initial_conditions_from_dict(ic_spec.model_dump())
 

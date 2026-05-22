@@ -45,8 +45,13 @@ class PropertyContainerConfig(BaseModel):
     eps_z: float | None = Field(
         None, ge=0, description="Min composition bound in OBL grid"
     )
-    temperature: float = Field(
-        1.0, description="Constant temperature for isothermal simulation"
+    temperature: float | None = Field(
+        1.0,
+        description=(
+            "Constant temperature for isothermal simulation. Pass null (None) "
+            "to switch the container into thermal mode where temperature is "
+            "read from the state vector."
+        ),
     )
     nc_sol: int | None = None
     np_sol: int | None = None
