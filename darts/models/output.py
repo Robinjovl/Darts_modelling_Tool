@@ -1159,11 +1159,12 @@ class Output:
         else:
             timesteps, property_array = output_data[0], output_data[1]
 
+        # Some reservoir types, such as StructReservoirWithLGR, do not expose
+        # a standard discretizer object. Treat them as conforming unless they
+        # explicitly report fracture cells through frac_cells_tot.
+        reservoir_discretizer = getattr(self.reservoir, "discretizer", None)
         non_conform = (
-            1
-            if hasattr(self.reservoir.discretizer, "frac_cells_tot")
-            and self.reservoir.discretizer.frac_cells_tot > 0
-            else 0
+            1 if getattr(reservoir_discretizer, "frac_cells_tot", 0) > 0 else 0
         )
 
         if non_conform:
