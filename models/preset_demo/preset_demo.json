@@ -3,7 +3,9 @@
   "physics": {"preset": "physics/compositional/co2_brine_isothermal"},
   "sim_params": {
     "preset": "sim_params/long_storage_simulation",
-    "runtime": 3650.0
+    "runtime": 3650.0,
+    "max_ts": 10.0,
+    "line_search": false
   },
   "wells": {
     "wells": [
@@ -12,7 +14,7 @@
         "perforations": [{"ijk": [1, 1, 1]}],
         "controls": {
           "inj_bhp": 200,
-          "inj_composition": [0.99999998, 1e-08]
+          "inj_composition": [0.999998, 1e-06]
         }
       },
       {
