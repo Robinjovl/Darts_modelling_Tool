@@ -1196,14 +1196,7 @@ class Output:
         else:
             frac_property_array = {}
 
-        # units to prop names
-        self.set_units()
-        prop_names = {}
-        for _i, name in enumerate(property_array.keys()):
-            if name in self.properties + self.physics.vars:
-                prop_names[name] = name + self.variable_units[name]
-            else:
-                prop_names[name] = name
+        prop_names = self._vtk_property_names(property_array.keys())
 
         for t, time in enumerate(timesteps):
             data = np.array([property_array[name][t] for name in property_array])
@@ -1222,6 +1215,14 @@ class Output:
 
         self.timer.node["vtk_output"].stop()
         self.timer.stop()
+
+    def _vtk_property_names(self, property_names) -> dict:
+        self.set_units()
+        known_names = self.properties + self.physics.vars
+        return {
+            name: name + self.variable_units[name] if name in known_names else name
+            for name in property_names
+        }
 
     def output_to_xarray(
         self,
@@ -1636,31 +1637,38 @@ class Output:
         time, output_data = self.well_output_properties(
             output_properties=output_properties, ith_step=ith_step
         )
+        prop_names = self._vtk_property_names(output_data.keys())
 
         # Store well primary and seconday props in vtp files
-        for w_name in self.wells.keys():
-            # If the well has n segments, so n+1 nodes
-            z_nodes = np.concatenate(
-                (
-                    [0],
-                    self.wells[w_name].geometry.TVD_interfaces,
-                    [self.wells[w_name].geometry.pipe_length],
-                )
+        for well in self.reservoir.wells:
+            w_name = well.name
+            if w_name not in self.wells:
+                continue
+
+            first_block_idx = well.well_head_idx - self.reservoir.mesh.n_res_blocks
+            num_segments = self.wells[w_name].geometry.num_segments
+            well_output_data = self._slice_well_output_properties(
+                well_name=w_name,
+                output_properties=output_data,
+                first_block_idx=first_block_idx,
+                num_segments=num_segments,
             )
-            # Flip depth sign for VTP (positive z in DARTS is downward, while negative z in ParaView is downward)
-            z_nodes = -z_nodes
-            x_nodes = np.zeros_like(
-                z_nodes
-            )  # x is zero since the well is located at the center of the cylindrical grid
-            y_nodes = np.zeros_like(
-                z_nodes
-            )  # y is zero since the well is located at the center of the cylindrical grid
-            nodes_coords = np.column_stack((x_nodes, y_nodes, z_nodes))
+            well_output_data = {
+                prop_names[name]: values for name, values in well_output_data.items()
+            }
+
+            # Build the well polyline in the same global coordinate frame as
+            # the reservoir VTK output so both files overlay correctly.
+            nodes_coords = self._well_output_nodes_xyz(
+                well=well,
+                pipe=self.wells[w_name],
+                num_segments=num_segments,
+            )
 
             self.write_well_output_properties_to_vtp(
                 well_name=w_name,
                 nodes_xyz=nodes_coords,
-                output_properties=output_data,
+                output_properties=well_output_data,
                 ith_step=ith_step,
                 time=time,
                 output_directory=output_directory,
@@ -1668,6 +1676,188 @@ class Output:
 
         self.timer.node["vtp_output"].stop()
         self.timer.stop()
+
+    @staticmethod
+    def _slice_well_output_properties(
+        well_name: str,
+        output_properties: dict,
+        first_block_idx: int,
+        num_segments: int,
+    ) -> dict:
+        well_output_properties = {}
+        last_block_idx = first_block_idx + num_segments
+        for name, vals in output_properties.items():
+            arr = np.asarray(vals).reshape(-1)
+            if first_block_idx < 0 or last_block_idx > arr.shape[0]:
+                raise ValueError(
+                    f"Cannot write '{name}' for well '{well_name}': "
+                    f"well block slice [{first_block_idx}, {last_block_idx}) "
+                    f"is outside the output length {arr.shape[0]}."
+                )
+            well_output_properties[name] = arr[first_block_idx:last_block_idx]
+
+        return well_output_properties
+
+    def _well_output_nodes_xyz(self, well, pipe, num_segments: int) -> np.ndarray:
+        z_nodes = self._well_output_z_nodes(
+            well=well,
+            geometry=pipe.geometry,
+            num_segments=num_segments,
+        )
+        z_nodes = self._reservoir_vtk_z_scale() * z_nodes
+
+        x, y = self._well_xy_from_perforations(well)
+        x_nodes = np.full_like(z_nodes, x, dtype=float)
+        y_nodes = np.full_like(z_nodes, y, dtype=float)
+        return np.column_stack((x_nodes, y_nodes, z_nodes))
+
+    def _well_xy_from_perforations(self, well) -> tuple[float, float]:
+        perforations = list(well.perforations)
+        if not perforations:
+            warnings.warn(
+                f"Well {well.name!r} has no perforations; writing VTP at x=y=0.",
+                stacklevel=2,
+            )
+            return 0.0, 0.0
+
+        cell_centers = self._get_output_cell_centers()
+        cell_indices = np.asarray([int(perf[1]) for perf in perforations], dtype=int)
+        if np.any(cell_indices < 0) or np.any(cell_indices >= cell_centers.shape[0]):
+            raise ValueError(
+                f"Well {well.name!r} has perforation cell indices outside "
+                f"the reservoir centroid range [0, {cell_centers.shape[0]})."
+            )
+
+        xy = np.mean(cell_centers[cell_indices, :2], axis=0)
+        return float(xy[0]), float(xy[1])
+
+    def _well_output_z_nodes(self, well, geometry, num_segments: int) -> np.ndarray:
+        z_nodes = self._well_geometry_tvd_nodes(geometry, num_segments)
+        if z_nodes is not None:
+            return z_nodes
+
+        centers = self._well_segment_depths_from_mesh(well, num_segments)
+        if centers is None:
+            raise ValueError(
+                f"Cannot resolve VTP z coordinates for well {well.name!r}: "
+                "neither pipe geometry nor mesh segment depths are available."
+            )
+        return self._nodes_from_segment_centers(centers)
+
+    @staticmethod
+    def _well_geometry_tvd_nodes(geometry, num_segments: int) -> np.ndarray | None:
+        if geometry is None:
+            return None
+
+        tvd_segments = np.asarray(getattr(geometry, "TVD_segments", []), dtype=float)
+        tvd_interfaces = np.asarray(
+            getattr(geometry, "TVD_interfaces", []), dtype=float
+        )
+        if tvd_segments.size != num_segments:
+            return None
+
+        if num_segments == 1:
+            half_length = 0.5 * Output._single_segment_tvd_length(geometry)
+            return np.asarray(
+                [tvd_segments[0] - half_length, tvd_segments[0] + half_length],
+                dtype=float,
+            )
+
+        if tvd_interfaces.size != num_segments - 1:
+            return None
+
+        z_nodes = np.empty(num_segments + 1, dtype=float)
+        z_nodes[1:-1] = tvd_interfaces
+        z_nodes[0] = 2.0 * tvd_segments[0] - z_nodes[1]
+        z_nodes[-1] = 2.0 * tvd_segments[-1] - z_nodes[-2]
+        return z_nodes
+
+    @staticmethod
+    def _single_segment_tvd_length(geometry) -> float:
+        segment_lengths = np.asarray(
+            getattr(geometry, "segment_lengths", []), dtype=float
+        )
+        if segment_lengths.size == 1:
+            inclination = np.asarray(
+                getattr(geometry, "inclination_angle_radian", 0.0), dtype=float
+            )
+            if inclination.size == 1:
+                return abs(segment_lengths[0] * np.cos(float(inclination)))
+            return abs(segment_lengths[0])
+
+        pipe_length = getattr(geometry, "pipe_length", None)
+        if pipe_length is not None:
+            return abs(float(pipe_length))
+        return 1.0
+
+    def _well_segment_depths_from_mesh(
+        self, well, num_segments: int
+    ) -> np.ndarray | None:
+        mesh_depth = getattr(getattr(self.reservoir, "mesh", None), "depth", None)
+        if mesh_depth is None:
+            return None
+
+        depths = np.asarray(mesh_depth, dtype=float)
+        start = int(well.well_head_idx)
+        stop = start + num_segments
+        if start < 0 or stop > depths.size:
+            return None
+
+        centers = depths[start:stop]
+        if centers.size != num_segments or not np.all(np.isfinite(centers)):
+            return None
+        return centers
+
+    @staticmethod
+    def _nodes_from_segment_centers(centers: np.ndarray) -> np.ndarray:
+        centers = np.asarray(centers, dtype=float)
+        if centers.size == 1:
+            return np.asarray([centers[0] - 0.5, centers[0] + 0.5], dtype=float)
+
+        z_nodes = np.empty(centers.size + 1, dtype=float)
+        z_nodes[1:-1] = 0.5 * (centers[:-1] + centers[1:])
+        z_nodes[0] = centers[0] - (z_nodes[1] - centers[0])
+        z_nodes[-1] = centers[-1] + (centers[-1] - z_nodes[-2])
+        return z_nodes
+
+    def _reservoir_vtk_z_scale(self) -> float:
+        vtk_z = self._reservoir_vtk_z_values()
+        depth = self._reservoir_depth_values()
+        if vtk_z is not None and depth is not None:
+            mean_vtk_z = float(np.nanmean(vtk_z))
+            mean_depth = float(np.nanmean(depth))
+            if np.isfinite(mean_vtk_z) and np.isfinite(mean_depth):
+                if abs(mean_vtk_z) > 1.0e-12 and abs(mean_depth) > 1.0e-12:
+                    return 1.0 if np.sign(mean_vtk_z) == np.sign(mean_depth) else -1.0
+
+        return -1.0
+
+    def _reservoir_vtk_z_values(self) -> np.ndarray | None:
+        vtk_points = getattr(self.reservoir, "vtk_points", None)
+        if vtk_points is not None:
+            vtk_points = np.asarray(vtk_points, dtype=float)
+            if vtk_points.ndim == 2 and vtk_points.shape[1] >= 3:
+                return vtk_points[:, 2]
+
+        vtk_z = getattr(self.reservoir, "vtk_z", None)
+        if vtk_z is not None:
+            vtk_z = np.asarray(vtk_z, dtype=float)
+            if vtk_z.ndim > 0 and vtk_z.size > 0:
+                return vtk_z.reshape(-1)
+
+        return None
+
+    def _reservoir_depth_values(self) -> np.ndarray | None:
+        mesh_depth = getattr(getattr(self.reservoir, "mesh", None), "depth", None)
+        if mesh_depth is None:
+            return None
+
+        depth = np.asarray(mesh_depth, dtype=float)
+        if depth.size == 0:
+            return None
+
+        n_res_blocks = int(getattr(self.reservoir.mesh, "n_res_blocks", depth.size))
+        return depth[:n_res_blocks]
 
     def well_output_properties(
         self,
