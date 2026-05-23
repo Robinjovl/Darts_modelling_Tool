@@ -64,6 +64,28 @@ class LGRCoarseFineFlowBasedUpscaler:
     connection. For thermal coupling, the solve uses the physical rock
     conduction factor and then converts the result back to the `tranD` geometric
     coefficient expected by the engine.
+
+    The flow-based hydraulic value is not calculated by running an open-DARTS
+    dynamic reservoir simulation. It is a local steady-state pressure solve on
+    the virtual grid. In continuous form the solved problem is:
+
+        div(K grad p) = 0
+
+    with artificial Dirichlet boundary conditions p = 1 on the LGR interface
+    plane and p = 0 on the far side of the local support domain. The discrete
+    TPFA balance for each unknown local cell i is:
+
+        sum_j T_ij (p_i - p_j) = 0
+
+    where j are neighboring local cells and T_ij is the hydraulic conductance
+    computed from face area, normal permeability, and half-cell distances. After
+    solving the sparse linear system, the interface flux is summed and converted
+    to an equivalent coarse-fine transmissibility:
+
+        T_eff = q_interface / (1 - average(p_support))
+
+    The final T_eff is distributed back over the actual coarse-fine interface
+    connections in proportion to their normal geometric transmissibilities.
     """
 
     def __init__(
