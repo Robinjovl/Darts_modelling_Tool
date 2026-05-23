@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from darts.engines import ms_well, value_vector
 from darts.reservoirs.struct_reservoir_with_lgr import LGRPatch, StructReservoirWithLGR
 
 
@@ -76,6 +77,191 @@ class AdaptiveLGRPlan:
     lgrs: list[LGRPatch]
     selected_parent_cells: set[int]
     changed: bool
+
+
+class AdaptiveLGRMixin:
+    """
+    Mixin for report-step adaptive LGR remeshing in DARTS models.
+
+    The model using this mixin must provide ``use_amr``, ``amr_config``,
+    ``amr_history``, ``_make_lgr_reservoir(lgrs)``, ``set_wells()``,
+    ``set_boundary_conditions()``, ``set_well_controls()``, ``set_op_list()``,
+    ``reservoir`` and ``physics``.
+    """
+
+    def adapt_lgr(self, verbose: bool = False) -> bool:
+        """
+        Rebuild the LGR layout from the current report-step reservoir state.
+
+        :param verbose: Print an AMR layout update message.
+        :type verbose: bool
+        :return: Whether the reservoir layout changed.
+        :rtype: bool
+        """
+        if not getattr(self, "use_amr", False):
+            return False
+
+        state = reservoir_state_from_engine(self)
+        plan = plan_adaptive_lgr(
+            self.reservoir,
+            state,
+            self.physics.vars,
+            self.amr_config,
+        )
+        if not plan.changed:
+            return False
+
+        old_reservoir = self.reservoir
+        old_time = float(self.physics.engine.t)
+        old_vtk_files = dict(getattr(old_reservoir, "vtk_filenames_and_times", {}))
+        old_well_state = self._capture_adaptive_well_state()
+
+        new_reservoir = self._make_lgr_reservoir(plan.lgrs)
+        new_reservoir.init_reservoir(verbose=False)
+        new_reservoir.vtk_filenames_and_times = old_vtk_files
+        projected_state = project_reservoir_state(
+            old_reservoir,
+            state,
+            new_reservoir,
+        )
+
+        self.reservoir = new_reservoir
+        self.lgrs = plan.lgrs
+        self.set_wells()
+        self.has_dfm_well = any(
+            well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
+        )
+        if not self.has_dfm_well:
+            self.wells = None
+
+        self.reservoir.init_wells()
+        self.physics.init_wells(self.reservoir.wells)
+        self.set_op_list()
+        self.set_boundary_conditions()
+        self.set_well_controls()
+        self._set_adaptive_initial_state(projected_state, old_well_state)
+        self.reset()
+        self._set_engine_reservoir_state(projected_state)
+        self._restore_adaptive_well_state(old_well_state)
+        self.physics.engine.t = old_time
+        self._refresh_output_after_amr()
+        self._record_amr_history(plan, old_time)
+
+        if verbose:
+            print(
+                "AMR updated LGR layout at "
+                f"t={old_time:g} days: {len(self.lgrs)} patches, "
+                f"{self.reservoir.mesh.n_res_blocks} reservoir blocks."
+            )
+        return True
+
+    def _set_adaptive_initial_state(
+        self,
+        projected_state: np.ndarray,
+        well_state: dict[str, dict[str, np.ndarray]],
+    ) -> None:
+        self._set_projected_initial_state(projected_state)
+        self._set_projected_well_initial_state(well_state)
+
+    def _set_projected_initial_state(self, projected_state: np.ndarray) -> None:
+        input_distribution = {
+            var_name: projected_state[:, idx]
+            for idx, var_name in enumerate(self.physics.vars)
+        }
+        self.physics.set_initial_conditions_from_array(
+            mesh=self.reservoir.mesh,
+            input_distribution=input_distribution,
+        )
+
+    def _set_projected_well_initial_state(
+        self, well_state: dict[str, dict[str, np.ndarray]]
+    ) -> None:
+        for well in self.reservoir.wells:
+            if well.ms_type != ms_well.MS_Type.DFM:
+                continue
+
+            state = well_state.get(well.name, {}).get("X")
+            if state is None and getattr(self, "wells", None) is not None:
+                state = self.wells[
+                    well.name
+                ].initial_conditions.initial_conditions_vector
+            if state is not None:
+                well.init_state = value_vector(
+                    np.asarray(state, dtype=float).reshape(-1)
+                )
+
+    def _set_engine_reservoir_state(self, projected_state: np.ndarray) -> None:
+        flat_state = np.asarray(projected_state, dtype=float).reshape(-1)
+        for name in ("X", "Xn"):
+            values = getattr(self.physics.engine, name, None)
+            if values is not None:
+                np.asarray(values)[: flat_state.size] = flat_state
+
+    def _capture_adaptive_well_state(self) -> dict[str, dict[str, np.ndarray]]:
+        well_state = {}
+        if not getattr(self, "has_dfm_well", False):
+            return well_state
+
+        nv = self.physics.n_vars
+        for well in self.reservoir.wells:
+            if well.ms_type != ms_well.MS_Type.DFM:
+                continue
+
+            start = well.well_head_idx * nv
+            stop = (well.well_head_idx + well.num_segments) * nv
+            well_state[well.name] = {}
+            for name in ("X", "Xn"):
+                values = getattr(self.physics.engine, name, None)
+                if values is not None:
+                    well_state[well.name][name] = np.array(
+                        values[start:stop], copy=True
+                    )
+        return well_state
+
+    def _restore_adaptive_well_state(
+        self, well_state: dict[str, dict[str, np.ndarray]]
+    ) -> None:
+        if not well_state:
+            return
+
+        nv = self.physics.n_vars
+        for well in self.reservoir.wells:
+            if well.ms_type != ms_well.MS_Type.DFM or well.name not in well_state:
+                continue
+
+            start = well.well_head_idx * nv
+            stop = (well.well_head_idx + well.num_segments) * nv
+            for name in ("X", "Xn"):
+                state = well_state[well.name].get(name)
+                values = getattr(self.physics.engine, name, None)
+                if state is not None and values is not None:
+                    state = np.asarray(state, dtype=float).reshape(-1)
+                    if state.size != stop - start:
+                        raise ValueError(
+                            f"Cannot restore DFM well '{well.name}' {name}: "
+                            f"state length {state.size} != expected {stop - start}."
+                        )
+                    np.asarray(values)[start:stop] = state
+
+    def _refresh_output_after_amr(self) -> None:
+        if not hasattr(self, "output"):
+            return
+        self.output.reservoir = self.reservoir
+        self.output.op_list = self.op_list
+        self.output.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
+        self.output.wells = self.wells
+        self.output.has_dfm_well = self.has_dfm_well
+
+    def _record_amr_history(self, plan: AdaptiveLGRPlan, time: float) -> None:
+        self.amr_history.append(
+            {
+                "time": time,
+                "n_lgrs": len(self.lgrs),
+                "n_selected_parent_cells": len(plan.selected_parent_cells),
+                "n_refined_parent_cells": count_lgr_parent_cells(self.lgrs),
+                "n_res_blocks": self.reservoir.mesh.n_res_blocks,
+            }
+        )
 
 
 def initial_lgrs_from_config(

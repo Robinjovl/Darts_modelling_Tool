@@ -12,17 +12,43 @@ from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.pipe import Pipe
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
+from darts.reservoirs.adaptive_lgr import (
+    AdaptiveLGRConfig,
+    AdaptiveLGRMixin,
+    initial_lgrs_from_config,
+)
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.reservoirs.struct_reservoir_with_lgr import LGRPatch, StructReservoirWithLGR
+from darts.reservoirs.struct_reservoir_with_lgr import StructReservoirWithLGR
 
 
-class Model(CICDModel):
-    def __init__(self):
+class Model(AdaptiveLGRMixin, CICDModel):
+    def __init__(self, use_amr: bool = True):
         super().__init__()
 
         self.timer.node["initialization"].start()
 
         self.zero = 1e-8
+        self.use_amr = use_amr
+        self.parent_shape = (10, 1, 1)
+        self.perforation_parent_cells = {
+            "I1": (2, 1, 1),
+            "P1": (9, 1, 1),
+        }
+        self.perforation_fractions = {
+            "I1": (0.5, 0.5, 0.5),
+            "P1": (0.5, 0.5, 0.5),
+        }
+        self.amr_config = AdaptiveLGRConfig(
+            refine=(7, 7, 1),
+            buffer_cells=1,
+            gradient_threshold=0.25,
+            indicator_variables=("CO2", "C1", "temperature"),
+            seed_parent_cells=tuple(self.perforation_parent_cells.values()),
+            patch_name_prefix="amr",
+        )
+        self.lgrs = initial_lgrs_from_config(self.parent_shape, self.amr_config)
+        self.amr_history = []
+
         self.set_reservoir()
         self.reservoir.grav_acceleration_for_spe = 9.80665
         self.set_physics()
@@ -41,12 +67,12 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-    def set_reservoir(self):
+    def _make_parent_reservoir(self):
         parent = StructReservoir(
             self.timer,
-            nx=10,
-            ny=1,
-            nz=1,
+            nx=self.parent_shape[0],
+            ny=self.parent_shape[1],
+            nz=self.parent_shape[2],
             dx=20.0,
             dy=20.0,
             dz=10.0,
@@ -61,17 +87,18 @@ class Model(CICDModel):
         # TODO: Using large boundary cells below is required because the production well does not produce without a pump. Pump implementation is required.
         parent.boundary_volumes["yz_minus"] = 1e20
         parent.boundary_volumes["yz_plus"] = 1e20
+        return parent
 
-        lgrs = [
-            LGRPatch("inj_lgr", (2, 2), (1, 1), (1, 1), (7, 7, 1)),
-            LGRPatch("prod_lgr", (9, 9), (1, 1), (1, 1), (7, 7, 1)),
-        ]
-        self.reservoir = StructReservoirWithLGR(
+    def _make_lgr_reservoir(self, lgrs):
+        return StructReservoirWithLGR(
             self.timer,
-            parent,
+            self._make_parent_reservoir(),
             lgrs,
             lgr_coarse_fine_tran_mode="flow_based",
         )
+
+    def set_reservoir(self):
+        self.reservoir = self._make_lgr_reservoir(self.lgrs)
 
     def set_physics(self):
         epsilon = 1e-9
@@ -157,20 +184,20 @@ class Model(CICDModel):
         self.wells = {}
         self._add_dfm_well(
             well_name="I1",
-            lgr_name="inj_lgr",
-            lgr_cell_idx=(4, 4, 1),
+            parent_cell=self.perforation_parent_cells["I1"],
+            fractions=self.perforation_fractions["I1"],
         )
         self._add_dfm_well(
             well_name="P1",
-            lgr_name="prod_lgr",
-            lgr_cell_idx=(4, 4, 1),
+            parent_cell=self.perforation_parent_cells["P1"],
+            fractions=self.perforation_fractions["P1"],
         )
 
     def _add_dfm_well(
         self,
         well_name: str,
-        lgr_name: str,
-        lgr_cell_idx: tuple[int, int, int],
+        parent_cell: tuple[int, int, int],
+        fractions: tuple[float, float, float],
     ):
         segments_lengths = 50 * np.ones(40)
         segments_lengths = np.append(segments_lengths, 10)  # 10 is the reservoir thickness
@@ -212,10 +239,13 @@ class Model(CICDModel):
             ms_well.MS_Type.DFM,
             well_geometry=well_geometry,
         )
+        res_cell_idx = self.reservoir.get_cell_index_in_parent_cell(
+            parent_cell,
+            fractions=fractions,
+        )
         self.reservoir.add_perforation(
             well_name,
-            lgr_name=lgr_name,
-            lgr_cell_idx=lgr_cell_idx,
+            res_cell_idx=res_cell_idx,
             well_seg_idx=well_geometry.num_segments,
             well_diameter=well_geometry.pipe_ID,
             well_indexD=None,

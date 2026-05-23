@@ -1,5 +1,4 @@
-import numpy as np
-from darts.engines import ms_well, sim_params, well_control_iface
+from darts.engines import sim_params, well_control_iface
 
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -10,17 +9,14 @@ from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.adaptive_lgr import (
     AdaptiveLGRConfig,
-    count_lgr_parent_cells,
+    AdaptiveLGRMixin,
     initial_lgrs_from_config,
-    plan_adaptive_lgr,
-    project_reservoir_state,
-    reservoir_state_from_engine,
 )
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.reservoirs.struct_reservoir_with_lgr import StructReservoirWithLGR
 
 
-class Model(CICDModel):
+class Model(AdaptiveLGRMixin, CICDModel):
     def __init__(self, use_amr: bool = True):
         super().__init__()
 
@@ -88,12 +84,7 @@ class Model(CICDModel):
         )
 
     def set_reservoir(self):
-        self.reservoir = StructReservoirWithLGR(
-            self.timer,
-            self._make_parent_reservoir(),
-            self.lgrs,
-            lgr_coarse_fine_tran_mode="normal",
-        )
+        self.reservoir = self._make_lgr_reservoir(self.lgrs)
 
     def set_physics(self):
         epsilon = 1e-9
@@ -225,93 +216,3 @@ class Model(CICDModel):
                     is_inj=False,
                     target=80.0,
                 )
-
-    def adapt_lgr(self, verbose: bool = False) -> bool:
-        if not self.use_amr:
-            return False
-
-        state = reservoir_state_from_engine(self)
-        plan = plan_adaptive_lgr(
-            self.reservoir,
-            state,
-            self.physics.vars,
-            self.amr_config,
-        )
-        if not plan.changed:
-            return False
-
-        old_reservoir = self.reservoir
-        old_time = float(self.physics.engine.t)
-        old_vtk_files = dict(getattr(old_reservoir, "vtk_filenames_and_times", {}))
-
-        new_reservoir = self._make_lgr_reservoir(plan.lgrs)
-        new_reservoir.init_reservoir(verbose=False)
-        new_reservoir.vtk_filenames_and_times = old_vtk_files
-        projected_state = project_reservoir_state(
-            old_reservoir,
-            state,
-            new_reservoir,
-        )
-
-        self.reservoir = new_reservoir
-        self.lgrs = plan.lgrs
-        self.set_wells()
-        self.has_dfm_well = any(
-            well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
-        )
-        if not self.has_dfm_well:
-            self.wells = None
-
-        self.reservoir.init_wells()
-        self.physics.init_wells(self.reservoir.wells)
-        self.set_op_list()
-        self.set_boundary_conditions()
-        self.set_well_controls()
-        self._set_projected_initial_state(projected_state)
-        self.reset()
-        self._set_engine_reservoir_state(projected_state)
-        self.physics.engine.t = old_time
-        self._refresh_output_after_amr()
-
-        self.amr_history.append(
-            {
-                "time": old_time,
-                "n_lgrs": len(self.lgrs),
-                "n_selected_parent_cells": len(plan.selected_parent_cells),
-                "n_refined_parent_cells": count_lgr_parent_cells(self.lgrs),
-                "n_res_blocks": self.reservoir.mesh.n_res_blocks,
-            }
-        )
-        if verbose:
-            print(
-                "AMR updated LGR layout at "
-                f"t={old_time:g} days: {len(self.lgrs)} patches, "
-                f"{self.reservoir.mesh.n_res_blocks} reservoir blocks."
-            )
-        return True
-
-    def _set_projected_initial_state(self, projected_state: np.ndarray) -> None:
-        input_distribution = {
-            var_name: projected_state[:, idx]
-            for idx, var_name in enumerate(self.physics.vars)
-        }
-        self.physics.set_initial_conditions_from_array(
-            mesh=self.reservoir.mesh,
-            input_distribution=input_distribution,
-        )
-
-    def _set_engine_reservoir_state(self, projected_state: np.ndarray) -> None:
-        flat_state = np.asarray(projected_state, dtype=float).reshape(-1)
-        for name in ("X", "Xn"):
-            values = getattr(self.physics.engine, name, None)
-            if values is not None:
-                np.asarray(values)[: flat_state.size] = flat_state
-
-    def _refresh_output_after_amr(self) -> None:
-        if not hasattr(self, "output"):
-            return
-        self.output.reservoir = self.reservoir
-        self.output.op_list = self.op_list
-        self.output.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
-        self.output.wells = self.wells
-        self.output.has_dfm_well = self.has_dfm_well
