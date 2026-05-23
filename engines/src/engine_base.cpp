@@ -3102,6 +3102,10 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 			{
 				w->calc_rates(X, op_vals_arr, time_data);
 			}
+			else if (w->ms_type == ms_well::MS_Type::DFM)
+			{
+				w->calc_perforation_rates(X, op_vals_arr, time_data);
+			}
 		}
 
 		// calculate FIPS

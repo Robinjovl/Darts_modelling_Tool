@@ -201,7 +201,20 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
         time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
     }
 
-    int i_p = 0;
+    calc_perforation_rates(X, op_vals_arr, time_data);
+
+    // BHP and temperature
+    time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_block_size + P_VAR]);
+    time_data[name + " : temperature (K)"].push_back(well_ctrl_ops[control.get_temp_ctrl_op_idx()]);
+
+    return 0;
+}
+
+int ms_well::calc_perforation_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data)
+{
+    index_t upstream_idx;
+    index_t nc = n_vars - thermal;
+    index_t i_p = 0;
 
     for (auto& p : perforations)
     {
@@ -213,9 +226,9 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
         // find upstream for the perforation
         value_t p_diff = X[i_w * n_block_size + P_VAR] - X[i_r * n_block_size + P_VAR];
         if (p_diff > 0)
-            upstream_idx = i_w; // injection perforation
+            upstream_idx = i_w;
         else
-            upstream_idx = i_r; // production perforation
+            upstream_idx = i_r;
 
         for (index_t c = 0; c < nc; c++)
         {
@@ -231,10 +244,6 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
         i_p++;
     }
-
-    // BHP and temperature
-    time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_block_size + P_VAR]);
-    time_data[name + " : temperature (K)"].push_back(well_ctrl_ops[control.get_temp_ctrl_op_idx()]);
 
     return 0;
 }
