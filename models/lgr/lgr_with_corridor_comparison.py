@@ -13,7 +13,7 @@ from darts.reservoirs.struct_reservoir_with_lgr import LGRPatch, StructReservoir
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from flow_based_upscaling_reference_comparison import (
+from lgr_comparison import (
     DEPTH,
     DX_PARENT,
     DY_PARENT,
@@ -31,7 +31,7 @@ from flow_based_upscaling_reference_comparison import (
     interpolate_column_to_time,
 )
 
-OUTPUT_ROOT = ROOT / "models" / "lgr" / "flow_based_corridor_comparison_output"
+OUTPUT_ROOT = ROOT / "models" / "lgr" / "lgr_with_corridor_comparison_output"
 
 INJ_PARENT_CELL = (3, 3)
 PROD_PARENT_CELL = (7, 3)

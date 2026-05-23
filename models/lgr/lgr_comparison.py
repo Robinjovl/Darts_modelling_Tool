@@ -24,7 +24,7 @@ from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.reservoirs.struct_reservoir_with_lgr import LGRPatch, StructReservoirWithLGR
 
 ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_ROOT = ROOT / "models" / "lgr" / "flow_based_reference_comparison_output"
+OUTPUT_ROOT = ROOT / "models" / "lgr" / "lgr_comparison_output"
 
 PARENT_NX = 9
 PARENT_NY = 5
