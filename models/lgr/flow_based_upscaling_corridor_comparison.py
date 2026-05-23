@@ -42,6 +42,7 @@ CORRIDOR_PATCH_BY_WELL = {
 }
 CASE_NAMES = ("lgr_normal", "lgr_steady")
 PLOT_CASE_NAMES = ("fine", "coarse", *CASE_NAMES)
+REPORT_STEPS = np.full(20, 0.5)
 
 
 class CorridorFlowComparisonModel(FlowComparisonModel):
@@ -153,13 +154,18 @@ def run_case(case_name: str, grid_kind: str, lgr_mode: str = "flow_based") -> di
     model = CorridorFlowComparisonModel(grid_kind=grid_kind, lgr_mode=lgr_mode)
     model.init(platform="cpu")
     model.set_output(output_folder=str(output_dir))
-    model.run(
-        10.0,
-        save_well_data=False,
-        save_well_data_after_run=True,
-        save_reservoir_data=False,
-        verbose=False,
-    )
+    reset_reservoir_vtk(case_name)
+    write_reservoir_vtk(case_name, model, ith_step=0)
+
+    for ith_step, dt in enumerate(REPORT_STEPS, start=1):
+        model.run(
+            float(dt),
+            save_well_data=False,
+            save_well_data_after_run=True,
+            save_reservoir_data=False,
+            verbose=False,
+        )
+        write_reservoir_vtk(case_name, model, ith_step=ith_step)
 
     well_time_data = model.output.store_well_time_data(
         phase_molar_rates=True,
@@ -173,6 +179,27 @@ def run_case(case_name: str, grid_kind: str, lgr_mode: str = "flow_based") -> di
         "model": model,
         "well_time_data": pd.DataFrame(well_time_data),
     }
+
+
+def reset_reservoir_vtk(case_name: str) -> None:
+    vtk_dir = OUTPUT_ROOT / "vtk" / case_name
+    if vtk_dir.exists():
+        shutil.rmtree(vtk_dir)
+
+
+def write_reservoir_vtk(
+    case_name: str,
+    model: CorridorFlowComparisonModel,
+    ith_step: int,
+) -> None:
+    vtk_dir = OUTPUT_ROOT / "vtk" / case_name
+    output_props = model.physics.vars + model.output.properties
+    model.output.output_to_vtk(
+        ith_step=ith_step,
+        output_directory=str(vtk_dir),
+        output_properties=output_props,
+        engine=True,
+    )
 
 
 def write_well_timeseries_comparison(cases: dict[str, dict]) -> None:
@@ -264,7 +291,7 @@ def plot_well_timeseries_comparison(timeseries_df: pd.DataFrame) -> None:
 
 def cleanup_non_plot_outputs() -> None:
     for path in OUTPUT_ROOT.iterdir():
-        if path.name == "plots":
+        if path.name in {"plots", "vtk"}:
             continue
         if path.is_dir():
             shutil.rmtree(path)
@@ -274,6 +301,9 @@ def cleanup_non_plot_outputs() -> None:
 
 def main() -> None:
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    vtk_root = OUTPUT_ROOT / "vtk"
+    if vtk_root.exists():
+        shutil.rmtree(vtk_root)
 
     cases = {
         "fine": run_case("fine", "fine"),
@@ -285,6 +315,7 @@ def main() -> None:
     cleanup_non_plot_outputs()
 
     print(f"Plots written to {OUTPUT_ROOT / 'plots'}")
+    print(f"Reservoir VTK files written to {OUTPUT_ROOT / 'vtk'}")
 
 
 if __name__ == "__main__":
