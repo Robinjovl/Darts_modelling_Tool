@@ -94,7 +94,7 @@ class Model(AdaptiveLGRMixin, CICDModel):
             self.timer,
             self._make_parent_reservoir(),
             lgrs,
-            lgr_coarse_fine_tran_mode="flow_based",
+            lgr_coarse_fine_tran_mode="normal",
         )
 
     def set_reservoir(self):
