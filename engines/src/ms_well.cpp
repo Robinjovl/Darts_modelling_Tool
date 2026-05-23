@@ -12,6 +12,15 @@
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
+namespace
+{
+index_t get_super_flux_op_offset(index_t n_vars);
+index_t get_super_lambda_op_offset(index_t n_vars, index_t n_phases);
+value_t get_component_molar_rate_op(const std::vector<value_t>& op_vals_arr,
+    index_t block_idx, index_t n_ops, index_t n_vars, index_t n_phases,
+    index_t phase_idx, index_t component_idx);
+}
+
 ms_well::ms_well()
 {
 }
@@ -186,8 +195,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
         for (int j = 0; j < n_phases; j++)
         {
-            int shift = n_block_size + n_block_size * j;
-            c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+            c_rate_op += get_component_molar_rate_op(op_vals_arr, upstream_idx, n_ops, n_vars, n_phases, j, c);
         }
 
         time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
@@ -215,8 +223,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
             for (int j = 0; j < n_phases; j++)
             {
-                int shift = nc + nc * j;
-                c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+                c_rate_op += get_component_molar_rate_op(op_vals_arr, upstream_idx, n_ops, n_vars, n_phases, j, c);
             }
             time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * wi);
         }
@@ -271,8 +278,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
 
         for (int j = 0; j < n_phases; j++)
         {
-            index_t shift = n_block_size + n_block_size * j;
-            c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+            c_rate_op += get_component_molar_rate_op(op_vals_arr, upstream_idx, n_ops, n_vars, n_phases, j, c);
         }
 
         time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
@@ -300,8 +306,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
 
             for (int j = 0; j < n_phases; j++)
             {
-                index_t shift = nc + nc * j;
-                c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+                c_rate_op += get_component_molar_rate_op(op_vals_arr, upstream_idx, n_ops, n_vars, n_phases, j, c);
             }
             time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * wi);
         }
@@ -354,4 +359,40 @@ int ms_well::cross_flow(std::vector<value_t>& X)
     }
 
     return 0;
+}
+
+namespace
+{
+index_t get_super_flux_op_offset(index_t n_vars)
+{
+    return n_vars;
+}
+
+index_t get_super_lambda_op_offset(index_t n_vars, index_t n_phases)
+{
+    return n_vars + n_vars * n_phases + n_phases + n_phases
+        + n_vars * n_phases + n_vars + 2 * n_phases + 1;
+}
+
+value_t get_component_molar_rate_op(const std::vector<value_t>& op_vals_arr,
+    index_t block_idx, index_t n_ops, index_t n_vars, index_t n_phases,
+    index_t phase_idx, index_t component_idx)
+{
+    // Super-engine operators store component flux as x*rho_m and mobility separately.
+    const index_t flux_idx = get_super_flux_op_offset(n_vars) + phase_idx * n_vars + component_idx;
+    if (flux_idx >= n_ops)
+    {
+        return 0.0;
+    }
+
+    const index_t block_offset = block_idx * n_ops;
+    value_t rate_op = op_vals_arr[block_offset + flux_idx];
+
+    const index_t lambda_idx = get_super_lambda_op_offset(n_vars, n_phases) + phase_idx;
+    if (lambda_idx < n_ops)
+    {
+        rate_op *= op_vals_arr[block_offset + lambda_idx];
+    }
+    return rate_op;
+}
 }
