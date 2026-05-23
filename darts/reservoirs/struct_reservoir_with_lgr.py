@@ -374,6 +374,62 @@ class StructReservoirWithLGR(ReservoirBase):
             return self.get_parent_cell_index(res_cell_idx)
         raise TypeError("A perforation requires res_cell_idx or lgr_name/lgr_cell_idx.")
 
+    def get_cell_index_in_parent_cell(
+        self,
+        res_cell_idx: tuple[int, int, int],
+        fractions: tuple[float, float, float] = (0.5, 0.5, 0.5),
+    ) -> int:
+        """
+        Return the assembled cell containing a fractional point in a parent cell.
+
+        This is useful for workflows such as adaptive LGR where a well is tied
+        to a physical parent-cell location and the active assembled cell may be
+        either the unrefined parent cell or one of its fine LGR children.
+
+        :param res_cell_idx: Parent-grid I/J/K index, one-based.
+        :type res_cell_idx: tuple[int, int, int]
+        :param fractions: Fractional x/y/z location inside the parent cell.
+        :type fractions: tuple[float, float, float]
+        :return: Assembled reservoir block index.
+        :rtype: int
+        """
+        if len(fractions) != 3:
+            raise ValueError("fractions must contain three entries.")
+        if any(value < 0.0 or value > 1.0 for value in fractions):
+            raise ValueError("fractions must be inside [0, 1].")
+
+        parent_global = self._parent_global_from_ijk(res_cell_idx)
+        if parent_global not in self.refined_parent_cells:
+            return self.get_parent_cell_index(res_cell_idx)
+
+        if self._lgr_parent_arrays is None:
+            raise RuntimeError(
+                "Parent arrays are not available; discretize the reservoir first."
+            )
+        center = self._lgr_parent_arrays["centers"][parent_global]
+        dx = float(self._lgr_parent_arrays["dx"][parent_global])
+        dy = float(self._lgr_parent_arrays["dy"][parent_global])
+        dz = float(self._lgr_parent_arrays["dz"][parent_global])
+        target = (
+            float(center[0] - 0.5 * dx + fractions[0] * dx),
+            float(center[1] - 0.5 * dy + fractions[1] * dy),
+            float(center[2] - 0.5 * dz + fractions[2] * dz),
+        )
+
+        candidates = [
+            cell for cell in self.cells if cell.parent_global == parent_global
+        ]
+        if not candidates:
+            raise ValueError(
+                f"Parent cell {res_cell_idx} is inactive or outside the assembled reservoir."
+            )
+        for cell in candidates:
+            if _cell_contains_point(cell, target):
+                return cell.idx
+
+        centers = np.asarray([cell.center for cell in candidates], dtype=float)
+        return candidates[int(np.argmin(np.linalg.norm(centers - target, axis=1)))].idx
+
     def add_perforation(
         self,
         well_name: str,
@@ -1365,3 +1421,12 @@ def _overlap_area(face_a: _Face, face_b: _Face) -> float:
     overlap0 = max(0.0, min(face_a.hi0, face_b.hi0) - max(face_a.lo0, face_b.lo0))
     overlap1 = max(0.0, min(face_a.hi1, face_b.hi1) - max(face_a.lo1, face_b.lo1))
     return overlap0 * overlap1
+
+
+def _cell_contains_point(cell: _Cell, point: tuple[float, float, float]) -> bool:
+    tol = 1e-10
+    return (
+        cell.x_min - tol <= point[0] <= cell.x_max + tol
+        and cell.y_min - tol <= point[1] <= cell.y_max + tol
+        and cell.z_min - tol <= point[2] <= cell.z_max + tol
+    )
