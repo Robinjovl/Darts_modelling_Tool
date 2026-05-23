@@ -9,7 +9,7 @@ import meshio
 import numpy as np
 
 from darts.engines import conn_mesh, index_vector, ms_well, timer_node, value_vector
-from darts.reservoirs.lgr_flow_upscaling import (
+from darts.reservoirs.flow_based_tran_for_lgr import (
     CoarseFineConnection,
     LGRCoarseFineFlowBasedUpscaler,
     scale_by_raw_distribution,
@@ -20,7 +20,7 @@ from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.reservoirs.struct_reservoir import StructReservoir
 
 _MIN_TRAN = 1e-5
-_LGR_COARSE_FINE_TRANSMISSIBILITY_MODES = {"normal", "flow_based"}
+_LGR_COARSE_FINE_TRAN_MODES = {"normal", "flow_based"}
 
 
 @dataclass
@@ -148,11 +148,11 @@ class StructReservoirWithLGR(ReservoirBase):
     :type parent: StructReservoir
     :param lgrs: Local refinement patches.
     :type lgrs: list[LGRPatch]
-    :param lgr_coarse_fine_transmissibility_mode: Coarse-fine LGR transmissibility mode. Use "normal" for the standard
-                                                  face-overlap transmissibility or "flow_based" for local flow-based upscaling.
-    :type lgr_coarse_fine_transmissibility_mode: str
-    :param lgr_flow_upscaling_padding: Number of parent cells used around LGR sides for local flow-based upscaling.
-    :type lgr_flow_upscaling_padding: int
+    :param lgr_coarse_fine_tran_mode: Coarse-fine LGR transmissibility mode. Use "normal" for the standard
+                                      face-overlap transmissibility or "flow_based" for local flow-based tran calculation.
+    :type lgr_coarse_fine_tran_mode: str
+    :param lgr_flow_based_tran_padding: Number of parent cells used around LGR sides for local flow-based tran calculation.
+    :type lgr_flow_based_tran_padding: int
     :param cache: Reservoir cache flag.
     :type cache: bool
     """
@@ -162,8 +162,8 @@ class StructReservoirWithLGR(ReservoirBase):
         timer: timer_node,
         parent: StructReservoir,
         lgrs: list[LGRPatch],
-        lgr_coarse_fine_transmissibility_mode: str = "normal",
-        lgr_flow_upscaling_padding: int = 2,
+        lgr_coarse_fine_tran_mode: str = "normal",
+        lgr_flow_based_tran_padding: int = 2,
         cache: bool = False,
     ):
         super().__init__(timer, cache)
@@ -171,24 +171,19 @@ class StructReservoirWithLGR(ReservoirBase):
             raise NotImplementedError(
                 "StructReservoirWithLGR currently supports non-CPG structured grids only."
             )
-        if (
-            lgr_coarse_fine_transmissibility_mode
-            not in _LGR_COARSE_FINE_TRANSMISSIBILITY_MODES
-        ):
-            valid_modes = ", ".join(sorted(_LGR_COARSE_FINE_TRANSMISSIBILITY_MODES))
+        if lgr_coarse_fine_tran_mode not in _LGR_COARSE_FINE_TRAN_MODES:
+            valid_modes = ", ".join(sorted(_LGR_COARSE_FINE_TRAN_MODES))
             raise ValueError(
-                "lgr_coarse_fine_transmissibility_mode must be one of "
-                f"{valid_modes}; got {lgr_coarse_fine_transmissibility_mode!r}."
+                "lgr_coarse_fine_tran_mode must be one of "
+                f"{valid_modes}; got {lgr_coarse_fine_tran_mode!r}."
             )
-        if lgr_flow_upscaling_padding < 1:
-            raise ValueError("lgr_flow_upscaling_padding must be positive.")
+        if lgr_flow_based_tran_padding < 1:
+            raise ValueError("lgr_flow_based_tran_padding must be positive.")
 
         self.parent = parent
         self.lgrs = list(lgrs)
-        self.lgr_coarse_fine_transmissibility_mode = (
-            lgr_coarse_fine_transmissibility_mode
-        )
-        self.lgr_flow_upscaling_padding = int(lgr_flow_upscaling_padding)
+        self.lgr_coarse_fine_tran_mode = lgr_coarse_fine_tran_mode
+        self.lgr_flow_based_tran_padding = int(lgr_flow_based_tran_padding)
         self.nx = parent.nx
         self.ny = parent.ny
         self.nz = parent.nz
@@ -999,7 +994,7 @@ class StructReservoirWithLGR(ReservoirBase):
                             )
                             if coarse_fine_connection is not None:
                                 coarse_fine_connections.append(coarse_fine_connection)
-        if self.lgr_coarse_fine_transmissibility_mode == "flow_based":
+        if self.lgr_coarse_fine_tran_mode == "flow_based":
             self._apply_flow_based_coarse_fine_transmissibility(
                 coarse_fine_connections, tran, tran_thermal
             )
@@ -1060,7 +1055,7 @@ class StructReservoirWithLGR(ReservoirBase):
             reservoir=self,
             parent_arrays=self._lgr_parent_arrays,
             connection_transmissibility=self._connection_transmissibility,
-            padding=self.lgr_flow_upscaling_padding,
+            padding=self.lgr_flow_based_tran_padding,
         )
         diagnostics = []
         for (patch_name, axis, side), group in sorted(grouped.items()):

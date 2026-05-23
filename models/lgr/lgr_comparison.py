@@ -19,7 +19,7 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.flash import ConstantK
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.reservoirs.lgr_flow_upscaling import scale_by_raw_distribution
+from darts.reservoirs.flow_based_tran_for_lgr import scale_by_raw_distribution
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.reservoirs.struct_reservoir_with_lgr import LGRPatch, StructReservoirWithLGR
 
@@ -234,7 +234,7 @@ class FlowComparisonModel(DartsModel):
             self.timer,
             parent,
             lgrs,
-            lgr_coarse_fine_transmissibility_mode=self.lgr_mode,
+            lgr_coarse_fine_tran_mode=self.lgr_mode,
             **kwargs,
         )
 

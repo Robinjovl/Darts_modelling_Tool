@@ -103,7 +103,7 @@ class CorridorFlowComparisonModel(FlowComparisonModel):
             self.timer,
             parent,
             lgrs,
-            lgr_coarse_fine_transmissibility_mode=self.lgr_mode,
+            lgr_coarse_fine_tran_mode=self.lgr_mode,
         )
 
     def set_wells(self):

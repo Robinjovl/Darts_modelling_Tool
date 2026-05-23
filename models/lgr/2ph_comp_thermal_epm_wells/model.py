@@ -59,7 +59,7 @@ class Model(CICDModel):
             self.timer,
             parent,
             lgrs,
-            lgr_coarse_fine_transmissibility_mode="flow_based",
+            lgr_coarse_fine_tran_mode="flow_based",
         )
 
     def set_physics(self):
