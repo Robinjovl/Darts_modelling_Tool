@@ -26,7 +26,7 @@ matplotlib.use("Agg")
 SCRIPT_DIR = Path(__file__).resolve().parent
 DFM_MODEL_PATH = SCRIPT_DIR / "2ph_comp_thermal_dfm_wells" / "model.py"
 LGR_COMPARISON_PATH = SCRIPT_DIR / "lgr_comparison.py"
-OUTPUT_ROOT = SCRIPT_DIR / "dfm_amr_comparison_output"
+OUTPUT_ROOT = SCRIPT_DIR / "lgr_with_amr_dfm_comparison_output"
 
 RUNTIME_DAYS = 10.0
 REPORT_STEPS = tuple([0.001] * 10 + [0.01] * 9 + [0.1] * 9 + [0.5] * 18)
