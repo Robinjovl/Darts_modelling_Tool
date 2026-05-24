@@ -134,31 +134,8 @@ class LBC(Viscosity):
             )
 
     def evaluate(self, pressure, temperature, x, rho):
-        x_liquid = x
         rhoL_si = rho
-
-        # ---- Run flash, evaluate density
-        # pressure = state[0]
-        # zc = state[1:-1]
-        # zc += [1-sum(zc)]
-        # temperature = state[-1]
-        # ph = self.pc.run_flash(pressure, temperature, zc)
-        # for j in ph:
-        #     self.pc.dens[j] = self.pc.density_ev[self.pc.phases_name[j]].evaluate(
-        #         pressure, temperature, self.pc.x[j, :]
-        #     )
         temperature *= self.K2Rankine
-
-        if 0:
-            try:
-                x = np.asarray(self.pc.zc_r)
-            except:
-                # x = np.sum(self.pc.nu.reshape(-1, 1) * self.pc.x, axis = 0)
-                x = np.sum(np.array(self.pc.nu).reshape(-1, 1) * self.pc.x, axis=0)
-
-        else:
-            x = x_liquid
-            # x = np.copy(self.pc.x[pc.phases_name.index(self.phase)]) # liquid molar fraction
 
         # ---- Breakup of the heptane plus fraction
         if self.heptane_plus:
@@ -169,8 +146,6 @@ class LBC(Viscosity):
                     np.sum(x[C7plus_idx] * self.Mw[C7plus_idx]) / x_C7plus
                 )  # weighted average
                 SG_C7plus = np.sum(x[C7plus_idx] * self.SG[C7plus_idx]) / x_C7plus
-                # M_C7plus = np.mean(self.Mw[C7plus_idx])
-                # SG_C7plus = np.mean(self.SG[C7plus_idx])
             else:
                 M_C7plus = 138.9024
                 SG_C7plus = 0.727
@@ -185,7 +160,6 @@ class LBC(Viscosity):
         XI = (5.4402 * self.Tc ** (1 / 6)) / (
             np.sqrt(self.Mw) * self.Pc ** (2 / 3)
         )  # viscosity reduction parameter, eq. 19.27
-        # XI = (self.Tc**(1/6)) / (np.sqrt(self.Mw) * self.Pc**(2/3)) #
         Trj = temperature / self.Tc  # reduced temperature
         mu_j = np.empty(self.nc, dtype=float)
         for i in range(self.nc):
@@ -195,8 +169,6 @@ class LBC(Viscosity):
                 mu_j[i] = (17.78e-5 * (4.58 * Trj[i] - 1.67) ** 0.625) / XI[i]
 
         # ---- Calculation of the low pressure mixture gas viscosity (Herning & Zipperer)
-        x = x_liquid[: self.nc]
-        # x = np.copy(self.pc.x[pc.phases_name.index(self.phase)])
         mu_ = np.sum(x * mu_j * np.sqrt(self.Mw)) / np.sum(
             x * np.sqrt(self.Mw)
         )  # eq. 19.27
@@ -226,7 +198,6 @@ class LBC(Viscosity):
         XI_m = (5.4402 * Tpc ** (1 / 6)) / (
             np.sqrt(MW_mix) * Ppc ** (2 / 3)
         )  # eq. 19.28
-        # XI_m = (Tpc**(1/6)) / (np.sqrt(MW_mix) * Ppc**(2/3)) # eq. 19.28
 
         # ---- Calculation of the viscosity, Jossi, Stiel & Thodos (1962)
         dense = (

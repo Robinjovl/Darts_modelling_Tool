@@ -64,9 +64,19 @@ class Model(CICDModel):
         property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
                                                 ('oil', ConstFunc(0.5)),
                                                 ('wat', ConstFunc(0.5))])
-        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                               ('oil', PhaseRelPerm("oil")),
-                                               ('wat', PhaseRelPerm("wat"))])
+
+        if 0:
+            property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
+                                                   ('oil', PhaseRelPerm("oil")),
+                                                   ('wat', PhaseRelPerm("wat"))])
+        else:
+            from darts.physics.properties.basic import PhaseRelPerm_Stone
+            property_container.rel_perm_ev = dict([('gas', PhaseRelPerm_Stone("gas", property_container)),
+                                                   ('oil', PhaseRelPerm_Stone("oil", property_container)),
+                                                   ('wat', PhaseRelPerm_Stone("wat", property_container))])
+            property_container.rel_perm_ev['gas'].visualize()
+
+
 
         """ Activate physics """
         thermal = False

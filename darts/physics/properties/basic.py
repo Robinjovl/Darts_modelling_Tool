@@ -9,10 +9,11 @@ class ConstFunc:
         return self.value
 
 
-class StoneRelPerm:
+class PhaseRelPerm_Stone:
     def __init__(
         self,
         phase,
+        property_container, 
         swc=0.00,
         sorw=0.00,  # OW system
         sgc=0.00,
@@ -28,7 +29,11 @@ class StoneRelPerm:
         som=None,
     ):
         self.phase = phase
-
+        self.pc = property_container
+        self.wat_idx = self.pc.phases_name.index("wat")
+        self.gas_idx = self.pc.phases_name.index("gas")
+        self.oil_idx = self.pc.phases_name.index("oil")
+        
         self.swc = swc
         self.sorw = sorw
         self.sgc = sgc
@@ -92,6 +97,48 @@ class StoneRelPerm:
 
         return krw, kro, krg
 
+    def visualize(self):
+        Nw = 100
+        Ng = 100
+        Sw_, Sg_ = np.meshgrid(np.linspace(0, 1, Nw), np.linspace(0, 1, Ng))
+        Sw, Sg = Sw_.flatten(), Sg_.flatten()
+        Sw = np.where(Sw + Sg < 1.0, Sw, np.nan)
+        Sg = np.where(Sw + Sg < 1.0, Sg, np.nan)
+        
+        krw, kro_grid, krg = self.evaluate_kro(Sw, Sg)
+          
+        from darts.tools.plot_darts import tersurf
+        import matplotlib.pyplot as plt 
+        tersurf(1 - Sw.flatten() - Sg.flatten(),
+                Sg.flatten(),
+                Sw.flatten(),
+                kro_grid.flatten(),
+                ['water', 'oil', 'gas'],
+                label = ['oil', 'gas', 'water'],
+                title = 'kro'
+                )
+        plt.show()
+
+        sw = np.linspace(0, 1, 100)
+        krw, krow = self._two_phase_ow(sw)
+
+        plt.figure()
+        plt.plot(sw, krw, label = 'krw')
+        plt.plot(sw, krow, label = 'krow')
+        plt.xlabel('sw')
+        plt.legend()
+        plt.show()
+
+        sg = np.linspace(0, 1, 100)
+        krg, krog = self._two_phase_og(sg)
+
+        plt.figure()
+        plt.plot(sg, krg, label = 'krg')
+        plt.plot(sg, krog, label = 'krog')
+        plt.xlabel('sg')
+        plt.legend()
+        plt.show()
+
     def evaluate(self, sat):
         if self.phase == 'gas':
             krg, krog = self._two_phase_og(sat)
@@ -102,8 +149,8 @@ class StoneRelPerm:
             return krw
 
         elif self.phase == 'oil':
-            # !! there has to be a beter way of doing this !!
-            Sg, Sw = sat[0], sat[1]
+            sat = self.pc.sat
+            Sg, Sw = sat[self.gas_idx], sat[self.wat_idx]
             krw, kro, krg = self.evaluate_kro(Sw, Sg)
             return kro
 
@@ -140,7 +187,6 @@ class PhaseRelPerm:
             kr = self.kre * ((sat - self.sr) / (1 - self.Sgr - self.Swc)) ** self.n
 
         return kr
-
 
 class PhaseRelPerm_VG:  # Van Genuchten
     def __init__(self, phase, swc=0.20, sgr=0, kre=1.0, n=4.367):
