@@ -1,4 +1,5 @@
 #include "conn_mesh.h"
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -6,6 +7,7 @@
 #include <algorithm>
 #include <numeric>
 #include <type_traits>
+#include <stdexcept>
 #include <stdlib.h>
 #include <assert.h>
 
@@ -2011,6 +2013,23 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 	  else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	  {
 		  std::copy(wells[iw]->segment_depths.begin(), wells[iw]->segment_depths.end(), depth.begin() + well_head_idx);
+		  // DFM perforations must connect a well segment and reservoir block at the same depth.
+		  for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
+		  {
+			  index_t i_w, r_i;
+			  value_t wi, wid;
+			  std::tie(i_w, r_i, wi, wid) = wells[iw]->perforations[p];
+			  const index_t w_i = well_head_idx + i_w + 1;
+			  if (std::fabs(depth[w_i] - depth[r_i]) > static_cast<value_t>(1.0e-8))
+			  {
+				  std::ostringstream msg;
+				  msg << "DFM well '" << wells[iw]->name << "' perforation " << p
+				      << " is not aligned with its reservoir cell: depth[" << w_i
+				      << "] = " << depth[w_i] << " m, depth[" << r_i
+				      << "] = " << depth[r_i] << " m.";
+				  throw std::runtime_error(msg.str());
+			  }
+		  }
 		  std::copy(wells[iw]->segment_volumes.begin(), wells[iw]->segment_volumes.end(), volume.begin() + well_head_idx);
 		  std::fill(poro.begin() + well_head_idx, poro.begin() + well_head_idx + wells[iw]->num_segments, 1);
 		  std::fill(op_num.begin() + well_head_idx, op_num.begin() + well_head_idx + wells[iw]->num_segments, 0);
