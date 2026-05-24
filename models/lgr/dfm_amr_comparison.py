@@ -1,22 +1,12 @@
-# ruff: noqa: E402, I001
 from __future__ import annotations
 
 import importlib.util
+import shutil
 from pathlib import Path
 
 import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import darts
-
-ROOT = Path(__file__).resolve().parents[2]
-LOCAL_DARTS_PATH = str(ROOT / "darts")
-if LOCAL_DARTS_PATH not in darts.__path__:
-    darts.__path__.insert(0, LOCAL_DARTS_PATH)
-
 from darts.engines import (
     ms_well,
     redirect_darts_output,
@@ -27,40 +17,93 @@ from darts.models.cicd_model import CICDModel
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.pipe import Pipe
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
+from darts.reservoirs.adaptive_lgr import AdaptiveLGRConfig
 from darts.reservoirs.struct_reservoir import StructReservoir
+from darts.reservoirs.struct_reservoir_with_lgr import LGRPatch
 
-DFM_MODEL_PATH = ROOT / "models" / "lgr" / "2ph_comp_thermal_dfm_wells" / "model.py"
-OUTPUT_ROOT = ROOT / "models" / "lgr" / "dfm_amr_comparison_output"
+matplotlib.use("Agg")
 
-RUNTIME_DAYS = 50.0
-REPORT_STEPS = tuple([0.001] * 10 + [0.01] * 9 + [0.1] * 9 + [1.0] * 49)
+SCRIPT_DIR = Path(__file__).resolve().parent
+DFM_MODEL_PATH = SCRIPT_DIR / "2ph_comp_thermal_dfm_wells" / "model.py"
+LGR_COMPARISON_PATH = SCRIPT_DIR / "lgr_comparison.py"
+OUTPUT_ROOT = SCRIPT_DIR / "dfm_amr_comparison_output"
+
+RUNTIME_DAYS = 10.0
+REPORT_STEPS = tuple([0.001] * 10 + [0.01] * 9 + [0.1] * 9 + [0.5] * 18)
 WELL_NAMES = ("I1", "P1")
-PHASE_NAMES = ("G", "L")
+RES_DEPTH = 2005.0
+FINE_STARTUP_MAX_TS = 1e-3
+AMR_STARTUP_MAX_TS = 1e-4
+MID_MAX_TS = 0.01
+LONG_MAX_TS = 0.05
 
 
-def load_dfm_model_class() -> type[CICDModel]:
-    spec = importlib.util.spec_from_file_location(
-        "lgr_dfm_thermal_model", DFM_MODEL_PATH
-    )
+def load_python_module(module_name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load DFM model from {DFM_MODEL_PATH}")
+        raise ImportError(f"Cannot load Python module from {path}")
 
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def load_dfm_model_class() -> type[CICDModel]:
+    module = load_python_module("lgr_dfm_thermal_model", DFM_MODEL_PATH)
     return module.Model
 
 
 BaseDFMModel = load_dfm_model_class()
+LGRComparison = load_python_module("lgr_reference_comparison", LGR_COMPARISON_PATH)
+
+PARENT_NX = LGRComparison.PARENT_NX
+PARENT_NY = LGRComparison.PARENT_NY
+PARENT_NZ = LGRComparison.PARENT_NZ
+REFINE = LGRComparison.REFINE
+DX_PARENT = LGRComparison.DX_PARENT
+DY_PARENT = LGRComparison.DY_PARENT
+DZ_PARENT = LGRComparison.DZ_PARENT
+WELL_PARENT_CELLS = {
+    "I1": (*LGRComparison.LGR_SPECS["inj_lgr"], 1),
+    "P1": (*LGRComparison.LGR_SPECS["prod_lgr"], 1),
+}
 
 
 class DFMAMRComparisonModel(BaseDFMModel):
     def __init__(self, grid_kind: str):
         self.grid_kind = grid_kind
-        super().__init__(use_amr=(grid_kind == "amr"))
+        CICDModel.__init__(self)
+
+        self.timer.node["initialization"].start()
+
+        self.zero = 1e-8
+        self.use_amr = grid_kind == "amr"
+        self.parent_shape = (PARENT_NX, PARENT_NY, PARENT_NZ)
+        self.perforation_parent_cells = WELL_PARENT_CELLS.copy()
+        self.perforation_fractions = {
+            "I1": (0.5, 0.5, 0.5),
+            "P1": (0.5, 0.5, 0.5),
+        }
+        self.amr_config = AdaptiveLGRConfig(
+            refine=REFINE,
+            buffer_cells=1,
+            gradient_threshold=0.25,
+            indicator_variables=("CO2"),
+            seed_parent_cells=tuple(self.perforation_parent_cells.values()),
+            preserve_existing=True,
+            max_refined_parent_cells=4,
+            patch_name_prefix="amr",
+        )
+        self.lgrs = self._initial_amr_lgrs() if self.use_amr else []
+        self.amr_history = []
+
+        self.set_reservoir()
+        self.reservoir.grav_acceleration_for_spe = 9.80665
+        self.set_physics()
         self.set_sim_params(
             first_ts=1e-7,
             mult_ts=2,
-            max_ts=1e-4,
+            max_ts=AMR_STARTUP_MAX_TS if self.use_amr else FINE_STARTUP_MAX_TS,
             runtime=RUNTIME_DAYS,
             tol_newton=1e-3,
             tol_linear=1e-4,
@@ -70,6 +113,42 @@ class DFMAMRComparisonModel(BaseDFMModel):
             coupled_well_res_norm_method=2,
         )
 
+        self.timer.node["initialization"].stop()
+
+    def _initial_amr_lgrs(self) -> list[LGRPatch]:
+        return [
+            LGRPatch(
+                f"amr_seed_{well_name}",
+                (i, i),
+                (j, j),
+                (k, k),
+                self.amr_config.refine,
+            )
+            for well_name, (i, j, k) in self.perforation_parent_cells.items()
+        ]
+
+    def _make_parent_reservoir(self):
+        kx, ky, kz = LGRComparison.coarse_permeability()
+        parent = StructReservoir(
+            self.timer,
+            nx=PARENT_NX,
+            ny=PARENT_NY,
+            nz=PARENT_NZ,
+            dx=DX_PARENT,
+            dy=DY_PARENT,
+            dz=DZ_PARENT,
+            permx=kx,
+            permy=ky,
+            permz=kz,
+            poro=0.3,
+            depth=RES_DEPTH,
+            hcap=2200.0,
+            rcond=120.0,
+        )
+        parent.boundary_volumes["yz_minus"] = 1e20
+        parent.boundary_volumes["yz_plus"] = 1e20
+        return parent
+
     def set_reservoir(self):
         if self.grid_kind == "fine":
             self.reservoir = self._make_fine_reservoir()
@@ -78,21 +157,21 @@ class DFMAMRComparisonModel(BaseDFMModel):
 
     def _make_fine_reservoir(self):
         rx, ry, rz = self.amr_config.refine
-        nx_parent, ny_parent, nz_parent = self.parent_shape
+        kx, ky, kz = LGRComparison.coarse_permeability()
 
         reservoir = StructReservoir(
             self.timer,
-            nx=nx_parent * rx,
-            ny=ny_parent * ry,
-            nz=nz_parent * rz,
-            dx=20.0 / rx,
-            dy=20.0 / ry,
-            dz=10.0 / rz,
-            permx=100.0,
-            permy=100.0,
-            permz=10.0,
+            nx=PARENT_NX * rx,
+            ny=PARENT_NY * ry,
+            nz=PARENT_NZ * rz,
+            dx=DX_PARENT / rx,
+            dy=DY_PARENT / ry,
+            dz=DZ_PARENT / rz,
+            permx=LGRComparison.fine_grid_property(kx),
+            permy=LGRComparison.fine_grid_property(ky),
+            permz=LGRComparison.fine_grid_property(kz),
             poro=0.3,
-            depth=2005.0,
+            depth=RES_DEPTH,
             hcap=2200.0,
             rcond=120.0,
             cache=False,
@@ -195,12 +274,74 @@ def make_case_output_dir(case_name: str) -> Path:
     raise RuntimeError(f"Could not create output directory for case '{case_name}'")
 
 
+def reset_solution_output(case_name: str) -> None:
+    for output_kind in ("vtk", "vtp"):
+        output_dir = (OUTPUT_ROOT / output_kind / case_name).resolve()
+        allowed_root = (OUTPUT_ROOT / output_kind).resolve()
+        if output_dir.exists():
+            if allowed_root not in output_dir.parents:
+                raise RuntimeError(f"Refusing to remove unexpected path: {output_dir}")
+            shutil.rmtree(output_dir)
+
+
+def write_solution_output(
+    case_name: str,
+    model: DFMAMRComparisonModel,
+    ith_step: int,
+) -> None:
+    output_props = model.physics.vars + model.output.properties
+    model.output.output_to_vtk(
+        ith_step=ith_step,
+        output_directory=str(OUTPUT_ROOT / "vtk" / case_name),
+        output_properties=output_props,
+        engine=True,
+    )
+    model.output.well_output_to_vtp(
+        ith_step=ith_step,
+        output_directory=str(OUTPUT_ROOT / "vtp" / case_name),
+        output_properties=output_props,
+    )
+
+
 def update_time_step_controls(model: DFMAMRComparisonModel) -> None:
     current_time = model.physics.engine.t
-    if 0.03 < current_time < 0.05:
-        model.data_ts.dt_max = 0.05
-    elif 1.0 < current_time < 3.0:
-        model.data_ts.dt_max = 0.1
+    if current_time < 0.03:
+        model.data_ts.dt_max = (
+            AMR_STARTUP_MAX_TS if model.grid_kind == "amr" else FINE_STARTUP_MAX_TS
+        )
+    elif current_time < 1.0:
+        model.data_ts.dt_max = MID_MAX_TS
+    else:
+        model.data_ts.dt_max = LONG_MAX_TS
+
+
+def required_output_columns(df: pd.DataFrame) -> list[str]:
+    columns = []
+    for well_name in WELL_NAMES:
+        columns.extend(
+            column
+            for _, column, _ in available_columns(df, well_name)
+            if column in df.columns
+        )
+    return columns
+
+
+def assert_finite_output(df: pd.DataFrame, case_name: str) -> None:
+    columns = required_output_columns(df)
+    if not columns:
+        return
+
+    values = df[columns].to_numpy(dtype=float)
+    bad = ~np.isfinite(values)
+    if not bad.any():
+        return
+
+    row_idx, col_idx = np.argwhere(bad)[0]
+    time = float(df.iloc[row_idx]["time"])
+    column = columns[col_idx]
+    raise RuntimeError(
+        f"Case '{case_name}' produced non-finite '{column}' at t={time:g} days."
+    )
 
 
 def collect_latest_well_data(
@@ -227,6 +368,8 @@ def run_case(case_name: str, grid_kind: str) -> pd.DataFrame:
     model = DFMAMRComparisonModel(grid_kind=grid_kind)
     model.init(platform="cpu")
     model.set_output(output_folder=str(output_dir), save_initial=False)
+    reset_solution_output(case_name)
+    write_solution_output(case_name, model, ith_step=0)
 
     frames: list[pd.DataFrame] = []
     last_time = -np.inf
@@ -242,6 +385,7 @@ def run_case(case_name: str, grid_kind: str) -> pd.DataFrame:
 
         latest_data = collect_latest_well_data(model, last_time)
         if not latest_data.empty:
+            assert_finite_output(latest_data, case_name)
             frames.append(latest_data)
             last_time = float(latest_data["time"].max())
 
@@ -251,6 +395,7 @@ def run_case(case_name: str, grid_kind: str) -> pd.DataFrame:
             ):
                 delattr(model, "_well_output_configured")
 
+        write_solution_output(case_name, model, ith_step=report_idx)
         print(
             f"{case_name}: report {report_idx:03d}/{len(REPORT_STEPS)}, "
             f"time={model.physics.engine.t:.6g} days"
@@ -272,7 +417,7 @@ def available_columns(df: pd.DataFrame, well_name: str) -> list[tuple[str, str, 
             f"well_{well_name}_molar_rate_{phase}_by_sum_perfs",
             "kmol/day",
         )
-        for phase in PHASE_NAMES
+        for phase in ("G", "L")
     )
     return [
         (label, column, unit)
@@ -286,6 +431,8 @@ def plot_well_timeseries(
     fine_data: pd.DataFrame,
     amr_data: pd.DataFrame,
 ) -> None:
+    import matplotlib.pyplot as plt
+
     columns = available_columns(fine_data, well_name)
     fig, axes = plt.subplots(
         len(columns), 1, figsize=(9.5, 2.4 * len(columns)), sharex=True
@@ -318,6 +465,8 @@ def plot_well_difference(
     fine_data: pd.DataFrame,
     amr_data: pd.DataFrame,
 ) -> None:
+    import matplotlib.pyplot as plt
+
     columns = available_columns(fine_data, well_name)
     fine_time = fine_data["time"].to_numpy()
 
@@ -366,6 +515,8 @@ def main() -> None:
 
     print_difference_summary(fine_data, amr_data)
     print(f"\nPlots written to: {OUTPUT_ROOT}")
+    print(f"Reservoir VTK files written to: {OUTPUT_ROOT / 'vtk'}")
+    print(f"Well VTP files written to: {OUTPUT_ROOT / 'vtp'}")
 
 
 if __name__ == "__main__":
