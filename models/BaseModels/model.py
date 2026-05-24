@@ -86,14 +86,14 @@ class Model(DartsModel):
         # add well
         self.reservoir.add_well("INJ")
         for k in range(1, self.reservoir.nz):
-            self.reservoir.add_perforation("INJ", cell_index=(iw[0], jw[0], k + 1),
-                                           well_radius=0.16, multi_segment=True)
+            self.reservoir.add_perforation("INJ", res_cell_idx=(iw[0], jw[0], k + 1),
+                                           well_diameter=0.32, ms_epm=True)
 
         # add well
         self.reservoir.add_well("PRD")
         for k in range(1, self.reservoir.nz):
-            self.reservoir.add_perforation("PRD", cell_index=(iw[1], jw[1], k + 1),
-                                           well_radius=0.16, multi_segment=True)
+            self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], jw[1], k + 1),
+                                           well_diameter=0.32, ms_epm=True)
 
     def set_geo_physics(self, n_points, zero):
         from darts.physics.geothermal.physics import Geothermal
@@ -109,10 +109,11 @@ class Model(DartsModel):
     def set_do_physics(self, n_points, zero):
         from darts.physics.super.physics import Compositional
         # create pre-defined physics for geothermal
+        epsilon = zero / 10
         components = ["w", "o"]
         phases = ["wat", "oil"]
 
-        property_container = DOProperties(phases_name=phases, components_name=components, min_z=zero)
+        property_container = DOProperties(phases_name=phases, components_name=components, eps_z=epsilon,)
 
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
                                               ('oil', DensityBasic(compr=5e-3, dens0=500))])
@@ -125,7 +126,8 @@ class Model(DartsModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=n_points, min_p=0, max_p=1000, min_z=zero/10, max_z=1 - zero/10)
+                                     n_points=n_points, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -143,7 +145,7 @@ class Model(DartsModel):
         """ properties correlations """
         pvt = 'physics.in'
         Mw = np.ones(len(components))
-        property_container = BOProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=zero)
+        property_container = BOProperties(phases_name=phases, components_name=components, Mw=Mw, eps_z=zero)
 
         property_container.flash_ev = flash_black_oil(pvt)
         property_container.density_ev = dict([('gas', DensityGas(pvt)),
@@ -162,7 +164,7 @@ class Model(DartsModel):
 
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=n_points, min_p=1, max_p=450, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=n_points, min_p=1, max_p=450, min_z=0., max_z=1., epsilon_z=eps_z)
         self.physics.add_property_region(property_container)
 
         return
@@ -177,7 +179,7 @@ class Model(DartsModel):
         nc = len(components)
         Mw = [44.01, 16.04, 34.081, 18.015]
 
-        property_container = CompProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=zero)
+        property_container = CompProperties(phases_name=phases, components_name=components, Mw=Mw, eps_z=zero)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(nc - 1, [4, 2, 1e-2], zero)
@@ -195,7 +197,7 @@ class Model(DartsModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=n_points, min_p=1, max_p=500, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=n_points, min_p=1, max_p=500, min_z=0., max_z=1., epsilon_z=eps_z)
         self.physics.add_property_region(property_container)
 
         return
@@ -214,7 +216,7 @@ class Model(DartsModel):
 
         comp_data = CompData(components=components, setprops=True)
 
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, min_z=zero)
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, eps_z=zero)
 
         """ properties correlations """
         pt = False
@@ -237,7 +239,7 @@ class Model(DartsModel):
         """ Activate physics """
         state_spec = Compositional.StateSpecification.PT if pt else Compositional.StateSpecification.PH
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=n_points, min_p=1, max_p=500, min_z=zero / 10, max_z=1 - zero / 10,
+                                     n_points=n_points, min_p=1, max_p=500, min_z=0., max_z=1., epsilon_z=eps_z,
                                      min_t=273.15, max_t=473.15)
         self.physics.add_property_region(property_container)
         return
@@ -258,7 +260,7 @@ class Model(DartsModel):
         comp_data = CompData(components=components, setprops=True)
 
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
-                                               min_z=zero)
+                                               eps_z=zero)
 
         """ properties correlations """
         pt = True
@@ -280,7 +282,7 @@ class Model(DartsModel):
         """ Activate physics """
         state_spec = Compositional.StateSpecification.PT if pt else Compositional.StateSpecification.PH
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=n_points, min_p=1, max_p=500, min_z=zero / 10, max_z=1 - zero / 10,
+                                     n_points=n_points, min_p=1, max_p=500, min_z=0., max_z=1., epsilon_z=eps_z,
                                      min_t=273.15, max_t=473.15)
         self.physics.add_property_region(property_container)
         return
@@ -318,9 +320,9 @@ class Model(DartsModel):
 from darts.physics.super.property_container import PropertyContainer
 
 class CompProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11):
+    def __init__(self, phases_name, components_name, Mw, eps_z=1e-11):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=1.)
 
     def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
         # evaluate_PT argument is required in PropertyContainer but is not needed in this model
@@ -356,11 +358,11 @@ class CompProperties(PropertyContainer):
         return np.array(ph, dtype=np.intp)
 
 class DOProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
+    def __init__(self, phases_name, components_name, eps_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=1.)
 
     def evaluate(self, state):
         """
@@ -415,9 +417,9 @@ class DOProperties(PropertyContainer):
 
 
 class BOProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z: float = 1e-11, temperature: float = None):
+    def __init__(self, phases_name, components_name, Mw, eps_z: float = 1e-11, temperature: float = None):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=1.)
 
     def evaluate(self, state):
         """
@@ -489,7 +491,7 @@ class BOProperties(PropertyContainer):
 
         self.ph = []
         for j in range(self.nph):
-            if zc[j] > self.min_z:
+            if zc[j] > self.eps_z:
                 self.ph.append(j)
             self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
 

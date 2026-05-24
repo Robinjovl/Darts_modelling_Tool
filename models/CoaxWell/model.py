@@ -4,7 +4,7 @@ from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_ve
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params
-from darts.engines import well_control_iface
+from darts.engines import well_control_iface, ms_well
 
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.geothermal.property_container import PropertyContainer
@@ -59,19 +59,19 @@ class Model(CICDModel):
         n = self.reservoir.nz // 2
         j_mid = self.reservoir.ny // 2
 
-        well_radius = 0.3
+        well_diameter = 0.6
 
         # add well
         self.reservoir.add_well("INJ")
         for j in range(jw[0], j_mid + 1):
-            self.reservoir.add_perforation("INJ", cell_index=(iw[0], j, n + 1), well_radius=well_radius,
-                                           segment_direction='y_axis', well_index=0, multi_segment=True)
+            self.reservoir.add_perforation("INJ", res_cell_idx=(iw[0], j, n + 1), well_diameter=well_diameter,
+                                           segment_direction='y_axis', well_index=0, ms_epm=True)
         perf_1 = len(self.reservoir.wells[-1].perforations)  # last segment is n_perf+1
 
         self.reservoir.add_well("PRD")
         for j in range(jw[1], j_mid, -1):
-            self.reservoir.add_perforation("PRD", cell_index=(iw[1], j, n + 1), well_radius=well_radius,
-                                           segment_direction='y_axis', well_index=0, multi_segment=True)
+            self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], j, n + 1), well_diameter=well_diameter,
+                                           segment_direction='y_axis', well_index=0, ms_epm=True)
         perf_2 = len(self.reservoir.wells[-1].perforations)
 
         # connect the last two perforations of two wells

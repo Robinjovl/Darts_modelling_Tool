@@ -6,8 +6,8 @@ from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
-    WellControlOperators,
-    WellInitOperators,
+    ThermalVarOperator,
+    WellCtrlOperators,
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.geothermal.operator_evaluator import *
@@ -97,7 +97,7 @@ class Geothermal(PhysicsBase):
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.PH,
     ):
         """
-        Overload determine_obl_bounds() method to hardcode OBL axes of pressure-enthalpy and PT-axes for WellInitOperators
+        Overload determine_obl_bounds() method to hardcode OBL axes of pressure-enthalpy and PT-axes for ThermalVarOperator
         """
         return self.axes_min, self.axes_max
 
@@ -112,20 +112,25 @@ class Geothermal(PhysicsBase):
                 self.property_containers[region]
             )
             self.property_operators[region] = PropertyOperators(
-                self.property_containers[region], thermal=True
+                self.property_containers[region],
+                thermal=True,
+                extrapolation_flag=False,
             )
         self.well_operators = acc_flux_gravity_evaluator_python_well(
             self.property_containers[self.regions[0]]
         )
 
-        # create well control operators evaluator
-        self.well_ctrl_operators = WellControlOperators(
-            self.property_containers[self.regions[0]], self.thermal
+        self.well_ctrl_operators = WellCtrlOperators(
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=False,
         )
-        self.well_init_operators = WellInitOperators(
+
+        self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
+            extrapolation_flag=False,
         )
 
         return

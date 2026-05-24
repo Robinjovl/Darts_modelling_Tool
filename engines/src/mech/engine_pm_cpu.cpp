@@ -28,6 +28,7 @@ engine_pm_cpu::~engine_pm_cpu()
 
 int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 						std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                    operator_set_gradient_evaluator_iface* thermal_var_etor_,
 						sim_params *params_, timer_node *timer_)
 {
 	newton_update_coefficient = 1.0;
@@ -44,12 +45,13 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	EXPLICIT_SCHEME = false;
 	active_linear_solver_id = 0;
 
-	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 	return 0;
 }
 
 int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_,
   std::vector<operator_set_gradient_evaluator_iface*>& acc_flux_op_set_list_,
+  operator_set_gradient_evaluator_iface* thermal_var_etor_,
   sim_params* params_, timer_node* timer_)
 {
   time_t rawtime;
@@ -59,6 +61,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   mesh = mesh_;
   wells = well_list_;
   acc_flux_op_set_list = acc_flux_op_set_list_;
+  thermal_var_etor = thermal_var_etor_;
   params = params_;
   timer = timer_;
 
@@ -110,7 +113,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		linear_solvers.back()->set_prec(new linsolv_bos_bilu0<N_VARS>);
 		break;
 	  }
-#ifdef WITH_HYPRE
+#ifndef OPENDARTS_LINEAR_SOLVERS
 	  case sim_params::CPU_GMRES_FS_CPR:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
@@ -173,13 +176,28 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		break;
 	  }
 #endif
+	  default:
+		break;
 	}
   }
 
   n_vars = get_n_vars();
   n_ops = get_n_ops();
   nc = get_n_comps();
-  z_var = get_z_var();
+  z_var_idx = get_z_var_idx();
+  /*if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
+	}
+	min_sim_z = min_axis_z + params->sim_eps;
+	max_sim_z = max_axis_z - params->sim_eps;*/
+
 
   X_init.resize(n_vars * mesh->n_res_blocks);
   PV.resize(mesh->n_blocks);
@@ -262,7 +280,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   // let wells initialize their state
   for (ms_well *w : wells)
   {
-	w->initialize_control(X_init);
+	w->initialize_control_epm(X_init);
   }
 
   Xn_ref = Xref = Xn = Xn1 = X = X_init;
@@ -306,18 +324,6 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 
   time_data.clear();
   time_data_report.clear();
-
-  /*if (params->log_transform == 0)
-  {
-	  min_zc = acc_flux_op_set_list[0]->get_minzc() * params->obl_min_fac;
-	  max_zc = 1 - min_zc * params->obl_min_fac;
-	  //max_zc = acc_flux_op_set_list[0]->get_maxzc();
-  }
-  else if (params->log_transform == 1)
-  {
-	  min_zc = exp(acc_flux_op_set_list[0]->get_minzc() * params->obl_min_fac); //log based composition
-	  max_zc = exp(acc_flux_op_set_list[0]->get_maxzc() * params->obl_min_fac); //log based composition
-  }*/
 
   return 0;
 }
@@ -459,7 +465,7 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 				{
 					gamma += tran[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v] * buf[v];
 					biot_mult += tran_biot[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v] * buf[v];
-					fluxes_biot[N_VARS * conn_id + P_VAR] += (tran_biot[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v] * buf[v] - 
+					fluxes_biot[N_VARS * conn_id + P_VAR] += (tran_biot[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v] * buf[v] -
 																tran_biot_n[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v] * buf_n[v]) / dt;
 				}
 			}
@@ -497,16 +503,16 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 					{
 						for (v = 0; v < ND_; v++)
 						{
-							fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * X[stencil[conn_st_id] * N_VARS + U_VAR + v] - 
+							fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * X[stencil[conn_st_id] * N_VARS + U_VAR + v] -
 																	tran_ref[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * Xref[stencil[conn_st_id] * N_VARS + U_VAR + v];
-							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * X[stencil[conn_st_id] * N_VARS + U_VAR + v] - 
+							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * X[stencil[conn_st_id] * N_VARS + U_VAR + v] -
 																			tran_biot_ref[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * Xref[stencil[conn_st_id] * N_VARS + U_VAR + v];
 							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
 							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
 						}
-						fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * X[stencil[conn_st_id] * N_VARS + P_VAR] - 
+						fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * X[stencil[conn_st_id] * N_VARS + P_VAR] -
 																tran_ref[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * p_ref_cur;
-						fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * X[stencil[conn_st_id] * N_VARS + P_VAR] - 
+						fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * X[stencil[conn_st_id] * N_VARS + P_VAR] -
 																		tran_biot_ref[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * p_ref_cur;
 						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
 						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
@@ -516,7 +522,7 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 					{
 						Jac[st_id * N_VARS_SQ + P_VAR * N_VARS + v] += dt * op_vals_arr[upwd_idx * N_OPS + FLUX_OP] * tran[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v];
 						// biot
-						fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * X[stencil[conn_st_id] * N_VARS + v] - 
+						fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * X[stencil[conn_st_id] * N_VARS + v] -
 																	tran_biot_ref[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * Xref[stencil[conn_st_id] * N_VARS + v];
 						RHS[i * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * op_vals_arr[i * N_OPS + ACC_OP] * X[stencil[conn_st_id] * N_VARS + v] -
 													tran_biot_n[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * op_vals_arr_n[i * N_OPS + ACC_OP] * Xn[stencil[conn_st_id] * N_VARS + v];
@@ -539,9 +545,9 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 					{
 						for (v = 0; v < N_VARS; v++)
 						{
-							fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + v] * cur_bc[v] - 
+							fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + v] * cur_bc[v] -
 																	tran_ref[conn_st_id * N_VARS_SQ + d * N_VARS + v] * ref_bc[v];
-							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + v] * cur_bc[v] - 
+							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + v] * cur_bc[v] -
 																			tran_biot_ref[conn_st_id * N_VARS_SQ + d * N_VARS + v] * ref_bc[v];
 						}
 					}
@@ -549,9 +555,9 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 					for (v = 0; v < N_VARS; v++)
 					{
 						// biot
-						fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * cur_bc[v] - 
+						fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * cur_bc[v] -
 																	tran_biot_ref[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * ref_bc[v];
-						RHS[i * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * op_vals_arr[i * N_OPS + ACC_OP] * cur_bc[v] - 
+						RHS[i * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * op_vals_arr[i * N_OPS + ACC_OP] * cur_bc[v] -
 													tran_biot_n[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * op_vals_arr_n[i * N_OPS + ACC_OP] * cur_bc_n[v];
 					}
 				}
@@ -570,7 +576,7 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 			{
 				RHS[i * N_VARS + U_VAR + d] += fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes[N_VARS * conn_id + U_VAR + d];
 				RHS[i * N_VARS + U_VAR + d] += fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d];
-				CFL_mech[d] += fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes[N_VARS * conn_id + U_VAR + d] + 
+				CFL_mech[d] += fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes[N_VARS * conn_id + U_VAR + d] +
 								fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d];
 				Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += (rhs[NT_ * conn_id + U_VAR + d] + rhs_biot[NT_ * conn_id + U_VAR + d]) * op_ders_arr[(i * N_OPS + GRAV_OP) * NC_];
 			}
@@ -578,7 +584,7 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 			//RHS[i * N_VARS + P_VAR] += op_vals_arr[i * N_OPS + ACC_OP] * (fluxes_biot_ref[N_VARS * conn_id + P_VAR] + fluxes_biot[N_VARS * conn_id + P_VAR]) -
 			//							op_vals_arr_n[i * N_OPS + ACC_OP] * (fluxes_biot_ref_n[N_VARS * conn_id + P_VAR] + fluxes_biot_n[N_VARS * conn_id + P_VAR]);
 
-			RHS[i * N_VARS + P_VAR] += rhs_biot[N_VARS * conn_id + P_VAR] * op_vals_arr[i * N_OPS + ACC_OP] * op_vals_arr[i * N_OPS + GRAV_OP] - 
+			RHS[i * N_VARS + P_VAR] += rhs_biot[N_VARS * conn_id + P_VAR] * op_vals_arr[i * N_OPS + ACC_OP] * op_vals_arr[i * N_OPS + GRAV_OP] -
 										rhs_biot_n[N_VARS * conn_id + P_VAR] * op_vals_arr_n[i * N_OPS + ACC_OP] * op_vals_arr_n[i * N_OPS + GRAV_OP];
 
 			if (upwd_jac_idx < csr_idx_end)
@@ -654,7 +660,7 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 					CFL_max_global = std::max(CFL_max_global, sqrt(CFL_max_local));
 			}
 
-			// volumetric forces and source/sink 
+			// volumetric forces and source/sink
 			for (d = 0; d < ND_; d++)
 			{
 				RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + d];
@@ -985,7 +991,7 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 					CFL_max_global = std::max(CFL_max_global, sqrt(CFL_max_local));
 			}
 
-			// volumetric forces and source/sink 
+			// volumetric forces and source/sink
 			for (d = 0; d < ND_; d++)
 			{
 				RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + d];
@@ -1287,7 +1293,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 		// calc CFL for reservoir cells, not connected with wells
 		if (i < n_res_blocks)
 		{
-			// volumetric forces and source/sink 
+			// volumetric forces and source/sink
 			for (d = 0; d < ND_; d++)
 			{
 				RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + d];
@@ -1453,7 +1459,7 @@ engine_pm_cpu::calc_newton_dev_L2()
 			norm[c] += mesh->volume[i] * mesh->volume[i];
 		}
 		dev[P_VAR] += RHS[i * n_vars + P_VAR] * RHS[i * n_vars + P_VAR];
-		norm[P_VAR] +=	mesh->volume[i] * mesh->poro[i] * op_vals_arr[i * N_OPS + ACC_OP] * 
+		norm[P_VAR] +=	mesh->volume[i] * mesh->poro[i] * op_vals_arr[i * N_OPS + ACC_OP] *
 						mesh->volume[i] * mesh->poro[i] * op_vals_arr[i * N_OPS + ACC_OP];
 	}
 	// in faults
@@ -1523,7 +1529,7 @@ engine_pm_cpu::calc_well_residual_L2()
 		for (int v = 0; v < n_vars; v++)
 		{
 			// well constraints should not be normalized, so pre-multiply by norm
-			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * 
+			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] *
 				PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
 		}
 	}
@@ -1650,7 +1656,7 @@ int engine_pm_cpu::solve_linear_equation()
 	// scaling according to dimensions
 	if (SCALE_DIMLESS)
 	  make_dimensionless();
-	
+
 	// row-wise scaling
 	if (SCALE_ROWS)
 	  scale_rows();
@@ -2029,7 +2035,7 @@ void engine_pm_cpu::make_dimensionless()
 	csr_idx_start = rows[i];
 	csr_idx_end = rows[i + 1];
 	for (index_t j = csr_idx_start; j < csr_idx_end; j++)
-	{ 
+	{
 	  // jacobian (momentum)
 	  for (uint8_t c = U_VAR; c < U_VAR + ND_; c++)
 	  {

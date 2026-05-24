@@ -28,7 +28,7 @@ class RockProps:
 
         if type_hydr == 'thermal':  # thermal properties
             self.heat_capacity = None  # [kJ/m3/K]
-            self.conductivity = None  # thermal conductivity [kJ/m/day/K]
+            self.thermal_conductivity = None  # [kJ/m/day/K]
 
         if type_mech != 'none':  # geomechanical properties
             self.E = None  # Young modulus [bars]
@@ -61,6 +61,8 @@ class FluidProps:
         self.density = None  # Density at reference conditions, #TODO units
         self.viscosity = None  # TODO units
         self.Mw = None  # molar weight, [g/mol]
+        self.heat_capacity = None  # [kJ/kmol/K] - different unit than used for rock
+        self.thermal_conductivity = None  # [kJ/m/day/K] - the same unit as for rock
 
 
 class InitialSolution:
@@ -216,14 +218,14 @@ class WellPerforation:
         well_radius: float,
         well_index: float,
         well_indexD: float,
-        multi_segment: bool,
+        ms_epm: bool,
     ):
         self.loc_ijk = loc_ijk
         self.status = status
         self.well_radius = well_radius
         self.well_index = well_index
         self.well_indexD = well_indexD
-        self.multi_segment = multi_segment
+        self.ms_epm = ms_epm
 
 
 class WellData:
@@ -261,7 +263,7 @@ class WellData:
         well_radius: float,
         well_index: float,
         well_indexD: float,
-        multi_segment: bool,
+        ms_epm: bool,
     ):
         """
         :param name: well name
@@ -273,7 +275,7 @@ class WellData:
         if status == 'close':
             # well connections in DARTS cannot be changed during the simulation, so they can be only closed
             # and re-opened throughout timesteps. well_index and well_indexD can be changed as well.
-            # multi_segment option can't be changed and should be the same for all perforations
+            # ms_epm option can't be changed and should be the same for all perforations
             well_index_ = well_indexD_ = eps
         else:
             well_index_ = well_index
@@ -284,7 +286,7 @@ class WellData:
             well_radius=well_radius,
             well_index=well_index_,
             well_indexD=well_indexD_,
-            multi_segment=multi_segment,
+            ms_epm=ms_epm,
         )
         self.wells[name].perforations.append((time, perf))
 
@@ -343,7 +345,7 @@ class WellData:
                                         well_radius=well_radius,
                                         well_index=well_index,
                                         well_indexD=0.0,
-                                        multi_segment=False,
+                                        ms_epm=False,
                                     )
                             if len(CompDat) != 0 and '/' == CompDat[0]:
                                 keep_reading = False
@@ -453,6 +455,7 @@ class OBLParams:
         self.max_t = None
         self.min_z = None
         self.max_z = None
+        self.epsilon_z = None
 
 
 class Simulation:

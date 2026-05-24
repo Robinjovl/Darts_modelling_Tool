@@ -11,6 +11,7 @@
 #include "engine_super_mp_cpu.hpp"
 #include "conn_mesh.h"
 
+
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
@@ -27,13 +28,13 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_mp_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                                        operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                             sim_params *params_, timer_node *timer_)
 {
 
@@ -53,14 +54,14 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_
 
 
 
-	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 
 	return 0;
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
-	std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params_, timer_node *timer_)
+	std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
 	struct tm *timeinfo;
@@ -69,6 +70,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 
@@ -115,9 +117,11 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			break;
 		}
 #ifndef __linux__
-#if 0 // can be enabled if amgdll.dll is available \
-	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
-		case sim_params::CPU_GMRES_CPR_AMG1R5:
+#if 0
+		  // Can be enabled if amgdll.dll is available.
+		  // Since we compile PIC code, we cannot link the existing static library,
+		  // which was compiled without the fPIC flag.
+			case sim_params::CPU_GMRES_CPR_AMG1R5:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
@@ -256,6 +260,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 
@@ -263,7 +269,19 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
-	z_var = get_z_var();
+	z_var_idx = get_z_var_idx();
+	if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
+	}
+	min_sim_z = min_axis_z + params->sim_eps;
+	max_sim_z = max_axis_z - params->sim_eps;
 
 	X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
 	PV.resize(mesh->n_blocks);
@@ -278,6 +296,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
 
 	X_init = mesh->initial_state;
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 	Xn = X = X_init;
 	for (index_t i = 0; i < mesh->n_blocks; i++)
@@ -326,7 +346,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		w->initialize_control_epm(X_init);
 	}
 
 	Xn = X = X_init;
@@ -367,28 +387,6 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (params->log_transform == 0)
-	{
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	}
-	else if (params->log_transform == 1)
-	{
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
-	}
-
-
-
-
-
-
-
-
-
-
 
 	// for adjoint method------------------------------------------
 
@@ -446,8 +444,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		// prepare dg_dx_n_temp
 		init_adjoint_structure_mpfa(dg_dx_n_temp);
 
-		// here we remove wells.size() transmissibility between well head and well body (i.e. segment_transmissibility)
-		// because there is no need to optimize segment_transmissibility, which is usually a large value of 100000
+		// here we remove wells.size() transmissibility between well head and well body (i.e. well_transmissibility)
+		// because there is no need to optimize well_transmissibility, which is usually a large value of 100000
 		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
 		col_dT_du = Temp_1;
 
@@ -739,7 +737,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 	memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
 #endif //_OPENMP
 
-	index_t r_ind, r_ind1, r_ind2, r_ind3, r_ind4, r_ind5, l_ind, l_ind1, upwd_idx[NP];
+	index_t r_ind, r_ind1, r_ind2, r_ind3, r_ind4, r_ind5, r_ind6, r_ind7, l_ind, l_ind1, upwd_idx[NP];
 	index_t j, diag_idx, jac_idx, nebr_jac_idx, csr_idx_start, csr_idx_end, upwd_jac_idx[NP], conn_id = 0, st_id = 0, conn_st_id = 0;
     value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg, pc_diff[NP], diff_diff[NP * NE], phase_p_diff[NP], ZEROS[NP * NE];
 	value_t avg_density, *buf_c, *buf_diff, avg_heat_cond_multiplier, phase_presence_mult, t_cur, p_cur;
@@ -932,6 +930,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 							r_ind2 = i * N_OPS + UPSAT_OP + p;										// diffusion multipliers
 							r_ind4 = j * N_OPS + UPSAT_OP + p;
 							r_ind3 = (stencil[conn_st_id] * N_OPS + GRAD_OP + p * NE + c) * N_VARS;	// diffusion operator
+							r_ind6 = i * N_OPS + DENS_OP + p;
+							r_ind7 = j * N_OPS + DENS_OP + p;
 							// pressure contribution to flux
 							Jac[l_ind1 + P_VAR] += dt * op_vals_arr[r_ind] * op_vals_arr[r_ind5] * tran[conn_st_id];
 							for (v = 0; v < NE; v++)
@@ -940,8 +940,19 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 								Jac[l_ind1 + v] -= dt * op_vals_arr[r_ind] * op_vals_arr[r_ind5] * tran[conn_st_id] * op_ders_arr[r_ind1 + v];
 								// component diffusion
 								if (i < mesh->n_res_blocks && j < mesh->n_res_blocks)
-									Jac[l_ind1 + v] += dt * (mesh->poro[i] * op_vals_arr[r_ind2] + mesh->poro[j] * op_vals_arr[r_ind4]) * 0.5 *
-								  phase_presence_mult * tranD[conn_st_id] * op_ders_arr[r_ind3 + v];
+								{
+									if (c < NC) // mass: diffusion
+									{
+										Jac[l_ind1 + v] += dt * (mesh->poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+																	mesh->poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) * 0.5 *
+															phase_presence_mult * tranD[conn_st_id] * op_ders_arr[r_ind3 + v];
+									}
+									else // energy: fluid heat conduction
+									{
+										Jac[l_ind1 + v] += dt * (mesh->poro[i] * op_vals_arr[r_ind2] + mesh->poro[j] * op_vals_arr[r_ind4]) * 0.5 *
+															phase_presence_mult * tranD[conn_st_id] * op_ders_arr[r_ind3 + v];
+									}
+								}
 							}
 						}
 					}
@@ -998,18 +1009,39 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 						else
 						  phase_presence_mult = 0.0;
 
-						RHS[i * N_VARS + c] += dt * phase_presence_mult * diff_diff[p * NE + c] *
-							(mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
-							 mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) * 0.5; // diffusion term
-
 						l_ind = diag_ind[i] * N_VARS_SQ + c * N_VARS;
 						l_ind1 = nebr_jac_idx * N_VARS_SQ + c * N_VARS;
 						r_ind = (i * N_OPS + UPSAT_OP + p) * N_VARS;
 						r_ind1 = (j * N_OPS + UPSAT_OP + p) * N_VARS;
-						for (v = 0; v < N_VARS; v++)
+						r_ind2 = (i * N_OPS + DENS_OP + p) * N_VARS;
+						r_ind3 = (j * N_OPS + DENS_OP + p) * N_VARS;
+
+						if (c < NC) // mass: diffusion
 						{
-						  Jac[l_ind + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[i] * op_ders_arr[r_ind + v] * 0.5;
-						  Jac[l_ind1 + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[j] * op_ders_arr[r_ind1 + v] * 0.5;
+							RHS[i * N_VARS + c] += dt * phase_presence_mult * diff_diff[p * NE + c] *
+								(mesh->poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+								mesh->poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) * 0.5;
+
+							for (v = 0; v < N_VARS; v++)
+							{
+								// w.r.t.UPSAT_OP
+								Jac[l_ind + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_ders_arr[r_ind + v] * 0.5;
+								Jac[l_ind1 + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_ders_arr[r_ind1 + v] * 0.5;
+								// w.r.t.DENS_OP
+								Jac[l_ind + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[i] * op_ders_arr[r_ind2 + v] * op_vals_arr[i * N_OPS + UPSAT_OP + p] * 0.5;
+								Jac[l_ind1 + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[j] * op_ders_arr[r_ind3 + v] * op_vals_arr[j * N_OPS + UPSAT_OP + p] * 0.5;
+							}
+						}
+						else // energy: fluid heat conduction
+						{
+							RHS[i * N_VARS + c] += dt * phase_presence_mult * diff_diff[p * NE + c] *
+								(mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] + mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) * 0.5;
+
+							for (v = 0; v < N_VARS; v++)
+							{
+								Jac[l_ind + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[i] * op_ders_arr[r_ind + v] * 0.5;
+								Jac[l_ind1 + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[j] * op_ders_arr[r_ind1 + v] * 0.5;
+							}
 						}
 					}
 				}

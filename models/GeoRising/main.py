@@ -23,20 +23,15 @@ m.print_stat()
 output_props = m.physics.vars + m.output.properties
 timesteps, property_array = m.output.output_properties(output_properties = output_props)
 m.output.save_property_array(timesteps, property_array)
-loaded_timesteps, loaded_property_array = m.output.load_property_array(file_directory='output/property_array.h5')
+loaded_timesteps, loaded_property_array = m.output.load_property_array(filepath='output/property_array.h5')
 
 m.output.output_to_vtk(output_properties=output_props) # output all saved time steps to vtk
 
-# compute well time data
-time_data_dict = m.output.store_well_time_data()
+# compute and save well time data
+time_data_dict = m.output.store_well_time_data(save_output_files=True)
 
-# save well time data
-time_data_df = pd.DataFrame.from_dict(time_data_dict)
-time_data_df.to_pickle(os.path.join(m.output_folder, "well_time_data.pkl")) # as a pickle file
-writer = pd.ExcelWriter(os.path.join(m.output_folder, "well_time_data.xlsx")) # as an excel file
-time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
-writer.close()
-
+# plot well time data
+# time_data_df = pd.DataFrame.from_dict(time_data_dict)
 # time_data_df.plot(x='time', y=['well_INJ_volumetric_rate_water_at_wh', 'well_PRD_volumetric_rate_water_at_wh'])\
 #     .get_figure().savefig(m.output_folder + '/rates.png', dpi=100, bbox_inches='tight')
 #
@@ -57,9 +52,9 @@ if restart:
     m_restarted.init()
     m_restarted.set_output(output_folder='output/restarted', save_initial=False, all_phase_props=True)
 
-    reservoir_filename = m.sol_filepath
+    reservoir_filepath = m.sol_filepath
     well_filename = m.well_filepath
-    m_restarted.load_restart_data(reservoir_filename, well_filename, timestep = 1) # restart from
+    m_restarted.load_restart_data(reservoir_filepath, well_filename, ts_idx=1) # restart from
 
     m_restarted.run(365/2, restart_dt = 1e-4)
     # m.print_timers()
@@ -86,5 +81,3 @@ if restart:
     # check final result
     assert np.isclose(X[-1,:,0], X_restarted[-1,:,0], rtol=1e-2, atol=0).all(), f'pressure mismatch at restart position at end of run.'
     assert np.isclose(X[-1,:,1], X_restarted[-1,:,1], rtol=1, atol=0).all(), f'enthalpy mismatch at restart position at end of run.'
-
-

@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <cassert>
 #include "globals.h"
 #include "ms_well.h"
 
@@ -37,6 +38,9 @@ public:
   index_t n_matrix;                                         // number of matrix blocks
   index_t n_bounds = 0;                                     // number of boundary blocks
   index_t n_fracs = 0;                                     // number of fracture blocks
+
+  // If the model has at least a DFM well or not
+  bool has_dfm_well;
 
   // mapping from one-way list to actual list (forward connections)
   std::vector <index_t> one_way_to_conn_index_forward;
@@ -169,14 +173,24 @@ public:
 
   /// @brief add a new connection to connection list
   int add_conn(index_t block_m, index_t block_p,
-    value_t trans, value_t transD);
+    value_t trans, value_t transD, bool is_dfm_conn);
   int add_conn_block(index_t block_m, index_t block_p,
     value_t trans, value_t transD, const uint8_t P_VAR);
 
   /// @brief reverse connections and sort them by both row and col
   int reverse_and_sort();
+
+  /// @brief reverse and sort values at all connections by both row and col for a one-way array, for DFM well only
+  /// @param one_way_values: one-way array of values at all connections
+  /// @param two_way_values: two-way array of values at all connections
+  /// @tparam T: type of values
+  /// @tparam IS_DERS: if true, the values are derivatives of phase velocities
+  template <typename T, bool IS_DERS = false>
+  void reverse_and_sort_one_way(const std::vector<T>& one_way_values, std::vector<T>& two_way_values);
+
   /// @brief reverse connections and renumerate velocity mappers and sort them by both row and col
   int reverse_and_sort_dvel();
+
   /// @brief reverse mpsa connections and sort them by both row and col
   int reverse_and_sort_mpfa();
   int reverse_and_sort_mpsa();
@@ -188,6 +202,8 @@ public:
   /// @brief discretize ms wells into reservoir
   int add_wells(std::vector<ms_well*> &wells);
   int add_wells_mpfa(std::vector<ms_well*> &wells, const uint8_t P_VAR);
+  void add_connection_for_lateral_heat_exchange_for_dfm(ms_well* &well);
+  void store_wellhead_conn_idx(index_t n_res_conns, std::vector<ms_well*> &wells);
   int connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose=0);
 
   void shift_boundary_ids_mpfa(const int n);
@@ -201,6 +217,8 @@ public:
   std::vector<value_t> tran;
   /// [n_conns] array of diffusion transissibility values for given connection (transmis value)
   std::vector<value_t> tranD;
+  /// [n_conns] array that shows if it is a DFM connection or not
+  std::vector<bool> is_dfm_conn;
   /// [n_conns] array of heat conduction transissibility values for given connection (transmis value)
   std::vector<value_t> tran_heat_cond;
   /// [n_conns] array of transmissibilities that describe the forces due to thermal dilation
@@ -276,10 +294,6 @@ public:
   std::vector<value_t> mob_multiplier;
   /// [n_blocks] array of specific potential energy of mesh blocks
   std::vector<value_t> cell_spe;
-  /// [n_blocks] array of thickness of mesh blocks
-  std::vector<value_t> cell_thickness;
-  /// [n_conns * 2] array of two-way specific potential energy at connections
-  std::vector<value_t> conn_spe;
 
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;
@@ -351,6 +365,7 @@ private:
   std::vector <value_t> one_way_tran_heat_cond;
   std::vector <value_t> one_way_tranD;
   std::vector <value_t> one_way_tran_th_expn;
+  std::vector <bool> one_way_is_dfm_conn;
   // arrays for multi-point approximation
   std::vector<index_t> one_way_stencil;
   std::vector<index_t> one_way_offset;
@@ -373,4 +388,4 @@ private:
   std::vector <index_t> tmp_index;
 };
 
-#endif
+#endif /* CONN_MESH_H */

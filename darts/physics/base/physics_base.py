@@ -3,13 +3,16 @@ import atexit
 import hashlib
 import os
 import pickle
+import signal
+import tempfile
 from enum import Enum
 from functools import total_ordering
 
 import numpy as np
 
 from darts.engines import *
-from darts.physics.base.operators_base import WellControlOperators, WellInitOperators
+from darts.interpolators import *
+from darts.physics.base.operators_base import ThermalVarOperator, WellCtrlOperators
 
 
 class PhysicsBase:
@@ -20,7 +23,7 @@ class PhysicsBase:
 
     The Physics object is composed of :class:`PropertyContainer` objects for each of the regions and a set of operators.
     The operators consist of :class:`ReservoirOperators` objects for each of the regions, a :class:`WellOperators`,
-    a :class:`WellControlOperators`, a :class:`WellInitOperators` and a :class:`PropertyOperators` object.
+    a :class:`WellCtrlOperators`, a :class:`ThermalVarOperator` and a :class:`PropertyOperators` object.
     For each set of operators (evaluators, etor), an interpolator (itor) object is created for use in the :class:`engine`.
 
     :ivar engine: Engine object
@@ -33,24 +36,25 @@ class PhysicsBase:
     :type property_operators: dict
     :ivar well_operators: :class:`WellOperators` object for evaluation of well cell states
     :type well_operators: dict
-    :ivar well_ctrl_operators: :class:`WellControlOperators` object for well control
-    :type well_ctrl_operators: WellControlOperators
-    :ivar well_init_operators: :class:`WellInitOperators` object for generic state well initialization
-    :type well_init_operators: WellInitOperators
+    :ivar well_ctrl_operators: :class:`WellCtrlOperators` object for well controls
+    :type well_ctrl_operators: WellCtrlOperators
+    :ivar thermal_var_operator: :class:`ThermalVarOperator` object for generic state specification
+    :type thermal_var_operator: ThermalVarOperator
     :ivar regions: List of property regions
     :type regions: list
     """
 
     engine: engine_base
     well_operators: operator_set_evaluator_iface
-    well_ctrl_operators: WellControlOperators
-    well_init_operators: WellInitOperators
+    well_ctrl_operators: WellCtrlOperators
+    thermal_var_operator: ThermalVarOperator
 
     @total_ordering
     class StateSpecification(Enum):
         P = 0
         PT = 1
         PH = 2
+        PS = 3
 
         def __lt__(self, other):
             if self.__class__ is other.__class__:
@@ -68,6 +72,7 @@ class PhysicsBase:
         axes_max: value_vector,
         n_axes_points: index_vector,
         timer: timer_node,
+        sim_eps: float = None,
         cache: bool = False,
     ):
         """
@@ -84,11 +89,14 @@ class PhysicsBase:
         :param n_ops: Number of operators
         :type n_ops: int
         :param axes_min, axes_max: Minimum, maximum of each OBL axis
-        :type axes_min, axes_max: :class:`darts.engines.value_vector`
+        :type axes_min, axes_max: :class:`darts.interpolators.value_vector`
         :param n_axes_points: Number of OBL points along axes
         :type n_axes_points: index_vector
         :param timer: Timer object
-        :type cache: :class:`darts.engines.timer_node`
+        :param sim_eps: Epsilon composition for simulation that solution should remain away from OBL bounds
+                        (in engine, min_sim_z = min_axis_z + sim_eps, max_sim_z = max_axis_z - sim_eps)
+        :type sim_eps: float
+        :type cache: :class:`darts.interpolators.timer_node`
         :param cache: Switch to cache operator values
         :type cache: bool
         """
@@ -109,6 +117,7 @@ class PhysicsBase:
         self.PT_axes_min = axes_min
         self.PT_axes_max = axes_max
         self.n_axes_points = n_axes_points
+        self.sim_eps = sim_eps if sim_eps is not None else 1e-12
 
         # Initialize timer for simulation and caching
         self.timer = timer.node["simulation"]
@@ -133,6 +142,10 @@ class PhysicsBase:
         itor_precision: str = 'd',
         verbose: bool = False,
         is_barycentric: bool = False,
+        n_solid: int = None,
+        parallel_evaluation: bool = False,
+        n_workers: int = None,
+        evaluator_factory_hook=None,
     ):
         """
         Function to initialize all contained objects within the Physics object.
@@ -151,6 +164,8 @@ class PhysicsBase:
         :type verbose: bool
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param n_solid: Number of solid minerals for element-based reactive flow
+        :type n_solid: int
         """
         # Define OBL axes
         self.axes_min, self.axes_max = self.determine_obl_bounds(
@@ -165,11 +180,44 @@ class PhysicsBase:
 
         # set engine, operators and create interpolators
         self.engine = self.set_engine(discr_type, platform)
+
+        # for separate mineral fraction in reactive flow formulations
+        if n_solid is not None:
+            self.engine.n_solid = n_solid
+
+        # Set state specification in the engine
+        self.set_state_spec(state_spec=self.state_spec)
+
         self.set_operators()
         self.set_interpolators(
-            platform, itor_type, itor_mode, itor_precision, is_barycentric
+            platform,
+            itor_type,
+            itor_mode,
+            itor_precision,
+            is_barycentric,
+            parallel_evaluation=parallel_evaluation,
+            n_workers=n_workers,
+            evaluator_factory_hook=evaluator_factory_hook,
         )
         return
+
+    def set_state_spec(self, state_spec: StateSpecification):
+        """
+        Set the state specification in the engine
+
+        :param state_spec: State specification
+        :type state_spec: StateSpecification
+        """
+        if state_spec == self.StateSpecification.P:
+            self.engine.state_spec = self.engine.StateSpecification.P
+        elif state_spec == self.StateSpecification.PT:
+            self.engine.state_spec = self.engine.StateSpecification.PT
+        elif state_spec == self.StateSpecification.PH:
+            self.engine.state_spec = self.engine.StateSpecification.PH
+        elif state_spec == self.StateSpecification.PS:
+            self.engine.state_spec = self.engine.StateSpecification.PS
+        else:
+            raise NotImplementedError()
 
     def add_property_region(self, property_container, region: int = 0):
         """
@@ -217,6 +265,9 @@ class PhysicsBase:
         itor_mode='adaptive',
         itor_precision='d',
         is_barycentric: bool = False,
+        parallel_evaluation: bool = False,
+        n_workers: int = None,
+        evaluator_factory_hook=None,
     ):
         """
         Function to initialize set interpolator objects based on the set of operators.
@@ -232,7 +283,32 @@ class PhysicsBase:
         :type itor_precision: str
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param parallel_evaluation: Enable parallel batch evaluation of supporting points via multiprocessing
+        :type parallel_evaluation: bool
+        :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
+        :type n_workers: int
+        :param evaluator_factory_hook: Callable ``(region: int) -> callable`` that returns a factory
+            function for constructing a fresh evaluator per worker process. Required when
+            ``parallel_evaluation=True``. Each factory must return an ``operator_set_evaluator_iface``.
+        :type evaluator_factory_hook: callable
         """
+        # Optionally wrap evaluators with ParallelEvaluator for batch parallelism
+        if parallel_evaluation:
+            if evaluator_factory_hook is None:
+                raise ValueError(
+                    "parallel_evaluation=True requires evaluator_factory_hook: "
+                    "a callable(region) -> callable that returns a factory for "
+                    "constructing a fresh evaluator per worker process."
+                )
+            from darts.physics.base.parallel_evaluator import ParallelEvaluator
+
+            for region in self.regions:
+                factory = evaluator_factory_hook(region)
+                self.reservoir_operators[region] = ParallelEvaluator(
+                    evaluator_factory=factory,
+                    n_workers=n_workers,
+                )
+
         # self.n_ops = self.engine.get_n_ops()
         self.acc_flux_itor = {}
         self.property_itor = {}
@@ -262,6 +338,7 @@ class PhysicsBase:
                 precision=itor_precision,
                 timer_name=f'property {region:d} interpolation',
                 region=str(region),
+                is_barycentric=is_barycentric,
             )
 
         self.acc_flux_w_itor, _ = self.create_interpolator(
@@ -275,9 +352,10 @@ class PhysicsBase:
             mode=itor_mode,
             precision=itor_precision,
             region='-1',
+            is_barycentric=is_barycentric,
         )
 
-        self.well_ctrl_itor, _ = self.create_interpolator(
+        self.well_ctrl_itor, self.n_well_ctrl_itor_ops = self.create_interpolator(
             self.well_ctrl_operators,
             n_ops=self.well_ctrl_operators.n_ops,
             axes_min=self.axes_min,
@@ -287,10 +365,11 @@ class PhysicsBase:
             algorithm=itor_type,
             mode=itor_mode,
             precision=itor_precision,
+            is_barycentric=is_barycentric,
         )
-        self.well_init_itor, _ = self.create_interpolator(
-            self.well_init_operators,
-            n_ops=self.well_init_operators.n_ops,
+        self.thermal_var_itor, _ = self.create_interpolator(
+            self.thermal_var_operator,
+            n_ops=self.thermal_var_operator.n_ops,
             axes_min=value_vector(self.PT_axes_min),
             axes_max=value_vector(self.PT_axes_max),
             timer_name='well initialization',
@@ -298,6 +377,7 @@ class PhysicsBase:
             algorithm=itor_type,
             mode=itor_mode,
             precision=itor_precision,
+            is_barycentric=is_barycentric,
         )
         return
 
@@ -349,15 +429,19 @@ class PhysicsBase:
         inj_temp: float = None,
     ):
         """
-        Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
+        Set well control/constraint. It will call set_bhp_control() or set_rate_control() on the control or constraint
         well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
 
-        :param wctrl: well_control_iface object responsible for control/constraint
+        :param wctrl: well_control_iface object responsible for control/constraint. It must be set to:
+                      - well_obj.control for well control
+                      - well_obj.constraint for well constraint
         :param control_type: Well control type -2) NONE (if constraint needs to be deactivated), -1) BHP,
                              0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
         :param is_inj: Is injection well (true) or production well (false)
         :param target: Target BHP or rate, consistent with well control type
-        :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
+        :param phase_name: Name of the phase rate of which is controlled. This input can be used if well control is of
+                           the rate type. If not specified and well control is of the rate type, total rate will be
+                           controlled.
         :param inj_composition: Composition of the injected phase. This input is required if it is an injection well.
         :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
         """
@@ -370,18 +454,24 @@ class PhysicsBase:
         inj_temp = (
             inj_temp if inj_temp is not None else 0.0
         )  # for isothermal case or production well, pass dummy variables
-        phase_idx = (
-            self.phases.index(phase_name) if phase_name is not None else 0
-        )  # for BHP controlled production well, pass dummy variables
+
+        phase_idx = None
+        if phase_name is not None:
+            phase_idx = self.phases.index(phase_name)
 
         # Pass controls specification to ms_well object
         if control_type == well_control_iface.BHP:
             wctrl.set_bhp_control(is_inj, target, inj_composition, inj_temp)
-        else:
+        elif (
+            well_control_iface.BHP.value
+            < control_type.value
+            < well_control_iface.NUMBER_OF_RATE_TYPES.value
+        ):
             # Injection/production rate
             target = (
                 np.abs(target) if is_inj else -np.abs(target)
             )  # + for inj, - for prod
+            # If phase_idx is None, total rate is controlled
             wctrl.set_rate_control(
                 is_inj, control_type, phase_idx, target, inj_composition, inj_temp
             )
@@ -485,18 +575,18 @@ class PhysicsBase:
 
     def init_wells(self, wells):
         """
-        Function to initialize the well rates for each well.
+        Function to initialize physics of wells
 
         :param wells: List of :class:`ms_well` objects
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_rate_parameters(
+            w.init_physics(
                 self.n_vars,
                 self.n_ops,
                 self.phases,
                 self.well_ctrl_itor,
-                self.well_init_itor,
+                self.thermal_var_itor,
                 self.thermal,
             )
 
@@ -518,7 +608,7 @@ class PhysicsBase:
         Create interpolator object according to specified parameters
 
         :param evaluator: State operators to be interpolated. Evaluator object is used to generate supporting points
-        :type evaluator: darts.engines.operator_set_evaluator_iface
+        :type evaluator: darts.interpolators.operator_set_evaluator_iface
         :param timer_name: Name of timer object
         :type timer_name: str
         :param n_ops: Number of operators
@@ -607,12 +697,12 @@ class PhysicsBase:
                     )
             except (ValueError, NameError) as err:
                 # Try to find a templatized interpolator with the same name pattern
-                # but with the closest possible higher n_ops available in darts.engines.
+                # but with the closest possible higher n_ops available in darts.interpolators.
                 try:
                     import importlib
                     import re
 
-                    engines_module = importlib.import_module("darts.engines")
+                    engines_module = importlib.import_module("darts.interpolators")
                     base_prefix = itor_name.rsplit('_', 1)[0]
                     pattern = rf"^{re.escape(base_prefix)}_(\d+)$"
                     # Find candidates with higher n_ops
@@ -688,18 +778,21 @@ class PhysicsBase:
 
             if hasattr(self, 'cache_dir'):
                 itor_cache_filename = os.path.join(self.cache_dir, itor_cache_filename)
-            # if cache file exists, read it
+            # if cache file exists, read it safely
             if os.path.exists(itor_cache_filename):
-                with open(itor_cache_filename, "rb") as fp:
-                    print(
-                        "Reading cached point data for ",
-                        type(itor).__name__,
-                        'from',
-                        itor_cache_filename,
-                    )
-                    itor.point_data = pickle.load(fp)
+                print(
+                    "Reading cached point data for ",
+                    type(itor).__name__,
+                    'from',
+                    itor_cache_filename,
+                )
+                loaded_point_data = self._safe_pickle_load(itor_cache_filename)
+                if loaded_point_data is not None:
+                    itor.point_data = loaded_point_data
                     print(len(itor.point_data.keys()), "points loaded")
                     cache_loaded = 1
+                else:
+                    print("Cached point data is invalid, ignoring.")
             if mode == 'adaptive':
                 # for adaptive itors, delay obl data save moment, because
                 # during simulations new points will be evaluated.
@@ -710,9 +803,8 @@ class PhysicsBase:
         # for static itors, save the cache immediately after init, if it has not been already loaded
         # otherwise, there is no point to save the same data over and over
         if self.cache and mode == 'static' and not cache_loaded:
-            with open(itor_cache_filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__)
-                pickle.dump(itor.point_data, fp, protocol=4)
+            print("Writing point data for ", type(itor).__name__)
+            self._atomic_pickle_dump(itor.point_data, itor_cache_filename)
 
         self.create_itor_timers(itor, timer_name)
         return itor, signature_n_ops
@@ -760,9 +852,92 @@ class PhysicsBase:
                     os.path.basename(fname) == fname
                 ):  # could already have a folder in fname
                     filename = os.path.join(self.cache_dir, fname)
-            with open(filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__, 'to', filename)
-                pickle.dump(itor.point_data, fp, protocol=4)
+            print("Writing point data for ", type(itor).__name__, 'to', filename)
+            # Temporarily ignore SIGINT/SIGTERM to avoid partial writes during sudden termination
+            prev_int = None
+            prev_term = None
+            try:
+                try:
+                    prev_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
+                except Exception:
+                    prev_int = None
+                try:
+                    prev_term = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                except Exception:
+                    prev_term = None
+                self._atomic_pickle_dump(itor.point_data, filename)
+            finally:
+                if prev_int is not None:
+                    try:
+                        signal.signal(signal.SIGINT, prev_int)
+                    except Exception:
+                        pass
+                if prev_term is not None:
+                    try:
+                        signal.signal(signal.SIGTERM, prev_term)
+                    except Exception:
+                        pass
+
+    def _atomic_pickle_dump(self, obj, final_path: str):
+        """
+        Atomically write pickle to final_path using a temporary file followed by os.replace.
+        Ensures data is flushed (fsync) to disk before the rename to avoid corruption.
+        """
+        directory = os.path.dirname(final_path) or "."
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception:
+            pass
+
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=os.path.basename(final_path) + ".tmp.", suffix=".pkl", dir=directory
+        )
+        try:
+            with os.fdopen(fd, "wb") as fp:
+                pickle.dump(obj, fp, protocol=4)
+                fp.flush()
+                try:
+                    os.fsync(fp.fileno())
+                except Exception:
+                    pass
+            os.replace(tmp_path, final_path)
+            # Best-effort directory fsync to persist the rename
+            try:
+                dir_fd = os.open(directory, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except Exception:
+                pass
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+
+    def _safe_pickle_load(self, path: str):
+        """
+        Safely load a pickle file. If the file is corrupted or truncated, delete it and return None.
+        """
+        try:
+            with open(path, "rb") as fp:
+                return pickle.load(fp)
+        except Exception as err:
+            print(
+                "Failed to read cached point data from",
+                path,
+                "-",
+                type(err).__name__,
+                str(err),
+            )
+            try:
+                os.remove(path)
+                print("Removed corrupted cache file", path)
+            except Exception:
+                pass
+            return None
 
     def body_path_start(self, output_folder):
         """

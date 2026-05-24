@@ -100,12 +100,14 @@ class GeothermalPropertiesBase(PropertyBase):
     nph = 2
 
     def __init__(self):
+        self.components_name = ["H2O"]
+        self.phases_name = ["water", "steam"]
         self.Mw = np.zeros(self.nc)
         self.nu = np.zeros(self.nph)
         self.x = np.zeros((self.nph, self.nc))
         self.dens = np.zeros(self.nph)
         self.dens_m = np.zeros(self.nph)
-        self.saturation = np.zeros(self.nph)
+        self.sat = np.zeros(self.nph)
         self.mu = np.zeros(self.nph)
         self.kr = np.zeros(self.nph)
         self.pc = np.zeros(self.nph)
@@ -119,7 +121,7 @@ class GeothermalPropertiesBase(PropertyBase):
         self.phase_props = [
             self.dens,
             self.dens_m,
-            self.saturation,
+            self.sat,
             self.mu,
             self.kr,
             self.pc,
@@ -143,12 +145,12 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
             self.dens[j] = self.density_ev[phase].evaluate(state)
             self.dens_m[j] = self.dens[j] / self.Mw[0]
-            self.saturation[j] = self.saturation_ev[phase].evaluate(state)
+            self.sat[j] = self.saturation_ev[phase].evaluate(state)
             self.mu[j] = self.viscosity_ev[phase].evaluate(state)
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
             self.kr[j] = self.relperm_ev[phase].evaluate(state)
 
-        self.ph = np.array([j for j in range(self.nph) if self.saturation[j] > 0])
+        self.ph = np.array([j for j in range(self.nph) if self.sat[j] > 0])
         return
 
     def compute_total_enthalpy(self, state_pt):
@@ -159,8 +161,8 @@ class GeothermalIAPWSFluidProps(FluidProps):
     def __init__(self):
         super().__init__()
 
-        self.components = ['water']
-        self.phases = ["water", "steam"]
+        self.components_name = ['water']
+        self.phases_name = ["water", "steam"]
         self.temperature_ev = iapws_temperature_evaluator()  # Create temperature object
         self.enthalpy_ev = {
             'water': iapws_water_enthalpy_evaluator(),
@@ -189,7 +191,7 @@ class GeothermalIAPWSFluidProps(FluidProps):
 class GeothermalPHProperties(GeothermalPropertiesBase):
     def __init__(self):
         super().__init__()
-        self.phases = ["water", "steam"]
+        self.phases_name = ["water", "steam"]
 
     def run_flash(self, pressure, enthalpy):
         _ = self.flash_ev.evaluate(pressure, enthalpy)
@@ -205,10 +207,10 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
         if len(ph) == 1:
-            self.saturation[ph] = 1.0
+            self.sat[ph] = 1.0
         else:
             vol = [self.nu[j] / self.dens_m[j] for j in ph]
-            self.saturation[ph] = vol / np.sum(vol)
+            self.sat[ph] = vol / np.sum(vol)
 
         return
 
@@ -257,7 +259,7 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
 
         # self.pc = self.capillary_pressure_ev.evaluate(self.sat)
         for j in self.ph:
-            self.kr[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
+            self.kr[j] = self.relperm_ev[self.phases[j]].evaluate(self.sat[j])
 
         return
 

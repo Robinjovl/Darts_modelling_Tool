@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import numpy as np
 from scipy.interpolate import griddata
@@ -6,6 +7,7 @@ from scipy.interpolate import griddata
 from darts.engines import (
     conn_mesh,
     index_vector,
+    ms_well,
     timer_node,
     value_vector,
 )
@@ -80,19 +82,19 @@ class StructReservoir(ReservoirBase):
         permy = self.convert_to_3d_array(permy)
         permz = self.convert_to_3d_array(permz)
         self.global_data = {
-            'dx': dx,
-            'dy': dy,
-            'dz': dz,
-            'start_z': start_z,
-            'poro': poro,
-            'permx': permx,
-            'permy': permy,
-            'permz': permz,
-            'rcond': rcond,
-            'hcap': hcap,
-            'depth': depth,
-            'actnum': actnum,
-            'op_num': op_num,
+            "dx": dx,
+            "dy": dy,
+            "dz": dz,
+            "start_z": start_z,
+            "poro": poro,
+            "permx": permx,
+            "permy": permy,
+            "permz": permz,
+            "rcond": rcond,
+            "hcap": hcap,
+            "depth": depth,
+            "actnum": actnum,
+            "op_num": op_num,
         }
 
         self.actnum = actnum
@@ -102,12 +104,12 @@ class StructReservoir(ReservoirBase):
         self.global_to_local = global_to_local
 
         self.boundary_volumes = {
-            'xy_minus': None,
-            'xy_plus': None,
-            'yz_minus': None,
-            'yz_plus': None,
-            'xz_minus': None,
-            'xz_plus': None,
+            "xy_minus": None,
+            "xy_plus": None,
+            "yz_minus": None,
+            "yz_plus": None,
+            "xz_minus": None,
+            "xz_plus": None,
         }
         self.connected_well_segments = {}
 
@@ -123,48 +125,40 @@ class StructReservoir(ReservoirBase):
             is_cpg=self.is_cpg,
         )
 
-        self.timer.node['connection list generation'] = timer_node()
-        self.timer.node['connection list generation'].start()
+        self.timer.node["connection list generation"] = timer_node()
+        self.timer.node["connection list generation"].start()
         if self.discretizer.is_cpg:
             cell_m, cell_p, tran, tran_thermal = self.discretizer.calc_cpg_discr()
         else:
-            (
-                cell_m,
-                cell_p,
-                tran,
-                tran_thermal,
-            ) = self.discretizer.calc_structured_discr()
-        self.timer.node['connection list generation'].stop()
+            cell_m, cell_p, tran, tran_thermal = (
+                self.discretizer.calc_structured_discr()
+            )
+        self.timer.node["connection list generation"].stop()
 
         volume = self.discretizer.calc_volumes()
 
         if (
-            self.global_data['depth'] is None
+            self.global_data["depth"] is None
         ):  # pick z coordinates from the centers, and change the order from KJI to IJK
-            self.global_data['depth'] = self.discretizer.centroids_all_cells[
+            self.global_data["depth"] = self.discretizer.centroids_all_cells[
                 :, 2
-            ].flatten(order='F')
+            ].flatten(order="F")
 
         # apply actnum filter if needed - all arrays providing a value for a single grid block should be passed
         arrs = [
-            self.global_data['poro'],
-            self.global_data['rcond'],
-            self.global_data['hcap'],
-            self.global_data['depth'],
+            self.global_data["poro"],
+            self.global_data["rcond"],
+            self.global_data["hcap"],
+            self.global_data["depth"],
             volume,
             self.global_data['op_num'],
-            self.global_data['dz'],
         ]
-        (
-            self.cell_m,
-            self.cell_p,
-            tran,
-            tran_thermal,
-            arrs_local,
-        ) = self.discretizer.apply_actnum_filter(
-            self.actnum, cell_m, cell_p, tran, tran_thermal, arrs
+        self.cell_m, self.cell_p, tran, tran_thermal, arrs_local = (
+            self.discretizer.apply_actnum_filter(
+                self.actnum, cell_m, cell_p, tran, tran_thermal, arrs
+            )
         )
-        poro, rcond, hcap, depth, volume, op_num, dz = arrs_local
+        poro, rcond, hcap, depth, volume, op_num = arrs_local
         self.global_data['global_to_local'] = self.discretizer.global_to_local
 
         # Assign layer properties
@@ -188,61 +182,94 @@ class StructReservoir(ReservoirBase):
         self.volume[:] = volume
         np.array(mesh.op_num, copy=False)[:] = op_num
 
-        np.array(mesh.cell_thickness, copy=False)[:] = dz
-
         self.set_boundary_volume(self.boundary_volumes)
         # copy the values of mesh.volume instead of using the pointer
-        self.global_data['volume'] = np.array(mesh.volume, copy=True)
+        self.global_data["volume"] = np.array(mesh.volume, copy=True)
+
+        # Give a warning if there is more than one cell in the vertical direction and the depths of all the layers are the same.
+        if self.nz > 1 and np.all(depth == depth[0]):
+            warnings.warn(
+                "The reservoir contains more than one cell in the vertical direction (nz > 1), "
+                "but all layers have identical depth values!",
+                stacklevel=1,
+            )
 
         return mesh
 
     def set_boundary_volume(self, boundary_volumes: dict):
         # apply changes
         volume = self.discretizer.volume
-        if boundary_volumes['xy_minus'] is not None:
-            volume[:, :, 0] = boundary_volumes['xy_minus']
-        if boundary_volumes['xy_plus'] is not None:
-            volume[:, :, -1] = boundary_volumes['xy_plus']
-        if boundary_volumes['yz_minus'] is not None:
-            volume[0, :, :] = boundary_volumes['yz_minus']
-        if boundary_volumes['yz_plus'] is not None:
-            volume[-1, :, :] = boundary_volumes['yz_plus']
-        if boundary_volumes['xz_minus'] is not None:
-            volume[:, 0, :] = boundary_volumes['xz_minus']
-        if boundary_volumes['xz_plus'] is not None:
-            volume[:, -1, :] = boundary_volumes['xz_plus']
+        if boundary_volumes["xy_minus"] is not None:
+            volume[:, :, 0] = boundary_volumes["xy_minus"]
+        if boundary_volumes["xy_plus"] is not None:
+            volume[:, :, -1] = boundary_volumes["xy_plus"]
+        if boundary_volumes["yz_minus"] is not None:
+            volume[0, :, :] = boundary_volumes["yz_minus"]
+        if boundary_volumes["yz_plus"] is not None:
+            volume[-1, :, :] = boundary_volumes["yz_plus"]
+        if boundary_volumes["xz_minus"] is not None:
+            volume[:, 0, :] = boundary_volumes["xz_minus"]
+        if boundary_volumes["xz_plus"] is not None:
+            volume[:, -1, :] = boundary_volumes["xz_plus"]
         # reshape to 1d
-        volume = np.reshape(volume, self.discretizer.nodes_tot, order='F')
+        volume = np.reshape(volume, self.discretizer.nodes_tot, order="F")
         # apply actnum and assign to mesh.volume
         self.volume[:] = volume[self.discretizer.local_to_global]
 
     def add_perforation(
         self,
         well_name: str,
-        cell_index: int | tuple,
-        well_radius: float = 0.0762,
+        res_cell_idx: tuple,
+        well_seg_idx: int = None,
+        well_diameter: float = 0.1524,
         well_index: float = None,
         well_indexD: float = 0.0,
-        segment_direction: str = 'z_axis',
-        skin: float = 0,
-        multi_segment: bool = False,
+        segment_direction: str = "z_axis",
+        skin: float = 0.0,
+        ms_epm: bool = None,
+        with_peaceman_for_coupled_well_reservoir: bool = False,
         verbose: bool = False,
     ):
         """
-        Function to add perforations to wells.
+        Function to add a perforation to the well
         """
         well = self.get_well(well_name)
 
         # calculate well index and get local index of reservoir block
-        i, j, k = cell_index
-        res_block_local, wi, wid = self.discretizer.calc_well_index(
-            i,
-            j,
-            k,
-            well_radius=well_radius,
-            segment_direction=segment_direction,
-            skin=skin,
-        )
+        i, j, k = res_cell_idx
+        if well.ms_type == ms_well.MS_Type.EPM:
+            assert well_seg_idx is None, (
+                "If the well is of the EPM type, well_seg_idx must not be specified!"
+            )
+            assert with_peaceman_for_coupled_well_reservoir is False, (
+                "Coupled well-reservoir can be used only if the well type if DFM!"
+            )
+            res_block_local, wi, wid = self.discretizer.calc_well_index(
+                i,
+                j,
+                k,
+                well_diameter=well_diameter,
+                segment_direction=segment_direction,
+                skin=skin,
+            )
+        elif well.ms_type == ms_well.MS_Type.DFM:
+            assert well_seg_idx is not None, (
+                "If the well is of the DFM type, well_seg_idx must be specified!"
+            )
+            assert ms_epm is None, (
+                "If the well is of the DFM type, ms_epm must not be specified!"
+            )
+            res_block_local, wi, wid = (
+                self.discretizer.calc_well_index_for_coupled_well_reservoir(
+                    i,
+                    j,
+                    k,
+                    well_diameter=well_diameter,
+                    segment_direction=segment_direction,
+                    with_peaceman=with_peaceman_for_coupled_well_reservoir,
+                    skin=skin,
+                )
+            )
 
         if well_index is None:
             well_index = wi
@@ -250,42 +277,46 @@ class StructReservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wid
 
-        # set well segment index (well block) equal to index of perforation layer
-        if multi_segment:
-            well_block = len(well.perforations)
-        else:
-            well_block = 0
+        if well.ms_type == ms_well.MS_Type.EPM:
+            # set well segment index (well block) equal to index of perforation layer
+            if ms_epm:
+                well_block = len(well.perforations)
+            else:
+                well_block = 0
+        elif well.ms_type == ms_well.MS_Type.DFM:
+            well_block = well_seg_idx - 2
 
         # add completion only if target block is active
         if res_block_local > -1:
-            if len(well.perforations) == 0:  # if adding the first perforation
-                well.well_head_depth = np.array(self.mesh.depth, copy=False)[
-                    res_block_local
-                ]
-                well.well_body_depth = well.well_head_depth
-                if self.discretizer.is_cpg:
-                    dx, dy, dz = self.discretizer.calc_cell_dimensions(
-                        i - 1, j - 1, k - 1
-                    )
-                    # TODO: need segment_depth_increment and segment_length logic
-                    if segment_direction == 'z_axis':
-                        well.segment_depth_increment = dz
-                    elif segment_direction == 'x_axis':
-                        well.segment_depth_increment = dx
-                    else:
-                        well.segment_depth_increment = dy
-                else:
-                    well.segment_depth_increment = self.discretizer.len_cell_zdir[
-                        i - 1, j - 1, k - 1
+            if well.ms_type == ms_well.MS_Type.EPM:
+                if len(well.perforations) == 0:  # if adding the first perforation
+                    well.well_head_depth = np.array(self.mesh.depth, copy=False)[
+                        res_block_local
                     ]
+                    well.well_body_depth = well.well_head_depth
+                    if self.discretizer.is_cpg:  # No modification is made for cpg
+                        dx, dy, dz = self.discretizer.calc_cell_dimensions(
+                            i - 1, j - 1, k - 1
+                        )
+                        # TODO: need segment_depth_increment and segment_length logic
+                        if segment_direction == "z_axis":
+                            well.segment_depth_increment = dz
+                        elif segment_direction == "x_axis":
+                            well.segment_depth_increment = dx
+                        else:
+                            well.segment_depth_increment = dy
+                    else:
+                        well.segment_depth_increment = self.discretizer.len_cell_zdir[
+                            i - 1, j - 1, k - 1
+                        ]
 
-                well.segment_volume *= well.segment_depth_increment
-            else:  # update well depth
-                well.well_head_depth = min(
-                    well.well_head_depth,
-                    np.array(self.mesh.depth, copy=False)[res_block_local],
-                )
-                well.well_body_depth = well.well_head_depth
+                    well.segment_volume *= well.segment_depth_increment
+                else:  # update well depth
+                    well.well_head_depth = min(
+                        well.well_head_depth,
+                        np.array(self.mesh.depth, copy=False)[res_block_local],
+                    )
+                    well.well_body_depth = well.well_head_depth
 
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
@@ -363,7 +394,7 @@ class StructReservoir(ReservoirBase):
                     assert data.size == self.n, (
                         f"size is {data.size} instead of {self.n}"
                     )
-                data = np.reshape(data, (self.nx, self.ny, self.nz), order='F')
+                data = np.reshape(data, (self.nx, self.ny, self.nz), order="F")
             else:
                 assert data.shape == (
                     self.nx,
@@ -385,161 +416,38 @@ class StructReservoir(ReservoirBase):
                     dx[id], dy[id], dz[id] = self.discretizer.calc_cell_dimensions(
                         i, j, k
                     )
-        dx *= self.global_data['actnum']
-        dy *= self.global_data['actnum']
-        dz *= self.global_data['actnum']
+        dx *= self.global_data["actnum"]
+        dy *= self.global_data["actnum"]
+        dz *= self.global_data["actnum"]
         return dx, dy, dz
 
     def get_cell_cpg_widths_new(self):
         assert self.discretizer.is_cpg
         dx = self.discretizer.convert_to_flat_array(
             np.fabs(
-                self.discretizer.cell_data['faces'][:, :, :, 1, 1]
-                - self.discretizer.cell_data['faces'][:, :, :, 0, 1]
+                self.discretizer.cell_data["faces"][:, :, :, 1, 1]
+                - self.discretizer.cell_data["faces"][:, :, :, 0, 1]
             )[:, :, :, 0],
-            'dx',
+            "dx",
         )
         dy = self.discretizer.convert_to_flat_array(
             np.fabs(
-                self.discretizer.cell_data['faces'][:, :, :, 3, 1]
-                - self.discretizer.cell_data['faces'][:, :, :, 2, 1]
+                self.discretizer.cell_data["faces"][:, :, :, 3, 1]
+                - self.discretizer.cell_data["faces"][:, :, :, 2, 1]
             )[:, :, :, 1],
-            'dy',
+            "dy",
         )
         dz = self.discretizer.convert_to_flat_array(
             np.fabs(
-                self.discretizer.cell_data['faces'][:, :, :, 5, 1]
-                - self.discretizer.cell_data['faces'][:, :, :, 4, 1]
+                self.discretizer.cell_data["faces"][:, :, :, 5, 1]
+                - self.discretizer.cell_data["faces"][:, :, :, 4, 1]
             )[:, :, :, 2],
-            'dz',
+            "dz",
         )
-        dx *= self.global_data['actnum']
-        dy *= self.global_data['actnum']
-        dz *= self.global_data['actnum']
+        dx *= self.global_data["actnum"]
+        dy *= self.global_data["actnum"]
+        dz *= self.global_data["actnum"]
         return dx, dy, dz
-
-    def output_to_plt(
-        self,
-        data: dict,
-        output_props: list = None,
-        lims: dict = None,
-        fig=None,
-        figsize: tuple = None,
-        axs_shape: tuple = None,
-        aspect_ratio: str = 'equal',
-        logx: bool = False,
-        plot_zeros: bool = True,
-        cmap: str = 'jet',
-        colorbar_loc: str = 'right',
-    ):
-        assert self.ndims <= 2, "No implementation exists for 3D StructReservoir"
-        import matplotlib.pyplot as plt
-
-        output_props = output_props if output_props is not None else list(data.keys())
-        n_plots = len(output_props)
-        lims = lims if lims is not None else {}
-        axs_shape = axs_shape if axs_shape is not None else (1, n_plots)
-        figsize = (
-            figsize if figsize is not None else (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
-        )
-
-        if self.ndims == 1:
-            if fig is None:
-                fig, axs = plt.subplots(
-                    nrows=axs_shape[0],
-                    ncols=axs_shape[1],
-                    figsize=figsize,
-                    dpi=100,
-                    facecolor='w',
-                    edgecolor='k',
-                )
-
-                for j, prop in enumerate(output_props):
-                    axs[j].set_title(prop)
-
-            for j, prop in enumerate(output_props):
-                ax = fig.axes[j]
-
-                if not plot_zeros:
-                    data[prop][data[prop][:] == 0.0] = np.nan
-
-                if self.nx > 1:
-                    x = self.discretizer.centroids_all_cells[:, 0]
-                    ax.plot(x, data[prop][:])
-                    if prop in lims.keys():
-                        ax.set(ylim=lims[prop])
-                    if logx:
-                        ax.set_xscale('log')
-                        ax.set_xlim([np.min(x), np.max(x)])
-                elif self.nz > 1:
-                    z = self.discretizer.centroids_all_cells[:, 2]
-                    ax.plot(data[prop][:], z)
-                    if prop in lims.keys():
-                        ax.set(xlim=lims[prop])
-
-        elif self.ndims == 2:
-            dx, dy, dz = (
-                self.global_data['dx'],
-                self.global_data['dy'],
-                self.global_data['dz'],
-            )
-            xgrid = np.append(0, np.cumsum(dx[:, 0, 0]))
-            ygrid = (
-                np.append(0, np.cumsum(dy[0, :, 0]))
-                if self.ny > 1
-                else np.append(0, np.cumsum(dz[0, 0, :]))
-            )
-            X, Y = np.meshgrid(xgrid, ygrid)
-            shape = (self.ny, self.nx) if self.ny > 1 else (self.nz, self.nx)
-
-            from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-            fig, axs = plt.subplots(
-                nrows=axs_shape[0],
-                ncols=axs_shape[1],
-                figsize=figsize,
-                dpi=100,
-                facecolor='w',
-                edgecolor='k',
-            )
-
-            for j, prop in enumerate(output_props):
-                axs[j].set_title(prop)
-                if prop not in lims.keys():
-                    lims[prop] = [None, None]
-
-                if not plot_zeros:
-                    data[prop][data[prop][:] == 0.0] = np.nan
-
-                im = axs[j].pcolormesh(
-                    X,
-                    Y,
-                    data[prop][:].reshape(shape),
-                    cmap=cmap,
-                    vmin=lims[prop][0],
-                    vmax=lims[prop][1],
-                )
-                if self.nz > 1:
-                    axs[j].invert_yaxis()
-                if logx:
-                    axs[j].set_xscale('log')
-                    axs[j].set_xlim([xgrid[1], xgrid[-1]])
-                    axs[j].set_aspect('auto')
-                else:
-                    axs[j].set_aspect(aspect_ratio)
-
-                divider = make_axes_locatable(axs[j])
-                if colorbar_loc == 'right':
-                    cax = divider.append_axes('right', size='5%', pad=0.05)
-                    fig.colorbar(im, cax=cax, orientation='vertical')
-                else:
-                    cax = divider.append_axes('bottom', size='15%', pad=0.3)
-                    fig.colorbar(im, cax=cax, orientation='horizontal')
-                # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
-                # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
-            plt.tight_layout()
-
-        return fig
 
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
         """
@@ -596,8 +504,8 @@ class StructReservoir(ReservoirBase):
                             self.discretizer.nodes_tot, dtype=mesh_geom_dtype
                         )
                 else:
-                    cell_data[key] = np.array(data).flatten(order='F')
-            mesh_filename = output_directory + '/mesh'
+                    cell_data[key] = np.array(data).flatten(order="F")
+            mesh_filename = output_directory + "/mesh"
 
             if self.vtk_grid_type == 0:
                 gridToVTK(
@@ -610,14 +518,14 @@ class StructReservoir(ReservoirBase):
             else:
                 for key, _value in cell_data.items():
                     self.vtkobj.AppendScalarData(
-                        key, cell_data[key][self.global_data['actnum'] == 1]
+                        key, cell_data[key][self.global_data["actnum"] == 1]
                     )
 
                 self.vtkobj.Write2VTU(mesh_filename)
                 if len(self.vtk_filenames_and_times) == 0:
                     for key, _data in self.global_data.items():
                         self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray("cellNormals")
         return
 
     def output_to_vtk(
@@ -629,7 +537,7 @@ class StructReservoir(ReservoirBase):
         data: dict,
     ):
         """
-        Function to export results of structured reservoir at timestamp t into `.vtk` format.
+        Function to export reservoir results of structured reservoir at timestamp t into `.vtk` format.
 
         :param ith_step: i'th reporting step
         :type ith_step: int
@@ -668,14 +576,14 @@ class StructReservoir(ReservoirBase):
         else:
             for key, _value in cell_data.items():
                 self.vtkobj.AppendScalarData(
-                    key, cell_data[key][self.global_data['actnum'] == 1]
+                    key, cell_data[key][self.global_data["actnum"] == 1]
                 )
 
             vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
             if len(self.vtk_filenames_and_times) == 0:
                 for key, _data in self.global_data.items():
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+                self.vtkobj.VTK_Grids.GetCellData().RemoveArray("cellNormals")
 
         # in order to have correct timesteps in Paraview, write down group file
         # since the library in use (pyevtk) requires the group file to call .save() method in the end,
@@ -683,7 +591,7 @@ class StructReservoir(ReservoirBase):
         # group file every time
 
         self.vtk_filenames_and_times[vtk_file_name] = t
-        vtk_group = VtkGroup(os.path.join(output_directory, 'solution'))
+        vtk_group = VtkGroup(os.path.join(output_directory, "solution"))
         for fname, t in self.vtk_filenames_and_times.items():
             vtk_group.addFile(fname, t)
         vtk_group.save()
@@ -708,9 +616,9 @@ class StructReservoir(ReservoirBase):
             xx, yy = np.meshgrid(x, y)
 
             # stage 1 - fill in interior data using cubic interpolation
-            array = interpolate_slice(xx, yy, array, 'cubic')
+            array = interpolate_slice(xx, yy, array, "cubic")
             # stage 2 - fill exterior data using nearest
-            array = interpolate_slice(xx, yy, array, 'nearest')
+            array = interpolate_slice(xx, yy, array, "nearest")
             return array
 
         def interpolate_zeroes_3d(array_3d):
@@ -724,11 +632,11 @@ class StructReservoir(ReservoirBase):
                     array = array_3d[:, :, k]
                     if array[not np.isnan(array)].size > 3:
                         # stage 1 - fill in interior data using cubic interpolation
-                        array = interpolate_slice(xx, yy, array, 'cubic')
+                        array = interpolate_slice(xx, yy, array, "cubic")
 
                     if array[not np.isnan(array)].size > 0:
                         # stage 2 - fill exterior data using nearest
-                        array_3d[:, :, k] = interpolate_slice(xx, yy, array, 'nearest')
+                        array_3d[:, :, k] = interpolate_slice(xx, yy, array, "nearest")
                     else:
                         if k > 0:
                             array_3d[:, :, k] = np.mean(array_3d[:, :, k - 1])
@@ -745,15 +653,15 @@ class StructReservoir(ReservoirBase):
         mesh_geom_dtype = np.float32
 
         # get tops from depths
-        if np.isscalar(self.global_data['depth']):
-            tops = self.global_data['depth'] * np.ones((nx, ny))
+        if np.isscalar(self.global_data["depth"]):
+            tops = self.global_data["depth"] * np.ones((nx, ny))
             compute_depth_by_dz_sum = True
         elif compute_depth_by_dz_sum:
-            tops = self.global_data['depth'][: nx * ny]
-            tops = np.reshape(tops, (nx, ny), order='F').astype(mesh_geom_dtype)
+            tops = self.global_data["depth"][: nx * ny]
+            tops = np.reshape(tops, (nx, ny), order="F").astype(mesh_geom_dtype)
         else:
             depths = np.reshape(
-                self.global_data['depth'], (nx, ny, nz), order='F'
+                self.global_data["depth"], (nx, ny, nz), order="F"
             ).astype(mesh_geom_dtype)
 
         # tops_avg = np.mean(tops[tops > 0])
@@ -770,19 +678,19 @@ class StructReservoir(ReservoirBase):
 
         if compute_depth_by_dz_sum:
             tops = interpolate_zeroes_2d(tops)
-            tops_padded = np.pad(tops, 1, 'edge')
+            tops_padded = np.pad(tops, 1, "edge")
         else:
-            depths_padded = np.pad(depths, 1, 'edge').astype(mesh_geom_dtype)
-        lefts_padded = np.pad(lefts, 1, 'edge')
-        fronts_padded = np.pad(fronts, 1, 'edge')
+            depths_padded = np.pad(depths, 1, "edge").astype(mesh_geom_dtype)
+        lefts_padded = np.pad(lefts, 1, "edge")
+        fronts_padded = np.pad(fronts, 1, "edge")
 
-        dx_padded = np.pad(self.discretizer.len_cell_xdir, 1, 'edge').astype(
+        dx_padded = np.pad(self.discretizer.len_cell_xdir, 1, "edge").astype(
             mesh_geom_dtype
         )
-        dy_padded = np.pad(self.discretizer.len_cell_ydir, 1, 'edge').astype(
+        dy_padded = np.pad(self.discretizer.len_cell_ydir, 1, "edge").astype(
             mesh_geom_dtype
         )
-        dz_padded = np.pad(self.discretizer.len_cell_zdir, 1, 'edge').astype(
+        dz_padded = np.pad(self.discretizer.len_cell_zdir, 1, "edge").astype(
             mesh_geom_dtype
         )
 
@@ -901,6 +809,6 @@ class StructReservoir(ReservoirBase):
         self.vtkobj.GRDECL_Data.NY = self.ny
         self.vtkobj.GRDECL_Data.NZ = self.nz
         self.vtkobj.GRDECL_Data.N = self.n
-        self.vtkobj.GRDECL_Data.GRID_type = 'CornerPoint'
-        self.vtkobj.GRDECL2VTK(self.global_data['actnum'])
+        self.vtkobj.GRDECL_Data.GRID_type = "CornerPoint"
+        self.vtkobj.GRDECL2VTK(self.global_data["actnum"])
         # self.vtkobj.decomposeModel()

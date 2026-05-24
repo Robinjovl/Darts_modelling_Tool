@@ -18,12 +18,11 @@
 #else
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
-#endif // OPENDARTS_LINEAR_SOLVERS                                                                                                                                        
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t NC>
 class engine_nc_nl_cpu : public engine_base
@@ -58,7 +57,7 @@ public:
   uint8_t get_n_vars() const override { return N_VARS; };
   uint8_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_comps() const override { return NC; };
-  uint8_t get_z_var() const override { return Z_VAR; };
+  uint8_t get_z_var_idx() const override { return Z_VAR; };
 
   engine_nc_nl_cpu() { engine_name = "Multiphase " + std::to_string(NC) + "-component isothermal flow CPU engine with non-linear discretization"; };
 
@@ -66,9 +65,11 @@ public:
 
   int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
            std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+           operator_set_gradient_evaluator_iface* thermal_var_etor_,
            sim_params *params_, timer_node *timer_);
   int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                 std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                operator_set_gradient_evaluator_iface* thermal_var_etor_,
                 sim_params *params_, timer_node *timer_);
   int init_jacobian_structure_mpfa(csr_matrix_base *jacobian);
 

@@ -274,14 +274,16 @@ class UnstructReservoir:
         Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
         :param name:
         :param depth:
+        :param wellbore_diameter:
         :return:
         """
         well = ms_well()
         well.name = name
+        well.ms_type = ms_well.MS_Type.EPM
         well.segment_volume =  pi * wellbore_diameter ** 2 / 4
         well.well_head_depth = depth
         well.well_body_depth = depth
-        well.segment_transmissibility = 1e5
+        well.well_transmissibility = 1e5
         well.segment_depth_increment = 1
         self.wells.append(well)
         return 0

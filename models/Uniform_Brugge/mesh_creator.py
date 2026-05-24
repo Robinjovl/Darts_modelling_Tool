@@ -169,14 +169,14 @@ class mesh_creator():
 
 
         ########### adding physical group ##############
-        # setting physical group to the volume
-        gmsh.model.addPhysicalGroup(3, [1], 999)
-        gmsh.model.setPhysicalName(3, 1, "The volume")
-
-
         gmsh.model.geo.synchronize()
+        # Set physical group for all generated volume entities.
+        volume_tags = [tag for dim, tag in gmsh.model.getEntities(3)]
+        if len(volume_tags) > 0:
+            phys_tag = gmsh.model.addPhysicalGroup(3, volume_tags, 999)
+            gmsh.model.setPhysicalName(3, phys_tag, "The volume")
+
         gmsh.model.mesh.generate(3)
         gmsh.write(file_name)
 
         gmsh.finalize()
-
