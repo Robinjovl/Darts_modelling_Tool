@@ -2020,7 +2020,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 			  value_t wi, wid;
 			  std::tie(i_w, r_i, wi, wid) = wells[iw]->perforations[p];
 			  const index_t w_i = well_head_idx + i_w + 1;
-			  if (std::fabs(depth[w_i] - depth[r_i]) > static_cast<value_t>(1.0e-8))
+			  if (std::fabs(depth[w_i] - depth[r_i]) > static_cast<value_t>(1.0e-3))
 			  {
 				  std::ostringstream msg;
 				  msg << "DFM well '" << wells[iw]->name << "' perforation " << p
