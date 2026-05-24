@@ -38,8 +38,8 @@ class DataTS:
         self.dt_min = 1e-12  # minimal allowed timestep [days]
         self.dt_mult = 2.0  # timestep multiplier, affects the next timestep choice
         self.dt_max = 10.0  # maximal allowed timestep [days]
-        self.newton_tol = 1e-2  # newton solver residual
-        self.newton_tol_wel_mult = 100.0  # used to compute the newton solver residual for wells = tol_res * tol_wel_mult
+        self.newton_tol = 1e-2  # tolerance for newton solver residual
+        self.newton_tol_wel_mult = 100.0  # used to compute the tolerance for the newton solver residual of EPM wells = tol_res * tol_wel_mult
         self.newton_tol_stationary = 1e-3  # tolerance for stationary point detection in the newton solver (by residual)
         self.newton_max_iter = 20  # maximum newton iterations allowed
         self.linear_tol = 1e-5
@@ -452,6 +452,7 @@ class DartsModel:
         newton_type=None,
         newton_params=None,
         line_search: bool = False,
+        newton_tol_wel_mult: float = 100,
         coupled_well_res_norm_method: int = 1,
     ):
         """
@@ -475,6 +476,8 @@ class DartsModel:
         :type it_linear: int
         :param newton_type:
         :param newton_params:
+        :param newton_tol_wel_mult: Multiplier used to compute the tolerance for the newton solver residual of wells = tol_res * tol_wel_mult
+        :type newton_tol_wel_mult: float
         :param coupled_well_res_norm_method: Method of norm evaluation of residuals for the coupled well-reservoir model
         :type coupled_well_res_norm_method: int
         """
@@ -513,6 +516,8 @@ class DartsModel:
             it_linear if it_linear is not None else self.data_ts.linear_max_iter
         )
 
+        self.data_ts.newton_tol_wel_mult = newton_tol_wel_mult
+
         assert coupled_well_res_norm_method in [1, 2], (
             "Method number for calculating the norm of coupled "
             "well-reservoir residuals must be either 1 or 2."
@@ -536,78 +541,6 @@ class DartsModel:
                 type(self.data_ts.linear_type) is not linear_solver_types
             ):  # it's not needed to copy it to params for PETSC option
                 self.params.linear_type = self.data_ts.linear_type
-
-    def run_simple(self, physics, data_ts, days, restart_dt=0.0):
-        """
-        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
-
-        :param physics:
-        :param data_ts:
-        :param days: Time increment [days]
-        :type days: float
-        :param restart_dt: Restart value for timestep size [days, optional]
-        :type restart_dt: float
-        """
-        self.physics = physics
-        self.data_ts = data_ts
-
-        days = days if days is not None else self.runtime
-        assert days > 0, "Time must be a positive value!"
-
-        verbose = False
-
-        # get current engine time
-        t = self.physics.engine.t
-        stop_time = t + days
-
-        # same logic as in engine.run
-        if fabs(t) < 1e-15:
-            dt = self.data_ts.dt_first
-        elif restart_dt > 0.0:
-            dt = restart_dt
-        else:
-            dt = min(self.prev_dt * self.data_ts.dt_mult, self.data_ts.dt_max)
-        self.prev_dt = dt
-
-        ts = 0
-
-        while t < stop_time:
-            converged = self.run_timestep(dt, t, verbose)
-
-            if converged:
-                t += dt
-                ts += 1
-                if verbose:
-                    print(
-                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}"
-                    )
-
-                dt = min(dt * self.data_ts.dt_mult, self.data_ts.dt_max)
-
-                # if the current dt almost covers the rest time amount needed to reach the stop_time, add the rest
-                # to not allow the next time step be smaller than min_ts
-                if np.fabs(t + dt - stop_time) < self.data_ts.dt_min:
-                    dt = stop_time - t
-
-                if t + dt > stop_time:
-                    dt = stop_time - t
-                else:
-                    self.prev_dt = dt
-
-            else:
-                dt /= self.data_ts.dt_mult
-                if verbose:
-                    print(f"Cut timestep to {dt:2.10f}")
-                if dt < self.data_ts.dt_min:
-                    break
-
-        # update current engine time
-        self.physics.engine.t = stop_time
-
-        if verbose:
-            print(
-                f"TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d})"
-            )
 
     def run(
         self,
@@ -704,7 +637,8 @@ class DartsModel:
                 if verbose:
                     max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
                     print(
-                        f"#{ts_counter:d}\tT={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
+                        f"#{ts_counter:d}\tT={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}"
+                        f"\tLI={self.physics.engine.n_linear_last_dt:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -815,10 +749,12 @@ class DartsModel:
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
 
+            # Compute norm of reservoir (+ DFM well) residuals
             if not self.has_dfm_well:
                 self.physics.engine.newton_residual_last_dt = (
-                    self.physics.engine.calc_newton_residual()
-                )  # calc norm of residual
+                    # self.physics.engine.calc_newton_residual()
+                    self.calc_residual_norm()
+                )
             elif self.has_dfm_well:
                 # Method is either 1 or 2
                 self.physics.engine.newton_residual_last_dt = (
@@ -827,6 +763,8 @@ class DartsModel:
                     )
                 )
 
+            # print("{:.4e}".format(self.calc_residual_norm()),
+            #       "{:.4e}".format(self.physics.engine.newton_residual_last_dt))
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
             for j in range(i):
@@ -841,9 +779,16 @@ class DartsModel:
                     print("Stationary point detected!")
                 break
 
-            self.physics.engine.well_residual_last_dt = (
-                self.physics.engine.calc_well_residual()
-            )
+            # Compute norm of EPM well residuals
+            if not self.has_dfm_well:
+                self.physics.engine.well_residual_last_dt = self.calc_residual_norm(
+                    is_well=True
+                )
+            elif self.has_dfm_well:
+                self.physics.engine.well_residual_last_dt = (
+                    self.physics.engine.calc_well_residual()
+                )
+
             residual_history.append(
                 (
                     self.physics.engine.newton_residual_last_dt,  # matrix residual
@@ -1187,6 +1132,47 @@ class DartsModel:
         rhs = np.array(self.physics.engine.RHS, copy=False)
         rhs += self.set_rhs_flux(t) * dt
         return
+
+    def calc_residual_norm(self, ntype: str = "L2", is_well: bool = False):
+        """
+        Calculate norm of RHS vector
+        """
+        rhs = np.asarray(self.physics.engine.RHS)
+        volume = np.asarray(self.reservoir.mesh.volume)
+        poro = np.asarray(self.reservoir.mesh.poro)
+        ops = np.asarray(self.physics.engine.op_vals_arr)
+
+        nb_res = self.reservoir.mesh.n_res_blocks
+        nb_tot = self.reservoir.mesh.n_blocks
+        n_vars = self.physics.n_vars
+        n_ops = self.physics.n_ops
+
+        res = 0
+
+        # Predefine index ranges
+        for c in range(n_vars):
+            if is_well:
+                irhs = slice(nb_res * n_vars + c, nb_tot * n_vars, n_vars)
+                iops = slice(nb_res * n_ops + c, nb_tot * n_ops, n_ops)
+                ires = slice(nb_res, nb_tot)
+            else:
+                irhs = slice(c, nb_res * n_vars, n_vars)
+                iops = slice(c, nb_res * n_ops, n_ops)
+                ires = slice(0, nb_res)
+
+            denom = volume[ires] * poro[ires] * ops[iops]
+
+            if ntype == "L2":
+                val = np.sqrt(np.sum(rhs[irhs] ** 2) / np.sum(denom**2))
+            elif ntype == "Linf":
+                safe_denom = np.where(denom < 1e-4, 1e4, denom)
+                val = np.max(np.abs(rhs[irhs]) / safe_denom)
+            else:
+                raise ValueError(f"Unknown norm type: {ntype}")
+
+            res = max(res, val)
+
+        return res
 
     def print_timers(self):
         """
