@@ -99,6 +99,10 @@ namespace opendarts
                                         int agg_interp_type,
                                         int agg_pmax_elmts,
                                         int relax_order);
+      void set_mgr_pressure_amg_advanced_options(opendarts::config::mat_float strong_threshold,
+                                                 opendarts::config::mat_float trunc_factor,
+                                                 int pmax_elmts,
+                                                 int max_levels);
       void set_mgr_pressure_amg_solve_options(opendarts::config::index_t max_iter,
                                               opendarts::config::mat_float tolerance);
       void set_n_reservoir_blocks(opendarts::config::index_t n_reservoir_blocks);

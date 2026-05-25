@@ -246,6 +246,7 @@ void pybind_globals(py::module &m)
 
   sim_params.attr("mgrCprReductionPressureRow") = py::int_(0);
   sim_params.attr("mgrCprReductionTrueIMPES") = py::int_(1);
+  sim_params.attr("mgrCprReductionTrueIMPESWellElim") = py::int_(2);
 
   sim_params.attr("mgrVarPressure") = py::int_(0);
   sim_params.attr("mgrVarComposition") = py::int_(1);

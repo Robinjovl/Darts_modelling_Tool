@@ -54,6 +54,10 @@ struct CompositionalFlowStrategyConfig
   int pressureAmgAggInterpType;
   int pressureAmgAggPMaxElmts;
   int pressureAmgRelaxOrder;
+  double pressureAmgStrongThreshold;
+  double pressureAmgTruncFactor;
+  int pressureAmgPMaxElmts;
+  int pressureAmgMaxLevels;
 
   CompositionalFlowStrategyConfig();
 };

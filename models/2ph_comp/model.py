@@ -32,10 +32,24 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-    def use_bcsr_cpr_pressureguard_thr10_profile(self):
+    def use_bcsr_cpr_pressureguard_thr10_profile(self, reduction_type=None):
         self.use_mgr_cpr_pressureguard_thr10 = True
+        self.bcsr_cpr_reduction_type = (
+            sim_params.mgrCprReductionTrueIMPES
+            if reduction_type is None
+            else reduction_type
+        )
         if getattr(self, "solver", None) is not None:
             self.set_solver()
+
+    def use_bcsr_cpr_levelaware_pressureguard_thr10_profile(self):
+        self.use_bcsr_cpr_pressureguard_thr10_profile(
+            getattr(
+                sim_params,
+                "mgrCprReductionTrueIMPESWellElim",
+                sim_params.mgrCprReductionTrueIMPES,
+            )
+        )
 
     def set_reservoir(self):
         nx = 1000
@@ -133,11 +147,17 @@ class Model(CICDModel):
         self.solver.set_mgr_local_correction_quality_options(False, 0.0)
 
         self.solver.set_mgr_pressure_amg_options(6, 6, 6, 1, 6, 20, 1)
+        if hasattr(self.solver, "set_mgr_pressure_amg_advanced_options"):
+            self.solver.set_mgr_pressure_amg_advanced_options(0.5, -1.0, -1, 0)
         self.solver.set_mgr_pressure_amg_solve_options(1, 0.0)
 
         self.solver.set_use_bcsr_cpr(True)
         self.solver.set_bcsr_cpr_options(
-            sim_params.mgrCprReductionTrueIMPES,
+            getattr(
+                self,
+                "bcsr_cpr_reduction_type",
+                sim_params.mgrCprReductionTrueIMPES,
+            ),
             0,
             1e6,
         )

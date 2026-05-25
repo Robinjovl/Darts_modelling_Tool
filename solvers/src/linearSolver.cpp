@@ -173,6 +173,7 @@ const char * bcsrCPRReductionLabel( BCSRCPRReductionType value )
   {
     case BCSRCPRReductionType::pressureRow: return "pressure_row";
     case BCSRCPRReductionType::trueIMPES: return "true_impes";
+    case BCSRCPRReductionType::trueIMPESWellElimination: return "true_impes_well_elimination";
   }
   return "unknown";
 }
@@ -1411,6 +1412,10 @@ LinearSolver::LinearSolver()
   m_params.pressureAMGAggInterpType = 6;
   m_params.pressureAMGAggPMaxElmts = 20;
   m_params.pressureAMGRelaxOrder = 1;
+  m_params.pressureAMGStrongThreshold = -1.0;
+  m_params.pressureAMGTruncFactor = -1.0;
+  m_params.pressureAMGPMaxElmts = -1;
+  m_params.pressureAMGMaxLevels = 0;
   m_params.bcsrCPRPressureCorrectionAlpha = 1.0;
   m_params.bcsrCPRPressureCorrectionGuardThreshold = -1.0;
   m_params.bcsrCPRPressureCorrectionGuardMinAlpha = 0.0;
@@ -1745,6 +1750,10 @@ void LinearSolver::logMGRConfigurationOnce(const char* stage)
             << ", agg_interp_type=" << m_params.pressureAMGAggInterpType
             << ", agg_pmax_elmts=" << m_params.pressureAMGAggPMaxElmts
             << ", relax_order=" << m_params.pressureAMGRelaxOrder
+            << ", strong_threshold=" << m_params.pressureAMGStrongThreshold
+            << ", trunc_factor=" << m_params.pressureAMGTruncFactor
+            << ", pmax_elmts=" << m_params.pressureAMGPMaxElmts
+            << ", max_levels=" << m_params.pressureAMGMaxLevels
             << ", max_iter=" << m_params.pressureAMGMaxIter
             << ", tolerance=" << m_params.pressureAMGTolerance
             << "." << std::endl;
@@ -1877,7 +1886,10 @@ void LinearSolver::computeBCSRCPRPressureWeights()
     real_type * weights = &m_cprPressureWeights[row * block_size];
     weights[pressure_var] = 1.0;
 
-    if( m_params.bcsrCPRReduction != BCSRCPRReductionType::trueIMPES ||
+    const bool use_true_impes_weights =
+        m_params.bcsrCPRReduction == BCSRCPRReductionType::trueIMPES ||
+        m_params.bcsrCPRReduction == BCSRCPRReductionType::trueIMPESWellElimination;
+    if( !use_true_impes_weights ||
         block_size <= 1 )
     {
       continue;
@@ -2054,29 +2066,184 @@ void LinearSolver::computeBCSRCPRPressureWeights()
   }
 }
 
+bool LinearSolver::bcsrCPRUsesWellElimination() const
+{
+  return m_params.bcsrCPRReduction ==
+         BCSRCPRReductionType::trueIMPESWellElimination;
+}
+
+int_t LinearSolver::findBCSRBlock(int_t row, int_t col) const
+{
+  if( row < 0 || row >= m_matrix.num_rows )
+  {
+    return -1;
+  }
+  for( int_t block = m_matrix.row_ptr[row]; block < m_matrix.row_ptr[row + 1]; ++block )
+  {
+    if( m_matrix.col_ind[block] == col )
+    {
+      return block;
+    }
+  }
+  return -1;
+}
+
+int_t LinearSolver::findBCSRCPRPressureColumnPosition(int_t row, int_t col) const
+{
+  if( row < 0 || row >= m_cprPressureRows )
+  {
+    return -1;
+  }
+  for( int_t pos = m_cprPressureRowOffsets[row];
+       pos < m_cprPressureRowOffsets[row + 1]; ++pos )
+  {
+    if( m_cprPressureCols[pos] == col )
+    {
+      return pos;
+    }
+  }
+  return -1;
+}
+
+void LinearSolver::addBCSRCPRPressureValue(int_t row, int_t col, real_type value)
+{
+  const int_t pos = findBCSRCPRPressureColumnPosition( row, col );
+  if( pos >= 0 )
+  {
+    m_cprPressureValues[pos] += value;
+  }
+  else
+  {
+    ++m_cprWellEliminationMissingPattern;
+  }
+}
+
+real_type LinearSolver::computeBCSRCPRProjectedPressureValue(
+    int_t row,
+    int_t block,
+    int_t pressure_var,
+    bool apply_scaling) const
+{
+  const int_t block_size = m_matrix.block_size;
+  const int_t col_cell = m_matrix.col_ind[block];
+  const int_t block_offset = block * block_size * block_size;
+  const real_type * weights = &m_cprPressureWeights[row * block_size];
+  real_type value = 0.0;
+  for( int_t r = 0; r < block_size; ++r )
+  {
+    const int_t scalar_row = row * block_size + r;
+    const int_t scalar_col = col_cell * block_size + pressure_var;
+    const real_type row_scale =
+        apply_scaling && scalar_row < static_cast<int_t>( m_rowScaling.size() )
+        ? m_rowScaling[scalar_row] : 1.0;
+    const real_type col_scale =
+        apply_scaling && scalar_col < static_cast<int_t>( m_colScaling.size() )
+        ? m_colScaling[scalar_col] : 1.0;
+    value += weights[r] *
+             m_matrix.values[block_offset + r * block_size + pressure_var] *
+             row_scale * col_scale;
+  }
+  return value;
+}
+
+bool LinearSolver::computeBCSRCPRScaledBlockInverse(
+    int_t row,
+    int_t block,
+    std::vector<real_type> & inverse) const
+{
+  const int_t block_size = m_matrix.block_size;
+  const int_t col_cell = m_matrix.col_ind[block];
+  const int_t block_offset = block * block_size * block_size;
+  const bool apply_scaling = scalingActive( m_matrix.global_num_rows );
+
+  std::vector<real_type> matrix( block_size * block_size, 0.0 );
+  real_type norm = 0.0;
+  for( int_t r = 0; r < block_size; ++r )
+  {
+    const int_t scalar_row = row * block_size + r;
+    const real_type row_scale =
+        apply_scaling && scalar_row < static_cast<int_t>( m_rowScaling.size() )
+        ? m_rowScaling[scalar_row] : 1.0;
+    for( int_t c = 0; c < block_size; ++c )
+    {
+      const int_t scalar_col = col_cell * block_size + c;
+      const real_type col_scale =
+          apply_scaling && scalar_col < static_cast<int_t>( m_colScaling.size() )
+          ? m_colScaling[scalar_col] : 1.0;
+      const real_type value =
+          m_matrix.values[block_offset + r * block_size + c] * row_scale * col_scale;
+      matrix[r * block_size + c] = value;
+      norm = std::max( norm, std::abs( value ) );
+    }
+  }
+
+  const real_type pivot_tolerance =
+      std::numeric_limits<real_type>::epsilon() * std::max<real_type>( norm, 1.0 ) * 100.0;
+  inverse.assign( block_size * block_size, 0.0 );
+  std::vector<real_type> rhs( block_size, 0.0 );
+  std::vector<real_type> solution;
+  for( int_t col = 0; col < block_size; ++col )
+  {
+    std::fill( rhs.begin(), rhs.end(), 0.0 );
+    rhs[col] = 1.0;
+    if( !solveDenseLinearSystem( matrix,
+                                 rhs,
+                                 block_size,
+                                 pivot_tolerance,
+                                 solution ) )
+    {
+      inverse.clear();
+      return false;
+    }
+    for( int_t row_local = 0; row_local < block_size; ++row_local )
+    {
+      inverse[row_local * block_size + col] = solution[row_local];
+    }
+  }
+  return true;
+}
+
 void LinearSolver::buildBCSRCPRPressurePattern()
 {
   m_cprPressurePatternReady = false;
   m_cprPressureRowIndices.resize( m_cprPressureRows );
   m_cprPressureRowNCols.assign( m_cprPressureRows, 0 );
   m_cprPressureRowOffsets.assign( m_cprPressureRows + 1, 0 );
+  const bool use_well_elimination = bcsrCPRUsesWellElimination();
+  std::vector<int_t> row_cols;
 
   for( int_t row = 0; row < m_cprPressureRows; ++row )
   {
     m_cprPressureRowIndices[row] = row;
-    int_t count = 0;
+    row_cols.clear();
     for( int_t block = m_matrix.row_ptr[row]; block < m_matrix.row_ptr[row + 1]; ++block )
     {
       const int_t col_cell = m_matrix.col_ind[block];
       if( col_cell >= 0 && col_cell < m_cprPressureRows )
       {
-        ++count;
+        row_cols.push_back( col_cell );
+      }
+      else if( use_well_elimination && col_cell >= m_cprPressureRows &&
+               col_cell < m_matrix.num_rows )
+      {
+        for( int_t well_block = m_matrix.row_ptr[col_cell];
+             well_block < m_matrix.row_ptr[col_cell + 1]; ++well_block )
+        {
+          const int_t reservoir_col = m_matrix.col_ind[well_block];
+          if( reservoir_col >= 0 && reservoir_col < m_cprPressureRows )
+          {
+            row_cols.push_back( reservoir_col );
+          }
+        }
       }
     }
-    if( count == 0 )
+    std::sort( row_cols.begin(), row_cols.end() );
+    row_cols.erase( std::unique( row_cols.begin(), row_cols.end() ), row_cols.end() );
+    if( row_cols.empty() )
     {
-      count = 1;
+      row_cols.push_back( row );
     }
+    const int_t count = static_cast<int_t>( row_cols.size() );
     m_cprPressureRowNCols[row] = count;
     m_cprPressureRowOffsets[row + 1] = m_cprPressureRowOffsets[row] + count;
   }
@@ -2087,21 +2254,38 @@ void LinearSolver::buildBCSRCPRPressurePattern()
 
   for( int_t row = 0; row < m_cprPressureRows; ++row )
   {
-    int_t out = m_cprPressureRowOffsets[row];
-    int_t added = 0;
+    row_cols.clear();
     for( int_t block = m_matrix.row_ptr[row]; block < m_matrix.row_ptr[row + 1]; ++block )
     {
       const int_t col_cell = m_matrix.col_ind[block];
-      if( col_cell < 0 || col_cell >= m_cprPressureRows )
+      if( col_cell >= 0 && col_cell < m_cprPressureRows )
       {
-        continue;
+        row_cols.push_back( col_cell );
       }
-      m_cprPressureCols[out++] = col_cell;
-      ++added;
+      else if( use_well_elimination && col_cell >= m_cprPressureRows &&
+               col_cell < m_matrix.num_rows )
+      {
+        for( int_t well_block = m_matrix.row_ptr[col_cell];
+             well_block < m_matrix.row_ptr[col_cell + 1]; ++well_block )
+        {
+          const int_t reservoir_col = m_matrix.col_ind[well_block];
+          if( reservoir_col >= 0 && reservoir_col < m_cprPressureRows )
+          {
+            row_cols.push_back( reservoir_col );
+          }
+        }
+      }
     }
-    if( added == 0 )
+    std::sort( row_cols.begin(), row_cols.end() );
+    row_cols.erase( std::unique( row_cols.begin(), row_cols.end() ), row_cols.end() );
+    if( row_cols.empty() )
     {
-      m_cprPressureCols[m_cprPressureRowOffsets[row]] = row;
+      row_cols.push_back( row );
+    }
+    int_t out = m_cprPressureRowOffsets[row];
+    for( int_t col : row_cols )
+    {
+      m_cprPressureCols[out++] = col;
     }
   }
 
@@ -2114,13 +2298,18 @@ void LinearSolver::fillBCSRCPRPressureMatrixValues()
   const int_t pressure_var =
       std::clamp<int_t>( m_params.bcsrCPRPressureVariable, 0, block_size - 1 );
   const bool apply_scaling = scalingActive( m_matrix.global_num_rows );
+  const bool use_well_elimination = bcsrCPRUsesWellElimination();
+
+  std::fill( m_cprPressureValues.begin(), m_cprPressureValues.end(), 0.0 );
+  m_cprWellEliminationLinks = 0;
+  m_cprWellEliminationContributions = 0;
+  m_cprWellEliminationMissingDiag = 0;
+  m_cprWellEliminationInverseFailure = 0;
+  m_cprWellEliminationMissingPattern = 0;
+  std::vector<char> row_has_value( m_cprPressureRows, 0 );
 
   for( int_t row = 0; row < m_cprPressureRows; ++row )
   {
-    int_t out = m_cprPressureRowOffsets[row];
-    int_t added = 0;
-    const real_type * weights = &m_cprPressureWeights[row * block_size];
-
     for( int_t block = m_matrix.row_ptr[row]; block < m_matrix.row_ptr[row + 1]; ++block )
     {
       const int_t col_cell = m_matrix.col_ind[block];
@@ -2129,30 +2318,174 @@ void LinearSolver::fillBCSRCPRPressureMatrixValues()
         continue;
       }
 
-      const int_t block_offset = block * block_size * block_size;
-      real_type value = 0.0;
-      for( int_t r = 0; r < block_size; ++r )
-      {
-        const int_t scalar_row = row * block_size + r;
-        const int_t scalar_col = col_cell * block_size + pressure_var;
-        const real_type row_scale =
-            apply_scaling && scalar_row < static_cast<int_t>( m_rowScaling.size() )
-            ? m_rowScaling[scalar_row] : 1.0;
-        const real_type col_scale =
-            apply_scaling && scalar_col < static_cast<int_t>( m_colScaling.size() )
-            ? m_colScaling[scalar_col] : 1.0;
-        value += weights[r] *
-                 m_matrix.values[block_offset + r * block_size + pressure_var] *
-                 row_scale * col_scale;
-      }
-      m_cprPressureValues[out++] = value;
-      ++added;
+      const real_type value =
+          computeBCSRCPRProjectedPressureValue( row, block, pressure_var, apply_scaling );
+      addBCSRCPRPressureValue( row, col_cell, value );
+      row_has_value[row] = 1;
     }
+  }
 
-    if( added == 0 )
+  if( use_well_elimination )
+  {
+    const int_t num_well_blocks =
+        std::max<int_t>( m_matrix.num_rows - m_cprPressureRows, 0 );
+    std::vector<char> well_inverse_status( num_well_blocks, 0 );
+    std::vector<real_type> well_inverses(
+        static_cast<size_t>( num_well_blocks ) * block_size * block_size, 0.0 );
+    std::vector<real_type> row_vec( block_size, 0.0 );
+    std::vector<real_type> tmp_vec( block_size, 0.0 );
+
+    auto get_well_inverse = [&]( int_t well_cell ) -> const real_type *
     {
-      m_cprPressureValues[m_cprPressureRowOffsets[row]] = 1.0;
+      const int_t well_index = well_cell - m_cprPressureRows;
+      if( well_index < 0 || well_index >= num_well_blocks )
+      {
+        return nullptr;
+      }
+      if( well_inverse_status[well_index] == 0 )
+      {
+        const int_t diag = findBCSRBlock( well_cell, well_cell );
+        if( diag < 0 )
+        {
+          ++m_cprWellEliminationMissingDiag;
+          well_inverse_status[well_index] = 2;
+        }
+        else
+        {
+          std::vector<real_type> inverse;
+          if( computeBCSRCPRScaledBlockInverse( well_cell, diag, inverse ) )
+          {
+            std::copy( inverse.begin(),
+                       inverse.end(),
+                       well_inverses.begin() +
+                           static_cast<size_t>( well_index ) * block_size * block_size );
+            well_inverse_status[well_index] = 1;
+          }
+          else
+          {
+            ++m_cprWellEliminationInverseFailure;
+            well_inverse_status[well_index] = 2;
+          }
+        }
+      }
+      if( well_inverse_status[well_index] != 1 )
+      {
+        return nullptr;
+      }
+      return well_inverses.data() +
+             static_cast<size_t>( well_index ) * block_size * block_size;
+    };
+
+    for( int_t row = 0; row < m_cprPressureRows; ++row )
+    {
+      const real_type * weights = &m_cprPressureWeights[row * block_size];
+      for( int_t block = m_matrix.row_ptr[row];
+           block < m_matrix.row_ptr[row + 1]; ++block )
+      {
+        const int_t well_cell = m_matrix.col_ind[block];
+        if( well_cell < m_cprPressureRows || well_cell >= m_matrix.num_rows )
+        {
+          continue;
+        }
+        ++m_cprWellEliminationLinks;
+        const real_type * well_inverse = get_well_inverse( well_cell );
+        if( well_inverse == nullptr )
+        {
+          continue;
+        }
+
+        std::fill( row_vec.begin(), row_vec.end(), 0.0 );
+        const int_t row_well_offset = block * block_size * block_size;
+        for( int_t r = 0; r < block_size; ++r )
+        {
+          const int_t scalar_row = row * block_size + r;
+          const real_type row_scale =
+              apply_scaling && scalar_row < static_cast<int_t>( m_rowScaling.size() )
+              ? m_rowScaling[scalar_row] : 1.0;
+          for( int_t c = 0; c < block_size; ++c )
+          {
+            const int_t scalar_col = well_cell * block_size + c;
+            const real_type col_scale =
+                apply_scaling && scalar_col < static_cast<int_t>( m_colScaling.size() )
+                ? m_colScaling[scalar_col] : 1.0;
+            row_vec[c] += weights[r] *
+                          m_matrix.values[row_well_offset + r * block_size + c] *
+                          row_scale * col_scale;
+          }
+        }
+
+        std::fill( tmp_vec.begin(), tmp_vec.end(), 0.0 );
+        for( int_t c = 0; c < block_size; ++c )
+        {
+          for( int_t k = 0; k < block_size; ++k )
+          {
+            tmp_vec[k] += row_vec[c] * well_inverse[c * block_size + k];
+          }
+        }
+
+        for( int_t well_block = m_matrix.row_ptr[well_cell];
+             well_block < m_matrix.row_ptr[well_cell + 1]; ++well_block )
+        {
+          const int_t reservoir_col = m_matrix.col_ind[well_block];
+          if( reservoir_col < 0 || reservoir_col >= m_cprPressureRows )
+          {
+            continue;
+          }
+          const int_t well_res_offset = well_block * block_size * block_size;
+          real_type schur_value = 0.0;
+          for( int_t k = 0; k < block_size; ++k )
+          {
+            const int_t scalar_row = well_cell * block_size + k;
+            const int_t scalar_col = reservoir_col * block_size + pressure_var;
+            const real_type row_scale =
+                apply_scaling && scalar_row < static_cast<int_t>( m_rowScaling.size() )
+                ? m_rowScaling[scalar_row] : 1.0;
+            const real_type col_scale =
+                apply_scaling && scalar_col < static_cast<int_t>( m_colScaling.size() )
+                ? m_colScaling[scalar_col] : 1.0;
+            schur_value += tmp_vec[k] *
+                           m_matrix.values[well_res_offset + k * block_size + pressure_var] *
+                           row_scale * col_scale;
+          }
+          if( std::isfinite( schur_value ) )
+          {
+            addBCSRCPRPressureValue( row, reservoir_col, -schur_value );
+            row_has_value[row] = 1;
+            ++m_cprWellEliminationContributions;
+          }
+        }
+      }
     }
+  }
+
+  for( int_t row = 0; row < m_cprPressureRows; ++row )
+  {
+    if( row_has_value[row] )
+    {
+      continue;
+    }
+    int_t pos = findBCSRCPRPressureColumnPosition( row, row );
+    if( pos < 0 && row + 1 < static_cast<int_t>( m_cprPressureRowOffsets.size() ) &&
+        m_cprPressureRowOffsets[row] < m_cprPressureRowOffsets[row + 1] )
+    {
+      pos = m_cprPressureRowOffsets[row];
+    }
+    if( pos >= 0 )
+    {
+      m_cprPressureValues[pos] = 1.0;
+    }
+  }
+
+  if( use_well_elimination &&
+      ( m_params.bcsrCPRDiagnostics || m_params.logLevel >= 1 ) )
+  {
+    std::cerr << "[MGR] BCSR CPR well elimination diagnostics: links="
+              << m_cprWellEliminationLinks
+              << ", schur_contributions=" << m_cprWellEliminationContributions
+              << ", missing_diag=" << m_cprWellEliminationMissingDiag
+              << ", inverse_failure=" << m_cprWellEliminationInverseFailure
+              << ", missing_pattern=" << m_cprWellEliminationMissingPattern
+              << "." << std::endl;
   }
 
   if( m_params.bcsrCPRDiagnostics &&
@@ -2308,6 +2641,201 @@ void LinearSolver::logBCSRCPRPressureMatrixDiagnostics() const
       << "), nonfinite_values=" << nonfinite_values
       << ".";
   std::cerr << out.str() << std::endl;
+}
+
+void LinearSolver::logBCSRCPRAMGHierarchyDiagnostics() const
+{
+  if( !m_params.bcsrCPRDiagnostics || !m_cprPressureAMG || m_cprPressureRows <= 0 )
+  {
+    return;
+  }
+
+  std::vector<HYPRE_Int> cgrid( m_cprPressureRows, 0 );
+  HYPRE_ClearAllErrors();
+  HYPRE_Int rc =
+      HYPRE_BoomerAMGGetGridHierarchy( m_cprPressureAMG, cgrid.data() );
+  bool have_cgrid = true;
+  if( rc != 0 )
+  {
+    std::cerr << "[MGR] Warning: failed to get BCSR CPR pressure AMG hierarchy, rc="
+              << rc << " (" << describeHypreError( rc ) << ")." << std::endl;
+    HYPRE_ClearAllErrors();
+    have_cgrid = false;
+  }
+
+  auto * amg_data = reinterpret_cast<hypre_ParAMGData *>( m_cprPressureAMG );
+  hypre_ParCSRMatrix ** a_array = hypre_ParAMGDataAArray( amg_data );
+  const HYPRE_Int num_levels = hypre_ParAMGDataNumLevels( amg_data );
+  if( num_levels <= 0 || a_array == nullptr )
+  {
+    std::cerr << "[MGR] Warning: failed to inspect BCSR CPR pressure AMG hierarchy internals."
+              << std::endl;
+    return;
+  }
+
+  std::vector<HYPRE_BigInt> level_rows( static_cast<size_t>( num_levels ), 0 );
+  std::vector<HYPRE_BigInt> level_nnz( static_cast<size_t>( num_levels ), 0 );
+  HYPRE_BigInt total_grid_rows = 0;
+  real_type total_nnz = 0.0;
+  for( HYPRE_Int level = 0; level < num_levels; ++level )
+  {
+    hypre_ParCSRMatrix * matrix = a_array[level];
+    if( matrix == nullptr )
+    {
+      continue;
+    }
+
+    level_rows[level] =
+        static_cast<HYPRE_BigInt>( hypre_ParCSRMatrixNumRows( matrix ) );
+    hypre_CSRMatrix * diag = hypre_ParCSRMatrixDiag( matrix );
+    hypre_CSRMatrix * offd = hypre_ParCSRMatrixOffd( matrix );
+    const HYPRE_BigInt diag_nnz =
+        diag != nullptr
+        ? static_cast<HYPRE_BigInt>( hypre_CSRMatrixNumNonzeros( diag ) )
+        : 0;
+    const HYPRE_BigInt offd_nnz =
+        offd != nullptr
+        ? static_cast<HYPRE_BigInt>( hypre_CSRMatrixNumNonzeros( offd ) )
+        : 0;
+    level_nnz[level] = diag_nnz + offd_nnz;
+    real_type d_nnz =
+        static_cast<real_type>( hypre_ParCSRMatrixDNumNonzeros( matrix ) );
+    if( !std::isfinite( d_nnz ) || d_nnz <= 0.0 )
+    {
+      d_nnz = static_cast<real_type>( level_nnz[level] );
+    }
+    total_grid_rows += level_rows[level];
+    total_nnz += d_nnz;
+  }
+
+  const HYPRE_BigInt fine_nnz =
+      !level_nnz.empty() && level_nnz[0] > 0
+      ? level_nnz[0]
+      : ( m_cprPressureRows > 0 && !m_cprPressureRowOffsets.empty()
+          ? static_cast<HYPRE_BigInt>( m_cprPressureRowOffsets[m_cprPressureRows] )
+          : 0 );
+  const real_type operator_complexity =
+      fine_nnz > 0 ? total_nnz / static_cast<real_type>( fine_nnz )
+                   : 0.0;
+  const real_type grid_complexity =
+      m_cprPressureRows > 0 ? static_cast<real_type>( total_grid_rows ) /
+                                  static_cast<real_type>( m_cprPressureRows )
+                            : 0.0;
+
+  std::ostringstream levels;
+  levels << "[";
+  for( size_t i = 0; i < level_rows.size(); ++i )
+  {
+    if( i > 0 )
+    {
+      levels << ",";
+    }
+    levels << level_rows[i];
+  }
+  levels << "]";
+
+  std::ostringstream nnz_levels;
+  nnz_levels << "[";
+  for( size_t i = 0; i < level_nnz.size(); ++i )
+  {
+    if( i > 0 )
+    {
+      nnz_levels << ",";
+    }
+    nnz_levels << level_nnz[i];
+  }
+  nnz_levels << "]";
+
+  std::ostringstream coarsening_ratios;
+  coarsening_ratios << "[";
+  for( size_t i = 1; i < level_rows.size(); ++i )
+  {
+    if( i > 1 )
+    {
+      coarsening_ratios << ",";
+    }
+    const real_type ratio =
+        level_rows[i - 1] > 0
+        ? static_cast<real_type>( level_rows[i] ) /
+              static_cast<real_type>( level_rows[i - 1] )
+        : 0.0;
+    coarsening_ratios << ratio;
+  }
+  coarsening_ratios << "]";
+
+  std::ostringstream cf_ratios;
+  cf_ratios << "[";
+  for( size_t i = 0; i + 1 < level_rows.size(); ++i )
+  {
+    if( i > 0 )
+    {
+      cf_ratios << ",";
+    }
+    const int_t coarse_rows = level_rows[i + 1];
+    const int_t fine_only_rows = std::max<int_t>( level_rows[i] - coarse_rows, 0 );
+    const real_type ratio =
+        fine_only_rows > 0
+        ? static_cast<real_type>( coarse_rows ) /
+              static_cast<real_type>( fine_only_rows )
+        : 0.0;
+    cf_ratios << ratio;
+  }
+  cf_ratios << "]";
+
+  std::ostringstream cgrid_counts;
+  if( have_cgrid )
+  {
+    HYPRE_Int max_cgrid_level = 0;
+    for( HYPRE_Int level : cgrid )
+    {
+      max_cgrid_level = std::max( max_cgrid_level, level );
+    }
+    std::vector<int_t> cgrid_level_rows( static_cast<size_t>( max_cgrid_level + 1 ), 0 );
+    for( HYPRE_Int last_level : cgrid )
+    {
+      const int_t capped_last =
+          std::clamp<int_t>( static_cast<int_t>( last_level ),
+                             0,
+                             static_cast<int_t>( cgrid_level_rows.size() ) - 1 );
+      for( int_t level = 0; level <= capped_last; ++level )
+      {
+        ++cgrid_level_rows[level];
+      }
+    }
+    cgrid_counts << "[";
+    for( size_t i = 0; i < cgrid_level_rows.size(); ++i )
+    {
+      if( i > 0 )
+      {
+        cgrid_counts << ",";
+      }
+      cgrid_counts << cgrid_level_rows[i];
+    }
+    cgrid_counts << "]";
+  }
+  else
+  {
+    cgrid_counts << "[]";
+  }
+
+  const int_t coarsest_rows = level_rows.empty() ? 0 : level_rows.back();
+  std::cerr << "[MGR] BCSR CPR pressure AMG hierarchy: setup_call="
+            << m_cprPressureSetupCount
+            << ", amg_setups=" << m_cprPressureAMGSetupCount
+            << ", reason=" << m_cprLastAMGRebuildReason
+            << ", levels=" << level_rows.size()
+            << ", fine_rows=" << m_cprPressureRows
+            << ", coarsest_rows=" << coarsest_rows
+            << ", fine_nnz=" << fine_nnz
+            << ", total_level_nnz=" << total_nnz
+            << ", operator_complexity=" << operator_complexity
+            << ", grid_complexity=" << grid_complexity
+            << ", level_rows=" << levels.str()
+            << ", level_nnz=" << nnz_levels.str()
+            << ", cgrid_level_rows=" << cgrid_counts.str()
+            << ", coarsening_ratios=" << coarsening_ratios.str()
+            << ", cf_ratios=" << cf_ratios.str()
+            << "." << std::endl;
 }
 
 bool LinearSolver::prepareBCSRCPRPressureDirectUpdate()
@@ -2791,8 +3319,12 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
     ++m_cprSetupsSinceAMGSetup;
     ++m_cprPressureAMGReuseCount;
   }
-  m_cprLastAMGRebuildReason = rebuild_reason.str();
   ++m_cprPressureSetupCount;
+  m_cprLastAMGRebuildReason = rebuild_reason.str();
+  if( setup_amg )
+  {
+    logBCSRCPRAMGHierarchyDiagnostics();
+  }
 
   if( m_params.logLevel >= 1 )
   {
@@ -4439,6 +4971,30 @@ HYPRE_Solver LinearSolver::setupAMGPreconditioner()
   HYPRE_BoomerAMGSetRelaxOrder(
       amg_precond,
       static_cast<HYPRE_Int>( m_params.pressureAMGRelaxOrder ) );
+  if( m_params.pressureAMGStrongThreshold >= 0.0 )
+  {
+    HYPRE_BoomerAMGSetStrongThreshold(
+        amg_precond,
+        static_cast<HYPRE_Real>( m_params.pressureAMGStrongThreshold ) );
+  }
+  if( m_params.pressureAMGTruncFactor >= 0.0 )
+  {
+    HYPRE_BoomerAMGSetTruncFactor(
+        amg_precond,
+        static_cast<HYPRE_Real>( m_params.pressureAMGTruncFactor ) );
+  }
+  if( m_params.pressureAMGPMaxElmts >= 0 )
+  {
+    HYPRE_BoomerAMGSetPMaxElmts(
+        amg_precond,
+        static_cast<HYPRE_Int>( m_params.pressureAMGPMaxElmts ) );
+  }
+  if( m_params.pressureAMGMaxLevels > 0 )
+  {
+    HYPRE_BoomerAMGSetMaxLevels(
+        amg_precond,
+        static_cast<HYPRE_Int>( m_params.pressureAMGMaxLevels ) );
+  }
 
   return amg_precond;
 }

@@ -114,6 +114,11 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              py::arg("coarsen_type"), py::arg("interp_type"), py::arg("relax_type"),
              py::arg("agg_num_levels"), py::arg("agg_interp_type"),
              py::arg("agg_pmax_elmts"), py::arg("relax_order"))
+        .def("set_mgr_pressure_amg_advanced_options",
+             &linsolv_mgr<N>::set_mgr_pressure_amg_advanced_options,
+             "Set advanced BoomerAMG options for the pressure coarse solver; negative values keep HYPRE defaults",
+             py::arg("strong_threshold") = -1.0, py::arg("trunc_factor") = -1.0,
+             py::arg("pmax_elmts") = -1, py::arg("max_levels") = 0)
         .def("set_mgr_pressure_amg_solve_options",
              &linsolv_mgr<N>::set_mgr_pressure_amg_solve_options,
              "Set BoomerAMG solve options for the pressure coarse solver",

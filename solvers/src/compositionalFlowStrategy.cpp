@@ -38,6 +38,10 @@ CompositionalFlowStrategyConfig::CompositionalFlowStrategyConfig()
   , pressureAmgAggInterpType( 6 )
   , pressureAmgAggPMaxElmts( 20 )
   , pressureAmgRelaxOrder( 1 )
+  , pressureAmgStrongThreshold( -1.0 )
+  , pressureAmgTruncFactor( -1.0 )
+  , pressureAmgPMaxElmts( -1 )
+  , pressureAmgMaxLevels( 0 )
 {
   wellLevel.fRelaxType = FRelaxationType::directInverse;
   wellLevel.fRelaxIters = 1;
@@ -591,6 +595,22 @@ void CompositionalFlowStrategy::setupPressureAMG()
   HYPRE_BoomerAMGSetAggPMaxElmts( m_coarseSolver, m_config.pressureAmgAggPMaxElmts );
   HYPRE_BoomerAMGSetAggInterpType( m_coarseSolver, m_config.pressureAmgAggInterpType );
   HYPRE_BoomerAMGSetRelaxOrder( m_coarseSolver, m_config.pressureAmgRelaxOrder );
+  if( m_config.pressureAmgStrongThreshold >= 0.0 )
+  {
+    HYPRE_BoomerAMGSetStrongThreshold( m_coarseSolver, m_config.pressureAmgStrongThreshold );
+  }
+  if( m_config.pressureAmgTruncFactor >= 0.0 )
+  {
+    HYPRE_BoomerAMGSetTruncFactor( m_coarseSolver, m_config.pressureAmgTruncFactor );
+  }
+  if( m_config.pressureAmgPMaxElmts >= 0 )
+  {
+    HYPRE_BoomerAMGSetPMaxElmts( m_coarseSolver, m_config.pressureAmgPMaxElmts );
+  }
+  if( m_config.pressureAmgMaxLevels > 0 )
+  {
+    HYPRE_BoomerAMGSetMaxLevels( m_coarseSolver, m_config.pressureAmgMaxLevels );
+  }
 
   std::cout << "  Coarse solver: BoomerAMG configured for pressure system (Schur complement)" << std::endl;
   std::cout << "    AMG coarsen/interp/relax: "
@@ -602,6 +622,11 @@ void CompositionalFlowStrategy::setupPressureAMG()
             << m_config.pressureAmgAggInterpType << "/"
             << m_config.pressureAmgAggPMaxElmts << "/"
             << m_config.pressureAmgRelaxOrder << std::endl;
+  std::cout << "    AMG strength/trunc/pmax/max_levels: "
+            << m_config.pressureAmgStrongThreshold << "/"
+            << m_config.pressureAmgTruncFactor << "/"
+            << m_config.pressureAmgPMaxElmts << "/"
+            << m_config.pressureAmgMaxLevels << std::endl;
 }
 
 } // namespace strategies

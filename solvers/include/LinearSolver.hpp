@@ -65,7 +65,8 @@ enum class LocalFallbackStrategy : int
 enum class BCSRCPRReductionType : int
 {
   pressureRow = 0,
-  trueIMPES = 1
+  trueIMPES = 1,
+  trueIMPESWellElimination = 2
 };
 
 // Open-darts compatible type aliases
@@ -164,6 +165,10 @@ struct SolverParameters
   int_t pressureAMGAggInterpType = 6;
   int_t pressureAMGAggPMaxElmts = 20;
   int_t pressureAMGRelaxOrder = 1;
+  real_type pressureAMGStrongThreshold = -1.0;
+  real_type pressureAMGTruncFactor = -1.0;
+  int_t pressureAMGPMaxElmts = -1;
+  int_t pressureAMGMaxLevels = 0;
   real_type bcsrCPRPressureCorrectionAlpha = 1.0;
   real_type bcsrCPRPressureCorrectionGuardThreshold = -1.0;
   real_type bcsrCPRPressureCorrectionGuardMinAlpha = 0.0;
@@ -541,6 +546,11 @@ private:
   int_t m_cprWeightNonFiniteRows = 0;
   int_t m_cprWeightLimitedRows = 0;
   real_type m_cprWeightMaxAbs = 0.0;
+  int_t m_cprWellEliminationLinks = 0;
+  int_t m_cprWellEliminationContributions = 0;
+  int_t m_cprWellEliminationMissingDiag = 0;
+  int_t m_cprWellEliminationInverseFailure = 0;
+  int_t m_cprWellEliminationMissingPattern = 0;
   std::vector<int_t> m_cprPressureParCSRDiagDataIndex;
   std::vector<real_type> m_cprPressureWeights;
   std::vector<bigint_t> m_cprPressureRowIndices;
@@ -613,9 +623,21 @@ private:
   void computeBCSRCPRPressureWeights();
   void buildBCSRCPRPressurePattern();
   void fillBCSRCPRPressureMatrixValues();
+  bool bcsrCPRUsesWellElimination() const;
+  int_t findBCSRBlock(int_t row, int_t col) const;
+  int_t findBCSRCPRPressureColumnPosition(int_t row, int_t col) const;
+  void addBCSRCPRPressureValue(int_t row, int_t col, real_type value);
+  real_type computeBCSRCPRProjectedPressureValue(int_t row,
+                                                int_t block,
+                                                int_t pressure_var,
+                                                bool apply_scaling) const;
+  bool computeBCSRCPRScaledBlockInverse(int_t row,
+                                        int_t block,
+                                        std::vector<real_type> & inverse) const;
   bool prepareBCSRCPRPressureDirectUpdate();
   bool updateBCSRCPRPressureMatrixDirect();
   void logBCSRCPRPressureMatrixDiagnostics() const;
+  void logBCSRCPRAMGHierarchyDiagnostics() const;
   bool createBCSRCPRPressureMatrix();
   bool createBCSRCPRPressureVectors();
   void recordBCSRCPRLinearIterations(int_t iterations, bool converged);

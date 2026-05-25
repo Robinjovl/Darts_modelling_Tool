@@ -480,6 +480,27 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_pressure_amg_advanced_options(
+        opendarts::config::mat_float strong_threshold,
+        opendarts::config::mat_float trunc_factor,
+        int pmax_elmts,
+        int max_levels)
+    {
+      mgr_strategy_config_cached.pressureAmgStrongThreshold = strong_threshold;
+      mgr_strategy_config_cached.pressureAmgTruncFactor = trunc_factor;
+      mgr_strategy_config_cached.pressureAmgPMaxElmts = pmax_elmts;
+      mgr_strategy_config_cached.pressureAmgMaxLevels = max_levels;
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.pressureAMGStrongThreshold =
+          mgr_strategy_config_cached.pressureAmgStrongThreshold;
+      params.pressureAMGTruncFactor = mgr_strategy_config_cached.pressureAmgTruncFactor;
+      params.pressureAMGPMaxElmts = mgr_strategy_config_cached.pressureAmgPMaxElmts;
+      params.pressureAMGMaxLevels = mgr_strategy_config_cached.pressureAmgMaxLevels;
+      mgr_solver.setParameters(params);
+      first_solve = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     void linsolv_mgr<N_BLOCK_SIZE>::set_mgr_pressure_amg_solve_options(
         opendarts::config::index_t max_iter,
         opendarts::config::mat_float tolerance)
@@ -1047,6 +1068,11 @@ namespace opendarts
       params.pressureAMGAggInterpType = mgr_strategy_config_cached.pressureAmgAggInterpType;
       params.pressureAMGAggPMaxElmts = mgr_strategy_config_cached.pressureAmgAggPMaxElmts;
       params.pressureAMGRelaxOrder = mgr_strategy_config_cached.pressureAmgRelaxOrder;
+      params.pressureAMGStrongThreshold =
+          mgr_strategy_config_cached.pressureAmgStrongThreshold;
+      params.pressureAMGTruncFactor = mgr_strategy_config_cached.pressureAmgTruncFactor;
+      params.pressureAMGPMaxElmts = mgr_strategy_config_cached.pressureAmgPMaxElmts;
+      params.pressureAMGMaxLevels = mgr_strategy_config_cached.pressureAmgMaxLevels;
       params.localReservoirBlockCount = n_reservoir_blocks_cached;
       params.krylovType = use_flex_gmres_cached ? mgr::KrylovType::flexgmres
                                                : mgr::KrylovType::gmres;
