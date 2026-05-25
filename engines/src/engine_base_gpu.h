@@ -382,7 +382,10 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     }
     case sim_params::GPU_BICGSTAB_CPR_AMGX:
     {
-      linear_solver = new linsolv_bicgstab<N_VARS>();
+      // Some deployed GPU bos_solvers builds do not export
+      // linsolv_bicgstab<N_VARS> for all block sizes. Falling back to the
+      // equivalent GMRES+CPR+AMGX stack keeps the Python module loadable.
+      linear_solver = new linsolv_bos_gmres<N_VARS>(1);
       linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
       ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
       ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
@@ -390,7 +393,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
       cpr->set_prec(new linsolv_amgx<1>(device_num));
       linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_BICGSTAB_CPR_AMGX";
+      linear_solver_type_str = "GPU_BICGSTAB_CPR_AMGX (GMRES fallback)";
       break;
     }
     default:
