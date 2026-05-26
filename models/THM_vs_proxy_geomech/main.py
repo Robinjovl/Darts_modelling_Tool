@@ -3,6 +3,7 @@ import numpy as np
 import os
 import shutil
 from darts.engines import redirect_darts_output, timer_node
+from darts.tools.jacobian import check_jacobian
 from plot_vtk_pyvista import plot_vtk_pyvista
 
 def run_python(m, days=0, restart_dt=0, init_step = False):
@@ -101,6 +102,7 @@ def run_timestep_python(m, dt, t):
                     converged = 0
                 break
 
+        check_jacobian(m)
         r_code = self.e.solve_linear_equation()
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)
@@ -214,9 +216,9 @@ if __name__ == '__main__':
     # nx ny nz
     #mesh='17_17_15'  # for debugging
     #mesh='41_41_66'
-    #mesh='71_71_66'
+    mesh='71_71_66'
     #mesh='83_83_90'
-    mesh='71_1_66'  # 1 layer by Y
+    #mesh='71_1_66'  # 1 layer by Y
 
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing

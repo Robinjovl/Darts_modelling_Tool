@@ -36,6 +36,13 @@ if(ENABLE_VALGRIND)
     set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2")
 endif()
 
+# Profile: optimized build with debug symbols (for memory/perf profiling)
+set(CMAKE_CXX_FLAGS_PROFILE "-O3 -g -DNDEBUG" CACHE STRING "Profile build flags" FORCE)
+set(CMAKE_C_FLAGS_PROFILE   "-O3 -g -DNDEBUG" CACHE STRING "Profile C build flags" FORCE)
+if(CMAKE_BUILD_TYPE STREQUAL "Profile")
+    message(STATUS ">>> Profile build: -O3 -g -DNDEBUG")
+endif()
+
 # Load cmake modules -----------------------------------------------------------
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/settings/cmake/modules/")
 

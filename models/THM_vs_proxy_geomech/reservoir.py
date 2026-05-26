@@ -48,19 +48,20 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.mesh_filename = os.path.join(model_folder, 'mesh.msh')
         nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
 
+        # define permeable reservoir geometric boundaries (needed for heterogeneous props)
+        self.rsv_top = idata.other.rsv_top
+        self.rsv_bottom = idata.other.rsv_bottom
+        self.rsv_xy = idata.other.rsv_xy
+        self.rsv_x1 = idata.other.rsv_x1
+        self.rsv_x2 = idata.other.rsv_x2
+        self.rsv_y1 = idata.other.rsv_y1
+        self.rsv_y2 = idata.other.rsv_y2
+        self.Xc = idata.other.Xc
+        self.Yc = idata.other.Yc
+        self.Zc = idata.other.Zc
+
         if generate_mesh:
             print('Mesh generation started')
-            # define permeable reservoir geometric boundaries
-            self.rsv_top = idata.other.rsv_top
-            self.rsv_bottom = idata.other.rsv_bottom
-            self.rsv_xy = idata.other.rsv_xy
-            self.rsv_x1 = idata.other.rsv_x1
-            self.rsv_x2 = idata.other.rsv_x2
-            self.rsv_y1 = idata.other.rsv_y1
-            self.rsv_y2 = idata.other.rsv_y2
-            self.Xc = idata.other.Xc
-            self.Yc = idata.other.Yc
-            self.Zc = idata.other.Zc
 
             # refine by Z also around rsv
             #self.Zc = np.hstack([np.arange(0, self.rsv_top-100, 100), np.arange(self.rsv_top-100, self.rsv_bottom+100, 20),np.arange(self.rsv_bottom+100, 6000, 100)])
@@ -193,7 +194,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.discr.biots.append(disc_matrix33(idata.rock.biot))
             self.discr.stfs.append(disc_stiffness(lam[cell_id], mu[cell_id]))
             if self.thermoporoelasticity:
-                self.discr.heat_conductions.append(disc_matrix33(idata.rock.thermal_conductivity))
+                self.discr.heat_conductions.append(disc_matrix33(idata.rock.conductivity))
                 self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn))#[cell_id]))
 
     def write_to_vtk(self, output_directory, ith_step, engine):

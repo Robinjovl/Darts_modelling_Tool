@@ -23,7 +23,7 @@ Help_Info()
   echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
   echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
-  echo "   -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug"
+  echo "   -d MODE   : Configuration for C++ code [Release, Debug, Profile]. Profile = -O3 -g (optimized + debug symbols). Example: -d Debug"
   echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
   echo "   -p        : Enable building & installing IPhreeqc (third-party)  (OFF by default)"
@@ -129,15 +129,13 @@ if [[ "$skip_req" == false ]]; then
     # clean-up previous versions.
     rm -rf thirdparty/eigen \
             thirdparty/pybind11 \
-            thirdparty/MshIO \
             thirdparty/hypre \
             thirdparty/iphreeqc
-    # synchronize & update submodules
+    # synchronize & update submodules (MshIO excluded: local fixes applied)
     git submodule sync --recursive
     git submodule update --init --recursive -- \
             thirdparty/eigen \
             thirdparty/pybind11 \
-            thirdparty/MshIO \
             thirdparty/hypre
     if [[ $phreeqc == "true" ]]; then
         git submodule update --init --recursive thirdparty/iphreeqc

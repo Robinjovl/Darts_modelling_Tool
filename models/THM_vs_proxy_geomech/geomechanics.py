@@ -72,12 +72,18 @@ class geomech():
         self.deriv_step = 10. # m
 
     def set_num_threads(self, n_threads : int):
-        from _proxygeomech import set_num_threads
-        set_num_threads(n_threads)
+        try:
+            from _proxygeomech import set_num_threads
+            set_num_threads(n_threads)
+        except ImportError:
+            print(f'set_num_threads not available in _proxygeomech (n_threads={n_threads} ignored)')
 
     def set_platform(self, platform : str):
-        from _proxygeomech import set_platform
-        set_platform(platform)
+        try:
+            from _proxygeomech import set_platform
+            set_platform(platform)
+        except ImportError:
+            print(f'set_platform not available in _proxygeomech (platform={platform} ignored)')
 
     def calc_displacements(self, points, prisms, delta_pressure, delta_temperature):
         '''
