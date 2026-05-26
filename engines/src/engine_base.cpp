@@ -663,18 +663,19 @@ engine_base::calc_adjoint_gradient_dirac_all()
 	// assemble dg_dx_n, dg_dT, dj_dx, while dg_dx_n is a dummy matrix here. Because there is no dg_dx_n in eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
 	adjoint_gradient_assembly(dt, X, dg_dx_n, RHS);
 
-
-
-
-	linear_solver_ad->init(dg_dx_T, params->max_i_linear, params->tolerance_linear);
+	csr_matrix_base *adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
+	linear_solver_ad->init(adjoint_matrix, params->max_i_linear, params->tolerance_linear);
 
 	// solve lambda and adjoint gradient at the last time step
     timer->node["linear solver for adjoint method - setup"].start();
-	linear_solver_ad->setup(dg_dx_T);
+	linear_solver_ad->setup(adjoint_matrix);
     timer->node["linear solver for adjoint method - setup"].stop();
 
     timer->node["linear solver for adjoint method - solve"].start();
-	linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
+	if (linear_solver_ad_uses_jacobian_transpose)
+		linear_solver_ad->solve_transposed(&Temp_dj_dx[0], &lambda_temp[0]);
+	else
+		linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
     timer->node["linear solver for adjoint method - solve"].stop();
 
 
@@ -755,11 +756,15 @@ engine_base::calc_adjoint_gradient_dirac_all()
 		std::transform(Temp_dj_dx.begin(), Temp_dj_dx.end(), Temp_4.begin(), Temp_dj_dx.begin(), std::minus<double>());
 
         timer->node["linear solver for adjoint method - setup"].start();
-		linear_solver_ad->setup(dg_dx_T);
+		adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
+		linear_solver_ad->setup(adjoint_matrix);
         timer->node["linear solver for adjoint method - setup"].stop();
 
         timer->node["linear solver for adjoint method - solve"].start();
-		linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
+		if (linear_solver_ad_uses_jacobian_transpose)
+			linear_solver_ad->solve_transposed(&Temp_dj_dx[0], &lambda_temp[0]);
+		else
+			linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
         timer->node["linear solver for adjoint method - solve"].stop();
 
 

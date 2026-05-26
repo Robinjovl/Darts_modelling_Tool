@@ -53,6 +53,63 @@ namespace opendarts
       private:
         ::timer_node *timer_;
       };
+
+      template <uint8_t N_BLOCK_SIZE>
+      void build_transpose_from_base(csr_matrix_base *src,
+                                     csr_matrix<N_BLOCK_SIZE> &dst)
+      {
+        const opendarts::config::index_t n_rows = src->n_rows;
+        const opendarts::config::index_t n_cols = src->n_cols;
+        const opendarts::config::index_t block_size = src->n_row_size;
+        const opendarts::config::index_t block_size_sq = block_size * block_size;
+        const opendarts::config::index_t *src_rows = src->get_rows_ptr();
+        const opendarts::config::index_t *src_cols = src->get_cols_ind();
+        const opendarts::config::mat_float *src_vals = src->get_values();
+        const opendarts::config::index_t nnz = src_rows[n_rows];
+
+        dst.init(n_cols, n_rows, nnz);
+        dst.type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+        dst.diag_ind.assign(n_cols, -1);
+
+        std::fill(dst.rows_ptr.begin(), dst.rows_ptr.end(), 0);
+        for (opendarts::config::index_t k = 0; k < nnz; ++k)
+        {
+          dst.rows_ptr[src_cols[k] + 1]++;
+        }
+        for (opendarts::config::index_t i = 0; i < n_cols; ++i)
+        {
+          dst.rows_ptr[i + 1] += dst.rows_ptr[i];
+        }
+
+        std::vector<opendarts::config::index_t> head(
+            dst.rows_ptr.begin(), dst.rows_ptr.begin() + n_cols);
+        for (opendarts::config::index_t row = 0; row < n_rows; ++row)
+        {
+          for (opendarts::config::index_t jb = src_rows[row]; jb < src_rows[row + 1]; ++jb)
+          {
+            const opendarts::config::index_t col = src_cols[jb];
+            const opendarts::config::index_t dst_block = head[col]++;
+            dst.cols_ind[dst_block] = row;
+            if (row == col)
+            {
+              dst.diag_ind[col] = dst_block;
+            }
+
+            const opendarts::config::mat_float *src_block = src_vals + jb * block_size_sq;
+            opendarts::config::mat_float *dst_block_vals = dst.values.data() + dst_block * block_size_sq;
+            for (opendarts::config::index_t i = 0; i < block_size; ++i)
+            {
+              for (opendarts::config::index_t j = 0; j < block_size; ++j)
+              {
+                dst_block_vals[j * block_size + i] = src_block[i * block_size + j];
+              }
+            }
+          }
+        }
+
+        dst.n_row_size = N_BLOCK_SIZE;
+        dst.is_square = (n_rows == n_cols) ? 1 : 0;
+      }
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -988,10 +1045,33 @@ namespace opendarts
                                         opendarts::config::index_t max_iters,
                                         opendarts::config::mat_float tolerance)
     {
+      return init(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A),
+                  max_iters,
+                  tolerance);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix_base *A,
+                                        opendarts::config::index_t max_iters,
+                                        opendarts::config::mat_float tolerance)
+    {
       // Store parameters and matrix pointer (like SuperLU)
       matrix_ptr = A;
       max_iters_cached = max_iters;
       tolerance_cached = tolerance;
+
+      if (A == nullptr)
+      {
+        std::cerr << "[MGR] Error: Matrix pointer is null." << std::endl;
+        return -1;
+      }
+      if (A->n_row_size != N_BLOCK_SIZE)
+      {
+        std::cerr << "[MGR] Error: Matrix block size (" << A->n_row_size
+                  << ") does not match solver block size ("
+                  << static_cast<int>(N_BLOCK_SIZE) << ")." << std::endl;
+        return -1;
+      }
 
       opendarts::config::index_t n_blocks = A->n_rows;
       opendarts::config::index_t block_size = N_BLOCK_SIZE;
@@ -1087,6 +1167,12 @@ namespace opendarts
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_mgr<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A)
     {
+      return setup(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A));
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix_base *A)
+    {
       if (!initialized)
       {
         std::cerr << "[MGR] Error: Solver not initialized. Call init() first." << std::endl;
@@ -1096,6 +1182,13 @@ namespace opendarts
       if (A == nullptr)
       {
         std::cerr << "[MGR] Error: Matrix pointer is null." << std::endl;
+        return -1;
+      }
+      if (A->n_row_size != N_BLOCK_SIZE)
+      {
+        std::cerr << "[MGR] Error: Matrix block size (" << A->n_row_size
+                  << ") does not match solver block size ("
+                  << static_cast<int>(N_BLOCK_SIZE) << ")." << std::endl;
         return -1;
       }
 
@@ -1258,6 +1351,51 @@ namespace opendarts
       // Return 0 for success (open-darts convention)
       // Iteration count is available via get_n_iters()
       return 0;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::solve_transposed(opendarts::config::mat_float *B, opendarts::config::mat_float *X)
+    {
+      if (!initialized)
+      {
+        std::cerr << "[MGR] Error: Solver not initialized. Call init() first." << std::endl;
+        return -1;
+      }
+
+      if (matrix_ptr == nullptr)
+      {
+        std::cerr << "[MGR] Error: Matrix pointer is null." << std::endl;
+        return -1;
+      }
+
+      if (matrix_ptr->n_row_size != N_BLOCK_SIZE)
+      {
+        std::cerr << "[MGR] Error: Matrix block size (" << matrix_ptr->n_row_size
+                  << ") does not match solver block size ("
+                  << static_cast<int>(N_BLOCK_SIZE) << ")." << std::endl;
+        return -1;
+      }
+
+      build_transpose_from_base<N_BLOCK_SIZE>(matrix_ptr, transpose_matrix);
+
+      csr_matrix_base *original_matrix = matrix_ptr;
+      const bool original_first_solve = first_solve;
+
+      matrix_ptr = &transpose_matrix;
+      first_solve = true;
+      const int setup_rc = setup(&transpose_matrix);
+      if (setup_rc != 0)
+      {
+        matrix_ptr = original_matrix;
+        first_solve = original_first_solve;
+        return setup_rc;
+      }
+
+      const int solve_rc = solve(B, X);
+
+      matrix_ptr = original_matrix;
+      first_solve = true;
+      return solve_rc;
     }
 
     template <uint8_t N_BLOCK_SIZE>

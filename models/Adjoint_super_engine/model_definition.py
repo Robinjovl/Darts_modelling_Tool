@@ -2,6 +2,7 @@ from darts.engines import *
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
+from darts import solvers
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -16,7 +17,16 @@ from darts.tools.keyword_file_tools import get_table_keyword
 
 
 class Model(CICDModel, OptModuleSettings):
-    def __init__(self, T, report_step=120, perm=300, poro=0.2, customize_new_operator=False, Peaceman_WI=False):
+    def __init__(
+        self,
+        T,
+        report_step=120,
+        perm=300,
+        poro=0.2,
+        customize_new_operator=False,
+        Peaceman_WI=False,
+        use_adjoint_mgr=True,
+    ):
         # call base class constructor
         CICDModel.__init__(self)
         OptModuleSettings.__init__(self)
@@ -34,12 +44,48 @@ class Model(CICDModel, OptModuleSettings):
         self.set_reservoir(perm, poro)
         self.Peaceman_WI = Peaceman_WI
         self.set_physics()
+        self.solver = None
+        self.adjoint_solver = None
+        self.adjoint_linear_tol = 1e-10
+        self.adjoint_linear_max_iter = 300
+        self.use_mgr_for_adjoint = use_adjoint_mgr
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
                             tol_newton=1e-6, tol_linear=1e-3, it_newton=10, it_linear=50,
                             newton_type=sim_params.newton_local_chop)
+        self.use_bcsr_cpr_pressureguard_thr10_profile()
 
         self.timer.node["initialization"].stop()
+
+    def use_bcsr_cpr_pressureguard_thr10_profile(self, reduction_type=None):
+        self.use_mgr_cpr_pressureguard_thr10 = True
+        self.bcsr_cpr_reduction_type = (
+            sim_params.mgrCprReductionTrueIMPES
+            if reduction_type is None
+            else reduction_type
+        )
+        if self.use_mgr_for_adjoint:
+            self.use_adjoint_mgr_profile()
+        else:
+            self.use_adjoint_superlu_profile()
+        self.set_solver()
+
+    def use_bcsr_cpr_levelaware_pressureguard_thr10_profile(self):
+        self.use_bcsr_cpr_pressureguard_thr10_profile(
+            getattr(
+                sim_params,
+                "mgrCprReductionTrueIMPESWellElim",
+                sim_params.mgrCprReductionTrueIMPES,
+            )
+        )
+
+    def use_adjoint_mgr_profile(self):
+        self.use_mgr_for_adjoint = True
+        self.set_adjoint_solver()
+
+    def use_adjoint_superlu_profile(self):
+        self.use_mgr_for_adjoint = False
+        self.adjoint_solver = None
 
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
@@ -118,6 +164,205 @@ class Model(CICDModel, OptModuleSettings):
         self.physics.add_property_region(property_container)
 
         return
+
+    def set_sim_params(self, *args, **kwargs):
+        super().set_sim_params(*args, **kwargs)
+
+        self.data_ts.linear_type = sim_params.cpu_gmres_mgr
+        if self.data_ts.linear_print_level is None:
+            self.data_ts.linear_print_level = 0
+
+        self.params.linear_type = sim_params.cpu_gmres_mgr
+        self.params.linear_print_level = self.data_ts.linear_print_level
+
+        if getattr(self, "use_mgr_cpr_pressureguard_thr10", False):
+            self.set_solver()
+        if getattr(self, "use_mgr_for_adjoint", False):
+            self.set_adjoint_solver()
+
+    def _reservoir_block_count(self):
+        mesh = getattr(self.reservoir, "mesh", None)
+        return None if mesh is None else mesh.n_res_blocks
+
+    def _adjoint_reservoir_block_count(self):
+        return self._reservoir_block_count()
+
+    def set_solver(self):
+        block_size = self.physics.n_vars
+        self.solver = solvers.create_mgr_solver_for_block_size(block_size)
+
+        self.solver.set_max_iterations(self.params.max_i_linear)
+        self.solver.set_tolerance(self.params.tolerance_linear)
+        self.solver.set_log_level(self.params.linear_print_level)
+        self.solver.set_kdim(150)
+        self.solver.set_use_mgr(True)
+        self.solver.set_use_flex_gmres(True)
+        self.solver.set_use_physics_scaling(True)
+        self.solver.set_mgr_composite_mode(1)
+
+        self.solver.set_mgr_local_solver(
+            getattr(sim_params, "mgrLocalSolverBlockILU0", 2)
+        )
+        self.solver.set_mgr_bilu0_pivot_shift(1e-12)
+        self.solver.set_mgr_bilu0_fallback_options(
+            sim_params.mgrBilu0FallbackIdentity,
+            1e-4,
+            1e-4,
+            100.0,
+        )
+        self.solver.set_mgr_local_correction_options(1.0, -1.0, 0.0, -1.0, 0.0)
+        self.solver.set_mgr_local_correction_quality_options(False, 0.0)
+
+        self.solver.set_mgr_pressure_amg_options(6, 6, 6, 1, 6, 20, 1)
+        if hasattr(self.solver, "set_mgr_pressure_amg_advanced_options"):
+            self.solver.set_mgr_pressure_amg_advanced_options(0.5, -1.0, -1, 0)
+        self.solver.set_mgr_pressure_amg_solve_options(1, 0.0)
+
+        self.solver.set_use_bcsr_cpr(True)
+        self.solver.set_bcsr_cpr_options(
+            getattr(
+                self,
+                "bcsr_cpr_reduction_type",
+                sim_params.mgrCprReductionTrueIMPES,
+            ),
+            0,
+            1e6,
+        )
+        self.solver.set_bcsr_cpr_reuse_options(True, 0)
+        self.solver.set_bcsr_cpr_adaptive_rebuild_options(True, 15, 1.5, 1, 2)
+        self.solver.set_bcsr_cpr_adaptive_quality_options(-1.0, -1.0, -1.0)
+        self.solver.set_bcsr_cpr_diagnostics_options(False, 0, 0)
+        self.solver.set_bcsr_cpr_pressure_correction_options(1.0, 10.0, 0.05)
+
+        reservoir_roles = [sim_params.mgrVarPressure] + [
+            sim_params.mgrVarComposition
+        ] * (block_size - 1)
+        well_roles = [sim_params.mgrVarWellPressure] + [
+            sim_params.mgrVarWellSecondary
+        ] * (block_size - 1)
+        self.solver.set_mgr_reservoir_variable_roles(reservoir_roles)
+        self.solver.set_mgr_well_variable_roles(well_roles)
+        self.solver.set_mgr_pressure_level_options(
+            sim_params.mgrFRelaxNone,
+            0,
+            sim_params.mgrInterpInjection,
+            sim_params.mgrRestrictBlockColLumped,
+            sim_params.mgrCoarseGalerkin,
+            sim_params.mgrSmootherHypreILU,
+            1,
+        )
+
+        reservoir_blocks = self._reservoir_block_count()
+        if reservoir_blocks is not None:
+            self.solver.set_n_reservoir_blocks(reservoir_blocks)
+
+        self.solver.set_mgr_enable_well_level(False)
+        self.solver.set_mgr_enable_composition_level(False)
+
+    def set_adjoint_solver(self):
+        block_size = self.physics.n_vars
+        self.adjoint_solver = solvers.create_mgr_solver_for_block_size(block_size)
+        self.adjoint_solver.set_max_iterations(self.adjoint_linear_max_iter)
+        self.adjoint_solver.set_tolerance(self.adjoint_linear_tol)
+        self.adjoint_solver.set_log_level(self.params.linear_print_level)
+        self.adjoint_solver.set_kdim(150)
+        self.adjoint_solver.set_use_mgr(True)
+        self.adjoint_solver.set_use_flex_gmres(True)
+        self.adjoint_solver.set_use_physics_scaling(False)
+        self.adjoint_solver.set_mgr_composite_mode(1)
+        self.adjoint_solver.set_mgr_local_solver(
+            getattr(sim_params, "mgrLocalSolverBlockILU0", 2)
+        )
+        self.adjoint_solver.set_mgr_bilu0_pivot_shift(1e-12)
+        self.adjoint_solver.set_mgr_bilu0_fallback_options(
+            sim_params.mgrBilu0FallbackIdentity,
+            1e-4,
+            1e-4,
+            100.0,
+        )
+        self.adjoint_solver.set_use_bcsr_cpr(True)
+        self.adjoint_solver.set_bcsr_cpr_options(
+            getattr(
+                self,
+                "bcsr_cpr_reduction_type",
+                sim_params.mgrCprReductionTrueIMPES,
+            ),
+            0,
+            1e6,
+        )
+        self.adjoint_solver.set_bcsr_cpr_reuse_options(True, 0)
+        self.adjoint_solver.set_bcsr_cpr_adaptive_rebuild_options(True, 15, 1.5, 1, 2)
+        self.adjoint_solver.set_bcsr_cpr_adaptive_quality_options(-1.0, -1.0, -1.0)
+        self.adjoint_solver.set_bcsr_cpr_diagnostics_options(False, 0, 0)
+        self.adjoint_solver.set_bcsr_cpr_pressure_correction_options(1.0, 10.0, 0.05)
+        self.adjoint_solver.set_mgr_enable_well_level(False)
+        self.adjoint_solver.set_mgr_enable_composition_level(False)
+
+        reservoir_roles = [sim_params.mgrVarPressure] + [
+            sim_params.mgrVarComposition
+        ] * (block_size - 1)
+        well_roles = [sim_params.mgrVarWellPressure] + [
+            sim_params.mgrVarWellSecondary
+        ] * (block_size - 1)
+        self.adjoint_solver.set_mgr_reservoir_variable_roles(
+            reservoir_roles
+        )
+        self.adjoint_solver.set_mgr_well_variable_roles(
+            well_roles
+        )
+        self.adjoint_solver.set_mgr_pressure_level_options(
+            sim_params.mgrFRelaxNone,
+            0,
+            sim_params.mgrInterpInjection,
+            sim_params.mgrRestrictBlockColLumped,
+            sim_params.mgrCoarseGalerkin,
+            sim_params.mgrSmootherHypreILU,
+            1,
+        )
+
+        adjoint_reservoir_blocks = self._adjoint_reservoir_block_count()
+        if adjoint_reservoir_blocks is not None:
+            self.adjoint_solver.set_n_reservoir_blocks(adjoint_reservoir_blocks)
+
+    def _attach_mgr_solvers_to_engine(self):
+        engine = getattr(self.physics, "engine", None)
+        if engine is None:
+            return
+
+        if self.solver is not None:
+            reservoir_blocks = self._reservoir_block_count()
+            if reservoir_blocks is not None:
+                self.solver.set_n_reservoir_blocks(reservoir_blocks)
+            engine.set_linear_solver(self.solver)
+
+        if self.adjoint_solver is not None and hasattr(
+            engine, "set_adjoint_linear_solver"
+        ):
+            adjoint_reservoir_blocks = self._adjoint_reservoir_block_count()
+            if adjoint_reservoir_blocks is not None:
+                self.adjoint_solver.set_n_reservoir_blocks(adjoint_reservoir_blocks)
+            engine.set_adjoint_linear_solver(
+                self.adjoint_solver, use_jacobian_transpose=True
+            )
+
+    def reset(self):
+        if getattr(self, "use_mgr_cpr_pressureguard_thr10", False):
+            self.set_solver()
+        if getattr(self, "use_mgr_for_adjoint", False):
+            self.set_adjoint_solver()
+        super().reset()
+        self._attach_mgr_solvers_to_engine()
+
+    def grad_adjoint_method_all(self, x):
+        old_tol = self.params.tolerance_linear
+        old_max_iter = self.params.max_i_linear
+        self.params.tolerance_linear = self.adjoint_linear_tol
+        self.params.max_i_linear = self.adjoint_linear_max_iter
+        try:
+            return OptModuleSettings.grad_adjoint_method_all(self, x)
+        finally:
+            self.params.tolerance_linear = old_tol
+            self.params.max_i_linear = old_max_iter
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 50.,

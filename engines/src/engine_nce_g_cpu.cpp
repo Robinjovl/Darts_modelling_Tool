@@ -948,32 +948,38 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 	//	//w->add_to_jacobian(dt_next, X_next, dg_dx_n_temp, RHS);
 	//}
 
-	csr_matrix<1> Temp, T1, T2;
+	csr_matrix<1> T2;
+	if (!linear_solver_ad_uses_jacobian_transpose)
+	{
+		// Legacy adjoint solvers consume an assembled scalar dg_dx_T. The MGR
+		// adjoint path keeps the block Jacobian and calls solve_transposed().
+		csr_matrix<1> Temp, T1;
 #ifdef OPENDARTS_LINEAR_SOLVERS
-	Temp.to_nb_1(Jacobian); // unified block_csr_matrix -> polymorphic scalar expansion
+		Temp.to_nb_1(Jacobian); // unified block_csr_matrix -> polymorphic scalar expansion
 #else
-	Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
+		Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
 #endif
-	T1.build_transpose(&Temp);
+		T1.build_transpose(&Temp);
 
-	value_t* T1_values = T1.get_values();
-	index_t* T1_rows = T1.get_rows_ptr();
-	index_t* T1_cols = T1.get_cols_ind();
-	index_t* T1_diag = T1.get_diag_ind();
+		value_t* T1_values = T1.get_values();
+		index_t* T1_rows = T1.get_rows_ptr();
+		index_t* T1_cols = T1.get_cols_ind();
+		index_t* T1_diag = T1.get_diag_ind();
 
 
-	for (index_t i = 0; i <= n_blocks * N_VARS; i++)
-	{
-		//ad_diag[i] = i;  //so far using superlu, it may need to be fixed if using other linear solver
-		ad_rows[i] = T1_rows[i];
-	}
-	//ad_rows[n_blocks * N_VARS] = T1_rows[n_blocks * N_VARS];
+		for (index_t i = 0; i <= n_blocks * N_VARS; i++)
+		{
+			//ad_diag[i] = i;  //so far using superlu, it may need to be fixed if using other linear solver
+			ad_rows[i] = T1_rows[i];
+		}
+		//ad_rows[n_blocks * N_VARS] = T1_rows[n_blocks * N_VARS];
 
-	index_t n_value = (mesh->n_conns + mesh->n_blocks) * N_VARS * N_VARS;
-	for (index_t i = 0; i < n_value; i++)
-	{
-		ad_values[i] = T1_values[i];
-		ad_cols[i] = T1_cols[i];
+		index_t n_value = (mesh->n_conns + mesh->n_blocks) * N_VARS * N_VARS;
+		for (index_t i = 0; i < n_value; i++)
+		{
+			ad_values[i] = T1_values[i];
+			ad_cols[i] = T1_cols[i];
+		}
 	}
 
 
@@ -997,7 +1003,7 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 	}
 	//ad_rows_n[n_blocks * N_VARS] = T2_rows[n_blocks * N_VARS];
 
-	n_value = (mesh->n_conns + mesh->n_blocks) * N_VARS * N_VARS;
+	index_t n_value = (mesh->n_conns + mesh->n_blocks) * N_VARS * N_VARS;
 	for (index_t i = 0; i < n_value; i++)
 	{
 		ad_values_n[i] = T2_values[i];

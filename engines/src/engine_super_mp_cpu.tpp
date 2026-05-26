@@ -1422,40 +1422,42 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 		}
 	}
 
-	// we have to convert the csr matrix to the csr matrix with block size of 1
-    // because the function "build_transpose" is only applicable for the csr matrix with the block size of 1
-    // this is also required by the linear solver "linsolv_superlu<1>", as the preconditioner is not applicable to adjoint so far
-    // so this might be improved in the future
-	csr_matrix<1> Temp, T1, T2;
+	csr_matrix<1> T2;
+	if (!linear_solver_ad_uses_jacobian_transpose)
+	{
+		// Legacy adjoint solvers consume an assembled scalar dg_dx_T. The MGR
+		// adjoint path keeps the block Jacobian and calls solve_transposed().
+		csr_matrix<1> Temp, T1;
 #ifdef OPENDARTS_LINEAR_SOLVERS
-	Temp.to_nb_1(Jacobian); // unified block_csr_matrix -> polymorphic scalar expansion
+		Temp.to_nb_1(Jacobian); // unified block_csr_matrix -> polymorphic scalar expansion
 #else
-	Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
+		Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
 #endif
-	T1.build_transpose(&Temp);
+		T1.build_transpose(&Temp);
 
-	value_t* T1_values = T1.get_values();
-	index_t* T1_rows = T1.get_rows_ptr();
-	index_t* T1_cols = T1.get_cols_ind();
-	index_t* T1_diag = T1.get_diag_ind();
+		value_t* T1_values = T1.get_values();
+		index_t* T1_rows = T1.get_rows_ptr();
+		index_t* T1_cols = T1.get_cols_ind();
+		index_t* T1_diag = T1.get_diag_ind();
 
-	for (index_t i = 0; i <= n_blocks * N_VARS; i++)
-	{
-		//ad_diag[i] = i;  //so far using superlu, it may need to be fixed if using other linear solver
-		ad_rows[i] = T1_rows[i];
-	}
+		for (index_t i = 0; i <= n_blocks * N_VARS; i++)
+		{
+			//ad_diag[i] = i;  //so far using superlu, it may need to be fixed if using other linear solver
+			ad_rows[i] = T1_rows[i];
+		}
 
 
-	index_t n_value = mesh->n_links * N_VARS * N_VARS;
-	//test_value_vec.clear();
-	//test_value_vec.insert(test_value_vec.end(), T1_values, T1_values + n_value);
-	for (index_t i = 0; i < n_value; i++)
-	{
-		//test_index = i;
-		//test_value = T1_values[i];
-		ad_values[i] = T1_values[i];
-		ad_cols[i] = T1_cols[i];
-		//test_value = ad_values[i];
+		index_t n_value = mesh->n_links * N_VARS * N_VARS;
+		//test_value_vec.clear();
+		//test_value_vec.insert(test_value_vec.end(), T1_values, T1_values + n_value);
+		for (index_t i = 0; i < n_value; i++)
+		{
+			//test_index = i;
+			//test_value = T1_values[i];
+			ad_values[i] = T1_values[i];
+			ad_cols[i] = T1_cols[i];
+			//test_value = ad_values[i];
+		}
 	}
 
 
@@ -1479,7 +1481,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 		ad_rows_n[i] = T2_rows[i];
 	}
 
-	n_value = mesh->n_links * N_VARS * N_VARS;
+	index_t n_value = mesh->n_links * N_VARS * N_VARS;
 	for (index_t i = 0; i < n_value; i++)
 	{
 		ad_values_n[i] = T2_values[i];

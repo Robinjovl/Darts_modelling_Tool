@@ -39,6 +39,14 @@ namespace opendarts
       // Set preconditioner (not used by MGR, but required by interface)
       int set_prec(opendarts::linear_solvers::linsolv_iface *prec_input) override;
 
+      // Implement the block-size-agnostic interface directly; the engine now
+      // passes a csr_matrix_base that may be the unified block_csr_matrix.
+      int init(opendarts::linear_solvers::csr_matrix_base *A,
+               opendarts::config::index_t max_iters,
+               opendarts::config::mat_float tolerance) override;
+
+      int setup(opendarts::linear_solvers::csr_matrix_base *A) override;
+
       // Implement the template-specific init from linsolv_iface_bos
       int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A,
                opendarts::config::index_t max_iters,
@@ -49,6 +57,7 @@ namespace opendarts
 
       // Solve linear system
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
+      int solve_transposed(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
 
       // Configuration methods for MGR solver
       void set_max_iterations(opendarts::config::index_t max_iters);
@@ -204,7 +213,8 @@ namespace opendarts
       bool initialized;
       bool first_solve;
       opendarts::config::index_t global_num_rows;  // Cached matrix size
-      opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *matrix_ptr;  // Pointer to open-darts matrix
+      opendarts::linear_solvers::csr_matrix_base *matrix_ptr;  // Pointer to open-darts matrix
+      opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> transpose_matrix;
       opendarts::config::index_t max_iters_cached;
       opendarts::config::mat_float tolerance_cached;
 

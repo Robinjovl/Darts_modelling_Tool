@@ -102,6 +102,8 @@ public:
 
 		//adjoint method
 		linear_solver_ad = 0;
+		linear_solver_ad_owned = true;
+		linear_solver_ad_uses_jacobian_transpose = false;
 		dg_dx_n_temp = 0;
 
         dg_dx_T = 0;
@@ -126,7 +128,8 @@ public:
 			delete Jacobian;
 
 		//adjoint method
-		delete linear_solver_ad;
+		if (linear_solver_ad != nullptr && linear_solver_ad_owned)
+			delete linear_solver_ad;
 		delete dg_dx_n_temp;
 
         delete dg_dx_T;
@@ -179,6 +182,34 @@ public:
 				linear_solver->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
 			}
 			linear_solver->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+		}
+	}
+
+	// Set external adjoint linear solver (from Python).
+	// The legacy adjoint path assembles a scalar transposed matrix dg_dx_T.
+	// MGR/CPR-style adjoint solvers can instead keep the simulator block
+	// structure and solve Jacobian^T x = b through solve_transposed().
+	void set_adjoint_linear_solver(std::shared_ptr<linsolv_iface> solver, bool use_jacobian_transpose = false)
+	{
+		if (linear_solver_ad != nullptr && linear_solver_ad_owned)
+		{
+			delete linear_solver_ad;
+		}
+
+		linear_solver_ad_external = solver;
+		linear_solver_ad = solver.get();
+		linear_solver_ad_owned = false;
+		linear_solver_ad_uses_jacobian_transpose = use_jacobian_transpose;
+
+		csr_matrix_base *adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
+		if (linear_solver_ad != nullptr && adjoint_matrix != nullptr && params != nullptr)
+		{
+			if (timer != nullptr)
+			{
+				linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"],
+				                                   &timer->node["linear solver for adjoint method - solve"]);
+			}
+			linear_solver_ad->init(adjoint_matrix, params->max_i_linear, params->tolerance_linear);
 		}
 	}
 
@@ -524,6 +555,9 @@ public:
 	index_t upstream_index, downstream_index;
 
 	linsolv_iface* linear_solver_ad;
+	std::shared_ptr<linsolv_iface> linear_solver_ad_external;
+	bool linear_solver_ad_owned;
+	bool linear_solver_ad_uses_jacobian_transpose;
 
 	// the total number of the cell interfaces,
     // including 1. res to res (trans), 2. res to well_body (WI), 3. well_body to well_head
@@ -1111,6 +1145,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			else
 				linear_solver_ad = new linsolv_superlu<1>;
+			linear_solver_ad_owned = true;
+			linear_solver_ad_uses_jacobian_transpose = false;
 		}
 		linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"], &timer->node["linear solver for adjoint method - solve"]);
 
