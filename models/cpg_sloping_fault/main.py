@@ -82,7 +82,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
         output_properties_main = m.physics.vars  # only main variables
         output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
-        m.reservoir.create_vtk_wells(output_directory=out_dir)
+
         n_timesteps = len(m.idata.sim.time_steps)
         for ith_step in range(n_timesteps + 1):
             # compute additional properties only for the first and for the last timestep:
@@ -106,6 +106,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
             m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
 
+        m.reservoir.create_vtk_wells(output_directory=os.path.join(out_dir, 'vtk_files'))
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
 
     def add_columns_time_data(time_data):
