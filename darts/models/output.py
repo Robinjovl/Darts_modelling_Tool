@@ -101,7 +101,7 @@ class Output:
         self.timer.node["saving_reservoir_data"] = timer_node()
         self.timer.node["saving_well_data"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
-        self.timer.node["vtp_output"] = timer_node()
+        self.timer.node["vtu_output"] = timer_node()
         self.timer.node["output_well_time_data"] = timer_node()
         self.timer.node["exporting_property_array"] = timer_node()
 
@@ -1629,11 +1629,11 @@ class Output:
             return
 
         self.timer.start()
-        self.timer.node["vtp_output"].start()
+        self.timer.node["vtu_output"].start()
 
         # Set default output directory
         if output_directory is None:
-            output_directory = os.path.join(self.output_folder, "vtp_files")
+            output_directory = os.path.join(self.output_folder, "vtu_files")
         os.makedirs(output_directory, exist_ok=True)
 
         # Evaluate well secondary variables of the current time from engine.X
@@ -1651,7 +1651,7 @@ class Output:
                     [self.wells[w_name].geometry.pipe_length],
                 )
             )
-            # Flip depth sign for VTP (positive z in DARTS is downward, while negative z in ParaView is downward)
+            # Flip depth sign for VTU (positive z in DARTS is downward, while negative z in ParaView is downward)
             z_nodes = -z_nodes
             x_nodes = np.zeros_like(
                 z_nodes
@@ -1670,7 +1670,7 @@ class Output:
                 output_directory=output_directory,
             )
 
-        self.timer.node["vtp_output"].stop()
+        self.timer.node["vtu_output"].stop()
         self.timer.stop()
 
     def well_output_properties(
