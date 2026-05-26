@@ -1,0 +1,27 @@
+trigger-darts-models:
+  stage: test
+  needs:
+    - job: build-linux-oahu-gpu
+    - job: build-windows
+      optional: true
+  trigger:
+    project: open-darts/darts-models
+    branch: avnovikov/open_darts_trigger
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  variables:
+    OPEN_DARTS_PROJECT_ID: $CI_PROJECT_ID
+    OPEN_DARTS_PROJECT: $CI_PROJECT_PATH
+    OPEN_DARTS_PIPELINE_ID: $CI_PIPELINE_ID
+    OPEN_DARTS_COMMIT_SHA: $CI_COMMIT_SHA
+    OPEN_DARTS_REF: $CI_COMMIT_REF_NAME
+    OPEN_DARTS_LINUX_JOB_BASE: "build-linux-oahu-gpu"
+    OPEN_DARTS_WINDOWS_JOB_BASE: "build-windows"
+    GITLAB_TOKEN: $GITLAB_TOKEN
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+      when: never
+    - if: $ENABLE_DARTS_MODELS == "1" && ($CI_COMMIT_REF_PROTECTED == "true" || $TEST_CUSTOM_BRANCH == "1")
+      when: on_success
+    - when: never

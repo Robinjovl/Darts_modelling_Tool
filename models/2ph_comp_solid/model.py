@@ -39,10 +39,9 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        well_type = ms_well.MS_Type.EPM
-        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_well("I1")
         self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
-        self.reservoir.add_well("P1", well_type)
+        self.reservoir.add_well("P1")
         self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
@@ -72,7 +71,7 @@ class Model(CICDModel):
         self.inj_composition = [x * (1 - solid_inject) for x in zc_fl_inj_composition_gas]
 
         """Physical properties"""
-        # Create property containers:
+        # Create a property container
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, nc_sol=1, np_sol=1,
                                                temperature=1., rock_comp=1e-7, eps_z=epsilon)
 

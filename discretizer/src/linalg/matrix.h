@@ -40,7 +40,7 @@ namespace linalg
 	Matrix() {};
 	Matrix(const index_t _M, const index_t _N) : M(_M), N(_N), values(M* N)
 	{
-	  if (M * N > 0) std::fill_n(&values[0], M * N, 0.0);
+	  if (M * N > 0) std::fill_n(&values[0], M * N, T{});
 	};
 	Matrix(const Matrix<T>& m)
 	{

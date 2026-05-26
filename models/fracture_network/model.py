@@ -285,9 +285,8 @@ class Model(CICDModel):
         """
         self.calc_well_loc()
 
-        well_type = ms_well.MS_Type.EPM
         for wname in self.well_perf_loc.keys():
-            self.reservoir.add_well(wname, well_type)
+            self.reservoir.add_well(wname)
             for k in range(self.well_perf_loc[wname].size):
                 self.reservoir.add_perforation(wname, res_cell_idx=self.well_perf_loc[wname][k],
                                                well_index=well_index, well_indexD=0, verbose=True)

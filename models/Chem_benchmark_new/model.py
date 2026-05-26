@@ -6,8 +6,6 @@ from copy import deepcopy
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
-
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
@@ -59,6 +57,22 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
+    def init(self, *args, **kwargs):
+        """Initialize the model with parallel operator evaluation enabled by default.
+
+        This makes Chem_benchmark_new exercise the parallel interpolator/evaluator
+        path (MR297) in CI. No model-specific factory is needed: the default
+        DartsModel.get_evaluator_factory (ModelEvaluatorFactory) reconstructs this
+        model in each worker, reusing its own set_physics/PropertyContainer build.
+        Constructor arguments (grid_1D, res, custom_physics) are plain ints, so the
+        factory pickles correctly under both 'fork' and 'spawn'.
+
+        Callers may still override these (e.g. ``init(parallel_evaluation=False)``).
+        """
+        kwargs.setdefault('parallel_evaluation', True)
+        kwargs.setdefault('n_workers', 4)
+        return super().init(*args, **kwargs)
+
     def set_reservoir(self, grid_1D: bool, res: int, solid_init):
         """Reservoir"""
         self.permporo = PermPoroRelationship()
@@ -94,17 +108,16 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        well_type = ms_well.MS_Type.EPM
         if self.grid_1D:
             """well location"""
-            self.reservoir.add_well("INJ_GAS", well_type)
+            self.reservoir.add_well("INJ_GAS")
             self.reservoir.add_perforation("INJ_GAS", res_cell_idx=(1, 1, 1))
 
-            self.reservoir.add_well("PROD", well_type)
+            self.reservoir.add_well("PROD")
             self.reservoir.add_perforation("PROD", res_cell_idx=(self.reservoir.nx, 1, 1))
 
         else:
-            self.reservoir.add_well("PROD_" + str(1), well_type)
+            self.reservoir.add_well("PROD_" + str(1))
             for k in range(self.reservoir.ny):
                 self.reservoir.add_perforation("PROD_" + str(1), res_cell_idx=(self.reservoir.nx, 1, k + 1))
 

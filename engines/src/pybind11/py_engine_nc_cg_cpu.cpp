@@ -12,10 +12,10 @@ struct engine_nc_cg_exposer
 {
   static void expose(py::module &m)
   {
-    py::class_<engine_nc_cg_cpu<NC, NP>, engine_base>(m, ("engine_nc_cg_cpu" + std::to_string(NC) + "_" + std::to_string(NP)).c_str(), 
+    py::class_<engine_nc_cg_cpu<NC, NP>, engine_base>(m, ("engine_nc_cg_cpu" + std::to_string(NC) + "_" + std::to_string(NP)).c_str(),
                                                           ("Isothermal CPU simulator engine for " + std::to_string(NC) + " components and " + std::to_string(NP) + " phases with gravity and capillarity").c_str())  \
       .def(py::init<>())  \
-      .def("init", (int (engine_nc_cg_cpu<NC, NP>::*)(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) &engine_nc_cg_cpu<NC, NP>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>());
+      .def("init", (int (engine_nc_cg_cpu<NC, NP>::*)(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, operator_set_gradient_evaluator_iface*, sim_params*, timer_node*)) &engine_nc_cg_cpu<NC, NP>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 6>());
   }
 };
 

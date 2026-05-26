@@ -3,131 +3,117 @@ import os
 import numpy as np
 import pandas as pd
 
+from darts.models.darts_model import DartsModel
+from darts.tools.hdf5_tools import load_hdf5_to_dict
 
-def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
+
+def get_full_overall_composition(state, pc):
+    composition_state = state[1:-1] if pc.thermal else state[1:]
+    return np.append(composition_state, 1.0 - np.sum(composition_state))
+
+
+def copy_property_value(value):
+    if isinstance(value, np.ndarray):
+        return value.copy()
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def save_dfm_well_props(
+    well_name: str,
+    coupled_model: DartsModel,
+):
     """
-    Store the primary variables and phase properties of well segments in a pickle file
+    Store the primary variables and phase properties of the well segments of the specified DFM well in a pickle file
+    located in the output folder
 
-    :param h5_well_data: Dictionary of well data loaded from the HDF5 file
-    :type h5_well_data: dict
+    :param well_name: Name of the well the properties of which will be saved
+    :type well_name: str
     :param coupled_model: The instance of the DartsModel
     :type coupled_model: DartsModel
+
     """
-    property_container = coupled_model.physics.property_containers[0]
+    # Find the index of the well in the cpp well list
+    iw = None
+    for idx, w in enumerate(coupled_model.reservoir.wells):
+        if w.name == well_name:
+            iw = idx
+            break
+    if iw is None:
+        raise ValueError("The specified well name is not found!")
 
-    num_perfs = len(coupled_model.reservoir.wells[0].perforations)
-    num_segments = len(h5_well_data["dynamic"]["X"][0, :, 0]) - num_perfs
+    # Get the time array, well primary variables, and other well info
+    h5_well_file_path = coupled_model.well_filepath
+    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
 
-    p = np.zeros(num_segments)
-    z = np.zeros((num_segments, property_container.nc))
-    T = np.zeros(num_segments)
+    # Get well geometry info
+    num_segments = coupled_model.reservoir.wells[iw].num_segments
+    cell_id = h5_well_dict["dynamic"]["cell_id"]
+    well_head_idx = coupled_model.reservoir.wells[iw].well_head_idx
+    well_bottom_idx = coupled_model.reservoir.wells[iw].well_bottom_idx
+    well_segments_idxs = np.arange(well_head_idx, well_bottom_idx + 1)
+    well_segments_idxs_in_well_h5 = coupled_model.output.find_values_in_an_array(
+        well_segments_idxs, cell_id
+    )
 
-    sG = np.zeros(num_segments)
-    if property_container.nph == 2:
-        sL = np.zeros(num_segments)
-    elif property_container.nph == 3:
-        sL_a = np.zeros(num_segments)
-        sL_b = np.zeros(num_segments)
-    rhoG = np.zeros(num_segments)
-    if property_container.nph == 2:
-        rhoL = np.zeros(num_segments)
-    elif property_container.nph == 3:
-        rhoL_a = np.zeros(num_segments)
-        rhoL_b = np.zeros(num_segments)
-    miuG = np.zeros(num_segments)
-    if property_container.nph == 2:
-        miuL = np.zeros(num_segments)
-    elif property_container.nph == 3:
-        miuL_a = np.zeros(num_segments)
-        miuL_b = np.zeros(num_segments)
-    xG = np.zeros((num_segments, property_container.nc))
-    if property_container.nph == 2:
-        xL = np.zeros((num_segments, property_container.nc))
-    elif property_container.nph == 3:
-        xL_a = np.zeros((num_segments, property_container.nc))
-        xL_b = np.zeros((num_segments, property_container.nc))
+    pc = coupled_model.physics.property_containers[0]
+    output_prop_names = list(pc.output_props)
+
     # Initialize an empty DataFrame to store the primary variables and phase props
-    data_frame = pd.DataFrame()
+    data_frame_parts = []
 
     # For phase velocity calculations
-    next(iter(coupled_model.wells.values())).is_first_first_iter = True
+    coupled_model.wells[well_name].is_first_first_iter = True
     iter_counter = 0
     flag = 1
 
-    time = h5_well_data["dynamic"]["time"]
+    time = h5_well_dict["dynamic"]["time"]
+    X_well_h5 = h5_well_dict["dynamic"]["X"]
     time_from_zero = np.insert(time, 0, 0.0)
     time_step_sizes = np.diff(time_from_zero)
     for i, dt in enumerate(time_step_sizes):
+        ts_data = {
+            "pressure": np.zeros(num_segments),
+            "z": [None] * num_segments,
+        }
+        output_prop_data = {
+            prop_name: [None] * num_segments for prop_name in output_prop_names
+        }
+        temperature = np.zeros(num_segments)
+
         for j in range(num_segments):
-            state = h5_well_data["dynamic"]["X"][i, j + num_perfs, :]
-            p[j] = state[0]
+            state = X_well_h5[i, well_segments_idxs_in_well_h5[j], :]
 
-            # Evaluate temperature for when the primary vars are PH and evaluate phase props
-            property_container.evaluate(state)
+            # Evaluate temperature for when the primary vars are PH and evaluate phase props.
+            pc.evaluate(state)
 
-            if not coupled_model.physics.property_containers[0].thermal:
-                z_full = state[1:]
-                z_full = np.append(z_full, 1 - sum(state[1:]))
-                z[j, :] = z_full
-            elif coupled_model.physics.property_containers[0].thermal:
-                z_full = state[1:-1]
-                z_full = np.append(z_full, 1 - sum(state[1:-1]))
-                z[j, :] = z_full
-                if (
-                    coupled_model.physics.state_spec
-                    == coupled_model.physics.StateSpecification.PT
-                ):
-                    T[j] = state[-1]
-                elif (
-                    coupled_model.physics.state_spec
-                    == coupled_model.physics.StateSpecification.PH
-                ):
-                    T[j] = property_container.temperature
+            ts_data["pressure"][j] = state[0]
+            ts_data["z"][j] = get_full_overall_composition(state, pc)
+            temperature[j] = pc.temperature
 
-            # xG[j,:] = property_container.x[1,:]
-            xG[j, :] = property_container.x[0, :]
-            if property_container.nph == 2:
-                xL[j, :] = property_container.x[1, :]
-            elif property_container.nph == 3:
-                # xL_a[j, :] = property_container.x[0, :]
-                xL_a[j, :] = property_container.x[1, :]
-                xL_b[j, :] = property_container.x[2, :]
-            # sG[j] = property_container.sat[1]
-            sG[j] = property_container.sat[0]
-            if property_container.nph == 2:
-                sL[j] = property_container.sat[1]
-            elif property_container.nph == 3:
-                # sL_a[j] = property_container.sat[0]
-                sL_a[j] = property_container.sat[1]
-                sL_b[j] = property_container.sat[2]
-            # rhoG[j] = property_container.dens[1]
-            rhoG[j] = property_container.dens[0]
-            if property_container.nph == 2:
-                rhoL[j] = property_container.dens[1]
-            elif property_container.nph == 3:
-                # rhoL_a[j] = property_container.dens[0]
-                rhoL_a[j] = property_container.dens[1]
-                rhoL_b[j] = property_container.dens[2]
-            # miuG[j] = property_container.mu[1]
-            miuG[j] = property_container.mu[0]
-            if property_container.nph == 2:
-                miuL[j] = property_container.mu[1]
-            elif property_container.nph == 3:
-                # miuL_a[j] = property_container.mu[0]
-                miuL_a[j] = property_container.mu[1]
-                miuL_b[j] = property_container.mu[2]
+            for prop_name in output_prop_names:
+                output_prop_data[prop_name][j] = copy_property_value(
+                    pc.output_props[prop_name]()
+                )
+
+        # Keep temperature available for existing well-property plots even if the property container
+        # does not expose it in output_props.
+        ts_data.update(output_prop_data)
+        if "temperature" not in ts_data:
+            ts_data["temperature"] = temperature
 
         # Save phase velocities
         if i == 0:
-            initial_conditions = next(
-                iter(coupled_model.wells.values())
-            ).initial_conditions.initial_conditions_vector
+            initial_conditions = coupled_model.wells[
+                well_name
+            ].initial_conditions.initial_conditions_vector
             Xn_ms_well = initial_conditions
-            X_ms_well = h5_well_data["dynamic"]["X"][i, num_perfs:, :].flatten()
+            X_ms_well = X_well_h5[i, well_segments_idxs_in_well_h5, :].flatten()
         else:
-            Xn_ms_well = h5_well_data["dynamic"]["X"][i - 1, num_perfs:, :].flatten()
-            X_ms_well = h5_well_data["dynamic"]["X"][i, num_perfs:, :].flatten()
-        phase_velocities = next(iter(coupled_model.wells.values())).eval_phase_vels(
+            Xn_ms_well = X_well_h5[i - 1, well_segments_idxs_in_well_h5, :].flatten()
+            X_ms_well = X_well_h5[i, well_segments_idxs_in_well_h5, :].flatten()
+        phase_velocities = coupled_model.wells[well_name].eval_phase_vels(
             Xn_ms_well, X_ms_well, dt, time_from_zero[i], iter_counter, flag
         )
         # phase_velocities = np.zeros((num_segments - 1) * 2)
@@ -135,99 +121,14 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
         vG = phase_velocities[:mid]
         vL = phase_velocities[mid:]
         # Make velocity variables have the same size as the other props
-        vG = np.append(vG, np.nan)
-        vL = np.append(vL, np.nan)
+        ts_data["vG"] = np.append(vG, np.nan)
+        ts_data["vL"] = np.append(vL, np.nan)
 
-        if property_container.nph == 2:
-            ts_primary_vars_and_phases_props = [
-                p.copy(),
-                z.copy(),
-                T.copy(),
-                xG.copy(),
-                xL.copy(),
-                sG.copy(),
-                sL.copy(),
-                rhoG.copy(),
-                rhoL.copy(),
-                miuG.copy(),
-                miuL.copy(),
-                vG.copy(),
-                vL.copy(),
-            ]
-            data_frame = pd.concat(
-                [
-                    data_frame,
-                    pd.DataFrame(
-                        list(zip(*ts_primary_vars_and_phases_props, strict=False)),
-                        columns=[
-                            "Pressure",
-                            "Overall mole fractions",
-                            "Temperature",
-                            "xG",
-                            "xL",
-                            "sG",
-                            "sL",
-                            "rhoG",
-                            "rhoL",
-                            "miuG",
-                            "miuL",
-                            "vG",
-                            "vL",
-                        ],
-                    ),
-                ]
-            )
-        elif property_container.nph == 3:
-            ts_primary_vars_and_phases_props = [
-                p.copy(),
-                z.copy(),
-                T.copy(),
-                xG.copy(),
-                xL_a.copy(),
-                xL_b.copy(),
-                sG.copy(),
-                sL_a.copy(),
-                sL_b.copy(),
-                rhoG.copy(),
-                rhoL_a.copy(),
-                rhoL_b.copy(),
-                miuG.copy(),
-                miuL_a.copy(),
-                miuL_b.copy(),
-                vG.copy(),
-                vL.copy(),
-            ]
-            data_frame = pd.concat(
-                [
-                    data_frame,
-                    pd.DataFrame(
-                        list(zip(*ts_primary_vars_and_phases_props, strict=False)),
-                        columns=[
-                            "Pressure",
-                            "Overall mole fractions",
-                            "Temperature",
-                            "xG",
-                            "xL_a",
-                            "xL_a",
-                            "sG",
-                            "sL_a",
-                            "sL_b",
-                            "rhoG",
-                            "rhoL_a",
-                            "rhoL_b",
-                            "miuG",
-                            "miuL_a",
-                            "miuL_b",
-                            "vG",
-                            "vL",
-                        ],
-                    ),
-                ]
-            )
+        data_frame_parts.append(pd.DataFrame(ts_data))
 
-    data_frame.to_pickle(
-        os.path.join(
-            coupled_model.output.output_folder,
-            "well_primary_vars_and_phase_props.pkl",
-        )
-    )
+    data_frame = pd.concat(data_frame_parts, ignore_index=True)
+
+    # Save the data frame in a pickle file
+    file_name = f"dfm_well_props_{well_name}.pkl"
+    file_path = os.path.join(coupled_model.output_folder, file_name)
+    data_frame.to_pickle(file_path)

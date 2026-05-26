@@ -29,13 +29,13 @@ namespace mesh
 	const index_t MAX_PTS_PER_3D_ELEM_GMSH = 8; // used to reserve memory
 	const index_t MIN_CONNS_PER_ELEM = 1;
 	const index_t MAX_CONNS_PER_ELEM_GMSH = 8;
-	const index_t MAX_CONNS_PER_ELEM = 6; //normally is 6 but for the faults (CPG) might be greater 
+	const index_t MAX_CONNS_PER_ELEM = 6; //normally is 6 but for the faults (CPG) might be greater
 	const index_t PTS_NUM_1D_ELEM = 2;
 	// gmsh element types
 	enum ElemType { LINE = 1, TRI = 2, QUAD = 3, TETRA = 4, HEX = 5, PRISM = 6, PYRAMID = 7 };
 	// element locations
 	enum ElemLoc { FRACTURE_BOUNDARY = 0, BOUNDARY = 1, FRACTURE = 2, MATRIX = 3, WELL = 4 };
-	// number of points belonging to certain element type 
+	// number of points belonging to certain element type
 	const std::unordered_map<ElemType, uint8_t> Etype_PTS = { {LINE, 2}, {TRI, 3}, {QUAD, 4}, {TETRA, 4}, {HEX, 8}, {PRISM, 6}, {PYRAMID, 5} };
 	const std::unordered_map<uint8_t, ElemType> PTS_Etype_2D = { {2, LINE }, {3, TRI }, {4, QUAD} };
 	const std::unordered_map<uint8_t, ElemType> PTS_Etype_3D = { {4, TETRA}, {8, HEX}, {6, PRISM}, {5, PYRAMID} };
@@ -58,12 +58,13 @@ namespace mesh
 		index_t elem_id;
 
 		Elem() {};
-		Elem(ElemType _type, index_t _elem_id, index_t _pts_offset) : Elem()
-		{
-			type = _type;
-			n_pts = Etype_PTS.at(type);
-			pts_offset = _pts_offset;
-		};
+			Elem(ElemType _type, index_t _elem_id, index_t _pts_offset) : Elem()
+			{
+				type = _type;
+				n_pts = Etype_PTS.at(type);
+				pts_offset = _pts_offset;
+				elem_id = _elem_id;
+			};
 
 		void calculate_centroid(const std::vector<Vector3>& nodes, const std::vector<index_t>& elem_nodes, Vector3 &c);
 		void calculate_volume_and_centroid(const std::vector<Vector3>& nodes, const std::vector<index_t>& elem_nodes, value_t &volume, Vector3 &c);
@@ -100,14 +101,14 @@ namespace mesh
 	struct pair_xor_hash
 	{
 		template <class T1, class T2>
-		std::size_t operator() (const std::pair<T1, T2> &pair) const 
+		std::size_t operator() (const std::pair<T1, T2> &pair) const
 		{
 		  return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
 		}
 	};
-	struct pair_cantor_hash 
+	struct pair_cantor_hash
 	{
-	  std::uint64_t operator()(const std::pair<index_t, index_t>& p) const 
+	  std::uint64_t operator()(const std::pair<index_t, index_t>& p) const
 	  {
 		// Ensure the pair is ordered
 		index_t a = std::min(p.first, p.second);
@@ -123,7 +124,7 @@ namespace mesh
 			std::set<index_t>::iterator it = data.begin();
 			std::size_t res = *it;
 			++it;
-			while (it != data.end()) 
+			while (it != data.end())
 			{
 				res *= 1000003;
 				res += *it;

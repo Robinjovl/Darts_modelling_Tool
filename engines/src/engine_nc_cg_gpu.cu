@@ -488,9 +488,10 @@ jacobian_wells_lincomb(index_t n_wells, index_t *jac_well_idxs,
 template <uint8_t NC, uint8_t NP>
 int engine_nc_cg_gpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                    std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                                   operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                    sim_params *params_, timer_node *timer_)
 {
-  engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+  engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 
   allocate_device_data(mesh->grav_coef, &mesh_grav_coef_d);
   copy_data_to_device(mesh->grav_coef, mesh_grav_coef_d);
@@ -588,4 +589,3 @@ template struct recursive_instantiator_nc_np<engine_nc_cg_gpu, 2, MAX_NC, 2>;
 
 // 3 phase: only for 3 components
 template struct recursive_instantiator_nc_np<engine_nc_cg_gpu, 3, 3, 3>;
-

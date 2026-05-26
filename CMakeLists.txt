@@ -108,7 +108,6 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 
 # Determine the type of compiler we have and set compiler flags and other compiler
 # specific flags
-
 if(DEFINED BOS_SOLVERS_DIR)
   add_compile_definitions(WITH_HYPRE)
 endif()
@@ -154,7 +153,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # Using LTO as it seems to reduce compile time
   # No need for manual optimization flag, CMake build types automatically handle it.
   # Debug: O0    Release: 03
-  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-pipe;-std=c++20")
 
   # Linker flags
   set(opendarts_cxx_linker_flags "")
@@ -196,8 +195,28 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 
 endif()
 
+set(opendarts_cxx_warning_suppression_flags "")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  set(opendarts_cxx_warning_suppression_flags
+    # --- Reasonable suppressions (keep permanently) ---
+    -Wno-attributes         # cross-platform attribute compatibility (pybind11, MSVC attributes)
+    -Wno-maybe-uninitialized # GCC false positives in optimized builds
+    -Wno-comment            # harmless nested comment warnings
+    -Wno-cast-function-type # common with pybind11 callback casts
+    # --- Tech debt: to be fixed incrementally (202+154+140+656+194 unique locations) ---
+    -Wno-unused-variable       # ~202 unique locations, mostly in engine template instantiations
+    -Wno-unused-but-set-variable # ~100 unique locations in engine templates
+    -Wno-unused-parameter      # ~50 unique locations, mostly in virtual method overrides
+    -Wno-shadow                # ~154 unique locations, needs per-location review
+    -Wno-sign-compare          # ~140 unique locations, int vs size_t in loops
+  )
+endif()
+
+list(APPEND opendarts_cxx_compiler_flags ${opendarts_cxx_warning_suppression_flags})
+
 message(STATUS "   Compiler flags: ${opendarts_cxx_compiler_flags}")
 message(STATUS "   Linker flags  : ${opendarts_cxx_linker_flags}")
+message(STATUS "   Warning suppressions: ${opendarts_cxx_warning_suppression_flags}")
 
 # Setup options
 option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests are not built, to save time
@@ -258,18 +277,54 @@ if(CUDA)
 
     if(CUDAToolkit_FOUND)
         message(STATUS "CUDA found. Enabling CUDA support.")
-        enable_language(CUDA)
-        set(CMAKE_CUDA_STANDARD 20)
-        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         cmake_minimum_required (VERSION 3.24)  # 3.24 is needed for architecture native
+        # Set architecture BEFORE enable_language(CUDA) so CMake can detect the compiler
         if(DEFINED CUDA_ARCH)
             message(STATUS "Using CUDA architecture(s): ${CUDA_ARCH}")
             set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH})
         else()
             set(CMAKE_CUDA_ARCHITECTURES native)
         endif()
+        # Use nvcc discovered by find_package(CUDAToolkit) when it is not in PATH
+        if(NOT DEFINED CMAKE_CUDA_COMPILER AND DEFINED CUDAToolkit_BIN_DIR)
+            find_program(_NVCC_PATH nvcc PATHS "${CUDAToolkit_BIN_DIR}" NO_DEFAULT_PATH)
+            if(_NVCC_PATH)
+                set(CMAKE_CUDA_COMPILER "${_NVCC_PATH}" CACHE FILEPATH "CUDA compiler")
+                message(STATUS "Using CUDA compiler: ${_NVCC_PATH}")
+            endif()
+        endif()
+        enable_language(CUDA)
+        set(CMAKE_CUDA_STANDARD 20)
+        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --ptxas-options=-v -allow-unsupported-compiler")
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --expt-relaxed-constexpr -allow-unsupported-compiler")
+        # Workaround for CUDA 13.2 + gcc 13 + CCCL ambiguity in cub/block/block_load_to_shared.cuh
+        # where unqualified data()/size() calls match both std:: and cuda::std:: overloads for
+        # cuda::std::span<char>. We ship a patched copy of the header that fully qualifies those
+        # calls, and prepend its directory to the nvcc include search path so it is picked up
+        # before the system CCCL one.
+        #
+        # The override is scoped narrowly so future CUDA releases can pick up upstream fixes:
+        #   1. Only engages for the exact CUDA toolkit versions known to carry the regression
+        #      (CUDA 13.2.x; 13.0/13.1 don't ship the offending header, 13.3+ is assumed fixed).
+        #   2. Only engages if the *system* CCCL header is actually present on this toolkit
+        #      (guarding against custom/minimal CUDA installs).
+        #   3. Only engages if the vendored patched copy is present (so deleting this directory
+        #      disables the workaround with no further changes).
+        # See cmake_patches/cccl_override/README.md for the full rationale and references.
+        set(_cccl_override_dir "${CMAKE_SOURCE_DIR}/cmake_patches/cccl_override")
+        set(_cccl_override_header "${_cccl_override_dir}/cub/block/block_load_to_shared.cuh")
+        set(_cccl_system_header "${CUDAToolkit_TARGET_DIR}/include/cccl/cub/block/block_load_to_shared.cuh")
+        if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "13.2"
+           AND CUDAToolkit_VERSION VERSION_LESS "13.3"
+           AND EXISTS "${_cccl_system_header}"
+           AND EXISTS "${_cccl_override_header}")
+            message(STATUS "Applying CCCL workaround for CUDA ${CUDAToolkit_VERSION} block_load_to_shared.cuh ambiguity")
+            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -I${_cccl_override_dir}")
+        endif()
+        unset(_cccl_override_dir)
+        unset(_cccl_override_header)
+        unset(_cccl_system_header)
         add_compile_definitions(WITH_GPU)
     else()
         message(FATAL_ERROR "CUDA requested but not found!")
@@ -302,6 +357,13 @@ target_link_options(opendarts_compiler_flags
 # openDARTS Linear solvers -----------------------------------------------------
 if(NOT DEFINED BOS_SOLVERS_DIR)
   add_subdirectory(solvers)
+endif()
+# ------------------------------------------------------------------------------
+
+
+# Interpolation ----------------------------------------------------------------
+if(NOT ONLY_SOLVERS)
+  add_subdirectory(interpolation)
 endif()
 # ------------------------------------------------------------------------------
 
