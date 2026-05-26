@@ -125,7 +125,7 @@ class RampUpRate:
                     assert isinstance(inj_fluid_props["temperature"], float), (
                         "Specified temperature must be a float!"
                     )
-                    assert inj_fluid_props["temperature"] > 273.15, (
+                    assert inj_fluid_props["temperature"] > 200.0, (
                         "Specified temperature must be in Kelvin!"
                     )
 
