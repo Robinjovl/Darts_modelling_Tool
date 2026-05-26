@@ -1609,20 +1609,20 @@ class Output:
         plt.close('all')
         return fig
 
-    def well_output_to_vtp(
+    def well_output_to_vtu(
         self,
         ith_step: int,
         output_properties: list = None,
         output_directory: str = None,
     ):
         """
-        Evaluate and store well primary and secondary variables of the ith step in vtp files
+        Evaluate and store well primary and secondary variables of the ith step in vtu files
 
         :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
         :type output_properties: list
-        :param ith_step: ith reporting step for which you want to create vtp files for
+        :param ith_step: ith reporting step for which you want to create vtu files for
         :type ith_step: int
-        :param output_directory: Directory of where to save vtp files
+        :param output_directory: Directory of where to save vtu files
         :type: str
         """
         if not self.has_dfm_well:
@@ -1641,7 +1641,7 @@ class Output:
             output_properties=output_properties, ith_step=ith_step
         )
 
-        # Store well primary and seconday props in vtp files
+        # Store well primary and seconday props in vtu files
         for w_name in self.wells.keys():
             # If the well has n segments, so n+1 nodes
             z_nodes = np.concatenate(
@@ -1661,7 +1661,7 @@ class Output:
             )  # y is zero since the well is located at the center of the cylindrical grid
             nodes_coords = np.column_stack((x_nodes, y_nodes, z_nodes))
 
-            self.write_well_output_properties_to_vtp(
+            self.write_well_output_properties_to_vtu(
                 well_name=w_name,
                 nodes_xyz=nodes_coords,
                 output_properties=output_data,
@@ -1770,7 +1770,7 @@ class Output:
 
         return time, property_array
 
-    def write_well_output_properties_to_vtp(
+    def write_well_output_properties_to_vtu(
         self,
         well_name: str,
         nodes_xyz: np.ndarray,
@@ -1781,19 +1781,19 @@ class Output:
         active: bool = None,
     ):
         """
-        Write well trajectory as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
+        Write well trajectory as .vtu with segment-based primary and secondary vars as CELL data.
 
         :param well_name: Name of the well
         :type well_name: str
         :param nodes_xyz: XYZ coordinates of the nodes of the well (n_seg+1, 3)
         :type nodes_xyz: np.ndarray
-        :param output_properties: Dict of properties to include in the vtp file
+        :param output_properties: Dict of properties to include in the vtu file
         :type output_properties: dict
-        :param ith_step: i'th reporting step for which you want to create a .vtp file for
+        :param ith_step: i'th reporting step for which you want to create a .vtu file for
         :type ith_step: int
         :param time: Current simulation time
         :type time: float
-        :param output_directory: Directory of where to save the vtp file
+        :param output_directory: Directory of where to save the vtu file
         :type: str
         :param active: Optional name of variable to set as active scalars
         :type active: bool
@@ -1803,7 +1803,7 @@ class Output:
         nseg = npts - 1
 
         # Build segment connectivity
-        lines = np.column_stack([np.arange(nseg), np.arange(1, nseg + 1)])
+        lines = np.column_stack((np.arange(nseg), np.arange(1, nseg + 1)))
 
         # Cell data (segment-based)
         cell_data = {}
