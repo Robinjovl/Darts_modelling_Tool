@@ -1637,7 +1637,7 @@ class Output:
         os.makedirs(output_directory, exist_ok=True)
 
         # Evaluate well secondary variables of the current time from engine.X
-        time, output_data = self.well_output_properties(
+        output_data = self.well_output_properties(
             output_properties=output_properties, ith_step=ith_step
         )
 
@@ -1666,7 +1666,6 @@ class Output:
                 nodes_xyz=nodes_coords,
                 output_properties=output_data,
                 ith_step=ith_step,
-                time=time,
                 output_directory=output_directory,
             )
 
@@ -1686,9 +1685,9 @@ class Output:
         :param ith_step: ith reporting step for which you want to evaluate seconday variables
         :type ith_step: int
 
-        :return timesteps: A NumPy array of the time labels
-        :type timesteps: np.ndarray
-        :return property_array: A dictionary where keys are primary/secondary variables and values are NumPy arrays of the requested properties for each grid block. The shape of each array is (number_of_timesteps, number_of_gridblocks).
+        :return property_array: A dictionary where keys are primary/secondary variables and values are NumPy arrays of
+                                the requested properties for each grid block. The shape of each array
+                                is (number_of_timesteps, number_of_gridblocks).
         :type property_array: dict
         """
         if self.verbose:
@@ -1702,7 +1701,6 @@ class Output:
             )
 
         # Evaluate properties from the physics.engine.X
-        time = self.physics.engine.t
         # Get well solution at current time
         n_vars = self.physics.n_vars
         X = np.array(
@@ -1768,7 +1766,7 @@ class Output:
                     temp = values_numpy[prop_idx :: self.n_ops]
                     property_array[prop_name][0][block_idx] = temp[block_idx]
 
-        return time, property_array
+        return property_array
 
     def write_well_output_properties_to_vtu(
         self,
@@ -1776,9 +1774,7 @@ class Output:
         nodes_xyz: np.ndarray,
         output_properties: dict,
         ith_step: int,
-        time: float,
         output_directory: str,
-        active: bool = None,
     ):
         """
         Write well trajectory as .vtu with segment-based primary and secondary vars as CELL data.
@@ -1791,12 +1787,8 @@ class Output:
         :type output_properties: dict
         :param ith_step: i'th reporting step for which you want to create a .vtu file for
         :type ith_step: int
-        :param time: Current simulation time
-        :type time: float
         :param output_directory: Directory of where to save the vtu file
         :type: str
-        :param active: Optional name of variable to set as active scalars
-        :type active: bool
         """
         coords = np.asarray(nodes_xyz, dtype=float)
         npts = coords.shape[0]
