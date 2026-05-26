@@ -46,6 +46,10 @@ docs = ["myst-parser", "sphinx_rtd_theme", "sphinx", "sphinx-tabs", "sphinx_inli
 dev = ["ruff", "pre-commit"]
 # linear solver packages using python interface:
 solvers = ["pypardiso"]
+# 3D vizualization
+viz = ['vtk', 'pyvista']
+# install all user related modules
+all = ["open-darts[solvers,viz]"]
 
 # add compiled binaries (shared libraries) and some other files
 [tool.setuptools]
