@@ -126,6 +126,26 @@ namespace opendarts
       // calculate linear combination r = alpha * Au + beta * v
       // TODO: Implemented for backwards compatibility, need to check if this is kept or not and how
       int calc_lin_comb(const double alpha, const double beta, double *u, double *v, double *r);
+
+#ifdef WITH_GPU
+      // GPU device layer, exposed polymorphically so the open-source GPU
+      // solvers can drive a matrix held as a csr_matrix_base*. The concrete
+      // implementations live in csr_matrix<N_BLOCK_SIZE>; see csr_matrix.hpp.
+      virtual int matrix_vector_product_d(const double *v, double *r) = 0;   // r += A * v
+      virtual int matrix_vector_product_d0(const double *v, double *r) = 0;  // r  = A * v
+      virtual int matrix_vector_product_d_ell(const double *v, double *r) = 0;
+      virtual int calc_lin_comb_d(const double alpha, const double beta, double *u, double *v, double *r) = 0;
+      virtual int copy_struct_to_device() = 0;
+      virtual int copy_values_to_device() = 0;
+
+      // Direct device-pointer access to the block-CSR storage. Lets a
+      // csr_matrix_base* be driven by the GPU engines/solvers (assembly
+      // kernels, cuSPARSE SpMV) without knowing the concrete matrix type.
+      virtual opendarts::config::mat_float *get_values_d() = 0;  // nonzero block values on device
+      virtual opendarts::config::index_t *get_rows_ptr_d() = 0;  // block row pointers on device
+      virtual opendarts::config::index_t *get_cols_ind_d() = 0;  // block column indices on device
+      virtual opendarts::config::index_t *get_diag_ind_d() = 0;  // diagonal block indices on device
+#endif // WITH_GPU
     };
   } // namespace linear_solvers
 } // namespace opendarts

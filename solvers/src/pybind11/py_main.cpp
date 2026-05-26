@@ -9,6 +9,11 @@ namespace py = pybind11;
 #include "linsolv_iface.hpp"
 #include "linsolv_iface_bos.hpp"
 #include "linsolv_mgr.hpp"
+#include "linear_solver.hpp"
+#include "solver_config.hpp"
+#include "solver_configs.hpp"
+#include "solver_factories.hpp"
+#include "solver_registry.hpp"
 
 using namespace opendarts::linear_solvers;
 using namespace opendarts::config;
@@ -282,6 +287,97 @@ void bind_linsolv_iface_bos_specialization(py::module &m, const char* name)
         "Base BOS solver interface for block size N");
 }
 
+// Bind the unified linear-solver API: the configuration structs, the solver
+// handle, and the registry. This is the modern, enum-free API -- a solver is
+// selected by registered name (e.g. "mgr", "superlu") plus a config object.
+void bind_unified_solver_api(py::module &m)
+{
+    // Outcome of the last solve.
+    py::class_<solver_stats>(m, "SolverStats", "Outcome of the last linear solve.")
+        .def(py::init<>())
+        .def_readwrite("iterations", &solver_stats::iterations)
+        .def_readwrite("residual", &solver_stats::residual)
+        .def_readwrite("converged", &solver_stats::converged)
+        .def_readwrite("setup_time", &solver_stats::setup_time)
+        .def_readwrite("solve_time", &solver_stats::solve_time);
+
+    // Base configuration shared by every solver.
+    py::class_<solver_config>(m, "SolverConfig",
+        "Base linear-solver configuration (tolerance, iterations, verbosity).")
+        .def(py::init<>())
+        .def_readwrite("max_iterations", &solver_config::max_iterations)
+        .def_readwrite("tolerance", &solver_config::tolerance)
+        .def_readwrite("print_level", &solver_config::print_level);
+
+    // One HYPRE MGR reduction level.
+    py::class_<mgr_level_config>(m, "MGRLevelConfig",
+        "HYPRE MGR reduction-level options.")
+        .def(py::init<>())
+        .def_readwrite("keep_labels", &mgr_level_config::keep_labels)
+        .def_readwrite("frelax_type", &mgr_level_config::frelax_type)
+        .def_readwrite("frelax_iters", &mgr_level_config::frelax_iters)
+        .def_readwrite("interp_type", &mgr_level_config::interp_type)
+        .def_readwrite("restrict_type", &mgr_level_config::restrict_type)
+        .def_readwrite("coarse_method", &mgr_level_config::coarse_method)
+        .def_readwrite("smoother_type", &mgr_level_config::smoother_type)
+        .def_readwrite("smoother_iters", &mgr_level_config::smoother_iters);
+
+    // MGR solver configuration (derives SolverConfig).
+    py::class_<mgr_solver_config, solver_config>(m, "MGRSolverConfig",
+        "Configuration for the HYPRE MGR solver.")
+        .def(py::init<>())
+        .def_readwrite("kdim", &mgr_solver_config::kdim)
+        .def_readwrite("use_mgr", &mgr_solver_config::use_mgr)
+        .def_readwrite("log_level", &mgr_solver_config::log_level)
+        .def_readwrite("use_physics_scaling", &mgr_solver_config::use_physics_scaling)
+        .def_readwrite("use_flex_gmres", &mgr_solver_config::use_flex_gmres)
+        .def_readwrite("n_reservoir_blocks", &mgr_solver_config::n_reservoir_blocks)
+        .def_readwrite("enable_well_level", &mgr_solver_config::enable_well_level)
+        .def_readwrite("enable_composition_level", &mgr_solver_config::enable_composition_level)
+        .def_readwrite("reservoir_variable_roles", &mgr_solver_config::reservoir_variable_roles)
+        .def_readwrite("well_variable_roles", &mgr_solver_config::well_variable_roles)
+        .def_readwrite("well_strategy", &mgr_solver_config::well_strategy)
+        .def_readwrite("well_level", &mgr_solver_config::well_level)
+        .def_readwrite("composition_level", &mgr_solver_config::composition_level)
+        .def_readwrite("pressure_level", &mgr_solver_config::pressure_level)
+        .def_readwrite("custom_levels", &mgr_solver_config::custom_levels);
+
+    // Open-source GMRES outer Krylov solver configuration.
+    py::class_<gmres_solver_config, solver_config>(m, "GMRESSolverConfig",
+        "Configuration for the open-source GMRES outer Krylov solver.")
+        .def(py::init<>())
+        .def_readwrite("restart", &gmres_solver_config::restart);
+
+    // Open-source CPR two-stage preconditioner configuration.
+    py::class_<cpr_solver_config, solver_config>(m, "CPRSolverConfig",
+        "Configuration for the open-source CPR two-stage preconditioner.")
+        .def(py::init<>())
+        .def_readwrite("amg_max_iters", &cpr_solver_config::amg_max_iters)
+        .def_readwrite("amg_tolerance", &cpr_solver_config::amg_tolerance)
+        .def_readwrite("ilu_fill_level", &cpr_solver_config::ilu_fill_level);
+
+    // Unified solver handle returned by create_linear_solver().
+    py::class_<linear_solver, std::shared_ptr<linear_solver>>(m, "LinearSolver",
+        "Unified linear-solver handle produced by create_linear_solver().")
+        .def("stats", &linear_solver::stats, "Outcome of the last solve.");
+
+    // Registry API -- this replaces sim_params.linear_solver_t.
+    m.def("register_builtin_solvers", &register_builtin_solvers,
+          "Register all built-in open-source solvers with the registry (idempotent).");
+    m.def("registered_solvers", &registered_solvers,
+          "Names of all linear solvers registered in this build.");
+    m.def("is_solver_registered", &is_solver_registered,
+          "Whether a solver name is available in this build.", py::arg("name"));
+    m.def("create_linear_solver",
+          [](const std::string &name, const solver_config &config, int block_size)
+              -> std::shared_ptr<linsolv_iface> {
+              return create_linear_solver(name, config, block_size);
+          },
+          "Create a linear solver by registered name, configuration and block size. "
+          "Returns a LinearSolverInterface that engine_base.set_linear_solver() accepts.",
+          py::arg("name"), py::arg("config"), py::arg("block_size"));
+}
+
 PYBIND11_MODULE(solvers, m)
 {
     m.doc() = "openDARTS linear solvers module";
@@ -291,7 +387,12 @@ PYBIND11_MODULE(solvers, m)
         m, "LinearSolverInterface",
         "Abstract interface for linear solvers")
         .def("get_n_iters", &linsolv_iface::get_n_iters)
-        .def("get_residual", &linsolv_iface::get_residual);
+        .def("get_residual", &linsolv_iface::get_residual)
+        // set_prec stores a raw pointer to the preconditioner; tell pybind11
+        // to keep the prec alive as long as the outer solver lives.
+        .def("set_prec", &linsolv_iface::set_prec,
+             "Attach a preconditioner (kept alive by the outer solver).",
+             py::arg("prec"), py::keep_alive<1, 2>());
 
     // Bind linsolv_iface_bos specializations for block sizes 1-13
     bind_linsolv_iface_bos_specialization<1>(m, "LinearSolverBOS_1");
@@ -357,6 +458,12 @@ PYBIND11_MODULE(solvers, m)
               else throw std::runtime_error("Unsupported block size: " + std::to_string(block_size));
           },
           "Create MGR solver for given block size (1-13)", py::arg("block_size"));
+
+    // ---- Unified solver API (registry-based, replaces linear_solver_t) ----
+    bind_unified_solver_api(m);
+
+    // Populate the registry on module import so create_linear_solver() works.
+    register_builtin_solvers();
 }
 
 #endif // PYBIND11_ENABLED

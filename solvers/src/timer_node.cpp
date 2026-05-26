@@ -77,13 +77,13 @@ namespace opendarts
 
 #ifdef WITH_GPU
 
-    void timer_node::start_gpu(cudaStream_t stream = 0)
+    void timer_node::start_gpu(cudaStream_t stream)
     {
       this->is_gpu_timer = true;
       cudaEventRecord(this->event_start, stream);
     }
 
-    void timer_node::stop_gpu(cudaStream_t stream = 0)
+    void timer_node::stop_gpu(cudaStream_t stream)
     {
       float local_timer;
 

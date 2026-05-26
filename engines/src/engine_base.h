@@ -30,6 +30,7 @@ inline py::array_t<T> get_raw_array(T* arr, size_t size) {
 #include "linsolv_bos_cpr.hpp"
 #include "linsolv_bos_fs_cpr.hpp"
 #include "csr_matrix.hpp"
+#include "block_csr_matrix.hpp"
 #include "linsolv_bos_amg.hpp"
 #include "linsolv_superlu.hpp"
 #include "linsolv_mgr.hpp"
@@ -47,13 +48,30 @@ using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef WITH_GPU
+#ifdef OPENDARTS_LINEAR_SOLVERS
+// Open-source GPU solver wrappers. aips / adgprs_nf have no open-source
+// counterpart and are intentionally not included here.
+#include "linsolv_bos_cpr_gpu.hpp"
+#include "linsolv_cusparse_ilu.hpp"
+#include "linsolv_cusolv.hpp"
+#include "linsolv_bicgstab.hpp"
+#ifdef WITH_AMGX
+#include "linsolv_amgx.hpp"
+#endif
+#else
 #include "linsolv_bos_cpr_gpu.h"
 #include "linsolv_aips.h"
 #include "linsolv_amgx.h"
 #include "linsolv_adgprs_nf.h"
 #include "linsolv_cusparse_ilu.h"
 #include "linsolv_cusolver.h"
+#endif // OPENDARTS_LINEAR_SOLVERS
+// AMGX solver availability: bos_solvers always ships AMGX; with the
+// open-source solvers it is opt-in via the CMake option WITH_AMGX.
+#if !defined(OPENDARTS_LINEAR_SOLVERS) || defined(WITH_AMGX)
+#define OPENDARTS_GPU_HAS_AMGX
 #endif
+#endif // WITH_GPU
 
 #ifdef WITH_SAMG
 #include "linsolv_samg.h"
@@ -680,29 +698,29 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// Instantiate Jacobian
 	if (!Jacobian)
 	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		Jacobian = new block_csr_matrix; // unified block-CSR matrix (section 12)
+#else
 		Jacobian = new csr_matrix<N_VARS>;
 		Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+#endif
 	}
 
-	// figure out if this is GPU engine from its name.
-	int is_gpu_engine = engine_name.find(" GPU ") != std::string::npos;
-
-	// allocate Jacobian
-	// if (!is_gpu_engine)
-	{
-		// for CPU engines we need full init
-		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
-	}
-	// else
-	// {
-	//   // for GPU engines we need only structure - rows_ptr and cols_ind
-	//   // they are filled on CPU and later copied to GPU
-	//   (static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_struct(mesh_->n_blocks, mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
-	// }
+	// allocate Jacobian: the structure arrays are filled in place afterwards
+	// by init_jacobian_structure().
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	(static_cast<block_csr_matrix *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+	Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE; // set after init() (init resets type)
+#else
+	(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+#endif
 #ifdef WITH_GPU
 	if (params->linear_type >= params->GPU_GMRES_CPR_AMG)
 	{
+#ifndef OPENDARTS_LINEAR_SOLVERS
 		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
+#endif
+		// block_csr_matrix allocates device storage lazily (dual_array) -- no init_device.
 	}
 #endif
 
@@ -711,6 +729,17 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// Check if external solver was provided (from Python) - if so, use it instead of creating new one
 	if (!linear_solver && !linear_solver_external)
 	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		// Open-source build: the enum-driven factory below builds the
+		// proprietary bos solvers, which are not available here. The linear
+		// solver must be injected from Python -- built from a LinearSolverSpec
+		// via the open-source registry; see darts_model._apply_linear_solver_spec().
+		std::cerr << "ERROR: no linear solver was provided for " << engine_name
+		          << ". The open-source build requires a linear solver injected via "
+		             "set_linear_solver() (a LinearSolverSpec built through the "
+		             "darts.solvers registry)." << std::endl << std::flush;
+		exit(1);
+#else
 		switch (params->linear_type)
 		{
 		case sim_params::CPU_GMRES_CPR_AMG:
@@ -828,6 +857,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			break;
 		}
 #endif //WITH_AIPS
+#ifdef OPENDARTS_GPU_HAS_AMGX
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
 			if constexpr (N_VARS > 1)
@@ -853,6 +883,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			break;
 		}
+#endif // OPENDARTS_GPU_HAS_AMGX
 #ifdef WITH_ADGPRS_NF
 		case sim_params::GPU_GMRES_CPR_NF:
 		{
@@ -917,6 +948,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		}
 
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 	}
 
 	std::cout << "Linear solver type is " << linear_solver_type_str << std::endl;

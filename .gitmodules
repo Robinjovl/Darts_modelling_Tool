@@ -15,3 +15,6 @@
 	path = thirdparty/iphreeqc
 	url = https://github.com/usgs-coupled/iphreeqc.git
 	branch = master
+[submodule "thirdparty/AMGX"]
+	path = thirdparty/AMGX
+	url = https://github.com/NVIDIA/AMGX.git

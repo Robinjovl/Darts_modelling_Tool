@@ -19,7 +19,7 @@ Help_Info()
   echo "   -t               : Enable testing: ctest of solvers. Default: don't test"
   echo "   -w               : Enable generation of python wheel. Default: false"
   echo "   -m               : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true"
-  echo "   -G               : Enable GPU build. Warning: Requires GPU bos solvers. Default: false"
+  echo "   -G               : Enable GPU build. Uses the in-tree open-source solvers unless -b is given. Default: false"
   echo "   -r               : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a               : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
   echo "   -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
@@ -161,8 +161,10 @@ fi
 
 if [ "$iter_solvers" == false ]; then
   if [ "$GPU" == true ]; then
-    echo GPU build requires GPU bos solvers. Specify the path with -b.
-    exit 1
+    # GPU builds default to the in-tree open-source solvers (darts.solvers,
+    # including the GPU solver wrappers). Pass -b <path> to build against the
+    # proprietary bos_solvers instead.
+    echo -e '\n openDARTS GPU build using the in-tree open-source solvers (no bos_solvers).'
   elif [ "$MT" == true ]; then
    echo -e '\n Warning: Open-DARTS linear solvers do not support multi-threading. Switched to the sequentional build.'
    MT=false
@@ -180,7 +182,14 @@ fi
 # ------------------------------------------------------------------------------
 
 rm -rf dist
-rm -rf darts/*.so
+# Remove previously built Python extension modules and shared libraries.
+# Build artifacts live both directly under darts/ (engines, discretizer, ...)
+# and in subpackages such as darts/solvers/ (the compiled solvers module and
+# libopendarts_solvers). A flat darts/*.so glob misses the latter, leaving a
+# stale solvers library that shadows the fresh build, so clean recursively.
+# Note: the unversioned *.so glob intentionally excludes the bundled
+# libstdc++.so.6 (a copied runtime dependency, re-installed by CMake).
+find darts -type f \( -name '*.so' -o -name '*.pyd' -o -name '*.dylib' \) -delete 2>/dev/null || true
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
     echo '\n   Cleaning build folder'

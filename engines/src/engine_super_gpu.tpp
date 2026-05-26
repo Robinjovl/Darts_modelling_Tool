@@ -740,14 +740,14 @@ template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
   timer->node["jacobian assembly"].node["kernel"].start_gpu();
-  //cudaMemset(jacobian->values_d, 0, jacobian->rows_ptr[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
+  //cudaMemset(jac_values_d(), 0, jac_rows_ptr()[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
 
   assemble_jacobian_array_kernel<NC, NP, NE, N_VARS, P_VAR, T_VAR, N_OPS, ACC_OP, FLUX_OP, DENS_OP, UPSAT_OP, GRAD_OP, KIN_OP,
                                  GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP, SAT_OP, ENTH_OP, TEMP_OP, PRES_OP, THERMAL>
       KERNEL_1D(mesh->n_blocks, N_VARS * N_VARS, 64)(mesh->n_blocks, mesh->n_res_blocks, params->enable_permporo,
                                                      params->phase_existence_tolerance,
                                                      dt, X_d, RHS_d,
-                                                     jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
+                                                     jac_rows_ptr_d(), jac_cols_ind_d(), jac_values_d(), jac_diag_ind_d(),
                                                      op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
                                                      mesh_tran_d, mesh_tranD_d, mesh_hcap_d, mesh_rcond_d, mesh_poro_d,
                                                      PV_d, RV_d, mesh_grav_coef_d, mesh_kin_factor_d, mesh_cell_spe_d);
@@ -762,8 +762,8 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     reconstruct_velocities<NC, NP, NE, N_VARS, P_VAR, N_OPS, FLUX_OP, GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP>
         KERNEL_1D(mesh->n_res_blocks, 1, 64)(mesh->n_res_blocks, params->enable_permporo,
-                                        X_d, op_vals_arr_d, mesh_op_num_d, jacobian->rows_ptr_d,
-                                        jacobian->cols_ind_d, mesh_tran_d, mesh_grav_coef_d,
+                                        X_d, op_vals_arr_d, mesh_op_num_d, jac_rows_ptr_d(),
+                                        jac_cols_ind_d(), mesh_tran_d, mesh_grav_coef_d,
                                         mesh_velocity_appr_d, mesh_velocity_offset_d, darcy_velocities_d, molar_weights_d,
                                         dt);
     copy_data_to_host(darcy_velocities, darcy_velocities_d);
@@ -772,7 +772,7 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     {
       assemble_dispersion<NC, NP, NE, N_VARS, N_OPS, FLUX_OP, GRAD_OP, ENTH_OP, THERMAL>
         KERNEL_1D(mesh->n_res_blocks, NC * N_VARS, 64)(mesh->n_res_blocks, X_d, RHS_d, op_vals_arr_d,
-                                                    op_ders_arr_d, jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
+                                                    op_ders_arr_d, jac_rows_ptr_d(), jac_cols_ind_d(), jac_values_d(), jac_diag_ind_d(),
                                                     mesh_tranD_d, darcy_velocities_d, dispersivity_d, mesh_op_num_d, dt);
     }
   }
@@ -793,12 +793,12 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
   for (ms_well *w : wells)
   {
     copy_data_within_device(RHS_d + N_VARS * w->well_head_idx, RHS_wells_d + N_VARS * w->well_head_idx, N_VARS);
-    copy_data_within_device(jacobian->values_d + jacobian->rows_ptr[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
+    copy_data_within_device(jac_values_d() + jac_rows_ptr()[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
     i_w++;
   }
   timer->node["jacobian assembly"].node["wells"].stop_gpu();
 
-  // copy_data_to_host(jacobian->values, jacobian->values_d, N_VARS * N_VARS * jacobian->rows_ptr[mesh->n_blocks]);
+  // copy_data_to_host(jac_values(), jac_values_d(), N_VARS * N_VARS * jac_rows_ptr()[mesh->n_blocks]);
   // jacobian->write_matrix_to_file("jac_nc_dar_gpu.csr");
   //exit(0);
 

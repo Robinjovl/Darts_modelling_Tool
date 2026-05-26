@@ -10,7 +10,11 @@ set(OD_SOLVERS_PYBIND11_SRC_FILES
 set(OD_SOLVERS_PYBIND11_PUBLIC_HEADER_FILES
 )
 
-# Define the solvers library
+# Define the solvers Python extension.
+# The compiled module is named `solvers` and is installed into the darts/solvers
+# package directory (as darts/solvers/solvers*.so). The package __init__.py
+# re-exports it, so `import darts.solvers` exposes the compiled API while the
+# package also hosts the Python LinearSolverSpec classes and enums.
 pybind11_add_module(solvers
   ${OD_SOLVERS_PYBIND11_SRC_FILES}
   ${OD_SOLVERS_PYBIND11_PUBLIC_HEADER_FILES}
@@ -51,10 +55,10 @@ target_include_directories(solvers
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_SOLVERS_PYBIND11_SRC_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_SOLVERS_PYBIND11_PUBLIC_HEADER_FILES})
 
-# Install the library file of solvers
+# Install the compiled module into the darts/solvers package directory.
 install(TARGETS solvers
   CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
-  DESTINATION ./
+  DESTINATION ./solvers
 )
 
 # ------------------------------------------------------------------------------

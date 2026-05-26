@@ -9,8 +9,13 @@
 #endif
 
 #include "engine_base_gpu.h"
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "csr_matrix.hpp"
+#include "linsolv_iface.hpp"
+#else
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
+#endif
 
 // use efficien reduction routine for future norm calculation
 // template <unsigned int blockSize>
@@ -147,7 +152,12 @@ int engine_base_gpu::solve_linear_equation()
   if (print_linear_system) //changed this to write jacobian to file!
   {
     const std::string matrix_filename = "jac_nc_dar_" + std::to_string(output_counter) + ".csr";
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    copy_data_to_host(Jacobian->get_values(), Jacobian->get_values_d(),
+      Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->get_rows_ptr()[mesh->n_blocks]);
+#else
     copy_data_to_host(Jacobian->values, Jacobian->values_d, Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->rows_ptr[mesh->n_blocks]);
+#endif
 #ifdef OPENDARTS_LINEAR_SOLVERS
     Jacobian->export_matrix_to_file(matrix_filename, opendarts::linear_solvers::sparse_matrix_export_format::csr);
 #else
@@ -269,7 +279,11 @@ int engine_base_gpu::test_assembly(int n_times, int kernel_number, int dump_jaco
     w->check_constraints(deltat, X);
   }
   // reset Jacobian and RHS values for correct dump result
+#ifdef OPENDARTS_LINEAR_SOLVERS
+  cudaMemset(Jacobian->get_values_d(), 0, sizeof(double) * Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->get_rows_ptr()[mesh->n_blocks]);
+#else
   cudaMemset(Jacobian->values_d, 0, sizeof(double) * Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->rows_ptr[mesh->n_blocks]);
+#endif
   cudaMemset(RHS_d, 0, sizeof(double) * Jacobian->n_row_size * mesh->n_blocks);
   //copy_data_to_host(Jacobian->values, Jacobian->values_d, Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->rows_ptr[mesh->n_blocks]);
   timer->node["jacobian assembly"].start_gpu();
@@ -296,7 +310,12 @@ int engine_base_gpu::test_assembly(int n_times, int kernel_number, int dump_jaco
 
   if (dump_jacobian_rhs)
   {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    copy_data_to_host(Jacobian->get_values(), Jacobian->get_values_d(),
+      Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->get_rows_ptr()[mesh->n_blocks]);
+#else
     copy_data_to_host(Jacobian->values, Jacobian->values_d, Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->rows_ptr[mesh->n_blocks]);
+#endif
     copy_data_to_host(RHS, RHS_d, Jacobian->n_row_size * mesh->n_blocks);
     char filename[1024];
     int status;
@@ -347,7 +366,9 @@ int engine_base_gpu::test_spmv(int n_times, int kernel_number, int dump_result)
   }
 
   // CSR
-  Jacobian->convert_to_ELL();
+#ifndef OPENDARTS_LINEAR_SOLVERS
+  Jacobian->convert_to_ELL(); // ELL path not exposed on the open-source csr_matrix_base interface
+#endif
   // Now ELL
   cudaMemset(RHS_d, 0, sizeof(double) * Jacobian->n_row_size * mesh->n_blocks);
   timer->node["test_spmv"].timer = 0;

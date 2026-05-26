@@ -72,48 +72,50 @@ namespace opendarts
       opendarts::config::index_t max_iters,
       opendarts::config::mat_float tolerance)
     {
-      // Setup Hypre solver
-      const int print_level = 2;  // print level
-      opendarts::config::index_t num_functions = 1;  // number of functions
-      opendarts::config::mat_float threshold = 0.9;  // solver threshold
+      // BoomerAMG configured to be used as a preconditioner -- mirrors the
+      // proven LinearSolver::setupAMGPreconditioner sequence (PMIS coarsening,
+      // direct interpolation, hybrid GS relaxation). Without these explicit
+      // choices HYPRE's defaults make BoomerAMGSetup hang on the pressure
+      // subsystem from the engine.
+      const int print_level = 0;
 
       check_result(HYPRE_BoomerAMGCreate(&(this->solver)));
-    	check_result(HYPRE_BoomerAMGSetPrintLevel(this->solver, print_level));
-    	check_result(HYPRE_BoomerAMGSetLogging(this->solver, print_level));
+      check_result(HYPRE_BoomerAMGSetPrintLevel(this->solver, print_level));
+      check_result(HYPRE_BoomerAMGSetLogging(this->solver, print_level));
 
-    	check_result(HYPRE_BoomerAMGSetNumFunctions(this->solver, num_functions));
-    	check_result(HYPRE_BoomerAMGSetStrongThreshold(this->solver, threshold));
-
+      // When BoomerAMG is the outer iterative solver, the caller-supplied
+      // (max_iters, tolerance) drive convergence; when it is a CPR stage
+      // (set_amg_max_iters / amg_tolerance), the caller passes (1, 0.0).
       check_result(HYPRE_BoomerAMGSetMaxIter(this->solver, max_iters));
       check_result(HYPRE_BoomerAMGSetTol(this->solver, tolerance));
 
-      (void) A_in; // not used, kept to keep same interface
+      // Coarsening / interpolation / relaxation -- the porous-media
+      // recommended set, matching the in-tree MGR's AMG configuration.
+      check_result(HYPRE_BoomerAMGSetCoarsenType(this->solver, 6));   // PMIS
+      check_result(HYPRE_BoomerAMGSetInterpType(this->solver, 6));    // Direct
+      check_result(HYPRE_BoomerAMGSetRelaxType(this->solver, 6));     // Hybrid GS
 
+      (void) A_in;  // matrix is consumed in setup()
       return 0;
     }
 
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_hypre_amg<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_in)
     {
-      // linsolv_iface::timer_setup->node["AMG"].start();
-      std::cout << "\nsetup 0!" << std::endl;
       // Store input system matrix
       this->A = A_in;
-      std::cout << "\nsetup 1!" << std::endl;
+
       // Setup right hand side and solution vectors
-      const int print_level = 2;  // print level in Hypre
-      opendarts::config::index_t n_rows = this->A->n_cols;;  // number of rows in vector must
+      const int print_level = 0;  // 0 = quiet (was 2 = HYPRE diagnostics)
+      opendarts::config::index_t n_rows = this->A->n_cols;  // number of rows in vector must
                                                              // be the same as number of columns
                                                              // of system matrix
-      std::cout << "\nsetup 2!" << std::endl;
       opendarts::config::index_t ilower, iupper;
       ilower = 0;
       iupper = n_rows - 1;
 
       check_result(HYPRE_IJVectorCreate(hypre_MPI_COMM_WORLD, ilower, iupper, &(this->b_ij)));
-      std::cout << "\nsetup 3!" << std::endl;
     	check_result(HYPRE_IJVectorSetPrintLevel(this->b_ij, print_level));
-      std::cout << "\nsetup 4!" << std::endl;
     	check_result(HYPRE_IJVectorSetObjectType(this->b_ij, HYPRE_PARCSR));
 
       check_result(HYPRE_IJVectorCreate(hypre_MPI_COMM_WORLD, ilower, iupper, &(this->x_ij)));
@@ -187,7 +189,7 @@ namespace opendarts
       //       For other values of the block size a full copy of the data must be
       //       done and some temporary storage needs to be arranged.
 
-      const int print_level = 2;  // print level
+      const int print_level = 0;  // 0 = quiet (was 2 = HYPRE diagnostics)
 
       // Convert csr_matrix A to Hypre ij_matrix
       opendarts::config::index_t ilower, iupper;

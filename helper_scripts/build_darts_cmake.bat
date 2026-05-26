@@ -9,7 +9,7 @@ set bos_solvers_artifact=false
 set bos_solvers_dir=""
 set iter_solvers=false
 set MT=true
-set GPU=%false
+set GPU=false
 set skip_req=false
 set config=Release
 set NT=8
@@ -46,13 +46,13 @@ if %bos_solvers_artifact%==true (
     set testing=false
   )
 )
-REM ODLS version does not support OpenMP yet
+REM ODLS version does not support OpenMP yet.
+REM GPU builds default to the in-tree open-source solvers darts.solvers,
+REM including the GPU wrappers; pass -b ^<path^> to build against bos_solvers.
 if %iter_solvers%==false (
   if %GPU%==true (
-    echo Error: GPU build requires GPU bos solvers. Specify the path with -b.
-    exit 1
-  )
-  if %MT%==true (
+    echo openDARTS GPU build using the in-tree open-source solvers ^(no bos_solvers^).
+  ) else if %MT%==true (
     echo Warning: ODLS version does not support OpenMP yet. Switched to the sequentional build.
     set MT=false
   )
@@ -72,7 +72,15 @@ echo    rebuild_hypre = %rebuild_hypre%
 echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
-del darts\*.pyd 2>NUL
+REM Remove previously built Python extension modules and shared libraries.
+REM Build artifacts live both directly under darts\ and in subpackages such as
+REM darts\solvers\ (the compiled solvers module solvers.pyd and the shared
+REM library opendarts_solvers.dll); a flat darts\*.pyd glob misses the latter,
+REM leaving a stale library that shadows the fresh build, so clean recursively.
+REM On Windows the Python modules are .pyd and the shared libraries are .dll
+REM (opendarts_solvers.dll, IPhreeqc.dll, ...), all re-installed by CMake.
+del /s /q darts\*.pyd 2>NUL
+del /s /q darts\*.dll 2>NUL
 rmdir /s /q dist 2>NUL
 
 if %clean_mode%==true (
@@ -265,7 +273,7 @@ exit /b 0
 
 REM Help info --------------------------------------------------------
 :help_info
-echo helper_scripts\build_darts_cmake.bat [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-p] [--rebuild-hypre]
+echo helper_scripts\build_darts_cmake.bat [-h] [-c] [-t] [-w] [-m] [-G] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-p] [--rebuild-hypre]
 echo    Script to install opendarts on Windows with MGR support.
 echo USAGE:
 echo    -h               : displays this help menu.
@@ -273,6 +281,7 @@ echo    -c               : cleans up build to prepare a new fresh build. Default
 echo    -t               : Enable testing: ctest of solvers. Default: don't test
 echo    -w               : Enable generation of python wheel. Default: false
 echo    -m               : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true
+echo    -G               : Enable GPU build. Uses the in-tree open-source solvers unless -b is given. Default: false
 echo    -r               : Skip building thirdparty libraries (if you have them already compiled). Default: false
 echo    -a               : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
 echo    -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).

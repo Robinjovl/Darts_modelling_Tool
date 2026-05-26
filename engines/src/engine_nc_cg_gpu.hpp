@@ -9,8 +9,13 @@
 #include "globals.h"
 #include "ms_well.h"
 #include "engine_base_gpu.h"
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "csr_matrix.hpp"
+#include "linsolv_iface.hpp"
+#else
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
+#endif
 #include "evaluator_iface.h"
 
 template <uint8_t NC, uint8_t NP>

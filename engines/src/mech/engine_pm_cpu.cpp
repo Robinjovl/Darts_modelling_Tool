@@ -152,6 +152,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		linear_solvers.back()->set_prec(cpr);
 		break;
 	  }
+#ifdef OPENDARTS_GPU_HAS_AMGX
 	  case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
@@ -170,6 +171,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		linear_solvers.back()->set_prec(cpr);
 		break;
 	  }
+#endif // OPENDARTS_GPU_HAS_AMGX
 	  case sim_params::GPU_GMRES_ILU0:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));

@@ -8,6 +8,51 @@ Engines
      operator_set_evaluator_iface, operator_set_gradient_evaluator_iface, property_evaluator_iface
    :show-inheritance:
 
+Linear Solvers
+##############
+
+The :mod:`darts.solvers` package selects and configures the open-source linear
+solvers through typed, documented specification classes. ``spec.build(block_size)``
+produces a configured C++ solver through the solver registry -- the single,
+enum-free way to choose a linear solver from Python. An
+:class:`~darts.solvers.adaptive.AdaptiveSolverSpec` additionally switches the
+solver mid-run according to a policy.
+
+Solver specifications
+*********************
+
+.. automodule:: darts.solvers.specs
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Python-resident solvers (PETSc / Pardiso)
+*****************************************
+
+.. automodule:: darts.solvers.python_solvers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Adaptive solver switching
+*************************
+
+.. automodule:: darts.solvers.adaptive
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+MGR configuration enums
+***********************
+
+.. automodule:: darts.solvers.enums
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Physics
 #######
 

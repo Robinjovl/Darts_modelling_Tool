@@ -5,6 +5,9 @@
 darts/*.so*
 darts/*.pyd
 darts/*.dll
+darts/solvers/*.so*
+darts/solvers/*.pyd
+darts/solvers/*.dll
 dist/
 sdist/
 eggs/
@@ -47,3 +50,6 @@ solution.pvd
 *.nc
 *.h5
 *.vim
+*.sol
+*.csr
+*.rhs
