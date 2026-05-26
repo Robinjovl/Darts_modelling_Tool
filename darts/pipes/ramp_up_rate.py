@@ -132,10 +132,10 @@ class RampUpRate:
                 if "phase_name" in inj_fluid_props:
                     ph_name = inj_fluid_props["phase_name"]
                     assert isinstance(ph_name, str), (
-                        "Specified phase_name is not a string!"
+                        "The specified phase is not a string!"
                     )
                     assert ph_name in pc.phases_name[: pc.np_fl], (
-                        "Specified phase_name is not in the list of mobile phase names in physics!"
+                        f'The specified phase "{ph_name}" is not in the list of mobile phases defined in the physics!'
                     )
 
                 if "molar_enthalpy" in inj_fluid_props:
