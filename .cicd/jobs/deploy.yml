@@ -26,7 +26,7 @@ deploy-testpypi:
 .deploy-pypi:
     stage: deploy
     # just for twine
-    image: python:3.10
+    image: "python:$DEFAULT_PY_VER"
     # Will be executed on runner with windows tag - that assumed to run on windows host
     tags:
         - linux
@@ -41,14 +41,8 @@ deploy-testpypi:
         - twine upload -u $REPOUSER -p $REPOPWD --repository $REPO --verbose dist/*
     dependencies:
         # get the wheels from the build stage
-        - build-linux-3.10-ODLS
-        - build-linux-3.11-ODLS
-        - build-linux-3.12-ODLS
-        - build-linux-3.13-ODLS
-        - build-windows-3.10-ODLS
-        - build-windows-3.11-ODLS
-        - build-windows-3.12-ODLS
-        - build-windows-3.13-ODLS
+        - build-linux-ODLS
+        - build-windows-ODLS
 
 deploy-zenodo:
     stage: deploy
@@ -56,7 +50,7 @@ deploy-zenodo:
         - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
     tags:
         - linux
-    image: python:3.10
+    image: "python:$DEFAULT_PY_VER"
     script:
         # cloning gitlab2zenodo in a temporary folder
         - mkdir tmp_gitlab2zenodo
@@ -78,12 +72,13 @@ pages:
         - if: $DOCS_PAGES == "1"
     tags:
         - linux
-    image: python:3.10
+    image: "python:$DEFAULT_PY_VER"
     script:
         # re-install open-darts with the dependencies for building the documentation
         - pip install .[docs]
         # use the wheel generated in build to install open-darts
-        - pip install --force-reinstall --no-deps ./dist/*cp310-linux_x86_64.whl
+        - export DEFAULT_PY_TAG="cp${DEFAULT_PY_VER/./}"
+        - pip install --force-reinstall --no-deps ./dist/*${DEFAULT_PY_TAG}-linux_x86_64.whl
         - cd docs
         # command to build the documentation to a folder called public
         - sphinx-build -b html . public
@@ -93,7 +88,7 @@ pages:
         paths:
         - public
     dependencies:
-        - build-linux-3.10-ODLS
+        - build-linux-ODLS
 
 deploy-apptainer-image:
     stage: deploy
@@ -102,29 +97,53 @@ deploy-apptainer-image:
     timeout: 4h
     variables:
         IMAGE_PREFIX: "open-darts"
+    needs:
+        - job: apptainer-image-builder
+          artifacts: true
+          optional: true
     dependencies: []
     rules:
         - if: $RUN_APPTAINER_DEPLOY == "1"
         - when: never
     script:
-        # Derive BUILD_KEY from the latest symlinked image name
+        - set -euo pipefail
         - IMG_DIR="/data/open-darts-apptainer-images"
-        - LINK="$IMG_DIR/${IMAGE_PREFIX}-latest.sif"
-        - TARGET="$(readlink -f "$LINK" || echo "$LINK")"
-        - BASENAME="$(basename "$TARGET")"
-        - BUILD_KEY="$(echo "$BASENAME" | sed -n "s/^${IMAGE_PREFIX}-\([a-f0-9]\{64\}\)\.sif$/\1/p")"
-        # Fallback to the most recent matching file if symlink parse failed
-        - 'if [ -z "$BUILD_KEY" ]; then TARGET="$(ls -1t "$IMG_DIR/${IMAGE_PREFIX}-"*.sif 2>/dev/null | head -n1 || true)"; BASENAME="$(basename "$TARGET" 2>/dev/null || true)"; BUILD_KEY="$(echo "$BASENAME" | sed -n "s/^${IMAGE_PREFIX}-\([a-f0-9]\{64\}\)\.sif$/\1/p")"; fi'
-        - 'test -n "$BUILD_KEY" || { echo "Unable to determine BUILD_KEY from $LINK or $IMG_DIR" >&2; exit 2; }'
-        - echo "BUILD_KEY=$BUILD_KEY"
-        # target repo and existing tag check (skip if tag already present)
         - REPO="$CI_REGISTRY_IMAGE"
-        - echo "REPO=$REPO"
-        - echo "Skipping remote manifest pre-check; proceeding to push"
-        # Locate built image (from shared /data path)
-        - IMG="$IMG_DIR/${IMAGE_PREFIX}-${BUILD_KEY}.sif"
-        - 'if [ ! -r "$IMG" ]; then IMG="$LINK"; fi'
-        - 'test -r "$IMG" || { echo "Apptainer image not found: $IMG" >&2; exit 2; }'
+        - |
+          IMG=""
+          # Prefer deterministic image path from apptainer-image-builder dotenv artifact.
+          if [ -n "${APPTAINER_IMAGE:-}" ] && [ -r "${APPTAINER_IMAGE}" ]; then
+            IMG="${APPTAINER_IMAGE}"
+            echo "Using APPTAINER_IMAGE from upstream dotenv: $IMG"
+          elif [ -n "${APPTAINER_BUILD_KEY:-}" ] && [ -r "$IMG_DIR/${IMAGE_PREFIX}-${APPTAINER_BUILD_KEY}.sif" ]; then
+            IMG="$IMG_DIR/${IMAGE_PREFIX}-${APPTAINER_BUILD_KEY}.sif"
+            echo "Using APPTAINER_BUILD_KEY from upstream dotenv: $APPTAINER_BUILD_KEY"
+          else
+            echo "Dotenv artifact not available or stale; using shared image fallback"
+            LINK="$IMG_DIR/${IMAGE_PREFIX}-latest.sif"
+            if [ -L "$LINK" ] || [ -f "$LINK" ]; then
+              CANDIDATE="$(readlink -f "$LINK" || true)"
+              if [ -n "$CANDIDATE" ] && [ -r "$CANDIDATE" ]; then
+                IMG="$CANDIDATE"
+              fi
+            fi
+            if [ -z "$IMG" ]; then
+              IMG="$(find "$IMG_DIR" -maxdepth 1 -type f -name "${IMAGE_PREFIX}-*.sif" -printf '%T@ %p\n' | sort -nr | head -n1 | awk '{ $1=""; sub(/^ /,""); print }')"
+            fi
+          fi
+          if [ -z "$IMG" ] || [ ! -r "$IMG" ]; then
+            echo "Apptainer image not found in $IMG_DIR" >&2
+            exit 2
+          fi
+          apptainer inspect "$IMG" >/dev/null 2>&1 || { echo "Apptainer image is corrupted: $IMG" >&2; exit 2; }
+          BASENAME="$(basename "$IMG")"
+          BUILD_KEY="$(echo "$BASENAME" | sed -n "s/^${IMAGE_PREFIX}-\([a-f0-9]\{64\}\)\.sif$/\1/p")"
+          if [ -n "$BUILD_KEY" ]; then
+            echo "BUILD_KEY=$BUILD_KEY"
+          fi
+          echo "REPO=$REPO"
+          echo "Selected image: $IMG"
+          export IMG
         # Authenticate and push via ORAS (GitLab Container Registry)
         - export APPTAINER_DOCKER_USERNAME="$CI_REGISTRY_USER"
         - export APPTAINER_DOCKER_PASSWORD="$CI_REGISTRY_PASSWORD"

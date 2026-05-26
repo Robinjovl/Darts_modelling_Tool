@@ -34,33 +34,31 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        well_type = ms_well.MS_Type.EPM
-        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_well("I1")
         self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
-        self.reservoir.add_well("P1", well_type)
+        self.reservoir.add_well("P1")
         self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
-        """Physical properties"""
         zero = 1e-8
         epsilon = 1e-9
-        # Create property containers:
+
         components = ['CO2', 'C1', 'H2O']
-        phases = ['gas', 'oil']
-        thermal = 0
+        phases = ['gas', 'aqueous']
         Mw = [44.01, 16.04, 18.015]
 
+        # Create a property container
         property_container = PropertyContainer(phases_name=phases, components_name=components,
                                                Mw=Mw, eps_z=epsilon, temperature=1.)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(len(components), [4, 2, 1e-1], zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
-                                              ('oil', DensityBasic(compr=1e-5, dens0=600))])
+                                              ('aqueous', DensityBasic(compr=1e-5, dens0=600))])
         property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
-                                                ('oil', ConstFunc(0.5))])
+                                                ('aqueous', ConstFunc(0.5))])
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                               ('oil', PhaseRelPerm("oil"))])
+                                               ('aqueous', PhaseRelPerm("oil"))])
 
         """ Activate physics """
         thermal = False
@@ -97,3 +95,6 @@ class Model(CICDModel):
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=50.)
+                # Control total mass rate of the produced fluid
+                # self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MASS_RATE,
+                #                                is_inj=False, target=4000)

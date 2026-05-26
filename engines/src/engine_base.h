@@ -8,8 +8,20 @@
 
 #include "globals.h"
 #include "conn_mesh.h"
-#include "interpolator_base.hpp"
-#include "pybind11/py_globals.h"
+#include "evaluator_iface.h"
+
+#include <pybind11/numpy.h>
+namespace py = pybind11;
+
+template <typename T>
+inline py::array_t<T> get_raw_array(T* arr, size_t size) {
+  return py::array_t<T>(
+    { size },
+    { sizeof(T) },
+    arr,
+    py::capsule(arr, [](void* /*f*/) {})
+  );
+}
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/data_types.hpp"
@@ -47,7 +59,6 @@ using namespace opendarts::linear_solvers;
 #endif
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -59,6 +70,15 @@ class operator_set_gradient_evaluator_iface;
 /// This class defines infrastructure for simulation
 class engine_base
 {
+public:
+	enum class StateSpecification
+	{
+		P = 0,
+		PT,
+		PH,
+		PS,
+	};
+
 	// methods
 public:
 	engine_base()
@@ -111,16 +131,17 @@ public:
 	virtual uint8_t get_n_fl_var() const { return 0; };
 
 	// get the index of Z variable
-	virtual uint8_t get_z_var() const = 0;
+	virtual uint8_t get_z_var_idx() const = 0;
 
 	// get the number of solid/mineral species
 	virtual uint8_t get_n_solid() const { return n_solid; };
 
 	// initialization
-	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) = 0;
+	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_) = 0;
 
 	template <uint8_t N_VARS>
-	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_);
+	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	              operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_);
 
 	virtual int init_jacobian_structure(csr_matrix_base *jacobian);
 
@@ -154,6 +175,8 @@ public:
 	void apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_global_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_local_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
+
+	virtual void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
 
 	virtual int apply_newton_update(value_t dt);
 
@@ -194,7 +217,9 @@ public:
 	  // maximum values
 	  std::fill_n(max_row_values_inv.data(), n_blocks * N_VARS, 0.0);
 
+#ifdef _OPENMP
 	  #pragma omp parallel for
+#endif
 	  for (index_t i = 0; i < n_blocks; i++)
 	  {
 		index_t csr_start = rows[i];
@@ -231,7 +256,9 @@ public:
 	  }
 
 	  // scaling
+#ifdef _OPENMP
 	  #pragma omp parallel for
+#endif
 	  for (index_t i = 0; i < n_blocks; i++)
 	  {
 		index_t csr_start = rows[i];
@@ -319,17 +346,19 @@ public:
 
 	linsolv_iface *linear_solver;
 
-	//operator_set_gradient_evaluator_iface* acc_flux_op_set;
-	std::vector<operator_set_gradient_evaluator_iface *> acc_flux_op_set_list;
+	// operator interfaces
+	std::vector<operator_set_gradient_evaluator_iface*> acc_flux_op_set_list;
+	operator_set_gradient_evaluator_iface* thermal_var_etor;
 
 	uint8_t n_vars;
 	uint8_t n_ops;
 	uint8_t nc;
-	uint8_t z_var;
+	uint8_t z_var_idx;
 	// number of mineral/solid species
 	uint8_t n_solid;
-	double min_axis_z;  // OBL axis min
-	double max_axis_z;  // OBL axis max
+	StateSpecification state_spec;
+	double min_axis_z;  // OBL axis min for composition
+	double max_axis_z;  // OBL axis max for composition
 	double min_sim_z;   // Min composition to remain well above OBL min_axis_z and physical bounds (0): min_axis_z + params->sim_eps
 	double max_sim_z;   // Max composition to remain well below OBL max_axis_z and physical bounds (1): max_axis_z - params->sim_eps
 	std::vector<value_t> old_z, new_z; // [NC] array for local chop
@@ -611,6 +640,7 @@ public:
 template <uint8_t N_VARS>
 int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 						   std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+						   operator_set_gradient_evaluator_iface* thermal_var_etor_,
 						   sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
@@ -620,6 +650,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 
@@ -720,6 +751,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			else
 			{
+			  // N_VARS == 1: CPR collapses to pure AMG, still needs the GMRES outer solver
+			  linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			  linear_solver->set_prec(new linsolv_bos_amg<1>);
 			  linear_solver_type_str = "GPU_GMRES_AMG";
 			}
@@ -781,6 +814,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			else
 			{
+			  // N_VARS == 1: CPR collapses to pure AMGX, still needs the GMRES outer solver
+			  linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			  linear_solver->set_prec(new linsolv_amgx<1>);
 			  linear_solver_type_str = "GPU_GMRES_AMGX";
 			}
@@ -857,19 +892,20 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	n_vars = get_n_vars();
 	n_ops = get_n_ops();
 	nc = get_n_comps();
-	z_var = get_z_var();
+	z_var_idx = get_z_var_idx();
 
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;
+
 	if (params->log_transform == 0)
 	{
-		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var);
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var);
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
 	}
 	else if (params->log_transform == 1)
 	{
-		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var));
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var));
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
 	}
 	min_sim_z = min_axis_z + params->sim_eps;
 	max_sim_z = max_axis_z - params->sim_eps;
@@ -931,11 +967,12 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	for (ms_well *w : wells)
 	{
-		// initialize the state of well blocks of the type EPM
+		// initialize the state of well segments
 		if (w->ms_type == ms_well::MS_Type::EPM)
-			w->initialize_control(X_init);
-		// initialize the state of well blocks of the type DFM
-		else if (w->ms_type == ms_well::MS_Type::DFM)
+			w->initialize_control_epm(X_init);
+		else if (w->ms_type == ms_well::MS_Type::DFM && w->control.get_well_control_type() > well_control_iface::WellControlType::NONE)
+			w->initialize_control_dfm(X_init);
+		else if (w->ms_type == ms_well::MS_Type::DFM && w->control.get_well_control_type() == well_control_iface::WellControlType::NONE)
 			std::copy(w->init_state.begin(), w->init_state.end(), X_init.begin() + w->well_head_idx * n_vars);
 	}
 

@@ -710,9 +710,10 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                                            operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                             sim_params *params_, timer_node *timer_)
 {
-  engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+  engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 
   allocate_device_data(RV, &RV_d);
   allocate_device_data(mesh->heat_capacity, &mesh_hcap_d);

@@ -109,7 +109,7 @@ class Initialize:
         self.secondary_specs = {}
 
         # If PH-formulation, evaluate_PT method must be called in the evaluate() during Initialize
-        pc.evaluate_PT_bool = physics.state_spec > PhysicsBase.StateSpecification.PT
+        self.evaluate_PT_bool = physics.state_spec > PhysicsBase.StateSpecification.PT
 
         # Create PropertyOperators and interpolators
         self.etor = PropertyOperators(
@@ -131,16 +131,21 @@ class Initialize:
         )
         self.n_ops = n_ops
 
-    def evaluate(self, Xi: list):
+    def evaluate(self, Xi: list, region_idx: int = 0):
         """
         Function to return array of properties.
         Primary variables (vars) are obtained from engine, secondary variables (props) are interpolated by property_itor.
 
         :param Xi: State
         :type Xi: list
+        :param region_idx: Property region index, default is 0
         :returns: property_array
         :rtype: np.ndarray
         """
+        # Set flag to evaluate_PT in case of PH/PS-formulation
+        pc = self.physics.property_containers[region_idx]
+        pc.evaluate_PT_bool = self.evaluate_PT_bool
+
         # Interpolate values and derivatives in property_itor
         state_idxs = index_vector([0])
         values = value_vector(np.zeros(self.n_ops))
@@ -149,6 +154,9 @@ class Initialize:
         self.itor.evaluate_with_derivatives(
             value_vector(Xi), state_idxs, values, derivs
         )
+
+        # Switch evaluate_PT boolean off to flash.evaluate() during simulation again
+        pc.evaluate_PT_bool = False
 
         return values, derivs
 
@@ -419,9 +427,42 @@ class Initialize:
             if _it > max_iter:
                 print("MAX ITER REACHED FOR INITIALIZATION", X[cell_idx, :])
 
-        # Switch evaluate_PT boolean off to flash.evaluate() during simulation again
-        self.physics.property_containers[0].evaluate_PT_bool = False
+        return X
 
+    def solve_up_and_downwards(
+        self,
+        depth_bottom: float,
+        depth_top: float,
+        depth_known: float,
+        boundary_state: dict,
+        primary_specs: dict = None,
+        secondary_specs: dict = None,
+        nb: int = 100,
+        dTdh: float = 0.03,
+    ):
+        Xi = [boundary_state['pressure']]
+        for c in self.physics.components[:-1]:
+            Xi += [boundary_state[c]]
+        if 'temperature' in boundary_state.keys():
+            Xi += [boundary_state['temperature']]
+
+        X0 = self.solve_state(Xi=Xi, specs=boundary_state)
+        # Initialize depth table
+        X, bc_idx = self.init_depth_table(
+            depth_bottom=depth_bottom,
+            depth_top=depth_top,
+            depth_known=depth_known,
+            X0=X0,
+            nb=nb,
+            dTdh=dTdh,
+        )
+        # Solve vertical equilibrium
+        X = self.solve(
+            X=X, bc_idx=bc_idx, specs=primary_specs, downward=False
+        )  # solve above
+        X = self.solve(
+            X=X, bc_idx=bc_idx, specs=primary_specs, downward=True
+        )  # solve below
         return X
 
     def solve_region(
@@ -594,6 +635,4 @@ class Initialize:
             if _it > max_iter:
                 print("MAX ITER REACHED FOR INITIALIZATION", X[cell_idx, :])
 
-        # Switch evaluate_PT boolean off to flash.evaluate() during simulation again
-        self.physics.property_containers[0].evaluate_PT_bool = False
         return X

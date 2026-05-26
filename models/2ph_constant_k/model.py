@@ -119,8 +119,8 @@ class Model(DartsModel):
             self.reservoir.add_well("I1")
             self.reservoir.add_well("P1")
             for k in range(1, self.nz + 1):
-                self.reservoir.add_perforation("I1", cell_index=(self.well_cell_id[0][0], self.well_cell_id[0][1], k))
-                self.reservoir.add_perforation("P1", cell_index=(self.well_cell_id[1][0], self.well_cell_id[1][1], k))
+                self.reservoir.add_perforation("I1", res_cell_idx=(self.well_cell_id[0][0], self.well_cell_id[0][1], k))
+                self.reservoir.add_perforation("P1", res_cell_idx=(self.well_cell_id[1][0], self.well_cell_id[1][1], k))
         return
 
     def set_wells_spe10(self):
@@ -258,7 +258,6 @@ class Model(DartsModel):
         K = [K_comps[c] for c in self.components]
 
         phases = ['gas', 'oil']
-        thermal = 0
 
         property_container = ModelProperties(phases_name=phases, components_name=self.components,
                                              Mw=Mw, eps_z=epsilon, temperature=1.)

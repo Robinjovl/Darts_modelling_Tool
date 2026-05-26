@@ -3,8 +3,8 @@ from darts.physics.base.operators_base import (
     PropertyOperators as BasePropertyOperators,
 )
 from darts.physics.base.operators_base import (
-    WellControlOperators,
-    WellInitOperators,
+    ThermalVarOperator,
+    WellCtrlOperators,
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
@@ -83,7 +83,7 @@ class ElementBasedReactiveFlow(Compositional):
     def set_operators(self):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellControlOperators` for well control
+        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         for region in self.regions:
@@ -106,13 +106,14 @@ class ElementBasedReactiveFlow(Compositional):
                 dz=self.dz,
             )
 
-        self.well_ctrl_operators = WellControlOperators(
+        self.well_ctrl_operators = WellCtrlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
-        self.well_init_operators = WellInitOperators(
+
+        self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
@@ -133,6 +134,9 @@ class ElementBasedReactiveFlow(Compositional):
         itor_mode='adaptive',
         itor_precision='d',
         is_barycentric: bool = False,
+        parallel_evaluation: bool = False,
+        n_workers: int = None,
+        evaluator_factory_hook=None,
     ):
         """
         Function to set interpolator objects:
@@ -140,7 +144,7 @@ class ElementBasedReactiveFlow(Compositional):
         - :class:`comp_itor` initialization and porosity interpolator
         - :class:`property_itor` output property interpolator
         - :class:`well_ctrl_itor` well control interpolator
-        - :class:`well_init_itor` well initialization interpolator
+        - :class:`thermal_var_itor` well initialization interpolator
         :param platform: Platform to run the simulation
         :type platform: str (cpu or gpu)
         :param itor_type: Interpolator type
@@ -151,7 +155,28 @@ class ElementBasedReactiveFlow(Compositional):
         :type itor_precision: str
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param parallel_evaluation: Enable parallel batch evaluation via multiprocessing
+        :type parallel_evaluation: bool
+        :param n_workers: Number of worker processes (default: os.cpu_count())
+        :type n_workers: int
+        :param evaluator_factory_hook: Callable (region) -> factory for parallel evaluation
+        :type evaluator_factory_hook: callable
         """
+        # Optionally wrap reservoir_operators with ParallelEvaluator
+        if parallel_evaluation:
+            if evaluator_factory_hook is None:
+                raise ValueError(
+                    "parallel_evaluation=True requires evaluator_factory_hook"
+                )
+            from darts.physics.base.parallel_evaluator import ParallelEvaluator
+
+            for region in self.regions:
+                factory = evaluator_factory_hook(region)
+                self.reservoir_operators[region] = ParallelEvaluator(
+                    evaluator_factory=factory,
+                    n_workers=n_workers,
+                )
+
         # Create actual accumulation and flux interpolator:
         self.acc_flux_itor = {}
         self.comp_itor = {}
@@ -215,9 +240,9 @@ class ElementBasedReactiveFlow(Compositional):
             precision=itor_precision,
         )
         self.n_well_ctrl_itor_ops = n_well_ctrl_ops
-        self.well_init_itor, n_well_init_ops = self.create_interpolator(
-            self.well_init_operators,
-            n_ops=self.well_init_operators.n_ops,
+        self.thermal_var_itor, n_thermal_var_ops = self.create_interpolator(
+            self.thermal_var_operator,
+            n_ops=self.thermal_var_operator.n_ops,
             axes_min=value_vector(self.PT_axes_min),
             axes_max=value_vector(self.PT_axes_max),
             timer_name='well initialization',
@@ -226,4 +251,4 @@ class ElementBasedReactiveFlow(Compositional):
             mode=itor_mode,
             precision=itor_precision,
         )
-        self.n_well_init_itor_ops = n_well_init_ops
+        self.n_thermal_var_ops = n_thermal_var_ops

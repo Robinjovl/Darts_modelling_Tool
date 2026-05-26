@@ -3,6 +3,7 @@
 #include "py_globals.h"
 #include "globals.h"
 #include "engines_build_info.h"
+#include <cctype>
 #include <iostream>
 #include <fstream>
 
@@ -23,11 +24,6 @@ using namespace opendarts::config;
 namespace py = pybind11;
 
 
-#if defined(__linux__) || defined(__APPLE__)
-  // declaration of stream test main function
-  // used to check the system bandwidth
-  int stream_main();
-#endif // defined(__linux__) || defined(__APPLE__)
 
 
 void redirect_darts_output(std::string file_name) {
@@ -90,7 +86,7 @@ void pybind_globals(py::module &m)
   py::class_<__uint128_t>(m, "uint128", "128-bit unsigned integer")
     .def(py::init<>())
     .def(py::init([](py::int_ i){
-      const py::int_ two64 = py::int_(1) << 64;
+      const py::int_ two64 = py::int_(1) << py::int_(64);
       const py::int_ hi_py = i / two64;
       const py::int_ lo_py = i % two64;
       // now cast each half to uint64_t
@@ -114,7 +110,7 @@ void pybind_globals(py::module &m)
 #endif
       py::int_ py_hi = py::int_(hi);
       py::int_ py_lo = py::int_(lo);
-      return (py_hi << 64) | py_lo;
+      return (py_hi << py::int_(64)) | py_lo;
     })
     .def("__index__", [](const __uint128_t &v){
 #ifdef _MSC_VER
@@ -126,7 +122,7 @@ void pybind_globals(py::module &m)
 #endif
       py::int_ py_hi = py::int_(hi);
       py::int_ py_lo = py::int_(lo);
-      return (py_hi << 64) | py_lo;
+      return (py_hi << py::int_(64)) | py_lo;
     })
     .def("__repr__", [](const __uint128_t &v){
       std::ostringstream oss;
@@ -239,15 +235,9 @@ void pybind_globals(py::module &m)
       .def_readwrite("n_timesteps_total", &sim_stat::n_timesteps_total)
       .def_readwrite("n_timesteps_wasted", &sim_stat::n_timesteps_wasted);
 
-  py::class_<timer_node>(m, "timer_node", "Timers tree structure")
-      .def(py::init<>())
-      .def("start", &timer_node::start)
-      .def("stop", &timer_node::stop)
-      .def("get_timer", &timer_node::get_timer)
-      .def("print", &timer_node::print)
-      .def("reset_recursive", &timer_node::reset_recursive)
-      //properties
-      .def_readwrite("node", &timer_node::node);
+  // timer_node is registered by darts.interpolators (imported at module init).
+  // Re-export it so that `from darts.engines import timer_node` still works.
+  m.attr("timer_node") = py::module_::import("darts.interpolators").attr("timer_node");
 
   m.def("redirect_darts_output", &redirect_darts_output, "Redirect darts standard output to a file. \n"
                                                          "If empty filename is specified, then no output will be produced.",
@@ -255,9 +245,6 @@ void pybind_globals(py::module &m)
 
   m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");
 
-#ifdef defined(__linux__) || defined(__APPLE__)
-  m.def("stream", &stream_main, "Launch stream bandwidth test");
-#endif // defined(__linux__) || defined(__APPLE__)
 
 #ifdef _OPENMP
   m.def("get_num_threads", &omp_get_num_threads, "Get the number of OpenMP threads to be used");
@@ -275,4 +262,6 @@ void pybind_globals(py::module &m)
 #endif
 
 }
+
+
 #endif //PYBIND11_ENABLED

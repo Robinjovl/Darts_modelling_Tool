@@ -113,7 +113,7 @@ def input_data_default():
     idata.initial.temperature_at_ref_depth = 273.15 + 10 # [K]
 
     idata.obl.n_points = 100
-    idata.obl.min_p = 0.
+    idata.obl.min_p = 0.5
     idata.obl.max_p = 500.
     idata.obl.min_e = 10.
     idata.obl.max_e = 25000.

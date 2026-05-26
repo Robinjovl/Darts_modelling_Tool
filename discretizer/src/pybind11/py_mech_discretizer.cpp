@@ -49,7 +49,7 @@ struct mech_discretizer_exposer
   }
 };
 
-template<> const std::string 
+template<> const std::string
 mech_discretizer_exposer<MechDiscretizerMode::POROELASTIC>::class_name = "poro_mech_discretizer";
 
 template<> const std::string
@@ -72,7 +72,7 @@ void pybind_mech_discretizer(py::module& m)
 	.def(py::pickle(
 	  [](const Stiffness& p) { // __getstate__
 		py::tuple t(p.values.size());
-		for (int i = 0; i < p.values.size(); i++)
+		for (size_t i = 0; i < p.values.size(); i++)
 		  t[i] = p.values[i];
 
 		return t;
@@ -80,7 +80,7 @@ void pybind_mech_discretizer(py::module& m)
 	  [](py::tuple t) { // __setstate__
 		Stiffness p;
 
-		for (int i = 0; i < t.size(); i++)
+		for (size_t i = 0; i < t.size(); i++)
 		  p.values[i] = t[i].cast<value_t>();
 
 		return p;
@@ -89,7 +89,7 @@ void pybind_mech_discretizer(py::module& m)
 	.def(py::pickle(
 	  [](const std::vector<Stiffness>& p) { // __getstate__
 		py::tuple t(p.size());
-		for (int i = 0; i < p.size(); i++)
+		for (size_t i = 0; i < p.size(); i++)
 		  t[i] = p[i];
 
 		return t;
@@ -97,7 +97,7 @@ void pybind_mech_discretizer(py::module& m)
 	  [](py::tuple t) { // __setstate__
 		std::vector<Stiffness> p(t.size());
 
-		for (int i = 0; i < p.size(); i++)
+		for (size_t i = 0; i < p.size(); i++)
 		  p[i] = t[i].cast<Stiffness>();
 
 		return p;

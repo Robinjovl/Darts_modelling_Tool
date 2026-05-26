@@ -35,13 +35,15 @@ RUN apt purge -y cmake && \
     wget https://github.com/Kitware/CMake/releases/download/v3.29.3/cmake-3.29.3.tar.gz && \
     tar -xvf cmake-3.29.3.tar.gz && \
     cd cmake-3.29.3 && ./bootstrap --prefix=/opt/cmake --parallel=$(nproc) && make -j$(nproc) && make install && \
-    /opt/cmake/bin/cmake --version
+    /opt/cmake/bin/cmake --version && \
+    cd / && rm -rf cmake-3.29.3 cmake-3.29.3.tar.gz
 
 # Step 3: Install conda-forge
 # Set Bash as the default shell (needed for the "source" command)
 SHELL ["/bin/bash", "-c"]
 RUN wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && \
-    bash Miniforge3-$(uname)-$(uname -m).sh -b -p /opt/conda
+    bash Miniforge3-$(uname)-$(uname -m).sh -b -p /opt/conda && \
+    rm -f Miniforge3-*.sh
 
 # Step 4: Download and unpack GCC source
 WORKDIR /tmp
@@ -57,7 +59,9 @@ RUN ./contrib/download_prerequisites && \
   ../configure --disable-multilib --enable-languages=c++ --prefix=/opt/gcc-${GCC_VERSION} --disable-debug && \
   make -j$(nproc) > build.log 2>&1
 
-RUN cd build && make install-strip
+RUN cd build && make install-strip && \
+    # Clean up build artifacts to reduce builder stage size (less for Kaniko to snapshot)
+    cd /tmp && rm -rf gcc-${GCC_VERSION} gcc-${GCC_VERSION}.tar.gz
 
 
 # Step 6: assembling clean environment for runtime use with GCC
@@ -79,18 +83,28 @@ COPY --from=builder /opt/conda /opt/conda
 # Copy cmake binaries
 COPY --from=builder /opt/cmake /opt/cmake
 
-# Step 5: Install dependencies for open-DARTS compilation and running the pipeline jobs
+# Step 5: Install dependencies, mold linker, and clean up in a single layer
+#         (fewer layers = fewer Kaniko snapshots = lower peak memory during image build)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
+        ccache \
+        wget \
         git \
-		make \
-		smbclient \
-		valgrind \
-		libglu1-mesa-dev \
-		libxcursor1 \
-		libxinerama1
+        make \
+        smbclient \
+        valgrind \
+        libglu1-mesa-dev \
+        libxcursor1 \
+        libxinerama1 && \
+    # Install mold linker (much faster linking for template-heavy C++ code)
+    wget -q https://github.com/rui314/mold/releases/download/v2.40.4/mold-2.40.4-x86_64-linux.tar.gz && \
+    tar -xzf mold-2.40.4-x86_64-linux.tar.gz --strip-components=1 -C /usr/local && \
+    rm mold-2.40.4-x86_64-linux.tar.gz && \
+    mold --version && \
+    # Clean up apt cache to reduce layer size
+    rm -rf /var/lib/apt/lists/*
 
 # Set up GCC environment variables for proper paths in execution
 ENV CROSS_ROOT=/opt/gcc-${GCC_VERSION}/bin

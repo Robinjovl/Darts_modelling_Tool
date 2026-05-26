@@ -159,12 +159,14 @@ if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
 fi
 # ------------------------------------------------------------------------------
 
-rm -rf dist
-rm -rf darts/*.so
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
-    echo '\n   Cleaning build folder'
+    echo -e '\n   Cleaning build folder'
     rm -rf build
+    rm -rf dist
+    rm -rf darts/*.so
+else
+    rm -rf dist
 fi
 
 
@@ -262,7 +264,6 @@ echo -e "=======================================================================
 # Setup build folder
 mkdir -p build
 cd build
-rm -f CMakeCache.txt  # ensures Cmake doesn't work on outdated configuration
 
 # If valgrind requested, force Debug
 if [[ "$valgrind" = true ]]; then
@@ -306,11 +307,23 @@ if [[ ! -z "$CUDA_ARCH" ]]; then
     cmake_options+=" -D CUDA_ARCH=${CUDA_ARCH}"
 fi
 
+if [[ -n "${OD_CMAKE_ARGS:-}" ]]; then
+    cmake_options+=" ${OD_CMAKE_ARGS}"
+fi
+
 echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
 # Build and install openDARTS
-make install -j $NT 2>> ../make_darts.log
+# Under valgrind (-O2 -g) the auto-generated super_part*.cpp interpolator TUs
+# can OOM-kill g++ at high -j. Pre-build the interpolators target with reduced
+# parallelism; the subsequent full build skips already-compiled objects.
+if [[ "$valgrind" == true && "$NT" -gt 1 ]]; then
+    HEAVY_NT=$(( NT / 2 ))
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT (valgrind OOM mitigation)"
+    make interpolators -j $HEAVY_NT 2>> ../make_darts.log
+fi
+cmake --build . --target install --parallel "$NT" 2>&1 | tee -a ../make_darts.log
 
 # Test
 if [[ "$testing" == true ]]; then
@@ -348,4 +361,60 @@ fi
 echo -e "\n************************************************************************"
 echo "| Building python package open-darts: DONE! "
 echo -e "************************************************************************\n"
+
+# Build warnings/errors summary -----------------------------------------------
+report_build_summary()
+{
+  local warn_pattern=': warning[: #]'
+  local err_pattern=': error[: #]'
+
+  # (component_name, log_file) pairs
+  local components=(
+    "Hypre:make_hypre.log"
+    "SuperLU:make_superlu.log"
+    "IPhreeqc:make_iphreeqc.log"
+    "open-DARTS:make_darts.log"
+  )
+
+  # Count warnings/errors before printing (avoid reading make_darts.log while appending)
+  local -A warn_counts err_counts
+  for entry in "${components[@]}"; do
+    local name="${entry%%:*}"
+    local logfile="${entry##*:}"
+    if [[ -f "$logfile" ]]; then
+      warn_counts[$name]=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
+      err_counts[$name]=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
+    fi
+  done
+
+  # Print to stdout and append to make_darts.log
+  {
+    echo ""
+    echo "========================================="
+    echo " Build warnings/errors summary"
+    echo "========================================="
+    printf " %-14s | %8s | %6s\n" "Component" "Warnings" "Errors"
+    echo " -----------------------------------------"
+
+    for entry in "${components[@]}"; do
+      local name="${entry%%:*}"
+      if [[ -n "${warn_counts[$name]+x}" ]]; then
+        printf " %-14s | %8d | %6d\n" "$name" "${warn_counts[$name]}" "${err_counts[$name]}"
+      fi
+    done
+
+    echo "========================================="
+
+    local darts_warnings=${warn_counts[open-DARTS]:-0}
+    if [[ $darts_warnings -gt 0 ]]; then
+      echo ""
+      echo " open-DARTS unique warnings:"
+      grep -E "$warn_pattern" make_darts.log 2>/dev/null | sort -u | head -100
+    fi
+
+    echo ""
+    echo "OPENDARTS_WARNING_COUNT=$darts_warnings"
+  } | tee -a make_darts.log
+}
+report_build_summary
 # ------------------------------------------------------------------------------

@@ -126,8 +126,8 @@ class Model(DartsModel):
 
         flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash,
                             eos_order=["Aq", "VL"],
-                            t_min=270., t_max=500., t_init=300., t_tol=1e-3,
-                            verbose=False
+                            t_min=270., t_max=500., t_init=300.,
+                            # pxflash_switch_ttol=1e-3, near_zero_px=1e-2,
                             )
 
         """ properties correlations """
@@ -229,7 +229,7 @@ class Model(DartsModel):
                 # self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, k + 1), well_indexD=0, ms_epm=True)
 
         if 0:
-            self.reservoir.add_well("P1", well_type)
+            self.reservoir.add_well("P1")
             for k in range(4, 20):
                 self.reservoir.add_perforation("P1", res_cell_idx=(1, 1, k + 1), well_index=100, well_indexD=100)
 

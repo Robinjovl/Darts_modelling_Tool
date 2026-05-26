@@ -41,10 +41,9 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        well_type = ms_well.MS_Type.EPM
-        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_well("I1")
         self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
-        self.reservoir.add_well("P1", well_type)
+        self.reservoir.add_well("P1")
         self.reservoir.add_perforation("P1", res_cell_idx=(10, 10, 3))
 
     def set_physics(self, idata: InputData):

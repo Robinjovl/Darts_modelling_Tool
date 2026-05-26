@@ -18,7 +18,7 @@
 #define OPENDARTS_LINEAR_SOLVERS_LINSOLV_IFACE_BOS_HPP
 //--------------------------------------------------------------------------
 
-#include "openDARTS/auxiliary/timer_node.hpp"
+#include "timer_node.h"
 #include "openDARTS/config/data_types.hpp"
 #include "openDARTS/linear_solvers/csr_matrix_base.hpp"
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
@@ -38,10 +38,10 @@ namespace opendarts
 
         virtual ~linsolv_iface_bos () {};
 
-        virtual int init(opendarts::linear_solvers::csr_matrix_base *A, 
-          int max_iters, 
+        virtual int init(opendarts::linear_solvers::csr_matrix_base *A,
+          int max_iters,
           opendarts::config::mat_float tolerance)
-        { 
+        {
           // TODO: This can, and will, go horribly wrong, this must be changed --> comes from previous code
           return this->init(static_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A), max_iters, tolerance);
         };
@@ -53,11 +53,11 @@ namespace opendarts
           // TODO: This can, and will, go horribly wrong, this must be changed --> comes from previous code
           return this->setup(static_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A));
         };
-        
+
         virtual int setup (opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A) = 0;
 
         opendarts::linear_solvers::linear_solver_base *get_bos_solver ()
-        { 
+        {
           return solver;
         };
 

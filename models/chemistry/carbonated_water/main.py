@@ -12,7 +12,8 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
                    n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
                    inj_rate: float = None, perm_poro: str = 'power_8', platform: str = 'cpu',
                    ni_dt_increase_cutoff: int = 5, ni_dt_decrease_cutoff: int = 8, n_good_ts: int = 10, report_timesteps = None,
-                   flash: str = 'phreeqc', database: str = 'phreeqc'):
+                   flash: str = 'phreeqc', database: str = 'phreeqc',
+                   parallel_evaluation: bool = False, n_workers: int = None):
     # Make a folder
     if output_folder is None:
         output_folder = f'output_{domain}_{nx}_' + '_'.join(minerals) + \
@@ -29,7 +30,8 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
               perm_poro=perm_poro, flash=flash, database=database)
 
     # Initialize model
-    m.init(itor_type=interpolator, platform=platform, verbose=True, n_solid=len(minerals))
+    m.init(itor_type=interpolator, platform=platform, verbose=True, n_solid=len(minerals),
+           parallel_evaluation=parallel_evaluation, n_workers=n_workers)
     m.set_output(output_folder=output_folder, sol_filename=f'nx{nx}.h5')
 
     # Initialization check
@@ -202,7 +204,8 @@ if __name__ == '__main__':
 
     # phreeqc
     run_simulation(domain='1D', nx=nx, perm_poro='power_8', n_obl_mult=n_obl_mult, minerals=minerals,
-                co2_injection=co2_injection, max_ts=max_ts, output=False, flash=flash, database=database)
+                co2_injection=co2_injection, max_ts=max_ts, output=False, flash=flash, database=database,
+                parallel_evaluation=True, n_workers=8)
 
     # reaktoro
     # minerals = ['calcite'] # , 'dolomite', 'magnesite']

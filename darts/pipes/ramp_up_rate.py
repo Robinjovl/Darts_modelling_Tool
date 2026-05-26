@@ -20,6 +20,7 @@ class RampUpRate:
         target_molar_rate: float,
         ramp_up_period: float,
         inj_fluid_props: dict = None,
+        verbose: bool = False,
     ):
         """
         :param pipe_name: Name of the pipe for which the ramp-up rate is going to be defined
@@ -44,6 +45,8 @@ class RampUpRate:
                 Method 1: "pressure", "temperature", "phase_name"
                 Method 2: "molar_enthalpy"
         :type inj_fluid_props: dict
+        :param verbose: Whether to display extra info about RampUpRate
+        :type verbose: bool
         """
         assert pipe_name == pipe_geom.pipe_name, (
             "Pipe names for PipeGeometry and RampUpRate are not identical!"
@@ -82,6 +85,7 @@ class RampUpRate:
         )
         assert ramp_up_period >= 0, "ramp_up_period must not be negative!"
         self.ramp_up_period = ramp_up_period
+        pc = physics.property_containers[0]
 
         if inflow_or_outflow == "inflow":
             assert isinstance(inj_fluid_props, dict), "inj_fluid_props must be a dict!"
@@ -130,8 +134,8 @@ class RampUpRate:
                     assert isinstance(ph_name, str), (
                         "Specified phase_name is not a string!"
                     )
-                    assert ph_name in physics.phases, (
-                        "Specified phase_name is not in the list of the phase names in physics!"
+                    assert ph_name in pc.phases_name[: pc.np_fl], (
+                        "Specified phase_name is not in the list of mobile phase names in physics!"
                     )
 
                 if "molar_enthalpy" in inj_fluid_props:
@@ -153,7 +157,7 @@ class RampUpRate:
                         .evaluate(
                             inj_fluid_props["pressure"],
                             inj_fluid_props["temperature"],
-                            inj_fluid_props["composition"],
+                            inj_fluid_props["composition"][: pc.nc_fl],
                         )
                     )
                     inj_fluid_props["molar_enthalpy"] = injected_fluid_molar_enthalpy
@@ -187,6 +191,11 @@ class RampUpRate:
         # Rate starts from zero, so initial rate is zero:
         elif ramp_up_period > 0.0:
             self.current_rate = 0.0
+
+        if verbose:
+            print(
+                f'** RampUpRate for the segment index {segment_idx} of the pipe "{pipe_geom.pipe_name}" is defined!'
+            )
 
     def update_current_molar_rate(self, simulation_time):
         """

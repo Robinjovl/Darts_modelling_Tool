@@ -550,7 +550,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 					}
 					temp_stencil[counter++] = el_id2;
 				}
-				else if (conn.type == mesh::FRACTURE_BOUNDARY)
+				else if (conn.type == mesh::FRAC_BOUND) // was FRACTURE_BOUNDARY (ElemLoc); FRAC_BOUND (ConnType) is the correct enum
 				{
 					temp_stencil[counter++] = el_id2;
 				}
@@ -999,7 +999,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 		  }
 		  temp_stencil[counter++] = el_id2;
 		}
-		else if (conn.type == mesh::FRACTURE_BOUNDARY)
+		else if (conn.type == mesh::FRAC_BOUND) // was FRACTURE_BOUNDARY (ElemLoc); FRAC_BOUND (ConnType) is the correct enum
 		{
 		  temp_stencil[counter++] = el_id2;
 		}

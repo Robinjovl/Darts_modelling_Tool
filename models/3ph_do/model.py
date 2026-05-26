@@ -35,10 +35,9 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        well_type = ms_well.MS_Type.EPM
-        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_well("I1")
         self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
-        self.reservoir.add_well("P1", well_type)
+        self.reservoir.add_well("P1")
         self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
@@ -104,6 +103,7 @@ class ModelProperties(PropertyContainer):
         # evaluate_PT argument is required in PropertyContainer but is not needed in this model
 
         ph = np.array([0, 1, 2], dtype=np.intp)
+        self.temperature = temperature
 
         for i in range(self.nc):
             self.x[i][i] = 1

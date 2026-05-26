@@ -27,13 +27,13 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                                            operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                             sim_params *params_, timer_node *timer_)
 {
   // prepare dg_dx_n_temp for adjoint method
@@ -50,7 +50,7 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
       (static_cast<csr_matrix<N_VARS>*>(dg_dx_n_temp))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
   }
 
-  engine_base::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+  engine_base::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
   this->expose_jacobian();
 
   // Initialize phase velocities at all connections including DFM wells
@@ -63,6 +63,12 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   two_way_phase_vels_ders.resize(mesh_->n_conns * vel_der_size);
   phase_vels_ders.resize(mesh_->n_conns * vel_der_size);
   phases_vels_ders.resize(mesh_->n_conns * vel_der_size * NP);   // velocities derivatives are stored phase-wise
+
+  if constexpr (THERMAL)
+  {
+      min_axis_temp = thermal_var_etor->get_axis_min(T_VAR);
+      max_axis_temp = thermal_var_etor->get_axis_max(T_VAR);
+  }
 
   return 0;
 }
@@ -165,7 +171,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     value_t CFL_in[NC], CFL_out[NC];
     value_t CFL_max_local = 0;
     value_t phase_presence_mult;
-    index_t cell_conn_idx, cell_conn_num;
+    index_t cell_conn_idx = 0, cell_conn_num = 0;
     std::array<value_t, NP> phase_fluxes;
 
     // fluxes for output
@@ -647,7 +653,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
             }
 
-            // [4] add rock conduction (if connections are defined between DFM wells and their surrounding formation, the lateral heat transfer is considered here in addition to rock conduction between reservoir cells)
+            // [4] add rock conduction (between reservoir cells and between DFM well segments and surrounding formations to accound for lateral heat exchange for DFM wells)
             if (THERMAL)
             {
                 t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
@@ -819,14 +825,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
   for (ms_well *w : wells)
   {
-      //if (w->control != nullptr)   // if control is defined for the well, the if block will be executed.
-      //{
-      if (w->ms_type == ms_well::MS_Type::EPM)
+      if (w->control.get_well_control_type() > well_control_iface::WellControlType::NONE)
       {
           value_t* jac_well_head = &(jacobian->get_values()[jacobian->get_rows_ptr()[w->well_head_idx] * n_vars * n_vars]);
           w->add_to_jacobian(dt, X, jac_well_head, RHS);
       }
-      //}
   }
 
   return 0;
@@ -1273,6 +1276,87 @@ void engine_super_cpu<NC, NP, THERMAL>::update_two_way_phase_vels_and_ders()
     }
 }
 
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_cpu<NC, NP, THERMAL>::apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
+{
+    index_t n_thermal_var_corr{ 0 };  // Number of states corrected for temperature under-/overshoot
+
+    index_t nb = mesh->n_blocks;
+
+    std::vector<value_t> state(n_vars);
+
+    std::vector<value_t> X_new(nb * n_vars);
+    std::vector<value_t> op_vals_arr_new(n_ops * nb);
+    std::vector<value_t> op_ders_arr_new(n_ops * nb * n_vars);
+
+    for (index_t i = 0; i < dX.size(); i++)
+    {
+        X_new[i] = X[i] - dX[i];
+    }
+
+    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+    {
+        int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X_new, block_idxs[r], op_vals_arr_new, op_ders_arr_new);
+        //if (result < 0)
+        //	return 0;
+    }
+
+    for (index_t i = 0; i < nb; i++)
+    {
+        // If TEMP_OP out of [T_min, T_max] bounds, use thermal_var_etor to calculate thermal variable at p and T_bound
+        value_t new_temperature = op_vals_arr_new[i * n_ops + TEMP_OP];
+        if (new_temperature < min_axis_temp || new_temperature > max_axis_temp)
+        {
+            // Define PT-state
+            for (index_t c = 0; c < n_vars - 1; c++)
+            {
+                state[c] = X[i * n_vars + c] - dX[i * n_vars + c];
+            }
+            state[T_VAR] = (new_temperature < min_axis_temp) ? min_axis_temp : max_axis_temp;
+
+            // Evaluate thermal_var_etor
+            std::vector<value_t> thermal_var_op(1);
+            this->thermal_var_etor->evaluate(state, thermal_var_op);
+
+            dX[i * n_vars + T_VAR] = X[i * n_vars + T_VAR] - thermal_var_op[0];
+
+            if (n_thermal_var_corr == 0)
+			{
+				std::cout << "Thermal variable correction: block " << i;
+                std::cout << ((new_temperature < min_axis_temp)
+                    ? " shoots under T axis limit of "
+                    : " shoots over T axis limit of ");
+                std::cout << state[T_VAR] << " to " << new_temperature << "\n";
+			}
+            new_temperature = state[T_VAR];
+            n_thermal_var_corr++;
+        }
+
+        // Cap maximum temperature change between updates (needs further investigation)
+        if (false)
+        {
+            value_t dT = std::abs(new_temperature - op_vals_arr_n[i * n_ops + TEMP_OP]);
+            value_t dT_max = 20.;
+
+            //value_t ds = std::abs(op_vals_arr_new[i * n_ops + SAT_OP] - op_vals_arr_n[i * n_ops + SAT_OP]);
+            //value_t ds_max = 0.2;
+
+            if (dT > dT_max)
+            //if (ds > ds_max)
+            {
+                value_t chopping_factor = dT_max / dT;
+                //value_t chopping_factor = ds_max / ds;
+                //dX[i * n_vars + P_VAR] *= chopping_factor;
+                dX[i * n_vars + T_VAR] *= chopping_factor;
+            }
+        }
+    }
+
+    if (n_thermal_var_corr)
+	{
+		std::cout << "Thermal variable correction applied " << n_thermal_var_corr << " time(s) \n";
+	}
+}
 
 //template<uint8_t NC, uint8_t NP, , bool THERMAL>
 //double
