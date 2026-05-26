@@ -3,6 +3,7 @@ from darts.physics.geothermal.geothermal import Geothermal
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
+from darts.engines import ms_well
 import os
 import numpy as np
 import meshio
@@ -18,6 +19,7 @@ class Model(CICDModel):
         # base class constructor
         super().__init__()
         self.idata = idata
+        input_data = idata.geom
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -31,8 +33,11 @@ class Model(CICDModel):
         self.inj_well_coords = idata.geom['inj_well_coords']
         self.prod_well_coords = idata.geom['prod_well_coords']
 
-        fname = '_' + idata.geom['mesh_prefix'] + '_' + str(idata.geom['char_len']) + '.msh'
-        mesh_file = os.path.join('meshes_' + idata.geom['case_name'], idata.geom['case_name'] + fname)
+        if input_data['mesh_filename'] is None:
+            fname = '_' + idata.geom['mesh_prefix'] + '_' + str(idata.geom['char_len']) + '.msh'
+            mesh_file = os.path.join('meshes_' + idata.geom['case_name'], idata.geom['case_name'] + fname)
+        else:
+            mesh_file = input_data['mesh_filename']
 
         if idata.rock.perm_file is not None: # set heterogeneous permeability from a file
             permx = self.get_perm_unstr_from_struct_grid(idata.rock.perm_file, self.input_data)
@@ -58,48 +63,41 @@ class Model(CICDModel):
             self.reservoir.sh_max_azimuth = idata.stress['SHmax_azimuth']
             self.reservoir.sigma_c = idata.stress['sigma_c']
 
-        # read mesh to get the number of fractures for tags specification
-        # assume mesh is extruded and fractures have a quad shape
-        # fracture tags start from 90000 according to .geo file generation code
+        # read mesh to get the number of fractures for tags specification, frac_geom_type and frac_tag_start
         msh = meshio.read(mesh_file)
         c = msh.cell_data_dict['gmsh:physical']
-        n_fractures = (np.unique(c['quad']) >= 90000).sum()
-        n_fractures = n_fractures * (1 + int(idata.geom['overburden_layers']>0) + int(idata.geom['underburden_layers']>0))
 
-        # 9991 - rsv, 9992 - overburden, 9993 - underburden, 9994 - overburden2, 9995 - underburden2
-        self.reservoir.physical_tags['matrix'] = [9991 + i for i in range(5)]
-        # multiplied by 3 because physical surfaces for fracture are also in underburden and overburden
-        self.reservoir.physical_tags['fracture'] = [90000 + i for i in range(n_fractures)]
+        # 'MeshIt':  # 3D mesh from meshIt software, the tags are hardcoded below according to MeshIt conventions
+        frac_tag_start = idata.geom['frac_tag_start']
+        matrix_tags = idata.geom['matrix_tags']
+        bnd_xy_tags = [3, 4, 5, 6]
+        bnd_tags = [1, 2] + bnd_xy_tags
 
-        self.reservoir.physical_tags['boundary'] = [2, 1, 3, 4, 5, 6]  # order: Z- (bottom); Z+ (top) ; Y-; X+; Y+; X-
+        frac_geom_type = 'quad' # extruded 2D or 3D with hexahedron cells
+        if idata.geom['mesh_type'] == '3D' and 'triangle' in c.keys():
+            frac_geom_type = 'triangle'  # 3D tetrahedron mesh
+        n_fractures = (np.unique(c[frac_geom_type]) >= frac_tag_start).sum()
 
-        '''     matrix_tag   surface_tag                             fracture_tag    test_case
-                ----------      2     overburden2 top                                     }
-                | 9994                    overburden2                                     }
-                ----------      2     overburden top       ------------- 90003        }   }
-                | 9992                    overburden       | FRACTURE  |              }   }case_1_burden_2
-                ----------      2     reservoir top        |-----------| 90001    }   }case_1_burden
-                | 9991                    RESERVOIR        | FRACTURE  | 90000    }case_1 }
-                ----------      1     reservoir bottom     |-----------| 90002    }   }   }
-                | 9993                    underburden      | FRACTURE  |              }   }
-                ----------      1     underburden bottom   ------------- 90004        }   }
-                | 9995                    underburden2                                    }
-                ----------      1     underburden2 bottom                                 }
-        '''
+        self.reservoir.physical_tags['matrix'] = matrix_tags
+        self.reservoir.physical_tags['fracture'] = [frac_tag_start + i for i in range(n_fractures)]
+        self.reservoir.physical_tags['boundary'] = bnd_tags  # order: Z- (bottom); Z+ (top) ; Y-; X+; Y+; X-
 
         # discretize
         self.reservoir.init_reservoir(verbose=True)
 
         # set boundary volume XY
-        bnd_xy_tags = [3, 4, 5, 6]
-        boundary_cells = self.reservoir.discretizer.find_cells(bnd_xy_tags, 'face')
-        boundary_cells = np.array(boundary_cells) + self.reservoir.discretizer.frac_cells_tot
-        #bnd_vol = 1e+8
-        bnd_vol_mult = 5
-        # for vtk output
-        self.reservoir.discretizer.volume_all_cells[boundary_cells] *= bnd_vol_mult  # = bnd_vol
-        # for engines
-        np.array(self.reservoir.mesh.volume, copy=False)[boundary_cells] *= bnd_vol_mult # = bnd_vol
+        if idata.geom['bondary_volume_xy'] > 0:
+            import datetime
+            t1 = datetime.datetime.now()
+            boundary_cells = []
+            boundary_cells += self.reservoir.discretizer.find_cells(bnd_xy_tags, 'face')
+            t2 = datetime.datetime.now()
+            print('Time to find boundary cells:', (t2 - t1).total_seconds(), 'sec.')
+
+            boundary_cells = np.array(boundary_cells) + self.reservoir.discretizer.frac_cells_tot
+            bnd_vol = idata.geom['bondary_volume_xy']
+            self.reservoir.discretizer.volume_all_cells[boundary_cells] = bnd_vol  # for vtk output
+            np.array(self.reservoir.mesh.volume, copy=False)[boundary_cells] = bnd_vol
 
         # initialize physics
         self.cell_property = ['pressure', 'enthalpy', 'temperature']
@@ -120,6 +118,8 @@ class Model(CICDModel):
     def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)
         start, end = self.get_mat_frac_range(part)
+        if start == end:  # no fractures
+            return
         D = depth[start:end]
         P = self.get_pressure(part)
         T = self.get_temperature(part)
@@ -160,44 +160,38 @@ class Model(CICDModel):
 
         P = self.get_pressure('full')
         T = self.get_temperature('full')
-        if P.size:
-            self.pressure_initial_mean = P.mean()
-            self.temperature_initial_mean = T.mean()
-        else:
-            self.pressure_initial_mean = self.idata.initial.initial_pressure
-            self.temperature_initial_mean = self.idata.initial.initial_temperature
 
-        if True:
-            inj_bhp = self.pressure_initial_mean + wctrl.delta_p_inj
-            inj_temp = self.temperature_initial_mean - wctrl.delta_temp
-            prod_bhp = self.pressure_initial_mean - wctrl.delta_p_prod
-        else:  # if engine is not initialized yet, set well control rate=0
-            inj_temp = 0
-            inj_rate = 0
-            prod_rate = 0
+        if P.size == 0:
+            inj_temp = 300.
+            inj_rate = 0.
+            prod_rate = 0.
 
         for i, w in enumerate(self.reservoir.wells):
+            well_top_perf_idx = self.well_perf_loc[w.name][0]
             if self.well_is_inj(w.name):
-                if inj_rate is None:
+                if inj_rate is None:  # BHP control
+                    inj_bhp = P[well_top_perf_idx] + wctrl.delta_p_prod  # rsv block pressure at the top perforation + delta_p
+                    inj_temp = T[well_top_perf_idx] - wctrl.delta_temp
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                    is_inj=True, target=inj_bhp, inj_composition=[], inj_temp=inj_temp)
                 else:
-                    # Control
+                    # Rate Control
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
                                                    is_inj=True, target=inj_rate, phase_name='water', inj_composition=[], inj_temp=inj_temp)
-                    # Constraint
+                    # BHP Constraint
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                    is_inj=True, target=wctrl.inj_bhp_constraint, inj_composition=[],
                                                    inj_temp=inj_temp)
             else:
-                if prod_rate is None:
+                if prod_rate is None:  # BHP control
+                    prod_bhp = P[well_top_perf_idx] - wctrl.delta_p_prod  # rsv block pressure at the top perforation - delta_p
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                    is_inj=False, target=prod_bhp)
                 else:
-                    # Control
+                    # Rate Control
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
                                                    is_inj=False, target=-np.abs(prod_rate), phase_name='water')
-                    # Constraint
+                    # BHP Constraint
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                    is_inj=False, target=wctrl.prod_bhp_constraint)
 
@@ -209,13 +203,15 @@ class Model(CICDModel):
         return 0
 
     def get_mat_frac_range(self, part):
-        start = 0
+        # order: fracture, matrix
         if part == 'full':
+            start = 0
             end = self.reservoir.discretizer.frac_cells_tot + self.reservoir.discretizer.mat_cells_tot
         elif part == 'cells':
-            end = self.reservoir.discretizer.mat_cells_tot
             start = self.reservoir.discretizer.frac_cells_tot
+            end = self.reservoir.discretizer.frac_cells_tot + self.reservoir.discretizer.mat_cells_tot
         elif part == 'fracs':
+            start = 0
             end = self.reservoir.discretizer.frac_cells_tot
         return [start, end]
 
@@ -254,40 +250,33 @@ class Model(CICDModel):
         else:
             raise('error: wrong self.bound_cond')
 
-        # Find closest control volume to dummy_well point:
-        self.injection_wells = []
-        dummy_well_inj = self.inj_well_coords
+        # Find closest mesh elements to well traj points, assuming it is vertical
+        step_z_perf = 1.  # [m] should be smaller that cell dz
+        self.well_perf_loc = dict()
+        well_coords = self.idata.geom['well_coords']
+        centroids_3d = self.reservoir.discretizer.centroid_all_cells[left_int:right_int]
+        for wname in well_coords.keys():  # process each well
+            coord = well_coords[wname]
+            # find mesh cells which
+            z1, z2 = coord[2], coord[3]
+            z_points = np.arange(z1, z2, step_z_perf)
+            if z_points.size == 0: # z1==z2, just one perf
+                z_points = np.array([z1])
+            ids = set()
+            for z in z_points:  # find a cell with the closest center
+                cell = ((centroids_3d[:, 0] - coord[0]) ** 2 + (centroids_3d[:, 1] - coord[1]) ** 2 + (
+                            centroids_3d[:, 2] - z) ** 2).argmin()
+                ids.add(int(cell))
+            ids_1 = list(ids)
 
-        self.store_dist_to_well_inj = np.zeros((len(dummy_well_inj),))
-        self.store_coord_well_inj = np.zeros((len(dummy_well_inj), 3))
-        ii = 0
-        for ith_inj in dummy_well_inj:
-            dist_to_well_point = np.linalg.norm(self.reservoir.discretizer.centroid_all_cells[left_int:right_int] - ith_inj,
-                                                axis=1)
-            cell_id = np.argmin(dist_to_well_point) + offset
-            self.injection_wells.append(cell_id)
+            # sort perforations by depth
+            perf_depths = centroids_3d[ids_1, 2]
+            perf_sorted_indices = np.argsort(perf_depths)
+            ids_1 = np.array(ids_1)[perf_sorted_indices]
 
-            self.store_coord_well_inj[ii, :] = self.reservoir.discretizer.centroid_all_cells[cell_id]
-            self.store_dist_to_well_inj[ii] = np.min(dist_to_well_point)
-            ii += 1
+            # store into a dictionary
+            self.well_perf_loc[wname] = ids_1
 
-        self.production_wells = []
-        dummy_well_prod = self.prod_well_coords
-
-        self.store_dist_to_well_prod = np.zeros((len(dummy_well_prod),))
-        self.store_coord_well_prod = np.zeros((len(dummy_well_prod), 3))
-        ii = 0
-        for ith_prod in dummy_well_prod:
-            dist_to_well_point = np.linalg.norm(self.reservoir.discretizer.centroid_all_cells[left_int:right_int] - ith_prod,
-                                                axis=1)
-            cell_id = np.argmin(dist_to_well_point) + offset
-            self.production_wells.append(cell_id)
-
-            self.store_coord_well_prod[ii, :] = self.reservoir.discretizer.centroid_all_cells[cell_id]
-            self.store_dist_to_well_prod[ii] = np.min(dist_to_well_point)
-            ii += 1
-
-        self.well_perf_loc = np.array([self.injection_wells, self.production_wells])
 
     def set_wells(self, well_index=100):
         """
@@ -296,15 +285,12 @@ class Model(CICDModel):
         """
         self.calc_well_loc()
 
-        for i in range(len(self.well_perf_loc[0])):
-            self.reservoir.add_well(f'I{i + 1}')
-            self.reservoir.add_perforation(self.reservoir.wells[-1].name, cell_index=self.well_perf_loc[0][i],
-                                 well_index=well_index, well_indexD=0, verbose=True)
+        for wname in self.well_perf_loc.keys():
+            self.reservoir.add_well(wname)
+            for k in range(self.well_perf_loc[wname].size):
+                self.reservoir.add_perforation(wname, res_cell_idx=self.well_perf_loc[wname][k],
+                                               well_index=well_index, well_indexD=0, verbose=True)
 
-        for i in range(len(self.well_perf_loc[1])):
-            self.reservoir.add_well(f'P{i + 1}')
-            self.reservoir.add_perforation(self.reservoir.wells[-1].name, cell_index=self.well_perf_loc[1][i],
-                                 well_index=well_index, well_indexD=0, verbose=True)
 
     def get_perm_unstr_from_struct_grid(self, perm_file, input_data):
         # Set non-uniform permeability

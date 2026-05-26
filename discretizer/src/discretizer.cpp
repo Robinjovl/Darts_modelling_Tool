@@ -54,7 +54,7 @@ void Discretizer::init()
 	pre_merged_flux.resize(MAX_FLUXES_NUM);
 	for (uint8_t k = 0; k < MAX_FLUXES_NUM; k++)
 	{
-		// Darcy's, Fick's and Fourier's fluxes 
+		// Darcy's, Fick's and Fourier's fluxes
 		fluxes[k] = FlowHeatApproximation(MAX_STENCIL);
 		// Premerged fluxes
 		pre_merged_flux[k] = FlowHeatApproximation(MAX_STENCIL);
@@ -127,13 +127,13 @@ void Discretizer::calc_tpfa_transmissibilities(const PhysicalTags& tags)
 				Vector3 conn_center;
 				auto &cn = mesh->conns[mesh->adj_matrix[j]];
 				conn_center = cn.c;
- 
+
 				// use c for first cell half-trans, c_2 for second cell half-trans
 				if (mesh->mesh_type == mesh::MESH_TYPE::CPG) {
 						if (el_id2 < el_id1)
 							conn_center = cn.c_2;
 				}
- 
+
 				Vector3 d = conn_center - mesh->centroids[el_id1];
 				if (dot(d, n) < 0.0) n = -n;
 				Vector3 Kn = matrix_vector_product(K, n);
@@ -255,7 +255,7 @@ void Discretizer::calc_tpfa_transmissibilities(const PhysicalTags& tags)
 
 			flux_rhs.push_back(0.0);
 #ifdef DEBUG_TRANS
-			std::cout << "CPP Transmissibilty for BND connection (" << mesh->conns[i].elem_id1 <<", "<< mesh->conns[i].elem_id2 << ") = "<< 
+			std::cout << "CPP Transmissibilty for BND connection (" << mesh->conns[i].elem_id1 <<", "<< mesh->conns[i].elem_id2 << ") = "<<
 				half_trans[i][0] << "\t *darcy = " << half_trans[i][0] * DARCY_CONSTANT << std::endl;
 #endif // DEBUG_TRANS
 
@@ -314,9 +314,9 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 		for (int j = mesh->adj_matrix_offset[i]; j < mesh->adj_matrix_offset[i + 1]; j++)
 		{
 			const auto& conn = mesh->conns[mesh->adj_matrix[j]];
-			if (conn.type == mesh::MAT_MAT || 
-				conn.type == mesh::MAT_FRAC || 
-				conn.type == mesh::FRAC_MAT || 
+			if (conn.type == mesh::MAT_MAT ||
+				conn.type == mesh::MAT_FRAC ||
+				conn.type == mesh::FRAC_MAT ||
 				conn.type == mesh::MAT_BOUND)
 				conns_num++;
 		}
@@ -454,9 +454,9 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
                 Matrix cur(ND, conns_num+1);
 
                 int grad_value_idx = ND * grad_offset.back();
-                for (int row = 0; row < cur.M; row++) 
+                for (int row = 0; row < cur.M; row++)
 				{
-                    for (int col = 0; col < cur.N; col++) 
+                    for (int col = 0; col < cur.N; col++)
 					{
                         cur(row, col) = grad_vals[grad_value_idx++];
                     }
@@ -550,7 +550,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 					}
 					temp_stencil[counter++] = el_id2;
 				}
-				else if (conn.type == mesh::FRACTURE_BOUNDARY)
+				else if (conn.type == mesh::FRAC_BOUND) // was FRACTURE_BOUNDARY (ElemLoc); FRAC_BOUND (ConnType) is the correct enum
 				{
 					temp_stencil[counter++] = el_id2;
 				}
@@ -999,7 +999,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 		  }
 		  temp_stencil[counter++] = el_id2;
 		}
-		else if (conn.type == mesh::FRACTURE_BOUNDARY)
+		else if (conn.type == mesh::FRAC_BOUND) // was FRACTURE_BOUNDARY (ElemLoc); FRAC_BOUND (ConnType) is the correct enum
 		{
 		  temp_stencil[counter++] = el_id2;
 		}
@@ -1127,7 +1127,7 @@ vector<index_t> Discretizer::find_connections_to_reconstruct_gradient(const inde
 	// produce all triplets and calculate their values of objective function
 	std::function<void(const vector<index_t>&, index_t, index_t, index_t, vector<index_t>&)> subset;
 	subset = [&](const vector<index_t>& arr, index_t size, index_t left, index_t index, vector<index_t>& l) {
-		if (left == 0) 
+		if (left == 0)
 		{
 			const auto& conn1 = mesh->conns[mesh->adj_matrix[l[0]]];
 			const auto& conn2 = mesh->conns[mesh->adj_matrix[l[1]]];
@@ -1146,7 +1146,7 @@ vector<index_t> Discretizer::find_connections_to_reconstruct_gradient(const inde
 			triplets.push_back({ {cur_conn_id, l[0], l[1]}, proj1 + proj2 - 1 / (fabs(det) + EQUALITY_TOLERANCE) });
 			return;
 		}
-		for (int i = index; i < size; i++) 
+		for (int i = index; i < size; i++)
 		{
 			l.push_back(arr[i]);
 			subset(arr, size, left - 1, i + 1, l);
@@ -1359,7 +1359,7 @@ vector<index_t> Discretizer::find_connections_to_reconstruct_gradient(const inde
 					assert(lambda2 < EQUALITY_TOLERANCE * tmp);
 				}
 			}
-	#endif /* DEBUG_TRANS 
+	#endif /* DEBUG_TRANS
 		}
 	}
 
@@ -1369,7 +1369,7 @@ vector<index_t> Discretizer::find_connections_to_reconstruct_gradient(const inde
 	cout << "Reconstruction of gradients:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
 }*/
 
-void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal) 
+void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 {
 	steady_clock::time_point t1, t2;
 	t1 = steady_clock::now();
@@ -1405,7 +1405,7 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 				auto& flux = fluxes[0];
 				for (index_t k = mesh->adj_matrix_offset[cell_id2]; k < mesh->adj_matrix_offset[cell_id2 + 1]; k++) { if (mesh->adj_matrix_cols[k] == cell_id1) { adj_nebr_id = k; break; } }
 				calc_matrix_matrix(conn, flux, with_thermal);
-				
+
 				flux.darcy.a.values *= sign * conn.area;
 				flux.fick.a.values *= sign * conn.area;
 				flux.fourier.a.values *= sign * conn.area;
@@ -1524,7 +1524,7 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 			}
 		}
 	}
-	
+
 	t2 = steady_clock::now();
 	cout << "Find MPFA trans: \t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
 }
@@ -1538,7 +1538,7 @@ void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, FlowHeatAppro
 	const auto& x2 = mesh->centroids[conn.elem_id2];
 	Vector3 vec1, vec2;
 	std::vector<index_t> th_stencil;
-	
+
 	// normal vector
 	copy_n(std::begin(conn.n.values), ND, std::begin(n.values));
 	if (dot(conn.c - x1, conn.n) < 0.0) n.values *= -1.0;
@@ -1550,7 +1550,7 @@ void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, FlowHeatAppro
 	lam2 = (n.transpose() * K2n).values[0];
 	gam1 = K1n - lam1 * n;
 	gam2 = K2n - lam2 * n;
-	
+
 	d1 = fabs(dot(conn.c - x1, n));
 	d2 = fabs(dot(x2 - conn.c, n));
 	y1.values = { x1.values[0], x1.values[1], x1.values[2] };	y1 += d1 * n;
@@ -1561,7 +1561,7 @@ void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, FlowHeatAppro
 	const auto& g2 = p_grads[conn.elem_id2];
 
 	flux.darcy = g1 / 2.0 + g2 / 2.0;
-	
+
 	// flux approximation
 	grad_coef = -(lam1 * lam2 * (y1 - y2).transpose() + lam1 * d2 * gam2.transpose() + lam2 * d1 * gam1.transpose()) / (lam1 * d2 + lam2 * d1);
 	flux.darcy.a = grad_coef * flux.darcy.a;
@@ -1638,7 +1638,7 @@ void Discretizer::calc_fault_fault(const mesh::Connection& conn, FlowHeatApproxi
 	const auto it1 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id1);
 	const auto it2 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id2);
 	assert(it1 != flux.darcy.stencil.end() && it2 != flux.darcy.stencil.end());
-	
+
 	Fh = -lam1 * lam2 / (lam1 * d2 + lam2 * d1);
 	id1 = static_cast<uint8_t>(std::distance(flux.darcy.stencil.begin(), it1));
 	id2 = static_cast<uint8_t>(std::distance(flux.darcy.stencil.begin(), it2));
@@ -1660,7 +1660,7 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	copy_n(std::begin(conn.n.values), ND, std::begin(n.values));
 	if (dot(conn.c - x1, conn.n) < 0.0) n.values *= -1.0;
 
-	// boundary conditions: a*p + b*f = r 
+	// boundary conditions: a*p + b*f = r
 	const auto& a = bc_flow.a[conn.elem_id2 - mesh->n_cells];
 	const auto& b = bc_flow.b[conn.elem_id2 - mesh->n_cells];
 
@@ -1691,7 +1691,7 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	flux.darcy.a(0, id1) += lam1 / d1 / mu * mult * a;
 	flux.darcy.a(0, id2) += -lam1 / d1 / mu * mult;
 
-	vec1 = conn.c - x1; 
+	vec1 = conn.c - x1;
 	T1 = dot(vec1, n) / dot(vec1, vec1);
 	T = T1 / (a + b * T1);
 	assert(T >= 0.0);
@@ -1702,16 +1702,16 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	if (with_thermal)
 	{
 	  Matrix C1n(ND, 1);
-	  // boundary conditions: a*p + b*f = r 
+	  // boundary conditions: a*p + b*f = r
 	  const auto& a = bc_heat.a[conn.elem_id2 - mesh->n_cells];
 	  const auto& b = bc_heat.b[conn.elem_id2 - mesh->n_cells];
-	  
+
 	  // co-normal decomposition
 	  C1n.values = (heat_conductions[conn.elem_id1] * n).values;
 	  lam1 = (n.transpose() * C1n).values[0];
 	  gam1 = C1n - lam1 * n;
 
-	  const auto& g1 = t_grads[conn.elem_id1]; 
+	  const auto& g1 = t_grads[conn.elem_id1];
 
 	  // flux approximation
 	  mult = 1.0 / (a + b * lam1 / d1);
@@ -1792,7 +1792,7 @@ vector<index_t> Discretizer::get_one_way_tpfa_transmissibilities() const
 	assert(cell_m.size());
 
 	unordered_set<pair<index_t, index_t>, mesh::pair_cantor_hash, mesh::one_way_connection_comparator> conn_set;
-	unordered_set<pair<index_t, index_t>>::const_iterator it;
+	auto it = conn_set.cend();
 	pair<index_t, index_t> ids;
 	vector<index_t> res;
 	conn_set.reserve(mesh->conns.size());
@@ -1802,7 +1802,7 @@ vector<index_t> Discretizer::get_one_way_tpfa_transmissibilities() const
 	{
 		ids.first = cell_m[i];
 		ids.second = cell_p[i];
-		
+
 		it = conn_set.find(ids);
 		if (it == conn_set.end())
 		{
@@ -1814,7 +1814,7 @@ vector<index_t> Discretizer::get_one_way_tpfa_transmissibilities() const
 	return res;
 }
 
-// 
+//
 void Discretizer::write_tran_cube(std::string fname, std::string fname_nnc) const
 {
 	index_t nnc_counter = 0;
@@ -1830,7 +1830,7 @@ void Discretizer::write_tran_cube(std::string fname, std::string fname_nnc) cons
 	std::fill(tranz.begin(), tranz.end(), 0);
 
 	unordered_set<pair<index_t, index_t>, mesh::pair_xor_hash, mesh::one_way_connection_comparator> conn_set;
-	unordered_set<pair<index_t, index_t>>::const_iterator it;
+	auto it = conn_set.cend();
 	pair<index_t, index_t> ids;
 	conn_set.reserve(mesh->conns.size());
 
@@ -1901,7 +1901,7 @@ std::vector<value_t> Discretizer::get_fault_xyz() const
 	std::vector<value_t> fault_xyz;
 
 	unordered_set<pair<index_t, index_t>, mesh::pair_xor_hash, mesh::one_way_connection_comparator> conn_set;
-	unordered_set<pair<index_t, index_t>>::const_iterator it;
+	auto it = conn_set.cend();
 	pair<index_t, index_t> ids;
 	conn_set.reserve(mesh->conns.size());
 
@@ -1968,6 +1968,6 @@ void Discretizer::write_tran_list(std::string fname) const
 		f << mesh->centroids[p].x << "\t" << mesh->centroids[p].y << "\t" << mesh->centroids[p].z << "\t";
 		f << t << "\n";
 	}
-	
+
 	f.close();
 }

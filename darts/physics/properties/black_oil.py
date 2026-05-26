@@ -1,4 +1,4 @@
-from darts.engines import property_evaluator_iface
+from darts.interpolators import property_evaluator_iface
 from darts.tools.interpolation import TableInterpolation
 from darts.tools.keyword_file_tools import *
 

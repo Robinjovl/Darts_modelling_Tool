@@ -6,8 +6,8 @@ from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
+    ThermalVarOperator,
     WellControlOperators,
-    WellInitOperators,
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators
@@ -34,6 +34,9 @@ class Compositional(PhysicsBase):
         max_p: float,
         min_z: float,
         max_z: float,
+        epsilon_z: float,
+        sim_eps_multiplier: float = 10,
+        extrapolation_flag: bool = True,
         min_t: float = None,
         max_t: float = None,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
@@ -60,6 +63,13 @@ class Compositional(PhysicsBase):
         :type min_p, max_p: float
         :param min_z, max_z: Minimum, maximum composition
         :type min_z, max_z: float
+        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
+        :type epsilon_z: float
+        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
+                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
+        :type sim_eps_multiplier: float
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :type extrapolation_flag: bool
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
         :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
@@ -79,41 +89,73 @@ class Compositional(PhysicsBase):
         self.thermal = state_spec > PhysicsBase.StateSpecification.P
 
         # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature/enthalpy
-        variables = ['pressure'] + components[:-1]
+        variables = ["pressure"] + components[:-1]
         if self.thermal:
             variables += (
-                ['temperature']
+                ["temperature"]
                 if state_spec == PhysicsBase.StateSpecification.PT
-                else ['enthalpy']
+                else ["enthalpy"]
             )
 
         n_vars = len(variables)
-        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
+        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP * /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
         # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*LAMBDA*/ + NP /*SAT*/ + NP /*enthalpy*/
         # + 2 /*temperature and pressure*/
         # = NE * (2 * nph + 2) + 6 * nph + 3
 
-        n_ops = n_vars * (2 * nph + 2) + 6 * nph + 3
+        n_ops = n_vars * (2 * nph + 2) + 7 * nph + 3
 
         # axes_min
         if axes_min is None:
+            axz_min = (
+                [min_z + epsilon_z for i in range(nc - 1)]
+                if np.isscalar(min_z)
+                else [min_z[i] + epsilon_z for i in range(nc - 1)]
+            )
             if self.thermal:
-                axes_min = [min_p] + [min_z] * (nc - 1) + [min_t]
+                axes_min = [min_p] + axz_min + [min_t]
             else:
-                axes_min = [min_p] + [min_z] * (nc - 1)
+                axes_min = [min_p] + axz_min
 
         # axes_max
         if axes_max is None:
+            axz_max = (
+                [max_z - (nc - 1) * epsilon_z for i in range(nc - 1)]
+                if np.isscalar(min_z)
+                else [max_z[i] - (nc - 1) * epsilon_z for i in range(nc - 1)]
+            )
             if self.thermal:
-                axes_max = [max_p] + [max_z] * (nc - 1) + [max_t]
+                axes_max = [max_p] + axz_max + [max_t]
             else:
-                axes_max = [max_p] + [max_z] * (nc - 1)
+                axes_max = [max_p] + axz_max
 
         # n_axes_points
         if n_axes_points is None:
             n_axes_points = index_vector([n_points] * n_vars)
         else:
             n_axes_points = index_vector(n_axes_points)
+
+        self.extrapolation_flag = extrapolation_flag
+        self.dz = (
+            (axes_max[1] - axes_min[1]) / (n_axes_points[1] - 1) if nc > 1 else None
+        )
+        if self.extrapolation_flag:
+            # ASSERT EQUAL DZ FOR EACH COMPOSITION AXIS
+            for i in range(nc - 1):
+                assert (
+                    np.abs(
+                        (axes_max[i + 1] - axes_min[i + 1]) / (n_axes_points[i + 1] - 1)
+                        - self.dz
+                    )
+                    < 1e-15
+                ), (
+                    "To use extrapolation logic, dz should be equal along all compositional axes"
+                )
+
+        assert sim_eps_multiplier > 1, (
+            "Multiplier for epsilon must be greater than 1 to have consistent "
+            "OBL axes/solution vector in engine"
+        )
 
         # Call PhysicsBase constructor
         super().__init__(
@@ -124,12 +166,13 @@ class Compositional(PhysicsBase):
             n_ops=n_ops,
             axes_min=axes_min,
             axes_max=axes_max,
+            sim_eps=epsilon_z * sim_eps_multiplier,
             n_axes_points=n_axes_points,
             timer=timer,
             cache=cache,
         )
 
-    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
+    def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):
         """
         Function to set :class:`engine_super` object.
 
@@ -138,7 +181,7 @@ class Compositional(PhysicsBase):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        if discr_type == 'mpfa':
+        if discr_type == "mpfa":
             if self.thermal:
                 return eval(f"engine_super_mp_{platform}{self.nc:d}_{self.nph:d}_t")()
             else:
@@ -157,28 +200,37 @@ class Compositional(PhysicsBase):
         """
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
-                self.property_containers[region], self.thermal
+                self.property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
             self.property_operators[region] = PropertyOperators(
-                self.property_containers[region], self.thermal
+                self.property_containers[region],
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
             )
 
-        if self.thermal:
-            self.well_operators = ReservoirOperators(
-                self.property_containers[self.regions[0]], self.thermal
-            )
-        else:
-            self.well_operators = WellOperators(
-                self.property_containers[self.regions[0]], self.thermal
-            )
+        self.well_operators = WellOperators(
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
+        )
 
         self.well_ctrl_operators = WellControlOperators(
-            self.property_containers[self.regions[0]], self.thermal
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
-        self.well_init_operators = WellInitOperators(
+        self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
         )
 
         return
@@ -203,8 +255,8 @@ class Compositional(PhysicsBase):
             ]
         ), "Initial state for must be specified for all primary variables"
         assert not self.thermal or (
-            'temperature' in input_distribution.keys()
-            or 'enthalpy' in input_distribution.keys()
+            "temperature" in input_distribution.keys()
+            or "enthalpy" in input_distribution.keys()
         ), "Temperature or enthalpy must be specified for thermal models"
         input_depth = (
             input_depth
@@ -231,17 +283,17 @@ class Compositional(PhysicsBase):
                 # If temperature has been provided, interpolate pressure and temperature to compute enthalpies
                 p_itor = interp1d(
                     input_depth,
-                    input_distribution['pressure'],
-                    kind='linear',
-                    fill_value='extrapolate',
+                    input_distribution["pressure"],
+                    kind="linear",
+                    fill_value="extrapolate",
                 )
                 pressure = p_itor(depths)
 
                 t_itor = interp1d(
                     input_depth,
-                    input_distribution['temperature'],
-                    kind='linear',
-                    fill_value='extrapolate',
+                    input_distribution["temperature"],
+                    kind="linear",
+                    fill_value="extrapolate",
                 )
                 temperature = t_itor(depths)
 
@@ -249,8 +301,8 @@ class Compositional(PhysicsBase):
                     interp1d(
                         input_depth,
                         input_distribution[comp],
-                        kind='linear',
-                        fill_value='extrapolate',
+                        kind="linear",
+                        fill_value="extrapolate",
                     )
                     for comp in self.components[:-1]
                 ]
@@ -273,8 +325,8 @@ class Compositional(PhysicsBase):
                 itor = interp1d(
                     input_depth,
                     input_distribution[variable],
-                    kind='linear',
-                    fill_value='extrapolate',
+                    kind="linear",
+                    fill_value="extrapolate",
                 )
                 values = itor(depths)
 
@@ -306,14 +358,14 @@ class Compositional(PhysicsBase):
 
         # set initial pressure
         np.asarray(mesh.initial_state)[0 :: self.n_vars] = input_distribution[
-            'pressure'
+            "pressure"
         ]
 
         # if thermal, set initial temperature or enthalpy
         if self.thermal:
             if self.state_spec == PhysicsBase.StateSpecification.PT:
                 np.asarray(mesh.initial_state)[(self.n_vars - 1) :: self.n_vars] = (
-                    input_distribution['temperature']
+                    input_distribution["temperature"]
                 )
             elif self.state_spec == PhysicsBase.StateSpecification.PH:
                 if 'enthalpy' in input_distribution.keys():
@@ -378,3 +430,92 @@ class Compositional(PhysicsBase):
                 if np.isscalar(input_distribution[self.vars[c + 1]])
                 else input_distribution[self.vars[c + 1]][:]
             )
+
+    def evaluate_flash(
+        self,
+        state_spec: dict = None,
+        compositions: dict = None,
+        obl_interval_multiplier: float = 1.0,
+        plot_flash_results: bool = False,
+        region: int = 0,
+    ):
+        """
+        Method to evaluate and plot flash for specified states and compositions.
+
+        :param state_spec: Dictionary containing values for state specification variables, default is None which evaluates full OBL space
+        :type state_spec: dict
+        :param compositions: Dictionary containing composition ranges, default is None which evaluates full OBL space
+        :type compositions: dict
+        :param obl_interval_multiplier: Multiplier to OBL axis intervals if ranges are obtained from OBL axes, default 1
+        :type obl_interval_multiplier: float
+        :param plot_flash_results: Whether to plot flash results in phase diagram
+        :type plot_flash_results: bool
+        :param region: Property region
+        :type region: int
+        """
+        from dartsflash.dartsflash import DARTSFlash
+
+        flash_ev = self.property_containers[region].flash_ev
+        assert isinstance(flash_ev, DARTSFlash), (
+            "Flash evaluator should be DARTSFlash object to utilize this feature"
+        )
+
+        # Set ranges of state specification
+        state_vars = [self.vars[0], self.vars[-1]] if self.thermal else [self.vars[0]]
+        state_spec = state_spec if state_spec is not None else {}
+        for i, spec in enumerate(state_vars):
+            # create entry if it doesn't exist
+            state_spec[spec] = state_spec[spec] if spec in state_spec.keys() else None
+            # define array if it hasn't been defined
+            spec_idx = 0 if i == 0 else -1
+            state_spec[spec] = (
+                state_spec[spec]
+                if state_spec[spec] is not None
+                else (
+                    np.linspace(
+                        self.axes_min[spec_idx],
+                        self.axes_max[spec_idx],
+                        int(self.n_axes_points[spec_idx] / obl_interval_multiplier),
+                    )
+                )
+            )
+
+        # Show warning if other variable has been specified
+        if not np.all([spec in state_vars for spec in state_spec.keys()]):
+            import warnings
+
+            warnings.warn(
+                "Not all specified variables in state_spec are primary variables",
+                stacklevel=2,
+            )
+            print("Variables", state_vars, "State specifications", state_spec.keys())
+
+        # Set ranges of compositions
+        compositions = compositions if compositions is not None else {}
+        compositions[self.components[-1]] = 1.0
+        for i, comp in enumerate(self.components[:-1]):
+            # create entry if it doesn't exist
+            compositions[comp] = (
+                compositions[comp] if comp in compositions.keys() else None
+            )
+            # define array if it hasn't been defined
+            compositions[comp] = (
+                compositions[comp]
+                if compositions[comp] is not None
+                else (
+                    np.linspace(
+                        self.axes_min[i + 1],
+                        self.axes_max[i + 1],
+                        int(self.n_axes_points[i + 1] / obl_interval_multiplier),
+                    )
+                )
+            )
+
+        # Evaluate
+        _flash_results = flash_ev.evaluate_flash(
+            state_spec=state_spec, compositions=compositions, mole_fractions=True
+        )
+
+        # Plot
+        if plot_flash_results:
+            pass

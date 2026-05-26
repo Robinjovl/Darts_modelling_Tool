@@ -26,9 +26,55 @@ Help_Info()
   echo "   -d MODE   : Configuration for C++ code [Release, Debug, Profile]. Profile = -O3 -g (optimized + debug symbols). Example: -d Debug"
   echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
-  echo "   -p        : Enable building & installing IPhreeqc (third-party)  (OFF by default)"
+  echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
   echo "   -v        : Enable build with valgrind support (OFF by default)"
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
+}
+
+ensure_reaktoro_conda()
+{
+  echo -e "\n-- Install Reaktoro (conda): START\n"
+
+  if python3 - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec("reaktoro") else 1)
+PY
+  then
+    echo "- Reaktoro already available in current Python environment"
+    return
+  fi
+
+  if ! command -v conda >/dev/null 2>&1; then
+    echo "Error: 'conda' command not found. Install Conda (see https://reaktoro.org/installation/installation-using-conda.html) and activate an environment before using -p."
+    exit 1
+  fi
+
+  if [[ -z "${CONDA_PREFIX:-}" ]]; then
+    echo "Error: CONDA_PREFIX is empty. Activate the target conda environment (e.g., 'conda activate rkt') before running with -p."
+    exit 1
+  fi
+
+  # Check Python version compatibility (Reaktoro on conda-forge requires Python >=3.10, <3.13)
+  local py_minor
+  py_minor=$(python3 -c "import sys; print(sys.version_info.minor)")
+  if [[ "$py_minor" -lt 10 || "$py_minor" -ge 13 ]]; then
+    local py_version
+    py_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    echo "Warning: Reaktoro on conda-forge requires Python >=3.10 and <3.13, but the current environment has Python $py_version."
+    echo ""
+    echo "To install Reaktoro, create a compatible conda environment (e.g., Python 3.12):"
+    echo "  conda create -n darts-rkt python=3.12 -y"
+    echo "  conda activate darts-rkt"
+    echo ""
+    echo "Then re-run this script with the -p flag."
+    return
+  fi
+
+  local reaktoro_log="$PWD/make_reaktoro.log"
+  echo "+ conda install -y -c conda-forge -p ${CONDA_PREFIX} reaktoro" | tee -a "$reaktoro_log"
+  conda install -y -c conda-forge -p "${CONDA_PREFIX}" reaktoro 2>&1 | tee -a "$reaktoro_log"
+  echo -e "\n--- Installing Reaktoro: DONE!\n"
 }
 ################################################################################
 # Main program                                                                 #
@@ -127,14 +173,12 @@ if [[ "$skip_req" == false ]]; then
     # update submodules
     echo -e "\n- Update submodules: START \n"
     # clean-up previous versions.
-    rm -rf thirdparty/eigen \
-            thirdparty/pybind11 \
+    rm -rf thirdparty/pybind11 \
             thirdparty/hypre \
             thirdparty/iphreeqc
     # synchronize & update submodules (MshIO excluded: local fixes applied)
     git submodule sync --recursive
     git submodule update --init --recursive -- \
-            thirdparty/eigen \
             thirdparty/pybind11 \
             thirdparty/hypre
     if [[ $phreeqc == "true" ]]; then
@@ -147,13 +191,7 @@ if [[ "$skip_req" == false ]]; then
     echo -e "\n- Install requirements: START \n"
     cd thirdparty
 
-    echo -e "\n-- Install EIGEN 3 \n"
-    mkdir -p build/eigen
-    cd build/eigen
-    cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  &> ../../../make_eigen.log
-    make install -j $NT &>> ../../../make_eigen.log
-    cd ../../
-
+    mkdir -p build
     echo -e "\n-- Install Hypre: START\n"
     cd hypre/src/cmbuild
     # Setup hypre build with no MPI support (we only use single processor)
@@ -270,6 +308,14 @@ echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
 # Build and install openDARTS
+# Under valgrind (-O2 -g) the auto-generated super_part*.cpp interpolator TUs
+# can OOM-kill g++ at high -j. Pre-build the interpolators target with reduced
+# parallelism; the subsequent full build skips already-compiled objects.
+if [[ "$valgrind" == true && "$NT" -gt 1 ]]; then
+    HEAVY_NT=$(( NT / 2 ))
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT (valgrind OOM mitigation)"
+    make interpolators -j $HEAVY_NT 2>> ../make_darts.log
+fi
 make install -j $NT 2>> ../make_darts.log
 
 # Test
@@ -293,15 +339,75 @@ python3 darts/print_build_info.py
 # build darts.whl
 if [[ "$wheel" == true ]]; then
     cp CHANGELOG.md darts
-    python3 setup.py clean
-    python3 setup.py build bdist_wheel 2>&1 | tee make_wheel.log
+    python3 -m pip install --upgrade build 2>&1 | tee make_wheel.log
+    python3 -m build --wheel 2>&1 | tee -a make_wheel.log
     echo -e "-- Python wheel generated! \n"
 fi
 
 # installing python package with -e flag for interactive install (changes will be applied live)
 python3 -m pip install . 2>&1 | tee -a make_wheel.log
 
+if [[ "$phreeqc" == true ]]; then
+    ensure_reaktoro_conda
+fi
+
 echo -e "\n************************************************************************"
 echo "| Building python package open-darts: DONE! "
 echo -e "************************************************************************\n"
+
+# Build warnings/errors summary -----------------------------------------------
+report_build_summary()
+{
+  local warn_pattern=': warning[: #]'
+  local err_pattern=': error[: #]'
+
+  # (component_name, log_file) pairs
+  local components=(
+    "Hypre:make_hypre.log"
+    "SuperLU:make_superlu.log"
+    "IPhreeqc:make_iphreeqc.log"
+    "open-DARTS:make_darts.log"
+  )
+
+  # Count warnings/errors before printing (avoid reading make_darts.log while appending)
+  local -A warn_counts err_counts
+  for entry in "${components[@]}"; do
+    local name="${entry%%:*}"
+    local logfile="${entry##*:}"
+    if [[ -f "$logfile" ]]; then
+      warn_counts[$name]=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
+      err_counts[$name]=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
+    fi
+  done
+
+  # Print to stdout and append to make_darts.log
+  {
+    echo ""
+    echo "========================================="
+    echo " Build warnings/errors summary"
+    echo "========================================="
+    printf " %-14s | %8s | %6s\n" "Component" "Warnings" "Errors"
+    echo " -----------------------------------------"
+
+    for entry in "${components[@]}"; do
+      local name="${entry%%:*}"
+      if [[ -n "${warn_counts[$name]+x}" ]]; then
+        printf " %-14s | %8d | %6d\n" "$name" "${warn_counts[$name]}" "${err_counts[$name]}"
+      fi
+    done
+
+    echo "========================================="
+
+    local darts_warnings=${warn_counts[open-DARTS]:-0}
+    if [[ $darts_warnings -gt 0 ]]; then
+      echo ""
+      echo " open-DARTS unique warnings:"
+      grep -E "$warn_pattern" make_darts.log 2>/dev/null | sort -u | head -100
+    fi
+
+    echo ""
+    echo "OPENDARTS_WARNING_COUNT=$darts_warnings"
+  } | tee -a make_darts.log
+}
+report_build_summary
 # ------------------------------------------------------------------------------

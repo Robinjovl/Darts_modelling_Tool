@@ -31,21 +31,20 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
-        """Reservoir"""
         const_perm = 100
         poro = 0.15
         mesh_file = 'wedgesmall.msh'
-        self.reservoir = UnstructReservoir(self.timer, permx=const_perm, permy=const_perm, permz=const_perm,
-                                           frac_aper=0, mesh_file=mesh_file, poro=poro, cache=False)
+        self.reservoir = UnstructReservoir(self.timer, poro=poro, permx=const_perm, permy=const_perm, permz=const_perm,
+                                           frac_aper=0, mesh_file=mesh_file, cache=False)
 
         # Add injection well for CO2:
-        self.reservoir.add_well("I1", depth=5, wellbore_diameter=0.1)
+        self.reservoir.add_well("I1", well_diameter=0.1)
         # Perforate all boundary cells:
         for nth_perf in range(len(self.left_boundary_cells)):
             well_index = mesh.volume[self.left_boundary_cells[nth_perf]] / self.max_well_vol * self.well_index
             well_indexD = 0.
-            self.add_perforation(well=self.wells[-1], res_block=self.left_boundary_cells[nth_perf],
-                                 well_index=well_index, well_indexD=well_indexD)
+            self.reservoir.add_perforation(well_name=self.wells[-1], res_cell_idx=self.left_boundary_cells[nth_perf],
+                                           well_index=well_index, well_indexD=well_indexD)
 
         return
 
@@ -61,7 +60,7 @@ class Model(CICDModel):
         self.ini_stream = [1e-6]
         self.inj_composition = [0.3]
 
-        property_container = PropertyContainer(phase_name=phases, component_name=components, min_z=zero, Mw=Mw)
+        property_container = PropertyContainer(phase_name=phases, component_name=components, eps_z=zero, Mw=Mw)
 
         """ properties correlations """
         # foam parameter, fmmob, fmdry, epdry, fmmob = 0 no foam generation
@@ -69,7 +68,7 @@ class Model(CICDModel):
 
         ki = np.array([44.5, 2.05e-2])
         # ki = np.array([40, 2.47e-4])
-        property_container.flash_ev = ConstantK(nc=2, ki=ki, min_z=1e-12)
+        property_container.flash_ev = ConstantK(nc=len(components), ki=ki, eps_z=1e-12)
         # property_container.flash_ev = Flash(components)
         # property_container.density_ev = dict([('wat', DensityBrine()),
         #                                       ('gas', DensityVap())])
@@ -85,7 +84,7 @@ class Model(CICDModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = CustomPhysics(components, phases, self.timer,
-                                     n_points=200, min_p=1., max_p=1000., min_z=zero/10, max_z=1.-zero/10,
+                                     n_points=200, min_p=1., max_p=1000., min_z=0., max_z=1., epsilon_z=eps_z,
                                      state_spec=state_spec, cache=False)
         self.physics.add_property_region(property_container)
         return
@@ -101,17 +100,17 @@ class Model(CICDModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
                                                is_inj=True, phase_name='gas', target=1., inj_composition=self.inj_composition)
             else:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=85.)
 
 
 class CustomPhysics(Compositional):
     def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=None, max_t=None,
-                 state_spec = Compositional.StateSpecification.P, discr_type='tpfa', cache=False):
-        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, state_spec, discr_type, cache)
+                 state_spec = Compositional.StateSpecification.P, cache=False):
+        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, state_spec, cache)
 
     def set_operators(self, regions, output_properties=None):
         for region, prop_container in self.property_containers.items():

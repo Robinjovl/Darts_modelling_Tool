@@ -112,7 +112,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         per_day_2_per_sec = 86400.0
         vel = self.r.darcy_velocity_func(self.a / 2, self.a / 2, self.a / 2, time)[:, 0] / idata.fluid.viscosity / per_day_2_per_sec
-        hc = np.linalg.norm(idata.rock.conductivity)
+        hc = np.linalg.norm(idata.rock.thermal_conductivity)
         self.peclet = idata.rock.heat_capacity * idata.fluid.density * np.linalg.norm(vel) * self.a / hc
         return self.peclet
 
@@ -314,7 +314,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_arrays_boundary_condition()
         # RHS term
         self.r = RhsThermoporoelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
-                                        th_expn=idata.rock.th_expn, heat_cond=idata.rock.conductivity,
+                                        th_expn=idata.rock.th_expn, heat_cond=idata.rock.thermal_conductivity,
                                         visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
                                         rho_s=idata.rock.density, comp_s=idata.rock.compressibility,
                                         poro0=idata.rock.porosity, th_expn_poro=idata.rock.th_expn_poro,

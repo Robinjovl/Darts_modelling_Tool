@@ -26,7 +26,7 @@ struct engine_super_gpu_exposer
     long_name += "GPU simulator engine for " + std::to_string(NC) + " components and " + std::to_string(NP) + " phases with diffusion and kinetic reaction";
     py::class_<engine_super_gpu<NC, NP, THERMAL>, engine_base>(m, short_name.c_str(), long_name.c_str())
       .def(py::init<>())
-      .def("init", (int (engine_super_gpu<NC, NP, THERMAL>::*)(conn_mesh*, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) & engine_super_gpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>()) \
+      .def("init", (int (engine_super_gpu<NC, NP, THERMAL>::*)(conn_mesh*, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, operator_set_gradient_evaluator_iface*, sim_params*, timer_node*)) & engine_super_gpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 6>()) \
       .def("get_X_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
             return py::capsule(self.X_d, "double_ptr");
           }) \

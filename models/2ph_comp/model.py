@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params, well_control_iface
+from darts.engines import sim_params, well_control_iface, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -35,14 +35,14 @@ class Model(CICDModel):
 
     def set_wells(self):
         self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
-
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         """Physical properties"""
         zero = 1e-8
+        epsilon = 1e-9
         # Create property containers:
         components = ['CO2', 'C1', 'H2O']
         phases = ['gas', 'oil']
@@ -50,7 +50,7 @@ class Model(CICDModel):
         Mw = [44.01, 16.04, 18.015]
 
         property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                               Mw=Mw, min_z=zero / 10, temperature=1.)
+                                               Mw=Mw, eps_z=epsilon, temperature=1.)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(len(components), [4, 2, 1e-1], zero)
@@ -65,7 +65,8 @@ class Model(CICDModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=200, min_p=1, max_p=300, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     extrapolation_flag=True)
         # property_container.output_props = {
         #     "sat0": lambda: property_container.sat[0],
         #     "dens0": lambda: property_container.dens[0],

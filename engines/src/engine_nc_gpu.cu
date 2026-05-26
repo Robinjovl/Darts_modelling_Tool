@@ -353,9 +353,10 @@ assemble_jacobian_array_kernel4_lincomb(const unsigned int n_blocks, value_t dt,
 template <uint8_t NC>
 int engine_nc_gpu<NC>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                            operator_set_gradient_evaluator_iface* thermal_var_etor_,
                             sim_params *params_, timer_node *timer_)
 {
-  engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+  engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 
     return 0;
 }
@@ -622,4 +623,3 @@ engine_nc_gpu<NC>::adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X
 };
 
 template struct recursive_instantiator_nc<engine_nc_gpu, 2, 10>;
-

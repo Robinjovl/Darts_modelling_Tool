@@ -108,14 +108,14 @@ class THMCModel(DartsModel):
                 phases_name=phases,
                 components_name=components,
                 Mw=Mw,
-                min_z=self.idata.obl.min_z,
+                eps_z=self.idata.obl.epsilon_z,
             )
         else:
             property_container = PropertyContainer(
                 phases_name=phases,
                 components_name=components,
                 Mw=Mw,
-                min_z=self.idata.obl.min_z,
+                eps_z=self.idata.obl.epsilon_z,
                 temperature=1.0,
             )
 
@@ -143,12 +143,11 @@ class THMCModel(DartsModel):
         # create physics
         if self.idata.type_mech == 'thermoporoelasticity':
             property_container.enthalpy_ev = dict(
-                [('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))]
+                [('wat', EnthalpyBasic(hcap=self.idata.fluid.heat_capacity, tref=0.0))]
             )
-            property_container.rock_energy_ev = EnthalpyBasic(
-                hcap=1.0, tref=0.0
-            )  # TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+            property_container.conductivity_ev = dict(
+                [('wat', ConstFunc(self.idata.fluid.thermal_conductivity))]
+            )
 
             thermal = True
             state_spec = (
@@ -165,10 +164,12 @@ class THMCModel(DartsModel):
                 max_p=self.idata.obl.max_p,
                 min_z=self.idata.obl.min_z,
                 max_z=self.idata.obl.max_z,
+                epsilon_z=self.idata.obl.epsilon_z,
                 min_t=self.idata.obl.min_t,
                 max_t=self.idata.obl.max_t,
                 state_spec=state_spec,
                 discretizer=self.discretizer_name,
+                extrapolation_flag=True,
             )
         else:
             thermal = False
@@ -186,8 +187,10 @@ class THMCModel(DartsModel):
                 max_p=self.idata.obl.max_p,
                 min_z=self.idata.obl.min_z,
                 max_z=self.idata.obl.max_z,
+                epsilon_z=self.idata.obl.epsilon_z,
                 state_spec=state_spec,
                 discretizer=self.discretizer_name,
+                extrapolation_flag=True,
             )
         self.physics.add_property_region(property_container)
 
