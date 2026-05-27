@@ -34,6 +34,8 @@ def get_peak_memory_in_bytes():
 
 
 def print_allocated_memory():
+    import os
+
     GB2B = 1024**3
     try:
         import psutil
