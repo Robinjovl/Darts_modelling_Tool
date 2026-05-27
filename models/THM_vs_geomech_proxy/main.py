@@ -114,7 +114,7 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type, uniform_props=False, wells_type=None, 
+def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90.):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
@@ -135,7 +135,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type,
               decouple_geomech=decouple_geomech, generate_mesh=generate_mesh)
     m.init()
-    
+
     #m.restart = False
     #m.set_output()
 
@@ -152,7 +152,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     splitter = '-' * 100 + '\n'
 
-    # For geomechanics quilibrium intialization, we initially run the simulation for a long time 
+    # For geomechanics quilibrium intialization, we initially run the simulation for a long time
     # to get the equilibrium, then store that initial displacements internally.
     # Further-timestep displacements will be relative to the initial ones.
     print(splitter + 'compute initialization ...\n' + splitter)
@@ -249,4 +249,3 @@ if __name__ == '__main__':
     #report_step = sim_time  # days
 
     run(model_folder=mesh, physics_type=physics_type, generate_mesh=generate_mesh, wells_type=wells_type, decouple_geomech=decouple_geomech, report_step=report_step, sim_time=sim_time)
-
