@@ -23,7 +23,7 @@ Help_Info()
   echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
   echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
-  echo "   -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug"
+  echo "   -d MODE   : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo"
   echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
   echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
@@ -132,6 +132,11 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
            valgrind=true;;
     esac
 done
+
+if [[ "$config" != "Release" && "$config" != "Debug" && "$config" != "RelWithDebInfo" ]]; then
+    echo "Error: Invalid build configuration \"$config\". Valid options: Release, Debug, RelWithDebInfo."
+    exit 1
+fi
 
 # Amend possible contradictory inputs
 if [ "$iter_solvers" == true ] && [ "$testing" == true ]; then
