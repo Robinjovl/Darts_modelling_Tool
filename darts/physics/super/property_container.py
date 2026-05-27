@@ -1,9 +1,15 @@
+from typing import Any
+
 import numpy as np
 
 from darts.engines import value_vector
 from darts.physics.base.property_base import PropertyBase
 from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator
 from darts.physics.properties.flash import Flash
+from darts.physics.properties.hysteresis import (
+    HistoryAwareCapPressure,
+    HistoryAwareRelPerm,
+)
 
 
 class PropertyContainer(PropertyBase):
@@ -18,19 +24,34 @@ class PropertyContainer(PropertyBase):
         rock_comp: float = 1e-6,
         rate_ann_mat=None,
         temperature: float = None,
+        n_history: int = 0,
     ):
         """
         This is the PropertyContainer class for the Compositional engine.
 
         :param phases_name: List of phases
+        :type phases_name: list[str]
         :param components_name: List of components
+        :type components_name: list[str]
         :param Mw: List of molecular weights [g/mol]
+        :type Mw: list[float]
         :param nc_sol: Number of solid components, default is 0
+        :type nc_sol: int
         :param np_sol: Number of solid phases, default is 0
+        :type np_sol: int
         :param eps_z: Minimum bound of component mole fractions in OBL grid, default is 1e-11
+        :type eps_z: float
         :param rock_comp: Rock compressibility, default is 1e-6
+        :type rock_comp: float
         :param rate_ann_mat: Rate annihilation matrix, optional
+        :type rate_ann_mat: numpy.ndarray, optional
         :param temperature: Constant temperature for isothermal simulation, default is None (thermal)
+        :type temperature: float, optional
+        :param n_history: Number of OBL history variables (e.g. ``sg_max``) appended to the state
+                      after the primary Newton unknowns. ``0`` disables history-aware dispatch
+                      and matches legacy behaviour; set by :class:`PhysicsBase` through
+                      ``add_property_region``
+        :type n_history: int
         """
         # This class contains all the property evaluators required for simulation
         self.components_name = components_name
@@ -48,6 +69,16 @@ class PropertyContainer(PropertyBase):
 
         self.Mw = Mw
         self.eps_z = eps_z
+        # Number of OBL history variables (e.g. sg_max) appended to the state vector after
+        # the primary Newton unknowns. 0 disables history-aware dispatch entirely.
+        self.n_history = int(n_history)
+        # Ordered labels for the appended history variables (populated by PhysicsBase.add_property_region).
+        # When present and non-empty, evaluate() extracts one trailing scalar per label and passes
+        # them as kwargs to HistoryAware* evaluators.
+        self.history_labels: list[str] = []
+        # Last extracted {label: value} map; refreshed on every evaluate() call. Evaluators that
+        # consume more than one history variable can read this directly.
+        self.history_values: dict[str, float] = {}
 
         if temperature:  # constant T specified
             self.thermal = False
@@ -109,6 +140,48 @@ class PropertyContainer(PropertyBase):
 
         self.output_props = {"sat0": lambda: self.sat[0]}
 
+    def validate_history_consistency(self) -> None:
+        """Assert that every history-aware evaluator in this container that owns a
+        :class:`~darts.physics.properties.hysteresis.KilloughLandModel` (or any other
+        trapping-model object exposed as ``.history_model``) agrees on its parameters.
+
+        Catches silent drift between :attr:`rel_perm_ev` and
+        :attr:`capillary_pressure_ev` whose evaluators each build their own model from
+        independent Corey/parameter sources. Call once after the container is fully
+        populated; :class:`~darts.physics.base.physics_base.PhysicsBase` invokes this
+        from :meth:`init_physics`.
+
+        :raises AssertionError: If two evaluators expose ``history_model`` instances of
+                                the same type but with non-equal parameter values.
+        """
+        seen: dict[str, Any] = {}
+        sources: dict[str, list[str]] = {}
+
+        def _consider(label: str, ev) -> None:
+            model = getattr(ev, "history_model", None)
+            if model is None:
+                return
+            key = type(model).__name__
+            if key not in seen:
+                seen[key] = model
+                sources[key] = [label]
+                return
+            sources[key].append(label)
+            if model != seen[key]:
+                raise AssertionError(
+                    f"{key} parameters disagree across evaluators in this "
+                    f"PropertyContainer: {sources[key][0]} has {seen[key]}, "
+                    f"{label} has {model}. All hysteresis-bearing evaluators in one "
+                    f"region must share the same trapping parameters."
+                )
+
+        if isinstance(self.rel_perm_ev, dict):
+            for ph, ev in self.rel_perm_ev.items():
+                _consider(f"rel_perm_ev[{ph!r}]", ev)
+        if isinstance(self.capillary_pressure_ev, dict):
+            for ph, ev in self.capillary_pressure_ev.items():
+                _consider(f"capillary_pressure_ev[{ph!r}]", ev)
+
     def get_state(self, state):
         """
         Get tuple of (pressure, state_spec_2 (temperature/enthalpy/entropy),
@@ -128,7 +201,9 @@ class PropertyContainer(PropertyBase):
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:
-            state_spec_2 = vec_state_as_np[-1]
+            # Primary thermal state: [P, z_0..z_{nc-2}, T] = nc+1 elements. If n_history history
+            # variables are appended, T sits at nc (end of primary block), not at [-1].
+            state_spec_2 = vec_state_as_np[self.nc]
         else:
             state_spec_2 = self.temperature
 
@@ -300,10 +375,42 @@ class PropertyContainer(PropertyBase):
 
         self.compute_saturation(self.ph)
 
-        self.pc = self.capillary_pressure_ev.evaluate(self.sat)
+        # Extract every appended history variable by label, preserving the physics-declared
+        # order. history_labels is populated by PhysicsBase.add_property_region; when it's
+        # empty but n_history > 0 we fall back to the legacy single-trailing-scalar layout and
+        # assume the sole variable is named "sg_max".
+        if self.n_history:
+            tail = np.asarray(state)[-self.n_history :]
+            labels = (
+                self.history_labels
+                if len(self.history_labels) == self.n_history
+                else ["sg_max"]
+            )
+            self.history_values = {
+                label: float(tail[k]) for k, label in enumerate(labels)
+            }
+        else:
+            self.history_values = {}
+
+        # Dispatch to history-aware evaluators: unpack {label: value} as kwargs so concrete
+        # evaluators can accept any subset of history variables by name (e.g. sg_max=...).
+        # Plain evaluators without the mixin are called with sat only, unchanged.
+        if isinstance(self.capillary_pressure_ev, dict):
+            for j in self.ph:
+                pc_ev = self.capillary_pressure_ev[self.phases_name[j]]
+                if self.history_values and isinstance(pc_ev, HistoryAwareCapPressure):
+                    self.pc[j] = pc_ev.evaluate(self.sat[j], **self.history_values)
+                else:
+                    self.pc[j] = pc_ev.evaluate(self.sat[j])
+        else:
+            self.pc[:] = self.capillary_pressure_ev.evaluate(self.sat)
 
         for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
+            kr_ev = self.rel_perm_ev[self.phases_name[j]]
+            if self.history_values and isinstance(kr_ev, HistoryAwareRelPerm):
+                self.kr[j] = kr_ev.evaluate(self.sat[j], **self.history_values)
+            else:
+                self.kr[j] = kr_ev.evaluate(self.sat[j])
 
         for j in range(self.ns):
             idx = self.np_fl + j

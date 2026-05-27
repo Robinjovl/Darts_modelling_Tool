@@ -1,3 +1,6 @@
+# #.#.# [Future]
+- Add hysteresis support for OBL-based compositional simulations through per-cell history variables, including Killough scanning-curve handling; the feature is disabled by default and enabled only when history variables are explicitly declared in the physics setup ([!310](https://gitlab.com/open-darts/open-darts/-/merge_requests/310)).
+
 # 1.5.0 [27-05-2026]
 - Fluid heat capacity is added into the input data for THM models ([!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270))
 - Support using the OBL method to calculate DFM well phase velocities. Direct method is still the default method since it is safer in terms of stability ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
