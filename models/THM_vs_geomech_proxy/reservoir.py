@@ -86,7 +86,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
             from gen_msh import generate_box_3d
             generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=idata.mesh.tags,  # XYZ are ignored since Xc, Yc, Zc are passed
-                                       is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)
+                                       is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)# msh_ver=4.1)
             print('Mesh generation finished')
 
         print('Mesh reading...')

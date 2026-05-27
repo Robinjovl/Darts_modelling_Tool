@@ -1017,10 +1017,10 @@ if __name__ == '__main__':
     # nx ny nz
     cases = []
     #cases += ['7_7_5']  # for debugging
-    #case += ['17_17_15'] # for testing
+    cases += ['17_17_15'] # for testing
 
-    cases += ['41_41_66'] # without refinement
-    cases += ['71_71_66'] #refined middle and tips
+    #cases += ['41_41_66'] # without refinement
+    #cases += ['71_71_66'] #refined middle and tips
     #cases += ['71_71_90']  # z 0 - 5 km more refined around rsv
 
     #uniform_props = True

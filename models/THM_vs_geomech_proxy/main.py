@@ -1,4 +1,5 @@
 from model import Model, fmt_e, fmt
+from tools import print_allocated_memory
 import numpy as np
 import os
 import shutil
@@ -190,7 +191,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     m.print_timers()
     m.print_stat()
     print(m.output_directory, ith_step, 'timesteps', 't=', m.physics.engine.t)
-    
+    print_allocated_memory()
+
     #time_data_dict = m.output.store_well_time_data(save_output_files=True)
     #m.output.plot_well_time_data(phase_volumetric_rates=True)
 
@@ -214,9 +216,9 @@ if __name__ == '__main__':
     # nx ny nz
     #mesh='17_17_15'  # for debugging
     #mesh='41_41_66'
-    #mesh='71_71_66'
+    mesh='71_71_66'
     #mesh='83_83_90'
-    mesh='71_1_66'  # 1 layer by Y
+    #mesh='71_1_66'  # 1 layer by Y
 
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
