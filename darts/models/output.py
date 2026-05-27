@@ -4,7 +4,6 @@ import warnings
 
 import h5py
 import matplotlib.pyplot as plt
-import meshio
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -20,6 +19,7 @@ from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.super.physics import Compositional
 from darts.tools.hdf5_tools import load_hdf5_to_dict
+from darts.tools.vtk_io import write_lines_vtp, write_pvd
 
 
 class Output:
@@ -101,7 +101,7 @@ class Output:
         self.timer.node["saving_reservoir_data"] = timer_node()
         self.timer.node["saving_well_data"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
-        self.timer.node["vtu_output"] = timer_node()
+        self.timer.node["vtp_output"] = timer_node()
         self.timer.node["output_well_time_data"] = timer_node()
         self.timer.node["exporting_property_array"] = timer_node()
 
@@ -1609,39 +1609,39 @@ class Output:
         plt.close('all')
         return fig
 
-    def well_output_to_vtu(
+    def well_output_to_vtp(
         self,
         ith_step: int,
         output_properties: list = None,
         output_directory: str = None,
     ):
         """
-        Evaluate and store well primary and secondary variables of the ith step in vtu files
+        Evaluate and store well primary and secondary variables of the ith step in vtp files
 
         :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
         :type output_properties: list
-        :param ith_step: ith reporting step for which you want to create vtu files for
+        :param ith_step: ith reporting step for which you want to create vtp files for
         :type ith_step: int
-        :param output_directory: Directory of where to save vtu files
+        :param output_directory: Directory of where to save vtp files
         :type: str
         """
         if not self.has_dfm_well:
             return
 
         self.timer.start()
-        self.timer.node["vtu_output"].start()
+        self.timer.node["vtp_output"].start()
 
         # Set default output directory
         if output_directory is None:
-            output_directory = os.path.join(self.output_folder, "vtu_files")
+            output_directory = os.path.join(self.output_folder, "vtp_files")
         os.makedirs(output_directory, exist_ok=True)
 
         # Evaluate well secondary variables of the current time from engine.X
-        output_data = self.well_output_properties(
+        time, output_data = self.well_output_properties(
             output_properties=output_properties, ith_step=ith_step
         )
 
-        # Store well primary and seconday props in vtu files
+        # Store well primary and seconday props in vtp files
         for w_name in self.wells.keys():
             # If the well has n segments, so n+1 nodes
             z_nodes = np.concatenate(
@@ -1651,7 +1651,7 @@ class Output:
                     [self.wells[w_name].geometry.pipe_length],
                 )
             )
-            # Flip depth sign for VTU (positive z in DARTS is downward, while negative z in ParaView is downward)
+            # Flip depth sign for VTP (positive z in DARTS is downward, while negative z in ParaView is downward)
             z_nodes = -z_nodes
             x_nodes = np.zeros_like(
                 z_nodes
@@ -1661,15 +1661,26 @@ class Output:
             )  # y is zero since the well is located at the center of the cylindrical grid
             nodes_coords = np.column_stack((x_nodes, y_nodes, z_nodes))
 
-            self.write_well_output_properties_to_vtu(
+            self.write_well_output_properties_to_vtp(
                 well_name=w_name,
                 nodes_xyz=nodes_coords,
                 output_properties=output_data,
                 ith_step=ith_step,
+                time=time,
                 output_directory=output_directory,
             )
 
-        self.timer.node["vtu_output"].stop()
+            # Accumulate time-series entries and rewrite the .pvd for this well
+            if not hasattr(self, "_vtp_time_series"):
+                self._vtp_time_series = {}
+            entries = self._vtp_time_series.setdefault(w_name, [])
+            vtp_filename = f"solution_well_{w_name}_ts{ith_step:d}.vtp"
+            if not any(f == vtp_filename for _, f in entries):
+                entries.append((time, vtp_filename))
+            pvd_path = os.path.join(output_directory, f"well_{w_name}.pvd")
+            write_pvd(pvd_path, entries)
+
+        self.timer.node["vtp_output"].stop()
         self.timer.stop()
 
     def well_output_properties(
@@ -1685,9 +1696,9 @@ class Output:
         :param ith_step: ith reporting step for which you want to evaluate seconday variables
         :type ith_step: int
 
-        :return property_array: A dictionary where keys are primary/secondary variables and values are NumPy arrays of
-                                the requested properties for each grid block. The shape of each array
-                                is (number_of_timesteps, number_of_gridblocks).
+        :return timesteps: A NumPy array of the time labels
+        :type timesteps: np.ndarray
+        :return property_array: A dictionary where keys are primary/secondary variables and values are NumPy arrays of the requested properties for each grid block. The shape of each array is (number_of_timesteps, number_of_gridblocks).
         :type property_array: dict
         """
         if self.verbose:
@@ -1701,6 +1712,7 @@ class Output:
             )
 
         # Evaluate properties from the physics.engine.X
+        time = self.physics.engine.t
         # Get well solution at current time
         n_vars = self.physics.n_vars
         X = np.array(
@@ -1766,53 +1778,39 @@ class Output:
                     temp = values_numpy[prop_idx :: self.n_ops]
                     property_array[prop_name][0][block_idx] = temp[block_idx]
 
-        return property_array
+        return time, property_array
 
-    def write_well_output_properties_to_vtu(
+    def write_well_output_properties_to_vtp(
         self,
         well_name: str,
         nodes_xyz: np.ndarray,
         output_properties: dict,
         ith_step: int,
+        time: float,
         output_directory: str,
+        active: bool = None,
     ):
         """
-        Write well trajectory as .vtu with segment-based primary and secondary vars as CELL data.
+        Write well trajectory as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
 
         :param well_name: Name of the well
         :type well_name: str
         :param nodes_xyz: XYZ coordinates of the nodes of the well (n_seg+1, 3)
         :type nodes_xyz: np.ndarray
-        :param output_properties: Dict of properties to include in the vtu file
+        :param output_properties: Dict of properties to include in the vtp file
         :type output_properties: dict
-        :param ith_step: i'th reporting step for which you want to create a .vtu file for
+        :param ith_step: i'th reporting step for which you want to create a .vtp file for
         :type ith_step: int
-        :param output_directory: Directory of where to save the vtu file
+        :param time: Current simulation time
+        :type time: float
+        :param output_directory: Directory of where to save the vtp file
         :type: str
+        :param active: Optional name of variable to set as active scalars
+        :type active: bool
         """
-        coords = np.asarray(nodes_xyz, dtype=float)
-        npts = coords.shape[0]
-        nseg = npts - 1
-
-        # Build segment connectivity
-        lines = np.column_stack((np.arange(nseg), np.arange(1, nseg + 1)))
-
-        # Cell data (segment-based)
-        cell_data = {}
-        for name, vals in output_properties.items():
-            arr = np.asarray(vals).ravel()
-            if arr.shape[0] != nseg:
-                raise ValueError(f"'{name}' length {arr.shape[0]} != Nseg {nseg}")
-            cell_data[name] = [arr.astype(float)]
-
-        mesh = meshio.Mesh(
-            points=coords,
-            cells=[("line", lines)],
-            cell_data=cell_data,
-        )
-        output_file_name = f"solution_well_{well_name}_ts{ith_step:d}.vtu"
+        output_file_name = f"solution_well_{well_name}_ts{ith_step:d}.vtp"
         output_file_path = os.path.join(output_directory, output_file_name)
-        meshio.write(output_file_path, mesh)
+        write_lines_vtp(output_file_path, nodes_xyz, cell_data=output_properties)
 
     def store_well_time_data(
         self,
