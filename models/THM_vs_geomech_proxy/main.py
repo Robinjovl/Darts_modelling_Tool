@@ -1,5 +1,5 @@
 from model import Model, fmt_e, fmt
-from tools import print_allocated_memory
+from darts.tools.memory import print_allocated_memory
 import numpy as np
 import os
 import shutil
