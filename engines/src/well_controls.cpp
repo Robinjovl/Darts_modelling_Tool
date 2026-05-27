@@ -205,6 +205,8 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
 	{
 		// Check if BHP constraint is violated. EPM is the only supported constraint path for now.
 		state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
+		// Append OBL history values when history axes are active (no-op for plain drainage)
+		state.insert(state.end(), Xhistory_well_default.begin(), Xhistory_well_default.end());
 		well_ctrl_etor->evaluate(state, well_ctrl_ops);
 		index_t pres_op_idx = get_pres_ctrl_op_idx();
 
@@ -216,6 +218,8 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
 	{
 		// Check if rate constraint is violated. EPM is the only supported constraint path for now.
 		state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_vars);
+		// Append OBL history values when history axes are active (no-op for plain drainage)
+		state.insert(state.end(), Xhistory_well_default.begin(), Xhistory_well_default.end());
 		well_ctrl_etor->evaluate(state, well_ctrl_ops);
 		if (phase_idx.has_value())
 		{
@@ -263,7 +267,25 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	const index_t ctrl_state_block_offset = is_bhp_ctrl ? 0 : well_state_offset;
 	state.assign(X.begin() + (well_head_idx + ctrl_state_block_offset) * n_block_size + P_VAR,
 	    X.begin() + (well_head_idx + ctrl_state_block_offset) * n_block_size + P_VAR + n_vars);
-	well_ctrl_etor->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
+
+	// Hysteresis: when OBL history axes are active, the well-ctrl etor expects an extended state
+	// [X | Xhistory] and writes derivatives of size n_well_ctrl_ops * (n_vars + n_history).
+	// well_ctrl_ops_derivs is sized for n_vars columns only, so project the leading n_vars columns back.
+	const uint8_t n_history = (uint8_t)Xhistory_well_default.size();
+	if (n_history == 0)
+	{
+		well_ctrl_etor->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
+	}
+	else
+	{
+		state.insert(state.end(), Xhistory_well_default.begin(), Xhistory_well_default.end());
+		const uint8_t n_state = n_vars + n_history;
+		std::vector<value_t> ops_derivs_ext(n_well_ctrl_ops * n_state, 0.0);
+		well_ctrl_etor->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, ops_derivs_ext);
+		for (index_t op = 0; op < n_well_ctrl_ops; op++)
+			for (index_t v = 0; v < n_vars; v++)
+				well_ctrl_ops_derivs[op * n_vars + v] = ops_derivs_ext[op * n_state + v];
+	}
 
 	// The first wellhead equation is the BHP/rate ctrl residual. Remaining equations are filled below.
 	if (is_bhp_ctrl)
