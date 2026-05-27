@@ -53,6 +53,7 @@ void pybind_ms_well(py::module& m)
         // For lateral heat transfer in DFM wells
         .def_readwrite("with_lateral_heat_transfer", &ms_well::with_lateral_heat_transfer)
         .def_readwrite("connections_for_lateral_heat_transfer", &ms_well::connections_for_lateral_heat_transfer)
+        .def_readwrite("Xhistory_well_default", &ms_well::Xhistory_well_default)
 
         .def_readwrite("control", &ms_well::control)
         .def_readwrite("constraint", &ms_well::constraint)
