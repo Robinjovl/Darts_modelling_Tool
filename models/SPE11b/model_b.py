@@ -178,41 +178,43 @@ class Model(DartsModel):
             nv = self.physics.n_vars
             nb = self.reservoir.mesh.n_res_blocks
             rhs = np.zeros(nb * nv)
-
+ 
             region = 0
             molar_masses = self.physics.property_containers[region].Mw
             mole_fractions = self.inj_stream[:nc]
             n_comp = np.zeros(nc)
+            nu_idxV = list(self.physics.property_containers[region].output_props.keys()).index("nu_V")
+            nu_idxA = list(self.physics.property_containers[region].output_props.keys()).index("nu_Aq")
             enth_idx = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_V")
-
+            enth_idxAq = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_Aq")
+ 
+            # for i, well in enumerate(self.reservoir.well_cells):
             for i, well_cell in enumerate(self.reservoir.well_cells):
+                # for well_cell in well:
                 p_wellcell = self.physics.engine.X[well_cell * nv]
                 if self.physics.thermal:
                     state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
                 else:
                     state = value_vector([p_wellcell] + self.inj_stream[:-2])
+                    
                 values = value_vector(np.zeros(self.physics.n_ops))
                 # values_np = np.array(values)
                 self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
-                enthV = values[enth_idx]
-
+                enth = values[nu_idxV]*values[enth_idx] + values[nu_idxA]*values[enth_idxAq]  # mole fraction moles in vapour [V/V+A] * molar enthalpy of vapour [kJ/kmol] + aq
+                # enth = self.physics.property_containers[0].compute_total_enthalpy(state)
                 avg_molar_mass = sum(mf * M for mf, M in zip(mole_fractions, molar_masses))
-
-                tot_moles = self.inj_rate[i] / avg_molar_mass
-
+                tot_moles = self.inj_rate[i] / avg_molar_mass / 1 #len(well)  # kg/day / kg/mol -> mol/day
+                
                 for comp_idx in range(nc):
                     comp_flux_idx = well_cell * nv + comp_idx  # Index
                     n_comp[comp_idx] = tot_moles * mole_fractions[comp_idx]  # Compute component moles
                     rhs[comp_flux_idx] -= n_comp[comp_idx]  # Update rhs
-
+                    
                 if self.physics.thermal:
                     temp_idx = well_cell * nv + nv - 1  # Last equation index (temperature)
-                    rhs[temp_idx] -= enthV * np.sum(n_comp)
+                    rhs[temp_idx] -= enth * tot_moles
+                    
             return rhs
-        # else:
-        #     # rhs = np.zeros(self.reservoir.mesh.n_res_blocks * self.physics.n_vars)
-        #     # return rhs
-        #     pass
 
     def set_physics(self, temperature: float = None, n_points: int = 1001):
         """Physical properties"""
