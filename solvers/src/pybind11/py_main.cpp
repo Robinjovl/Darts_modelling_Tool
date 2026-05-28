@@ -114,6 +114,14 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              py::arg("alpha") = 1.0,
              py::arg("guard_threshold") = -1.0,
              py::arg("guard_min_alpha") = 0.0)
+        .def("set_bcsr_cpr_transpose_apply",
+             &linsolv_mgr<N>::set_bcsr_cpr_transpose_apply,
+             "Apply BCSR CPR in adjoint transpose order (local stage before pressure stage)",
+             py::arg("transpose_apply"))
+        .def("set_bcsr_cpr_forward_source",
+             &linsolv_mgr<N>::set_bcsr_cpr_forward_source,
+             "Build adjoint BCSR CPR pressure data from the forward matrix and use its transpose",
+             py::arg("forward_source"))
         .def("set_mgr_pressure_amg_options", &linsolv_mgr<N>::set_mgr_pressure_amg_options,
              "Set key BoomerAMG options for the pressure coarse solver",
              py::arg("coarsen_type"), py::arg("interp_type"), py::arg("relax_type"),
@@ -232,6 +240,12 @@ void bind_linsolv_mgr_specialization(py::module &m, const char* name)
              "Get BCSR CPR pressure variable index")
         .def("get_bcsr_cpr_weight_max", &linsolv_mgr<N>::get_bcsr_cpr_weight_max,
              "Get BCSR CPR maximum accepted True-IMPES row weight")
+        .def("get_bcsr_cpr_transpose_apply",
+             &linsolv_mgr<N>::get_bcsr_cpr_transpose_apply,
+             "Get whether BCSR CPR transpose apply order is enabled")
+        .def("get_bcsr_cpr_forward_source",
+             &linsolv_mgr<N>::get_bcsr_cpr_forward_source,
+             "Get whether adjoint BCSR CPR uses the forward matrix as CPR source")
         .def("get_bcsr_cpr_reuse_amg_hierarchy",
              &linsolv_mgr<N>::get_bcsr_cpr_reuse_amg_hierarchy,
              "Get whether BCSR CPR reuses the pressure AMG hierarchy")

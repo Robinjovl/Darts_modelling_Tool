@@ -665,11 +665,17 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 	csr_matrix_base *adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
 	linear_solver_ad->init(adjoint_matrix, params->max_i_linear, params->tolerance_linear);
+	const bool setup_adjoint_solver =
+		!linear_solver_ad_uses_jacobian_transpose ||
+		linear_solver_ad->requires_setup_for_transposed_solve();
 
 	// solve lambda and adjoint gradient at the last time step
-    timer->node["linear solver for adjoint method - setup"].start();
-	linear_solver_ad->setup(adjoint_matrix);
-    timer->node["linear solver for adjoint method - setup"].stop();
+	if (setup_adjoint_solver)
+	{
+	    timer->node["linear solver for adjoint method - setup"].start();
+		linear_solver_ad->setup(adjoint_matrix);
+	    timer->node["linear solver for adjoint method - setup"].stop();
+	}
 
     timer->node["linear solver for adjoint method - solve"].start();
 	if (linear_solver_ad_uses_jacobian_transpose)
@@ -757,7 +763,10 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
         timer->node["linear solver for adjoint method - setup"].start();
 		adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
-		linear_solver_ad->setup(adjoint_matrix);
+		if (setup_adjoint_solver)
+		{
+			linear_solver_ad->setup(adjoint_matrix);
+		}
         timer->node["linear solver for adjoint method - setup"].stop();
 
         timer->node["linear solver for adjoint method - solve"].start();

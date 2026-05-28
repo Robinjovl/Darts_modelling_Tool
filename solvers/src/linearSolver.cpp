@@ -14,6 +14,7 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <utility>
 
 // HYPRE headers
 #include <_hypre_parcsr_ls.h>
@@ -1419,6 +1420,8 @@ LinearSolver::LinearSolver()
   m_params.bcsrCPRPressureCorrectionAlpha = 1.0;
   m_params.bcsrCPRPressureCorrectionGuardThreshold = -1.0;
   m_params.bcsrCPRPressureCorrectionGuardMinAlpha = 0.0;
+  m_params.bcsrCPRTransposeApply = false;
+  m_params.bcsrCPRForwardSource = false;
   m_params.bcsrCPRDiagnostics = false;
   m_params.bcsrCPRDiagnosticApplyInterval = 0;
   m_params.bcsrCPRDiagnosticMatrixInterval = 0;
@@ -1763,6 +1766,10 @@ void LinearSolver::logMGRConfigurationOnce(const char* stage)
             << m_params.bcsrCPRPressureCorrectionGuardThreshold
             << ", guard_min_alpha="
             << m_params.bcsrCPRPressureCorrectionGuardMinAlpha
+            << ", transpose_apply="
+            << boolLabel( m_params.bcsrCPRTransposeApply )
+            << ", forward_source="
+            << boolLabel( m_params.bcsrCPRForwardSource )
             << "." << std::endl;
   config_log << "[MGR]   diagnostics: enabled="
             << boolLabel( m_params.bcsrCPRDiagnostics )
@@ -1852,6 +1859,125 @@ void LinearSolver::clearBCSRCPRPreconditioner()
   m_cprResidual.clear();
   m_cprAx.clear();
   m_cprLocalCorrection.clear();
+}
+
+bool LinearSolver::bcsrCPRSourceMatrixCompatible() const
+{
+  if( !m_bcsrCPRSourceMatrixReady )
+  {
+    return false;
+  }
+  if( m_bcsrCPRSourceMatrix.num_rows != m_matrix.num_rows ||
+      m_bcsrCPRSourceMatrix.num_cols != m_matrix.num_cols ||
+      m_bcsrCPRSourceMatrix.block_size != m_matrix.block_size ||
+      m_bcsrCPRSourceMatrix.global_num_rows != m_matrix.global_num_rows ||
+      m_bcsrCPRSourceMatrix.global_num_cols != m_matrix.global_num_cols )
+  {
+    return false;
+  }
+  if( m_bcsrCPRSourceMatrix.num_rows < m_cprPressureRows ||
+      static_cast<int_t>( m_bcsrCPRSourceMatrix.row_ptr.size() ) !=
+          m_bcsrCPRSourceMatrix.num_rows + 1 ||
+      static_cast<int_t>( m_bcsrCPRSourceMatrix.col_ind.size() ) !=
+          m_bcsrCPRSourceMatrix.num_nonzero_blocks )
+  {
+    return false;
+  }
+  const int_t expected_values =
+      m_bcsrCPRSourceMatrix.num_nonzero_blocks *
+      m_bcsrCPRSourceMatrix.block_size *
+      m_bcsrCPRSourceMatrix.block_size;
+  return static_cast<int_t>( m_bcsrCPRSourceMatrix.values.size() ) ==
+         expected_values;
+}
+
+void LinearSolver::transposeBCSRCPRPressureMatrix()
+{
+  const int_t rows = m_cprPressureRows;
+  if( rows <= 0 || static_cast<int_t>( m_cprPressureRowOffsets.size() ) != rows + 1 )
+  {
+    return;
+  }
+
+  const int_t nnz = m_cprPressureRowOffsets[rows];
+  if( nnz <= 0 ||
+      static_cast<int_t>( m_cprPressureCols.size() ) != nnz ||
+      static_cast<int_t>( m_cprPressureValues.size() ) != nnz )
+  {
+    return;
+  }
+
+  std::vector<int_t> transpose_counts( rows, 0 );
+  for( int_t k = 0; k < nnz; ++k )
+  {
+    const bigint_t col_big = m_cprPressureCols[k];
+    if( col_big >= 0 && col_big < rows )
+    {
+      ++transpose_counts[static_cast<int_t>( col_big )];
+    }
+  }
+
+  std::vector<int_t> transpose_offsets( rows + 1, 0 );
+  for( int_t row = 0; row < rows; ++row )
+  {
+    transpose_offsets[row + 1] = transpose_offsets[row] + transpose_counts[row];
+  }
+
+  std::vector<bigint_t> transpose_cols( nnz, 0 );
+  std::vector<real_type> transpose_values( nnz, 0.0 );
+  std::vector<int_t> next = transpose_offsets;
+  for( int_t row = 0; row < rows; ++row )
+  {
+    for( int_t k = m_cprPressureRowOffsets[row];
+         k < m_cprPressureRowOffsets[row + 1];
+         ++k )
+    {
+      const bigint_t col_big = m_cprPressureCols[k];
+      if( col_big < 0 || col_big >= rows )
+      {
+        continue;
+      }
+      const int_t col = static_cast<int_t>( col_big );
+      const int_t out = next[col]++;
+      transpose_cols[out] = row;
+      transpose_values[out] = m_cprPressureValues[k];
+    }
+  }
+
+  for( int_t row = 0; row < rows; ++row )
+  {
+    const int_t begin = transpose_offsets[row];
+    const int_t end = transpose_offsets[row + 1];
+    std::vector<int_t> order( end - begin );
+    for( int_t i = 0; i < end - begin; ++i )
+    {
+      order[i] = begin + i;
+    }
+    std::sort( order.begin(), order.end(),
+               [&]( int_t lhs, int_t rhs )
+               {
+                 return transpose_cols[lhs] < transpose_cols[rhs];
+               } );
+    std::vector<bigint_t> sorted_cols( order.size(), 0 );
+    std::vector<real_type> sorted_values( order.size(), 0.0 );
+    for( int_t i = 0; i < static_cast<int_t>( order.size() ); ++i )
+    {
+      sorted_cols[i] = transpose_cols[order[i]];
+      sorted_values[i] = transpose_values[order[i]];
+    }
+    for( int_t i = 0; i < static_cast<int_t>( order.size() ); ++i )
+    {
+      transpose_cols[begin + i] = sorted_cols[i];
+      transpose_values[begin + i] = sorted_values[i];
+    }
+  }
+
+  m_cprPressureRowNCols = transpose_counts;
+  m_cprPressureRowOffsets = std::move( transpose_offsets );
+  m_cprPressureCols = std::move( transpose_cols );
+  m_cprPressureValues = std::move( transpose_values );
+  m_cprPressureDirectUpdateReady = false;
+  m_cprPressureParCSRDiagDataIndex.clear();
 }
 
 void LinearSolver::recordBCSRCPRLinearIterations(int_t iterations, bool converged)
@@ -2954,7 +3080,7 @@ bool LinearSolver::updateBCSRCPRPressureMatrixDirect()
   return true;
 }
 
-bool LinearSolver::createBCSRCPRPressureMatrix()
+bool LinearSolver::createBCSRCPRPressureMatrix(bool transpose_values)
 {
   if( m_cprPressureRows <= 0 )
   {
@@ -2968,6 +3094,10 @@ bool LinearSolver::createBCSRCPRPressureMatrix()
     buildBCSRCPRPressurePattern();
   }
   fillBCSRCPRPressureMatrixValues();
+  if( transpose_values )
+  {
+    transposeBCSRCPRPressureMatrix();
+  }
 
   if( !m_cprPressureIJMatrix )
   {
@@ -3188,8 +3318,32 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
   const int_t amg_setup_before = m_cprPressureAMGSetupCount;
   const int_t amg_reuse_before = m_cprPressureAMGReuseCount;
 
-  computeBCSRCPRPressureWeights();
-  if( !createBCSRCPRPressureMatrix() || !createBCSRCPRPressureVectors() )
+  const bool source_requested = m_params.bcsrCPRForwardSource;
+  const bool source_usable = source_requested && bcsrCPRSourceMatrixCompatible();
+  if( source_requested && !source_usable && m_params.logLevel >= 1 )
+  {
+    std::cerr << "[MGR] Warning: BCSR CPR forward source requested but no "
+              << "compatible source matrix is available; using the active matrix."
+              << std::endl;
+  }
+
+  bool pressure_matrix_ready = false;
+  if( source_usable )
+  {
+    std::swap( m_matrix, m_bcsrCPRSourceMatrix );
+    computeBCSRCPRPressureWeights();
+    m_cprPressurePatternReady = false;
+    pressure_matrix_ready =
+        createBCSRCPRPressureMatrix( m_bcsrCPRSourcePressureTranspose );
+    std::swap( m_matrix, m_bcsrCPRSourceMatrix );
+  }
+  else
+  {
+    computeBCSRCPRPressureWeights();
+    pressure_matrix_ready = createBCSRCPRPressureMatrix();
+  }
+
+  if( !pressure_matrix_ready || !createBCSRCPRPressureVectors() )
   {
     std::cerr << "[MGR] Error: failed to create BCSR CPR pressure matrix/vectors."
               << std::endl;
@@ -3552,6 +3706,10 @@ int LinearSolver::bcsrCPRPreconditionerSolve(HYPRE_Solver solver,
   if( !self )
   {
     return 1;
+  }
+  if( self->m_params.bcsrCPRTransposeApply )
+  {
+    return self->applyBCSRCPRTransposePreconditioner( A, b, x );
   }
   return self->applyBCSRCPRPreconditioner( A, b, x );
 }
@@ -3922,6 +4080,382 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
         << ", local_quality_after_rel=" << local_quality_after_rel
         << ", local_fallback_ratio=" << fallback_ratio
         << ", local_correction_norm=" << local_correction_norm
+        << ", correction_norm=" << correction_norm
+        << ", final_proxy_norm=" << final_residual_norm
+        << ", final_proxy_rel=" << safeRatio( final_residual_norm, input_norm )
+        << ".";
+    std::cerr << out.str() << std::endl;
+  }
+
+  return 0;
+}
+
+int LinearSolver::applyBCSRCPRTransposePreconditioner(HYPRE_ParCSRMatrix,
+                                                      HYPRE_ParVector b,
+                                                      HYPRE_ParVector x)
+{
+  if( !bcsrCPRPreconditionerReady() )
+  {
+    return 1;
+  }
+
+  ::timer_node * cpr_timer =
+      m_activeKrylovName.empty() ? nullptr : solveTimerNode( m_activeKrylovName, "BCSR_CPR_T" );
+  ScopedTimer total_timer( cpr_timer );
+
+  hypre_Vector * b_local = hypre_ParVectorLocalVector( b );
+  hypre_Vector * x_local = hypre_ParVectorLocalVector( x );
+  if( !b_local || !x_local )
+  {
+    return 1;
+  }
+
+  const int_t local_size = static_cast<int_t>( hypre_VectorSize( b_local ) );
+  if( local_size != m_matrix.global_num_rows ||
+      static_cast<int_t>( hypre_VectorSize( x_local ) ) != local_size )
+  {
+    return 1;
+  }
+
+  real_type * b_data = hypre_VectorData( b_local );
+  real_type * x_data = hypre_VectorData( x_local );
+  if( !b_data || !x_data )
+  {
+    return 1;
+  }
+
+  const int_t block_size = m_matrix.block_size;
+  const int_t pressure_var =
+      std::clamp<int_t>( m_params.bcsrCPRPressureVariable, 0, block_size - 1 );
+  ++m_cprApplyCount;
+  const bool log_apply_diagnostics =
+      m_params.bcsrCPRDiagnostics &&
+      m_params.bcsrCPRDiagnosticApplyInterval > 0 &&
+      ( m_cprApplyCount <= 3 ||
+        ( m_cprApplyCount % m_params.bcsrCPRDiagnosticApplyInterval ) == 0 );
+  const bool pressure_guard_enabled =
+      m_params.bcsrCPRPressureCorrectionGuardThreshold > 0.0;
+  const bool adaptive_pressure_signal_enabled =
+      m_params.bcsrCPRAdaptivePressureOvershootThreshold > 0.0;
+  const bool adaptive_final_signal_enabled =
+      m_params.bcsrCPRAdaptiveFinalProxyThreshold > 0.0;
+  const bool adaptive_fallback_signal_enabled =
+      m_params.bcsrCPRAdaptiveFallbackThreshold > 0.0;
+  const bool need_pressure_norms =
+      log_apply_diagnostics || pressure_guard_enabled || adaptive_pressure_signal_enabled;
+  const bool need_final_proxy =
+      log_apply_diagnostics || adaptive_final_signal_enabled;
+  const real_type input_norm =
+      ( need_pressure_norms || need_final_proxy ) ? vectorL2Norm( b_data, local_size ) : 0.0;
+  real_type after_local_norm = 0.0;
+  real_type pressure_rhs_norm = 0.0;
+  real_type pressure_correction_norm = 0.0;
+  real_type pressure_residual_norm = 0.0;
+  real_type local_correction_norm = 0.0;
+  real_type correction_norm = 0.0;
+  real_type final_residual_norm = 0.0;
+  real_type pressure_alpha =
+      std::clamp<real_type>( m_params.bcsrCPRPressureCorrectionAlpha, 0.0, 1.0 );
+  real_type pressure_guard_raw_rel = 0.0;
+  bool pressure_guard_triggered = false;
+
+  hypre_Vector * pressure_rhs_local =
+      hypre_ParVectorLocalVector( m_cprPressureParRHS );
+  hypre_Vector * pressure_sol_local =
+      hypre_ParVectorLocalVector( m_cprPressureParSol );
+  if( !pressure_rhs_local || !pressure_sol_local ||
+      static_cast<int_t>( hypre_VectorSize( pressure_rhs_local ) ) != m_cprPressureRows ||
+      static_cast<int_t>( hypre_VectorSize( pressure_sol_local ) ) != m_cprPressureRows )
+  {
+    return 1;
+  }
+  real_type * pressure_rhs_data = hypre_VectorData( pressure_rhs_local );
+  real_type * pressure_sol_data = hypre_VectorData( pressure_sol_local );
+  if( !pressure_rhs_data || !pressure_sol_data )
+  {
+    return 1;
+  }
+
+  real_type local_alpha = std::max<real_type>( m_params.localCorrectionAlpha, 0.0 );
+  real_type fallback_ratio = -1.0;
+  if( blockLocalPreconditionerReady() )
+  {
+    fallback_ratio = m_blockLocalPreconditioner->fallbackRatio();
+    m_cprLastFallbackRatio = std::max( m_cprLastFallbackRatio, fallback_ratio );
+    if( adaptive_fallback_signal_enabled &&
+        fallback_ratio > m_params.bcsrCPRAdaptiveFallbackThreshold )
+    {
+      m_cprAdaptiveQualityRebuildRequested = true;
+    }
+    if( m_params.localCorrectionAdaptiveFallbackThresholdHigh >= 0.0 &&
+        fallback_ratio >= m_params.localCorrectionAdaptiveFallbackThresholdHigh )
+    {
+      local_alpha = std::max<real_type>( m_params.localCorrectionAdaptiveAlphaHigh, 0.0 );
+    }
+    else if( m_params.localCorrectionAdaptiveFallbackThreshold >= 0.0 &&
+             fallback_ratio >= m_params.localCorrectionAdaptiveFallbackThreshold )
+    {
+      local_alpha = std::max<real_type>( m_params.localCorrectionAdaptiveAlpha, 0.0 );
+    }
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["block local solve"] : nullptr );
+    if( local_alpha != 0.0 )
+    {
+      m_blockLocalPreconditioner->apply( b_data, m_cprLocalCorrection.data() );
+      if( local_alpha != 1.0 )
+      {
+        for( int_t i = 0; i < local_size; ++i )
+        {
+          m_cprLocalCorrection[i] *= local_alpha;
+        }
+      }
+    }
+    else
+    {
+      std::fill( m_cprLocalCorrection.begin(), m_cprLocalCorrection.end(), 0.0 );
+    }
+    if( log_apply_diagnostics )
+    {
+      local_correction_norm =
+          vectorL2Norm( m_cprLocalCorrection.data(), local_size );
+    }
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["BCSR residual"] : nullptr );
+    m_blockLocalPreconditioner->matvec( m_cprLocalCorrection.data(),
+                                        m_cprAx.data() );
+    for( int_t i = 0; i < local_size; ++i )
+    {
+      m_cprResidual[i] = b_data[i] - m_cprAx[i];
+    }
+    if( need_pressure_norms )
+    {
+      after_local_norm = vectorL2Norm( m_cprResidual.data(), local_size );
+    }
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["pressure RHS"] : nullptr );
+    for( int_t row = 0; row < m_cprPressureRows; ++row )
+    {
+      pressure_rhs_data[row] =
+          m_cprResidual[row * block_size + pressure_var];
+      pressure_sol_data[row] = 0.0;
+    }
+    if( log_apply_diagnostics )
+    {
+      pressure_rhs_norm = vectorL2Norm( pressure_rhs_data, m_cprPressureRows );
+    }
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["AMG pressure solve"] : nullptr );
+    HYPRE_ClearAllErrors();
+    const HYPRE_Int rc = HYPRE_BoomerAMGSolve( m_cprPressureAMG,
+                                               m_cprPressureParMatrix,
+                                               m_cprPressureParRHS,
+                                               m_cprPressureParSol );
+    if( rc != 0 )
+    {
+      if( isHypreConvergenceError( rc ) )
+      {
+        if( m_params.logLevel >= 2 )
+        {
+          std::cerr << "[MGR] Warning: BCSR CPR pressure AMG reached its "
+                    << "inner iteration limit in transpose apply; using the "
+                    << "current correction, rc=" << rc << " ("
+                    << describeHypreError( rc ) << ")." << std::endl;
+        }
+        HYPRE_ClearAllErrors();
+      }
+      else
+      {
+        return rc;
+      }
+    }
+  }
+
+  auto inject_transpose_pressure = [&]()
+  {
+    std::fill( m_cprPressureCorrection.begin(), m_cprPressureCorrection.end(), 0.0 );
+    for( int_t row = 0; row < m_cprPressureRows; ++row )
+    {
+      const real_type pressure_value = pressure_sol_data[row];
+      const real_type * weights = &m_cprPressureWeights[row * block_size];
+      real_type * correction_block = &m_cprPressureCorrection[row * block_size];
+      for( int_t r = 0; r < block_size; ++r )
+      {
+        correction_block[r] += weights[r] * pressure_value;
+      }
+    }
+  };
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["pressure transpose injection"] : nullptr );
+    inject_transpose_pressure();
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["pressure guard"] : nullptr );
+    m_blockLocalPreconditioner->matvec( m_cprPressureCorrection.data(),
+                                        m_cprAx.data() );
+    auto update_pressure_residual = [&]( real_type alpha )
+    {
+      for( int_t i = 0; i < local_size; ++i )
+      {
+        m_cprAx[i] *= alpha;
+        m_cprResidual[i] -= m_cprAx[i];
+      }
+    };
+
+    std::vector<real_type> residual_before_pressure;
+    if( pressure_guard_enabled || adaptive_pressure_signal_enabled )
+    {
+      residual_before_pressure = m_cprResidual;
+    }
+
+    update_pressure_residual( pressure_alpha );
+    if( need_pressure_norms )
+    {
+      pressure_residual_norm = vectorL2Norm( m_cprResidual.data(), local_size );
+    }
+
+    if( pressure_guard_enabled || adaptive_pressure_signal_enabled )
+    {
+      const real_type pressure_reference_norm =
+          after_local_norm > 0.0 ? after_local_norm : input_norm;
+      pressure_guard_raw_rel =
+          safeRatio( pressure_residual_norm, pressure_reference_norm );
+      if( adaptive_pressure_signal_enabled &&
+          std::isfinite( pressure_guard_raw_rel ) )
+      {
+        m_cprLastPressureOvershootRel =
+            std::max( m_cprLastPressureOvershootRel, pressure_guard_raw_rel );
+        if( pressure_guard_raw_rel >
+            m_params.bcsrCPRAdaptivePressureOvershootThreshold )
+        {
+          m_cprAdaptiveQualityRebuildRequested = true;
+        }
+      }
+      if( pressure_guard_enabled &&
+          std::isfinite( pressure_guard_raw_rel ) &&
+          pressure_guard_raw_rel >
+              m_params.bcsrCPRPressureCorrectionGuardThreshold )
+      {
+        const real_type requested_alpha =
+            pressure_alpha *
+            m_params.bcsrCPRPressureCorrectionGuardThreshold /
+            pressure_guard_raw_rel;
+        const real_type min_alpha = std::clamp<real_type>(
+            m_params.bcsrCPRPressureCorrectionGuardMinAlpha, 0.0, 1.0 );
+        const real_type guarded_alpha =
+            std::clamp<real_type>( std::max( requested_alpha, min_alpha ),
+                                   0.0, pressure_alpha );
+        pressure_guard_triggered = guarded_alpha < pressure_alpha;
+        if( pressure_guard_triggered )
+        {
+          pressure_alpha = guarded_alpha;
+          inject_transpose_pressure();
+          for( int_t i = 0; i < local_size; ++i )
+          {
+            m_cprPressureCorrection[i] *= pressure_alpha;
+          }
+          m_blockLocalPreconditioner->matvec( m_cprPressureCorrection.data(),
+                                              m_cprAx.data() );
+          std::copy( residual_before_pressure.begin(),
+                     residual_before_pressure.end(),
+                     m_cprResidual.begin() );
+          for( int_t i = 0; i < local_size; ++i )
+          {
+            m_cprResidual[i] -= m_cprAx[i];
+          }
+          if( need_pressure_norms )
+          {
+            pressure_residual_norm =
+                vectorL2Norm( m_cprResidual.data(), local_size );
+          }
+        }
+      }
+      if( !pressure_guard_triggered && pressure_alpha != 1.0 )
+      {
+        for( int_t i = 0; i < local_size; ++i )
+        {
+          m_cprPressureCorrection[i] *= pressure_alpha;
+        }
+      }
+    }
+    else if( pressure_alpha != 1.0 )
+    {
+      for( int_t i = 0; i < local_size; ++i )
+      {
+        m_cprPressureCorrection[i] *= pressure_alpha;
+      }
+    }
+  }
+
+  if( log_apply_diagnostics )
+  {
+    pressure_correction_norm =
+        vectorL2Norm( m_cprPressureCorrection.data(), local_size );
+  }
+
+  {
+    ScopedTimer timer( cpr_timer ? &cpr_timer->node["combine"] : nullptr );
+    for( int_t i = 0; i < local_size; ++i )
+    {
+      x_data[i] = m_cprLocalCorrection[i] + m_cprPressureCorrection[i];
+    }
+  }
+
+  if( need_final_proxy )
+  {
+    if( log_apply_diagnostics )
+    {
+      correction_norm = vectorL2Norm( x_data, local_size );
+    }
+    {
+      ScopedTimer timer( cpr_timer ? &cpr_timer->node["diagnostic residual"] : nullptr );
+      m_blockLocalPreconditioner->matvec( x_data, m_cprAx.data() );
+    }
+    real_type final_residual_sq = 0.0;
+    for( int_t i = 0; i < local_size; ++i )
+    {
+      const real_type residual = b_data[i] - m_cprAx[i];
+      final_residual_sq += residual * residual;
+    }
+    final_residual_norm = std::sqrt( final_residual_sq );
+    const real_type final_proxy_rel = safeRatio( final_residual_norm, input_norm );
+    m_cprLastFinalProxyRel = std::max( m_cprLastFinalProxyRel, final_proxy_rel );
+    if( adaptive_final_signal_enabled && std::isfinite( final_proxy_rel ) &&
+        final_proxy_rel > m_params.bcsrCPRAdaptiveFinalProxyThreshold )
+    {
+      m_cprAdaptiveQualityRebuildRequested = true;
+    }
+  }
+
+  if( log_apply_diagnostics )
+  {
+    std::ostringstream out;
+    out << std::scientific << std::setprecision( 3 )
+        << "[MGR] BCSR CPR transpose stage diagnostics: apply=" << m_cprApplyCount
+        << ", input_norm=" << input_norm
+        << ", local_correction_norm=" << local_correction_norm
+        << ", after_local_norm=" << after_local_norm
+        << ", after_local_rel=" << safeRatio( after_local_norm, input_norm )
+        << ", pressure_rhs_norm=" << pressure_rhs_norm
+        << ", pressure_correction_norm=" << pressure_correction_norm
+        << ", after_pressure_norm=" << pressure_residual_norm
+        << ", after_pressure_rel=" << safeRatio( pressure_residual_norm, input_norm )
+        << ", pressure_alpha=" << pressure_alpha
+        << ", pressure_guard_triggered=" << ( pressure_guard_triggered ? 1 : 0 )
+        << ", pressure_guard_raw_rel=" << pressure_guard_raw_rel
+        << ", adaptive_rebuild_pending="
+        << ( m_cprAdaptiveQualityRebuildRequested ? 1 : 0 )
+        << ", local_alpha=" << local_alpha
+        << ", local_fallback_ratio=" << fallback_ratio
         << ", correction_norm=" << correction_norm
         << ", final_proxy_norm=" << final_residual_norm
         << ", final_proxy_rel=" << safeRatio( final_residual_norm, input_norm )
@@ -5819,6 +6353,124 @@ bool LinearSolver::setMatrixFromCSR( int_t num_rows,
   m_matrixAssembled = false;
 
   return true;
+}
+
+bool LinearSolver::setBCSRCPRSourceFromCSR( int_t num_rows,
+                                             int_t num_cols,
+                                             int_t block_size,
+                                             int_t num_nonzero_blocks,
+                                             const int_t * row_ptr,
+                                             const int_t * col_ind,
+                                             const double * values,
+                                             const int_t * diag_ind,
+                                             bool transpose_pressure_matrix )
+{
+  if( !row_ptr || !col_ind || !values )
+  {
+    std::cerr << "Error: Null pointer passed to setBCSRCPRSourceFromCSR"
+              << std::endl;
+    return false;
+  }
+
+  if( num_rows <= 0 || num_cols <= 0 || block_size <= 0 ||
+      num_nonzero_blocks < 0 )
+  {
+    std::cerr << "Error: Invalid matrix dimensions passed to "
+              << "setBCSRCPRSourceFromCSR" << std::endl;
+    return false;
+  }
+
+  bool structure_changed =
+      !m_bcsrCPRSourceMatrixReady ||
+      m_bcsrCPRSourceMatrix.num_rows != num_rows ||
+      m_bcsrCPRSourceMatrix.num_cols != num_cols ||
+      m_bcsrCPRSourceMatrix.block_size != block_size ||
+      m_bcsrCPRSourceMatrix.num_nonzero_blocks != num_nonzero_blocks ||
+      static_cast<int_t>( m_bcsrCPRSourceMatrix.row_ptr.size() ) != num_rows + 1 ||
+      static_cast<int_t>( m_bcsrCPRSourceMatrix.col_ind.size() ) != num_nonzero_blocks;
+  if( !structure_changed )
+  {
+    structure_changed =
+        !std::equal( row_ptr,
+                     row_ptr + num_rows + 1,
+                     m_bcsrCPRSourceMatrix.row_ptr.begin() ) ||
+        !std::equal( col_ind,
+                     col_ind + num_nonzero_blocks,
+                     m_bcsrCPRSourceMatrix.col_ind.begin() );
+  }
+  if( !structure_changed )
+  {
+    if( diag_ind )
+    {
+      structure_changed =
+          static_cast<int_t>( m_bcsrCPRSourceMatrix.diag_ind.size() ) != num_rows ||
+          !std::equal( diag_ind,
+                       diag_ind + num_rows,
+                       m_bcsrCPRSourceMatrix.diag_ind.begin() );
+    }
+    else
+    {
+      structure_changed = !m_bcsrCPRSourceMatrix.diag_ind.empty();
+    }
+  }
+  if( m_bcsrCPRSourcePressureTranspose != transpose_pressure_matrix )
+  {
+    structure_changed = true;
+  }
+
+  m_bcsrCPRSourceMatrix.num_rows = num_rows;
+  m_bcsrCPRSourceMatrix.num_cols = num_cols;
+  m_bcsrCPRSourceMatrix.block_size = block_size;
+  m_bcsrCPRSourceMatrix.num_nonzero_blocks = num_nonzero_blocks;
+  m_bcsrCPRSourceMatrix.global_num_rows = num_rows * block_size;
+  m_bcsrCPRSourceMatrix.global_num_cols = num_cols * block_size;
+
+  m_bcsrCPRSourceMatrix.row_ptr.resize( num_rows + 1 );
+  std::copy( row_ptr,
+             row_ptr + num_rows + 1,
+             m_bcsrCPRSourceMatrix.row_ptr.begin() );
+
+  m_bcsrCPRSourceMatrix.col_ind.resize( num_nonzero_blocks );
+  std::copy( col_ind,
+             col_ind + num_nonzero_blocks,
+             m_bcsrCPRSourceMatrix.col_ind.begin() );
+
+  const int_t values_size = num_nonzero_blocks * block_size * block_size;
+  m_bcsrCPRSourceMatrix.values.resize( values_size );
+  std::copy( values,
+             values + values_size,
+             m_bcsrCPRSourceMatrix.values.begin() );
+
+  if( diag_ind )
+  {
+    m_bcsrCPRSourceMatrix.diag_ind.resize( num_rows );
+    std::copy( diag_ind,
+               diag_ind + num_rows,
+               m_bcsrCPRSourceMatrix.diag_ind.begin() );
+  }
+  else
+  {
+    m_bcsrCPRSourceMatrix.diag_ind.clear();
+  }
+
+  m_bcsrCPRSourceMatrixReady = true;
+  m_bcsrCPRSourcePressureTranspose = transpose_pressure_matrix;
+  if( structure_changed )
+  {
+    clearBCSRCPRPreconditioner();
+  }
+  return true;
+}
+
+void LinearSolver::clearBCSRCPRSourceMatrix()
+{
+  if( m_bcsrCPRSourceMatrixReady )
+  {
+    m_bcsrCPRSourceMatrix = BlockCSRMatrix();
+    m_bcsrCPRSourceMatrixReady = false;
+    m_bcsrCPRSourcePressureTranspose = false;
+    clearBCSRCPRPreconditioner();
+  }
 }
 
 bool LinearSolver::setMatrixFromVector( int_t num_rows,

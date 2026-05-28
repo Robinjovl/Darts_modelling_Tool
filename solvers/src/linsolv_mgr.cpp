@@ -161,6 +161,8 @@ namespace opendarts
       , bcsr_cpr_pressure_correction_alpha_cached(1.0)
       , bcsr_cpr_pressure_correction_guard_threshold_cached(-1.0)
       , bcsr_cpr_pressure_correction_guard_min_alpha_cached(0.0)
+      , bcsr_cpr_transpose_apply_cached(false)
+      , bcsr_cpr_forward_source_cached(false)
       , pressure_amg_max_iter_cached(1)
       , pressure_amg_tolerance_cached(0.0)
       , n_reservoir_blocks_cached(0)
@@ -506,6 +508,34 @@ namespace opendarts
       params.bcsrCPRPressureCorrectionGuardMinAlpha =
           bcsr_cpr_pressure_correction_guard_min_alpha_cached;
       mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_bcsr_cpr_transpose_apply(bool transpose_apply)
+    {
+      bcsr_cpr_transpose_apply_cached =
+          transpose_apply || bcsr_cpr_forward_source_cached;
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.bcsrCPRTransposeApply = bcsr_cpr_transpose_apply_cached;
+      mgr_solver.setParameters(params);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_mgr<N_BLOCK_SIZE>::set_bcsr_cpr_forward_source(bool forward_source)
+    {
+      bcsr_cpr_forward_source_cached = forward_source;
+      if (bcsr_cpr_forward_source_cached)
+      {
+        bcsr_cpr_transpose_apply_cached = true;
+      }
+      mgr::SolverParameters params = mgr_solver.getParameters();
+      params.bcsrCPRForwardSource = bcsr_cpr_forward_source_cached;
+      params.bcsrCPRTransposeApply = bcsr_cpr_transpose_apply_cached;
+      mgr_solver.setParameters(params);
+      if (!bcsr_cpr_forward_source_cached)
+      {
+        mgr_solver.clearBCSRCPRSourceMatrix();
+      }
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -945,6 +975,18 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    bool linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_transpose_apply() const
+    {
+      return bcsr_cpr_transpose_apply_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    bool linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_forward_source() const
+    {
+      return bcsr_cpr_forward_source_cached;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     bool linsolv_mgr<N_BLOCK_SIZE>::get_bcsr_cpr_reuse_amg_hierarchy() const
     {
       return bcsr_cpr_reuse_amg_hierarchy_cached;
@@ -1139,6 +1181,8 @@ namespace opendarts
           bcsr_cpr_pressure_correction_guard_threshold_cached;
       params.bcsrCPRPressureCorrectionGuardMinAlpha =
           bcsr_cpr_pressure_correction_guard_min_alpha_cached;
+      params.bcsrCPRTransposeApply = bcsr_cpr_transpose_apply_cached;
+      params.bcsrCPRForwardSource = bcsr_cpr_forward_source_cached;
       params.pressureAMGMaxIter = pressure_amg_max_iter_cached;
       params.pressureAMGTolerance = pressure_amg_tolerance_cached;
       params.pressureAMGCoarsenType = mgr_strategy_config_cached.pressureAmgCoarsenType;
@@ -1253,6 +1297,10 @@ namespace opendarts
       {
         std::cerr << "[MGR] Error: Failed to set matrix from CSR data" << std::endl;
         return -1;
+      }
+      if (!bcsr_cpr_forward_source_cached || A != &transpose_matrix)
+      {
+        mgr_solver.clearBCSRCPRSourceMatrix();
       }
 
       opendarts::config::index_t n_reservoir_blocks = n_blocks;
@@ -1380,6 +1428,32 @@ namespace opendarts
 
       csr_matrix_base *original_matrix = matrix_ptr;
       const bool original_first_solve = first_solve;
+
+      if (bcsr_cpr_forward_source_cached)
+      {
+        opendarts::config::index_t *source_row_ptr = original_matrix->get_rows_ptr();
+        opendarts::config::index_t *source_col_ind = original_matrix->get_cols_ind();
+        opendarts::config::mat_float *source_values = original_matrix->get_values();
+        opendarts::config::index_t *source_diag_ind = original_matrix->get_diag_ind();
+        if (!mgr_solver.setBCSRCPRSourceFromCSR(original_matrix->n_rows,
+                                                original_matrix->n_cols,
+                                                N_BLOCK_SIZE,
+                                                original_matrix->n_non_zeros,
+                                                source_row_ptr,
+                                                source_col_ind,
+                                                source_values,
+                                                source_diag_ind,
+                                                true))
+        {
+          std::cerr << "[MGR] Error: Failed to set forward BCSR CPR source "
+                    << "matrix for adjoint solve." << std::endl;
+          return -1;
+        }
+      }
+      else
+      {
+        mgr_solver.clearBCSRCPRSourceMatrix();
+      }
 
       matrix_ptr = &transpose_matrix;
       first_solve = true;

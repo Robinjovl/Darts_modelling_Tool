@@ -172,6 +172,8 @@ struct SolverParameters
   real_type bcsrCPRPressureCorrectionAlpha = 1.0;
   real_type bcsrCPRPressureCorrectionGuardThreshold = -1.0;
   real_type bcsrCPRPressureCorrectionGuardMinAlpha = 0.0;
+  bool bcsrCPRTransposeApply = false;
+  bool bcsrCPRForwardSource = false;
   bool bcsrCPRDiagnostics = false;
   int_t bcsrCPRDiagnosticApplyInterval = 0;
   int_t bcsrCPRDiagnosticMatrixInterval = 0;
@@ -330,6 +332,16 @@ public:
                          const int_t * col_ind,
                          const double * values,
                          const int_t * diag_ind = nullptr );
+  bool setBCSRCPRSourceFromCSR( int_t num_rows,
+                                int_t num_cols,
+                                int_t block_size,
+                                int_t num_nonzero_blocks,
+                                const int_t * row_ptr,
+                                const int_t * col_ind,
+                                const double * values,
+                                const int_t * diag_ind = nullptr,
+                                bool transpose_pressure_matrix = false );
+  void clearBCSRCPRSourceMatrix();
 
   /**
    * @brief Set matrix from std::vector (open-darts style)
@@ -455,6 +467,7 @@ public:
 private:
 
   BlockCSRMatrix m_matrix;              ///< Block CSR matrix
+  BlockCSRMatrix m_bcsrCPRSourceMatrix; ///< Forward matrix used to build adjoint CPR data
   std::vector<real_type> m_rhs;         ///< Right-hand side
   std::vector<real_type> m_reference;   ///< Reference solution (if available)
   std::vector<real_type> m_solution;    ///< Computed solution
@@ -506,6 +519,8 @@ private:
   HYPRE_ParVector m_cprPressureParSol = nullptr;
   HYPRE_Solver m_cprPressureAMG = nullptr;
   bool m_bcsrCPRReady = false;
+  bool m_bcsrCPRSourceMatrixReady = false;
+  bool m_bcsrCPRSourcePressureTranspose = false;
   int_t m_cprPressureRows = 0;
   int_t m_cprPressureSetupCount = 0;
   bool m_matrixStructureChanged = true;
@@ -620,6 +635,8 @@ private:
   bool setupBCSRCPRPreconditioner();
   void clearBCSRCPRPreconditioner();
   bool bcsrCPRPreconditionerReady() const;
+  bool bcsrCPRSourceMatrixCompatible() const;
+  void transposeBCSRCPRPressureMatrix();
   void computeBCSRCPRPressureWeights();
   void buildBCSRCPRPressurePattern();
   void fillBCSRCPRPressureMatrixValues();
@@ -638,12 +655,15 @@ private:
   bool updateBCSRCPRPressureMatrixDirect();
   void logBCSRCPRPressureMatrixDiagnostics() const;
   void logBCSRCPRAMGHierarchyDiagnostics() const;
-  bool createBCSRCPRPressureMatrix();
+  bool createBCSRCPRPressureMatrix(bool transpose_values = false);
   bool createBCSRCPRPressureVectors();
   void recordBCSRCPRLinearIterations(int_t iterations, bool converged);
   int applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix A,
                                  HYPRE_ParVector b,
                                  HYPRE_ParVector x);
+  int applyBCSRCPRTransposePreconditioner(HYPRE_ParCSRMatrix A,
+                                          HYPRE_ParVector b,
+                                          HYPRE_ParVector x);
   int applyCompositePreconditioner(HYPRE_ParCSRMatrix A,
                                    HYPRE_ParVector b,
                                    HYPRE_ParVector x);

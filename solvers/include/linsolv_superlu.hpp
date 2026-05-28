@@ -47,9 +47,15 @@ namespace opendarts
       virtual int set_prec(
           opendarts::linear_solvers::linsolv_iface *prec_input); // Implemented as do nothing
 
+      virtual int init(opendarts::linear_solvers::csr_matrix_base *A_input,
+          opendarts::config::index_t max_iters,
+          opendarts::config::mat_float tolerance) override;
+
       virtual int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
           opendarts::config::index_t max_iters,
           opendarts::config::mat_float tolerance);
+
+      virtual int setup(opendarts::linear_solvers::csr_matrix_base *A_update) override;
 
       virtual int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_update);
 
@@ -59,8 +65,8 @@ namespace opendarts
 
       virtual opendarts::config::mat_float get_residual();
 
-      opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A; // the pointer to the matrix to use to solve the system
-                                                              // (this is a pointer, so it can change outside the class)
+      opendarts::linear_solvers::csr_matrix_base *A_base = nullptr; // the matrix used to solve the system
+      opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A = nullptr; // legacy typed view when available
 
       opendarts::config::index_t n_rows;
       opendarts::config::index_t nnz;

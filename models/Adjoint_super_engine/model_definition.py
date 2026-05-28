@@ -26,6 +26,8 @@ class Model(CICDModel, OptModuleSettings):
         customize_new_operator=False,
         Peaceman_WI=False,
         use_adjoint_mgr=True,
+        adjoint_mgr_profile="physical",
+        adjoint_mgr_options=None,
     ):
         # call base class constructor
         CICDModel.__init__(self)
@@ -49,6 +51,11 @@ class Model(CICDModel, OptModuleSettings):
         self.adjoint_linear_tol = 1e-10
         self.adjoint_linear_max_iter = 300
         self.use_mgr_for_adjoint = use_adjoint_mgr
+        self.adjoint_mgr_profile = adjoint_mgr_profile
+        self.adjoint_mgr_options = self._make_adjoint_mgr_options(
+            adjoint_mgr_profile,
+            **(adjoint_mgr_options or {}),
+        )
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
                             tol_newton=1e-6, tol_linear=1e-3, it_newton=10, it_linear=50,
@@ -79,9 +86,103 @@ class Model(CICDModel, OptModuleSettings):
             )
         )
 
-    def use_adjoint_mgr_profile(self):
+    def _make_adjoint_mgr_options(self, profile="physical", **overrides):
+        profile = "physical" if profile is None else str(profile).lower()
+        true_impes_well_elim = getattr(
+            sim_params,
+            "mgrCprReductionTrueIMPESWellElim",
+            sim_params.mgrCprReductionTrueIMPES,
+        )
+
+        common = {
+            "profile": profile,
+            "use_bcsr_cpr": True,
+            "pressure_variable": 0,
+            "bcsr_cpr_weight_max": 1e6,
+            "pressure_interp": sim_params.mgrInterpInjection,
+            "pressure_restrict": sim_params.mgrRestrictBlockColLumped,
+            "pressure_coarse": sim_params.mgrCoarseGalerkin,
+            "pressure_smoother": sim_params.mgrSmootherHypreILU,
+            "pressure_smoother_iters": 1,
+            "well_frelax": sim_params.mgrFRelaxDirectInverse,
+            "well_frelax_iters": 1,
+            "well_interp": sim_params.mgrInterpBlockJacobi,
+            "well_restrict": sim_params.mgrRestrictInjection,
+            "well_coarse": sim_params.mgrCoarseGalerkin,
+            "well_smoother": sim_params.mgrSmootherNone,
+            "well_smoother_iters": 0,
+            "composition_frelax": sim_params.mgrFRelaxJacobi,
+            "composition_frelax_iters": 1,
+            "composition_interp": sim_params.mgrInterpJacobi,
+            "composition_restrict": sim_params.mgrRestrictInjection,
+            "composition_coarse": sim_params.mgrCoarseGalerkin,
+            "composition_smoother": sim_params.mgrSmootherNone,
+            "composition_smoother_iters": 0,
+            "transpose_apply": False,
+            "forward_cpr_source": False,
+            "local_correction_alpha": 1.0,
+            "local_quality_gate": False,
+            "local_quality_min_alpha": 0.0,
+            "pressure_amg_max_iter": 1,
+            "pressure_amg_tolerance": 0.0,
+            "pressure_correction_alpha": 1.0,
+            "pressure_guard_threshold": 10.0,
+            "pressure_guard_min_alpha": 0.05,
+            "diagnostics": False,
+            "diagnostic_apply_interval": 0,
+            "diagnostic_matrix_interval": 0,
+        }
+
+        if profile == "baseline":
+            options = {
+                **common,
+                "physics_scaling": False,
+                "bcsr_cpr_reduction_type": sim_params.mgrCprReductionTrueIMPES,
+                "enable_well_level": False,
+                "enable_composition_level": False,
+                "pressure_frelax": sim_params.mgrFRelaxNone,
+                "pressure_frelax_iters": 0,
+            }
+        elif profile == "physical":
+            options = {
+                **common,
+                "physics_scaling": True,
+                "bcsr_cpr_reduction_type": true_impes_well_elim,
+                "enable_well_level": True,
+                "enable_composition_level": True,
+                "pressure_frelax": sim_params.mgrFRelaxL1Jacobi,
+                "pressure_frelax_iters": 1,
+                "forward_cpr_source": True,
+            }
+        else:
+            raise ValueError(
+                "adjoint_mgr_profile must be 'baseline' or 'physical'"
+            )
+
+        for key, value in overrides.items():
+            if value is not None:
+                options[key] = value
+        if options.get("forward_cpr_source"):
+            options["transpose_apply"] = True
+        return options
+
+    def configure_adjoint_mgr_profile(self, profile=None, **overrides):
+        self.adjoint_mgr_options = self._make_adjoint_mgr_options(
+            profile or getattr(self, "adjoint_mgr_profile", "physical"),
+            **overrides,
+        )
+        self.adjoint_mgr_profile = self.adjoint_mgr_options["profile"]
+
+    def use_adjoint_mgr_profile(self, profile=None, **overrides):
         self.use_mgr_for_adjoint = True
+        self.configure_adjoint_mgr_profile(profile, **overrides)
         self.set_adjoint_solver()
+
+    def use_adjoint_mgr_baseline_profile(self):
+        self.use_adjoint_mgr_profile(profile="baseline")
+
+    def adjoint_mgr_profile_summary(self):
+        return dict(getattr(self, "adjoint_mgr_options", {}))
 
     def use_adjoint_superlu_profile(self):
         self.use_mgr_for_adjoint = False
@@ -261,6 +362,11 @@ class Model(CICDModel, OptModuleSettings):
 
     def set_adjoint_solver(self):
         block_size = self.physics.n_vars
+        adjoint_options = getattr(
+            self,
+            "adjoint_mgr_options",
+            self._make_adjoint_mgr_options("physical"),
+        )
         self.adjoint_solver = solvers.create_mgr_solver_for_block_size(block_size)
         self.adjoint_solver.set_max_iterations(self.adjoint_linear_max_iter)
         self.adjoint_solver.set_tolerance(self.adjoint_linear_tol)
@@ -268,7 +374,9 @@ class Model(CICDModel, OptModuleSettings):
         self.adjoint_solver.set_kdim(150)
         self.adjoint_solver.set_use_mgr(True)
         self.adjoint_solver.set_use_flex_gmres(True)
-        self.adjoint_solver.set_use_physics_scaling(False)
+        self.adjoint_solver.set_use_physics_scaling(
+            bool(adjoint_options["physics_scaling"])
+        )
         self.adjoint_solver.set_mgr_composite_mode(1)
         self.adjoint_solver.set_mgr_local_solver(
             getattr(sim_params, "mgrLocalSolverBlockILU0", 2)
@@ -280,23 +388,47 @@ class Model(CICDModel, OptModuleSettings):
             1e-4,
             100.0,
         )
-        self.adjoint_solver.set_use_bcsr_cpr(True)
+        self.adjoint_solver.set_mgr_local_correction_options(
+            adjoint_options["local_correction_alpha"], -1.0, 0.0, -1.0, 0.0
+        )
+        self.adjoint_solver.set_mgr_local_correction_quality_options(
+            bool(adjoint_options["local_quality_gate"]),
+            adjoint_options["local_quality_min_alpha"],
+        )
+        self.adjoint_solver.set_mgr_pressure_amg_options(6, 6, 6, 1, 6, 20, 1)
+        if hasattr(self.adjoint_solver, "set_mgr_pressure_amg_advanced_options"):
+            self.adjoint_solver.set_mgr_pressure_amg_advanced_options(
+                0.5, -1.0, -1, 0
+            )
+        self.adjoint_solver.set_mgr_pressure_amg_solve_options(
+            adjoint_options["pressure_amg_max_iter"],
+            adjoint_options["pressure_amg_tolerance"],
+        )
+        self.adjoint_solver.set_use_bcsr_cpr(bool(adjoint_options["use_bcsr_cpr"]))
         self.adjoint_solver.set_bcsr_cpr_options(
-            getattr(
-                self,
-                "bcsr_cpr_reduction_type",
-                sim_params.mgrCprReductionTrueIMPES,
-            ),
-            0,
-            1e6,
+            adjoint_options["bcsr_cpr_reduction_type"],
+            adjoint_options["pressure_variable"],
+            adjoint_options["bcsr_cpr_weight_max"],
         )
         self.adjoint_solver.set_bcsr_cpr_reuse_options(True, 0)
         self.adjoint_solver.set_bcsr_cpr_adaptive_rebuild_options(True, 15, 1.5, 1, 2)
         self.adjoint_solver.set_bcsr_cpr_adaptive_quality_options(-1.0, -1.0, -1.0)
-        self.adjoint_solver.set_bcsr_cpr_diagnostics_options(False, 0, 0)
-        self.adjoint_solver.set_bcsr_cpr_pressure_correction_options(1.0, 10.0, 0.05)
-        self.adjoint_solver.set_mgr_enable_well_level(False)
-        self.adjoint_solver.set_mgr_enable_composition_level(False)
+        self.adjoint_solver.set_bcsr_cpr_diagnostics_options(
+            bool(adjoint_options["diagnostics"]),
+            adjoint_options["diagnostic_apply_interval"],
+            adjoint_options["diagnostic_matrix_interval"],
+        )
+        self.adjoint_solver.set_bcsr_cpr_pressure_correction_options(
+            adjoint_options["pressure_correction_alpha"],
+            adjoint_options["pressure_guard_threshold"],
+            adjoint_options["pressure_guard_min_alpha"],
+        )
+        forward_cpr_source = bool(adjoint_options.get("forward_cpr_source", False))
+        transpose_apply = bool(adjoint_options["transpose_apply"]) or forward_cpr_source
+        if hasattr(self.adjoint_solver, "set_bcsr_cpr_forward_source"):
+            self.adjoint_solver.set_bcsr_cpr_forward_source(forward_cpr_source)
+        if hasattr(self.adjoint_solver, "set_bcsr_cpr_transpose_apply"):
+            self.adjoint_solver.set_bcsr_cpr_transpose_apply(transpose_apply)
 
         reservoir_roles = [sim_params.mgrVarPressure] + [
             sim_params.mgrVarComposition
@@ -310,14 +442,41 @@ class Model(CICDModel, OptModuleSettings):
         self.adjoint_solver.set_mgr_well_variable_roles(
             well_roles
         )
+        self.adjoint_solver.set_mgr_well_strategy(
+            getattr(sim_params, "mgrWellEliminateBlock", 0)
+        )
+        self.adjoint_solver.set_mgr_well_level_options(
+            adjoint_options["well_frelax"],
+            adjoint_options["well_frelax_iters"],
+            adjoint_options["well_interp"],
+            adjoint_options["well_restrict"],
+            adjoint_options["well_coarse"],
+            adjoint_options["well_smoother"],
+            adjoint_options["well_smoother_iters"],
+        )
+        self.adjoint_solver.set_mgr_composition_level_options(
+            adjoint_options["composition_frelax"],
+            adjoint_options["composition_frelax_iters"],
+            adjoint_options["composition_interp"],
+            adjoint_options["composition_restrict"],
+            adjoint_options["composition_coarse"],
+            adjoint_options["composition_smoother"],
+            adjoint_options["composition_smoother_iters"],
+        )
         self.adjoint_solver.set_mgr_pressure_level_options(
-            sim_params.mgrFRelaxNone,
-            0,
-            sim_params.mgrInterpInjection,
-            sim_params.mgrRestrictBlockColLumped,
-            sim_params.mgrCoarseGalerkin,
-            sim_params.mgrSmootherHypreILU,
-            1,
+            adjoint_options["pressure_frelax"],
+            adjoint_options["pressure_frelax_iters"],
+            adjoint_options["pressure_interp"],
+            adjoint_options["pressure_restrict"],
+            adjoint_options["pressure_coarse"],
+            adjoint_options["pressure_smoother"],
+            adjoint_options["pressure_smoother_iters"],
+        )
+        self.adjoint_solver.set_mgr_enable_well_level(
+            bool(adjoint_options["enable_well_level"])
+        )
+        self.adjoint_solver.set_mgr_enable_composition_level(
+            bool(adjoint_options["enable_composition_level"])
         )
 
         adjoint_reservoir_blocks = self._adjoint_reservoir_block_count()

@@ -46,7 +46,7 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_superlu<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
+    int linsolv_superlu<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix_base *A_input,
         opendarts::config::index_t max_iters,
         opendarts::config::mat_float tolerance)
     {
@@ -54,7 +54,12 @@ namespace opendarts
                        // unused parameter
       (void)tolerance; // same here
 
-      this->n_rows = A_input->n_rows * N_BLOCK_SIZE;
+      this->A_base = A_input;
+      this->A = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input);
+
+      const opendarts::config::index_t block_size =
+          A_input != nullptr ? A_input->n_row_size : N_BLOCK_SIZE;
+      this->n_rows = A_input->n_rows * block_size;
       this->perm_r = new int[this->n_rows];
       this->perm_c = new int[this->n_rows];
 
@@ -68,7 +73,7 @@ namespace opendarts
       // Why is there an allocation of 150 times the size of the memory of A?
       // I guess it is because it must be able to store L and U (and maybe B),
       // and this is just guesswork, this can go quite badly
-      this->lwork = A_input->n_total_non_zeros * 150 * sizeof(double);
+      this->lwork = A_input->n_non_zeros * block_size * block_size * 150 * sizeof(double);
 
       this->work = SUPERLU_MALLOC(this->lwork);
       if (!(this->work))
@@ -85,14 +90,29 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_superlu<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_update)
+    int linsolv_superlu<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
+        opendarts::config::index_t max_iters,
+        opendarts::config::mat_float tolerance)
+    {
+      return this->init(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_input), max_iters, tolerance);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_superlu<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix_base *A_update)
     {
       this->timer_setup->node["SUPERLU"].start();
 
-      this->A = A_update;
+      this->A_base = A_update;
+      this->A = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_update);
 
       this->timer_setup->node["SUPERLU"].stop();
       return 0;
+    };
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_superlu<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_update)
+    {
+      return this->setup(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_update));
     };
 
     template <uint8_t N_BLOCK_SIZE>
@@ -118,17 +138,22 @@ namespace opendarts
 
       StatInit(&stat_superlu);
 
-      opendarts::linear_solvers::csr_matrix<1> *A_as_nb_1;
-      if (N_BLOCK_SIZE > 1)
+      opendarts::linear_solvers::csr_matrix<1> *A_as_nb_1 = nullptr;
+      bool delete_A_as_nb_1 = false;
+      if (this->A_base == nullptr)
       {
-        // If the system matrix A is not of block size 1 then we need to create a temporary
-        // A matrix with block size 1 (A_as_nb_1). We use a pointer, because if the block
-        // size is 1 (below) we do not do a conversion and we just assign the pointer
-        // to the A matrix to A_as_nb_1, so that we can use it below no matter
-        // what the block size is.
-        A_as_nb_1 = new opendarts::linear_solvers::csr_matrix<1>;
+        return -1;
       }
-      this->A->as_nb_1(A_as_nb_1);
+      if (this->A_base->n_row_size == 1)
+      {
+        A_as_nb_1 = dynamic_cast<opendarts::linear_solvers::csr_matrix<1> *>(this->A_base);
+      }
+      if (A_as_nb_1 == nullptr)
+      {
+        A_as_nb_1 = new opendarts::linear_solvers::csr_matrix<1>;
+        A_as_nb_1->to_nb_1(this->A_base);
+        delete_A_as_nb_1 = true;
+      }
 
       dCreate_CompCol_Matrix(&A_superlu, A_as_nb_1->n_rows, A_as_nb_1->n_cols, A_as_nb_1->n_non_zeros,
           A_as_nb_1->values.data(), A_as_nb_1->cols_ind.data(), A_as_nb_1->rows_ptr.data(), SLU_NR, SLU_D, SLU_GE);
@@ -170,10 +195,8 @@ namespace opendarts
       Destroy_CompCol_Matrix(&U_superlu);
 #endif // SLU_PREALLOC_WORK
 
-      if (this->A->n_block_size_ > 1)
+      if (delete_A_as_nb_1)
       {
-        // If the block size is not 1 then we need to delete the temporary block
-        // size 1 copy of A, to free up memory.
         delete A_as_nb_1;
       }
 

@@ -58,6 +58,7 @@ namespace opendarts
       // Solve linear system
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
       int solve_transposed(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
+      bool requires_setup_for_transposed_solve() const override { return false; }
 
       // Configuration methods for MGR solver
       void set_max_iterations(opendarts::config::index_t max_iters);
@@ -106,6 +107,8 @@ namespace opendarts
           opendarts::config::mat_float alpha,
           opendarts::config::mat_float guard_threshold,
           opendarts::config::mat_float guard_min_alpha);
+      void set_bcsr_cpr_transpose_apply(bool transpose_apply);
+      void set_bcsr_cpr_forward_source(bool forward_source);
       void set_mgr_pressure_amg_options(int coarsen_type,
                                         int interp_type,
                                         int relax_type,
@@ -185,6 +188,8 @@ namespace opendarts
       int get_bcsr_cpr_reduction_type() const;
       int get_bcsr_cpr_pressure_variable() const;
       opendarts::config::mat_float get_bcsr_cpr_weight_max() const;
+      bool get_bcsr_cpr_transpose_apply() const;
+      bool get_bcsr_cpr_forward_source() const;
       bool get_bcsr_cpr_reuse_amg_hierarchy() const;
       opendarts::config::index_t get_bcsr_cpr_amg_rebuild_interval() const;
       bool get_bcsr_cpr_adaptive_amg_rebuild() const;
@@ -259,6 +264,8 @@ namespace opendarts
       opendarts::config::mat_float bcsr_cpr_pressure_correction_alpha_cached;
       opendarts::config::mat_float bcsr_cpr_pressure_correction_guard_threshold_cached;
       opendarts::config::mat_float bcsr_cpr_pressure_correction_guard_min_alpha_cached;
+      bool bcsr_cpr_transpose_apply_cached;
+      bool bcsr_cpr_forward_source_cached;
       opendarts::config::index_t pressure_amg_max_iter_cached;
       opendarts::config::mat_float pressure_amg_tolerance_cached;
       opendarts::config::index_t n_reservoir_blocks_cached;
