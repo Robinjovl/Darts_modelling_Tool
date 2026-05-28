@@ -69,11 +69,12 @@ def build_output_dir(spec, base_dir=""):
     disp_tag = "disp" if spec.get("dispersion") else "nodisp"
     components = "-".join(spec.get("components", []))
     nx = spec.get("nx", "nx?")
+    ny = spec.get("ny", "ny?")
     nz = spec.get("nz", "nz?")
-    device = 'CPU' if spec.get('gpu_device') is False else 'GPU'
+    device = spec.get("platform", "platform?")
 
     # Construct folder name
-    dir_name = f"{iso_tag}__{rhs_tag}__{disp_tag}__{components}__nx{nx}_nz{nz}_{device}"
+    dir_name = f"{iso_tag}__{rhs_tag}__{disp_tag}__{components}__nx{nx}_ny{ny}_nz{nz}_{device}"
     return os.path.join(base_dir, dir_name)
 
 ########
@@ -100,35 +101,14 @@ class Model(DartsModel):
                             it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
         self.params.newton_params[0] = 0.05
         # self.data_ts.eta = np.ones(self.physics.n_vars)
-        self.params.nonlinear_norm_type = self.params.L2  # linf if you use m.set_rhs() for injection
-
-        """Define the reservoir and wells """
-        well_centers = {
-            "I1": [2700.0, 0.0, 300.0],
-            "I2": [5100.0, 0.0, 700.0]
-        }
-
-        if 1:
-            from fluidflower_str_b import FluidFlowerStruct
-            self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
-                                                layers_to_regions=layers_to_regions,
-                                                    model_specs=specs, well_centers=well_centers)
-        else:
-            # homogeneous permeability field for SPE11 physics
-            from fluidflower_str_b_homo import FluidFlowerStruct
-            self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
-                                                layers_to_regions=layers_to_regions,
-                                                    model_specs=specs, well_centers=well_centers)
-
-
-        self.nx, self.ny, self.nz = self.reservoir.nx, self.reservoir.ny, self.reservoir.nz
-        self.grid = np.meshgrid(np.linspace((8400 / self.nx / 2), 8400 - (8400 / self.nx / 2), self.nx),
-                           np.linspace((1200 / self.nz / 2), 1200 - (1200 / self.nz / 2), self.nz))
-        self.set_str_boundary_volume_multiplier()  # right and left boundary volume multiplier
-
+        self.params.nonlinear_norm_type = self.params.L2 # linf if you use m.set_rhs() for injection
+        
+        """ Define reservoir """
+        self.set_reservoir() 
+        
         """ Define initial and boundary conditions """
         self.inj_stream = specs['inj_stream'] # define injection stream of the wells
-        inj_rate = 3024  # mass rate per well, kg/day
+        inj_rate = specs['inj_rate']  # mass rate per well, kg/day
         if specs['1000years'] is False:
             self.inj_rate = [inj_rate, self.zero]
         else:
@@ -136,12 +116,144 @@ class Model(DartsModel):
 
         if specs['platform'] == 'cpu':
             self.platform = 'cpu'
-            # from darts.engines import set_num_threads
-            # set_num_threads(8)
+            try:
+                from darts.engines import set_num_threads
+                set_num_threads(16)
+            except: 
+                pass 
+            
         elif specs['platform'] == 'gpu':
             self.platform = 'gpu'
             from darts.engines import set_gpu_device
-            set_gpu_device(1)
+            set_gpu_device(0)
+
+    def set_reservoir(self): 
+        """ Define the reservoir and wells """
+        
+        if self.specs['ny'] == 1: 
+            
+            cmult = 86.4
+            layer_props = {900001: PorPerm(type='7', poro=1e-6, perm=1e-6, anisotropy=[1, 1, 0.1], rcond=2.0 * cmult),
+                           900002: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
+                           900003: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
+                           900004: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
+                           900005: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
+                           900006: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
+                           900007: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
+                           900008: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
+                           900009: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
+                           900010: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900011: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900012: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900013: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900014: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900015: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900016: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900017: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900018: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900019: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900020: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900021: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900022: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900023: PorPerm(type='6', poro=0.35, perm=2026.49994, anisotropy=[1, 1, 0.1], rcond=0.26 * cmult),
+                           900024: PorPerm(type='6', poro=0.35, perm=2026.49994, anisotropy=[1, 1, 0.1], rcond=0.26 * cmult),
+                           900025: PorPerm(type='6', poro=0.35, perm=2026.49994, anisotropy=[1, 1, 0.1], rcond=0.26 * cmult),
+                           900026: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900027: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900028: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900029: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900030: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           900031: PorPerm(type='7', poro=1e-6, perm=1e-6, anisotropy=[1, 1, 0.1], rcond=2.0 * cmult),
+                           900032: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
+                           }
+            
+            well_centers = {
+                "I1": [2700.0, 0.0, 300.0],
+                "I2": [5100.0, 0.0, 700.0]
+            }
+            
+            if 1:
+                # ---- SPE11b 
+                from fluidflower_str_b import FluidFlowerStruct
+                self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
+                                                    layers_to_regions=layers_to_regions,
+                                                        model_specs=self.specs, well_centers=well_centers)
+
+            else:
+                # ---- Homogeneous version of SPE11b 
+                from fluidflower_str_b_homogeneous import FluidFlowerStruct
+                self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props,
+                                                        layers_to_regions=layers_to_regions,
+                                                            model_specs=self.specs, well_centers=well_centers)
+                
+            self.nx, self.ny, self.nz = self.reservoir.nx, self.reservoir.ny, self.reservoir.nz
+            self.grid = np.meshgrid(np.linspace((8400 / self.nx / 2), 8400 - (8400 / self.nx / 2), self.nx),
+                               np.linspace((1200 / self.nz / 2), 1200 - (1200 / self.nz / 2), self.nz))
+            
+            self.set_str_boundary_volume_multiplier()  # right and left boundary volume multiplier
+        
+        elif self.specs['ny'] != 1: 
+            # ---- SPE11c 
+            dmult, cmult = 0.9869233, 86.4
+            layer_props = {1: PorPerm(type='1', poro=0.1, perm=0.1 / dmult, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
+                           2: PorPerm(type='2', poro=0.2, perm=100 / dmult, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           3: PorPerm(type='3', poro=0.2, perm=200 / dmult, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           4: PorPerm(type='4', poro=0.2, perm=500 / dmult, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
+                           5: PorPerm(type='5', poro=0.25, perm=1000 / dmult, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
+                           6: PorPerm(type='6', poro=0.35, perm=2000 / dmult, anisotropy=[1, 1, 0.1], rcond=0.26 * cmult),
+                           7: PorPerm(type='7', poro=1.e-5, perm=1.e-6, anisotropy=[1, 1, 0.1], rcond=2.0 * cmult)
+                           }
+            
+            well_geometry = {
+                'I1': {'head': np.array([2700, 1000, 300]), 'tail': np.array([2700, 4000, 300]), 'coordinates': 'cartesian'}, # well 1 
+                'I2': {'head': np.array([5100, 1000, 700]), 'tail': np.array([5100, 4000, 700]), 'coordinates': 'reference'}, # well 2
+            }
+            
+            mesh_file_name = (
+                f"spe11c_structured_"
+                f"{self.specs['nx']}_"
+                f"{self.specs['ny']}_"
+                f"{self.specs['nz']}.msh"
+            )
+            
+            if os.path.exists(mesh_file_name):
+                mesh_file = mesh_file_name
+            else:
+                import subprocess
+
+                subprocess.run(
+                    [
+                        "python",
+                        "make_structured_mesh.py",
+                        "-v", "C",
+                        "-nx", str(self.specs['nx']),
+                        "-ny", str(self.specs['ny']),
+                        "-nz", str(self.specs['nz']),
+                    ],
+                    check=True
+                )
+            
+                default_name = "spe11c_structured.msh"
+            
+                if os.path.exists(default_name):
+                    os.rename(default_name, mesh_file_name)
+                    mesh_file = mesh_file_name
+                else:
+                    raise FileNotFoundError("Mesh generation failed.")
+
+            from fluidflower_new_str_c import FluidFlowerNewStruct
+            self.reservoir = FluidFlowerNewStruct(self.specs, timer=self.timer, layer_props=layer_props,
+                                                  well_geometry=well_geometry, mesh_file=mesh_file)
+            
+            # from darts.reservoirs.unstruct_reservoir import UnstructReservoir
+            # permx = 100.
+            # permy = 100.
+            # permz = 100.
+            # poro = 0.2
+            # self.reservoir = UnstructReservoir(self.timer, mesh_file, permx, permy, permz, poro, op_num = 1)
+            # self.reservoir.physical_tags['matrix'] = [1, 2, 3, 4, 5, 6, 7]
+            # # self.set_boundary_conditions_11c()
+            
 
     def set_wells(self):
         self.reservoir.set_wells(False)
@@ -398,108 +510,168 @@ class Model(DartsModel):
             copy_data_to_device(self.reservoir.mesh.op_num, op_num_d)
 
     def set_initial_conditions(self):
-        if 1:
-            pres_in = 212
-            input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
-
-            self.input_distribution = {"pressure": [pres_in, pres_in + input_depths[1] * 0.09775]}
-            for i in range(self.nc):
-                if self.components[i] == 'H2O':
-                    self.input_distribution[self.components[i]] = [1-(self.nc-1)*self.zero, 1-(self.nc-1)*self.zero]
+        
+        if self.specs['ny'] != 1: 
+            
+            temp = lambda depth : (273.15 + 70) - depth * 0.025
+            pres = lambda depth : 212 + depth * 0.09775
+            
+            if 0: 
+                z_depths = [np.amin(self.reservoir.centroids[:, 2]), np.amax(self.reservoir.centroids[:, 2])]            
+                input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
+                
+                input_distribution = {}
+                input_distribution['CO2'] = [self.zero, self.zero]
+                input_distribution['H2O'] = [1. - self.zero, 1 - self.zero]
+                input_distribution['pressure'] = [pres(depth) for depth in z_depths]
+                input_distribution['temperature'] = [temp(depth) for depth in z_depths[::-1]]
+                
+                self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
+                                                                     input_depth=input_depths,
+                                                                     input_distribution=input_distribution)
+            else: 
+                input_distribution = {}
+                input_distribution['CO2'] = self.zero
+                input_distribution['H2O'] = 1. - self.zero
+                
+                self.reservoir.centroids = self.reservoir.discretizer.centroid_all_cells
+                z_depths = self.reservoir.centroids[:, 2]
+                
+                input_distribution['pressure'] = np.array([pres(depth) for depth in z_depths[::-1]])
+                input_distribution['temperature'] = np.array([temp(depth) for depth in z_depths])
+                
+                self.physics.set_initial_conditions_from_array(self.reservoir.mesh, input_distribution)
+                
+        if self.specs['ny'] == 1:
+            if 1:
+                pres_in = 212
+                input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
+    
+                self.input_distribution = {"pressure": [pres_in, pres_in + input_depths[1] * 0.09775]}
+                for i in range(self.nc):
+                    if self.components[i] == 'H2O':
+                        self.input_distribution[self.components[i]] = [1-(self.nc-1)*self.zero, 1-(self.nc-1)*self.zero]
+                    else:
+                        self.input_distribution[self.components[i]] = [self.zero, self.zero]
+    
+                if self.specs['temperature'] is None:
+                    bot_cell = self.reservoir.bot_cells[0]
+                    T_spec_bot = 273.15 + 70 - self.reservoir.centroids[bot_cell, 2] * 0.025
+    
+                    top_cell = self.reservoir.top_cells[0]
+                    T_spec_top = 273.15 + 70 - self.reservoir.centroids[top_cell, 2] * 0.025
+    
+                    self.input_distribution["temperature"] = [T_spec_top, T_spec_bot]
+    
+                self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
+                                                                     input_depth=input_depths,
+                                                                     input_distribution=self.input_distribution)
+    
+            if 0:
+                self.temp = lambda depth: 273.15 + 70. - depth * 0.025
+    
+                depths = np.asarray(self.reservoir.mesh.depth)
+                min_depth = np.min(depths)
+                max_depth = np.max(depths)
+                nb = 100
+                depths = np.linspace(min_depth, max_depth, nb)
+    
+                # zH2O = 1
+                from darts.physics.super.initialize import Initialize
+                init = Initialize(self.physics, aq_idx=0, h2o_idx=0)
+                nc = len(self.components)
+    
+                # Solve boundary state
+                min_depth = self.reservoir.global_data['depth'].min()
+                max_depth = self.reservoir.global_data['depth'].max()
+    
+                # Known conditions at well I1
+                known_depth = self.reservoir.well_centers["I1"][2]
+                pres_I1 = 300.
+                temp_I1 = self.temp(max_depth - known_depth)  # depths in grid have z=0 at the bottom
+    
+                specs = {'pressure': pres_I1, 'temperature': temp_I1 if init.thermal else None}
+                if nc == 2:
+                    # H2O-CO2, initially pure brine
+                    # need 1 specification: H2O = 1-zero
+                    # specs["H2O"] = 1.-self.zero
+                    specs["CO2"] = self.zero
+    
                 else:
-                    self.input_distribution[self.components[i]] = [self.zero, self.zero]
-
-            if self.specs['temperature'] is None:
-                bot_cell = self.reservoir.bot_cells[0]
-                T_spec_bot = 273.15 + 70 - self.reservoir.centroids[bot_cell, 2] * 0.025
-
-                top_cell = self.reservoir.top_cells[0]
-                T_spec_top = 273.15 + 70 - self.reservoir.centroids[top_cell, 2] * 0.025
-
-                self.input_distribution["temperature"] = [T_spec_top, T_spec_bot]
-
-            self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
-                                                                 input_depth=input_depths,
-                                                                 input_distribution=self.input_distribution)
-
-        if 0:
-            self.temp = lambda depth: 273.15 + 70. - depth * 0.025
-
-            depths = np.asarray(self.reservoir.mesh.depth)
-            min_depth = np.min(depths)
-            max_depth = np.max(depths)
-            nb = 100
-            depths = np.linspace(min_depth, max_depth, nb)
-
-            # zH2O = 1
-            from darts.physics.super.initialize import Initialize
-            init = Initialize(self.physics, aq_idx=0, h2o_idx=0)
-            nc = len(self.components)
-
-            # Solve boundary state
-            min_depth = self.reservoir.global_data['depth'].min()
-            max_depth = self.reservoir.global_data['depth'].max()
-
-            # Known conditions at well I1
-            known_depth = self.reservoir.well_centers["I1"][2]
-            pres_I1 = 300.
-            temp_I1 = self.temp(max_depth - known_depth)  # depths in grid have z=0 at the bottom
-
-            specs = {'pressure': pres_I1, 'temperature': temp_I1 if init.thermal else None}
-            if nc == 2:
-                # H2O-CO2, initially pure brine
-                # need 1 specification: H2O = 1-zero
-                # specs["H2O"] = 1.-self.zero
-                specs["CO2"] = self.zero
-
-            else:
-                # H2O-CO2-C1, initially pure brine
-                # need 2 specifications: H2O = 1-(nc-1)*zero, CO2 = zero
-                specs["H2S"] = self.zero
-                specs["CO2"] = self.zero
-
-            if self.salinity:
-                # + ions, need extra specification for ion molality
-                # H2O cannot be specified because of salinity, last component instead
-                mol = self.salinity
-                specs.update({'m' + str(nc): mol})
-                specs.update({'m' + str(nc): mol})
-                specs["H2O"] = None
-                specs[self.components[-1]] = self.zero
-
-            X0 = ([pres_I1, 0.98] +  # pressure, H2O
-                  ([self.zero] if nc > 2 else []) +  # CO2
-                  ([1. - 0.98 - mol * 0.98 / 55.509] if self.salinity else []) +  # last component if ions
-                  ([temp_I1] if init.thermal else []))  # temperature
-            X0 = init.solve_state(Xi=X0,
-                                  specs=specs,
-                                  )
-
-            # Initialize depth table
-            nb = 100
-            X, bc_idx = init.init_depth_table(depth_bottom=max_depth,
-                                              depth_top=min_depth,
-                                              depth_known=known_depth,
-                                              X0=X0,
-                                              nb=nb,
-                                              dTdh=0.025
-                                              )
-
-            # Solve vertical equilibrium
-            specs['pressure'] = None  # set to None because pressure will be calculated from hydrostatic column
-            X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=False)  # solve above
-            X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=True)  # solve below
-
-            self.physics.set_initial_conditions_from_depth_table(mesh = self.reservoir.mesh,
-                                                                 input_depth = init.depths,
-                                                                 input_distribution = {v: X[:, i] for i, v in enumerate(self.physics.vars)})
-
+                    # H2O-CO2-C1, initially pure brine
+                    # need 2 specifications: H2O = 1-(nc-1)*zero, CO2 = zero
+                    specs["H2S"] = self.zero
+                    specs["CO2"] = self.zero
+    
+                if self.salinity:
+                    # + ions, need extra specification for ion molality
+                    # H2O cannot be specified because of salinity, last component instead
+                    mol = self.salinity
+                    specs.update({'m' + str(nc): mol})
+                    specs.update({'m' + str(nc): mol})
+                    specs["H2O"] = None
+                    specs[self.components[-1]] = self.zero
+    
+                X0 = ([pres_I1, 0.98] +  # pressure, H2O
+                      ([self.zero] if nc > 2 else []) +  # CO2
+                      ([1. - 0.98 - mol * 0.98 / 55.509] if self.salinity else []) +  # last component if ions
+                      ([temp_I1] if init.thermal else []))  # temperature
+                X0 = init.solve_state(Xi=X0,
+                                      specs=specs,
+                                      )
+    
+                # Initialize depth table
+                nb = 100
+                X, bc_idx = init.init_depth_table(depth_bottom=max_depth,
+                                                  depth_top=min_depth,
+                                                  depth_known=known_depth,
+                                                  X0=X0,
+                                                  nb=nb,
+                                                  dTdh=0.025
+                                                  )
+    
+                # Solve vertical equilibrium
+                specs['pressure'] = None  # set to None because pressure will be calculated from hydrostatic column
+                X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=False)  # solve above
+                X = init.solve(X=X, bc_idx=bc_idx, specs=specs, downward=True)  # solve below
+    
+                self.physics.set_initial_conditions_from_depth_table(mesh = self.reservoir.mesh,
+                                                                     input_depth = init.depths,
+                                                                     input_distribution = {v: X[:, i] for i, v in enumerate(self.physics.vars)})
+    
+    def set_boundary_conditions(self):
+        if self.specs['ny'] != 1:
+            volume = np.array(self.reservoir.mesh.volume, copy=False)
+            points = self.reservoir.mesh_data.points
+            min_coord, max_coord = np.min(points, axis=0)[:2], np.max(points, axis=0)[:2]
+            cell_points = points[self.reservoir.mesh_data.cells[0].data]
+            x_minus_ids = np.unique(np.where(cell_points[:, :, 0] == min_coord[0])[0])
+            x_plus_ids = np.unique(np.where(cell_points[:, :, 0] == max_coord[0])[0])
+            y_minus_ids = np.unique(np.where(cell_points[:, :, 1] == min_coord[1])[0])
+            y_plus_ids = np.unique(np.where(cell_points[:, :, 1] == max_coord[1])[0])
+            self.side_cell_ids = np.unique(np.concatenate((x_minus_ids, x_plus_ids, y_minus_ids, y_plus_ids)))
+            volume[self.side_cell_ids] *= 1e+6 # 5e4 * (1200 / self.reservoir.nz) * (5000 / self.reservoir.ny)
+    
+            # top and bottom
+            if self.physics.thermal:
+                pillar_ids = np.unique(self.reservoir.discretizer.centroid_all_cells[:, :2], axis=0, return_inverse=True)[1]
+                self.reservoir.top_cells = []
+                self.reservoir.bot_cells = []
+                for i in range(np.max(pillar_ids) + 1):
+                    ids = np.where(pillar_ids == i)[0]
+                    self.reservoir.top_cells.append(ids[self.reservoir.discretizer.centroid_all_cells[ids, 2].argmax()])
+                    self.reservoir.bot_cells.append(ids[self.reservoir.discretizer.centroid_all_cells[ids, 2].argmin()])
+        else: 
+            pass 
+        return
+    
     def set_str_boundary_volume_multiplier(self):
         self.reservoir.boundary_volumes['yz_minus'] = 5e9 * (1200 / self.reservoir.nz)
         self.reservoir.boundary_volumes['yz_plus']  = 5e9 * (1200 / self.reservoir.nz)
         return
 
     def get_mass_components(self, property_array):
+        nb = self.reservoir.mesh.n_res_blocks
         component_names = self.physics.property_containers[0].components_name
         Mw = np.array(self.physics.property_containers[0].Mw).reshape(-1, 1)
 
@@ -525,8 +697,11 @@ class Model(DartsModel):
         w_components_vapor = (self.y_components * Mw) / MWAq
 
         # Pore volume
-        V = np.array(self.reservoir.mesh.volume, copy=False)[:self.reservoir.n]
-        phi = np.array(self.reservoir.mesh.poro, copy=False)[:self.reservoir.n]
+        
+        V = np.array(self.reservoir.mesh.volume, copy=False)[:nb]
+        if self.specs['ny'] != 1:
+            V[self.side_cell_ids] /= 1e+6 
+        phi = np.array(self.reservoir.mesh.poro, copy=False)[:nb]
 
         # Calculate total mass for each component
         mass_components = {}
@@ -1104,39 +1279,4 @@ class BrooksCorey:
 
         return k_r
 
-######################## HIDE THIS ########################
-cmult = 86.4
-layer_props = {900001: PorPerm(type='7', poro=1e-6, perm=1e-6, anisotropy=[1, 1, 0.1], rcond=2.0 * cmult),
-               900002: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
-               900003: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
-               900004: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
-               900005: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
-               900006: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
-               900007: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
-               900008: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
-               900009: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
-               900010: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900011: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900012: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900013: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900014: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900015: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900016: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900017: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900018: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900019: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900020: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900021: PorPerm(type='3', poro=0.2, perm=202.649994, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900022: PorPerm(type='4', poro=0.2, perm=506.624985, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900023: PorPerm(type='6', poro=0.35, perm=2026.49994, anisotropy=[1, 1, 0.1], rcond=0.26 * cmult),
-               900024: PorPerm(type='6', poro=0.35, perm=2026.49994, anisotropy=[1, 1, 0.1], rcond=0.26 * cmult),
-               900025: PorPerm(type='6', poro=0.35, perm=2026.49994, anisotropy=[1, 1, 0.1], rcond=0.26 * cmult),
-               900026: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900027: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900028: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900029: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900030: PorPerm(type='2', poro=0.2, perm=101.324997, anisotropy=[1, 1, 0.1], rcond=1.25 * cmult),
-               900031: PorPerm(type='7', poro=1e-6, perm=1e-6, anisotropy=[1, 1, 0.1], rcond=2.0 * cmult),
-               900032: PorPerm(type='1', poro=0.1, perm=0.101324997, anisotropy=[1, 1, 0.1], rcond=1.9 * cmult),
-               }
-######################## ######################## ########################
+
