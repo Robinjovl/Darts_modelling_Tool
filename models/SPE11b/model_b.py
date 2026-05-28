@@ -301,30 +301,30 @@ class Model(CICDModel):
             enth_idxAq = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_Aq")
  
             # for i, well in enumerate(self.reservoir.well_cells):
-            for i, well_cell in enumerate(self.reservoir.well_cells):
-                # for well_cell in well:
-                p_wellcell = self.physics.engine.X[well_cell * nv]
-                if self.physics.thermal:
-                    state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
-                else:
-                    state = value_vector([p_wellcell] + self.inj_stream[:-2])
+            for i, well in enumerate(self.reservoir.well_cells):
+                for well_cell in well:
+                    p_wellcell = self.physics.engine.X[well_cell * nv]
+                    if self.physics.thermal:
+                        state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
+                    else:
+                        state = value_vector([p_wellcell] + self.inj_stream[:-2])
+                        
+                    values = value_vector(np.zeros(self.physics.n_ops))
+                    # values_np = np.array(values)
+                    self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
+                    enth = values[nu_idxV]*values[enth_idx] + values[nu_idxA]*values[enth_idxAq]  # mole fraction moles in vapour [V/V+A] * molar enthalpy of vapour [kJ/kmol] + aq
+                    # enth = self.physics.property_containers[0].compute_total_enthalpy(state)
+                    avg_molar_mass = sum(mf * M for mf, M in zip(mole_fractions, molar_masses))
+                    tot_moles = self.inj_rate[i] / avg_molar_mass / len(well)  # kg/day / kg/mol -> mol/day
                     
-                values = value_vector(np.zeros(self.physics.n_ops))
-                # values_np = np.array(values)
-                self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
-                enth = values[nu_idxV]*values[enth_idx] + values[nu_idxA]*values[enth_idxAq]  # mole fraction moles in vapour [V/V+A] * molar enthalpy of vapour [kJ/kmol] + aq
-                # enth = self.physics.property_containers[0].compute_total_enthalpy(state)
-                avg_molar_mass = sum(mf * M for mf, M in zip(mole_fractions, molar_masses))
-                tot_moles = self.inj_rate[i] / avg_molar_mass / 1 #len(well)  # kg/day / kg/mol -> mol/day
-                
-                for comp_idx in range(nc):
-                    comp_flux_idx = well_cell * nv + comp_idx  # Index
-                    n_comp[comp_idx] = tot_moles * mole_fractions[comp_idx]  # Compute component moles
-                    rhs[comp_flux_idx] -= n_comp[comp_idx]  # Update rhs
-                    
-                if self.physics.thermal:
-                    temp_idx = well_cell * nv + nv - 1  # Last equation index (temperature)
-                    rhs[temp_idx] -= enth * tot_moles
+                    for comp_idx in range(nc):
+                        comp_flux_idx = well_cell * nv + comp_idx  # Index
+                        n_comp[comp_idx] = tot_moles * mole_fractions[comp_idx]  # Compute component moles
+                        rhs[comp_flux_idx] -= n_comp[comp_idx]  # Update rhs
+                        
+                    if self.physics.thermal:
+                        temp_idx = well_cell * nv + nv - 1  # Last equation index (temperature)
+                        rhs[temp_idx] -= enth * tot_moles
                     
             return rhs
 
@@ -1123,22 +1123,48 @@ class Model(CICDModel):
                     plt.close()
 
     def plot_properties(self, property_array, time_vector, ts):
-        for i, name in enumerate(property_array.keys()):
-            if 'fluxes' not in name:
-                plt.figure(figsize=(10, 2))
-                plt.title(f'{name} @ year {time_vector[0] / 365}')
-                c = plt.pcolor(self.grid[0], self.grid[1], property_array[name][0].reshape(self.nz, self.nx), cmap='cividis')
-                try:
-                    plt.colorbar(c, aspect=10, label=self.output.variable_units[name])
-                except:
-                    plt.colorbar(c, aspect=10)
-                plt.xlabel('x [m]');
-                plt.ylabel('z [m]')
-                fig_dir = os.path.join(self.output_folder, 'figures', f'{name}')
-                os.makedirs(fig_dir, exist_ok=True)
-                fig_path = os.path.join(fig_dir, f'{name}_ts_{ts}.png')
-                plt.savefig(fig_path, bbox_inches='tight')
-                plt.close()
+        
+        if self.specs['ny'] == 1:
+        
+            for i, name in enumerate(property_array.keys()):
+                if 'fluxes' not in name:
+                    plt.figure(figsize=(10, 2))
+                    plt.title(f'{name} @ year {time_vector[0] / 365}')
+                    c = plt.pcolor(self.grid[0], self.grid[1], property_array[name][0].reshape(self.nz, self.nx), cmap='cividis')
+                    try:
+                        plt.colorbar(c, aspect=10, label=self.output.variable_units[name])
+                    except:
+                        plt.colorbar(c, aspect=10)
+                    plt.xlabel('x [m]');
+                    plt.ylabel('z [m]')
+                    fig_dir = os.path.join(self.output_folder, 'figures', f'{name}')
+                    os.makedirs(fig_dir, exist_ok=True)
+                    fig_path = os.path.join(fig_dir, f'{name}_ts_{ts}.png')
+                    plt.savefig(fig_path, bbox_inches='tight')
+                    plt.close()
+                    
+        else: 
+
+            mask = (np.sqrt(np.square(self.reservoir.discretizer.centroid_all_cells[:, 0] - 2700.0)) < 8400 / self.specs['nx'] / 2 )
+            
+            plt.figure()
+            c = plt.scatter(
+                self.reservoir.discretizer.centroid_all_cells[mask, 1],
+                # np.array(m.reservoir.mesh.depth)[mask], 
+                self.reservoir.discretizer.centroid_all_cells[mask, 2],
+                c = np.array(self.physics.engine.X)[1::m.physics.n_vars][mask], 
+                cmap = 'coolwarm'
+                )
+            plt.ylabel('z [m]'); plt.xlabel('y [m]')
+            name = 'z' + self.physics.vars[1]
+            plt.colorbar(c, label = name)
+            fig_dir = os.path.join(self.output_folder, 'figures', f'{name}')
+            os.makedirs(fig_dir, exist_ok=True)
+            fig_path = os.path.join(fig_dir, f'{name}_ts_{ts}.png')
+            plt.savefig(fig_path, bbox_inches='tight')
+            plt.close()
+        
+        
         return
 
     def plot_reservoir(self):

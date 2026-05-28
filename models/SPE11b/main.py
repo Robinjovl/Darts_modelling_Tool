@@ -321,10 +321,15 @@ else:
     # please read the README file for an explanation of the input parameters :
     model_specs = [
         # SPE11b 
-        {'check_rates': True, 'temperature': None, '1000years': 10, 'RHS': True,
-             'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024, 
-                 'nx': nx, 'nz': nz, 'ny': 84, 'dispersion': False, 'output_dir': 'output____',
-                     'post_process': None, 'platform': platform},
+        # {'check_rates': True, 'temperature': None, '1000years': 10, 'RHS': True,
+        #      'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024, 
+        #          'nx': 50, 'nz': 10, 'ny': 50, 'dispersion': False, 'output_dir': 'output____',
+        #              'post_process': None, 'platform': platform},
+        
+        {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True,
+            'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 50 * 24 * 60 * 60, 
+                'nx': 50, 'nz': 50, 'ny': 10, 'dispersion': False, 'output_dir': 'SPE11c_results',
+                    'post_process': None, 'platform': 'cpu'},
         
         # restart model
         # {'check_rates': True, 'temperature': None, '1000years': None, 'RHS': True,
