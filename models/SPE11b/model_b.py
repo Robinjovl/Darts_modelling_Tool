@@ -348,9 +348,11 @@ class Model(DartsModel):
         from dartsflash.components import CompData
         from dartsflash.mixtures import DARTSFlash, VLAq
         # Fluid components, ions and solid
-        phases = ["Aq", "V"]
-        comp_data = CompData(self.components, setprops=True)
-        nc = len(self.components)
+        components = ["H2O", "CO2"]
+        self.components = components
+        phases = ["V", "Aq"]
+        comp_data = CompData(components, setprops=True)
+        nc = len(components)
 
         """ Define flash """
         flash_ev = VLAq(comp_data, hybrid=True)
@@ -359,9 +361,10 @@ class Model(DartsModel):
                             stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
                             )
         flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+        pr = flash_ev.eos["VL"]
+        aq = flash_ev.eos["Aq"]
 
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash,
-                            eos_order=["Aq", "VL"],
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash, eos_order=["VL", "Aq"],
                             t_min=270., t_max=500., t_init=300.,
                             # pxflash_switch_ttol=1e-3, near_zero_px=1e-2,
                             )

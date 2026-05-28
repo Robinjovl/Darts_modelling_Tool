@@ -306,7 +306,7 @@ else:
     model_specs = [
         # SPE11b 
         {'check_rates': True, 'temperature': None, '1000years': 10, 'RHS': True,
-             'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 3024, 
+             'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024, 
                  'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'OUTPUT',
                      'post_process': None, 'platform': 'cpu'},
         
