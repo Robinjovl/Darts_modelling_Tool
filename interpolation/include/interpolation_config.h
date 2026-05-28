@@ -20,9 +20,15 @@ typedef double value_t;
 typedef int interp_index_t;
 typedef double interp_value_t;
 
-// Maximum number of parameter-space dimensions for interpolator template instantiation
-// It was MAX_NC before
+// Maximum number of parameter-space dimensions for interpolator template instantiation.
+// Defaults to 8 (historical value, formerly named MAX_NC). Can be overridden at build
+// time via the CMake variable OPENDARTS_MAX_DIMS (forwarded as -DMAX_DIMS=N to the
+// interpolators target). The recursive_exposer loops stamp one class per (N_DIMS,
+// N_OPS) pair for N_DIMS in 1..MAX_DIMS and interpolate_with_derivatives unrolls
+// O(2^N_DIMS) per instantiation, so this is the dominant knob on compile-time memory.
+#ifndef MAX_DIMS
 #define MAX_DIMS 8
+#endif
 
 // workaround for vscode grammar checker
 #ifdef __INTELLISENSE__

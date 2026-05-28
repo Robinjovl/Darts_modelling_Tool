@@ -330,21 +330,35 @@ struct interpolator_exposer
     }
   }
 
-  // here we specify which types and what interpolators are going to be exposed
-  // the specification seriously affect build time and binary size
+  // here we specify which types and what interpolators are going to be exposed.
+  // the specification seriously affects build time and binary size.
+  //
+  // CPU variant selection is driven by the OPENDARTS_INTERPOLATOR_PROFILE cmake
+  // variable, forwarded as one of OD_INTERP_PROFILE_MINIMAL / OD_INTERP_PROFILE_FULL.
+  // Default (no macro defined) behaves like FULL so older build scripts keep
+  // working.
+  //   MINIMAL: only multilinear_adaptive uint64. Drops linear; callers that set
+  //            itor_type='linear' must switch to 'multilinear'.
+  //   FULL:    multilinear_adaptive uint64 + linear_adaptive uint64.
   void expose(py::module &m)
   {
     // do not expose multilinear for higher dimensions, as it becomes inefficient
     if constexpr (N_DIMS <= 12)
     {
-      // we expose uint32 and uint64 adaptive interpolators by default
-      expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
+      // Multilinear adaptive uint64 — exposed under all profiles. Python's
+      // physics_base.py first tries the *_i_* (uint32) name and falls back to
+      // *_l_* (uint64) on NameError; uint32 is no longer compiled, so the
+      // fallback path is now the only path. One-time try/except cost per
+      // interpolator at construction, zero runtime cost after.
+      // expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
       expose_class<uint64_t, double, multilinear_adaptive_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
     }
     // expose_class<uint64_t, float, multilinear_adaptive_cpu_interpolator<uint64_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
 
-    // linear adaptive with 64-bit legacy index and 64-bit data
+#if !defined(OD_INTERP_PROFILE_MINIMAL)
+    // Linear adaptive with 64-bit legacy index and 64-bit data — exposed under FULL.
     expose_class<uint64_t, double, linear_adaptive_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
+#endif
     //expose_class<uint64_t, double, linear_static_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_static_cpu_interpolator");
     // we expose static versions only when needed
     //#ifdef WITH_GPU

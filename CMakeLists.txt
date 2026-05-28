@@ -224,6 +224,55 @@ add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
 
+# Interpolator compile profile -------------------------------------------------
+# Controls which (i_t, algorithm) interpolator variants are stamped per
+# (N_DIMS, N_OPS) pair. Reducing the variant count is the most effective lever
+# against the cc1plus OOM hit on heavy py_operator_set_interpolator_*_part*.cpp
+# translation units (~1.5–4 GB resident per TU at -O2/-O3 today).
+#   MINIMAL: multilinear_adaptive uint64 only. Drops linear; any model that
+#            explicitly sets itor_type='linear' must switch to 'multilinear'.
+#   FULL:    multilinear_adaptive uint64 + linear_adaptive uint64. No behaviour
+#            change vs. legacy other than removing the (compile-only) uint32
+#            multilinear specialisation; Python first-try at uint32 falls
+#            through to uint64 via the existing try/except (one-time cost at
+#            interpolator construction).
+set(OPENDARTS_INTERPOLATOR_PROFILE "FULL" CACHE STRING
+    "Interpolator compile profile: MINIMAL (multilinear uint64 only) or FULL (+linear uint64).")
+set_property(CACHE OPENDARTS_INTERPOLATOR_PROFILE PROPERTY STRINGS MINIMAL FULL)
+if(NOT OPENDARTS_INTERPOLATOR_PROFILE MATCHES "^(MINIMAL|FULL)$")
+    message(FATAL_ERROR "OPENDARTS_INTERPOLATOR_PROFILE must be MINIMAL or FULL (got '${OPENDARTS_INTERPOLATOR_PROFILE}').")
+endif()
+message(STATUS "  Interpolator profile: ${OPENDARTS_INTERPOLATOR_PROFILE}")
+
+# Maximum number of OBL parameter-space dimensions for interpolator template
+# instantiation. The recursive_exposer loops produce one class per (N_DIMS,
+# N_OPS) pair for N_DIMS in 1..OPENDARTS_MAX_DIMS, so this is also the dominant
+# knob on compile-time memory: interpolate_with_derivatives unrolls O(2^N_DIMS)
+# per instantiation. Default 8 matches the historical hardcoded value.
+#
+# This single variable drives BOTH:
+#   - MAX_DIMS in interpolation_config.h (per-TU define on the interpolators target)
+#   - MAX_NC   in engines/src/globals.h  (global define; bounds the engine_nc_*
+#                                         and engine_super_* component count loop)
+# The two were always set to the same value in practice; mapping them to one
+# cmake variable removes the silent NC=8 thermal mismatch (MAX_DIMS must be at
+# least MAX_NC + 1 for thermal models — keep them equal here, document the
+# constraint, and increase OPENDARTS_MAX_DIMS if a thermal-at-max-NC model is
+# needed).
+set(OPENDARTS_MAX_DIMS "8" CACHE STRING
+    "Maximum number of OBL parameter-space dimensions and engine components (typical: 6–8). Drives both MAX_DIMS (interpolators) and MAX_NC (engines).")
+if(NOT OPENDARTS_MAX_DIMS MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "OPENDARTS_MAX_DIMS must be a positive integer (got '${OPENDARTS_MAX_DIMS}').")
+endif()
+message(STATUS "  OBL max dimensions / engine max NC: ${OPENDARTS_MAX_DIMS}")
+
+# Engines library reads MAX_NC from globals.h (now #ifndef-guarded). Forward
+# the cmake variable globally so every engine TU and engine pybind exposer
+# sees a consistent value. Interpolators target picks up MAX_DIMS via its own
+# target_compile_definitions in interpolation/pybind11/CMakeLists.txt.
+add_compile_definitions(MAX_NC=${OPENDARTS_MAX_DIMS})
+# ------------------------------------------------------------------------------
+
 
 # Report options for this build
 feature_summary(WHAT ENABLED_FEATURES DISABLED_FEATURES PACKAGES_FOUND)

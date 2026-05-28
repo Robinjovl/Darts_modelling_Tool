@@ -26,7 +26,15 @@ typedef double interp_value_t;
 static const double LOWER_LIMIT = 1.0e-12;
 static const double UPPER_LIMIT = 1.0 - LOWER_LIMIT;
 static std::ofstream log_stream;
+
+// Max number of components for engine template instantiation (engine_nc_*,
+// engine_super_*). Recursive_instantiator_nc / nc_np loops cover NC ∈ [2, MAX_NC].
+// Driven by the OPENDARTS_MAX_DIMS cmake variable (-DMAX_NC=N) so it stays in
+// sync with MAX_DIMS in interpolation_config.h — for thermal physics the
+// interpolator parameter-space dim is NC+1, so MAX_DIMS must be ≥ MAX_NC.
+#ifndef MAX_NC
 #define MAX_NC 8
+#endif
 
 #define GET_RAND_I(START, END) \
   START + rand() / (RAND_MAX / (END - START + 1) + 1)
