@@ -111,9 +111,7 @@ class WellControl:
         # bhp control
         self.bhp = None  # bars
         # rate control
-        self.rate = (
-            None  # m3/day for Geothermal physics ans kmol/day for Compositional physics
-        )
+        self.rate = None  # kmol/day for Compositional physics
         self.bhp_constraint = None  # lower limit for bhp, bars
         # if thermal
         self.inj_bht = None  # K

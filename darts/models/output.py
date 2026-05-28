@@ -18,7 +18,6 @@ from darts.engines import (
 )
 from darts.physics.base.operators_base import PropertyOperators
 from darts.physics.base.physics_base import PhysicsBase
-from darts.physics.geothermal.physics import Geothermal
 from darts.physics.super.physics import Compositional
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
@@ -167,12 +166,11 @@ class Output:
 
     def set_phase_properties(self):
         """
-        This function constructs a predefined set of property operators for the compositional/geothermal physics class.
+        This function constructs a predefined set of property operators for the compositional physics class.
 
         Notes
         -----
         * The properties for the super engine class include phase properties (density, molar density, saturation, viscosity, relative permeability, capillary pressure, enthalpy and conductivity) and molar phase fractions.
-        * The properties for the geothermal engine class include phase properties (density, molar density, saturation, viscosity, relative permeability, capillary pressure, enthalpy) and temperature.
         * The declared interpolator is adaptive multilinear.
         """
 
@@ -240,62 +238,6 @@ class Output:
                         axes_min=ax_min,
                         axes_max=ax_max,
                         n_axes_points=n_pts,
-                        platform='cpu',
-                        algorithm='multilinear',
-                        mode='adaptive',
-                        precision='d',
-                        timer_name=f'property {region:d} interpolation',
-                        region=str(region),
-                    )
-                )
-
-                # Assign the temporary dictionary to output_props for the region
-                self.physics.property_containers[region].output_props = temp_dict
-                self.n_ops = n_ops
-
-        elif isinstance(self.physics, Geothermal):
-            phase_props_labels = [
-                "dens",
-                "densm",
-                "sat",
-                "mu",
-                "kr",
-                "pc",
-                "enthalpy",
-            ]  # 'cond'
-            self.physics.property_itor = {}
-
-            for (
-                region
-            ) in self.physics.regions:  # loop over the different sets of operators
-                pc = self.physics.property_containers[region]
-                temp_dict = {}
-
-                # add temperature
-                temp_dict['temperature'] = lambda container=pc: container.temperature
-
-                # Loop through each property label and phase name
-                for i, name in enumerate(phase_props_labels):
-                    for j in range(self.physics.property_containers[region].nph):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].phase_props[
-                                ii
-                            ][jj]
-                        )
-
-                self.physics.property_operators[region] = PropertyOperators(
-                    property_container=pc,
-                    thermal=False,
-                    props=temp_dict,
-                )
-                self.physics.property_itor[region], n_ops = (
-                    self.physics.create_interpolator(
-                        self.physics.property_operators[region],
-                        n_ops=self.physics.property_operators[region].n_ops,
-                        axes_min=self.physics.axes_min,
-                        axes_max=self.physics.axes_max,
                         platform='cpu',
                         algorithm='multilinear',
                         mode='adaptive',
@@ -1971,13 +1913,6 @@ class Output:
         )
 
         for rate_type in rate_types:
-            # Since the geothermal engine supports only a single component, components rates are not needed.
-            if rate_type in (
-                "component_molar_rates",
-                "component_mass_rates",
-            ) and isinstance(self.physics, Geothermal):
-                continue
-
             # Compute perforation rates
             rates_perfs = self.calc_rates_at_conns(
                 h5_well_data,
@@ -2249,9 +2184,7 @@ class Output:
         Return phase density and capillary-pressure operators for phase rate calculation.
 
         Super engine operators expose explicit gravity and capillary-pressure
-        operators. The geothermal engine stores molar density in its density
-        operator slice and has no capillary-pressure operator, so convert molar density
-        to mass density to match the phase-potential term used by the engine.
+        operators.
         """
         pc = physics.property_containers[0]
 
@@ -2266,21 +2199,8 @@ class Output:
                 capillary = np.zeros_like(grav)
             return grav, capillary
 
-        if isinstance(physics, Geothermal):
-            if hasattr(reservoir_operator, "DENS_OP"):
-                dens_start = reservoir_operator.DENS_OP
-            else:
-                dens_start = pc.nc + pc.nc * pc.nph + pc.nph + 2
-
-            molar_density = reservoir_ops[:, dens_start : dens_start + pc.nph]
-            phase_mw = np.asarray(pc.Mw)[0]  # Geothermal engine supports pure water
-            grav = molar_density * phase_mw
-            capillary = np.zeros_like(grav)
-            return grav, capillary
-
         raise AttributeError(
-            "Reservoir operators must expose GRAV_OP/PC_OP or a supported "
-            "engine-specific density layout for rate calculation."
+            "Reservoir operators must expose GRAV_OP/PC_OP for rate calculation."
         )
 
     def calc_rates_at_conns(

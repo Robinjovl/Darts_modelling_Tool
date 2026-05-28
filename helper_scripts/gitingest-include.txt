@@ -11,10 +11,6 @@ darts/models/thmc_model.py
 darts/physics/base/operators_base.py
 darts/physics/base/physics_base.py
 darts/physics/base/property_base.py
-darts/physics/geothermal/geothermal.py
-darts/physics/geothermal/operator_evaluator.py
-darts/physics/geothermal/physics.py
-darts/physics/geothermal/property_container.py
 darts/physics/mech/poroelasticity.py
 darts/physics/properties/basic.py
 darts/physics/properties/black_oil.py
