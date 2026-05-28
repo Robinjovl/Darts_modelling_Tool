@@ -32,8 +32,8 @@ class Compositional(PhysicsBase):
         components: list,
         phases: list,
         timer: timer_node,
-        axes_step: list,
-        axes_origin: list = None,
+        axes_step: list[float],
+        axes_origin: list[float] = None,
         epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
@@ -46,9 +46,11 @@ class Compositional(PhysicsBase):
         :param timer: Timer object.
         :param axes_step: Per-axis cell size [p_step, z_step_1, ..., z_step_{nc-1}, t_step?].
             For ``extrapolation_flag=True`` the composition steps must all be equal.
-        :param axes_origin: Per-axis grid origin. Defaults to
-            ``[0.0, epsilon_z, ..., epsilon_z, 0.0?]`` — pressure origin 0, composition
-            origin offset by ``epsilon_z`` to avoid the boundary, thermal origin 0.
+        :param axes_origin: Per-axis grid origin. Defaults match the open-DARTS unit
+            conventions: pressure = 1 bar, compositions = ``epsilon_z`` (composition
+            floor, avoids the simplex boundary), thermal axis = 273.15 K for
+            ``state_spec=PT`` or 0 for ``state_spec=PH`` (enthalpy reference depends on
+            the EOS — pass an explicit ``axes_origin`` to override).
         :param epsilon_z: Composition-axis offset (default 1e-9).
         :param sim_eps_multiplier: Multiplier on ``epsilon_z`` to obtain ``sim_eps``.
         :param extrapolation_flag: Enable extrapolation logic (z[last] < 0 if nc >= 3).
@@ -80,10 +82,18 @@ class Compositional(PhysicsBase):
         )
 
         if axes_origin is None:
-            # Default origin: pressure 0, composition shifted by epsilon_z, thermal 0.
-            axes_origin = [0.0] + [epsilon_z] * (nc - 1)
+            # Sensible defaults matching open-DARTS unit conventions:
+            #   pressure        → 1 bar
+            #   compositions    → epsilon_z (composition-axis floor)
+            #   thermal axis (when state_spec > P):
+            #     PT → 273.15 K (0 °C, conventional standard temperature)
+            #     PH → 0        (enthalpy reference is EOS-specific; override per case)
+            axes_origin = [1.0] + [epsilon_z] * (nc - 1)
             if self.thermal:
-                axes_origin.append(0.0)
+                if state_spec == PhysicsBase.StateSpecification.PT:
+                    axes_origin.append(273.15)
+                else:
+                    axes_origin.append(0.0)
         assert len(axes_origin) == n_vars
 
         self.extrapolation_flag = extrapolation_flag

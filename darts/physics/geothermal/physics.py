@@ -27,10 +27,10 @@ class Geothermal(PhysicsBase):
     def __init__(
         self,
         timer: timer_node,
-        axes_step: list,
-        axes_origin: list = None,
-        thermal_var_axes_step: list = None,
-        thermal_var_axes_origin: list = None,
+        axes_step: list[float],
+        axes_origin: list[float] = None,
+        thermal_var_axes_step: list[float] = None,
+        thermal_var_axes_origin: list[float] = None,
         cache: bool = False,
     ):
         """
@@ -38,7 +38,8 @@ class Geothermal(PhysicsBase):
 
         :param timer: Timer object.
         :param axes_step: [p_step, e_step] — per-axis cell size for the pressure-enthalpy grid.
-        :param axes_origin: [p_origin, e_origin] grid origin (default: [0.0, 0.0]).
+        :param axes_origin: [p_origin, e_origin] grid origin. Default ``[1.0, 1000.0]``
+            (1 bar pressure, 1000 kJ/kmol enthalpy reference matching the in-tree models).
         :param thermal_var_axes_step: [p_step, T_step] for the ThermalVarOperator grid
             (P–T parametrization). Default ``[axes_step[0], 1.0]`` (1 K per cell).
         :param thermal_var_axes_origin: [p_origin, T_origin] origin for the ThermalVarOperator
@@ -55,7 +56,12 @@ class Geothermal(PhysicsBase):
 
         assert len(axes_step) == 2, "axes_step must have 2 entries: [p_step, e_step]"
         if axes_origin is None:
-            axes_origin = [0.0, 0.0]
+            # Sensible defaults matching open-DARTS unit conventions and the
+            # enthalpy reference used by every in-tree Geothermal model:
+            #   pressure → 1 bar
+            #   enthalpy → 1000 kJ/kmol
+            # Override via axes_origin when a different EOS reference is needed.
+            axes_origin = [1.0, 1000.0]
         assert len(axes_origin) == 2
 
         # ThermalVarOperator (P-T) grid setup — store on self so PhysicsBase.set_interpolators
@@ -63,6 +69,7 @@ class Geothermal(PhysicsBase):
         if thermal_var_axes_step is None:
             thermal_var_axes_step = [axes_step[0], 1.0]
         if thermal_var_axes_origin is None:
+            # Pressure origin inherits the user's choice; temperature uses 273.15 K (0 °C).
             thermal_var_axes_origin = [axes_origin[0], 273.15]
         self.thermal_var_axes_step = list(thermal_var_axes_step)
         self.thermal_var_axes_origin = list(thermal_var_axes_origin)

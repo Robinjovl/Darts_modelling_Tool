@@ -76,8 +76,8 @@ class PhysicsBase:
         phases: list,
         n_ops: int,
         timer: timer_node,
-        axes_step: list,
-        axes_origin: list = None,
+        axes_step: list[float],
+        axes_origin: list[float] = None,
         sim_eps: float = None,
         cache: bool = False,
     ):
@@ -98,7 +98,9 @@ class PhysicsBase:
         :param n_ops: Number of operators.
         :param timer: Timer object.
         :param axes_step: Per-axis cell size, length n_vars. Required.
-        :param axes_origin: Per-axis grid origin (default: zeros).
+        :param axes_origin: Per-axis grid origin. When omitted, defaults match the
+            open-DARTS unit conventions: pressure = 1 bar, compositions = ``sim_eps``,
+            thermal axis = 273.15 K for state_spec=PT, 0 for PH/PS.
         :param sim_eps: Epsilon below which the Newton update is clipped to the physical [0,1] simplex.
         :param cache: Switch to cache operator values to disk between runs.
         """
@@ -122,14 +124,27 @@ class PhysicsBase:
             f"axes_step must have {self.n_vars} entries, got {len(axes_step)}"
         )
         self.axes_step = [float(s) for s in axes_step]
+
+        self.sim_eps = sim_eps if sim_eps is not None else 1e-12
+
         if axes_origin is None:
-            axes_origin = [0.0] * self.n_vars
+            # Sensible defaults matching open-DARTS unit conventions:
+            #   pressure (axis 0)         → 1 bar
+            #   compositions (axes 1..nc-1) → sim_eps (Newton-clip floor)
+            #   thermal axis (last, when thermal):
+            #     PT → 273.15 K (0 °C, conventional standard temperature)
+            #     PH → 0       (enthalpy reference is EOS-specific; override per case)
+            #     PS → 0       (entropy reference is EOS-specific; override per case)
+            axes_origin = [1.0] + [self.sim_eps] * (self.nc - 1)
+            if self.thermal:
+                if state_spec == PhysicsBase.StateSpecification.PT:
+                    axes_origin.append(273.15)
+                else:
+                    axes_origin.append(0.0)
         assert len(axes_origin) == self.n_vars, (
             f"axes_origin must have {self.n_vars} entries, got {len(axes_origin)}"
         )
         self.axes_origin = [float(o) for o in axes_origin]
-
-        self.sim_eps = sim_eps if sim_eps is not None else 1e-12
 
         # Initialize timer for simulation and caching
         self.timer = timer.node["simulation"]
@@ -538,8 +553,8 @@ class PhysicsBase:
         evaluator: operator_set_evaluator_iface,
         timer_name: str,
         n_ops: int,
-        axes_step: list = None,
-        axes_origin: list = None,
+        axes_step: list[float] = None,
+        axes_origin: list[float] = None,
         algorithm: str = 'multilinear',
         mode: str = 'adaptive',
         platform: str = 'cpu',
