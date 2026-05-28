@@ -105,19 +105,33 @@ class OperatorsBase(operator_set_evaluator_iface):
         ]
         dims = np.sum(nonzero_comps)
 
-        # Build supporting points from the downward hypercube (excluding incoming).
-        # Filter nodes by the shared plane constraint, then take the furthest node and the
-        # nc_nonzero-1 closest nodes from the filtered set.
+        # Build supporting points by stepping −dz along subsets of the
+        # non-zero composition axes. We need `dims + 1` non-collinear points
+        # to fit the hyperplane val = a·z + c. The single-step −dz hypercube
+        # alone provides `2^dims − 1` candidates (the 0-mask is the incoming
+        # point itself, which is excluded).
+        #   dims == 1 → 1 candidate, need 2 — under-determined
+        #   dims == 2 → 3 candidates, need 3 — just enough
+        #   dims >= 3 → more than enough
+        # Stepping `-dz` increases `last_z` (moves into the simplex), so those
+        # points satisfy the `last_z >= 0` filter most reliably. To cover the
+        # under-determined case we additionally generate multi-step −k·dz
+        # candidates (k = 1, …, n_steps_max) so the under-determined cases
+        # always have enough valid reference points to fit the hyperplane.
+        n_steps_max = max(2, dims + 1 - (2**dims - 1))
         candidates = []
-        for mask in range(1, 1 << dims):  # 1 << n_axes multiplies 1 by 2^d
-            zp = z.copy()
-            for i, axis in enumerate(nonzero_comp_idxs):
-                # binary operator & compares binary notation of 'mask' and 2^axis
-                if mask & (1 << i):
-                    zp[axis] -= self.dz
-            dist2 = np.sum((zp - z) ** 2)
-            last_z = 1.0 - np.sum(zp)
-            candidates.append((dist2, mask, zp, last_z >= 0.0))
+        for k in range(1, n_steps_max + 1):
+            for mask in range(1, 1 << dims):  # 1 << dims = 2^d
+                zp = z.copy()
+                for i, axis in enumerate(nonzero_comp_idxs):
+                    # binary operator & compares binary notation of 'mask' and 2^axis
+                    if mask & (1 << i):
+                        zp[axis] -= k * self.dz
+                dist2 = np.sum((zp - z) ** 2)
+                last_z = 1.0 - np.sum(zp)
+                # Tag each (k, mask) pair uniquely so the dedup below works.
+                tag = (k - 1) * (1 << dims) + mask
+                candidates.append((dist2, tag, zp, last_z >= 0.0))
 
         filtered = [c for c in candidates if c[3]]
         if not filtered:
