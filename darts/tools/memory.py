@@ -34,15 +34,14 @@ def get_peak_memory_in_bytes():
 
 
 def print_allocated_memory():
-    import os
-
     GB2B = 1024**3
     try:
         import psutil
 
         proc = psutil.Process(os.getpid())
         rss = proc.memory_info().rss / GB2B
-        peak = get_peak_memory_in_bytes() / GB2B
+        peak_raw = get_peak_memory_in_bytes()
+        peak = peak_raw / GB2B if peak_raw is not None else float("nan")
         vms = proc.memory_info().vms / GB2B
         print(
             f"Memory usage: RSS = {rss:.2f} GB, Peak RSS = {peak:.2f} GB, VMS = {vms:.2f} GB"
