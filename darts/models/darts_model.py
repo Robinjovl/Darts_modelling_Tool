@@ -132,24 +132,32 @@ class DartsModel:
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
 
-    def get_evaluator_factory(self, region):
+    def get_evaluator_factory(self, attribute='reservoir_operators', region=None):
         """
         Return a picklable factory callable ``() -> operator_set_evaluator_iface``
-        that constructs a fresh, independent evaluator for the given region, used
-        by :class:`ParallelEvaluator` when ``parallel_evaluation=True``.
+        that constructs a fresh, independent evaluator for the given physics
+        attribute and (optional) region, used by :class:`ParallelEvaluator` when
+        ``parallel_evaluation=True``.
 
         The default implementation returns a :class:`ModelEvaluatorFactory`, which
         reconstructs this model from its constructor arguments (captured in
-        :meth:`__new__`) and returns ``physics.reservoir_operators[region]``. This
-        reuses the model's own ``set_physics``/``PropertyContainer`` build, so no
-        per-model duplication of the property stack is required and it works for
-        any model whose constructor arguments are picklable.
+        :meth:`__new__`) and returns ``physics.<attribute>`` (singular) or
+        ``physics.<attribute>[region]`` (per-region). This reuses the model's own
+        ``set_physics``/``PropertyContainer`` build, so no per-model duplication of
+        the property stack is required and it works for any model whose constructor
+        arguments are picklable.
 
         Override this method only if model reconstruction is too expensive to
         repeat per worker, or if the constructor arguments are not picklable.
 
-        :param region: Region index
-        :type region: int
+        :param attribute: Name of the physics attribute to wrap
+            (``'reservoir_operators'``, ``'property_operators'``, ``'well_operators'``,
+            ``'well_ctrl_operators'``, ``'thermal_var_operator'``, or chemistry's
+            ``'initial_operators'``).
+        :type attribute: str
+        :param region: Region index for per-region operator dicts; ``None`` for
+            singular attributes such as ``well_ctrl_operators``.
+        :type region: int | None
         :return: Picklable factory callable that creates a fresh evaluator
         :rtype: callable
         """
@@ -159,7 +167,8 @@ class DartsModel:
             type(self),
             getattr(self, '_init_args', ()),
             getattr(self, '_init_kwargs', {}),
-            region,
+            attribute=attribute,
+            region=region,
         )
 
     def init(
@@ -201,7 +210,9 @@ class DartsModel:
         :param n_solid: Number of solid minerals for element-based reactive flow
         :type n_solid: int
         :param parallel_evaluation: Enable parallel batch evaluation of supporting points via multiprocessing.
-            Requires the model to implement ``get_evaluator_factory(region)`` method.
+            All five evaluator-interpolator pairs in the physics (reservoir, property, well,
+            well_ctrl, thermal_var) are wrapped through a single shared multiprocessing pool.
+            Requires the model to implement ``get_evaluator_factory(attribute, region=None)``.
         :type parallel_evaluation: bool
         :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
         :type n_workers: int

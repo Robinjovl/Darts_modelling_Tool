@@ -109,6 +109,21 @@ class ElementBasedReactiveFlow(Compositional):
         super().add_property_region(property_container, region)
         self.output_property_containers[region] = output_property_container
 
+    def _parallel_wrap_targets(self):
+        """
+        Chemistry has reservoir/initial/property per region, plus singular
+        well_ctrl_operators and thermal_var_operator. There is no separate
+        well_operators (acc_flux_w_itor aliases acc_flux_itor[0]).
+        """
+        targets = []
+        for region in self.regions:
+            targets.append(('reservoir_operators', region))
+            targets.append(('initial_operators', region))
+            targets.append(('property_operators', region))
+        targets.append(('well_ctrl_operators', None))
+        targets.append(('thermal_var_operator', None))
+        return targets
+
     def set_interpolators(
         self,
         platform='cpu',
@@ -141,23 +156,18 @@ class ElementBasedReactiveFlow(Compositional):
         :type parallel_evaluation: bool
         :param n_workers: Number of worker processes (default: os.cpu_count())
         :type n_workers: int
-        :param evaluator_factory_hook: Callable (region) -> factory for parallel evaluation
+        :param evaluator_factory_hook: Callable ``(attribute, region) -> factory`` for parallel evaluation
         :type evaluator_factory_hook: callable
         """
-        # Optionally wrap reservoir_operators with ParallelEvaluator
+        # Optionally wrap every chemistry evaluator with ParallelEvaluator via a
+        # single shared pool. Chemistry has no separate well_operators (well uses
+        # acc_flux_itor[0]) but does have initial_operators per region.
         if parallel_evaluation:
-            if evaluator_factory_hook is None:
-                raise ValueError(
-                    "parallel_evaluation=True requires evaluator_factory_hook"
-                )
-            from darts.physics.base.parallel_evaluator import ParallelEvaluator
-
-            for region in self.regions:
-                factory = evaluator_factory_hook(region)
-                self.reservoir_operators[region] = ParallelEvaluator(
-                    evaluator_factory=factory,
-                    n_workers=n_workers,
-                )
+            self._wrap_evaluators_parallel(
+                self._parallel_wrap_targets(),
+                evaluator_factory_hook,
+                n_workers,
+            )
 
         # Create actual accumulation and flux interpolator:
         self.acc_flux_itor = {}

@@ -4,7 +4,10 @@ import numpy as np
 
 from darts.engines import *
 from darts.interpolators import *
-from darts.physics.base.parallel_evaluator import ParallelEvaluator
+from darts.physics.base.parallel_evaluator import (
+    ParallelEvaluator,
+    SharedEvaluatorPool,
+)
 
 
 class Linear(operator_set_evaluator_iface):
@@ -362,6 +365,84 @@ def test_parallel_evaluator(n_dim=4, start_method=None):
     assert success
 
 
+def test_shared_evaluator_pool(n_dim=4):
+    """SharedEvaluatorPool must dispatch per-key to the right worker evaluator.
+
+    Covers the multi-wrap pattern used by PhysicsBase._wrap_evaluators_parallel:
+    one pool of n_workers processes, several ParallelEvaluator wrappers each
+    routing batches through the shared pool with their own key.
+    """
+    n_ops = 6 * n_dim + 17
+    factory_lin = functools.partial(Linear, n_dim, n_ops)
+    factory_nlin = functools.partial(Nonlinear, n_dim, n_ops)
+
+    sp = SharedEvaluatorPool(
+        {
+            ('reservoir_operators', 0): factory_lin,
+            ('reservoir_operators', 1): factory_nlin,
+            ('property_operators', 0): factory_lin,
+        },
+        n_workers=3,
+    )
+    pe_lin = ParallelEvaluator(
+        evaluator_factory=factory_lin, shared_pool=sp, key=('reservoir_operators', 0)
+    )
+    pe_nlin = ParallelEvaluator(
+        evaluator_factory=factory_nlin, shared_pool=sp, key=('reservoir_operators', 1)
+    )
+    pe_prop = ParallelEvaluator(
+        evaluator_factory=factory_lin, shared_pool=sp, key=('property_operators', 0)
+    )
+
+    n_pts = 300
+    rng = np.random.default_rng(8)
+    states_np = rng.uniform(-1.0, 1.0, size=n_pts * n_dim)
+
+    def per_point_ref(ev):
+        ref = np.zeros(n_pts * n_ops)
+        for i in range(n_pts):
+            buf = value_vector(np.zeros(n_ops))
+            ev.evaluate(
+                value_vector(states_np[i * n_dim : (i + 1) * n_dim].copy()), buf
+            )
+            ref[i * n_ops : (i + 1) * n_ops] = np.asarray(buf)
+        return ref
+
+    ref_lin = per_point_ref(Linear(n_dim, n_ops))
+    ref_nlin = per_point_ref(Nonlinear(n_dim, n_ops))
+
+    out_lin = value_vector(np.zeros(n_pts * n_ops))
+    out_nlin = value_vector(np.zeros(n_pts * n_ops))
+    out_prop = value_vector(np.zeros(n_pts * n_ops))
+    pe_lin.evaluate_batch(value_vector(states_np.copy()), n_pts, out_lin, n_ops)
+    pe_nlin.evaluate_batch(value_vector(states_np.copy()), n_pts, out_nlin, n_ops)
+    pe_prop.evaluate_batch(value_vector(states_np.copy()), n_pts, out_prop, n_ops)
+
+    lin_ok = np.allclose(np.asarray(out_lin), ref_lin, rtol=0.0, atol=1e-12)
+    nlin_ok = np.allclose(np.asarray(out_nlin), ref_nlin, rtol=0.0, atol=1e-12)
+    prop_ok = np.allclose(np.asarray(out_prop), ref_lin, rtol=0.0, atol=1e-12)
+
+    # Unknown key must raise eagerly (catches typos in wrap-target plumbing).
+    try:
+        ParallelEvaluator(
+            evaluator_factory=factory_lin, shared_pool=sp, key=('bogus', None)
+        )
+        bad_key_ok = False
+    except ValueError:
+        bad_key_ok = True
+
+    sp.shutdown()
+
+    success = lin_ok and nlin_ok and prop_ok and bad_key_ok
+    print(
+        f'SharedEvaluatorPool multi-key dispatch: '
+        f'{"OK" if success else "FAILED"} '
+        f'(Linear={lin_ok}, Nonlinear={nlin_ok}, property={prop_ok}, '
+        f'bad-key-rejected={bad_key_ok})'
+    )
+    assert success
+
+
 def test_parallel_interpolator(n_dim=4):
     """Adaptive interpolator must give identical results whether its missing
     supporting points are evaluated serially or through a ParallelEvaluator.
@@ -496,5 +577,6 @@ if __name__ == '__main__':
     test_evaluate_batch_consistency(n_dim=4)
     test_parallel_evaluator(n_dim=4, start_method=None)
     test_parallel_evaluator(n_dim=4, start_method='spawn')
+    test_shared_evaluator_pool(n_dim=4)
     test_parallel_interpolator(n_dim=4)
     test_interpolator_thread_consistency(n_dim=4)

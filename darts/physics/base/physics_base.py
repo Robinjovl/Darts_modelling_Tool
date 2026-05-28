@@ -307,27 +307,23 @@ class PhysicsBase:
         :type parallel_evaluation: bool
         :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
         :type n_workers: int
-        :param evaluator_factory_hook: Callable ``(region: int) -> callable`` that returns a factory
-            function for constructing a fresh evaluator per worker process. Required when
-            ``parallel_evaluation=True``. Each factory must return an ``operator_set_evaluator_iface``.
+        :param evaluator_factory_hook: Callable ``(attribute: str, region: int | None) -> callable``
+            that returns a factory function for constructing a fresh evaluator per worker
+            process. Required when ``parallel_evaluation=True``. Each factory must return an
+            ``operator_set_evaluator_iface``. The hook is queried once per wrap target
+            (``reservoir_operators[r]``, ``property_operators[r]``, ``well_operators``,
+            ``well_ctrl_operators``, ``thermal_var_operator``).
         :type evaluator_factory_hook: callable
         """
-        # Optionally wrap evaluators with ParallelEvaluator for batch parallelism
+        # Optionally wrap every evaluator with ParallelEvaluator for batch parallelism.
+        # All five wrap targets share a single multiprocessing pool so the total worker
+        # process count stays at n_workers regardless of how many evaluators are wrapped.
         if parallel_evaluation:
-            if evaluator_factory_hook is None:
-                raise ValueError(
-                    "parallel_evaluation=True requires evaluator_factory_hook: "
-                    "a callable(region) -> callable that returns a factory for "
-                    "constructing a fresh evaluator per worker process."
-                )
-            from darts.physics.base.parallel_evaluator import ParallelEvaluator
-
-            for region in self.regions:
-                factory = evaluator_factory_hook(region)
-                self.reservoir_operators[region] = ParallelEvaluator(
-                    evaluator_factory=factory,
-                    n_workers=n_workers,
-                )
+            self._wrap_evaluators_parallel(
+                self._parallel_wrap_targets(),
+                evaluator_factory_hook,
+                n_workers,
+            )
 
         # All interpolators share the same (axes_origin, axes_step) grid for compositional
         # variables. The thermal-var interpolator uses a separate PT-based grid (handled
@@ -399,6 +395,71 @@ class PhysicsBase:
             is_barycentric=is_barycentric,
         )
         return
+
+    def _parallel_wrap_targets(self):
+        """
+        Return the list of (attribute, region_or_None) tuples whose evaluators
+        should be wrapped with ParallelEvaluator when ``parallel_evaluation=True``.
+
+        Subclasses with a different operator layout (e.g. chemistry, which has
+        ``initial_operators`` instead of a separate ``well_operators``) override
+        this method to return their own target list.
+        """
+        targets = []
+        for region in self.regions:
+            targets.append(('reservoir_operators', region))
+            targets.append(('property_operators', region))
+        targets.append(('well_operators', None))
+        targets.append(('well_ctrl_operators', None))
+        targets.append(('thermal_var_operator', None))
+        return targets
+
+    def _wrap_evaluators_parallel(
+        self, targets, evaluator_factory_hook, n_workers, start_method=None
+    ):
+        """
+        Replace each evaluator listed in ``targets`` with a :class:`ParallelEvaluator`
+        backed by a single shared :class:`SharedEvaluatorPool`. The pool is stored on
+        ``self._shared_evaluator_pool`` so it lives as long as the physics object.
+
+        :param targets: list of ``(attribute_name, region_or_None)`` tuples
+        :param evaluator_factory_hook: callable ``(attribute, region) -> factory``
+            producing a picklable factory that returns a fresh evaluator.
+        :param n_workers: pool size; defaults to ``os.cpu_count()``.
+        :param start_method: multiprocessing start method (``None`` = platform default).
+        """
+        if evaluator_factory_hook is None:
+            raise ValueError(
+                "parallel_evaluation=True requires evaluator_factory_hook: "
+                "a callable(attribute, region) -> callable that returns a factory "
+                "for constructing a fresh evaluator per worker process."
+            )
+        from darts.physics.base.parallel_evaluator import (
+            ParallelEvaluator,
+            SharedEvaluatorPool,
+        )
+
+        # Build one factory per wrap target. Keys are (attr, region) tuples.
+        factories = {
+            (attr, region): evaluator_factory_hook(attr, region)
+            for attr, region in targets
+        }
+        # One pool shared by every wrap; the pool worker pre-builds one evaluator per key.
+        self._shared_evaluator_pool = SharedEvaluatorPool(
+            factories, n_workers=n_workers, start_method=start_method
+        )
+
+        for attr, region in targets:
+            key = (attr, region)
+            wrapped = ParallelEvaluator(
+                evaluator_factory=factories[key],
+                shared_pool=self._shared_evaluator_pool,
+                key=key,
+            )
+            if region is None:
+                setattr(self, attr, wrapped)
+            else:
+                getattr(self, attr)[region] = wrapped
 
     def evaluate_interpolators(
         self,
