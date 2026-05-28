@@ -136,6 +136,66 @@ class ModelEvaluatorFactory:
         return obj[self.region] if self.region is not None else obj
 
 
+class OutputPropertyOperatorsFactory:
+    """
+    Picklable factory that rebuilds an output-only ``PropertyOperators`` instance
+    in a worker process.
+
+    Unlike :class:`ModelEvaluatorFactory` (which fetches an existing physics
+    attribute), this factory *constructs* a fresh ``PropertyOperators`` from a
+    picklable :class:`OutputPropertyDescriptor` that lists the phase-property
+    keys to expose. Used by :meth:`OutputBase.set_phase_properties` when the
+    physics has a live shared evaluator pool: the existing pool is extended
+    with new keys ``('output_property_operators', region)`` whose worker-side
+    evaluator is built by this factory.
+
+    :param model_cls: The :class:`DartsModel` subclass to reconstruct.
+    :param init_args: Positional args the model was constructed with.
+    :param init_kwargs: Keyword args the model was constructed with.
+    :param region: Region index whose property container drives the dict layout.
+    :param descriptor: :class:`OutputPropertyDescriptor` instance describing the
+        output-property layout.
+    :param thermal: Pass-through to ``PropertyOperators(thermal=...)``.
+    :param extrapolation_flag: Pass-through to ``PropertyOperators(extrapolation_flag=...)``.
+    :param dz: Pass-through to ``PropertyOperators(dz=...)``.
+    """
+
+    def __init__(
+        self,
+        model_cls,
+        init_args,
+        init_kwargs,
+        region: int,
+        descriptor,
+        thermal: bool,
+        extrapolation_flag: bool,
+        dz,
+    ):
+        self.model_cls = model_cls
+        self.init_args = tuple(init_args)
+        self.init_kwargs = dict(init_kwargs)
+        self.region = region
+        self.descriptor = descriptor
+        self.thermal = thermal
+        self.extrapolation_flag = extrapolation_flag
+        self.dz = dz
+
+    def __call__(self):
+        from darts.physics.base.operators_base import PropertyOperators
+
+        model = self.model_cls(*self.init_args, **self.init_kwargs)
+        model.physics.set_operators()
+        pc = model.physics.property_containers[self.region]
+        temp_dict = self.descriptor.materialize(pc)
+        return PropertyOperators(
+            property_container=pc,
+            thermal=self.thermal,
+            props=temp_dict,
+            extrapolation_flag=self.extrapolation_flag,
+            dz=self.dz,
+        )
+
+
 def _check_picklable(factory):
     """Raise a clear error if the factory cannot be pickled (required for spawn)."""
     try:

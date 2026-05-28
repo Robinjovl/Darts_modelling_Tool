@@ -159,6 +159,13 @@ class PhysicsBase:
         self.property_containers = {}
         self.reservoir_operators = {}
         self.property_operators = {}
+        # Output-side property operators/interpolators are populated lazily by
+        # OutputBase.set_phase_properties / filter_phase_props. Kept separate so
+        # the physics-managed property_operators / property_itor (set by
+        # set_interpolators, possibly wrapped by ParallelEvaluator) are never
+        # overwritten by output reconfiguration.
+        self.output_property_operators = {}
+        self.output_property_itor = {}
 
     def init_physics(
         self,
@@ -453,6 +460,75 @@ class PhysicsBase:
             key = (attr, region)
             wrapped = ParallelEvaluator(
                 evaluator_factory=factories[key],
+                shared_pool=self._shared_evaluator_pool,
+                key=key,
+            )
+            if region is None:
+                setattr(self, attr, wrapped)
+            else:
+                getattr(self, attr)[region] = wrapped
+
+    def _extend_parallel_wrap(
+        self, new_targets, evaluator_factory_hook, start_method=None
+    ):
+        """
+        Extend an existing shared evaluator pool with additional wrap targets.
+
+        Used by :meth:`OutputBase.set_phase_properties` to add
+        ``('output_property_operators', region)`` keys to a pool that was created
+        at ``set_interpolators`` time with only the physics-side keys. Because
+        ``multiprocessing.Pool`` does not support adding worker initializers
+        post-creation, this method shuts down the existing pool and rebuilds it
+        with the merged factories. Existing :class:`ParallelEvaluator` wrappers
+        have their ``_shared_pool`` reference repointed at the new pool so they
+        keep working transparently.
+
+        :param new_targets: list of ``(attribute_name, region_or_None)`` tuples
+            to add. Existing targets in the pool are preserved.
+        :param evaluator_factory_hook: callable
+            ``(attribute, region) -> picklable factory`` for the new targets.
+        :param start_method: optional multiprocessing start method override.
+        """
+        old_pool = getattr(self, '_shared_evaluator_pool', None)
+        if old_pool is None:
+            raise RuntimeError(
+                "_extend_parallel_wrap requires an existing shared evaluator pool; "
+                "call _wrap_evaluators_parallel first (or enable parallel_evaluation)."
+            )
+        from darts.physics.base.parallel_evaluator import (
+            ParallelEvaluator,
+            SharedEvaluatorPool,
+        )
+
+        old_factories = dict(old_pool._factories)
+        new_factories = {
+            (attr, region): evaluator_factory_hook(attr, region)
+            for attr, region in new_targets
+        }
+        merged = {**old_factories, **new_factories}
+
+        n_workers = old_pool.n_workers
+        old_pool.shutdown()
+        self._shared_evaluator_pool = SharedEvaluatorPool(
+            merged, n_workers=n_workers, start_method=start_method
+        )
+
+        # Repoint all existing ParallelEvaluator wrappers at the new pool so
+        # they continue to dispatch through a live pool.
+        for attr, region in old_factories.keys():
+            existing = (
+                getattr(self, attr)
+                if region is None
+                else getattr(self, attr).get(region)
+            )
+            if isinstance(existing, ParallelEvaluator):
+                existing._shared_pool = self._shared_evaluator_pool
+
+        # Wrap each newly added target.
+        for attr, region in new_targets:
+            key = (attr, region)
+            wrapped = ParallelEvaluator(
+                evaluator_factory=new_factories[key],
                 shared_pool=self._shared_evaluator_pool,
                 key=key,
             )
