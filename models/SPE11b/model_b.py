@@ -228,28 +228,26 @@ class Model(DartsModel):
             6: Corey(nw=1.5, ng=1.5, swc=1e-8, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1e-2, pcmax=300, c2=1.5)
         }
 
-        # Fluid components, ions and solid
+        """Physical properties"""
+
         from dartsflash.libflash import EoS
         from dartsflash.components import CompData
         from dartsflash.mixtures import DARTSFlash, VLAq
         # Fluid components, ions and solid
-        components = ["H2O", "CO2"]
-        self.components = components
-        phases = ["V", "Aq"]
-        comp_data = CompData(components, setprops=True)
-        nc = len(components)
+        phases = ["Aq", "V"]
+        comp_data = CompData(self.components, setprops=True)
+        nc = len(self.components)
 
         """ Define flash """
         flash_ev = VLAq(comp_data, hybrid=True)
         flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE],
-                            trial_comps=[InitialGuess.Yi.Wilson],
+                            trial_comps=[i for i in range(nc)],
                             stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
                             )
         flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
-        pr = flash_ev.eos["VL"]
-        aq = flash_ev.eos["Aq"]
 
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash, eos_order=["VL", "Aq"],
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash,
+                            eos_order=["Aq", "VL"],
                             t_min=270., t_max=500., t_init=300.,
                             # pxflash_switch_ttol=1e-3, near_zero_px=1e-2,
                             )
@@ -268,7 +266,7 @@ class Model(DartsModel):
                                      n_points=n_points, min_p=200, max_p=450,
                                      min_z=0., max_z=1., epsilon_z=self.zero/10, min_t=min_t, max_t=max_t,
                                      state_spec = state_spec,
-                                     extrapolation_flag = False,
+                                     extrapolation_flag = False, 
                                      cache=False)
         self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
 
@@ -282,14 +280,14 @@ class Model(DartsModel):
                                                    eps_z=self.zero / 10, temperature=temperature)
 
             property_container.flash_ev = flash_ev
-            property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw)),
+            property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw)),
                                                   ('Aq', Garcia2001(self.components)), ])
             property_container.viscosity_ev = dict([('V', Fenghour1998()),
                                                     ('Aq', Islam2012(self.components)), ])
             property_container.diffusion_ev = dict([('V', ConstFunc(np.ones(nc) * diff_g)),
                                                     ('Aq', ConstFunc(np.ones(nc) * diff_w))])
-            property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=pr)),
-                                                   ('Aq', EoSEnthalpy(eos=aq)), ])
+            property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["VL"])),
+                                                   ('Aq', EoSEnthalpy(eos=flash_ev.eos["Aq"]))])
             property_container.conductivity_ev = dict([('V', ConstFunc(8.4)),
                                                        ('Aq', ConstFunc(170.)),])
             property_container.rel_perm_ev = dict([('V', ModBrooksCorey(corey_params, 'V')),
@@ -298,10 +296,15 @@ class Model(DartsModel):
 
             self.physics.add_property_region(property_container, i)
 
-            property_container.output_props = {"sat_V": lambda ii=i: self.physics.property_containers[ii].sat[0],
-                                               "dens_V": lambda ii=i: self.physics.property_containers[ii].dens[0],
-                                               "densm_Aq": lambda ii=i: self.physics.property_containers[ii].dens_m[1],
-                                               "enthalpy_V": lambda ii=i: self.physics.property_containers[ii].enthalpy[0]}
+            property_container.output_props = {
+                "sat_V": lambda ii=i: self.physics.property_containers[ii].sat[phases.index('V')],
+                "dens_V": lambda ii=i: self.physics.property_containers[ii].dens[phases.index('V')],
+                "densm_Aq": lambda ii=i: self.physics.property_containers[ii].dens_m[phases.index('Aq')],
+                "enthalpy_V": lambda ii=i: self.physics.property_containers[ii].enthalpy[phases.index('V')], 
+                "enthalpy_Aq": lambda ii=i: self.physics.property_containers[ii].enthalpy[phases.index('Aq')], 
+                "nu_V": lambda ii=i: self.physics.property_containers[ii].nu[phases.index('V')], 
+                "nu_Aq": lambda ii=i: self.physics.property_containers[ii].nu[phases.index('Aq')], 
+                }
 
             for j, phase_name in enumerate(phases):
                 for c, component_name in enumerate(self.components):
