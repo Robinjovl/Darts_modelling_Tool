@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import pickle
+import platform as py_platform
+import sys
 
 # from model_b import Model, PorPerm, Corey, layer_props
 from model_b import Model
@@ -24,7 +26,7 @@ from fluidflower_str_b import FluidFlowerStruct
 
 def output(m, ts, property_data : int = None):
     # save reservoir solution
-    m.output.save_data_to_h5('reservoir')
+    # m.output.save_data_to_h5('reservoir')
 
     # evaluate base properties
     if property_data is None:
@@ -195,7 +197,15 @@ def post_process(m, specs):
 
     return
 
-def run(m, specs):
+def pkl_suffix():
+    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+        return '_gpu'
+    elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+        return '_iter'
+    else:
+        return '_odls'
+
+def run(m, specs, OUTPUT = 1):
     if specs['ny'] == 1:
         m.plot_reservoir()
         
@@ -242,11 +252,15 @@ def run(m, specs):
             mass_components_n = mass_components
 
             if m.physics.engine.t/Dt in vtk_array:
-                output(m, ts + 1, property_data = [time_vector, property_array])
+                m.output.save_data_to_h5('reservoir')
+                if OUTPUT:
+                    output(m, ts + 1, property_data = [time_vector, property_array])
 
         else:
             if m.physics.engine.t/Dt in vtk_array:
-                output(m, ts + 1)
+                m.output.save_data_to_h5('reservoir')
+                if OUTPUT:
+                    output(m, ts + 1)
 
         if specs['RHS']:
             event1, event2 = m.set_well_rhs(Dt, specs['inj_rate'], event1, event2)
@@ -258,10 +272,10 @@ def run(m, specs):
 #%%
 
 """Define realization ID"""
-Nt = 2
+Nt = 5
 Dt = 365
-nx = 840//2
-nz = 120//2
+nx = 840//10
+nz = 120//10
 zero = 1e-10
 
 if 0:
@@ -299,6 +313,8 @@ if 0:
 else:
     # cpu/gpu based on platform
     platform = 'cpu'
+    if len(sys.argv) > 1 and sys.argv[1] in ['cpu', 'gpu']:
+        platform = sys.argv[1]
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
        platform = 'gpu'
 
@@ -307,8 +323,8 @@ else:
         # SPE11b 
         {'check_rates': True, 'temperature': None, '1000years': 10, 'RHS': True,
              'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024, 
-                 'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'OUTPUT',
-                     'post_process': None, 'platform': 'cpu'},
+                 'nx': nx, 'nz': nz, 'ny': 84, 'dispersion': False, 'output_dir': 'output____',
+                     'post_process': None, 'platform': platform},
         
         # restart model
         # {'check_rates': True, 'temperature': None, '1000years': None, 'RHS': True,
@@ -318,6 +334,7 @@ else:
     ]
 
 if __name__ == '__main__':
+    failed = 0
     for specs in model_specs:
 
         """ set up output directory """
@@ -436,3 +453,12 @@ if __name__ == '__main__':
 
         m.print_timers()
         m.print_stat()
+
+        suffix = pkl_suffix()
+        perf_file = os.path.join('ref', 'perf_' + py_platform.system().lower()[:3] + suffix + '.pkl')
+        overwrite = 0
+        if os.getenv('UPLOAD_PKL') == '1':
+            overwrite = 1
+        failed += m.check_performance(perf_file=perf_file, overwrite=overwrite, pkl_suffix=suffix)
+
+    sys.exit(failed)

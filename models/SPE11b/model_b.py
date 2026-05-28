@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 
 from dataclasses import dataclass
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector
 from math import fabs
 try:
@@ -86,7 +86,7 @@ property_regions  = [0, 1, 2, 3, 4, 5, 6]
 layers_to_regions = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6}
 ######
 
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self, specs):
         super().__init__()
         self.specs = specs
@@ -118,7 +118,7 @@ class Model(DartsModel):
             self.platform = 'cpu'
             try:
                 from darts.engines import set_num_threads
-                set_num_threads(16)
+                set_num_threads(int(os.getenv('OMP_NUM_THREADS', 1)))
             except: 
                 pass 
             
@@ -348,11 +348,9 @@ class Model(DartsModel):
         from dartsflash.components import CompData
         from dartsflash.mixtures import DARTSFlash, VLAq
         # Fluid components, ions and solid
-        components = ["H2O", "CO2"]
-        self.components = components
         phases = ["V", "Aq"]
-        comp_data = CompData(components, setprops=True)
-        nc = len(components)
+        comp_data = CompData(self.components, setprops=True)
+        nc = len(self.components)
 
         """ Define flash """
         flash_ev = VLAq(comp_data, hybrid=True)
@@ -361,8 +359,8 @@ class Model(DartsModel):
                             stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
                             )
         flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
-        pr = flash_ev.eos["VL"]
-        aq = flash_ev.eos["Aq"]
+        # pr = flash_ev.eos["VL"]
+        # aq = flash_ev.eos["Aq"]
 
         flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash, eos_order=["VL", "Aq"],
                             t_min=270., t_max=500., t_init=300.,

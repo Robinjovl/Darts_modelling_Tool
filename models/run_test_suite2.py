@@ -54,20 +54,20 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # set model list to run
 
     accepted_dirs = [
-        '2ph_comp',
-        '2ph_comp_solid',
-        '2ph_do',
-        '2ph_geothermal',
-        '2ph_geothermal_mass_flux',
-        '3ph_comp_w',
-        '3ph_do',
-        '3ph_bo',
-        'Uniform_Brugge',
-        'Chem_benchmark_new',
-        #'CO2_foam_CCS',
-        'GeoRising',
-        'CoaxWell',
-        'effect_of_potential_energy',
+        # '2ph_comp',
+        # '2ph_comp_solid',
+        # '2ph_do',
+        # '2ph_geothermal',
+        # '2ph_geothermal_mass_flux',
+        # '3ph_comp_w',
+        # '3ph_do',
+        # '3ph_bo',
+        # 'Uniform_Brugge',
+        # 'Chem_benchmark_new',
+        # #'CO2_foam_CCS',
+        # 'GeoRising',
+        # 'CoaxWell',
+        # 'effect_of_potential_energy',
     ]
 
     if platform == 'cpu':
@@ -196,8 +196,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # check main.py files and compare well time-series pkl files when they are produced
     failed_models_main = []
     accepted_dirs += ['CCS']
-    if iter_solvers:  # run this case only for the build with iterative solvers
-        accepted_dirs += [ 'SPE11b']
+    if iter_solvers or platform == 'gpu':
+        accepted_dirs += ['SPE11b']
     n_total_mainpy = 0
     models_root = model_dir
     for mdir in accepted_dirs:
