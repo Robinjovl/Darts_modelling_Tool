@@ -3,6 +3,7 @@ from darts.tools.memory import print_allocated_memory
 import numpy as np
 import os
 import shutil
+import time
 from darts.engines import redirect_darts_output, timer_node
 from plot_vtk_pyvista import plot_vtk_pyvista
 
@@ -125,6 +126,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     :param generate_mesh: if True, mesh will be generated, otherwise it will be loaded from the model_folder/meshes
     :return:
     '''
+    t_wall_start = time.time()
+
     try:
         # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
         from darts.engines import set_num_threads
@@ -134,7 +137,16 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type,
               decouple_geomech=decouple_geomech, generate_mesh=generate_mesh)
+
+    m.timer.node["model.init()"] = timer_node()
+    m.timer.node["model.init()"].start()
     m.init()
+    m.timer.node["model.init()"].stop()
+
+    n_vars = m.physics.n_vars + 3 # 3 displs
+    n_cells = m.reservoir.mesh.n_blocks
+    est_mem_gb = 16 * n_vars * n_cells / 1024**2  # 16 KB per cell per variable (for THM)
+    print(f"Estimated memory requirement: 16 KB * {n_vars} vars * {n_cells} cells = {est_mem_gb:.2f} GB")
 
     #m.restart = False
     #m.set_output()
@@ -177,10 +189,14 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
+    m.timer.node["run_python"] = timer_node()
+    m.timer.node["run_python"].start()
+
     m.time_steps = []
     data = []
     # Run over all reporting time-steps:
     ith_step = 0
+    t_wall_tsteps_start = time.time()
     while m.physics.engine.t < sim_time:
         run_python(m=m, days=report_step)
         m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
@@ -188,9 +204,24 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         m.time_steps.append(m.physics.engine.t)
         data.append(m.get_performance_data(is_last_ts=(m.physics.engine.t >= sim_time)))
 
+        # estimation should be based on elapsed for only the timesteps time, without time spent on initilization
+        elapsed = time.time() - t_wall_start
+        elapsed_tsteps = time.time() - t_wall_tsteps_start
+        progress = m.physics.engine.t / sim_time
+        estimated = elapsed_tsteps / progress + (t_wall_tsteps_start - t_wall_start) if progress > 0 else 0
+        remaining = estimated - elapsed
+        print(f"Wall time: elapsed={elapsed:.1f}s, estimated={estimated:.1f}s, remaining={remaining:.1f}s")
+
+    m.timer.node["run_python"].stop()
+
+    total_elapsed = time.time() - t_wall_start
+    print(f"Total elapsed: {total_elapsed:.1f}s")
+
+    print('Timers:')
     m.print_timers()
-    m.print_stat()
-    print(m.output_directory, ith_step, 'timesteps', 't=', m.physics.engine.t)
+    #m.print_stat()
+
+    print('Output folder:', m.output_directory, 'Timesteps:', ith_step, 't=', m.physics.engine.t, 'days')
     print_allocated_memory()
 
     #time_data_dict = m.output.store_well_time_data(save_output_files=True)
@@ -216,15 +247,16 @@ if __name__ == '__main__':
     # nx ny nz
     #mesh='17_17_15'  # for debugging
     #mesh='41_41_66'
-    mesh='71_71_66'
-    #mesh='83_83_90'
+    #mesh='71_71_66'
+    mesh='83_83_90'
+
     #mesh='71_1_66'  # 1 layer by Y
 
     generate_mesh=True
     #generate_mesh=False # this is not working now.. as self.Xc is not initializing
 
-    #thermal = False
-    thermal = True
+    thermal = False
+    #thermal = True
 
     if not thermal:
         physics_type = 'single_phase'
