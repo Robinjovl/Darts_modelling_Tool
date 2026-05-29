@@ -40,6 +40,7 @@ training_model = True  # switch off to compare and plot the optimized results an
 optimization = False  # switch off to compare the adjoint and numerical gradient
 apply_adjoint_method = True  # switch off to apply numerical method
 use_adjoint_mgr_solver = True  # False keeps the legacy adjoint SuperLU path
+adjoint_solver = None  # None follows use_adjoint_mgr_solver; or "mgr", "cpra", "superlu"
 
 add_prod_rate_to_objfun = True
 add_inj_rate_to_objfun = True
@@ -62,6 +63,10 @@ time_data_customized = 0
 time_data_report_customized = 0
 
 
+def current_adjoint_solver():
+    return adjoint_solver or ("mgr" if use_adjoint_mgr_solver else "superlu")
+
+
 def prepare_synthetic_observation_data():
     # --------------------------------------------------------------------------------------------------------------
     # ------------------------------------------------TRUE-MODEL----------------------------------------------------
@@ -70,7 +75,8 @@ def prepare_synthetic_observation_data():
     if generate_true_data:
         true_model = Model(T, report_step=report_step, perm=perm, poro=poro,
                            customize_new_operator=customize_new_operator,
-                           use_adjoint_mgr=use_adjoint_mgr_solver)
+                           use_adjoint_mgr=use_adjoint_mgr_solver,
+                           adjoint_solver=current_adjoint_solver())
         true_model.init()
         true_model.set_output()
         true_model.run(export_to_vtk=False)
@@ -152,7 +158,8 @@ def process_adjoint(history_matching=False):
 
     proxy_model = Model(T=training_time, report_step=report_step, perm=perm, poro=poro,
                         customize_new_operator=customize_new_operator,
-                        use_adjoint_mgr=use_adjoint_mgr_solver)
+                        use_adjoint_mgr=use_adjoint_mgr_solver,
+                        adjoint_solver=current_adjoint_solver())
 
     if training_model:
         redirect_darts_output('')

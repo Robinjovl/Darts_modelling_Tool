@@ -13,7 +13,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--adjoint-solver",
-        choices=("mgr", "superlu"),
+        choices=("mgr", "superlu", "cpra"),
         default=None,
         help="Override adjoint solver for this run. Omit to use adjoint_definition.use_adjoint_mgr_solver.",
     )
@@ -31,6 +31,7 @@ def main():
     os.chdir(model_dir)
 
     if args.adjoint_solver is not None:
+        adjoint.adjoint_solver = args.adjoint_solver
         adjoint.use_adjoint_mgr_solver = args.adjoint_solver == "mgr"
 
     log_path = Path(args.log)
@@ -38,7 +39,12 @@ def main():
         log_path = model_dir / log_path
     redirect_darts_output(str(log_path))
 
-    solver_name = "MGR" if adjoint.use_adjoint_mgr_solver else "SuperLU"
+    if hasattr(adjoint, "current_adjoint_solver"):
+        solver_name = adjoint.current_adjoint_solver().upper()
+    else:
+        solver_name = (
+            "mgr" if adjoint.use_adjoint_mgr_solver else "superlu"
+        ).upper()
     print("Adjoint solver mode: %s" % solver_name)
 
     adjoint.prepare_synthetic_observation_data()

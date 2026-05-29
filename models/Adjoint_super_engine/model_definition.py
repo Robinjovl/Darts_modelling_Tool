@@ -26,6 +26,7 @@ class Model(CICDModel, OptModuleSettings):
         customize_new_operator=False,
         Peaceman_WI=False,
         use_adjoint_mgr=True,
+        adjoint_solver=None,
         adjoint_mgr_profile="physical",
         adjoint_mgr_options=None,
     ):
@@ -50,7 +51,17 @@ class Model(CICDModel, OptModuleSettings):
         self.adjoint_solver = None
         self.adjoint_linear_tol = 1e-10
         self.adjoint_linear_max_iter = 300
-        self.use_mgr_for_adjoint = use_adjoint_mgr
+        self.adjoint_solver_mode = self._normalize_adjoint_solver(
+            adjoint_solver, use_adjoint_mgr
+        )
+        self.use_mgr_for_adjoint = self.adjoint_solver_mode == "mgr"
+        self._adjoint_solver_spec = None
+        self.adjoint_cpra_options = {
+            "restart": 150,
+            "cpr_amg_max_iters": 2,
+            "cpr_amg_tolerance": 1e-2,
+            "cpr_ilu_fill_level": 0,
+        }
         self.adjoint_mgr_profile = adjoint_mgr_profile
         self.adjoint_mgr_options = self._make_adjoint_mgr_options(
             adjoint_mgr_profile,
@@ -64,6 +75,15 @@ class Model(CICDModel, OptModuleSettings):
 
         self.timer.node["initialization"].stop()
 
+    @staticmethod
+    def _normalize_adjoint_solver(adjoint_solver, use_adjoint_mgr=True):
+        if adjoint_solver is None:
+            return "mgr" if use_adjoint_mgr else "superlu"
+        solver = str(adjoint_solver).lower()
+        if solver not in {"mgr", "superlu", "cpra"}:
+            raise ValueError("adjoint_solver must be 'mgr', 'superlu', or 'cpra'")
+        return solver
+
     def use_bcsr_cpr_pressureguard_thr10_profile(self, reduction_type=None):
         self.use_mgr_cpr_pressureguard_thr10 = True
         self.bcsr_cpr_reduction_type = (
@@ -71,8 +91,10 @@ class Model(CICDModel, OptModuleSettings):
             if reduction_type is None
             else reduction_type
         )
-        if self.use_mgr_for_adjoint:
+        if self.adjoint_solver_mode == "mgr":
             self.use_adjoint_mgr_profile()
+        elif self.adjoint_solver_mode == "cpra":
+            self.use_adjoint_cpra_profile()
         else:
             self.use_adjoint_superlu_profile()
         self.set_solver()
@@ -174,7 +196,9 @@ class Model(CICDModel, OptModuleSettings):
         self.adjoint_mgr_profile = self.adjoint_mgr_options["profile"]
 
     def use_adjoint_mgr_profile(self, profile=None, **overrides):
+        self.adjoint_solver_mode = "mgr"
         self.use_mgr_for_adjoint = True
+        self._adjoint_solver_spec = None
         self.configure_adjoint_mgr_profile(profile, **overrides)
         self.set_adjoint_solver()
 
@@ -184,8 +208,23 @@ class Model(CICDModel, OptModuleSettings):
     def adjoint_mgr_profile_summary(self):
         return dict(getattr(self, "adjoint_mgr_options", {}))
 
-    def use_adjoint_superlu_profile(self):
+    def use_adjoint_cpra_profile(self, **overrides):
+        self.adjoint_solver_mode = "cpra"
         self.use_mgr_for_adjoint = False
+        options = dict(getattr(self, "adjoint_cpra_options", {}))
+        for key, value in overrides.items():
+            if value is not None:
+                options[key] = value
+        self.adjoint_cpra_options = options
+        self.set_adjoint_solver()
+
+    def adjoint_cpra_profile_summary(self):
+        return dict(getattr(self, "adjoint_cpra_options", {}))
+
+    def use_adjoint_superlu_profile(self):
+        self.adjoint_solver_mode = "superlu"
+        self.use_mgr_for_adjoint = False
+        self._adjoint_solver_spec = None
         self.adjoint_solver = None
 
     def set_reservoir(self, perm, poro):
@@ -278,7 +317,7 @@ class Model(CICDModel, OptModuleSettings):
 
         if getattr(self, "use_mgr_cpr_pressureguard_thr10", False):
             self.set_solver()
-        if getattr(self, "use_mgr_for_adjoint", False):
+        if getattr(self, "adjoint_solver_mode", "mgr") in {"mgr", "cpra"}:
             self.set_adjoint_solver()
 
     def _reservoir_block_count(self):
@@ -361,6 +400,14 @@ class Model(CICDModel, OptModuleSettings):
         self.solver.set_mgr_enable_composition_level(False)
 
     def set_adjoint_solver(self):
+        if getattr(self, "adjoint_solver_mode", "mgr") == "superlu":
+            self.adjoint_solver = None
+            self._adjoint_solver_spec = None
+            return
+        if getattr(self, "adjoint_solver_mode", "mgr") == "cpra":
+            self.set_adjoint_cpra_solver()
+            return
+
         block_size = self.physics.n_vars
         adjoint_options = getattr(
             self,
@@ -483,6 +530,27 @@ class Model(CICDModel, OptModuleSettings):
         if adjoint_reservoir_blocks is not None:
             self.adjoint_solver.set_n_reservoir_blocks(adjoint_reservoir_blocks)
 
+    def set_adjoint_cpra_solver(self):
+        block_size = self.physics.n_vars
+        options = getattr(self, "adjoint_cpra_options", {})
+        cpr_spec = solvers.CPRSolverSpec(
+            tolerance=self.adjoint_linear_tol,
+            max_iterations=self.adjoint_linear_max_iter,
+            print_level=self.params.linear_print_level,
+            amg_max_iters=int(options.get("cpr_amg_max_iters", 2)),
+            amg_tolerance=float(options.get("cpr_amg_tolerance", 1e-2)),
+            ilu_fill_level=int(options.get("cpr_ilu_fill_level", 0)),
+        )
+        gmres_spec = solvers.GMRESSolverSpec(
+            tolerance=self.adjoint_linear_tol,
+            max_iterations=self.adjoint_linear_max_iter,
+            print_level=self.params.linear_print_level,
+            restart=int(options.get("restart", 150)),
+            prec=cpr_spec,
+        )
+        self._adjoint_solver_spec = gmres_spec
+        self.adjoint_solver = gmres_spec.build(block_size)
+
     def _attach_mgr_solvers_to_engine(self):
         engine = getattr(self.physics, "engine", None)
         if engine is None:
@@ -498,7 +566,9 @@ class Model(CICDModel, OptModuleSettings):
             engine, "set_adjoint_linear_solver"
         ):
             adjoint_reservoir_blocks = self._adjoint_reservoir_block_count()
-            if adjoint_reservoir_blocks is not None:
+            if adjoint_reservoir_blocks is not None and hasattr(
+                self.adjoint_solver, "set_n_reservoir_blocks"
+            ):
                 self.adjoint_solver.set_n_reservoir_blocks(adjoint_reservoir_blocks)
             engine.set_adjoint_linear_solver(
                 self.adjoint_solver, use_jacobian_transpose=True
@@ -507,7 +577,7 @@ class Model(CICDModel, OptModuleSettings):
     def reset(self):
         if getattr(self, "use_mgr_cpr_pressureguard_thr10", False):
             self.set_solver()
-        if getattr(self, "use_mgr_for_adjoint", False):
+        if getattr(self, "adjoint_solver_mode", "mgr") in {"mgr", "cpra"}:
             self.set_adjoint_solver()
         super().reset()
         self._attach_mgr_solvers_to_engine()
