@@ -246,14 +246,14 @@ if __name__ == '__main__':
 
     # nx ny nz
     #mesh='17_17_15'  # for debugging
-    #mesh='41_41_66'
+    mesh='41_41_66'
     #mesh='71_71_66'
-    mesh='83_83_90'
+    #mesh='83_83_90'
 
     #mesh='71_1_66'  # 1 layer by Y
 
-    generate_mesh=True
-    #generate_mesh=False # this is not working now.. as self.Xc is not initializing
+    #generate_mesh=True
+    generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
 
     thermal = False
     #thermal = True
@@ -277,7 +277,7 @@ if __name__ == '__main__':
     report_step = 365.25 / 4
 
     # short run
-    #sim_time = 30 # days
-    #report_step = sim_time  # days
+    sim_time = 30 # days
+    report_step = sim_time  # days
 
     run(model_folder=mesh, physics_type=physics_type, generate_mesh=generate_mesh, wells_type=wells_type, decouple_geomech=decouple_geomech, report_step=report_step, sim_time=sim_time)

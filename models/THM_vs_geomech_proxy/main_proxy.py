@@ -1029,8 +1029,8 @@ if __name__ == '__main__':
 
     physics_types_list = []
 
-    thermal = False
-    #thermal = True
+    #thermal = False
+    thermal = True
 
     if not thermal:
         physics_types_list += ['single_phase']
@@ -1064,7 +1064,7 @@ if __name__ == '__main__':
     #run_thm = True
     run_thm = False
 
-    #generate_mesh=False # this is not working now.. as self.Xc is not initializing
+    #generate_mesh=False # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
     generate_mesh=True
 
     modes = []
