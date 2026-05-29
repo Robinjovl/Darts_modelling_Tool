@@ -1069,6 +1069,8 @@ if __name__ == '__main__':
     #report_step = sim_time  # days
     #timestep_list = [1]
 
+    print('timestep_list for proxy :', timestep_list)
+
     #run_thm = True
     run_thm = False
 
