@@ -16,8 +16,8 @@ repos:
         files: ^(\.gitlab-ci\.ya?ml|\.cicd/jobs/.*\.ya?ml)$
       - id: sync-agent-skills-check
         name: sync-agent-skills-check
-        entry: helper_scripts/run_sync_agent_skills_check.cmd
-        language: script
+        entry: python helper_scripts/sync_agent_skills.py --check
+        language: system
         pass_filenames: false
         always_run: true
 
