@@ -20,9 +20,9 @@ typedef double value_t;
 typedef int interp_index_t;
 typedef double interp_value_t;
 
-// Maximum number of parameter-space dimensions for interpolator template instantiation
-// It was MAX_NC before
-#define MAX_DIMS 8
+// Maximum number of parameter-space dimensions for interpolator template instantiation.
+// Keep this at least as high as the largest OBL table dimensionality needed by models.
+#define MAX_DIMS 12
 
 // workaround for vscode grammar checker
 #ifdef __INTELLISENSE__
