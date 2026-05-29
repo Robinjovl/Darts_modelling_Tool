@@ -24,9 +24,9 @@ from darts.tools.vtk_io import write_lines_vtp, write_pvd
 
 class Output:
     """
-    This class handles simulation output including primary variables, secondary variables,
-    well reporting and visualizations (pyplots, .vtk files). All simulation output is saved
-    into HDF5 files. To view the contents of these HDF5 files users are recommended to use an HDF5 viewer.
+    This class handles simulation output including reservoir/well primary variables, secondary variables,
+    well time-series, and visualizations (pyplots, .vtk files). All simulation output is saved
+    into HDF5 files. To view the contents of these HDF5 files, users are recommended to use an HDF5 viewer.
     Alternatively, primary and secondary variables can also be processed into xarray format.
 
     * **Primary variables** (state/unknowns) for reservoir blocks and well blocks are written
@@ -68,7 +68,7 @@ class Output:
         has_dfm_well: bool = False,
     ):
         """
-        :param timer: timer object, measurs time spent saving data, and evaluating properties.
+        :param timer: timer object, measures time spent saving data, and evaluating properties.
         :param reservoir: reservoir object.
         :param physics: physics object.
         :param wells: dict of well objects if the DFM well is used
@@ -1618,12 +1618,12 @@ class Output:
         """
         Evaluate and store well primary and secondary variables of the ith step in vtp files
 
-        :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
-        :type output_properties: list
         :param ith_step: ith reporting step for which you want to create vtp files for
         :type ith_step: int
+        :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
+        :type output_properties: list
         :param output_directory: Directory of where to save vtp files
-        :type: str
+        :type output_directory: str
         """
         if not self.has_dfm_well:
             return
@@ -1666,7 +1666,6 @@ class Output:
                 nodes_xyz=nodes_coords,
                 output_properties=output_data,
                 ith_step=ith_step,
-                time=time,
                 output_directory=output_directory,
             )
 
@@ -1786,12 +1785,10 @@ class Output:
         nodes_xyz: np.ndarray,
         output_properties: dict,
         ith_step: int,
-        time: float,
         output_directory: str,
-        active: bool = None,
     ):
         """
-        Write well trajectory as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
+        Write well output as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
 
         :param well_name: Name of the well
         :type well_name: str
@@ -1801,16 +1798,14 @@ class Output:
         :type output_properties: dict
         :param ith_step: i'th reporting step for which you want to create a .vtp file for
         :type ith_step: int
-        :param time: Current simulation time
-        :type time: float
         :param output_directory: Directory of where to save the vtp file
-        :type: str
-        :param active: Optional name of variable to set as active scalars
-        :type active: bool
+        :type output_directory: str
         """
         output_file_name = f"solution_well_{well_name}_ts{ith_step:d}.vtp"
         output_file_path = os.path.join(output_directory, output_file_name)
-        write_lines_vtp(output_file_path, nodes_xyz, cell_data=output_properties)
+        write_lines_vtp(
+            output_file_path, nodes_xyz, output_properties=output_properties
+        )
 
     def store_well_time_data(
         self,

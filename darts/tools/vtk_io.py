@@ -1,27 +1,27 @@
 import numpy as np
 
 
-def write_lines_vtp(path: str, nodes_xyz: np.ndarray, cell_data: dict = None):
+def write_lines_vtp(path: str, nodes_xyz: np.ndarray, output_properties: dict = None):
     """
-    Write a polyline as a VTK XML PolyData file (.vtp) - convenient for wells visualizaion.
+    Write a polyline as a VTK XML PolyData file (.vtp) - convenient for well visualization.
 
     Nodes define N segments via consecutive pairs (node i → node i+1).
     ParaView's Tube filter requires PolyData input - this function produces it.
 
     :param path: Output file path (should end in .vtp).
     :param nodes_xyz: Node coordinates, shape (n_nodes, 3).
-    :param cell_data: Optional dict of per-segment arrays, each length n_nodes-1.
+    :param output_properties: Optional dict of per-segment arrays, each length n_nodes-1.
     """
     coords = np.asarray(nodes_xyz, dtype=float)
     npts = coords.shape[0]
     nseg = npts - 1
 
-    if cell_data is not None:
-        for name, vals in cell_data.items():
+    if output_properties is not None:
+        for name, vals in output_properties.items():
             arr = np.asarray(vals).ravel()
             if arr.shape[0] != nseg:
                 raise ValueError(
-                    f"cell_data['{name}'] length {arr.shape[0]} != n_segments {nseg}"
+                    f"output_properties['{name}'] length {arr.shape[0]} != n_segments {nseg}"
                 )
 
     connectivity = " ".join(f"{i} {i + 1}" for i in range(nseg))
@@ -51,9 +51,9 @@ def write_lines_vtp(path: str, nodes_xyz: np.ndarray, cell_data: dict = None):
     xml.append(f'          {offsets}')
     xml.append('        </DataArray>')
     xml.append('      </Lines>')
-    if cell_data:
+    if output_properties:
         xml.append('      <CellData>')
-        for name, vals in cell_data.items():
+        for name, vals in output_properties.items():
             arr = np.asarray(vals).ravel().astype(float)
             xml.append(
                 f'        <DataArray type="Float64" Name="{name}" format="ascii">'
