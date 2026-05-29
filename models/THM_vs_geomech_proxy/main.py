@@ -246,8 +246,8 @@ if __name__ == '__main__':
 
     # nx ny nz
     #mesh='17_17_15'  # for debugging
-    mesh='41_41_66'
-    #mesh='71_71_66'
+    #mesh='41_41_66'
+    mesh='71_71_66'
     #mesh='83_83_90'
 
     #mesh='71_1_66'  # 1 layer by Y

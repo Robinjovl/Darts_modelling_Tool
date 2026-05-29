@@ -1053,13 +1053,21 @@ if __name__ == '__main__':
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
 
+    def get_timestep_index(t_years):
+        return int((t_years * 365.25) / report_step)
+
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    timestep_list = [get_timestep_index(n_years)]  # last or pre-last timestep
+
+    # process a few timesteps: 1 year, 10 years, 20 years, +last from above
+    if thermal:
+        for y in [1, 10, 20]:
+            timestep_list += [get_timestep_index(y)]
 
     # short run (should be then also enabled in main.py for proper comparison)
     #sim_time = 30 # days
     #report_step = sim_time  # days
-    #timestep = 1
+    #timestep_list = [1]
 
     #run_thm = True
     run_thm = False
@@ -1082,6 +1090,7 @@ if __name__ == '__main__':
     for case in cases:
         for physics_type in physics_types_list:
             for wells_type in wells_types_list:
+
                 print('\n\n' + '='*30)
                 print(physics_type, wells_type)
 
@@ -1096,13 +1105,14 @@ if __name__ == '__main__':
                 thm_time = t2 - t1
 
                 # run geomech proxy
-                print('The timestep for plots and proxy-apply:', timestep)
-                t1 = datetime.now()
-                run_geomech_proxy(case=case, physics_type=physics_type,
-                                  wells_type=wells_type, modes=modes,
-                                  timestep=timestep, n_threads=n_threads, use_gpu=use_gpu)
-                t2 = datetime.now()
-                proxy_time = t2 - t1
+                for timestep in timestep_list:
+                    print('The timestep for plots and proxy-apply:', timestep)
+                    t1 = datetime.now()
+                    run_geomech_proxy(case=case, physics_type=physics_type,
+                                      wells_type=wells_type, modes=modes,
+                                      timestep=timestep, n_threads=n_threads, use_gpu=use_gpu)
+                    t2 = datetime.now()
+                    proxy_time = t2 - t1
 
                 print('case', case, physics_type, wells_type, 'done')
                 print('THM   time', thm_time)
