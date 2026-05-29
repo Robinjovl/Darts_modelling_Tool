@@ -28,7 +28,7 @@
     "by_array": {"pressure": 100, "CO2": 0.001, "C1": 0.001}
   },
   "output": {
-    "folder": "output",
+    "output_folder": "output",
     "precision": "d"
   }
 }

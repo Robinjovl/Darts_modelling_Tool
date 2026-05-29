@@ -94,6 +94,15 @@ class TestPrimitiveValidation:
         assert spec.compression_level == 4
         assert spec.verbose is True
 
+    def test_output_folder_alias(self):
+        """``folder`` and ``output_folder`` must both populate ``spec.folder``."""
+        from darts.api.schemas import OutputSpec
+
+        legacy = OutputSpec.model_validate({"folder": "x", "precision": "d"})
+        canonical = OutputSpec.model_validate({"output_folder": "x", "precision": "d"})
+        assert legacy.folder == canonical.folder == "x"
+        assert legacy.to_set_output_kwargs() == canonical.to_set_output_kwargs()
+
 
 # ---------------------------------------------------------------------------
 # Apply individual primitives via ModelBuilder public API

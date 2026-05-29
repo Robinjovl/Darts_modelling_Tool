@@ -211,10 +211,10 @@
     "newton_type": "newton_global_chop"
   },
   "output": {
-    "folder": "output_json",
+    "output_folder": "output_json",
     "precision": "d",
     "save_initial": true,
-	"verbose": true,
-	"sol_filename": "spe_solution.h5"
+    "verbose": true,
+    "sol_filename": "spe_solution.h5"
   }
 }

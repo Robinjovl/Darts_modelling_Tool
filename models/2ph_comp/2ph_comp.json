@@ -165,7 +165,7 @@
     "newton_type": "newton_local_chop"
   },
   "output": {
-    "folder": "output",
+    "output_folder": "output",
     "precision": "d"
   }
 }

@@ -980,8 +980,16 @@ class DartsModel:
                 self.well_filename = out.well_filename
             if out.save_initial is not None:
                 self.save_initial_solution = out.save_initial
+            if out.all_phase_props is not None:
+                self.all_phase_props = out.all_phase_props
             if out.precision is not None:
                 self.output_precision = out.precision
+            if out.compression is not None:
+                self.compression = out.compression
+            if out.compression_level is not None:
+                self.compression_level = out.compression_level
+            if out.verbose is not None:
+                self.verbose = out.verbose
 
     def set_sim_params_from_config(self, config: SimParamsConfig) -> None:
         """Apply simulation parameters from a validated config object.

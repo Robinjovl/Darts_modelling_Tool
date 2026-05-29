@@ -166,7 +166,7 @@
     "tol_linear": 0.0001
   },
   "output": {
-    "folder": "results_deadoil_brugge_wbhp_json",
+    "output_folder": "results_deadoil_brugge_wbhp_json",
     "precision": "d"
   }
 }

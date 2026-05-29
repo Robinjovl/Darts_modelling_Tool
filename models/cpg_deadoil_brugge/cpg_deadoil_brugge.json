@@ -164,7 +164,7 @@
     "tol_linear": 0.0001
   },
   "output": {
-    "folder": "output",
+    "output_folder": "output",
     "precision": "d"
   }
 }

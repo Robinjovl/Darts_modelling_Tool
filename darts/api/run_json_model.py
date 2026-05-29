@@ -87,6 +87,7 @@ def main():
     out_kwargs = out_spec.to_set_output_kwargs() if out_spec is not None else {}
     folder = out_kwargs.get('output_folder', 'output')
 
+    os.makedirs(folder, exist_ok=True)
     redirect_darts_output(os.path.join(folder, 'run.log'))
     m.set_output(**out_kwargs)
 
