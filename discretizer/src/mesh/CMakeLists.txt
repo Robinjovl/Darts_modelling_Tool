@@ -54,12 +54,12 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_MESH_PUBLIC
 
 # Install the library file of discretizer_mesh
 install(TARGETS discretizer_mesh
-  CONFIGURATIONS RELEASE    
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
 install(TARGETS discretizer_mesh
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 # ------------------------------------------------------------------------------
