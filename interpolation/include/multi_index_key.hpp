@@ -64,6 +64,12 @@ struct cell_key_t
  * Mixes per-component 32-bit values with 64-bit multiplications and xors so every
  * axis contributes independent entropy. Tested against birthday-collision rates
  * up to N_DIMS=20; collision rate is on the order of 2^-32 at 10^6 keys.
+ *
+ * NOTE: an FNV-1a alternative over uint64 chunks compute-wise ~3× cheaper was
+ * benchmarked and rejected — its weaker distribution increased
+ * std::unordered_map bucket-chain lengths enough that overall cache_lookup time
+ * regressed. The per-axis fmix64 inside the combine is what gives this hash its
+ * lookup-time efficiency, despite being more cycles to compute.
  */
 template <uint8_t N_DIMS>
 struct cell_key_hash
@@ -149,6 +155,14 @@ __forceinline__ __host__ __device__ static int32_t get_axis_interval_index_unbou
     const double scaled = (axis_value - static_cast<double>(axis_origin)) * static_cast<double>(axis_step_inv);
     // floor() handles negative values correctly; int() would truncate toward zero
     const double floored = floor(scaled);
+#ifndef NDEBUG
+    // Debug-only int32 overflow guard. The check is only meaningful when a model's
+    // axes_step is so small relative to the visited range that the cell index
+    // approaches ±2^31 — this has not been observed in any test model. Keeping the
+    // guard in Release builds adds two compare+branch operations per axis per
+    // interpolation call, which measurably contributes to the cache_lookup
+    // sub-timer on hot workloads (see MR313 perf comparison vs the chemistry
+    // baseline). The Debug-build variant retains the diagnostic.
     const double i32_min = static_cast<double>(std::numeric_limits<int32_t>::min());
     const double i32_max = static_cast<double>(std::numeric_limits<int32_t>::max());
     if (floored < i32_min)
@@ -169,6 +183,7 @@ __forceinline__ __host__ __device__ static int32_t get_axis_interval_index_unbou
 #endif
         return std::numeric_limits<int32_t>::max();
     }
+#endif // NDEBUG
     return static_cast<int32_t>(floored);
 }
 
