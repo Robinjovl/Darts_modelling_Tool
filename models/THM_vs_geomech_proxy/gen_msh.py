@@ -12,7 +12,7 @@ import sys
 def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : int, tags : dict, filename : str = None,
                     is_transfinite : bool = True, is_recombine : bool  = True, refinement_mult : bool = 1.0,
                     fault_refinement_mult = 1.0, fault_angle : float = None, z_minus_hybrid = False, two_rocks = False,
-                    msh_ver=2.1, popup=False, Xc=None, Yc=None, Zc=None, rsv_top=None, rsv_bottom=None, 
+                    msh_ver=2.1, popup=False, Xc=None, Yc=None, Zc=None, rsv_top=None, rsv_bottom=None,
                     rsv_x1=None, rsv_x2=None, rsv_y1=None, rsv_y2=None):
     '''
     generates a rectangular-box structured-like mesh with hexahedron (right prism) cells in the unstructured mesh format (gmsh 2).
@@ -91,7 +91,7 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     n_max_x = len(x)
     n_max_xy = n_max_x * len(y)
     n_max_xyz = n_max_xy * len(z)
-    
+
     for k, z_cur in enumerate(z):
         for j, y_cur in enumerate(y):
             for i, x_cur in enumerate(x):
@@ -438,27 +438,26 @@ if __name__ == '__main__':
     if False:
         filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault, is_transfinite=True, is_recombine=True, popup=True)
         write_to_vtk_with_faces(filename)
-    
+
     if True:  # rsv_top < rsv < rsv_bottom (tag MATRIX_1) and non-rsv (tag MATRIX_2)
         rsv_top = 2100.
         rsv_bottom = 2200.
         rsv_xy = 1000.
-        
+
         # small
         #x_list = np.array([-2000, -1000, 0, 1000, 2000])
         #z_list = -1 * np.array([0,1000,1500,rsv_top,rsv_bottom,3000,4000])
-        
-        #case = '34_34_57'  # z 0 - 5 km 
+
+        #case = '34_34_57'  # z 0 - 5 km
         x_list = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
         z_list = -np.hstack([np.arange(0, rsv_top - 100 + 1, 100),
                                  np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
                                  rsv_bottom + 100,
                                  np.arange(rsv_bottom + 200, 5000 + 1, 100)])
-        filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault, 
-                                   Xc=x_list, Yc=x_list, Zc=z_list, rsv_top=-rsv_top, rsv_bottom=-rsv_bottom, 
+        filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault,
+                                   Xc=x_list, Yc=x_list, Zc=z_list, rsv_top=-rsv_top, rsv_bottom=-rsv_bottom,
                                    rsv_x1=-rsv_xy, rsv_x2=rsv_xy, rsv_y1=-rsv_xy, rsv_y2=rsv_xy,
                                    msh_ver=4.2, # geos fails with a negative volume issue for gmsh 2.1 format https://github.com/GEOS-DEV/GEOS/issues/2154
                                    two_rocks=True, is_transfinite=True, is_recombine=True, popup=True)
-        
+
     print('Finished')
-    
