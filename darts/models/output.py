@@ -223,12 +223,22 @@ class Output:
                     extrapolation_flag=self.physics.extrapolation_flag,
                     dz=self.physics.dz,
                 )
+                # Match the reservoir/well interpolators: extended axes when the physics has
+                # history fields, primary axes otherwise. Output.output_properties(engine=True)
+                # feeds the full [X | Xhistory] state into this interpolator, so the axis layout
+                # must match that.
+                ax_min, ax_max, n_pts = (
+                    self.physics.get_interpolator_axes()
+                    if hasattr(self.physics, "get_interpolator_axes")
+                    else (self.physics.axes_min, self.physics.axes_max, None)
+                )
                 self.physics.property_itor[region], n_ops = (
                     self.physics.create_interpolator(
                         self.physics.property_operators[region],
                         n_ops=self.physics.n_ops,
-                        axes_min=self.physics.axes_min,
-                        axes_max=self.physics.axes_max,
+                        axes_min=ax_min,
+                        axes_max=ax_max,
+                        n_axes_points=n_pts,
                         platform='cpu',
                         algorithm='multilinear',
                         mode='adaptive',
@@ -336,12 +346,18 @@ class Output:
                 extrapolation_flag=self.physics.extrapolation_flag,
                 dz=self.physics.dz,
             )
+            ax_min, ax_max, n_pts = (
+                self.physics.get_interpolator_axes()
+                if hasattr(self.physics, "get_interpolator_axes")
+                else (self.physics.axes_min, self.physics.axes_max, None)
+            )
             self.physics.property_itor[region], n_ops = (
                 self.physics.create_interpolator(
                     self.physics.property_operators[region],
                     n_ops=self.physics.n_ops,
-                    axes_min=self.physics.axes_min,
-                    axes_max=self.physics.axes_max,
+                    axes_min=ax_min,
+                    axes_max=ax_max,
+                    n_axes_points=n_pts,
                     platform='cpu',
                     algorithm='multilinear',
                     mode='adaptive',
@@ -676,7 +692,12 @@ class Output:
         return centroids
 
     def configure_h5_output(
-        self, sol_filepath: str, cell_ids, description, add_static_data: bool = False
+        self,
+        sol_filepath: str,
+        cell_ids,
+        description,
+        add_static_data: bool = False,
+        extended_state: bool = True,
     ):
         """
         Create and initialize an HDF5 output file for simulation results.
@@ -758,10 +779,24 @@ class Output:
                 )
                 cell_ids_dataset[:] = cell_ids
 
+            # Reservoir H5 stores extended state [X | Xhistory] so restart preserves history;
+            # well H5 accumulates only primary Newton state (n_vars-wide), so it stays
+            # primary-width regardless of history_fields.
+            if extended_state and hasattr(self.physics, "n_state"):
+                n_state = self.physics.n_state
+                var_labels = (
+                    self.physics.get_interpolator_state_labels()
+                    if hasattr(self.physics, "get_interpolator_state_labels")
+                    else list(self.physics.vars)
+                )
+            else:
+                n_state = self.physics.n_vars
+                var_labels = list(self.physics.vars)
+
             dynamic_group.create_dataset(
                 "X",
-                shape=(0, nb, self.physics.n_vars),
-                maxshape=(None, nb, self.physics.n_vars),
+                shape=(0, nb, n_state),
+                maxshape=(None, nb, n_state),
                 dtype=self.precision_map[self.precision],
                 compression=self.compression,
                 compression_opts=self.compression_level,
@@ -770,7 +805,7 @@ class Output:
             # add variable names
             datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
             dynamic_group.create_dataset(
-                "variable_names", data=np.array(self.physics.vars, dtype=datatype)
+                "variable_names", data=np.array(var_labels, dtype=datatype)
             )
 
             # write brief description
@@ -818,6 +853,7 @@ class Output:
                 cell_ids=self.id_well_data,
                 add_static_data=True,
                 description="Well data",
+                extended_state=False,
             )
 
         if hasattr(self, "output_configured"):
@@ -850,13 +886,28 @@ class Output:
                 n_new = len(times)
             else:
                 times = np.array([self.physics.engine.t])
-                X = np.asarray(self.physics.engine.X)
-                reshaped = X.reshape(
-                    (self.reservoir.mesh.n_blocks, self.physics.n_vars)
-                )[cell_id]
+                # Dataset width drives whether we write the extended state [X | Xhistory] (reservoir
+                # H5, used for restart) or just the primary Newton state (well H5).
+                dataset_width = x_dataset.shape[2]
+                if dataset_width > self.physics.n_vars and hasattr(
+                    self.physics, "get_engine_interpolator_state"
+                ):
+                    full = np.asarray(
+                        self.physics.get_engine_interpolator_state(
+                            n_blocks=self.reservoir.mesh.n_blocks
+                        ),
+                        dtype=float,
+                    )
+                    reshaped = full.reshape(
+                        (self.reservoir.mesh.n_blocks, dataset_width)
+                    )[cell_id]
+                else:
+                    reshaped = np.asarray(self.physics.engine.X).reshape(
+                        (self.reservoir.mesh.n_blocks, self.physics.n_vars)
+                    )[cell_id]
                 data_array = np.expand_dims(
                     reshaped, axis=0
-                )  # shape (1, n_cells, n_vars)
+                )  # shape (1, n_cells, n_state)
                 cfl_values = np.array([self.physics.engine.CFL_max])
                 n_new = 1
 
@@ -1035,13 +1086,19 @@ class Output:
             # Get current time
             timesteps = np.array(self.physics.engine.t).reshape(1)
 
-            X = np.array(
-                self.physics.engine.X[
-                    : self.physics.n_vars * self.reservoir.mesh.n_res_blocks
-                ],
-                copy=True,
-            )  # reservoir solution at current time
-            var_names = self.physics.vars  # primary variable names
+            if hasattr(self.physics, "get_interpolator_state_labels"):
+                X = self.physics.get_engine_interpolator_state(
+                    n_blocks=self.reservoir.mesh.n_res_blocks
+                )
+                var_names = self.physics.get_interpolator_state_labels()
+            else:
+                X = np.array(
+                    self.physics.engine.X[
+                        : self.physics.n_vars * self.reservoir.mesh.n_res_blocks
+                    ],
+                    copy=True,
+                )
+                var_names = self.physics.vars
 
         n_vars = len(var_names)  # number of primary variables
         nb = self.reservoir.mesh.n_res_blocks  # number of reservoir blocks

@@ -258,6 +258,7 @@ class DartsModel:
         if restart is False:
             self.set_initial_conditions()
             self.reset()
+            self.initialize_history_fields()
         self.data_ts.print()
         if (
             self.params.linear_type == sim_params.linear_solver_t.cpu_superlu
@@ -283,6 +284,49 @@ class DartsModel:
             self.timer.node["simulation"],
         )
 
+    def initialize_history_fields(self):
+        """Seed ``engine.Xhistory`` with the per-field default value for every reservoir cell.
+
+        No-op when the physics has no ``history_fields`` configured (the engine then also has
+        ``n_history_runtime == 0`` and no ``Xhistory`` buffer). Called by :meth:`init` right after
+        :meth:`reset`, which is where the C++ engine allocates ``Xhistory``.
+
+        :returns: None
+        """
+        if not getattr(self.physics, "history_fields", None):
+            return
+
+        n_blocks = self.reservoir.mesh.n_blocks
+        for field in self.physics.history_fields:
+            self.physics.set_engine_history_array(
+                field.label,
+                field.default,
+                n_blocks=n_blocks,
+            )
+
+    def after_converged_timestep(self):
+        """Hook called after each converged Newton timestep. Advances history fields by default.
+
+        Subclasses that override this should call ``super().after_converged_timestep()`` to
+        preserve the history-field update. The base implementation simply delegates to
+        :meth:`update_history_fields_after_timestep`.
+
+        :returns: None
+        """
+        self.update_history_fields_after_timestep()
+
+    def update_history_fields_after_timestep(self):
+        """User hook to advance OBL history variables (e.g. ``sg_max``) between timesteps.
+
+        The base implementation is a no-op. Subclasses backing a hysteretic physics should
+        override this to read the current Newton state, compute the updated history value
+        per cell, and write it back via :meth:`PhysicsBase.set_engine_history_array` (or by
+        mutating the underlying ``engine.Xhistory`` vector directly).
+
+        :returns: None
+        """
+        return
+
     def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
@@ -306,16 +350,40 @@ class DartsModel:
             reservoir_filepath, ts_idx
         )
 
-        # load data as initial conditions
+        # Split columns: primary Newton unknowns (self.physics.vars) go through
+        # set_initial_conditions_from_array; OBL history columns (self.physics.history_fields)
+        # go through set_engine_history_array so sg_max and friends survive restart.
+        primary_names = list(self.physics.vars)
+        history_labels = set()
+        if hasattr(self.physics, "history_fields"):
+            history_labels = {h.label for h in self.physics.history_fields}
+
         initial_values = {}
+        history_values = {}
         for i, name in enumerate(var_names):
-            initial_values[name] = Xres[:, :, i].flatten()
+            key = name.decode() if isinstance(name, bytes) else name
+            col = Xres[:, :, i].flatten()
+            if key in primary_names:
+                initial_values[key] = col
+            elif key in history_labels:
+                history_values[key] = col
+            else:
+                initial_values[key] = col  # unknown key: preserve legacy routing
         self.physics.set_initial_conditions_from_array(
             mesh=self.reservoir.mesh, input_distribution=initial_values
         )
 
         self.reset()
         self.physics.engine.t = time_res[0]
+
+        # Push the restored history columns into engine.Xhistory. reset() has already allocated
+        # the buffer, so set_engine_history_array only needs to overwrite its contents.
+        for label, values in history_values.items():
+            self.physics.set_engine_history_array(
+                label,
+                values,
+                n_blocks=self.reservoir.mesh.n_res_blocks,
+            )
 
         # save initial conditions to *.h5 file
         print(rf'Restarting model from {reservoir_filepath} at day {time_res[0]}.')
@@ -577,6 +645,7 @@ class DartsModel:
             if converged:
                 t += dt
                 ts += 1
+                self.after_converged_timestep()
                 if verbose:
                     print(
                         f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}"
@@ -690,6 +759,7 @@ class DartsModel:
                 t += dt
                 self.physics.engine.t = t
                 ts_counter += 1
+                self.after_converged_timestep()
 
                 x = np.array(self.physics.engine.X, copy=False)[: nb * nc]
                 dt_mult_new = data_ts.dt_mult
