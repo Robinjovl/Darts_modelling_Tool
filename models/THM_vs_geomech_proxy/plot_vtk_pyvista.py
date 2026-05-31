@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 
+pv.global_theme.jupyter_backend = 'static' # do not print Widget(...) output messages - they appear in case of pyvista[jupyter] is installed
+
 def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
     '''
     Plot VTK results using PyVista.
@@ -63,6 +65,9 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
     arr_name = "delta_pressure"; tensor = False; arr_name_plot = 'delta_pressure,MPa'; scale = 0.1
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
+
+    arr_name = "viscosity"; tensor = False; component_index = None; arr_name_plot = 'viscosity,cP'; scale = 1.0
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
     arr_name = 'perm'; tensor = True; component_index = 0; arr_name_plot = 'perm_XX,mD'; scale = 1.0
