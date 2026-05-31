@@ -175,6 +175,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
         upstream_idx = well_body_idx; // producer
 
     state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+    state.insert(state.end(), Xhistory_well_default.begin(), Xhistory_well_default.end());
 
     well_ctrl_etor->evaluate(state, well_ctrl_ops);
 
@@ -267,6 +268,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
         upstream_idx = well_body_idx; // producer
 
     state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+    state.insert(state.end(), Xhistory_well_default.begin(), Xhistory_well_default.end());
 
     well_ctrl_etor->evaluate(state, well_ctrl_ops);
 

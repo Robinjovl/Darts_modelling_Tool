@@ -139,6 +139,10 @@ public:
 
     std::vector<value_t> state;
     std::vector<value_t> state_neighbour;
+    std::vector<value_t> rates;
+    // History values appended to the well state when the physics uses OBL history variables
+    // (analogous to mesh->Xhistory_bounds for boundary cells). Empty unless history axes are active.
+    std::vector<value_t> Xhistory_well_default;
 
     // n_block_size -- size of the full block, P_VAR -- index of the start of the state variables within block
     uint8_t n_block_size, P_VAR;

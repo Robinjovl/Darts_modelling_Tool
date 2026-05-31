@@ -1,4 +1,20 @@
 # #.#.# [Future]
+- Add hysteresis support for OBL-based compositional simulations through per-cell history variables, including Killough scanning-curve handling; the feature is disabled by default and enabled only when history variables are explicitly declared in the physics setup ([!310](https://gitlab.com/open-darts/open-darts/-/merge_requests/310)).
+- Output:
+  - output which was using `vtk` module, has been changed to use `meshio` (struct reservoir, cpg reservoir) and darts/tools/vtk_io.py (writing vtp files with dynamic results along well trajectories)
+- Package:
+  - removed `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
+  - added "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
+- Breaking changes:
+  - Renamed the `rate_type` argument to `rate_ctrl_type` in `WellData.add_inj_rate_control()` and `WellData.add_prd_rate_control()` to make clear that it specifies the type of rate control:
+  \
+  {- Before: idata.well_data.add_inj_rate_control(..., rate_type=...) -}\
+  {+ Now:    idata.well_data.add_inj_rate_control(..., rate_ctrl_type=...) +}
+  \
+  {- Before: idata.well_data.add_prd_rate_control(..., rate_type=...) -}\
+  {+ Now:    idata.well_data.add_prd_rate_control(..., rate_ctrl_type=...) +}
+
+# 1.5.0 [27-05-2026]
 - Fluid heat capacity is added into the input data for THM models ([!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270))
 - Support using the OBL method to calculate DFM well phase velocities. Direct method is still the default method since it is safer in terms of stability ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Add `x_mass` (mass composition of each phase) as a new property to `PropertyContainer` of the super engine because it is needed for evaluation of phase velocities in DFM wells using the OBL method ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
@@ -11,6 +27,7 @@
 - Support live plotting for DFM wells ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
   - Live (real-time) plots for solver properties (time step size and number of Newton iterations) and tracking the state of a block on the PH diagram
   - Live (real-time) plots for profiles of DFM well properties
+  - Save live-plot snapshots and monitor a reservoir block
 - Align depth of perforated well segments with reservoir blocks ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Fix BHT calculation for PH formulation in the method `store_bhp_bht` in `output.py` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Improved nonlinear convergence stability for high-rate injection and production wells by normalizing rate-control residuals, preventing large target rates from dominating the residual norm ([!311](https://gitlab.com/open-darts/open-darts/-/merge_requests/311))
@@ -34,6 +51,15 @@
 - Improve CI model tests by comparing generated well time-series reference files (`well_time_data.pkl`) and by extending performance-reference checks to include well primary variables in addition to reservoir primary variables ([!312](https://gitlab.com/open-darts/open-darts/-/merge_requests/312)).
 - Extracted interpolators into a standalone `darts.interpolators` Python module / shared library, decoupled from `darts.engines` at link time (header-only coupling via `interpolation_config.h`). Template instantiations split across multiple translation units to enable parallel compilation and cut per-TU memory (full build down to ~6 min on multi-core; valgrind job pre-builds at `-j NT/2` to avoid OOM). Interpolator tests moved to `tests/interpolators/`. Breaking change: interpolator types are no longer exposed under `darts.engines` — import from `darts.interpolators` ([!301](https://gitlab.com/open-darts/open-darts/-/merge_requests/301))
 - Parallel operator update ([!297](https://gitlab.com/open-darts/open-darts/-/merge_requests/297)): adaptive interpolators rewritten as a three-phase OpenMP update (discover / materialize / interpolate) governed by `OMP_NUM_THREADS`; new `evaluate_batch` interface and `ParallelEvaluator` that evaluates missing supporting points across a multiprocessing pool. Enable per model with `init(parallel_evaluation=True, n_workers=...)`; the default `DartsModel.get_evaluator_factory` (`ModelEvaluatorFactory`) needs no per-model code and works under both `fork` and `spawn`. `Chem_benchmark_new` runs on the parallel path in CI. See `docs/for_developers/parallel_operators.md`.
+- Physics / Wells:
+  - Generalize the potential-energy contribution in the energy equation to multi-component systems
+  - Add `Pipe` options to enable/disable the profile parameter and drift velocity in the DFM closure
+  - Unify EPM and DFM well-control operators into a single `WellCtrlOperators` class
+- Examples / Models:
+  - Add DFM-well validation scenarios against OLGA: `1ph_1comp_thermal_dfm_well_vs_olga`, `2ph_2comp_isothermal_dfm_vertical_well_vs_olga`, `2ph_2comp_isothermal_dfm_inclined_well_vs_olga`
+  - Add `2ph_dead_oil_coupled_well_reservoir` and a constant-rate gaseous-phase injection example
+  - Add a live-plotting example to the coupled well–reservoir model
+- Dependencies: bump minimum `open-darts-flash` to `>=0.12.1`
 - Breaking changes:
   - Rock thermal conductivity was renamed in the input data for geomechanical models:
   \
@@ -45,13 +71,16 @@
   {- Before: init.solve() -}\
   {+ Now:    init.solve_up_and_downwards() +}
   \
-  - Renamed the `rate_type` argument to `rate_ctrl_type` in `WellData.add_inj_rate_control()` and `WellData.add_prd_rate_control()` to make clear that it specifies the type of rate control:
+  - Geothermal `PropertyContainer` field `saturation` renamed to `sat` to match the super-engine container:
   \
-  {- Before: idata.well_data.add_inj_rate_control(..., rate_type=...) -}\
-  {+ Now:    idata.well_data.add_inj_rate_control(..., rate_ctrl_type=...) +}
+  {- Before: property_container.saturation -}\
+  {+ Now:    property_container.sat +}
   \
-  {- Before: idata.well_data.add_prd_rate_control(..., rate_type=...) -}\
-  {+ Now:    idata.well_data.add_prd_rate_control(..., rate_ctrl_type=...) +}
+  - In well outputs, `saturation` renamed to `volume_fraction`; well-side fields now use the same `pressure` and `temperature` names as the reservoir side
+  - DFM example scenarios were renamed:
+  \
+  {- Before: two_phase_isothermal_dfm_well_flow, single_phase_thermal_dfm_well_flow, coupled_dfm_well_reservoir -}\
+  {+ Now:    2ph_2comp_isothermal_dfm_vertical_well_vs_dwell, 1ph_1comp_thermal_dfm_well_vs_dwell, 2ph_1comp_coupled_dfm_well_reservoir +}
   \
 
 # 1.4.0 [17-02-2026]

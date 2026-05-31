@@ -2006,6 +2006,72 @@ void engine_base::apply_thermal_var_correction(std::vector<value_t>& X, std::vec
 	// Hook method: The classes that need this method will override it (e.g., engine_super_cpu)
 }
 
+void engine_base::build_Xop()
+{
+	// Compose the extended OBL state Xop = [X | Xhistory] for every reservoir cell and every boundary cell.
+	// Reservoir entries take their Newton unknowns from X and their history values from Xhistory;
+	// boundary entries take unknowns from mesh->pz_bounds and history values from mesh->Xhistory_bounds.
+	// No-op when the engine reports n_history == 0.
+	const uint8_t n_history = get_n_history();
+	if (n_history == 0)
+		return;
+
+	const uint8_t n_vars_ = get_n_vars();
+	const uint8_t n_state = n_vars_ + n_history;
+	const index_t n_blocks = mesh->n_blocks;
+	const index_t n_bounds = mesh->n_bounds;
+
+	// Reservoir cells: copy the primary Newton variables in their native order, then append
+	// history slots from Xhistory.
+	for (index_t i = 0; i < n_blocks; i++)
+	{
+		for (uint8_t v = 0; v < n_vars_; v++)
+			Xop[i * n_state + v] = X[i * n_vars_ + v];
+		for (uint8_t h = 0; h < n_history; h++)
+			Xop[i * n_state + n_vars_ + h] = Xhistory[i * n_history + h];
+	}
+
+	// Boundary cells: the Python/physics side is responsible for filling mesh->pz_bounds with
+	// the n_vars boundary primary values (P, Z_1..Z_{NC-1}, [T]) and mesh->Xhistory_bounds with the
+	// n_history history values. If Xhistory_bounds is empty, fall back to zero history at the boundary.
+	if (n_bounds > 0)
+	{
+		const bool have_bound_his = mesh->Xhistory_bounds.size() >= (size_t)n_bounds * n_history;
+		for (index_t i = 0; i < n_bounds; i++)
+		{
+			const index_t dst = (n_blocks + i) * n_state;
+			for (uint8_t v = 0; v < n_vars_; v++)
+				Xop[dst + v] = mesh->pz_bounds[i * n_vars_ + v];
+			for (uint8_t h = 0; h < n_history; h++)
+				Xop[dst + n_vars_ + h] = have_bound_his ? mesh->Xhistory_bounds[i * n_history + h] : 0.0;
+		}
+	}
+}
+
+void engine_base::project_xop_ders()
+{
+	// Drop derivatives w.r.t. history columns. History values are not Newton unknowns, so the
+	// assembly kernels only need the n_vars-wide column block per operator per cell.
+	// The destination op_ders_arr is sized by the derived engine (n_blocks for FVM engines,
+	// n_blocks + n_bounds for MPFA/mech engines); derive the cell count from that size.
+	const uint8_t n_history = get_n_history();
+	if (n_history == 0)
+		return;
+
+	const uint8_t n_ops_ = get_n_ops();
+	const uint8_t n_vars_ = get_n_vars();
+	const uint8_t n_state = n_vars_ + n_history;
+	const index_t row_small = n_ops_ * n_vars_;
+	const index_t row_full  = n_ops_ * n_state;
+	const index_t n_cells = (index_t)(op_ders_arr.size() / row_small);
+
+	for (index_t i = 0; i < n_cells; i++)
+		for (index_t op = 0; op < n_ops_; op++)
+			for (index_t v = 0; v < n_vars_; v++)
+				op_ders_arr[i * row_small + op * n_vars_ + v] =
+					op_ders_arr_ext[i * row_full + op * n_state + v];
+}
+
 void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
 {
 	// Apply normalization of compositions X
@@ -2959,11 +3025,25 @@ int engine_base::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start();
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	if (get_n_history() > 0)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
-		if (result < 0)
-			return 0;
+		build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+			if (result < 0)
+				return 0;
+		}
+		project_xop_ders();
+	}
+	else
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+			if (result < 0)
+				return 0;
+		}
 	}
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();
