@@ -7,6 +7,7 @@ from darts.engines import (
     linear_solver_params,
     mech_operators,
     sim_params,
+    timer_node,
     value_vector,
 )
 from darts.models.darts_model import DartsModel
@@ -37,7 +38,11 @@ class THMCModel(DartsModel):
         self.timer.node["initialization"].start()
         self.set_input_data()
         self.set_physics()
+
+        self.timer.node["initialization"].node["set_reservoir"] = timer_node()
+        self.timer.node["initialization"].node["set_reservoir"].start()
         self.set_reservoir()
+        self.timer.node["initialization"].node["set_reservoir"].stop()
         self.reservoir.P_VAR = self.physics.engine.P_VAR
         self.reservoir.U_VAR = self.physics.engine.U_VAR
         if hasattr(self, 'idata'):
