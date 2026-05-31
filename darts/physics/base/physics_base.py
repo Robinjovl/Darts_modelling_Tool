@@ -1,26 +1,56 @@
 import abc
+import atexit
 import hashlib
 import os
 import pickle
-import atexit
-import numpy as np
-from typing import Union
+import signal
+import tempfile
+from collections.abc import Iterable
+from dataclasses import dataclass
 from enum import Enum
 from functools import total_ordering
+from typing import Any
+
+import numpy as np
 
 from darts.engines import *
-from darts.physics.base.operators_base import WellControlOperators, WellInitOperators
+from darts.interpolators import *
+from darts.physics.base.operators_base import ThermalVarOperator, WellCtrlOperators
+
+
+@dataclass
+class HistoryField:
+    """
+    Describe one OBL history variable declaratively.
+
+    History variables enter the OBL interpolator state but are NOT Newton unknowns — the physics
+    advances them outside of Newton (e.g. max gas saturation updated after each converged timestep
+    for Killough relative-permeability hysteresis).
+
+    :param label: Axis label used for interpolator state ordering (e.g. ``"sg_max"``)
+    :param axis_min: Lower bound of the OBL axis for this history variable
+    :param axis_max: Upper bound of the OBL axis for this history variable
+    :param n_axis_points: Number of OBL supporting points on this axis; ``None`` falls back to the
+                          physics default ``n_points``
+    :param default: Reservoir initial value and fallback value at wells / boundaries
+    """
+
+    label: str
+    axis_min: float = 0.0
+    axis_max: float = 1.0
+    n_axis_points: int | None = None
+    default: float = 0.0
 
 
 class PhysicsBase:
     """
-    This is a base class for Physics definition.
+    Define the shared infrastructure for DARTS physics classes.
 
     Physics contains all necessary objects to initialize and run the DARTS :class:`engine`.
 
     The Physics object is composed of :class:`PropertyContainer` objects for each of the regions and a set of operators.
     The operators consist of :class:`ReservoirOperators` objects for each of the regions, a :class:`WellOperators`,
-    a :class:`WellControlOperators`, a :class:`WellInitOperators` and a :class:`PropertyOperators` object.
+    a :class:`WellCtrlOperators`, a :class:`ThermalVarOperator` and a :class:`PropertyOperators` object.
     For each set of operators (evaluators, etor), an interpolator (itor) object is created for use in the :class:`engine`.
 
     :ivar engine: Engine object
@@ -33,33 +63,48 @@ class PhysicsBase:
     :type property_operators: dict
     :ivar well_operators: :class:`WellOperators` object for evaluation of well cell states
     :type well_operators: dict
-    :ivar well_ctrl_operators: :class:`WellControlOperators` object for well control
-    :type well_ctrl_operators: WellControlOperators
-    :ivar well_init_operators: :class:`WellInitOperators` object for generic state well initialization
-    :type well_init_operators: WellInitOperators
+    :ivar well_ctrl_operators: :class:`WellCtrlOperators` object for well controls
+    :type well_ctrl_operators: WellCtrlOperators
+    :ivar thermal_var_operator: :class:`ThermalVarOperator` object for generic state specification
+    :type thermal_var_operator: ThermalVarOperator
     :ivar regions: List of property regions
     :type regions: list
     """
+
     engine: engine_base
     well_operators: operator_set_evaluator_iface
-    well_ctrl_operators: WellControlOperators
-    well_init_operators: WellInitOperators
+    well_ctrl_operators: WellCtrlOperators
+    thermal_var_operator: ThermalVarOperator
 
     @total_ordering
     class StateSpecification(Enum):
         P = 0
         PT = 1
         PH = 2
-        def __lt__(self, other):
+        PS = 3
+
+        def __lt__(self, other: object) -> bool:
             if self.__class__ is other.__class__:
                 return self.value < other.value
             return NotImplemented
 
-    def __init__(self, state_spec: StateSpecification, variables: list, components: list, phases: list, n_ops: int,
-                 axes_min: value_vector, axes_max: value_vector, n_axes_points: index_vector,
-                 timer: timer_node, cache: bool = False):
+    def __init__(
+        self,
+        state_spec: StateSpecification,
+        variables: list,
+        components: list,
+        phases: list,
+        n_ops: int,
+        axes_min: value_vector,
+        axes_max: value_vector,
+        n_axes_points: index_vector,
+        timer: timer_node,
+        sim_eps: float | None = None,
+        cache: bool = False,
+        history_fields: Iterable['HistoryField'] | None = None,
+    ) -> None:
         """
-        This is the constructor of the PhysicsBase class. It creates a `simulation` timer node and initializes caching.
+        Create the physics base state, timer nodes, and optional OBL-history metadata.
 
         :param state_spec: State specification - 0) P, 1) PT, 2) PH
         :type state_spec: StateSpecification
@@ -72,16 +117,26 @@ class PhysicsBase:
         :param n_ops: Number of operators
         :type n_ops: int
         :param axes_min, axes_max: Minimum, maximum of each OBL axis
-        :type axes_min, axes_max: :class:`darts.engines.value_vector`
+        :type axes_min, axes_max: :class:`darts.interpolators.value_vector`
         :param n_axes_points: Number of OBL points along axes
         :type n_axes_points: index_vector
         :param timer: Timer object
-        :type cache: :class:`darts.engines.timer_node`
+        :param sim_eps: Epsilon composition for simulation that solution should remain away from OBL bounds
+                        (in engine, min_sim_z = min_axis_z + sim_eps, max_sim_z = max_axis_z - sim_eps)
+        :type sim_eps: float
+        :type cache: :class:`darts.interpolators.timer_node`
         :param cache: Switch to cache operator values
         :type cache: bool
+        :param history_fields: Optional list of :class:`HistoryField` descriptors. Each entry
+                               declares one auxiliary OBL axis (e.g. ``sg_max`` for Killough
+                               hysteresis) that is fed into operator interpolation but is NOT
+                               a Newton unknown. Pass ``None`` or an empty list to disable
+                               history-aware behaviour entirely (matches legacy flow physics).
+        :type history_fields: Iterable[HistoryField] or None
         """
         # Define variables and number of operators
         self.state_spec = state_spec
+        self.is_ph = state_spec > PhysicsBase.StateSpecification.PT
         self.vars = variables
         self.n_vars = len(variables)
 
@@ -96,6 +151,7 @@ class PhysicsBase:
         self.PT_axes_min = axes_min
         self.PT_axes_max = axes_max
         self.n_axes_points = n_axes_points
+        self.sim_eps = sim_eps if sim_eps is not None else 1e-12
 
         # Initialize timer for simulation and caching
         self.timer = timer.node["simulation"]
@@ -111,11 +167,219 @@ class PhysicsBase:
         self.reservoir_operators = {}
         self.property_operators = {}
 
-    def init_physics(self, discr_type: str = 'tpfa', platform: str = 'cpu',
-                     itor_type: str = 'multilinear', itor_mode: str = 'adaptive',
-                     itor_precision: str = 'd', verbose: bool = False, is_barycentric: bool = False):
+        # Optional OBL history variables (e.g. max gas saturation for Killough hysteresis).
+        # Keep this as a list rather than a dict: these descriptors define not only labels,
+        # but also the ordering of the appended OBL history axes. That ordering must stay
+        # consistent across Python, engine.Xhistory, and the interpolator state [X | Xhistory].
+        # An empty list disables history-aware behaviour; a non-empty list extends the OBL
+        # interpolation state without touching the Newton system.
+        self.history_fields: list[HistoryField] = list(history_fields or [])
+        # Populated by set_interpolators when history_fields is non-empty, so create_interpolator
+        # can decide between primary-axes and extended-axes interpolator construction.
+        self._extended_axes_min: value_vector | None = None
+        self._extended_axes_max: value_vector | None = None
+        self._extended_n_axes_points: index_vector | None = None
+
+    @property
+    def n_history(self) -> int:
         """
-        Function to initialize all contained objects within the Physics object.
+        Return the number of configured OBL history variables (``len(history_fields)``).
+
+        :returns: Count of auxiliary OBL axes that enter interpolation but not the Newton system
+        :rtype: int
+        """
+        return len(self.history_fields)
+
+    @property
+    def n_state(self) -> int:
+        """
+        Return the total OBL interpolation-state size per cell = ``n_vars + n_history``.
+
+        :returns: Number of axes the reservoir / well interpolators consume per cell
+        :rtype: int
+        """
+        return self.n_vars + self.n_history
+
+    def get_interpolator_axes(
+        self,
+    ) -> tuple[value_vector, value_vector, index_vector]:
+        """
+        Return the ``(axes_min, axes_max, n_axes_points)`` triple that OBL interpolators
+        running on the full OBL state ``[X | Xhistory]`` should be built on.
+
+        When ``history_fields`` is empty this is identical to ``(self.axes_min, self.axes_max,
+        self.n_axes_points)``. When non-empty the primary axes are extended with one axis per
+        history field (using ``n_axes_points[0]`` as the default axis resolution). The result
+        is cached on ``self._extended_axes_*`` so callers (``set_interpolators`` and
+        :mod:`darts.output`) see identical bounds.
+
+        :returns: ``(axes_min, axes_max, n_axes_points)`` suitable for :meth:`create_interpolator`
+        :rtype: tuple[value_vector, value_vector, index_vector]
+        """
+        if not self.history_fields:
+            return self.axes_min, self.axes_max, self.n_axes_points
+        if self._extended_axes_min is None:
+            h_min = [h.axis_min for h in self.history_fields]
+            h_max = [h.axis_max for h in self.history_fields]
+            h_npts = [
+                (
+                    h.n_axis_points
+                    if h.n_axis_points is not None
+                    else self.n_axes_points[0]
+                )
+                for h in self.history_fields
+            ]
+            self._extended_axes_min = value_vector(list(self.axes_min) + h_min)
+            self._extended_axes_max = value_vector(list(self.axes_max) + h_max)
+            self._extended_n_axes_points = index_vector(
+                list(self.n_axes_points) + h_npts
+            )
+        return (
+            self._extended_axes_min,
+            self._extended_axes_max,
+            self._extended_n_axes_points,
+        )
+
+    def get_interpolator_state_labels(self) -> list:
+        """
+        Return axis labels used by the OBL interpolators, in storage order.
+
+        The first ``n_vars`` entries are the primary Newton unknown labels (``self.vars``),
+        followed by one label per history field (e.g. ``"sg_max"``). Used by
+        :mod:`darts.output` to label columns when dumping operator state.
+
+        :returns: Ordered list of axis labels of length ``n_state``
+        :rtype: list[str]
+        """
+        return list(self.vars) + [h.label for h in self.history_fields]
+
+    def get_history_default(self, label: str) -> float:
+        """
+        Return the configured initial / fallback value for a history field.
+
+        :param label: Label of the history field, must match one declared in ``history_fields``
+        :type label: str
+        :returns: The ``default`` attribute of the matching :class:`HistoryField`
+        :rtype: float
+        :raises KeyError: If no history field has the requested label
+        """
+        for h in self.history_fields:
+            if h.label == label:
+                return h.default
+        raise KeyError(label)
+
+    def get_engine_history_array(self, label: str, n_blocks: int = None) -> np.ndarray:
+        """
+        Return a per-cell copy of ``engine.Xhistory`` restricted to one history axis.
+
+        The engine stores ``Xhistory`` as a flat ``[(n_blocks + n_bounds) * n_history]`` buffer in
+        cell-major order (all ``n_history`` values for cell 0, then cell 1, ...). This helper
+        pulls out just the reservoir blocks for one label and returns a copy (safe to mutate).
+
+        :param label: Label of the history field to extract, must match one in ``history_fields``
+        :type label: str
+        :param n_blocks: Number of reservoir blocks to read. When ``None``, inferred as
+                         ``Xhistory.size // n_history`` (i.e. all cells including boundaries)
+        :type n_blocks: int, optional
+        :returns: One-dimensional array of shape ``(n_blocks,)`` with the requested axis values
+        :rtype: numpy.ndarray
+        :raises RuntimeError: If no history fields are configured on this physics
+        :raises KeyError: If no history field has the requested label
+        """
+        if not self.history_fields:
+            raise RuntimeError("Physics has no history fields configured")
+        idx = next(
+            (i for i, h in enumerate(self.history_fields) if h.label == label), -1
+        )
+        if idx < 0:
+            raise KeyError(label)
+        Xhistory = np.asarray(self.engine.Xhistory, copy=False)
+        n_history = self.n_history
+        if n_blocks is None:
+            n_blocks = Xhistory.size // n_history
+        return Xhistory.reshape(-1, n_history)[:n_blocks, idx].copy()
+
+    def get_engine_interpolator_state(self, n_blocks: int = None) -> np.ndarray:
+        """
+        Return the full OBL state ``[X | Xhistory]`` flattened in cell-major order.
+
+        Used by :mod:`darts.output` to dump operator inputs for post-processing. The layout is
+        interleaved so callers that stride by ``n_state`` pick out one state variable per cell:
+        ``result[j::n_state]`` is the ``j``-th state axis for every reservoir cell.
+
+        :param n_blocks: Number of reservoir blocks. When ``None``, inferred from
+                         ``engine.X.size // n_vars``
+        :type n_blocks: int, optional
+        :returns: One-dimensional array of length ``n_blocks * n_state`` with primary vars and
+                  history values interleaved per cell
+        :rtype: numpy.ndarray
+        """
+        if n_blocks is None:
+            n_blocks = self.engine.X.size // self.n_vars
+        X = np.asarray(self.engine.X, copy=False).reshape(-1, self.n_vars)[:n_blocks]
+        if not self.history_fields:
+            return X.flatten()
+        Xhistory = np.asarray(self.engine.Xhistory, copy=False).reshape(
+            -1, self.n_history
+        )[:n_blocks]
+        return np.concatenate([X, Xhistory], axis=1).flatten()
+
+    def set_engine_history_array(
+        self, label: str, values, n_blocks: int = None
+    ) -> None:
+        """
+        Overwrite one axis of ``engine.Xhistory`` with a per-cell scalar or array.
+
+        The selected history column is updated through a reshaped writable NumPy view of
+        ``engine.Xhistory``.
+
+        :param label: Label of the history field to write, must match one in ``history_fields``
+        :type label: str
+        :param values: Value(s) for the single history axis identified by ``label``: either a
+                       scalar applied to every cell, or a one-dimensional array-like of length
+                       ``n_blocks``
+        :type values: float or array-like
+        :param n_blocks: Number of reservoir blocks to write. When ``None``, inferred as
+                         ``Xhistory_flat.size // n_history``
+        :type n_blocks: int, optional
+        :returns: None
+        :raises RuntimeError: If no history fields are configured on this physics
+        :raises KeyError: If no history field has the requested label
+        """
+        if not self.history_fields:
+            raise RuntimeError("Physics has no history fields configured")
+        idx = next(
+            (i for i, h in enumerate(self.history_fields) if h.label == label), -1
+        )
+        if idx < 0:
+            raise KeyError(label)
+        n_history = self.n_history
+        Xhistory_flat = np.asarray(self.engine.Xhistory, copy=False)
+        if n_blocks is None:
+            n_blocks = Xhistory_flat.size // n_history
+        if np.isscalar(values):
+            history_values = np.full(n_blocks, float(values))
+        else:
+            history_values = np.asarray(values, dtype=float).reshape(-1)
+        Xhistory_view = Xhistory_flat.reshape(-1, n_history)
+        Xhistory_view[:n_blocks, idx] = history_values
+
+    def init_physics(
+        self,
+        discr_type: str = 'tpfa',
+        platform: str = 'cpu',
+        itor_type: str = 'multilinear',
+        itor_mode: str = 'adaptive',
+        itor_precision: str = 'd',
+        verbose: bool = False,
+        is_barycentric: bool = False,
+        n_solid: int | None = None,
+        parallel_evaluation: bool = False,
+        n_workers: int | None = None,
+        evaluator_factory_hook=None,
+    ) -> None:
+        """
+        Initialise engines, operators, and interpolators for this physics object.
 
         :param discr_type: Discretization type, 'tpfa' (default) or 'mpfa'
         :type discr_type: str
@@ -131,48 +395,122 @@ class PhysicsBase:
         :type verbose: bool
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param n_solid: Number of solid minerals for element-based reactive flow
+        :type n_solid: int
+        :param parallel_evaluation: Enable parallel batch evaluation of supporting points via multiprocessing
+        :type parallel_evaluation: bool
+        :param n_workers: Number of worker processes for parallel evaluation (default: ``os.cpu_count()``)
+        :type n_workers: int, optional
+        :param evaluator_factory_hook: Callable ``(region: int) -> callable`` that returns a factory
+                                       for constructing a fresh evaluator per worker process.
+                                       Required when ``parallel_evaluation=True``.
+        :type evaluator_factory_hook: callable
         """
         # Define OBL axes
-        self.axes_min, self.axes_max = self.determine_obl_bounds(min_p=self.PT_axes_min[0], max_p=self.PT_axes_max[0],
-                                                                 min_t=self.PT_axes_min[-1], max_t=self.PT_axes_max[-1],
-                                                                 min_z=self.PT_axes_min[1:self.nc],
-                                                                 max_z=self.PT_axes_max[1:self.nc],
-                                                                 state_spec=self.state_spec)
+        self.axes_min, self.axes_max = self.determine_obl_bounds(
+            min_p=self.PT_axes_min[0],
+            max_p=self.PT_axes_max[0],
+            min_t=self.PT_axes_min[-1],
+            max_t=self.PT_axes_max[-1],
+            min_z=self.PT_axes_min[1 : self.nc],
+            max_z=self.PT_axes_max[1 : self.nc],
+            state_spec=self.state_spec,
+        )
 
         # set engine, operators and create interpolators
         self.engine = self.set_engine(discr_type, platform)
+
+        # Tell the engine how many per-cell history variables to reserve in its Xop / Xhistory
+        # buffers. Must be set before engine.init() allocates them.
+        if hasattr(self.engine, "n_history_runtime"):
+            self.engine.n_history_runtime = self.n_history
+
+        # for separate mineral fraction in reactive flow formulations
+        if n_solid is not None:
+            self.engine.n_solid = n_solid
+
+        # Set state specification in the engine
+        self.set_state_spec(state_spec=self.state_spec)
+
         self.set_operators()
-        self.set_interpolators(platform, itor_type, itor_mode, itor_precision, is_barycentric)
+        self.set_interpolators(
+            platform,
+            itor_type,
+            itor_mode,
+            itor_precision,
+            is_barycentric,
+            parallel_evaluation=parallel_evaluation,
+            n_workers=n_workers,
+            evaluator_factory_hook=evaluator_factory_hook,
+        )
+
+        # When history fields are active, verify that all hysteresis-bearing evaluators in
+        # every region share consistent trapping parameters. Catches silent drift between
+        # rel_perm_ev and capillary_pressure_ev built from independent Corey sources.
+        if self.history_fields:
+            for pc in self.property_containers.values():
+                if hasattr(pc, "validate_history_consistency"):
+                    pc.validate_history_consistency()
         return
 
-    def add_property_region(self, property_container, region: int = 0):
+    def set_state_spec(self, state_spec: StateSpecification) -> None:
         """
-        Function to add :class:`PropertyContainer` object for specified region to `property_containers` dict.
+        Set the state specification on the underlying engine.
+
+        :param state_spec: State specification
+        :type state_spec: StateSpecification
+        """
+        if state_spec == self.StateSpecification.P:
+            self.engine.state_spec = self.engine.StateSpecification.P
+        elif state_spec == self.StateSpecification.PT:
+            self.engine.state_spec = self.engine.StateSpecification.PT
+        elif state_spec == self.StateSpecification.PH:
+            self.engine.state_spec = self.engine.StateSpecification.PH
+        elif state_spec == self.StateSpecification.PS:
+            self.engine.state_spec = self.engine.StateSpecification.PS
+        else:
+            raise NotImplementedError()
+
+    def add_property_region(self, property_container: Any, region: int = 0) -> None:
+        """
+        Register a property container for one region and propagate history metadata.
 
         :param property_container: Object for evaluation of properties
         :type property_container: :class:`PropertyContainer`
         :param region: Tag of the region, to be used as a key in `property_containers` dict
         """
+        # Tell the property container how many OBL history variables the physics appends
+        # to the state vector so that it can locate primary vars correctly (e.g. temperature
+        # at position [nc] rather than [-1] when sg_max is appended), and pass the ordered
+        # labels so it can expose {label: value} to history-aware evaluators.
+        if hasattr(property_container, "n_history"):
+            property_container.n_history = self.n_history
+        if hasattr(property_container, "history_labels"):
+            property_container.history_labels = [h.label for h in self.history_fields]
         self.property_containers[region] = property_container
         self.regions.append(region)
         return
 
-    def set_operators(self):
+    def set_operators(self) -> None:
         """
-        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
+        Set operator objects for reservoir, well, control, and property evaluations.
+
+        Create :class:`ReservoirOperators` for each reservoir region,
         :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
         and a :class:`PropertyOperator` for the evaluation of properties.
 
-        In PhysicsBase, this is an empty function, needs to be overloaded in child classes.
+        Subclasses must override this placeholder implementation.
         """
         pass
 
     @abc.abstractmethod
-    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu') -> engine_base:
+    def set_engine(
+        self, discr_type: str = 'tpfa', platform: str = 'cpu'
+    ) -> engine_base:
         """
-        Function to set :class:`engine` object.
+        Create and return the engine implementation for this physics.
 
-        In PhysicsBase, this is an empty function, needs to be overloaded in child classes.
+        Subclasses must override this placeholder implementation.
 
         :param discr_type: Type of discretization, 'tpfa' (default) or 'mpfa'
         :type discr_type: str
@@ -182,11 +520,23 @@ class PhysicsBase:
         """
         pass
 
-    def set_interpolators(self, platform='cpu', itor_type='multilinear', itor_mode='adaptive',
-                          itor_precision='d', is_barycentric: bool = False):
+    def set_interpolators(
+        self,
+        platform='cpu',
+        itor_type='multilinear',
+        itor_mode='adaptive',
+        itor_precision='d',
+        is_barycentric: bool = False,
+        parallel_evaluation: bool = False,
+        n_workers: int | None = None,
+        evaluator_factory_hook=None,
+    ) -> None:
         """
-        Function to initialize set interpolator objects based on the set of operators.
-        It creates timers for each of the interpolators.
+        Initialise the interpolator set and timer nodes for the configured operators.
+
+        If history_fields is non-empty, the reservoir / well / well-control interpolators are built
+        on the extended axes set (primary OBL axes + one axis per history field); the thermal_var
+        interpolator always stays on the primary PT axes.
 
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
@@ -198,91 +548,238 @@ class PhysicsBase:
         :type itor_precision: str
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+        :param parallel_evaluation: Enable parallel batch evaluation of supporting points via multiprocessing
+        :type parallel_evaluation: bool
+        :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
+        :type n_workers: int
+        :param evaluator_factory_hook: Callable ``(region: int) -> callable`` that returns a factory
+            function for constructing a fresh evaluator per worker process. Required when
+            ``parallel_evaluation=True``. Each factory must return an ``operator_set_evaluator_iface``.
+        :type evaluator_factory_hook: callable
         """
-        # self.n_ops = self.engine.get_n_ops()
+        # Optionally wrap evaluators with ParallelEvaluator for batch parallelism
+        if parallel_evaluation:
+            if evaluator_factory_hook is None:
+                raise ValueError(
+                    "parallel_evaluation=True requires evaluator_factory_hook: "
+                    "a callable(region) -> callable that returns a factory for "
+                    "constructing a fresh evaluator per worker process."
+                )
+            from darts.physics.base.parallel_evaluator import ParallelEvaluator
+
+            for region in self.regions:
+                factory = evaluator_factory_hook(region)
+                self.reservoir_operators[region] = ParallelEvaluator(
+                    evaluator_factory=factory,
+                    n_workers=n_workers,
+                )
+
+        # When history fields are configured, the reservoir / well / well-control interpolators
+        # run on the extended axes set (primary OBL axes + one axis per history field).
+        # get_interpolator_axes caches the extension on self._extended_axes_* so the output path
+        # (Output.set_phase_properties) can reuse the same bounds.
+        acc_axes_min, acc_axes_max, acc_n_pts = self.get_interpolator_axes()
+
         self.acc_flux_itor = {}
         self.property_itor = {}
         for region in self.regions:
-            self.acc_flux_itor[region] = self.create_interpolator(self.reservoir_operators[region], n_ops=self.n_ops,
-                                                                  axes_min=self.axes_min, axes_max=self.axes_max,
-                                                                  platform=platform, algorithm=itor_type,
-                                                                  mode=itor_mode, precision=itor_precision,
-                                                                  timer_name='reservoir %d interpolation' % region,
-                                                                  region=str(region),
-                                                                  is_barycentric=is_barycentric)
+            self.acc_flux_itor[region], _ = self.create_interpolator(
+                self.reservoir_operators[region],
+                n_ops=self.n_ops,
+                axes_min=acc_axes_min,
+                axes_max=acc_axes_max,
+                n_axes_points=acc_n_pts,
+                platform=platform,
+                algorithm=itor_type,
+                mode=itor_mode,
+                precision=itor_precision,
+                timer_name=f'reservoir {region:d} interpolation',
+                region=str(region),
+                is_barycentric=is_barycentric,
+            )
 
-            self.property_itor[region] = self.create_interpolator(self.property_operators[region], n_ops=self.n_ops,
-                                                                  axes_min=self.axes_min, axes_max=self.axes_max,
-                                                                  platform=platform, algorithm=itor_type,
-                                                                  mode=itor_mode, precision=itor_precision,
-                                                                  timer_name='property %d interpolation' % region,
-                                                                  region=str(region))
+            self.property_itor[region], _ = self.create_interpolator(
+                self.property_operators[region],
+                n_ops=self.n_ops,
+                axes_min=acc_axes_min,
+                axes_max=acc_axes_max,
+                n_axes_points=acc_n_pts,
+                platform=platform,
+                algorithm=itor_type,
+                mode=itor_mode,
+                precision=itor_precision,
+                timer_name=f'property {region:d} interpolation',
+                region=str(region),
+                is_barycentric=is_barycentric,
+            )
 
-        self.acc_flux_w_itor = self.create_interpolator(self.well_operators, n_ops=self.n_ops,
-                                                        axes_min=self.axes_min, axes_max=self.axes_max,
-                                                        timer_name='well interpolation',
-                                                        platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                        precision=itor_precision, region='-1')
+        self.acc_flux_w_itor, _ = self.create_interpolator(
+            self.well_operators,
+            n_ops=self.n_ops,
+            axes_min=acc_axes_min,
+            axes_max=acc_axes_max,
+            n_axes_points=acc_n_pts,
+            timer_name='well interpolation',
+            platform=platform,
+            algorithm=itor_type,
+            mode=itor_mode,
+            precision=itor_precision,
+            region='-1',
+            is_barycentric=is_barycentric,
+        )
 
-        self.well_ctrl_itor = self.create_interpolator(self.well_ctrl_operators, n_ops=self.well_ctrl_operators.n_ops,
-                                                       axes_min=self.axes_min, axes_max=self.axes_max,
-                                                       timer_name='well controls interpolation',
-                                                       platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                       precision=itor_precision)
-        self.well_init_itor = self.create_interpolator(self.well_init_operators, n_ops=self.well_init_operators.n_ops,
-                                                       axes_min=value_vector(self.PT_axes_min),
-                                                       axes_max=value_vector(self.PT_axes_max),
-                                                       timer_name='well initialization',
-                                                       platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                       precision=itor_precision)
+        self.well_ctrl_itor, self.n_well_ctrl_itor_ops = self.create_interpolator(
+            self.well_ctrl_operators,
+            n_ops=self.well_ctrl_operators.n_ops,
+            axes_min=acc_axes_min,
+            axes_max=acc_axes_max,
+            n_axes_points=acc_n_pts,
+            timer_name='well controls interpolation',
+            platform=platform,
+            algorithm=itor_type,
+            mode=itor_mode,
+            precision=itor_precision,
+            is_barycentric=is_barycentric,
+        )
+        self.thermal_var_itor, _ = self.create_interpolator(
+            self.thermal_var_operator,
+            n_ops=self.thermal_var_operator.n_ops,
+            axes_min=value_vector(self.PT_axes_min),
+            axes_max=value_vector(self.PT_axes_max),
+            n_axes_points=self.n_axes_points,
+            timer_name='well initialization',
+            platform=platform,
+            algorithm=itor_type,
+            mode=itor_mode,
+            precision=itor_precision,
+            is_barycentric=is_barycentric,
+        )
         return
 
-    def set_well_controls(self, well: ms_well, control_type: well_control_iface.WellControlType, is_inj: bool,
-                          target: float, phase_name: str = None, inj_composition: list = None, inj_temp: float = None,
-                          is_control: bool = True):
+    def evaluate_interpolators(
+        self,
+        itor: operator_set_evaluator_iface,
+        etor: operator_set_evaluator_iface,
+        states: np.ndarray,
+    ) -> dict[str, np.ndarray]:
         """
-        Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
-        well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
+        Evaluate interpolated operators on a batch of states.
 
-        :param well: ms_well object on which the control/constraint is defined
+        :param itor: Interpolator object used for operator evaluation
+        :type itor: operator_set_evaluator_iface
+        :param etor: Evaluator that provides operator-name metadata
+        :type etor: operator_set_evaluator_iface
+        :param states: Two-dimensional array of state points to evaluate
+        :type states: numpy.ndarray
+        :returns: Mapping from operator name to evaluated values per state
+        :rtype: dict[str, numpy.ndarray]
+        """
+        # Create values, dvalues and idxs arrays
+        n_states = len(states)
+        physical_points = np.where(np.sum(states[:, 1:-1], axis=1) <= 1.0, True, False)
+        states = value_vector(
+            np.stack([states[:, j] for j in range(self.n_vars)]).T.flatten()
+        )
+        values = value_vector(np.zeros(self.n_ops * n_states))
+        values_numpy = np.array(values, copy=False)
+        dvalues = value_vector(np.zeros(self.n_ops * n_states * self.n_vars))
+
+        idxs = index_vector([i for i in range(n_states)])
+
+        # Interpolate operators
+        itor.evaluate_with_derivatives(states, idxs, values, dvalues)
+
+        # Fill operator array
+        operator_array = {}
+        for i in range(self.n_ops):
+            op_type_idx = np.flatnonzero(
+                [i >= np.array([tup[0] for tup in etor.op_names])]
+            )[-1]
+            op_name = (
+                etor.op_names[op_type_idx][1]
+                + "_"
+                + str(i - etor.op_names[op_type_idx][0])
+            )
+            operator_array[op_name] = values_numpy[i :: self.n_ops]
+            operator_array[op_name][~physical_points] = np.nan
+
+        return operator_array
+
+    def set_well_controls(
+        self,
+        wctrl: well_control_iface,
+        control_type: well_control_iface.WellControlType,
+        is_inj: bool,
+        target: float,
+        phase_name: str | None = None,
+        inj_composition: list | None = None,
+        inj_temp: float | None = None,
+    ) -> None:
+        """
+        Set a well control or constraint on the target :class:`well_control_iface`.
+
+        Call ``set_bhp_control()`` or ``set_rate_control()`` on the control or constraint
+        object that lives on ``ms_well``. To deactivate a control or constraint, pass
+        ``WellControlType.NONE``.
+
+        :param wctrl: well_control_iface object responsible for control/constraint. It must be set to:
+                      - well_obj.control for well control
+                      - well_obj.constraint for well constraint
         :param control_type: Well control type -2) NONE (if constraint needs to be deactivated), -1) BHP,
                              0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
         :param is_inj: Is injection well (true) or production well (false)
         :param target: Target BHP or rate, consistent with well control type
-        :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
+        :param phase_name: Name of the phase rate of which is controlled. This input can be used if well control is of
+                           the rate type. If not specified and well control is of the rate type, total rate will be
+                           controlled.
         :param inj_composition: Composition of the injected phase. This input is required if it is an injection well.
         :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
-        :param is_control: Is control (true) or constraint (false), default is true
         """
         # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
-        inj_composition = value_vector(inj_composition) if inj_composition is not None else value_vector(
-            np.zeros(self.nc - 1))  # for BHP controlled production well, pass dummy variables
-        inj_temp = inj_temp if inj_temp is not None else 0.  # for isothermal case or production well, pass dummy variables
-        phase_idx = self.phases.index(
-            phase_name) if phase_name is not None else 0  # for BHP controlled production well, pass dummy variables
+        inj_composition = (
+            value_vector(inj_composition)
+            if inj_composition is not None
+            else value_vector(np.zeros(self.nc - 1))
+        )  # for BHP controlled production well, pass dummy variables
+        inj_temp = (
+            inj_temp if inj_temp is not None else 0.0
+        )  # for isothermal case or production well, pass dummy variables
+
+        phase_idx = None
+        if phase_name is not None:
+            phase_idx = self.phases.index(phase_name)
 
         # Pass controls specification to ms_well object
         if control_type == well_control_iface.BHP:
-            if is_control:
-                well.set_bhp_control(is_inj, target, inj_composition, inj_temp)
-            else:
-                well.set_bhp_constraint(is_inj, target, inj_composition, inj_temp)
-        else:
+            wctrl.set_bhp_control(is_inj, target, inj_composition, inj_temp)
+        elif (
+            well_control_iface.BHP.value
+            < control_type.value
+            < well_control_iface.NUMBER_OF_RATE_TYPES.value
+        ):
             # Injection/production rate
-            target = np.abs(target) if is_inj else -np.abs(target)  # + for inj, - for prod
-
-            if is_control:
-                well.set_rate_control(is_inj, control_type, phase_idx, target, inj_composition, inj_temp)
-            else:
-                well.set_rate_constraint(is_inj, control_type, phase_idx, target, inj_composition, inj_temp)
+            target = (
+                np.abs(target) if is_inj else -np.abs(target)
+            )  # + for inj, - for prod
+            # If phase_idx is None, total rate is controlled
+            wctrl.set_rate_control(
+                is_inj, control_type, phase_idx, target, inj_composition, inj_temp
+            )
 
         return
 
-    def determine_obl_bounds(self, min_p: float, max_p: float, min_z: float = None, max_z: float = None,
-                             min_t: float = None, max_t: float = None,
-                             state_spec: StateSpecification = StateSpecification.PH):
+    def determine_obl_bounds(
+        self,
+        min_p: float,
+        max_p: float,
+        min_z: float | list | np.ndarray | None = None,
+        max_z: float | list | np.ndarray | None = None,
+        min_t: float | None = None,
+        max_t: float | None = None,
+        state_spec: StateSpecification = StateSpecification.PH,
+    ) -> tuple[value_vector, value_vector]:
         """
-        Function to compute bounds of OBL grid for different state specifications
+        Compute OBL-grid bounds for the requested state specification.
 
         :param min_p: Minimum pressure [bar]
         :param max_p: Maximum pressure [bar]
@@ -292,25 +789,43 @@ class PhysicsBase:
         :param max_t: Maximum temperature [K]
         :param state_spec: StateSpecification, P, PT or PH
         """
-        assert np.isscalar(min_z) or len(min_z) == self.nc - 1, "min_z must be a scalar or a vector of length nc-1."
-        assert np.isscalar(max_z) or len(max_z) == self.nc - 1, "max_z must be a scalar or a vector of length nc-1."
+        assert np.isscalar(min_z) or len(min_z) == self.nc - 1, (
+            "min_z must be a scalar or a vector of length nc-1."
+        )
+        assert np.isscalar(max_z) or len(max_z) == self.nc - 1, (
+            "max_z must be a scalar or a vector of length nc-1."
+        )
 
         if state_spec <= PhysicsBase.StateSpecification.PT:
-            axes_min, axes_max = value_vector(self.PT_axes_min), value_vector(self.PT_axes_max)
+            axes_min, axes_max = (
+                value_vector(self.PT_axes_min),
+                value_vector(self.PT_axes_max),
+            )
 
         elif state_spec == PhysicsBase.StateSpecification.PH:
-            pz_axes_min = [min_p] + ([min_z for i in range(self.nc - 1)] if np.isscalar(min_z) else list(min_z))
-            pz_axes_max = [max_p] + ([max_z for i in range(self.nc - 1)] if np.isscalar(max_z) else list(max_z))
+            pz_axes_min = [min_p] + (
+                [min_z for i in range(self.nc - 1)]
+                if np.isscalar(min_z)
+                else list(min_z)
+            )
+            pz_axes_max = [max_p] + (
+                [max_z for i in range(self.nc - 1)]
+                if np.isscalar(max_z)
+                else list(max_z)
+            )
 
-            zi = np.append(np.zeros(self.nc - 1), np.array([1.]))
-            min_h = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([max_p] + list(zi) + [min_t]))
-            max_h = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([min_p] + list(zi) + [max_t]))
-            for i in range(self.nc - 1):
-                zi = np.array([1. if i == ii else 0. for ii in range(self.nc)])
-                min_hi = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([max_p] + list(zi) + [min_t]))
-                min_h = min_hi if min_hi < min_h else min_h
-                max_hi = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([min_p] + list(zi) + [max_t]))
-                max_h = max_hi if max_hi > max_h else max_h
+            min_h, max_h = np.nan, np.nan
+            for i in range(self.nc):
+                for pres in [min_p, max_p]:
+                    for temp in [min_t, max_t]:
+                        zi = np.array(
+                            [1.0 if i == ii else 0.0 for ii in range(self.nc - 1)]
+                        )
+                        hi = self.property_containers[0].compute_total_enthalpy(
+                            state_pt=np.array([pres] + list(zi) + [temp])
+                        )
+                        min_h = hi if hi < min_h or np.isnan(min_h) else min_h
+                        max_h = hi if hi > max_h or np.isnan(max_h) else max_h
 
             axes_min = value_vector(pz_axes_min + [min_h])
             axes_max = value_vector(pz_axes_max + [max_h])
@@ -321,10 +836,11 @@ class PhysicsBase:
         return axes_min, axes_max
 
     @abc.abstractmethod
-    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
-                                                input_depth: Union[list, np.ndarray]):
+    def set_initial_conditions_from_depth_table(
+        self, mesh: conn_mesh, input_distribution: dict, input_depth: list | np.ndarray
+    ) -> None:
         """
-        Function to set initial conditions from given distribution of properties over depth.
+        Set initial conditions from property values tabulated over depth.
 
         :param mesh: conn_mesh object
         :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
@@ -334,9 +850,11 @@ class PhysicsBase:
         pass
 
     @abc.abstractmethod
-    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict):
+    def set_initial_conditions_from_array(
+        self, mesh: conn_mesh, input_distribution: dict
+    ) -> None:
         """
-        Method to set initial conditions by arrays or uniformly for all cells
+        Set initial conditions from arrays or uniform cell-wise values.
 
         :param mesh: conn_mesh object
         :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
@@ -344,27 +862,91 @@ class PhysicsBase:
         """
         pass
 
-    def init_wells(self, wells):
+    def populate_mesh_history_defaults(self, mesh: conn_mesh) -> None:
         """
-        Function to initialize the well rates for each well.
+        Allocate and fill ``mesh.Xhistory_bounds`` from ``history_fields`` defaults.
 
-        :param wells: List of :class:`ms_well` objects
+        The engine's ``build_Xop`` reads boundary-cell history values from ``mesh.Xhistory_bounds``
+        and falls back to zero when the buffer is empty. This helper writes the configured
+        ``HistoryField.default`` for each field into every boundary cell so engines that use
+        non-zero defaults (MPFA / mechanical paths with boundary cells) behave correctly.
+        No-op when ``history_fields`` is empty or ``mesh.n_bounds == 0``.
+
+        :param mesh: Connection mesh the engine will run on
+        :type mesh: darts.engines.conn_mesh
+        :returns: None
+        """
+        if not self.history_fields:
+            return
+        n_bounds = int(getattr(mesh, "n_bounds", 0))
+        if n_bounds <= 0:
+            return
+        defaults = np.array([h.default for h in self.history_fields], dtype=float)
+        # cell-major layout: [(h_0, h_1, ..., h_{n_history-1}) for cell 0, cell 1, ...]
+        flat = np.tile(defaults, n_bounds)
+        mesh.Xhistory_bounds = value_vector(flat.tolist())
+
+    def init_wells(self, wells: list[ms_well]) -> None:
+        """
+        Initialise well-rate parameters and propagate history defaults to wells.
+
+        When ``history_fields`` is non-empty, the per-field default values are also broadcast
+        to each well's ``Xhistory_well_default`` and to its ``control`` / ``constraint`` objects.
+        This is the well-side analogue of ``mesh.Xhistory_bounds``: when the engine evaluates an
+        operator on a well cell it pads the extended OBL state with these fallback values.
+
+        :param wells: List of multi-segment wells to initialise
+        :type wells: list[darts.engines.ms_well]
+        :returns: None
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.well_ctrl_itor, self.well_init_itor, self.thermal)
+            w.init_physics(
+                self.n_vars,
+                self.n_ops,
+                self.phases,
+                self.well_ctrl_itor,
+                self.thermal_var_itor,
+                self.thermal,
+            )
 
-    def create_interpolator(self, evaluator: operator_set_evaluator_iface, axes_min: value_vector, axes_max: value_vector,
-                            timer_name: str, n_ops: int, algorithm: str = 'multilinear', mode: str = 'adaptive',
-                            platform: str = 'cpu', precision: str = 'd', region: str = '',
-                            is_barycentric: bool = False):
+        if self.history_fields:
+            defaults = value_vector([h.default for h in self.history_fields])
+            for w in wells:
+                w.Xhistory_well_default = defaults
+                if hasattr(w, "control"):
+                    w.control.Xhistory_well_default = defaults
+                if hasattr(w, "constraint"):
+                    w.constraint.Xhistory_well_default = defaults
+
+    def create_interpolator(
+        self,
+        evaluator: operator_set_evaluator_iface,
+        axes_min: value_vector,
+        axes_max: value_vector,
+        timer_name: str,
+        n_ops: int,
+        n_axes_points: index_vector = None,
+        algorithm: str = 'multilinear',
+        mode: str = 'adaptive',
+        platform: str = 'cpu',
+        precision: str = 'd',
+        region: str = '',
+        is_barycentric: bool = False,
+    ) -> tuple[operator_set_gradient_evaluator_iface, int]:
         """
-        Create interpolator object according to specified parameters
+        Create an interpolator object for the requested axes and evaluation mode.
 
         :param evaluator: State operators to be interpolated. Evaluator object is used to generate supporting points
-        :type evaluator: darts.engines.operator_set_evaluator_iface
+        :type evaluator: darts.interpolators.operator_set_evaluator_iface
         :param timer_name: Name of timer object
         :type timer_name: str
+        :param n_ops: Number of operators
+        :type n_ops: int
+        :param axes_min: Minimal bounds of OBL axes
+        :type axes_min: value_vector
+        :param axes_max: Maximal bounds of OBL axes
+        :type axes_max: value_vector
         :param algorithm: interpolator type:
             'multilinear' (default) - piecewise multilinear generalization of piecewise bilinear interpolation on rectangles;
             'linear' - a piecewise linear generalization of piecewise linear interpolation on triangles
@@ -386,73 +968,157 @@ class PhysicsBase:
         needed to make different filenames for cache as self.well_operators has the same type ReservoirOperators
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
+
+        :returns: tuple (interpolator, effective_n_ops)
+        :rtype: tuple[operator_set_gradient_evaluator_iface, int]
         """
+        # check input OBL props
+        if axes_min is None:
+            axes_min = self.axes_min
+        if axes_max is None:
+            axes_max = self.axes_max
+        if n_axes_points is None:
+            n_axes_points = self.n_axes_points
+
         # verify then inputs are valid
-        assert len(self.n_axes_points) == self.n_vars
-        assert len(axes_min) == self.n_vars
-        assert len(axes_max) == self.n_vars
-        for n_p in self.n_axes_points:
+        n_dims = len(n_axes_points)
+        assert len(axes_min) == n_dims
+        assert len(axes_max) == n_dims
+        for n_p in n_axes_points:
             assert n_p > 1
 
-        # calculate object name using 32 bit index type (i)
-        n_dims = self.n_vars
-        itor_name = "%s_%s_%s_interpolator_i_%s_%d_%d" % (algorithm,
-                                                          mode,
-                                                          platform,
-                                                          precision,
-                                                          n_dims,
-                                                          n_ops)
+        itor_name = f"{algorithm}_{mode}_{platform}_interpolator_i_{precision}_{n_dims:d}_{n_ops:d}"
         itor = None
         general = False
         cache_loaded = 0
+        signature_n_ops = n_ops
         # try to create itor with 32-bit index type first (kinda a bit faster)
         try:
             if algorithm == 'linear':
-                itor = eval(itor_name)(evaluator, self.n_axes_points, axes_min, axes_max, is_barycentric)
+                itor = eval(itor_name)(
+                    evaluator, n_axes_points, axes_min, axes_max, is_barycentric
+                )
             else:
-                itor = eval(itor_name)(evaluator, self.n_axes_points, axes_min, axes_max)
+                itor = eval(itor_name)(evaluator, n_axes_points, axes_min, axes_max)
         except (ValueError, NameError):
             # 32-bit index type did not succeed: either total amount of points is out of range or has not been compiled
             # try 64 bit now raising exception this time if goes wrong:
-            if np.prod(np.array(self.n_axes_points), dtype=np.float64) < np.iinfo(np.int64).max:
+            if (
+                np.prod(np.array(n_axes_points), dtype=np.float64)
+                < np.iinfo(np.int64).max
+            ):
                 itor_name = itor_name.replace('interpolator_i', 'interpolator_l')
             else:
                 itor_name = itor_name.replace('interpolator_i', 'interpolator_ll')
             try:
                 if algorithm == 'linear':
-                    itor = eval(itor_name)(evaluator, self.n_axes_points, axes_min, axes_max, is_barycentric)
+                    itor = eval(itor_name)(
+                        evaluator,
+                        n_axes_points,
+                        axes_min,
+                        axes_max,
+                        is_barycentric,
+                    )
                 else:
-                    itor = eval(itor_name)(evaluator, self.n_axes_points, axes_min, axes_max)
-            except (ValueError, NameError):
-                raise ValueError("Number of operators is incorrect, no templatized interpolator exists")
-                # if 64-bit index also failed, probably the combination of required n_ops and n_dims
-                # was not instantiated/exposed. In this case substitute general implementation of interpolator
-                itor = eval("multilinear_adaptive_cpu_interpolator_general")(evaluator, self.n_axes_points,
-                                                                             axes_min, axes_max, n_dims, n_ops)
-                general = True
+                    itor = eval(itor_name)(evaluator, n_axes_points, axes_min, axes_max)
+            except (ValueError, NameError) as err:
+                # Try to find a templatized interpolator with the same name pattern
+                # but with the closest possible higher n_ops available in darts.interpolators.
+                try:
+                    import importlib
+                    import re
+
+                    engines_module = importlib.import_module("darts.interpolators")
+                    base_prefix = itor_name.rsplit('_', 1)[0]
+                    pattern = rf"^{re.escape(base_prefix)}_(\d+)$"
+                    # Find candidates with higher n_ops
+                    candidates = []
+                    for attr_name in dir(engines_module):
+                        match = re.match(pattern, attr_name)
+                        if match:
+                            available_n_ops = int(match.group(1))
+                            if available_n_ops > n_ops:
+                                candidates.append((available_n_ops, attr_name))
+
+                    if candidates:
+                        # Sort candidates by n_ops in ascending order
+                        candidates.sort(key=lambda x: x[0])
+                        selected_n_ops, selected_name = candidates[0]
+                        selected_cls = getattr(engines_module, selected_name)
+                        if algorithm == 'multilinear':
+                            itor = selected_cls(
+                                evaluator, n_axes_points, axes_min, axes_max
+                            )
+                        elif algorithm == 'linear':
+                            itor = selected_cls(
+                                evaluator,
+                                n_axes_points,
+                                axes_min,
+                                axes_max,
+                                is_barycentric,
+                            )
+                        else:
+                            raise ValueError("Invalid algorithm: " + algorithm)
+                        signature_n_ops = selected_n_ops
+                        print(
+                            "Falling back to interpolator with higher n_ops:",
+                            selected_name,
+                            f"(n_ops={selected_n_ops})",
+                        )
+                    else:
+                        raise RuntimeError(
+                            "No higher n_ops templatized interpolator found"
+                        )
+                except Exception:
+                    # As a last resort, try the general implementation if available
+                    try:
+                        itor = eval("multilinear_adaptive_cpu_interpolator_general")(
+                            evaluator,
+                            n_axes_points,
+                            axes_min,
+                            axes_max,
+                            n_dims,
+                            n_ops,
+                        )
+                        general = True
+                    except Exception:
+                        raise ValueError(
+                            "Number of operators is incorrect, no templatized interpolator exists"
+                        ) from err
 
         if self.cache:
             # create unique signature for interpolator
-            itor_cache_signature = "%s_%s_%s_%d_%d_%s" % (
-            type(evaluator).__name__, mode, precision, n_dims, n_ops, region)
+            itor_cache_signature = f"{type(evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
             for dim in range(n_dims):
-                itor_cache_signature += "_%d_%e_%e" % (self.n_axes_points[dim], axes_min[dim], axes_max[dim])
+                itor_cache_signature += (
+                    f"_{n_axes_points[dim]:d}_{axes_min[dim]:e}_{axes_max[dim]:e}"
+                )
             # compute signature hash to uniquely identify itor parameters and load correct cache
-            itor_cache_signature_hash = str(hashlib.md5(itor_cache_signature.encode()).hexdigest())
+            itor_cache_signature_hash = str(
+                hashlib.md5(itor_cache_signature.encode()).hexdigest()
+            )
             itor_cache_filename = 'obl_point_data_' + itor_cache_signature_hash + '.pkl'
 
             if hasattr(self, 'cache_dir'):
                 itor_cache_filename = os.path.join(self.cache_dir, itor_cache_filename)
-            # if cache file exists, read it
+            # if cache file exists, read it safely
             if os.path.exists(itor_cache_filename):
-                with open(itor_cache_filename, "rb") as fp:
-                    print("Reading cached point data for ", type(itor).__name__, 'from', itor_cache_filename)
-                    itor.point_data = pickle.load(fp)
+                print(
+                    "Reading cached point data for ",
+                    type(itor).__name__,
+                    'from',
+                    itor_cache_filename,
+                )
+                loaded_point_data = self._safe_pickle_load(itor_cache_filename)
+                if loaded_point_data is not None:
+                    itor.point_data = loaded_point_data
                     print(len(itor.point_data.keys()), "points loaded")
                     cache_loaded = 1
+                else:
+                    print("Cached point data is invalid, ignoring.")
             if mode == 'adaptive':
                 # for adaptive itors, delay obl data save moment, because
                 # during simulations new points will be evaluated.
@@ -463,16 +1129,17 @@ class PhysicsBase:
         # for static itors, save the cache immediately after init, if it has not been already loaded
         # otherwise, there is no point to save the same data over and over
         if self.cache and mode == 'static' and not cache_loaded:
-            with open(itor_cache_filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__)
-                pickle.dump(itor.point_data, fp, protocol=4)
+            print("Writing point data for ", type(itor).__name__)
+            self._atomic_pickle_dump(itor.point_data, itor_cache_filename)
 
         self.create_itor_timers(itor, timer_name)
-        return itor
+        return itor, signature_n_ops
 
-    def create_itor_timers(self, itor: operator_set_gradient_evaluator_iface, timer_name: str):
+    def create_itor_timers(
+        self, itor: operator_set_gradient_evaluator_iface, timer_name: str
+    ) -> None:
         """
-        Create timers for interpolators.
+        Create timer nodes for one interpolator.
 
         :param itor: The object which performs evaluation of operator gradient (interpolators currently, AD-based in future)
         :type itor: operator_set_gradient_evaluator_iface object
@@ -481,17 +1148,26 @@ class PhysicsBase:
         """
         try:
             # in case this is a subsequent call, create only timer node for the given timer
-            self.timer.node["jacobian assembly"].node["interpolation"].node[timer_name] = timer_node()
+            self.timer.node["jacobian assembly"].node["interpolation"].node[
+                timer_name
+            ] = timer_node()
         except:
             # in case this is first call, create first only timer nodes for jacobian assembly and interpolation
             self.timer.node["jacobian assembly"] = timer_node()
             self.timer.node["jacobian assembly"].node["interpolation"] = timer_node()
-            self.timer.node["jacobian assembly"].node["interpolation"].node[timer_name] = timer_node()
+            self.timer.node["jacobian assembly"].node["interpolation"].node[
+                timer_name
+            ] = timer_node()
 
         # assign created timer to interpolator
-        itor.init_timer_node(self.timer.node["jacobian assembly"].node["interpolation"].node[timer_name])
+        itor.init_timer_node(
+            self.timer.node["jacobian assembly"].node["interpolation"].node[timer_name]
+        )
 
-    def write_cache(self):
+    def write_cache(self) -> None:
+        """
+        Flush cached interpolator point data to disk once per physics object.
+        """
         # this function can be called two ways
         #   1. Destructor (__del__) method
         #   2. Via atexit function, before interpreter exits
@@ -501,15 +1177,101 @@ class PhysicsBase:
         for itor, fname in self.created_itors:
             filename = fname
             if hasattr(self, 'cache_dir'):
-                if os.path.basename(fname) == fname:  # could already have a folder in fname
+                if (
+                    os.path.basename(fname) == fname
+                ):  # could already have a folder in fname
                     filename = os.path.join(self.cache_dir, fname)
-            with open(filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__, 'to', filename)
-                pickle.dump(itor.point_data, fp, protocol=4)
+            print("Writing point data for ", type(itor).__name__, 'to', filename)
+            # Temporarily ignore SIGINT/SIGTERM to avoid partial writes during sudden termination
+            prev_int = None
+            prev_term = None
+            try:
+                try:
+                    prev_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
+                except Exception:
+                    prev_int = None
+                try:
+                    prev_term = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                except Exception:
+                    prev_term = None
+                self._atomic_pickle_dump(itor.point_data, filename)
+            finally:
+                if prev_int is not None:
+                    try:
+                        signal.signal(signal.SIGINT, prev_int)
+                    except Exception:
+                        pass
+                if prev_term is not None:
+                    try:
+                        signal.signal(signal.SIGTERM, prev_term)
+                    except Exception:
+                        pass
 
-    def body_path_start(self, output_folder):
+    def _atomic_pickle_dump(self, obj: Any, final_path: str) -> None:
         """
-        Function that prepare hypercube output demonstrating occupancy of state space (for adaptive interpolators)
+        Atomically write a pickle file via a temporary path followed by ``os.replace``.
+
+        Flush the data to disk before the rename to reduce cache corruption on interruption.
+        """
+        directory = os.path.dirname(final_path) or "."
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception:
+            pass
+
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=os.path.basename(final_path) + ".tmp.", suffix=".pkl", dir=directory
+        )
+        try:
+            with os.fdopen(fd, "wb") as fp:
+                pickle.dump(obj, fp, protocol=4)
+                fp.flush()
+                try:
+                    os.fsync(fp.fileno())
+                except Exception:
+                    pass
+            os.replace(tmp_path, final_path)
+            # Best-effort directory fsync to persist the rename
+            try:
+                dir_fd = os.open(directory, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except Exception:
+                pass
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+
+    def _safe_pickle_load(self, path: str) -> Any | None:
+        """
+        Load a pickle file and drop it if it is corrupted or truncated.
+        """
+        try:
+            with open(path, "rb") as fp:
+                return pickle.load(fp)
+        except Exception as err:
+            print(
+                "Failed to read cached point data from",
+                path,
+                "-",
+                type(err).__name__,
+                str(err),
+            )
+            try:
+                os.remove(path)
+                print("Removed corrupted cache file", path)
+            except Exception:
+                pass
+            return None
+
+    def body_path_start(self, output_folder: str) -> None:
+        """
+        Start hypercube-occupancy output for adaptive interpolators.
 
         :param output_folder: folder to write output to
         """
@@ -517,32 +1279,30 @@ class PhysicsBase:
             os.mkdir(output_folder)
 
         with open(os.path.join(output_folder, 'body_path.txt'), "w") as fp:
-            itor = self.acc_flux_itor[0]
             self.processed_body_idxs = set()
             for id in range(self.n_vars):
-                fp.write('%d %lf %lf %s\n' % (self.n_axes_points[id],
-                                              self.axes_min[id],
-                                              self.axes_max[id],
-                                              self.vars[id]))
+                fp.write(
+                    f"{self.n_axes_points[id]:d} {self.axes_min[id]:f} {self.axes_max[id]:f} {self.vars[id]}\n"
+                )
             fp.write('Body Index Data\n')
 
-    def body_path_add_bodys(self, output_folder, time):
+    def body_path_add_bodys(self, output_folder: str, time: float) -> None:
         """
-        Function performs hypercube output demonstrating occupancy of state space (for adaptive interpolators)
+        Append hypercube-occupancy output for adaptive interpolators.
 
         :param output_folder: folder to write output to
         :param time: current time
         """
         with open(os.path.join(output_folder, 'body_path.txt'), "a") as fp:
-            fp.write('T=%lf\n' % time)
+            fp.write(f'T={time:f}\n')
             itor = self.acc_flux_itor[0]
             all_idxs = set(itor.get_hypercube_indexes())
             new_idxs = all_idxs - self.processed_body_idxs
             for i in new_idxs:
-                fp.write('%d\n' % i)
+                fp.write(f'{i:d}\n')
             self.processed_body_idxs = all_idxs
 
-    def __del__(self):
+    def __del__(self) -> None:
         # first write cache
         if self.cache:
             self.write_cache()

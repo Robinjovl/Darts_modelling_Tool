@@ -4,6 +4,7 @@ from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_ve
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params
+from darts.engines import well_control_iface, ms_well
 
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.geothermal.property_container import PropertyContainer
@@ -20,7 +21,7 @@ class Model(CICDModel):
         self.set_reservoir(resolution)
         self.set_physics(n_points)
 
-        self.set_sim_params(first_ts=1e-5, mult_ts=8, max_ts=31, runtime=365, tol_newton=1e-4, tol_linear=1e-6,
+        self.set_sim_params(first_ts=1e-6, mult_ts=8, max_ts=31, runtime=365, tol_newton=1e-4, tol_linear=1e-6,
                             it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
                             newton_params=value_vector([1]))
 
@@ -58,19 +59,19 @@ class Model(CICDModel):
         n = self.reservoir.nz // 2
         j_mid = self.reservoir.ny // 2
 
-        well_radius = 0.3
+        well_diameter = 0.6
 
         # add well
         self.reservoir.add_well("INJ")
         for j in range(jw[0], j_mid + 1):
-            self.reservoir.add_perforation("INJ", cell_index=(iw[0], j, n + 1), well_radius=well_radius,
-                                           segment_direction='y_axis', well_index=0, multi_segment=True)
+            self.reservoir.add_perforation("INJ", res_cell_idx=(iw[0], j, n + 1), well_diameter=well_diameter,
+                                           segment_direction='y_axis', well_index=0, ms_epm=True)
         perf_1 = len(self.reservoir.wells[-1].perforations)  # last segment is n_perf+1
 
         self.reservoir.add_well("PRD")
         for j in range(jw[1], j_mid, -1):
-            self.reservoir.add_perforation("PRD", cell_index=(iw[1], j, n + 1), well_radius=well_radius,
-                                           segment_direction='y_axis', well_index=0, multi_segment=True)
+            self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], j, n + 1), well_diameter=well_diameter,
+                                           segment_direction='y_axis', well_index=0, ms_epm=True)
         perf_2 = len(self.reservoir.wells[-1].perforations)
 
         # connect the last two perforations of two wells
@@ -95,14 +96,12 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_well_controls(self):
-        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=205, phase_name='water',
-                                               inj_composition=[], inj_temp=300.)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=205, phase_name='water', inj_temp=300.)
             else:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=195., phase_name='water')
 
     def compute_temperature(self, X):

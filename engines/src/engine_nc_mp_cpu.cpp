@@ -22,17 +22,19 @@
 template <uint8_t NC>
 int engine_nc_mp_cpu<NC>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 							   std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+							   operator_set_gradient_evaluator_iface* thermal_var_etor_,
 							   sim_params *params_, timer_node *timer_)
 {
 	TWO_POINT_RES_ASSEMBLY = false;
 	USE_CALCULATED_FLUX = false;
-	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 	return 0;
 }
 
 template <uint8_t NC>
 int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 									std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+									operator_set_gradient_evaluator_iface* thermal_var_etor_,
 									sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
@@ -42,6 +44,7 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 
@@ -231,7 +234,19 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	n_vars = get_n_vars();
 	n_ops = get_n_ops();
 	nc = get_n_comps();
-	z_var = get_z_var();
+	z_var_idx = get_z_var_idx();
+	if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
+	}
+	min_sim_z = min_axis_z + params->sim_eps;
+	max_sim_z = max_axis_z - params->sim_eps;
 
 	X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
 	PV.resize(mesh->n_blocks);
@@ -241,6 +256,8 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	FIPS.resize(nc);
 
 	X_init = mesh->initial_state;
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
@@ -250,6 +267,12 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 
 	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
 	op_ders_arr.resize(n_ops * n_vars * (mesh->n_blocks + mesh->n_bounds));
+
+	// History buffers: only allocated when the physics has declared history fields
+	// (n_history_runtime > 0). Xop / op_ders_arr_ext are the extended-state scratch arrays
+	// that engine_base::build_Xop / project_xop_ders operate on; Xhistory holds per-cell
+	// history values, with boundary cells seeded from mesh->Xhistory_bounds.
+	ensure_history_buffers(mesh->n_blocks + mesh->n_bounds, n_ops);
 
 	t = 0;
 
@@ -288,7 +311,7 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		w->initialize_control_epm(X_init);
 	}
 
 	Xn = X = X_init;
@@ -324,25 +347,26 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 		block_idxs[mesh->op_num[0]].emplace_back(idx++);
 	}
 
-	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	// Route through build_Xop / project_xop_ders when history fields are configured so the
+	// interpolator sees the extended state; fall back to the primary-width extract_Xop path
+	// for engines without hysteresis.
+	if (get_n_history() > 0)
+	{
+		build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+		project_xop_ders();
+	}
+	else
+	{
+		extract_Xop();
+		for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	}
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (params->log_transform == 0)
-	{
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	}
-	else if (params->log_transform == 1)
-	{
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
-	}
 
 	return 0;
 }
@@ -388,12 +412,26 @@ int engine_nc_mp_cpu<NC>::run_single_newton_iteration(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start();
 
-	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	if (get_n_history() > 0)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
-		if (result < 0)
-			return 0;
+		build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+			if (result < 0)
+				return 0;
+		}
+		project_xop_ders();
+	}
+	else
+	{
+		extract_Xop();
+		for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+			if (result < 0)
+				return 0;
+		}
 	}
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();

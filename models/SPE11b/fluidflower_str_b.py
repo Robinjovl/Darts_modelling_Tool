@@ -15,8 +15,8 @@ class FluidFlowerStruct(StructReservoir):
         str_mesh.add_shape(spe11b)
         # str_mesh.add_shape(FluidFlower(lc=[0.1]))
 
-
-        nx, ny, nz = model_specs['nx'], 1, model_specs['nz']
+        self.specs= model_specs
+        nx, ny, nz = self.specs['nx'], 1, self.specs['nz']
         x, y, z, cell_to_layer, actnum = str_mesh.generate_mesh2(nx=nx, ny=ny, nz=nz)
 
         dx, dy, dz = x[1] - x[0], 1.0, z[1] - z[0]
@@ -79,7 +79,27 @@ class FluidFlowerStruct(StructReservoir):
         pass
 
     def set_wells(self, verbose: bool = False):
-        for name, center in self.well_centers.items():
-            cell_index = self.find_cell_index(center)
-            self.well_cells.append(cell_index)
+        from darts.engines import value_vector
+
+        if self.specs['RHS']:
+            for name, center in self.well_centers.items():
+                cell_index = self.find_cell_index(center)
+                self.well_cells.append(cell_index)
+
+        else:
+            self.well_cells = []
+            for name, center in self.well_centers.items():
+                cell_index = self.find_cell_index(center)
+                self.well_cells.append(cell_index)
+
+            dx, dz = 8400/self.nx, 1200/self.nz
+            for well_nr in range(1, 3):
+                x, z = self.well_centers["I%d" % well_nr][0], self.well_centers["I%d" % well_nr][2]
+                i = min(max(int(x // dx), 0), self.nx - 1)
+                j = 1
+                k = min(max(int(z // dz), 0), self.nz - 1)
+
+                self.add_well("I%d" % well_nr)
+                self.add_perforation("I%d" % well_nr, res_cell_idx=(i, j, k), well_indexD=0, verbose=True)
+
         return

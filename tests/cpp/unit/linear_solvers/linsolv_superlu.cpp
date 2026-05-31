@@ -13,8 +13,8 @@
 
 // Tests the opendarts::linear_solvers::linsolv_superlu solver
 template <uint8_t N_BLOCK_SIZE>
-int test_linsolv_superlu(std::vector<opendarts::config::mat_float> &solution_reference, 
-    opendarts::config::index_t n_rows, 
+int test_linsolv_superlu(std::vector<opendarts::config::mat_float> &solution_reference,
+    opendarts::config::index_t n_rows,
     opendarts::config::mat_float error_tol,
     bool use_iface);
 
@@ -38,12 +38,12 @@ int main()
   /*
     test_06__SuperLU
     Tests the functionality of opendarts::linear_solvers::linsolv_superlu.
-    Constructs a tridiagonal matrix and solves the linear system with a right 
+    Constructs a tridiagonal matrix and solves the linear system with a right
     hand side.
   */
 
   int error_output = 0;
-  
+
   // Reference solutions
   std::vector<opendarts::config::mat_float> solution_reference_nb_1{-0.071823204419889, -0.071823204419889,
       0.535911602209945, 0.535911602209945, 0.160220994475138, 0.160220994475138, 0.955801104972376, 0.955801104972376,
@@ -53,23 +53,23 @@ int main()
       0.535911602209945, 0.160220994475138, 0.160220994475138, 0.160220994475138, 0.160220994475138, 0.955801104972376,
       0.955801104972376, 0.955801104972376, 0.955801104972376, 0.182320441988950, 0.182320441988950, 0.182320441988950,
       0.182320441988950, 1.364640883977901, 1.364640883977901, 1.364640883977901, 1.364640883977901};  // block size 2
-  
-  // Using directly opendarts::linear_solvers::linsolv_superlu 
-  
+
+  // Using directly opendarts::linear_solvers::linsolv_superlu
+
   // Solve settings
-  opendarts::config::index_t n_rows = 12;  // the number of rows of the system to solve, not that it is block rows 
+  opendarts::config::index_t n_rows = 12;  // the number of rows of the system to solve, not that it is block rows
   opendarts::config::mat_float error_tol = 1e-12; // the tolerance to pass the test
-  bool use_iface = false;  // do not use base class in the call to solve 
-  
+  bool use_iface = false;  // do not use base class in the call to solve
+
   // Generate SuperLU output
   error_output += test_linsolv_superlu<1>(solution_reference_nb_1, n_rows, error_tol, use_iface);
   error_output += test_linsolv_superlu<2>(solution_reference_nb_2, n_rows, error_tol, use_iface);
-  
-  // Using opendarts::linear_solvers::linsolv_iface to call solve 
-  
+
+  // Using opendarts::linear_solvers::linsolv_iface to call solve
+
   // Solve settings
-  use_iface = true;  // use base class in the call to solve 
-  
+  use_iface = true;  // use base class in the call to solve
+
   // Generate SuperLU output
   error_output += test_linsolv_superlu<1>(solution_reference_nb_1, n_rows, error_tol, use_iface);
   error_output += test_linsolv_superlu<2>(solution_reference_nb_2, n_rows, error_tol, use_iface);
@@ -78,8 +78,8 @@ int main()
 }
 
 template <uint8_t N_BLOCK_SIZE>
-int test_linsolv_superlu(std::vector<opendarts::config::mat_float> &solution_reference, 
-    opendarts::config::index_t n_rows, 
+int test_linsolv_superlu(std::vector<opendarts::config::mat_float> &solution_reference,
+    opendarts::config::index_t n_rows,
     opendarts::config::mat_float error_tol,
     bool use_iface)
 {
@@ -90,14 +90,14 @@ int test_linsolv_superlu(std::vector<opendarts::config::mat_float> &solution_ref
 
   // Auxiliary error check variables
   int error_output = 0;
-  
+
   int n_block_size = solution_reference.size()/n_rows;
-  
+
   if(solution_reference.size() % n_rows > 0)
     // Something went wrong when defining the solution vector and the size of the system
     return 1;
 
-  // Compute the solution 
+  // Compute the solution
   std::vector<opendarts::config::mat_float> solution;
   error_output += get_tridiagonal_solution_linsolv_superlu<N_BLOCK_SIZE>(solution, time_setup, time_solve, n_rows, use_iface);
 
@@ -136,20 +136,20 @@ int get_tridiagonal_solution_linsolv_superlu(std::vector<opendarts::config::mat_
       opendarts::linear_solvers::testing::block_fill_option::diagonal_block); // populate the matrix, in this case a
                                                                               // tridiagonal matrix with the values -2,
                                                                               // 1, 2 in the -2, 0, and 2 diagonals
-  
+
   opendarts::linear_solvers::csr_matrix_base *A_base = NULL;
   opendarts::linear_solvers::linsolv_iface *iface_solver;
-  
+
   // Generate the solver
 
   // Initialise the solver
   opendarts::linear_solvers::linsolv_superlu<N_BLOCK_SIZE> superlu_solver;
-  
+
   if(!use_iface)
   {
     error_output += superlu_solver.init(&A, 0, 0.0);
   }
-  else 
+  else
   {
     A_base = &A;
     iface_solver = &superlu_solver;
@@ -157,12 +157,12 @@ int get_tridiagonal_solution_linsolv_superlu(std::vector<opendarts::config::mat_
   }
 
   // Initialise the timers
-  opendarts::auxiliary::timer_node timer_setup, timer_setup_superLU;
-  opendarts::auxiliary::timer_node timer_solve, timer_solve_superLU;
+  ::timer_node timer_setup, timer_setup_superLU;
+  ::timer_node timer_solve, timer_solve_superLU;
 
   timer_setup.node.emplace("SUPERLU", timer_setup_superLU);
   timer_solve.node.emplace("SUPERLU", timer_solve_superLU);
-  
+
   if(!use_iface)
   {
     // Setup the solver
@@ -181,11 +181,11 @@ int get_tridiagonal_solution_linsolv_superlu(std::vector<opendarts::config::mat_
   // Setup the right hand side and initialize the solution
   std::vector<opendarts::config::mat_float> b(n * N_BLOCK_SIZE, 1.0);
   solution.assign(n * N_BLOCK_SIZE, 1.0);
-  
+
   if(!use_iface)
   {
     error_output += superlu_solver.solve(b.data(), solution.data());
-    
+
     // Get the time spent setting up and solving
     time_setup = superlu_solver.timer_setup->node["SUPERLU"].get_timer();
     time_solve = superlu_solver.timer_solve->node["SUPERLU"].get_timer();
@@ -193,12 +193,12 @@ int get_tridiagonal_solution_linsolv_superlu(std::vector<opendarts::config::mat_
   else
   {
     error_output += iface_solver->solve(b.data(), solution.data());
-    
+
     // Get the time spent setting up and solving
     time_setup = iface_solver->timer_setup->node["SUPERLU"].get_timer();
     time_solve = iface_solver->timer_solve->node["SUPERLU"].get_timer();
   }
-  
+
   return error_output;
 }
 

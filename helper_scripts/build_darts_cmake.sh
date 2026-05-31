@@ -11,7 +11,7 @@ set -o pipefail
 ################################################################################
 Help_Info()
 {
-  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13]"
+  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v]"
   echo "   Script to install opendarts on unix (linux and macOS)."
   echo "USAGE: "
   echo "   -h : displays this help menu."
@@ -23,9 +23,58 @@ Help_Info()
   echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
   echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
-  echo "   -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug"
+  echo "   -d MODE   : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo"
   echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
+  echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
+  echo "   -v        : Enable build with valgrind support (OFF by default)"
+  echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
+}
+
+ensure_reaktoro_conda()
+{
+  echo -e "\n-- Install Reaktoro (conda): START\n"
+
+  if python3 - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec("reaktoro") else 1)
+PY
+  then
+    echo "- Reaktoro already available in current Python environment"
+    return
+  fi
+
+  if ! command -v conda >/dev/null 2>&1; then
+    echo "Error: 'conda' command not found. Install Conda (see https://reaktoro.org/installation/installation-using-conda.html) and activate an environment before using -p."
+    exit 1
+  fi
+
+  if [[ -z "${CONDA_PREFIX:-}" ]]; then
+    echo "Error: CONDA_PREFIX is empty. Activate the target conda environment (e.g., 'conda activate rkt') before running with -p."
+    exit 1
+  fi
+
+  # Check Python version compatibility (Reaktoro on conda-forge requires Python >=3.10, <3.13)
+  local py_minor
+  py_minor=$(python3 -c "import sys; print(sys.version_info.minor)")
+  if [[ "$py_minor" -lt 10 || "$py_minor" -ge 13 ]]; then
+    local py_version
+    py_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    echo "Warning: Reaktoro on conda-forge requires Python >=3.10 and <3.13, but the current environment has Python $py_version."
+    echo ""
+    echo "To install Reaktoro, create a compatible conda environment (e.g., Python 3.12):"
+    echo "  conda create -n darts-rkt python=3.12 -y"
+    echo "  conda activate darts-rkt"
+    echo ""
+    echo "Then re-run this script with the -p flag."
+    return
+  fi
+
+  local reaktoro_log="$PWD/make_reaktoro.log"
+  echo "+ conda install -y -c conda-forge -p ${CONDA_PREFIX} reaktoro" | tee -a "$reaktoro_log"
+  conda install -y -c conda-forge -p "${CONDA_PREFIX}" reaktoro 2>&1 | tee -a "$reaktoro_log"
+  echo -e "\n--- Installing Reaktoro: DONE!\n"
 }
 ################################################################################
 # Main program                                                                 #
@@ -44,8 +93,10 @@ config="Release"  # Default configuration (install).
 NT=8              # Number of threads by default 8
 gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
+valgrind=false    # Whether support valgrind profiling or not
+CUDA_ARCH="${CUDA_ARCH:-}"
 
-while getopts ":chtwmrab:d:j:g:G" option; do
+while getopts ":chtwmrab:d:j:g:Gpv" option; do
     case "$option" in
         h) # Display help
            Help_Info
@@ -69,14 +120,23 @@ while getopts ":chtwmrab:d:j:g:G" option; do
         d) # Select a mode
            config=${OPTARG};;
         j) # Number of threads
-           NT=${OPTARG};; 
+           NT=${OPTARG};;
         g) # gpp version
            special_gpp=true
            gpp_version=${OPTARG};;
         G) # GPU build
            GPU=true;;
+        p) # Enable IPhreeqc support
+           phreeqc=true;;
+        v) # Valgrind build => Debug + symbols
+           valgrind=true;;
     esac
 done
+
+if [[ "$config" != "Release" && "$config" != "Debug" && "$config" != "RelWithDebInfo" ]]; then
+    echo "Error: Invalid build configuration \"$config\". Valid options: Release, Debug, RelWithDebInfo."
+    exit 1
+fi
 
 # Amend possible contradictory inputs
 if [ "$iter_solvers" == true ] && [ "$testing" == true ]; then
@@ -97,19 +157,21 @@ fi
 # ------------------------------------------------------------------------------
 
 # Amend the path if necessary --------------------------------------------------
-# If the script is called from inside the folder helper_scripts, then place us 
+# If the script is called from inside the folder helper_scripts, then place us
 # at the root directory open-darts.
 if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
     cd ../
 fi
 # ------------------------------------------------------------------------------
 
-rm -rf dist
-rm -rf darts/*.so
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
-    echo '\n   Cleaning build folder'
+    echo -e '\n   Cleaning build folder'
     rm -rf build
+    rm -rf dist
+    rm -rf darts/*.so
+else
+    rm -rf dist
 fi
 
 
@@ -118,28 +180,37 @@ if [[ "$skip_req" == false ]]; then
     # update submodules
     echo -e "\n- Update submodules: START \n"
     # clean-up previous versions.
-    rm -rf thirdparty/eigen thirdparty/pybind11 thirdparty/mshIO thirdparty/hypre
+    rm -rf thirdparty/pybind11 \
+            thirdparty/MshIO \
+            thirdparty/hypre \
+            thirdparty/iphreeqc
+    # synchronize & update submodules
     git submodule sync --recursive
-    git submodule update --recursive --init
+    git submodule update --init --recursive -- \
+            thirdparty/pybind11 \
+            thirdparty/MshIO \
+            thirdparty/hypre
+    if [[ $phreeqc == "true" ]]; then
+        git submodule update --init --recursive thirdparty/iphreeqc
+    fi
+    # update submodules finished
     echo -e "\n- Update submodules: DONE! \n"
 
     # Install requirements
     echo -e "\n- Install requirements: START \n"
     cd thirdparty
 
-    echo -e "\n-- Install EIGEN 3 \n"
-    mkdir -p build/eigen
-    cd build/eigen
-    cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  &> ../../../make_eigen.log
-    make install -j $NT &>> ../../../make_eigen.log
-    cd ../../
-
+    mkdir -p build
     echo -e "\n-- Install Hypre: START\n"
     cd hypre/src/cmbuild
     # Setup hypre build with no MPI support (we only use single processor)
-    # Request build of tests and examples just to be sure everything is fine in the build 
+    # Request build of tests and examples just to be sure everything is fine in the build
     # For debugging: -DHYPRE_ENABLE_PRINT
-    cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. &> ../../../../make_hypre.log
+    cmake -D HYPRE_BUILD_TESTS=ON \
+          -D HYPRE_BUILD_EXAMPLES=ON \
+          -D HYPRE_WITH_MPI=OFF \
+          -D CMAKE_INSTALL_PREFIX=../../../install \
+          .. &> ../../../../make_hypre.log
     make install -j $NT &>> ../../../../make_hypre.log
     cd ../../../
     echo -e "\n--- Building Hypre: DONE!\n"
@@ -147,7 +218,7 @@ if [[ "$skip_req" == false ]]; then
     echo -e "\n-- Install SuperLU \n"
     cd SuperLU_5.2.1
 
-  if [[ "$OSTYPE" == "darwin"* ]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
         cp conf_gcc-11_macOS_m1.mk conf.mk
         cp make_gcc-11_macOS_m1.inc make.inc
     else
@@ -161,9 +232,27 @@ if [[ "$skip_req" == false ]]; then
 
     if [[ "$bos_solvers_artifact" == true ]]; then
         cd engines
-      ./update_private_artifacts.sh $SMBNAME $SMBLOGIN $SMBPASS
-      cd ..
+        ./update_private_artifacts.sh $SMBNAME $SMBLOGIN $SMBPASS
+        cd ..
     fi
+
+    #----------------------------------------------------------------------#
+    # Build & install IPhreeqc if requested                                 #
+    #----------------------------------------------------------------------#
+    if [[ "$phreeqc" == true ]]; then
+        echo -e "\n-- Install IPhreeqc: START\n"
+        cd thirdparty
+        mkdir -p build/iphreeqc && cd build/iphreeqc
+        cmake \
+            -D CMAKE_INSTALL_PREFIX=../../install/iphreeqc \
+            -D BUILD_TESTING=OFF \
+            -D BUILD_SHARED_LIBS=ON \
+            ../../iphreeqc            &> ../../../make_iphreeqc.log
+        make install -j $NT           &>> ../../../make_iphreeqc.log
+        cd ../../..
+        echo -e "\n--- Building IPhreeqc: DONE!\n"
+    fi
+
     echo -e "\n- Install requirements: DONE! \n"
 else
     echo -e "\n- Requirements already installed \n"
@@ -180,11 +269,18 @@ echo -e "=======================================================================
 # Setup build folder
 mkdir -p build
 cd build
-rm -f CMakeCache.txt  # ensures Cmake doesn't work on outdated configuration
+
+# If valgrind requested, force Debug
+if [[ "$valgrind" = true ]]; then
+    config="Debug"
+fi
 
 # Setup build with cmake
 cmake_options="-D CMAKE_BUILD_TYPE=${config}"
 
+if [[ "$valgrind" = true ]]; then
+    cmake_options+=" -D ENABLE_VALGRIND=ON"
+fi
 if [[ "$testing" == true ]]; then
     cmake_options+=" -D ENABLE_TESTING=ON"
 fi
@@ -192,7 +288,7 @@ if [[ "$special_gpp" == true ]]; then
     cmake_options+=" -D CMAKE_CXX_COMPILER=${gpp_version}"
 fi
 
-build=ST    
+build=ST
 if [[ "$GPU" == true ]]; then
   build=GPU
 elif [[ "$MT" == true ]]; then
@@ -204,11 +300,35 @@ if [[ ! -z "$bos_solvers_dir" ]]; then
     cmake_options+=" -D BOS_SOLVERS_DIR=${bos_solvers_dir}"
 fi
 
+# Pass WITH_PHREEQC to CMake to copy shared library
+if [[ "$phreeqc" == true ]]; then
+    cmake_options+=" -DWITH_PHREEQC=ON"
+    echo "Phreeqc support: ENABLED"
+else
+    echo "Phreeqc support: DISABLED"
+fi
+
+if [[ ! -z "$CUDA_ARCH" ]]; then
+    cmake_options+=" -D CUDA_ARCH=${CUDA_ARCH}"
+fi
+
+if [[ -n "${OD_CMAKE_ARGS:-}" ]]; then
+    cmake_options+=" ${OD_CMAKE_ARGS}"
+fi
+
 echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
 # Build and install openDARTS
-make install -j $NT 2>> ../make_darts.log
+# Under valgrind (-O2 -g) the auto-generated super_part*.cpp interpolator TUs
+# can OOM-kill g++ at high -j. Pre-build the interpolators target with reduced
+# parallelism; the subsequent full build skips already-compiled objects.
+if [[ "$valgrind" == true && "$NT" -gt 1 ]]; then
+    HEAVY_NT=$(( NT / 2 ))
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT (valgrind OOM mitigation)"
+    make interpolators -j $HEAVY_NT 2>> ../make_darts.log
+fi
+cmake --build . --target install --parallel "$NT" 2>&1 | tee -a ../make_darts.log
 
 # Test
 if [[ "$testing" == true ]]; then
@@ -230,15 +350,76 @@ python3 darts/print_build_info.py
 
 # build darts.whl
 if [[ "$wheel" == true ]]; then
-    python3 setup.py clean
-    python3 setup.py build bdist_wheel 2>&1 | tee make_wheel.log
+    cp CHANGELOG.md darts
+    python3 -m pip install --upgrade build 2>&1 | tee make_wheel.log
+    python3 -m build --wheel 2>&1 | tee -a make_wheel.log
     echo -e "-- Python wheel generated! \n"
 fi
 
 # installing python package with -e flag for interactive install (changes will be applied live)
 python3 -m pip install . 2>&1 | tee -a make_wheel.log
 
+if [[ "$phreeqc" == true ]]; then
+    ensure_reaktoro_conda
+fi
+
 echo -e "\n************************************************************************"
 echo "| Building python package open-darts: DONE! "
 echo -e "************************************************************************\n"
+
+# Build warnings/errors summary -----------------------------------------------
+report_build_summary()
+{
+  local warn_pattern=': warning[: #]'
+  local err_pattern=': error[: #]'
+
+  # (component_name, log_file) pairs
+  local components=(
+    "Hypre:make_hypre.log"
+    "SuperLU:make_superlu.log"
+    "IPhreeqc:make_iphreeqc.log"
+    "open-DARTS:make_darts.log"
+  )
+
+  # Count warnings/errors before printing (avoid reading make_darts.log while appending)
+  local -A warn_counts err_counts
+  for entry in "${components[@]}"; do
+    local name="${entry%%:*}"
+    local logfile="${entry##*:}"
+    if [[ -f "$logfile" ]]; then
+      warn_counts[$name]=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
+      err_counts[$name]=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
+    fi
+  done
+
+  # Print to stdout and append to make_darts.log
+  {
+    echo ""
+    echo "========================================="
+    echo " Build warnings/errors summary"
+    echo "========================================="
+    printf " %-14s | %8s | %6s\n" "Component" "Warnings" "Errors"
+    echo " -----------------------------------------"
+
+    for entry in "${components[@]}"; do
+      local name="${entry%%:*}"
+      if [[ -n "${warn_counts[$name]+x}" ]]; then
+        printf " %-14s | %8d | %6d\n" "$name" "${warn_counts[$name]}" "${err_counts[$name]}"
+      fi
+    done
+
+    echo "========================================="
+
+    local darts_warnings=${warn_counts[open-DARTS]:-0}
+    if [[ $darts_warnings -gt 0 ]]; then
+      echo ""
+      echo " open-DARTS unique warnings:"
+      grep -E "$warn_pattern" make_darts.log 2>/dev/null | sort -u | head -100
+    fi
+
+    echo ""
+    echo "OPENDARTS_WARNING_COUNT=$darts_warnings"
+  } | tee -a make_darts.log
+}
+report_build_summary
 # ------------------------------------------------------------------------------

@@ -15,7 +15,9 @@ openDARTS with direct linear solvers can be installed from PyPI:
 pip install open-darts
 ```
 
-openDARTS is available for Python 3.9 to 3.12 for x86_64 architecture both for Linux and Windows. 
+Models that rely on PHREEQC/Reaktoro chemistry backends need the optional third-party stack. Activate the Conda environment you use for development, install Reaktoro via `conda install -c conda-forge reaktoro` (see the [official guide](https://reaktoro.org/installation/installation-using-conda.html)), and invoke `./helper_scripts/build_darts_cmake.sh -p` (or the `.bat` variant on Windows) to build the accompanying iPHREEQC libraries.
+
+The recent version of openDARTS is available for Python 3.10 to 3.13 for x86_64 architecture both for Linux and Windows.
 
 To build openDARTS please check the [instructions in our wiki](https://gitlab.com/open-darts/open-darts/-/wikis/Build-instructions).
 
@@ -33,17 +35,15 @@ For more information about how to get started visit the [documentation](https://
 
 ## License
 
-Please refer to [LICENSE.md](LICENSE.md) for more information about the licensing of openDARTS.
+Please refer to [LICENSE.md](LICENSE.md) for information about the licensing of openDARTS.
 
 ## Information
 
-The [wiki](https://gitlab.com/open-darts/open-darts/-/wikis/home) contains information on [Troubleshooting](https://gitlab.com/open-darts/open-darts/-/wikis/Troubleshooting),
-[Frequently asked questions](https://gitlab.com/open-darts/open-darts/-/wikis/F.A.Q.), [Build instructions](https://gitlab.com/open-darts/open-darts/-/wikis/Build-instructions),
-[Supported features](https://gitlab.com/open-darts/open-darts/-/wikis/Supported-features) etc.
+The [wiki](https://gitlab.com/open-darts/open-darts/-/wikis/home) contains information for developing cycle, in particular [Build instructions](https://gitlab.com/open-darts/open-darts/-/wikis/Build-instructions).
 
 ## How to cite
 
-If you use PorePy in your research, we ask you to cite the following publication
+If you use open-DARTS in your research, we ask you to cite the following publication
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8046982.svg)](https://doi.org/10.5281/zenodo.8046982)
 

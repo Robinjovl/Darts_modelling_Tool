@@ -45,6 +45,7 @@ engine_base_gpu::~engine_base_gpu()
   free_device_data(Xn_d);
   free_device_data(dX_d);
   free_device_data(RHS_d);
+  free_device_data(Xop_d);
   free_device_data(RHS_wells_d);
   free_device_data(PV_d);
   free_device_data(mesh_tran_d);
@@ -52,15 +53,46 @@ engine_base_gpu::~engine_base_gpu()
   free_device_data(op_vals_arr_d);
   free_device_data(op_vals_arr_n_d);
   free_device_data(op_ders_arr_d);
+  free_device_data(op_ders_arr_ext_d);
   for (int op_region = 0; op_region < block_idxs.size(); op_region++)
   {
     free_device_data(block_idxs_d[op_region]);
   }
 }
 
+int engine_base_gpu::evaluate_operators_d()
+{
+  if (get_n_history() > 0)
+  {
+    build_Xop();
+    copy_data_to_device(Xop, Xop_d);
+    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+    {
+      int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(
+          block_idxs[r].size(), Xop_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_ext_d);
+      if (result < 0)
+        return result;
+    }
+
+    copy_data_to_host(op_ders_arr_ext, op_ders_arr_ext_d);
+    project_xop_ders();
+    copy_data_to_device(op_ders_arr, op_ders_arr_d);
+    return 0;
+  }
+
+  for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+  {
+    int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(
+        block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
+    if (result < 0)
+      return result;
+  }
+  return 0;
+}
+
 int engine_base_gpu::post_newtonloop(value_t deltat, value_t time)
 {
-	int converged = engine_base::post_newtonloop(dt, time);
+	int converged = engine_base::post_newtonloop(deltat, time);
 	if (!converged)
 	{
 		copy_data_to_device(X, X_d);
@@ -86,12 +118,8 @@ int engine_base_gpu::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start_gpu();
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
-		if (result < 0)
-			return 0;
-	}
+	if (evaluate_operators_d() < 0)
+		return 0;
 
 	timer->node["jacobian assembly"].node["interpolation"].stop_gpu();
 
@@ -125,21 +153,6 @@ int engine_base_gpu::solve_linear_equation()
 	}
 	timer->node["linear solver setup"].stop_gpu();
 
-    if (print_linear_system) //changed this to write jacobian to file!
-    {
-      const std::string matrix_filename = "jac_nc_dar_" + std::to_string(output_counter) + ".csr";
-      copy_data_to_host(Jacobian->values, Jacobian->values_d, Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->rows_ptr[mesh->n_blocks]);
-#ifdef OPENDARTS_LINEAR_SOLVERS
-      Jacobian->export_matrix_to_file(matrix_filename, opendarts::linear_solvers::sparse_matrix_export_format::csr);
-#else
-      Jacobian->write_matrix_to_file_mm(matrix_filename.c_str());
-#endif
-      //Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
-      write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
-      write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
-      output_counter++;
-    }
-
 	if (r_code)
 	{
 		sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
@@ -158,6 +171,22 @@ int engine_base_gpu::solve_linear_equation()
 	timer->node["host<->device_overhead"].start_gpu();
 	copy_data_to_host(dX, dX_d);
 	timer->node["host<->device_overhead"].stop_gpu();
+
+  if (print_linear_system) //changed this to write jacobian to file!
+  {
+    const std::string matrix_filename = "jac_nc_dar_" + std::to_string(output_counter) + ".csr";
+    copy_data_to_host(Jacobian->values, Jacobian->values_d, Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->rows_ptr[mesh->n_blocks]);
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    Jacobian->export_matrix_to_file(matrix_filename, opendarts::linear_solvers::sparse_matrix_export_format::csr);
+#else
+    Jacobian->write_matrix_to_file_mm(matrix_filename.c_str());
+#endif
+    //Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
+    copy_data_to_host(RHS, RHS_d);
+    write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
+    write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
+    output_counter++;
+  }
 
 	if (r_code)
 	{
@@ -188,63 +217,6 @@ int engine_base_gpu::apply_newton_update(value_t dt)
 	timer->node["host<->device_overhead"].stop_gpu();
 
   return 0;
-}
-
-void engine_base_gpu::apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
-{
-  double sum_z, new_z;
-  index_t nb = mesh->n_blocks;
-  bool z_corrected;
-  index_t n_corrected = 0;
-
-  for (index_t i = 0; i < nb; i++)
-  {
-    sum_z = 0;
-    z_corrected = false;
-
-    // check all but one composition in grid block
-    for (char c = 0; c < nc - 1; c++)
-    {
-      new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-      if (new_z < min_zc)
-      {
-        new_z = min_zc;
-        z_corrected = true;
-      }
-      else if (new_z > 1 - min_zc)
-      {
-        new_z = 1 - min_zc;
-        z_corrected = true;
-      }
-      sum_z += new_z;
-    }
-    // check the last composition
-    new_z = 1 - sum_z;
-    if (new_z < min_zc)
-    {
-      new_z = min_zc;
-      z_corrected = true;
-    }
-    sum_z += new_z;
-
-    if (z_corrected)
-    {
-      // normalize compositions and set appropriate update
-      for (char c = 0; c < nc - 1; c++)
-      {
-        new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-
-        new_z = std::max(min_zc, new_z);
-        new_z = std::min(1 - min_zc, new_z);
-
-        new_z = new_z / sum_z;
-        dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
-      }
-      n_corrected++;
-    }
-  }
-  if (n_corrected)
-    std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
 }
 
 void engine_base_gpu::apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
@@ -282,9 +254,9 @@ void engine_base_gpu::apply_local_chop_correction(std::vector<value_t> &X, std::
     new_z[nc - 1] = 1.0;
     for (int j = 0; j < nc - 1; j++)
     {
-      old_z[j] = X[i * n_vars + j + z_var];
+      old_z[j] = X[i * n_vars + j + z_var_idx];
       old_z[nc - 1] -= old_z[j];
-      new_z[j] = old_z[j] - dX[i * n_vars + j + z_var];
+      new_z[j] = old_z[j] - dX[i * n_vars + j + z_var_idx];
       new_z[nc - 1] -= new_z[j];
     }
 
@@ -300,7 +272,7 @@ void engine_base_gpu::apply_local_chop_correction(std::vector<value_t> &X, std::
     if (ratio < 1.0) // perform chopping if ratio is below 1.0
     {
       n_corrected++;
-      for (int j = z_var; j < z_var + nc - 1; j++)
+      for (int j = z_var_idx; j < z_var_idx + nc - 1; j++)
       {
         dX[i * n_vars + j] *= ratio;
       }
@@ -334,12 +306,8 @@ int engine_base_gpu::test_assembly(int n_times, int kernel_number, int dump_jaco
   timer->node["jacobian assembly"].node["interpolation"].start_gpu();
   for (int i = 0; i < n_times; i++)
   {
-    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-    {
-      int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
-      if (result < 0)
-        return 0;
-    }
+    if (evaluate_operators_d() < 0)
+      return 0;
   }
   timer->node["jacobian assembly"].node["interpolation"].stop_gpu();
   for (int i = 0; i < n_times; i++)
@@ -372,6 +340,7 @@ int engine_base_gpu::test_assembly(int n_times, int kernel_number, int dump_jaco
          timer->node["jacobian assembly"].node["interpolation"].get_timer_gpu() / n_times,
          timer->node["jacobian assembly"].node["kernel"].get_timer_gpu() / n_times);
   //printf ("Average assembly kernel: %e sec\n", timer->node["test_assembly"].get_timer_gpu() / n_times);
+  return 0;
 }
 
 int engine_base_gpu::test_spmv(int n_times, int kernel_number, int dump_result)

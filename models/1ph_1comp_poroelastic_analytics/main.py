@@ -11,6 +11,8 @@ from convergence_plot import plot_conv_main
 
 from matplotlib import pyplot as plt
 from matplotlib import rcParams
+import shutil
+
 rcParams["text.usetex"]=False
 plt.rc('xtick',labelsize=16)
 plt.rc('ytick',labelsize=16)
@@ -145,7 +147,17 @@ def run_timestep_python(m, dt, t):
                     converged = 0
                 break
 
-        r_code = self.e.solve_linear_equation()
+        from darts.input.input_data import linear_solver_types
+        if hasattr(self, 'data_ts') and type(self.data_ts.linear_type) == linear_solver_types: # solvers via Python-exposed jacobian
+            if self.data_ts.linear_type in [linear_solver_types.CPU_PETSC_CPR, linear_solver_types.CPU_PETSC_FS]:
+                self.petsc_solve_linear_equation()
+            elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
+                self.pardiso_solve_linear_equation()
+            else:
+                raise Exception("Unknown linear solver type", self.idata.data_ts.linear_type)
+        else: # compile-tyme C++ linear solvers
+            r_code = self.e.solve_linear_equation()
+
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)
         self.timer.node["newton update"].stop()
@@ -260,6 +272,8 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
 
     redirect_darts_output('log.txt')
     m.output_directory = 'sol_' + case + '_' + discretizer + '_' + mesh
+    shutil.rmtree(m.output_directory, ignore_errors=True)
+    os.makedirs(m.output_directory, exist_ok=True)
     m.timer.node["update"] = timer_node()
     # m.physics.engine.find_equilibrium = False
 
@@ -372,10 +386,8 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
         pres['time'][ith_step + 1] = time
         disp['time'][ith_step + 1] = time
         # write a vtk snapshot
-        if discretizer == 'mech_discretizer':
-            m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
-        elif discretizer == 'pm_discretizer':
-            m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
+
     m.print_timers()
 
     if case != 'terzaghi_two_layers_no_analytics' and case != 'bai':
@@ -527,20 +539,15 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     # m.physics.engine.find_equilibrium = False
 
     # m.physics.engine.print_linear_system = True
-    if discretizer == 'mech_discretizer':
-        m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, 0, m.physics.engine)
-    elif discretizer == 'pm_discretizer':
-        m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, 0, m.physics.engine)
+    m.reservoir.write_to_vtk(m.output_directory, 0, m.physics.engine)
+
     time = 0.0
     for ith_step, dt in enumerate(m.idata.sim.time_steps):
         time += dt
         m.params.first_ts = dt
         m.params.max_ts = dt
         run_python(m, dt)
-        if discretizer == 'mech_discretizer':
-            m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
-        elif discretizer == 'pm_discretizer':
-            m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
 
     m.print_timers()
 
@@ -636,9 +643,9 @@ if __name__ == '__main__':
     # run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
     # run(case='mandel', discretizer='mech_discretizer', mesh='hex')
     # run(case='mandel', discretizer='pm_discretizer', mesh='hex')
-    # run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
+    #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
-    #test_all = False
+    test_all = False
     test_all = True
     cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
     if test_all:

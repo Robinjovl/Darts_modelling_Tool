@@ -12,7 +12,7 @@ namespace pm
 	const uint8_t ND = 3;
 
 	typedef linalg::Matrix<value_t> Matrix;
-	
+
 	enum Ftype { MAT, BORDER, FRAC_TO_MAT, MAT_TO_FRAC, FRAC, FRAC_BOUND };
 	class Face
 	{
@@ -33,8 +33,8 @@ namespace pm
 			value_t _area,
 			std::valarray<value_t>& _n,
 			std::valarray<value_t>& _c) : type(_type), cell_id1(_cell_id1), cell_id2(_cell_id2),
-											face_id1(_face_id1), face_id2(_face_id2), area(_area), 
-											n(_n, ND, 1), c(_c, ND, 1), is_impermeable(0) {};
+											face_id1(_face_id1), face_id2(_face_id2), n(_n, ND, 1),
+											c(_c, ND, 1), area(_area), is_impermeable(0) {};
 		Face(index_t _type,
 			index_t _cell_id1,
 			index_t _cell_id2,
@@ -44,8 +44,8 @@ namespace pm
 			std::valarray<value_t>& _n,
 			std::valarray<value_t>& _c,
 			uint8_t _is_impermeable) : type(_type), cell_id1(_cell_id1), cell_id2(_cell_id2),
-			face_id1(_face_id1), face_id2(_face_id2), area(_area),
-			n(_n, ND, 1), c(_c, ND, 1), is_impermeable(_is_impermeable) {};
+				face_id1(_face_id1), face_id2(_face_id2), n(_n, ND, 1),
+				c(_c, ND, 1), area(_area), is_impermeable(_is_impermeable) {};
 		Face(index_t _type,
 			index_t _cell_id1,
 			index_t _cell_id2,
@@ -55,8 +55,8 @@ namespace pm
 			std::valarray<value_t>& _n,
 			std::valarray<value_t>& _c,
 			std::vector<index_t>& _pts) : type(_type), cell_id1(_cell_id1), cell_id2(_cell_id2),
-											face_id1(_face_id1), face_id2(_face_id2), area(_area), 
-											n(_n, ND, 1), c(_c, ND, 1), pts(_pts), is_impermeable(0) {};
+											face_id1(_face_id1), face_id2(_face_id2), n(_n, ND, 1),
+											c(_c, ND, 1), area(_area), pts(_pts), is_impermeable(0) {};
 		Face(index_t _type,
 			index_t _cell_id1,
 			index_t _cell_id2,
@@ -67,8 +67,8 @@ namespace pm
 			std::valarray<value_t>& _c,
 			std::vector<index_t>& _pts,
 			uint8_t _is_impermeable) : type(_type), cell_id1(_cell_id1), cell_id2(_cell_id2),
-									face_id1(_face_id1), face_id2(_face_id2), area(_area), 
-									n(_n, ND, 1), c(_c, ND, 1), pts(_pts), is_impermeable(_is_impermeable) {};
+										face_id1(_face_id1), face_id2(_face_id2), n(_n, ND, 1),
+										c(_c, ND, 1), area(_area), pts(_pts), is_impermeable(_is_impermeable) {};
 		~Face() {};
 	};
 	class Matrix33 : public Matrix
@@ -112,7 +112,7 @@ namespace pm
 	};
 
 	enum Scheme { DEFAULT, APPLY_EIGEN_SPLITTING, APPLY_EIGEN_SPLITTING_NEW, AVERAGE };
-	
+
 	class pm_discretizer
 	{
 	public:
@@ -144,7 +144,7 @@ namespace pm
 		void write_trans_biot(const std::vector<index_t>& st, const Matrix& from, const Matrix& from_biot);
 		void write_trans_biot(const std::vector<index_t>& st, const Matrix& from, const Matrix& from_biot, const Matrix& from_face_unknowns);
 		void write_trans_biot_therm_cond(const std::vector<index_t>& st, const Matrix& from, const Matrix& from_biot, const Matrix& from_th_cond);
-		
+
 		void contact_mixing(value_t dt, index_t cell_id, index_t fault_id, const Face& face);
 		void contact_mixing_new(value_t dt, index_t cell_id, index_t fault_id, const Face& face);
 

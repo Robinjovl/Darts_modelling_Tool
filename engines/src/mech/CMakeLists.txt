@@ -16,17 +16,16 @@ set(OD_ENGINES_MECHANICS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/pm_discretizer.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mech_operators.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_pm_cpu.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/contact.h  
+  ${CMAKE_CURRENT_SOURCE_DIR}/contact.h
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_elastic_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_elastic_cpu.tpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/matrix.h
 )
 
 # Define the engines_mechanics library
 # This is always a static library since we wish to use it internally only
 add_library(engines_mechanics OBJECT "")
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
   target_compile_definitions(engines_mechanics PUBLIC OPENDARTS_LINEAR_SOLVERS)
@@ -44,9 +43,7 @@ target_link_libraries(engines_mechanics
     opendarts_compiler_flags
     linear_solvers
     engines_global
-    engines_interpolator
 	opendarts_discretizer
-    Eigen3::Eigen
 	HYPRE::HYPRE
     pybind11::pybind11
 )
@@ -57,6 +54,7 @@ target_include_directories(engines_mechanics
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
+    ${INTERPOLATION_INCLUDE_DIRS}
 )
 
 # Setup IDE directory structure for engines_mechanics
@@ -64,13 +62,13 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_MECHANICS_SR
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_MECHANICS_PUBLIC_HEADER_FILES})
 
 # Install the library file of engines_mechanics
-install(TARGETS engines_mechanics 
-  CONFIGURATIONS RELEASE    
+install(TARGETS engines_mechanics
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
 install(TARGETS engines_mechanics
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 

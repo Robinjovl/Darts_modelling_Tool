@@ -3,7 +3,7 @@ from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
-from darts.engines import value_vector, sim_params
+from darts.engines import value_vector, sim_params, ms_well
 
 from darts.input.input_data import InputData
 
@@ -21,7 +21,7 @@ class Model(CICDModel):
         self.set_input_data(n_points)
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-3, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
+        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
                             it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
                             newton_params=value_vector([1]))
 
@@ -58,14 +58,14 @@ class Model(CICDModel):
         # add well
         self.reservoir.add_well("INJ")
         for k in range(1, self.reservoir.nz):
-            self.reservoir.add_perforation("INJ", cell_index=(iw[0], jw[0], k + 1),
-                                           well_radius=0.16, multi_segment=True)
+            self.reservoir.add_perforation("INJ", res_cell_idx=(iw[0], jw[0], k + 1),
+                                           well_diameter=0.32, ms_epm=True)
 
         # add well
         self.reservoir.add_well("PRD")
         for k in range(1, self.reservoir.nz):
-            self.reservoir.add_perforation("PRD", cell_index=(iw[1], jw[1], k + 1),
-                                           well_radius=0.16, multi_segment=True)
+            self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], jw[1], k + 1),
+                                           well_diameter=0.32, ms_epm=True)
 
     def set_physics(self):
         if self.iapws_physics:
@@ -101,7 +101,7 @@ class Model(CICDModel):
                 # Define PropertyContainer
                 from darts.physics.super.property_container import PropertyContainer
                 zero = 1e-10
-                property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, min_z=zero/10)
+                property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, eps_z=zero/10)
 
                 property_container.flash_ev = PXFlash(flash_params, PXFlash.ENTHALPY)
 
@@ -145,10 +145,10 @@ class Model(CICDModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
                                                is_inj=True, target=8000., phase_name='water', inj_composition=[], inj_temp=300.)
             else:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
                                                is_inj=False, target=8000., phase_name='water')
 
     def compute_temperature(self, X):

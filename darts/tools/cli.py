@@ -1,5 +1,5 @@
 """
-A CLI for DARTS, which ensures that the runtime environment is properly set up for 
+A CLI for DARTS, which ensures that the runtime environment is properly set up for
 running DARTS scripts and models.
 
 You can either manually specify the path to python scripts:
@@ -12,15 +12,15 @@ Or directly run a model.py model script:
     `darts --model models/2ph_comp`
 """
 
+import argparse
+import os
+import subprocess
+import sys
 from pathlib import Path
-import argparse, os, subprocess, sys
 
-# Make sure all modules are imported successfully
-from .. import engines, discretizer
 import darts
 
-
-import ctypes
+# Make sure all modules are imported successfully
 
 
 def valid_path(string):
@@ -29,7 +29,19 @@ def valid_path(string):
     else:
         raise argparse.ArgumentTypeError(f"invalid path: '{string}'")
 
+
 def get_lib_var():
+    if sys.platform == 'linux':
+        return 'LD_PRELOAD'
+    elif sys.platform == 'darwin':
+        return 'DYLD_LIBRARY_PATH'
+    elif sys.platform.startswith('win'):
+        return 'PATH'
+    else:
+        return None
+
+
+def get_lib_search_var():
     if sys.platform == 'linux':
         return 'LD_LIBRARY_PATH'
     elif sys.platform == 'darwin':
@@ -45,7 +57,26 @@ def get_darts_path():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    args_list = sys.argv.copy()
+    # Show help if no arguments are passed (same as 'darts -h')
+    if len(args_list) <= 1:
+        args_list.append('-h')
+
+    # Handle multiprocessing spawn / resource_tracker callbacks
+    if args_list[1] in ('-c', '-m'):
+        # Extend dynamic loader search path for inline Python execution
+        lib_search_var = get_lib_search_var()
+        if lib_search_var:
+            os.environ[lib_search_var] = (
+                os.environ.get(lib_search_var, "") + os.pathsep + str(get_darts_path())
+            )
+        python_args = [sys.executable] + args_list[1:]
+        res = subprocess.run(python_args)
+        sys.exit(res.returncode)
+
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
     parser.add_argument(
         "path",
@@ -74,7 +105,7 @@ def main():
         "args", nargs=argparse.REMAINDER, help="Arguments to pass to the script."
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(args_list[1:])
 
     def print_version():
         import pkg_resources
@@ -82,12 +113,11 @@ def main():
         version = pkg_resources.get_distribution("open-darts").version
         print(f"open-darts: v{version}")
 
-
     if args.version:
         print_version()
         exit()
-    path = args.path
 
+    path = args.path
     python_args = [sys.executable]
 
     if not path:
@@ -95,7 +125,7 @@ def main():
         parser.print_usage()
         exit()
 
-    if path and os.path.isdir(path):
+    if os.path.isdir(path):
         file = "model.py" if args.model else "main.py"
         filepath = os.path.join(path, file)
 
@@ -107,16 +137,24 @@ def main():
             )
             exit(1)
 
-    if path:
-        python_args.append(path)
-
+    python_args.append(path)
     python_args += args.args
 
     # Update env vars for running DARTS
-    lib_var = get_lib_var()
+    # Prefer search path over forced preload to avoid ABI conflicts with other packages (e.g., Reaktoro)
+    lib_search_var = get_lib_search_var()
+    if lib_search_var:
+        os.environ[lib_search_var] = (
+            os.environ.get(lib_search_var, "") + os.pathsep + str(get_darts_path())
+        )
 
-    if lib_var:
-        os.environ[lib_var] = str(get_darts_path()) + ":" + os.environ.get(lib_var, "")
+    # Optional opt-in to force-preload libstdc++.so.6 if absolutely required
+    if os.environ.get("DARTS_FORCE_PRELOAD_LIBSTDCXX", "0") in ("1", "true", "True"):
+        lib_var = get_lib_var()
+        if lib_var:
+            os.environ[lib_var] = (
+                str(get_darts_path()) + "/libstdc++.so.6:" + os.environ.get(lib_var, "")
+            )
 
     res = subprocess.run(python_args)
     sys.exit(res.returncode)

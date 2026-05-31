@@ -59,21 +59,19 @@ def generate_mesh(idata : InputData):
 
     # rename output dir if exists
     if os.path.exists(output_dir):
-        ren_fname = output_dir + '_prev'
-        if os.path.exists(ren_fname):
-            shutil.rmtree(ren_fname)
         try:
-            os.renames(output_dir, ren_fname)
-        except:
-            print('Cannot rename the output folder. Thus, the results will be replaced.')
             shutil.rmtree(output_dir)
-    os.makedirs(output_dir)
+        except:
+            pass
+    os.makedirs(output_dir, exist_ok=True)
 
     #rotate_input(input_data, frac_data_raw)
 
     # 2D geometry plot (wells and fractures)
     import matplotlib.pyplot as plt
     plt.gca().set_aspect('equal')
+    if len(frac_data_raw.shape) == 1: # if just one fracture
+        frac_data_raw = frac_data_raw.reshape((1,frac_data_raw.size))
     for i in range(frac_data_raw.shape[0]):
         plt.plot(np.append(frac_data_raw[i, 0], frac_data_raw[i, 2]),
                  np.append(frac_data_raw[i, 1], frac_data_raw[i, 3]))

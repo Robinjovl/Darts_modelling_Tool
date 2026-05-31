@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params, value_vector
+from darts.engines import sim_params, value_vector, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -26,13 +26,12 @@ class Model(CICDModel):
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-5, tol_linear=1e-6,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
-        self.params.stationary_point_tolerance = 1e-5
+        self.data_ts.newton_tol_stationary = 1e-5
 
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
-        trans_exp = 3
-        perm = 100  # / (1 - solid_init) ** trans_exp
+        perm = 100
         """Reservoir"""
         nx = 1000
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1,
@@ -41,12 +40,13 @@ class Model(CICDModel):
 
     def set_wells(self):
         self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         self.zero = 1e-12
+        epsilon = 1e-13
 
         components = ['CO2', 'Ions', 'H2O', 'CaCO3']
         phases = ['gas', 'wat', 'sol']
@@ -71,9 +71,9 @@ class Model(CICDModel):
         self.inj_composition = [x * (1 - solid_inject) for x in zc_fl_inj_composition_gas]
 
         """Physical properties"""
-        # Create property containers:
+        # Create a property container
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, nc_sol=1, np_sol=1,
-                                               temperature=1., rock_comp=1e-7, min_z=self.zero / 10)
+                                               temperature=1., rock_comp=1e-7, eps_z=epsilon)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
@@ -93,7 +93,8 @@ class Model(CICDModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=101, min_p=1, max_p=1000, min_z=self.zero / 10, max_z=1 - self.zero / 10)
+                                     n_points=101, min_p=1, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -111,11 +112,11 @@ class Model(CICDModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
                                                is_inj=True, target=0.2, phase_name='gas',
                                                inj_composition=self.inj_composition)
             else:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=50.)
 
     def print_and_plot(self, filename):
@@ -228,7 +229,7 @@ class Model(CICDModel):
 
         axs[2][2].plot(1 - Ss, 'b')
         axs[2][2].set_xlabel('x [m]', font_dict_axes)
-        axs[2][2].set_ylabel('$\phi$ [-]', font_dict_axes)
+        axs[2][2].set_ylabel(r'$\phi$ [-]', font_dict_axes)
         axs[2][2].set_title('Porosity', fontdict=font_dict_title)
 
         left = 0.05  # the left side of the subplots of the figure

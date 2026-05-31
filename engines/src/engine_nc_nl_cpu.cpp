@@ -11,7 +11,8 @@
 
 #include "engine_nc_nl_cpu.hpp"
 #include "conn_mesh.h"
-#include "mech/matrix.h"
+#include "matrix.h"
+
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
@@ -26,12 +27,11 @@
 #include "linsolv_bos_amg.h"
 #include "linsolv_amg1r5.h" // Not available in opendarts_linear_solvers
 #include "linsolv_superlu.h"
-#endif // OPENDARTS_LINEAR_SOLVERS                                                                                                                                        
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t NC>
 const std::string engine_nc_nl_cpu<NC>::AVG_MPFA = "AVG_MPFA";
@@ -43,9 +43,10 @@ const std::string engine_nc_nl_cpu<NC>::NLMPFA = "NLMPFA";
 template <uint8_t NC>
 int engine_nc_nl_cpu<NC>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 							   std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                           operator_set_gradient_evaluator_iface* thermal_var_etor_,
 							   sim_params *params_, timer_node *timer_)
 {
-	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 	appr_mode = NLTPFA;
 	return 0;
 }
@@ -53,6 +54,7 @@ int engine_nc_nl_cpu<NC>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 template <uint8_t NC>
 int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 									std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	                                operator_set_gradient_evaluator_iface* thermal_var_etor_,
 									sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
@@ -62,6 +64,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 
@@ -245,13 +248,27 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 
 	n_vars = get_n_vars();
 	n_ops = get_n_ops();
 	nc = get_n_comps();
-	z_var = get_z_var();
+	z_var_idx = get_z_var_idx();
+	if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
+	}
+	min_sim_z = min_axis_z + params->sim_eps;
+	max_sim_z = max_axis_z - params->sim_eps;
 
 	fluxes.resize(mesh->n_conns);
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
@@ -263,6 +280,8 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	FIPS.resize(nc);
 
 	X_init = mesh->initial_state;
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
@@ -310,7 +329,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		w->initialize_control_epm(X_init);
 	}
 
 	Xn = X = X_init;
@@ -346,25 +365,23 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 		block_idxs[mesh->op_num[0]].emplace_back(idx++);
 	}
 
-	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	if (get_n_history() > 0)
+	{
+		engine_base::build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+		project_xop_ders();
+	}
+	else
+	{
+		extract_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	}
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (params->log_transform == 0)
-	{
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	}
-	else if (params->log_transform == 1)
-	{
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
-	}
 
 	return 0;
 }
@@ -410,12 +427,26 @@ int engine_nc_nl_cpu<NC>::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start();
 
-	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	if (get_n_history() > 0)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
-		if (result < 0)
-			return 0;
+		engine_base::build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+			if (result < 0)
+				return 0;
+		}
+		project_xop_ders();
+	}
+	else
+	{
+		extract_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+			if (result < 0)
+				return 0;
+		}
 	}
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();
@@ -478,7 +509,7 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_avgmpfa(value_t dt, std::vecto
 	index_t end = n_blocks;
 #endif //_OPENMP
 
-		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, upwd_jac_idx;
+		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, upwd_jac_idx = 0;
 		value_t buf, flux;
 		value_t mu[MATRIX];
 		value_t CFL_in[NC], CFL_out[NC];
@@ -681,7 +712,7 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_nltpfa(value_t dt, std::vector
 	index_t end = n_blocks;
 #endif //_OPENMP
 
-		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, conn_st, upwd_jac_idx, r_counter, cell_p_st_id;
+		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, conn_st, upwd_jac_idx = 0, r_counter, cell_p_st_id = 0;
 		value_t buf;
 		value_t flux, mu[MATRIX], R[MATRIX], dR[MATRIX][MATRIX], dmu[MATRIX][MATRIX][MATRIX];
 		value_t CFL_in[NC], CFL_out[NC];
@@ -1010,12 +1041,12 @@ int engine_nc_nl_cpu<NC>::solve_linear_equation()
 template <uint8_t NC>
 void engine_nc_nl_cpu<NC>::extract_Xop()
 {
+	// Non-hysteresis MPFA state build: reservoir unknowns followed by boundary unknowns.
+	// The hysteresis path is handled by engine_base::build_Xop in assemble_linear_system.
 	if (Xop.size() < (mesh->n_blocks + mesh->n_bounds) * NC_)
 	{
 		Xop.resize((mesh->n_blocks + mesh->n_bounds) * NC_);
 	}
-
-	// copy unknown variables
 	std::copy(X.begin(), X.end(), Xop.begin());
 	std::copy(mesh->pz_bounds.begin(), mesh->pz_bounds.end(), Xop.begin() + N_VARS * mesh->n_blocks);
 }

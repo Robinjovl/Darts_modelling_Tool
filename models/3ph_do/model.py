@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params
+from darts.engines import sim_params, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -36,14 +36,15 @@ class Model(CICDModel):
 
     def set_wells(self):
         self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         """Physical properties"""
         # Create property containers:
         zero = 1e-8
+        epsilon = 1e-9
         components = ['g', 'o', 'w']
         phases = ['gas', 'oil', 'wat']
         Mw = [1, 1, 1]
@@ -51,7 +52,7 @@ class Model(CICDModel):
         self.ini_stream = [0.05, 0.2 - zero]
 
         """ properties correlations """
-        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=zero / 10)
+        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, eps_z=epsilon)
 
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
                                               ('oil', DensityBasic(compr=1e-5, dens0=600)),
@@ -67,7 +68,8 @@ class Model(CICDModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=100, min_p=1, max_p=200, min_z=zero / 10, max_z=1 - zero / 10)
+                                     n_points=100, min_p=1, max_p=200, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -84,23 +86,24 @@ class Model(CICDModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=True, target=120., inj_composition=self.inj_composition)
             else:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=60.)
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6):
+    def __init__(self, phases_name, components_name, Mw, eps_z=1e-11, rock_comp=1e-6):
         # Call base class constructor
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z,
                          rock_comp=rock_comp, temperature=1.)
 
     def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
         # evaluate_PT argument is required in PropertyContainer but is not needed in this model
-        
+
         ph = np.array([0, 1, 2], dtype=np.intp)
+        self.temperature = temperature
 
         for i in range(self.nc):
             self.x[i][i] = 1

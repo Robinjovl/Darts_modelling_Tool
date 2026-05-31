@@ -34,19 +34,21 @@ public:
   virtual uint8_t get_n_comps() const override = 0;
 
   // get the index of Z variable
-  virtual uint8_t get_z_var() const override = 0;
+  virtual uint8_t get_z_var_idx() const override = 0;
 
   // initialization
-  virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) override = 0;
+  virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                   operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_) override = 0;
 
   template <uint8_t N_VARS>
-  int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_);
+  int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_);
+  int evaluate_operators_d();
 
   // newton loop
   virtual int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override = 0;
   virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override = 0;
 
-  void apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
   void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
   void apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
 
@@ -90,6 +92,7 @@ public:
 
   // linear system
   value_t *X_d, *Xn_d, *dX_d, *RHS_d;      // [N_VARS * n_blocks] arrays for solution, previous timestep solution, update, and right hand side
+  value_t *Xop_d = nullptr;                // [(N_VARS + n_history) * n_blocks] extended OBL state for history-aware interpolation
   value_t *RHS_wells_d;                    // [N_VARS * n_blocks] temporary device storage for RHS_wells copied async from host while main assembly is done
   std::vector<value_t> jac_wells;          // [n_wells * 2 * N_VARS * N_VARS ] temporary host storage for well equations
   value_t *jac_wells_d;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary device storage for well equations
@@ -97,9 +100,10 @@ public:
   index_t *jac_well_head_idxs_d;           // [n_wells] device storage for well head indexes in jacobian values array
 
   // interpolation
-  value_t *op_vals_arr_d;   // [N_OPS * n_blocks] array of values of operators
-  value_t *op_ders_arr_d;   // [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
-  value_t *op_vals_arr_n_d; // [N_OPS * n_blocks] array of values of operators from the last timestep
+  value_t *op_vals_arr_d;          // [N_OPS * n_blocks] array of values of operators
+  value_t *op_ders_arr_d;          // [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
+  value_t *op_ders_arr_ext_d = nullptr; // [N_OPS * (N_VARS + n_history) * n_blocks] extended derivative scratch
+  value_t *op_vals_arr_n_d;        // [N_OPS * n_blocks] array of values of operators from the last timestep
 
   std::vector<index_t *> block_idxs_d; // [N_OP_NUM][?] vector of arrays of block indexes corresponding to given operator set
 
@@ -112,13 +116,14 @@ public:
   value_t *darcy_velocities_d;         // [n_res_blocks * NP * ND] array of phase Darcy velocities for every reservoir cell
   value_t *mesh_velocity_appr_d;       // coefficients of approximation of Darcy phase velocities over fluxes
   index_t *mesh_velocity_offset_d;     // offsets in the approximation of Darcy phase velocities over fluxes
-  index_t *mesh_op_num_d;              // regions indices for every cell 
-  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory 
+  index_t *mesh_op_num_d;              // regions indices for every cell
+  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory
 };
 
 template <uint8_t N_VARS>
 int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+                               operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                sim_params *params_, timer_node *timer_)
 {
   time_t rawtime;
@@ -128,6 +133,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   mesh = mesh_;
   wells = well_list_;
   acc_flux_op_set_list = acc_flux_op_set_list_;
+  thermal_var_etor = thermal_var_etor_;
   params = params_;
   timer = timer_;
 
@@ -158,8 +164,8 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   {
     params->linear_type = sim_params::GPU_GMRES_CPR_AMGX_ILU;
   }
-  
-  std::string linear_solver_type_str;	
+
+  std::string linear_solver_type_str;
   if (!linear_solver)
   {
     switch (params->linear_type)
@@ -167,13 +173,22 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     case sim_params::GPU_GMRES_CPR_AMG:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
-      cpr->set_prec(new linsolv_bos_amg<1>);
-      linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_GMRES_CPR_AMG";
+      if constexpr (N_VARS > 1)
+      {
+        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+        cpr->set_prec(new linsolv_bos_amg<1>);
+        linear_solver->set_prec(cpr);
+        linear_solver_type_str = "GPU_GMRES_CPR_AMG";
+      }
+      else
+      {
+        linear_solver->set_prec(new linsolv_bos_amg<1>);
+        linear_solver_type_str = "GPU_GMRES_AMG";
+      }
+
       break;
     }
 #ifdef WITH_AIPS
@@ -214,55 +229,82 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     case sim_params::GPU_GMRES_CPR_AMGX_ILU:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+      if constexpr (N_VARS > 1)
+      {
+        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
-      // set p system prec
-      cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
-      // set full system prec
-      cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>(matrix_free, 0));
-      linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+        // set p system prec
+        cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
+        // set full system prec
+        cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>(matrix_free, 0));
+        linear_solver->set_prec(cpr);
+        linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+      }
+      else
+      {
+        linear_solver->set_prec(new linsolv_amgx<1>(device_num));
+        linear_solver_type_str = "GPU_GMRES_AMGX";
+      }
+
       break;
     }
     case sim_params::GPU_GMRES_CPR_AMGX_ILU_SP:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+      if constexpr (N_VARS > 1)
+      {
+        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
-      // set p system prec
-      cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
-      // set full system prec
-      cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>(matrix_free, 1));
-      linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU_SP";
+        // set p system prec
+        cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
+        // set full system prec
+        cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>(matrix_free, 1));
+        linear_solver->set_prec(cpr);
+        linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU_SP";
+      }
+      else
+      {
+        linear_solver->set_prec(new linsolv_amgx<1>(device_num));
+        linear_solver_type_str = "GPU_GMRES_AMGX_SP";
+      }
+
       break;
     }
     case sim_params::GPU_GMRES_CPR_AMGX_AMGX:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
-
-      int convert_to_bs1 = 0;
-      if (params->linear_params.size() > 0)
+      if constexpr (N_VARS > 1)
       {
-        convert_to_bs1 = params->linear_params[0];
+        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+
+        int convert_to_bs1 = 0;
+        if (params->linear_params.size() > 0)
+        {
+          convert_to_bs1 = params->linear_params[0];
+        }
+
+        // set p system prec
+        cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
+        // set full system prec
+        cpr->set_prec(new linsolv_amgx<N_VARS>(device_num, convert_to_bs1));
+        linear_solver->set_prec(cpr);
+        linear_solver_type_str = "GPU_GMRES_CPR_AMGX_AMGX";
+      }
+      else
+      {
+        linear_solver->set_prec(new linsolv_amgx<1>(device_num));
+        linear_solver_type_str = "GPU_GMRES_AMGX";
       }
 
-      // set p system prec
-      cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
-      // set full system prec
-      cpr->set_prec(new linsolv_amgx<N_VARS>(device_num, convert_to_bs1));
-      linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_GMRES_CPR_AMGX_AMGX";
       break;
     }
     case sim_params::GPU_GMRES_AMGX:
@@ -361,15 +403,29 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     }
     }
   }
-  
+
   std::cout << "Linear solver type is " << params->linear_type << std::endl;
-	
+
   // *** allocate host data ***
 
   n_vars = get_n_vars();
   n_ops = get_n_ops();
   nc = get_n_comps();
-  z_var = get_z_var();
+  z_var_idx = get_z_var_idx();
+
+  if (params->log_transform == 0)
+  {
+    min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
+  }
+  else if (params->log_transform == 1)
+  {
+    min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
+
+  }
+  min_sim_z = min_axis_z + params->sim_eps;
+  max_sim_z = max_axis_z - params->sim_eps;
 
   X.resize(n_vars * mesh->n_blocks);
   Xn.resize(n_vars * mesh->n_blocks);
@@ -383,9 +439,13 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   old_z.resize(nc);
   new_z.resize(nc);
   FIPS.resize(nc);
+  old_z_fl.resize(nc - n_solid);
+	new_z_fl.resize(nc - n_solid);
 
   op_vals_arr.resize(n_ops * mesh->n_blocks);
-  //op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);
+  op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);
+
+  ensure_history_buffers(mesh->n_blocks + mesh->n_bounds, n_ops);
 
   jac_wells.resize(2 * n_vars * n_vars * wells.size());
   jac_well_head_idxs.resize(wells.size());
@@ -406,9 +466,16 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   allocate_device_data(op_vals_arr, &op_vals_arr_d);
   allocate_device_data(op_vals_arr, &op_vals_arr_n_d);
   allocate_device_data(&op_ders_arr_d, n_ops * n_vars * mesh->n_blocks);
+  if (get_n_history() > 0)
+  {
+    allocate_device_data(Xop, &Xop_d);
+    allocate_device_data(op_ders_arr_ext, &op_ders_arr_ext_d);
+  }
 
   // *** initialize host data ***
   X_init = mesh->initial_state;
+  this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
   X_init.resize(n_vars * mesh->n_blocks);
   for (index_t i = 0; i < mesh->n_blocks; i++)
   {
@@ -447,7 +514,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   int iw = 0;
   for (ms_well *w : wells)
   {
-    w->initialize_control(X_init);
+    w->initialize_control_epm(X_init);
     jac_well_head_idxs[iw++] = w->well_head_idx;
   }
 
@@ -488,18 +555,6 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   time_data.clear();
   time_data_report.clear();
 
-  if (params->log_transform == 0)
-  {
-    min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-    max_zc = 1 - min_zc * params->obl_min_fac;
-    //max_zc = acc_flux_op_set_list[0]->get_maxzc();
-  }
-  else if (params->log_transform == 1)
-  {
-    min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-    max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));                       //log based composition
-  }
-
   // *** initialize device data ***
   copy_data_to_device(X, X_d);
   copy_data_within_device(Xn_d, X_d, X.size());
@@ -513,8 +568,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   }
 
   // interpolate initial values
-  for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-    acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
+  evaluate_operators_d();
   copy_data_within_device(op_vals_arr_n_d, op_vals_arr_d, op_vals_arr.size());
 
   copy_data_to_device(PV, PV_d);

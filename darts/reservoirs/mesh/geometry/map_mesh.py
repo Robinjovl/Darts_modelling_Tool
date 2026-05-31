@@ -1,8 +1,8 @@
-import numpy as np
-from math import pi, asin
-from scipy.spatial import KDTree
+from math import asin, pi
 
+import numpy as np
 from numba import jit
+from scipy.spatial import KDTree
 
 
 @jit(nopython=True)
@@ -12,10 +12,14 @@ def _find_cells_index(xyz, centroids):
     """
     dist0 = None
     cell_index = None
-    for l, centroid in enumerate(centroids):
-        dist1 = np.sqrt((xyz[0] - centroid[0]) ** 2 + (xyz[1] - centroid[1]) ** 2 + (xyz[2] - centroid[2]) ** 2)
+    for i, centroid in enumerate(centroids):
+        dist1 = np.sqrt(
+            (xyz[0] - centroid[0]) ** 2
+            + (xyz[1] - centroid[1]) ** 2
+            + (xyz[2] - centroid[2]) ** 2
+        )
         if dist0 is None or dist1 < dist0:
-            cell_index = l
+            cell_index = i
             dist0 = dist1
 
     return cell_index
@@ -24,16 +28,16 @@ def _find_cells_index(xyz, centroids):
 @jit(nopython=True)
 def _find_struct_cell_index(centroid: list, x, y, z):
     # Centroid to structured mesh
-    for i, X in enumerate(x):
+    for _i, X in enumerate(x):
         if X >= centroid[0]:
             break
-    for j, Y in enumerate(y):
+    for _j, Y in enumerate(y):
         if Y >= centroid[1]:
             break
-    for k, Z in enumerate(z):
+    for _k, Z in enumerate(z):
         if Z >= centroid[2]:
             break
-    return [i, j, k]
+    return [_i, _j, _k]
 
 
 @jit(nopython=True)
@@ -42,21 +46,21 @@ def _translate_curvature(centroids):
     Function to translate the centroid coordinates of the curved interface back to flat
     """
     xyz = np.zeros((len(centroids), 3))
-    for l, centroid in enumerate(centroids):
+    for i, centroid in enumerate(centroids):
         r = np.sqrt(centroid[0] ** 2 + centroid[1] ** 2)  # radius of circle at centroid
         theta = pi / 8 + asin(centroid[0] / r)  # angle from left end of domain
 
         X = r * theta  # arc length L == x
-        Y = 0.
+        Y = 0.0
         Z = centroid[2]
-        xyz[l, :] = np.array([X, Y, Z])
+        xyz[i, :] = np.array([X, Y, Z])
     return xyz
 
 
 @jit(nopython=True)
 def _find_connections(cells_idxs, conn_0, conn_1):
     connections = []
-    for i, cell in enumerate(cells_idxs):
+    for _i, cell in enumerate(cells_idxs):
         conn = []
         for j, cell_0 in enumerate(conn_0):
             cell_1 = conn_1[j]
@@ -76,7 +80,7 @@ def _find_cells_in_polygon(centroids, points, segments, polygon):
     cells_idxs = []
 
     for ith_cell, centroid in enumerate(centroids):
-        X, Y, Z = centroid[0], centroid[1], centroid[2]
+        X, _Y, Z = centroid[0], centroid[1], centroid[2]
 
         intersections = 0
         for s in polygon:

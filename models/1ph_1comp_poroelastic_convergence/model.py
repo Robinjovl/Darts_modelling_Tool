@@ -7,13 +7,13 @@ from darts.input.input_data import InputData
 from darts.engines import value_vector, sim_params, mech_operators
 
 class Model(THMCModel):
-    def __init__(self, mode, mesh_filename, n_points=64, discretizer='mech_discretizer', heat_cond_mult=1.):
+    def __init__(self, mode, mesh_filename, discretizer='mech_discretizer', heat_cond_mult=1.):
         self.mode = mode
         self.mesh_filename = mesh_filename
         self.discretizer_name = discretizer
         self.physics_type = 'poromechanics'  # folder name for vtk output
         self.heat_cond_mult = heat_cond_mult
-        super().__init__(n_points=n_points, discretizer=discretizer)
+        super().__init__()
 
     def init(self):
         super().init()
@@ -95,26 +95,33 @@ class Model(THMCModel):
                                         0.35,   0.45,   1.5]
             self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
             self.idata.rock.heat_capacity = 1.0
-            self.idata.rock.conductivity = self.heat_cond_mult * 1.e+6 * np.array([1.5, 0.1, 0.5,
+            self.idata.rock.thermal_conductivity = self.heat_cond_mult * 1.e+6 * np.array([1.5, 0.1, 0.5,
                                                              0.1, 1.5, 0.15,
                                                              0.5, 0.15, 1.5])
             self.idata.rock.compressibility = 0.0
         else:
-            self.idata.rock.compressibility = self.idata.rock.porosity * 1.4503768e-05 
+            self.idata.rock.compressibility = self.idata.rock.porosity * 1.4503768e-05
 
         self.idata.fluid.compressibility = 0.0
         self.idata.fluid.viscosity = 1e-2
         self.idata.fluid.Mw = 1.0
         self.idata.fluid.density = 978.0
+        if self.mode == 'thermoporoelastic':
+            self.idata.fluid.heat_capacity = self.idata.rock.heat_capacity # [kJ/kg/K] the same as for the rock
+            #self.idata.fluid.heat_capacity *= self.idata.fluid.Mw / self.idata.fluid.density  # convert from [kJ/m3/K] to [kJ/kmol/K]
+        else:
+            self.idata.fluid.heat_capacity = 0.
+        self.idata.fluid.thermal_conductivity = 0. # it is not used in the mech. engines
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
+        self.idata.obl.epsilon_z = 1e-10
         self.idata.obl.min_p = -500.
         self.idata.obl.max_p = 500.
         self.idata.obl.min_t = -100.
         self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
+        self.idata.obl.min_z = 0.
+        self.idata.obl.max_z = 1.
 
         super().set_input_data()
 

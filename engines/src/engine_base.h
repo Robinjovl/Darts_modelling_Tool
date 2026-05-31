@@ -8,8 +8,20 @@
 
 #include "globals.h"
 #include "conn_mesh.h"
-#include "interpolator_base.hpp"
-#include "pybind11/py_globals.h"
+#include "evaluator_iface.h"
+
+#include <pybind11/numpy.h>
+namespace py = pybind11;
+
+template <typename T>
+inline py::array_t<T> get_raw_array(T* arr, size_t size) {
+  return py::array_t<T>(
+    { size },
+    { sizeof(T) },
+    arr,
+    py::capsule(arr, [](void* /*f*/) {})
+  );
+}
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/data_types.hpp"
@@ -18,6 +30,8 @@
 #include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_fs_cpr.hpp"
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
+#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
+#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
 using namespace opendarts::linear_solvers;
 #else
 #include "linsolv_bos_gmres.h"
@@ -25,7 +39,11 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_bos_cpr.h"
 #include "linsolv_bos_fs_cpr.h"
 #include "csr_matrix.h"
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#include "linsolv_bos_amg.h"
+#include "linsolv_amg1r5.h"
+#include "linsolv_superlu.h"
+#include "linsolv_hypre_amg.h"
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef WITH_GPU
 #include "linsolv_bos_cpr_gpu.h"
@@ -36,26 +54,11 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_cusolver.h"
 #endif
 
-#ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
-// #include "openDARTS/linear_solvers/linsolv_amg1r5.h"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
-#else
-#include "linsolv_bos_amg.h"
-#include "linsolv_amg1r5.h"
-#include "linsolv_superlu.h"
-#endif // OPENDARTS_LINEAR_SOLVERS
-
-#ifdef WITH_HYPRE
-#include "linsolv_hypre_amg.h"
-#endif
-
 #ifdef WITH_SAMG
 #include "linsolv_samg.h"
 #endif
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -67,6 +70,15 @@ class operator_set_gradient_evaluator_iface;
 /// This class defines infrastructure for simulation
 class engine_base
 {
+public:
+	enum class StateSpecification
+	{
+		P = 0,
+		PT,
+		PH,
+		PS,
+	};
+
 	// methods
 public:
 	engine_base()
@@ -88,6 +100,7 @@ public:
 		enabled_flux_output = false;
 		is_fickian_energy_transport_on = true;
 		newton_update_coefficient = 1.0;
+		n_solid = 0;
 	};
 
 	~engine_base()
@@ -118,13 +131,42 @@ public:
 	virtual uint8_t get_n_fl_var() const { return 0; };
 
 	// get the index of Z variable
-	virtual uint8_t get_z_var() const = 0;
+	virtual uint8_t get_z_var_idx() const = 0;
+
+	// get the number of solid/mineral species
+	virtual uint8_t get_n_solid() const { return n_solid; };
+
+	// Number of per-cell history variables fed to OBL interpolation but not part of the Newton
+	// system (e.g. trapped/max-gas saturation for Killough hysteresis). Python sets this before
+	// engine.init() via `engine.n_history_runtime = k`; 0 disables the Xop / Xhistory code paths.
+	uint8_t n_history_runtime = 0;
+
+	virtual uint8_t get_n_history() const { return n_history_runtime; };
+
+	// get the dimension of the OBL interpolation state: Newton unknowns + history variables
+	virtual uint8_t get_n_state() const { return get_n_vars() + get_n_history(); };
+
+	// Allocate / resize the history-aware scratch buffers used by build_Xop and project_xop_ders.
+	// No-op when no history variables are active.
+	void ensure_history_buffers(const index_t n_total, const uint8_t n_ops_)
+	{
+		const uint8_t n_history = get_n_history();
+		if (n_history == 0)
+			return;
+
+		const uint8_t n_state = get_n_state();
+		if (Xhistory.size() < (size_t)n_total * n_history)
+			Xhistory.assign((size_t)n_total * n_history, 0.0);
+		Xop.resize((size_t)n_total * n_state);
+		op_ders_arr_ext.resize((size_t)n_total * n_ops_ * n_state);
+	}
 
 	// initialization
-	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) = 0;
+	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_) = 0;
 
 	template <uint8_t N_VARS>
-	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_);
+	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+	              operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_);
 
 	virtual int init_jacobian_structure(csr_matrix_base *jacobian);
 
@@ -139,21 +181,27 @@ public:
 	virtual double calc_well_residual_L1();
 	virtual double calc_well_residual_L2();
 	virtual double calc_well_residual_Linf();
+	virtual double calc_coupled_well_reservoir_residual(int method);
 
 	virtual void average_operator(std::vector<value_t> &av_op);
 
-	virtual void apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
+	// Apply composition correction on initial state: normalize to within [min_sim_z, max_sim_z]
+	virtual void apply_composition_correction(std::vector<value_t>& Xi);
+	// Apply composition correction on Newton update: normalize to within [min_sim_z, max_sim_z]
+	virtual void apply_composition_correction(std::vector<value_t>& X, std::vector<value_t> &dX);
+	// Alternative composition correction on Newton update: find intersection of Newton update with compositional domain (not used currently)
 	virtual void apply_composition_correction_(std::vector<value_t>& X, std::vector<value_t>& dX);
 
 	virtual void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 	virtual void apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 
-	void apply_composition_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_local_chop_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX);
 
 	void apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_global_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_local_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
+
+	virtual void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
 
 	virtual int apply_newton_update(value_t dt);
 
@@ -166,6 +214,16 @@ public:
 	virtual int print_timestep(value_t time, value_t deltat);
 
 	int print_header();
+
+	// Build Xop = [X | Xhistory] for reservoir + boundary cells when n_history > 0. No-op otherwise.
+	// mesh->Xhistory_bounds supplies the history values to use at boundary cells.
+	void build_Xop();
+
+	// After interpolating into op_ders_arr_ext (sized by n_state), copy the first n_vars derivative
+	// columns into op_ders_arr (the Newton-sized buffer) so the assembly kernels can consume it
+	// with the standard compile-time N_VARS stride. Derivatives w.r.t. history are dropped, which is
+	// correct because history values are not Newton unknowns.
+	void project_xop_ders();
 
 	/// @brief report for one newton iteration
 	virtual int assemble_linear_system(value_t deltat);
@@ -194,7 +252,9 @@ public:
 	  // maximum values
 	  std::fill_n(max_row_values_inv.data(), n_blocks * N_VARS, 0.0);
 
+#ifdef _OPENMP
 	  #pragma omp parallel for
+#endif
 	  for (index_t i = 0; i < n_blocks; i++)
 	  {
 		index_t csr_start = rows[i];
@@ -218,9 +278,9 @@ public:
 	  }
 
 	  // compute inverses
-	  for (index_t i = 0; i < n_blocks; i++) 
+	  for (index_t i = 0; i < n_blocks; i++)
 	  {
-		for (uint8_t c = 0; c < N_VARS; c++) 
+		for (uint8_t c = 0; c < N_VARS; c++)
 		{
 		  value_t& val = max_row_values_inv[i * N_VARS + c];
 		  if (val != 0.0)
@@ -231,7 +291,9 @@ public:
 	  }
 
 	  // scaling
+#ifdef _OPENMP
 	  #pragma omp parallel for
+#endif
 	  for (index_t i = 0; i < n_blocks; i++)
 	  {
 		index_t csr_start = rows[i];
@@ -243,12 +305,12 @@ public:
 		  inv_vals[c] = max_row_values_inv[i * N_VARS + c];
 
 		// scale jacobian
-		for (index_t j = csr_start; j < csr_end; j++) 
+		for (index_t j = csr_start; j < csr_end; j++)
 		{
 		  const index_t base = j * N_VARS_SQ;
-		  for (uint8_t c = 0; c < N_VARS; c++) 
+		  for (uint8_t c = 0; c < N_VARS; c++)
 		  {
-			for (uint8_t v = 0; v < N_VARS; v++) 
+			for (uint8_t v = 0; v < N_VARS; v++)
 			  Jac[base + c * N_VARS + v] *= inv_vals[c];
 		  }
 		}
@@ -258,7 +320,7 @@ public:
 		  RHS[i * N_VARS + c] *= inv_vals[c];
 	  }
 	};
-	
+
 	/// @} // end of Methods
 
 	// properties
@@ -297,7 +359,7 @@ public:
 
 	// @brief python wrapper for jacobian values
 	py::array_t<value_t> jac_vals;
-	
+
 	// @brief python wrappers for storing BCSR jacobian structure
 	py::array_t<index_t> jac_rows, jac_cols, jac_diags;
 
@@ -319,18 +381,22 @@ public:
 
 	linsolv_iface *linear_solver;
 
-	//operator_set_gradient_evaluator_iface* acc_flux_op_set;
-	std::vector<operator_set_gradient_evaluator_iface *> acc_flux_op_set_list;
+	// operator interfaces
+	std::vector<operator_set_gradient_evaluator_iface*> acc_flux_op_set_list;
+	operator_set_gradient_evaluator_iface* thermal_var_etor;
 
 	uint8_t n_vars;
 	uint8_t n_ops;
 	uint8_t nc;
-	uint8_t z_var;
-	double min_zc;
-	double max_zc;
+	uint8_t z_var_idx;
+	// number of mineral/solid species
+	uint8_t n_solid;
+	StateSpecification state_spec;
+	double min_axis_z;  // OBL axis min for composition
+	double max_axis_z;  // OBL axis max for composition
+	double min_sim_z;   // Min composition to remain well above OBL min_axis_z and physical bounds (0): min_axis_z + params->sim_eps
+	double max_sim_z;   // Max composition to remain well below OBL max_axis_z and physical bounds (1): max_axis_z - params->sim_eps
 	std::vector<value_t> old_z, new_z; // [NC] array for local chop
-
-	uint8_t nc_fl;
 	std::vector<value_t> old_z_fl, new_z_fl; // [NC_FLUID] array for local chop
 
 	std::vector<value_t> X_init;				   // [N_VARS * n_blocks] array of initial solution
@@ -348,6 +414,12 @@ public:
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
 	std::vector<value_t> dispersivity;		// [n_regions * NP * NC] dispersion coefficients
+	// History variables: per-cell quantities that feed OBL interpolation but are not Newton unknowns.
+	// Used for path-dependent state such as sg_max in Killough hysteresis, while keeping the storage
+	// generic for future OBL history variables.
+	std::vector<value_t> Xhistory;				// [(n_blocks + n_bounds) * n_history] history values (reservoir cells then boundary cells)
+	std::vector<value_t> Xop;				// [(n_blocks + n_bounds) * n_state] extended state vector fed to interpolator; empty unless n_history > 0
+	std::vector<value_t> op_ders_arr_ext;	// [(n_blocks + n_bounds) * n_ops * n_state] scratch for interpolator derivative output when n_history > 0
 
 	// rates, bhps, FIPs, etc
 	std::unordered_map<std::string, std::vector<value_t>> time_data_report;
@@ -358,7 +430,7 @@ public:
 	std::vector<value_t> X0, RHS, dX;
 
 	value_t dt, prev_usual_dt, stop_time;
-	
+
 	index_t output_counter;
 	bool print_linear_system;
 
@@ -406,7 +478,7 @@ public:
 	// adjoint method--------------------------------------------------------------------------------------
 
 	// initialize dg_dT_general, which is similar to the jacobian initialization
-	int init_adjoint_structure(csr_matrix_base* init_adjoint);  
+	int init_adjoint_structure(csr_matrix_base* init_adjoint);
 
 	// assemble dg_dx_n, dg_dT, dj_dx. This is similar to "init_jacobian_structure" in the forward simulation
 	virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) = 0;
@@ -453,7 +525,7 @@ public:
 
 	linsolv_iface* linear_solver_ad;
 
-	// the total number of the cell interfaces, 
+	// the total number of the cell interfaces,
     // including 1. res to res (trans), 2. res to well_body (WI), 3. well_body to well_head
 	// n_interfaces = mesh->n_conns / 2;
 	index_t n_interfaces;
@@ -480,7 +552,7 @@ public:
 	typedef std::vector<std::vector<std::vector<value_t>>> vec_3d;
 
 	int prepare_dj_dx(vec_3d q, vec_3d q_inj,
-		std::vector<std::vector<value_t>> bhp, std::vector<std::vector<value_t>> well_tempr, 
+		std::vector<std::vector<value_t>> bhp, std::vector<std::vector<value_t>> well_tempr,
 		std::vector<std::vector<value_t>> temperature, std::vector<std::vector<value_t>> customized_op,
 		index_t idx_sim_ts, index_t idx_obs_ts);
 
@@ -609,6 +681,7 @@ public:
 template <uint8_t N_VARS>
 int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 						   std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+						   operator_set_gradient_evaluator_iface* thermal_var_etor_,
 						   sim_params *params_, timer_node *timer_)
 {
 	time_t rawtime;
@@ -618,6 +691,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	mesh = mesh_;
 	wells = well_list_;
 	acc_flux_op_set_list = acc_flux_op_set_list_;
+	thermal_var_etor = thermal_var_etor_;
 	params = params_;
 	timer = timer_;
 
@@ -650,7 +724,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	}
 #endif
 
-	std::string linear_solver_type_str;	
+	std::string linear_solver_type_str;
 	// create linear solver
 	if (!linear_solver)
 	{
@@ -659,10 +733,19 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		case sim_params::CPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
-			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
-			cpr->set_prec(new linsolv_bos_amg<1>);
-			linear_solver->set_prec(cpr);
-			linear_solver_type_str = "CPU_GMRES_CPR_AMG";
+			if constexpr (N_VARS > 1)
+			{
+			  linsolv_iface* cpr = new linsolv_bos_cpr<N_VARS>;
+			  cpr->set_prec(new linsolv_bos_amg<1>);
+			  linear_solver->set_prec(cpr);
+			  linear_solver_type_str = "CPU_GMRES_CPR_AMG";
+			}
+			else
+			{
+			  linear_solver->set_prec(new linsolv_bos_amg<1>);
+			  linear_solver_type_str = "CPU_GMRES_AMG";
+			}
+
 			break;
 		}
 #ifdef _WIN32
@@ -677,7 +760,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			linear_solver_type_str = "CPU_GMRES_CPR_AMG1R5";
 			break;
 		}
-#endif 
+#endif
 #endif //_WIN32
 		case sim_params::CPU_GMRES_ILU0:
 		{
@@ -696,6 +779,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 #ifdef WITH_GPU
 		case sim_params::GPU_GMRES_CPR_AMG:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
@@ -704,11 +789,21 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			linear_solver_type_str = "GPU_GMRES_CPR_AMG";
+			}
+			else
+			{
+			  // N_VARS == 1: CPR collapses to pure AMG, still needs the GMRES outer solver
+			  linear_solver = new linsolv_bos_gmres<N_VARS>(1);
+			  linear_solver->set_prec(new linsolv_bos_amg<1>);
+			  linear_solver_type_str = "GPU_GMRES_AMG";
+			}
 			break;
 		}
 #ifdef WITH_AIPS
 		case sim_params::GPU_GMRES_CPR_AIPS:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
@@ -737,12 +832,15 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			cpr->set_prec(new linsolv_aips<1>(n_terms, print_radius, aips_type, print_structure));
 			linear_solver->set_prec(cpr);
+			}
 			linear_solver_type_str = "GPU_GMRES_CPR_AIPS";
 			break;
 		}
 #endif //WITH_AIPS
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
@@ -754,11 +852,21 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>);
 			linear_solver->set_prec(cpr);
 			linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+			}
+			else
+			{
+			  // N_VARS == 1: CPR collapses to pure AMGX, still needs the GMRES outer solver
+			  linear_solver = new linsolv_bos_gmres<N_VARS>(1);
+			  linear_solver->set_prec(new linsolv_amgx<1>);
+			  linear_solver_type_str = "GPU_GMRES_AMGX";
+			}
 			break;
 		}
 #ifdef WITH_ADGPRS_NF
 		case sim_params::GPU_GMRES_CPR_NF:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			// NF was initially created for CPU-based solver, so keeping unnesessary GPU->CPU->GPU copies so far for simplicity
@@ -799,6 +907,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 			cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
 			linear_solver->set_prec(cpr);
+			}
 			linear_solver_type_str = "GPU_GMRES_CPR_NF";
 			break;
 		}
@@ -806,7 +915,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		case sim_params::GPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-            linear_solver_type_str = "GPU_GMRES_ILU0";
+			linear_solver_type_str = "GPU_GMRES_ILU0";
 			break;
 		}
 #endif
@@ -815,7 +924,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		    std::cerr << "Linear solver type " << params->linear_type << " is not supported for " << engine_name << std::endl << std::flush;
 		    exit(1);
 		}
-		
+
 		}
 	}
 
@@ -824,18 +933,35 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	n_vars = get_n_vars();
 	n_ops = get_n_ops();
 	nc = get_n_comps();
-	z_var = get_z_var();
-	nc_fl = get_n_comps();
+	z_var_idx = get_z_var_idx();
+
+	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
+	mesh->n_vars = n_vars;
+
+	if (params->log_transform == 0)
+	{
+		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
+		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
+	}
+	else if (params->log_transform == 1)
+	{
+		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
+		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
+	}
+	min_sim_z = min_axis_z + params->sim_eps;
+	max_sim_z = max_axis_z - params->sim_eps;
 
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
-	old_z_fl.resize(nc_fl);
-	new_z_fl.resize(nc_fl);
+	old_z_fl.resize(nc - n_solid);
+	new_z_fl.resize(nc - n_solid);
 
 	X_init = mesh->initial_state;  // initialize only reservoir blocks with mesh->initial_state array
+	this->apply_composition_correction(X_init);  // apply composition correction for initial state
+
 	X_init.resize(n_vars * mesh->n_blocks);
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
@@ -845,6 +971,11 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	op_vals_arr.resize(n_ops * mesh->n_blocks);
 	op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);
+
+	// History buffers: allocated only if the engine reports n_history > 0 (see engine_base::get_n_history).
+	// Xhistory stores per-cell history values for reservoir cells followed by boundary cells; boundary
+	// entries are seeded from mesh->Xhistory_bounds by build_Xop.
+	ensure_history_buffers(mesh->n_blocks + mesh->n_bounds, n_ops);
 
 	t = 0;
 
@@ -880,10 +1011,15 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");
 	std::cout << buffer << std::flush;
 
-	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		// initialize the state of well segments
+		if (w->ms_type == ms_well::MS_Type::EPM)
+			w->initialize_control_epm(X_init);
+		else if (w->ms_type == ms_well::MS_Type::DFM && w->control.get_well_control_type() > well_control_iface::WellControlType::NONE)
+			w->initialize_control_dfm(X_init);
+		else if (w->ms_type == ms_well::MS_Type::DFM && w->control.get_well_control_type() == well_control_iface::WellControlType::NONE)
+			std::copy(w->init_state.begin(), w->init_state.end(), X_init.begin() + w->well_head_idx * n_vars);
 	}
 
 	Xn = X = X_init;
@@ -916,30 +1052,22 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		block_idxs[op_region].emplace_back(idx++);
 	}
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+	if (get_n_history() > 0)
+	{
+		build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+		project_xop_ders();
+	}
+	else
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+	}
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();
 	time_data_report.clear();
-
-	if (params->log_transform == 0)
-	{
-		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	}
-	else if (params->log_transform == 1)
-	{
-		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
-	}
-
-
-
-
-
-
 
 	// for adjoint method------------------------------------------
 
@@ -950,9 +1078,9 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		// prepare dg_dx_n_temp
 		init_adjoint_structure(dg_dx_n_temp);
 
-		// here we remove wells.size() transmissibility between well head and well body (i.e. segment_transmissibility)
-		// because there is no need to optimize segment_transmissibility, which is usually a large value of 100000
-		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);  
+		// here we remove wells.size() transmissibility between well head and well body (i.e. well_transmissibility)
+		// because there is no need to optimize well_transmissibility, which is usually a large value of 100000
+		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
 		col_dT_du = Temp_1;
 
 

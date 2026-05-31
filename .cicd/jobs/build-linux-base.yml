@@ -1,0 +1,39 @@
+.build-linux:
+    stage: build
+    image: "${CI_REGISTRY_IMAGE}/linux-builder"
+    # Will be executed on runner with linux tag - that assumed to run on linux host
+    tags:
+        - linux
+    variables:
+        CONDA_ENV: "darts-${CI_JOB_ID}"
+    before_script:
+        - echo 'before build-linux'
+        - source /opt/conda/bin/activate
+        - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
+        - conda activate ${CONDA_ENV}
+        - export PY_SUFFIX=`python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"`
+        - python -m pip install --upgrade pip setuptools wheel
+    script:
+        # Build open-darts
+        - echo "build *.so on linux started with ODLS=$ODLS"
+        - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS -p
+        # Check for warnings
+        - |
+          WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
+          WARN_COUNT=${WARN_COUNT:-0}
+          if [ "$WARN_COUNT" -gt 0 ] && { [ "$CI_COMMIT_BRANCH" = "development" ] || [ "$CI_COMMIT_BRANCH" = "main" ]; }; then
+            echo "FAILED: $WARN_COUNT open-DARTS compilation warning(s) on $CI_COMMIT_BRANCH branch"
+            exit 1
+          fi
+    after_script:
+        - source /opt/conda/bin/activate
+        - conda env remove -n ${CONDA_ENV} --yes || true
+    needs:
+    - job: docker-image-builder
+      optional: true
+    artifacts:
+      paths:
+        - './dist/*.whl'
+        - '*.log'
+      expire_in: 1 week
+      when: always

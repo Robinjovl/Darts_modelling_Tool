@@ -1,18 +1,10 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-#ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/auxiliary/timer_node.hpp"
-#else
 #include "timer_node.h"
-#endif // OPENDARTS_LINEAR_SOLVERS
 
 #include <fstream>
 #include <vector>
-
-#ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
-#endif // OPENDARTS_LINEAR_SOLVERS
 
 #include <cstdint>
 using namespace std;
@@ -51,6 +43,10 @@ static std::ofstream log_stream;
 #ifdef WITH_GPU
 extern int device_num;
 #endif
+
+// __uint128_t emulation (MSVC), numeric_limits, hash, and to_string
+// are now provided solely by interpolation_config.h (included
+// transitively via evaluator_iface.h → interpolation_config.h).
 
 /// Main simulation parameters including tolerances
 class sim_params
@@ -123,8 +119,9 @@ public:
     tot_newt_count = 0;
     log_transform = 0;
     interface_avg_tmult = 0;
-    trans_mult_exp = 0;
-    obl_min_fac = 10;
+    enable_permporo = false;
+    // obl_min_fac = 10;
+    sim_eps = 1e-12;
     assembly_kernel = 0;
 
     finalize_mpi = 1;
@@ -150,8 +147,9 @@ public:
   index_t tot_newt_count;      // total number of newton iterations (wasted + non-wasted)
   index_t log_transform;       // 0 => normal comp (X=[P,Z1,...,Znc-1]), 1 => logtransform of comp (X=[P,log(Z1),...,log(Znc-1)])
   index_t interface_avg_tmult; // 0 => normal trans-multiplier (in operator), 1 => interface weighted trans-multiplier (in engine)
-  index_t trans_mult_exp;      // exponent used for transmissibility multiplier => pow(phi_n/phi_0, trans_mult_exp)
+  bool enable_permporo;        // flag enabling transmissibility multiplier in assembly
   value_t obl_min_fac;         // factor used to determine z_min --> usually taken around 10, such that z_min = 10*z_OBL_min
+  value_t sim_eps;             // offset from axes that solution should remain inside
   int assembly_kernel;         // select non-default assebly kernel (for GPU)
 
   newton_solver_t newton_type;          // Newton solver type (more precisely, nonlinear update type - chopping strategies)
@@ -368,68 +366,7 @@ struct recursive_exposer_nc_np_t<exposer_t, pymodule_t, NC_STOP, NC_STOP, NP, TH
   }
 };
 
-// exposer helper class for <N_DiMS, N_OPS> template: N_OPS=N_DIMS*N_OPS_A + N_OPS_B
-
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint8_t N_OPS_A, uint8_t N_OPS_B>
-struct recursive_exposer_ndims_nops
-{
-  static void expose(pymodule_t &m)
-  {
-    exposer_t<N_DIMS, N_DIMS * N_OPS_A + N_OPS_B> e;
-
-    e.expose(m);
-
-    recursive_exposer_ndims_nops<exposer_t, pymodule_t, N_DIMS - 1, N_OPS_A, N_OPS_B>::expose(m);
-  }
-};
-
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint8_t N_OPS>
-struct recursive_exposer_ndims_nops2
-{
-    static void expose(pymodule_t& m)
-    {
-        exposer_t<N_DIMS, N_OPS> e;
-
-        e.expose(m);
-
-        recursive_exposer_ndims_nops2<exposer_t, pymodule_t, N_DIMS - 1, N_OPS>::expose(m);
-        recursive_exposer_ndims_nops2<exposer_t, pymodule_t, N_DIMS, N_OPS - 1>::expose(m);
-    }
-};
-
-// partial specialization to stop recusrion
-
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_OPS_A, uint8_t N_OPS_B>
-struct recursive_exposer_ndims_nops<exposer_t, pymodule_t, 1, N_OPS_A, N_OPS_B>
-{
-  static void expose(pymodule_t &m)
-  {
-    exposer_t<1, 1 * N_OPS_A + N_OPS_B> e;
-
-    e.expose(m);
-  }
-};
-
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_OPS>
-struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, 1, N_OPS>
-{
-    static void expose(pymodule_t& m)
-    {
-        exposer_t<1, N_OPS> e;
-
-        e.expose(m);
-    }
-};
-
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS>
-struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, N_DIMS, 1>
-{
-    static void expose(pymodule_t& m)
-    {
-        exposer_t<N_DIMS, 1> e;
-
-        e.expose(m);
-    }
-};
+// Recursive exposer helpers moved to interpolation library (recursive_exposers.h).
+// Include that header directly where needed (e.g. via py_interpolator_exposer.hpp).
 
 #endif

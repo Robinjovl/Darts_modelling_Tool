@@ -1,6 +1,6 @@
 # Tutorial
 
-## Getting started with any model
+### Getting started with any model
 
 In order to use DARTS you need to set up the model. It usually includes a few Python scripts called `main.py`, `model.py`.
 - `main.py` usually manages the initialization of a model, the simulation run, the time stepping, and the output types, e.g. `vtk` files, time data `Excel` files or plots.

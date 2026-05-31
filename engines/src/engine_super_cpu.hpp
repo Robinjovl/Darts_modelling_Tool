@@ -21,7 +21,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -40,32 +39,53 @@ public:
   // number of equations
   const static uint8_t NE = N_VARS;
   // order of primary variables:
-  const static uint8_t P_VAR = 0;
-  const static uint8_t Z_VAR = 1;
-  const static uint8_t T_VAR = NC;
+  const static uint8_t P_VAR = 0;    // Index for pressure
+  const static uint8_t Z_VAR = 1;    // Index for first component in composition
+  const static uint8_t T_VAR = NC;   // Index for thermal variable
 
-  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2*NP gravity and capillarity, 1 porosity, NP enthalpy, 2 temperature and pressure
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
+  // number of operators: NE accumulation operators, NE*NP flux operators, NP density, NP up_constant, NE*NP gradient,
+  //                      NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP phase mobility,
+  //                      NP saturation, NP enthalpy, 2 temperature and pressure
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
+                               NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
+                               NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
+
+
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
   // diffusion
-  const static uint8_t UPSAT_OP = NE + NE * NP;
-  const static uint8_t GRAD_OP = NE + NE * NP + NP;
+  const static uint8_t DENS_OP = NE + NE * NP;
+  const static uint8_t UPSAT_OP = NE + NE * NP + NP;
+  const static uint8_t GRAD_OP = NE + NE * NP + NP + NP;
   // kinetic reaction
-  const static uint8_t KIN_OP = NE + NE * NP + NP + NE * NP;
-
+  const static uint8_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
   // extra operators
-  const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE;
-  const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + NP;
-  const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP;
-  const static uint8_t ENTH_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1;
-  const static uint8_t TEMP_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
-  const static uint8_t PRES_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + 1;
+  const static uint8_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
+  const static uint8_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
+  const static uint8_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;
+  const static uint8_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1;
+  const static uint8_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
+  const static uint8_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
+  const static uint8_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
+  const static uint8_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
+
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
   // Define extra class property stoichiometric coefficient of the reaction (now hard coded, but has to become input?, maybe required to be placed somewhere else?):
   std::vector<index_t> stoich_coef;
+
+  // Phase velocities at all connections including DFM wells
+  std::vector<value_t> one_way_phase_vels;
+  std::vector<value_t> phase_vels;
+  std::vector<value_t> phases_vels;
+
+  // Derivatives of phase velocities at all connections including DFM wells
+  const static uint8_t vel_der_size = N_VARS * 2;   // multiplied by 2 because velocity at connection is differentiated with respect to primary vars of two adjacent blocks
+  std::vector<value_t> one_way_phase_vels_ders;
+  std::vector<value_t> two_way_phase_vels_ders;
+  std::vector<value_t> phase_vels_ders;
+  std::vector<value_t> phases_vels_ders;
 
   // number of variables per jacobian matrix block
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
@@ -73,7 +93,11 @@ public:
   uint8_t get_n_vars() const override { return N_VARS; };
   uint8_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_comps() const override { return NC; };
-  uint8_t get_z_var() const override { return Z_VAR; };
+  uint8_t get_z_var_idx() const override { return Z_VAR; };
+
+  // If enthalpy is the primary var, the following axis bounds are also used
+  value_t min_axis_temp;  // OBL axis min for temperature
+  value_t max_axis_temp;  // OBL axis max for temperature
 
   engine_super_cpu()
   {
@@ -89,6 +113,7 @@ public:
 
   int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
            std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
+           operator_set_gradient_evaluator_iface* thermal_var_etor_,
            sim_params *params_, timer_node *timer_);
 
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
@@ -96,6 +121,10 @@ public:
   //double calc_newton_residual();
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
+
+  void update_two_way_phase_vels_and_ders();
+
+  void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX) override;
 
   void enable_flux_output();
 };

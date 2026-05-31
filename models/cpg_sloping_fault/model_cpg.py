@@ -2,8 +2,8 @@ import numpy as np
 import os
 
 from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, check_arrays, make_burden_layers, make_full_cube
-from darts.discretizer import load_single_float_keyword
-from darts.engines import value_vector
+from darts.engines import ms_well
+from darts.reservoirs.cpg_reservoir import read_int_array, read_float_array
 
 from darts.tools.gen_cpg_grid import gen_cpg_grid
 
@@ -36,15 +36,34 @@ class Model_CPG(CICDModel):
         else:
             # read grid and rock properties
             arrays = read_arrays(self.idata.gridfile, self.idata.propfile)
+
+        # poro, perm and thermal properties are specified for regions based on integer array of geological units ROCKNUM
+        if 'ROCKNUM' in arrays.keys() and arrays['ROCKNUM'].size > 0:
+            num_geo_units = arrays['ROCKNUM'].max()
+            assert num_geo_units == len(self.idata.poro_geo_units)
+            assert num_geo_units == len(self.idata.perm_geo_units)
+            # create arrays if neccessary
+            for arr_name in ['PORO', 'PERMX', 'PERMY', 'PERMZ', 'RCOND', 'HCAP']:
+                if arr_name not in arrays.keys():
+                    arrays[arr_name] = np.zeros_like(arrays['ROCKNUM'], dtype=float)
+            for geo_unit in range(num_geo_units):
+                geo_unit_idx = (arrays['ROCKNUM'] == geo_unit + 1)  # values in ROCKNUM starts from 1
+                arrays['PORO'][geo_unit_idx] = self.idata.poro_geo_units[geo_unit]
+                arrays['RCOND'][geo_unit_idx] = self.idata.rcond_geo_units[geo_unit]
+                arrays['HCAP'][geo_unit_idx] = self.idata.hcap_geo_units[geo_unit]
+                for perm_name, perm_mult in zip(['PERMX', 'PERMY', 'PERMZ'], [1., 1., 0.1]):
+                    arrays[perm_name][geo_unit_idx] = self.idata.perm_geo_units[geo_unit] * perm_mult
         return arrays
 
     def init_reservoir(self, arrays):
         check_arrays(arrays)
-        if self.physics_type == 'deadoil':  # set inactive cells with small porosity (isothermal case)
+        if not self.physics.thermal:  # set inactive cells with small porosity (isothermal case)
             arrays['ACTNUM'][arrays['PORO'] < self.idata.geom.min_poro] = 0
-        elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
-            for arr in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
-                arrays[arr][arrays['PORO'] < self.idata.geom.min_poro] = self.idata.geom.min_poro
+        else:  # process cells with small poro (thermal case)
+            arrays['PORO'][arrays['PORO'] < self.idata.geom.min_poro] = self.idata.geom.min_poro
+            # allow small flow since there might pressure change appear due to the temperature change
+            for arr in ['PERMX', 'PERMY', 'PERMZ']:
+                arrays[arr][arrays[arr] < self.idata.geom.min_perm] = self.idata.geom.min_perm
 
         if self.idata.geom.burden_layers > 0:
             # add over- and underburden layers
@@ -69,41 +88,52 @@ class Model_CPG(CICDModel):
         self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
         self.reservoir.apply_volume_depth()
 
-        poro_shale_threshold = self.idata.rock.poro_shale_threshold  # short name
-        poro = np.array(self.reservoir.mesh.poro)
-        self.reservoir.conduction[poro <= poro_shale_threshold] = self.idata.rock.conduction_shale
-        self.reservoir.conduction[poro > poro_shale_threshold] = self.idata.rock.conduction_sand
-        self.reservoir.hcap[poro <= poro_shale_threshold] = self.idata.rock.hcap_shale
-        self.reservoir.hcap[poro > poro_shale_threshold] = self.idata.rock.hcap_sand
-
-        # add hcap and rcond to be saved into mesh.vtu
         l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
-        self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
-                                           'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l) })
+        if 'RCOND' in arrays and 'HCAP' in arrays: # rock thermal properties specified in a file
+            self.reservoir.conduction = arrays['RCOND'][g2l >= 0]
+            self.reservoir.hcap = arrays['HCAP'][g2l >= 0]
+            # add hcap and rcond to be saved into mesh.vtu
+            self.reservoir.global_data.update({'heat_capacity': arrays['HCAP'], 'rock_conduction': arrays['RCOND']})
+        else:  # specify rock thermal properties based on porosity
+            poro_shale_threshold = self.idata.rock.poro_shale_threshold  # short name
+            poro = np.array(self.reservoir.mesh.poro)
+            self.reservoir.conduction[poro <= poro_shale_threshold] = self.idata.rock.conduction_shale
+            self.reservoir.conduction[poro > poro_shale_threshold] = self.idata.rock.conduction_sand
+            self.reservoir.hcap[poro <= poro_shale_threshold] = self.idata.rock.hcap_shale
+            self.reservoir.hcap[poro > poro_shale_threshold] = self.idata.rock.hcap_sand
 
+            # add hcap and rcond to be saved into mesh.vtu
+            self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
+                                               'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l)})
+
+        if 'ROCKNUM' in arrays: # rock thermal properties specified in a file
+            self.reservoir.global_data.update({'rocknum': arrays['ROCKNUM']})
     def set_wells(self):
-        # read perforation data from a file
+        # add wells and perforations, 1-based IJK indices
         if hasattr(self.idata, 'schfile'):
-            # apply to the reservoir; add wells and perforations, 1-based indices
+            # apply to the reservoir from idata filled before by idata.read_and_add_perforations()
             for wname, wdata in self.idata.well_data.wells.items():
                 self.reservoir.add_well(wname)
                 for perf_tuple in wdata.perforations:
                     perf = perf_tuple[1]
                     # adjust to account for added overburden layers
                     perf_ijk_new = (perf.loc_ijk[0], perf.loc_ijk[1], perf.loc_ijk[2] + self.idata.geom.burden_layers)
+                    # take well index if it was defined in sch file, otherwise take the default one from idata
+                    wi = perf.well_index if perf.well_index is not None else self.idata.geom.well_index
                     self.reservoir.add_perforation(wname,
-                                                   cell_index=perf_ijk_new,
-                                                   well_index=perf.well_index, well_indexD=perf.well_indexD,
-                                                   multi_segment=perf.multi_segment, verbose=True)
+                                                   res_cell_idx=perf_ijk_new,
+                                                   well_index=wi, well_indexD=self.idata.geom.well_indexD,
+                                                   ms_epm=perf.ms_epm, verbose=True)
         else:
             # add wells and perforations, 1-based indices
             for wname, wdata in self.idata.well_data.wells.items():
                 self.reservoir.add_well(wname)
                 for k in range(1 + self.idata.geom.burden_layers,  self.reservoir.nz+1-self.idata.geom.burden_layers):
                     self.reservoir.add_perforation(wname,
-                                                   cell_index=(wdata.location.I, wdata.location.J, k),
-                                                   well_index=None, multi_segment=False, verbose=True)
+                                                   res_cell_idx=(wdata.location.I, wdata.location.J, k),
+                                                   well_index=self.idata.geom.well_index, well_indexD=self.idata.geom.well_indexD,
+                                                   ms_epm=False, verbose=True)
 
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
@@ -114,6 +144,5 @@ class Model_CPG(CICDModel):
         self.physics.engine.report()
         self.print_well_rate()
 
-
-
-
+    def set_well_controls(self):  # dummy. just to pass through model.init()
+        self.set_well_controls_idata()

@@ -22,6 +22,7 @@ def run(discr_type, mesh_file, test=False):
     # darts/models/darts_model.py (NOTE: This is not the same as the__init__(self, **) method which each class (should)
     # have).
     m.init()
+    m.set_output()
 
     # Specify some other time-related properties (NOTE: all time parameters are in [days])
     eps = 1e-6

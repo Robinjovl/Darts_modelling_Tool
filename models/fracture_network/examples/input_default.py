@@ -9,6 +9,14 @@ def input_data_default():
     idata.geom['frac_file'] = 'frac.txt'  # fracture tips coordinates X1 Y1 X2 Z2; should contain at least 2 rows (2 fractures)
     idata.geom['frac_format'] = 'simple'
 
+    idata.geom['frac_tag_start'] = 90000  #  the starting index for physical surfaces for fractures in a mesh, first 6 are for the boundaries
+    idata.geom['frac_geom_type'] = 'quad'
+    idata.geom['matrix_tags'] = [9991, 9992, 9993, 9994, 9995] # 9991 - rsv, 9992 - overburden, 9993 - underburden, 9994 - overburden2, 9995 - underburden2
+    # (they might not be there, but we define them anyway, see also the description in the end of this file
+    idata.geom['mesh_type'] = '2.5D'
+
+    idata.geom['mesh_filename'] = None # will be used if the previous item is not 2.5D
+
     #idata.geom['mesh_prefix'] = 'raw_lc'  #  use mesh with original fracture tips
     idata.geom['mesh_prefix'] = 'mergefac_0.86_clean_lc'  #  cleaned mesh
     idata.geom['mesh_clean'] = False  # need gmsh installed and callable from command line in order to mesh
@@ -53,6 +61,9 @@ def input_data_default():
     idata.geom['well_loc_type'] = 'wells_in_nearest_cell'  # could be in the matrix or in the fracture, depending on the location
     #idata.geom['well_loc_type'] = 'wells_in_frac'  # put the well into the closest fracture
     #idata.geom['well_loc_type'] = 'wells_in_mat'  # put the well into the closest matrix cell
+
+    # to mimic an infinite reservoir
+    idata.geom['bondary_volume_xy'] = 1e+15  # [m^3]
 
     idata.rock.porosity = 0.2
     idata.rock.permx = 10  # [mD]
@@ -102,9 +113,26 @@ def input_data_default():
     idata.initial.temperature_at_ref_depth = 273.15 + 10 # [K]
 
     idata.obl.n_points = 100
-    idata.obl.min_p = 50.
+    idata.obl.min_p = 0.5
     idata.obl.max_p = 500.
-    idata.obl.min_e = 1000.
+    idata.obl.min_e = 10.
     idata.obl.max_e = 25000.
 
     return idata
+
+
+'''
+# 2.5D mesh from DARTS-gmsh mesh generator
+        matrix_tag   surface_tag                             fracture_tag    test_case
+        ----------      2     overburden2 top                                     }
+        | 9994                    overburden2                                     }
+        ----------      2     overburden top       ------------- 90003        }   }
+        | 9992                    overburden       | FRACTURE  |              }   }case_1_burden_2
+        ----------      2     reservoir top        |-----------| 90001    }   }case_1_burden
+        | 9991                    RESERVOIR        | FRACTURE  | 90000    }case_1 }
+        ----------      1     reservoir bottom     |-----------| 90002    }   }   }
+        | 9993                    underburden      | FRACTURE  |              }   }
+        ----------      1     underburden bottom   ------------- 90004        }   }
+        | 9995                    underburden2                                    }
+        ----------      1     underburden2 bottom                                 }
+'''
