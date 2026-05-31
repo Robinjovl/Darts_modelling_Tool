@@ -132,7 +132,7 @@ def read_thm_solution_from_vtk(m, folder : str, timestep: int):
 
 def run_geomech_proxy(case, physics_type='single_phase',
                       wells_type=None, timestep=1, modes=[],
-                      generate_mesh=True, n_threads=1, use_gpu=False):
+                      generate_mesh=True, n_threads=1, use_gpu=False, read_from_cache=False):
     folder = os.path.join('results', 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case)  # where vtk files are located
 
     # init geomech proxy
@@ -487,10 +487,13 @@ def run_geomech_proxy(case, physics_type='single_phase',
                 plt.close(fig)
 
 
-    def plot_contour(array_dict, points_x, points_y, output_folder, layer=0, slice='XY', vlims=None, n_levels=12):
+    def plot_contour(array_dict, points_x, points_y, output_folder, layer=0, slice='XY', vlims=None, n_levels=12, idata=None):
         # plot contours XY plane, 1 layer by z
         # vlims: optional dict {arr_name: (vmin, vmax)} to fix colorbar range
+        _default_w, _default_h = plt.rcParams['figure.figsize']
         for arr_name, arr in array_dict.items():
+            if slice == 'XZ':
+                plt.figure(figsize=(_default_w, _default_h * 2))
             if len(arr.shape) == 3:
                 arr_layer = arr[:, :, layer]
             else:
@@ -505,9 +508,10 @@ def run_geomech_proxy(case, physics_type='single_phase',
             if vmin < 0 < vmax:
                 levels = np.sort(np.unique(np.append(levels, 0.)))
             cs = plt.contourf(points_x, points_y, np.ma.masked_invalid(arr_layer), levels=levels, vmin=vmin, vmax=vmax)
-            plt.colorbar(cs)
+            plt.colorbar(cs, orientation='horizontal', pad=0.12)
             #plt.colorbar(cs, extend='neither').set_ticks([vmin, vmax])
-            plt.gca().set_aspect('equal')
+            plt.gca().set_aspect(2) # 2X vertical scale
+            #plt.gca().set_aspect('equal')
             plt.minorticks_on()
             plt.xlabel('X, m.')
             if slice == 'XY':
@@ -515,13 +519,27 @@ def run_geomech_proxy(case, physics_type='single_phase',
             elif slice == 'XZ':
                 plt.ylabel('Depth, m.')
                 plt.gca().invert_yaxis()
+                if idata is not None:
+                    plt.axhline(y=idata.other.rsv_top,    color='black', linewidth=0.8, linestyle='--')
+                    plt.axhline(y=idata.other.rsv_bottom, color='black', linewidth=0.8, linestyle='--', label='reservoir top/bottom')
+                    plt.axvline(x=idata.other.rsv_x1, color='black', linewidth=0.5, linestyle=':')
+                    plt.axvline(x=idata.other.rsv_x2, color='black', linewidth=0.5, linestyle=':', label='reservoir sides')
+                    z_well_top = points_y.min()
+                    z_well_bot = idata.other.rsv_bottom
+                    if wells_type in ('prod', 'doublet'):
+                        plt.plot([idata.other.prod_well_coords[0]] * 2, [z_well_top, z_well_bot],
+                                 color='red',  linewidth=1.5, label='production well')
+                    if wells_type in ('inj', 'doublet'):
+                        plt.plot([idata.other.inj_well_coords[0]] * 2,  [z_well_top, z_well_bot],
+                                 color='cyan', linewidth=1.5, label='injection well')
+                    plt.legend(fontsize=7, loc='upper center', bbox_to_anchor=(0.5, 0.15), bbox_transform=plt.gcf().transFigure, ncol=2)
             parts = arr_name.split(' - ', 1)
             plt.title('\n'.join(parts) if len(parts) > 1 else arr_name)
             fig_fname = arr_name + '_contour.png'
             fig_fname = fig_fname.replace(' ', '_')
             fig_path = os.path.join(output_folder, fig_fname)
             print(f'Saving {fig_fname}, min={arr_layer.min():.4g}, max={arr_layer.max():.4g}')
-            plt.savefig(fig_path)
+            plt.savefig(fig_path, bbox_inches='tight')
             plt.close()
 
 
@@ -647,7 +665,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         print(f'Saved HTML report: {html_path}')
 
     def save_pdf_report(base_names, output_folder, filename='proxy_vs_thm_report.pdf',
-                        locs=None, array_names=None, suffix_1d='all'):
+                        locs=None, array_names=None, suffix_1d='all', read_from_cache=False):
         from matplotlib.backends.backend_pdf import PdfPages
         import matplotlib.image as mpimg
 
@@ -712,7 +730,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
 
     if True: # evaluate along the wells
         if wells_type in ['prod', 'doublet']:
-            points_xy['prod_well'] = m.idata.other.prod_well_coords[:2]  # -2 to skip z coord
+            points_xy['prod_well'] = m.idata.other.prod_well_coords[:2]  # skip z coord
         if wells_type in ['inj', 'doublet']:
             points_xy['inj_well'] = m.idata.other.inj_well_coords[:2]
 
@@ -752,10 +770,10 @@ def run_geomech_proxy(case, physics_type='single_phase',
             dt = gd((g.centroids[:, 1], g.centroids[:, 0], g.centroids[:, 2]), \
                 thm_sol.delta_temperature, (points[1, :], points[0, :], points[2, :]), method='nearest', fill_value=0.).reshape((p_nx, p_ny, p_nz))
             array_dict.update({'Temperature change, K':dt[:,0,:].transpose()})
-        plot_contour(array_dict, points_x, points_z, output_folder=output_folder, slice = 'XZ')
+        plot_contour(array_dict, points_x, points_z, output_folder=output_folder, slice='XZ', idata=m.idata)
         #plot_imshow(array_dict, points_x, points_z, output_folder=output_folder, slice = 'XZ')
 
-        if True: # run proxy and save PKLs
+        if not read_from_cache: # run proxy and save PKLs
             print('computing proxy...')
             ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
             ux_prx = ux_prx.reshape((p_nx, p_ny, p_nz))
@@ -832,10 +850,10 @@ def run_geomech_proxy(case, physics_type='single_phase',
         else:
             vlims_prx = vlims_thm = None
 
-        plot_contour(array_dict, points_x, points_z, output_folder=output_folder, slice='XZ', vlims=vlims_prx)
+        plot_contour(array_dict, points_x, points_z, output_folder=output_folder, slice='XZ', vlims=vlims_prx, idata=m.idata)
         #plot_imshow(array_dict, points_x, points_z, output_folder=output_folder, slice = 'XZ')
 
-        plot_contour(array_dict_thm, points_x, points_z, output_folder=output_folder, slice='XZ', vlims=vlims_thm)
+        plot_contour(array_dict_thm, points_x, points_z, output_folder=output_folder, slice='XZ', vlims=vlims_thm, idata=m.idata)
 
         print('Array ranges:')
         for b in base_names:
@@ -854,7 +872,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
             #rd = np.where(np.abs(array_dict_thm[f'{b}_thm']) > 0, (d / np.abs(array_dict_thm[f'{b}_thm'])) * 100., 0.)
             array_dict_diff[f'{b} - Difference'] = d
             #array_dict_diff[f'{b} - Relative Difference'] = rd
-        plot_contour(array_dict_diff, points_x, points_z, output_folder=output_folder, slice='XZ')
+        plot_contour(array_dict_diff, points_x, points_z, output_folder=output_folder, slice='XZ', idata=m.idata)
 
         plot_mesh_skeleton(output_folder)
 
@@ -912,11 +930,11 @@ def run_geomech_proxy(case, physics_type='single_phase',
         vlims_cmp = {'delta_pressure, MPa - THM 41': (vmin, vmax),
                      'delta_pressure, MPa - THM 71': (vmin, vmax)}
         plot_contour({'delta_pressure, MPa - THM 41': dp_41[:, 0, :].transpose()},
-                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp)
+                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp, idata=m.idata)
         plot_contour({'delta_pressure, MPa - THM 71': dp_71[:, 0, :].transpose()},
-                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp)
+                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp, idata=m.idata)
         plot_contour({'delta_pressure, MPa - Difference (71-41)': (dp_71 - dp_41)[:, 0, :].transpose()},
-                     pts_x, pts_z, output_folder=output_folder, slice='XZ')
+                     pts_x, pts_z, output_folder=output_folder, slice='XZ', idata=m.idata)
 
     array_names = []
     if 'plot_vertic_line' in modes: # 1D plots (along vertical lines at points_xy)
@@ -962,7 +980,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
     save_html_prx_vs_thm(base_names, output_folder=output_folder,
                          locs=list(points_xy.keys()), array_names=array_names, suffix_1d='all')
     save_pdf_report(base_names, output_folder=output_folder,
-                    locs=list(points_xy.keys()), array_names=array_names, suffix_1d='all')
+                    locs=list(points_xy.keys()), array_names=array_names, suffix_1d='all', read_from_cache=read_from_cache)
 
     # print vert displs and stresses change at a point
     if 'print_at_point' in modes:
@@ -1074,8 +1092,8 @@ if __name__ == '__main__':
     #run_thm = True
     run_thm = False
 
-    #generate_mesh=False # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
-    generate_mesh=True
+    generate_mesh=False # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
+    #generate_mesh=True
 
     modes = []
     #modes += ['check_initial'] # check initial pressure and stress for THM
@@ -1088,6 +1106,7 @@ if __name__ == '__main__':
     # for proxy:
     n_threads = 24  # CPU cores
     use_gpu = False  # CUDA
+    read_from_cache = True
 
     for case in cases:
         for physics_type in physics_types_list:
@@ -1112,7 +1131,8 @@ if __name__ == '__main__':
                     t1 = datetime.now()
                     run_geomech_proxy(case=case, physics_type=physics_type,
                                       wells_type=wells_type, modes=modes,
-                                      timestep=timestep, n_threads=n_threads, use_gpu=use_gpu)
+                                      timestep=timestep, n_threads=n_threads, use_gpu=use_gpu,
+                                      read_from_cache=read_from_cache)
                     t2 = datetime.now()
                     proxy_time = t2 - t1
 
