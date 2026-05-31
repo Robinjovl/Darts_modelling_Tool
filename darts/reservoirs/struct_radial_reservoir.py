@@ -336,6 +336,14 @@ class StructRadialReservoir(StructReservoir):
         prop_names: list,
         data: dict,
     ):
+        import os
+
+        import meshio
+
+        from darts.tools.vtk_io import write_pvd
+
+        os.makedirs(output_directory, exist_ok=True)
+
         data = self.populate_data_for_radial_vtk_output(data, prop_names)
 
         geometries = ['hexahedron']
@@ -343,9 +351,17 @@ class StructRadialReservoir(StructReservoir):
         for prop in prop_names:
             cell_data[prop][0] += data[prop].tolist()
 
-        import meshio
-
         mesh = meshio.Mesh(
             points=self.output_points, cells=self.output_cells, cell_data=cell_data
         )
-        meshio.write(f"{output_directory:s}/solution_ts{ith_step:d}.vtk", mesh)
+        vtk_filename = f"solution_ts{ith_step:d}.vtu"
+        meshio.write(os.path.join(output_directory, vtk_filename), mesh)
+
+        if not hasattr(self, 'vtk_filenames_and_times'):
+            self.vtk_filenames_and_times = {}
+        self.vtk_filenames_and_times[vtk_filename] = t
+
+        write_pvd(
+            os.path.join(output_directory, "solution.pvd"),
+            [(sim_t, fname) for fname, sim_t in self.vtk_filenames_and_times.items()],
+        )

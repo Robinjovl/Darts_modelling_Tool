@@ -71,7 +71,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_LINEAR_SOLVERS_PUBLI
 if(ONLY_SOLVERS)
   # Install the library file of opendarts_linear_solvers
   install(TARGETS linear_solvers
-    CONFIGURATIONS RELEASE
+    CONFIGURATIONS RELEASE RELWITHDEBINFO
     DESTINATION lib/unbundled
   )
 
