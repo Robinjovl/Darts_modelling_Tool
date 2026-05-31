@@ -62,7 +62,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         if generate_mesh:
             print('Mesh generation started')
-
+            self.timer.node["initialization"].node["mesh_generation"] = timer_node()
+            self.timer.node["initialization"].node["mesh_generation"].start()
             # refine by Z also around rsv
             #self.Zc = np.hstack([np.arange(0, self.rsv_top-100, 100), np.arange(self.rsv_top-100, self.rsv_bottom+100, 20),np.arange(self.rsv_bottom+100, 6000, 100)])
 
@@ -88,17 +89,27 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             from gen_msh import generate_box_3d
             generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=idata.mesh.tags,  # XYZ are ignored since Xc, Yc, Zc are passed
                                        is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)# msh_ver=4.1)
+            self.timer.node["initialization"].node["mesh_generation"].stop()
             print('Mesh generation finished')
 
         print('Mesh reading...')
+        self.timer.node["initialization"].node["mesh_reading"] = timer_node()
+        self.timer.node["initialization"].node["mesh_reading"].start()
         self.mesh_data = meshio.read(self.mesh_filename)
-        print('Init reservoir...')
+        self.timer.node["initialization"].node["mesh_reading"].stop()
+        print('Mesh reading finished')
+
+        print('Init reservoir (incl. mesh processing)...')
         #self.set_uniform_initial_conditions(idata=idata)
         self.u_init = [0., 0., 0.]  # [m]
         self.p_init = None
         self.z_init = None
         self.set_boundary_conditions(idata=idata)
+
+        self.timer.node["initialization"].node["init_mech_discretizer"] = timer_node()
+        self.timer.node["initialization"].node["init_mech_discretizer"].start()
         self.init_mech_discretizer(idata=idata)
+        self.timer.node["initialization"].node["init_mech_discretizer"].stop()
 
         self.grav = 9.80665e-5
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
@@ -117,10 +128,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.init_heterogeneous_properties(idata=idata)
         self.init_arrays_boundary_condition()
         self.update_boundary_conditions()
+        print('Init reservoir finished')
 
         # Discretization
-        self.timer.node["discretization"] = timer_node()
-        self.timer.node["discretization"].start()
+        print('Discretization (trans calc, etc) ...')
+        self.timer.node["initialization"].node["discretization"] = timer_node()
+        self.timer.node["initialization"].node["discretization"].start()
         if self.thermoporoelasticity:
             self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow, self.cpp_heat)
         else:
@@ -128,8 +141,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
         self.discr.calc_interface_approximations()
         self.discr.calc_cell_centered_stress_velocity_approximations()
-        self.timer.node["discretization"].stop()
-        print('Init reservoir finished')
+        self.timer.node["initialization"].node["discretization"].stop()
+        print('Discretization finished')
 
     def set_boundary_conditions(self, idata: InputData):
         self.boundary_conditions = {}
