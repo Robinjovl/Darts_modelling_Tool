@@ -1,3 +1,137 @@
+"""
+Flow-based transmissibility correction for LGR coarse-fine interfaces.
+
+This module is used by :class:`StructReservoirWithLGR` when
+``lgr_coarse_fine_tran_mode="flow_based"``. In the normal mode, each
+coarse-fine connection gets a transmissibility from the overlap between the
+coarse face and the fine faces. In this mode, the code solves a small local
+flow problem around each side of the LGR patch, then uses that result to
+correct those coarse-fine transmissibilities.
+
+It does not require a dynamic reservoir simulation. The calculation
+uses only the grid geometry and rock properties.
+
+For each ``(patch, axis, side)``, the code does the following.
+
+1. Make a temporary fine grid around the selected LGR side.
+
+   The local region contains the LGR patch and a few neighboring parent cells,
+   controlled by ``padding``. Parent cells in this local region are split using
+   the same refinement ratio as the LGR. Cells inside the patch are the real
+   LGR cells. Cells outside the patch are temporary virtual fine cells copied
+   from the parent coarse cells. These virtual cells are used only for this
+   local calculation and are not added to the simulation mesh.
+
+2. Choose the planes used by the local problem.
+
+   The sketch below shows the setup only in the normal direction of the LGR
+   side. Padding in the two tangential directions is not shown.
+
+   ::
+
+       side = +1
+
+       LGR patch                         outside parent cells, split virtually
+       +-------------+-------------------+--------------------+---------+
+       | LGR inside  | LGR face cells    | first outside slab | far_ids |
+       |             | interface_ids     | support_ids        | fixed   |
+       |             | fixed p = 1       | solved p           | p = 0   |
+       +-------------+-------------------+--------------------+---------+
+                         |<-- q_cross is summed across these links -->|
+
+       side = -1
+
+       outside parent cells, split virtually                         LGR patch
+       +---------+--------------------+-------------------+-------------+
+       | far_ids | first outside slab | LGR face cells    | LGR inside  |
+       | fixed   | support_ids        | interface_ids     |             |
+       | p = 0   | solved p           | fixed p = 1       |             |
+       +---------+--------------------+-------------------+-------------+
+                   |<-- q_cross is summed across these links -->|
+
+   ``interface_ids`` are the real LGR cells on the selected patch face. They
+   are fixed to ``p = 1``.
+
+   ``far_ids`` are cells on the far outer side of the local region. They are
+   fixed to ``p = 0``.
+
+   ``support_ids`` are virtual fine cells in the first coarse-cell slab outside
+   the LGR. Their average pressure is used as the coarse-side pressure in the
+   final transmissibility formula.
+
+3. Connect neighboring local cells.
+
+   The local grid uses the same TPFA connection formula as the global LGR
+   grid. For hydraulic flow, each connection uses face area, normal
+   permeability, half-cell distances, and the DARTS Darcy conversion constant.
+
+   Thermal flow is solved in the same way, but with physical rock conductive
+   connections. A geometric thermal coefficient ``tranD`` is multiplied by the
+   average rock conductive factor of the two cells:
+
+       ``0.5 * ((1 - phi_a) * rcond_a + (1 - phi_b) * rcond_b)``
+
+4. Solve the local steady linear problem.
+
+   For each unknown local cell ``i``, the equation is:
+
+       ``sum_j T_ij * (p_i - p_j) = 0``
+
+   This is a steady unit-pressure-drop problem. Since it is linear, the chosen
+   values ``p = 1`` and ``p = 0`` only set the scale.
+
+   After solving, the code sums the flux through the LGR face:
+
+       ``q_cross = sum_crossing T_ij * (p_lgr - p_virtual)``
+
+   The total transmissibility for this LGR side is:
+
+       ``T_eff_total = q_cross / (1 - mean(p_support))``
+
+   The denominator uses the first outside slab, not the far boundary, because
+   the corrected global connection should represent the drop between the LGR
+   face and the neighboring coarse-side region.
+
+5. Put the total back on the real global connections.
+
+   The local solve gives one total transmissibility for one LGR side. The
+   global mesh may have several actual coarse-fine links on that side:
+
+   ::
+
+       one coarse cell face can overlap several LGR fine faces
+
+             coarse cell C
+            +---------------+
+            |               |
+            +---------------+
+            +---+---+---+---+
+            |f1 |f2 |f3 |f4 |   LGR fine cells
+            +---+---+---+---+
+
+       local solve
+            |
+            v
+       one T_eff_total for (patch, axis, side)
+            |
+            v
+       actual coarse-fine links on that side
+
+          link 1: raw T_1  ->  T_1 * T_eff_total / sum(raw T)
+          link 2: raw T_2  ->  T_2 * T_eff_total / sum(raw T)
+          ...
+          link n: raw T_n  ->  T_n * T_eff_total / sum(raw T)
+
+   Hydraulic transmissibilities are distributed in proportion to the raw
+   face-overlap values. If all raw values are zero, the total is split evenly.
+
+   For thermal flow, the local solve returns a physical conductive total, but
+   the engine stores ``tran_thermal`` as the geometric ``tranD`` coefficient.
+   The code therefore scales the raw ``tran_thermal`` values so that, after
+   applying each link's rock conductive factor, the physical total matches the
+   local solve result.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -13,6 +147,10 @@ ConnectionTransmissibility = Callable[[Any, Any, int, float], tuple[float, float
 
 @dataclass(frozen=True)
 class CoarseFineConnection:
+    """
+    One real coarse-fine connection that can be rescaled.
+    """
+
     index: int
     patch_name: str
     axis: int
@@ -25,6 +163,10 @@ class CoarseFineConnection:
 
 @dataclass(frozen=True)
 class UpscalingResult:
+    """
+    The total values from one local solve.
+    """
+
     hydraulic_total: float
     thermal_physical_total: float
     n_interface_links: int
@@ -56,36 +198,7 @@ class _VirtualCell:
 
 class LGRCoarseFineFlowBasedUpscaler:
     """
-    Compute effective coarse-fine LGR transmissibilities from local flow solves.
-
-    The local solves use a virtual grid where parent cells around the selected
-    LGR side are refined with the same ratio as the LGR. The resulting hydraulic
-    conductance replaces the geometric transmissibility part of the reservoir
-    connection. For thermal coupling, the solve uses the physical rock
-    conduction factor and then converts the result back to the `tranD` geometric
-    coefficient expected by the engine.
-
-    The flow-based hydraulic value is not calculated by running an open-DARTS
-    dynamic reservoir simulation. It is a local steady-state pressure solve on
-    the virtual grid. In continuous form the solved problem is:
-
-        div(K grad p) = 0
-
-    with artificial Dirichlet boundary conditions p = 1 on the LGR interface
-    plane and p = 0 on the far side of the local support domain. The discrete
-    TPFA balance for each unknown local cell i is:
-
-        sum_j T_ij (p_i - p_j) = 0
-
-    where j are neighboring local cells and T_ij is the hydraulic conductance
-    computed from face area, normal permeability, and half-cell distances. After
-    solving the sparse linear system, the interface flux is summed and converted
-    to an equivalent coarse-fine transmissibility:
-
-        T_eff = q_interface / (1 - average(p_support))
-
-    The final T_eff is distributed back over the actual coarse-fine interface
-    connections in proportion to their normal geometric transmissibilities.
+    Run local solves to correct LGR coarse-fine transmissibilities.
     """
 
     def __init__(
@@ -103,6 +216,18 @@ class LGRCoarseFineFlowBasedUpscaler:
     def effective_transmissibility(
         self, patch: Any, axis: int, side: int
     ) -> UpscalingResult:
+        """
+        Return hydraulic and thermal totals for one side of one LGR patch.
+
+        ``axis`` says which direction is normal to the side: 0 is x/i, 1 is
+        y/j, and 2 is z/k. ``side`` is ``-1`` for the lower side and ``+1`` for
+        the upper side.
+
+        This builds the temporary local fine grid, solves the local hydraulic
+        and thermal problems, and returns one total for each. It does not
+        change the reservoir or the global connection arrays.
+        """
+
         cells, grid, is_lgr, interface_ids, support_ids, far_ids = (
             self._build_local_grid(patch, axis, side)
         )
@@ -371,6 +496,15 @@ class LGRCoarseFineFlowBasedUpscaler:
         support_ids: set[int],
         far_ids: set[int],
     ) -> float:
+        """
+        Solve the local problem and return the equivalent conductance.
+
+        The same code is used for hydraulic conductance and for physical
+        thermal conductance. The interface is fixed to ``p = 1``, the far side
+        is fixed to ``p = 0``, and the flux through the LGR face is converted
+        to one equivalent value.
+        """
+
         fixed_values = {idx: 1.0 for idx in interface_ids}
         fixed_values.update({idx: 0.0 for idx in far_ids})
         conductance_by_pair = {
@@ -448,6 +582,10 @@ class LGRCoarseFineFlowBasedUpscaler:
 def scale_by_raw_distribution(
     raw_values: np.ndarray, target_total: float
 ) -> np.ndarray:
+    """
+    Spread one side total over real links using raw values as weights.
+    """
+
     raw_total = float(np.sum(raw_values))
     if raw_total > 0.0:
         return raw_values * (target_total / raw_total)
@@ -462,6 +600,14 @@ def thermal_scale_from_physical_conductance(
     raw_tran_thermal: np.ndarray,
     target_physical_total: float,
 ) -> float:
+    """
+    Return the scale factor for the stored thermal ``tranD`` values.
+
+    The local solve gives a physical conductive total. The global connection
+    list stores geometric ``tranD`` values, so the code compares them after
+    applying each link's rock conductive factor.
+    """
+
     raw_physical_total = 0.0
     for conn, raw_value in zip(connections, raw_tran_thermal, strict=True):
         lgr_cell = cells[conn.lgr_cell_idx]
@@ -473,6 +619,10 @@ def thermal_scale_from_physical_conductance(
 
 
 def thermal_link_factor(cell_a: Any, cell_b: Any) -> float:
+    """
+    Return the average rock conductive factor for two connected cells.
+    """
+
     return 0.5 * (
         (1.0 - cell_a.poro) * cell_a.rcond + (1.0 - cell_b.poro) * cell_b.rcond
     )
