@@ -1,2 +1,7 @@
 .zenodo.json       export-ignore
 .gitlab-ci.yml     export-ignore
+
+# Cross-platform source files must be stored with LF endings.
+*.py               text eol=lf
+*.pyi              text eol=lf
+*.sh               text eol=lf

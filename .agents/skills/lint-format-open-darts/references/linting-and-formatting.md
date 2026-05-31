@@ -67,6 +67,11 @@ Configured hooks (`.pre-commit-config.yaml`):
 - `check-added-large-files` — block files > 500 KB
 - `check-merge-conflict` — detect conflict markers
 
+**Local repository policy hooks**:
+- `sync-agent-skills-check` — verify `.claude/skills` mirrors `.agents/skills`
+- `check-line-endings` — require tracked `.py`, `.pyi`, and `.sh` repository
+  blobs to use LF-only line endings
+
 ---
 
 ## Common Commands
@@ -144,6 +149,9 @@ pre-commit autoupdate
 8. Preserve existing file line endings. Do not manually normalize CRLF/LF style,
    do not make line-ending-only changes, and revert accidental EOL-only rewrites
    from formatters or hooks unless the user explicitly requested them.
+9. `.gitattributes` and `check-line-endings` make LF mandatory for committed
+   `.py`, `.pyi`, and `.sh` content. On Windows, this check reads Git blobs so
+   checkout conversion does not create false failures.
 
 ---
 
