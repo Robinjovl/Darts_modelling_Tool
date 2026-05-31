@@ -1,5 +1,10 @@
 # #.#.# [Future]
 - Add hysteresis support for OBL-based compositional simulations through per-cell history variables, including Killough scanning-curve handling; the feature is disabled by default and enabled only when history variables are explicitly declared in the physics setup ([!310](https://gitlab.com/open-darts/open-darts/-/merge_requests/310)).
+- Output:
+  - output which was using `vtk` module, has been changed to use `meshio` (struct reservoir, cpg reservoir) and darts/tools/vtk_io.py (writing vtp files with dynamic results along well trajectories)
+- Package:
+  - removed `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
+  - added "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
 
 # 1.5.0 [27-05-2026]
 - Fluid heat capacity is added into the input data for THM models ([!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270))
