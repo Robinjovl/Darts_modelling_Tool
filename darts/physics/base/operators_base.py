@@ -1,3 +1,6 @@
+import warnings
+from itertools import product
+
 import numpy as np
 
 from darts.interpolators import operator_set_evaluator_iface, value_vector
@@ -20,8 +23,9 @@ class OperatorsBase(operator_set_evaluator_iface):
         :param property_container: Property container of type PropertyBase
         :param thermal: Switch to indicate if energy conservation equation is there
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
-                    (must be equal along all composition axes in current setup)
+        :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
+                    during boundary extrapolation. Scalar (uniform spacing) or a per-axis
+                    vector of length nc-1 (non-uniform cell size across composition axes).
         """
         super().__init__()
 
@@ -37,10 +41,28 @@ class OperatorsBase(operator_set_evaluator_iface):
         )
 
         self.extrapolation_flag = extrapolation_flag
-        self.dz = dz
-        assert self.nc <= 2 or not extrapolation_flag or dz is not None, (
+        # dz: composition-axis OBL cell size(s) used to step onto neighbouring grid
+        # nodes during boundary extrapolation. Accepts a scalar / length-1 value
+        # (uniform cell size across all composition axes — the legacy case) or a
+        # per-axis vector of length nc-1 (non-uniform OBL cell size across
+        # composition axes). Stored as a 1-D float array; a length-1 array is
+        # broadcast to every composition axis.
+        self.dz = np.atleast_1d(np.asarray(dz, dtype=float)) if dz is not None else None
+        assert self.nc <= 2 or not extrapolation_flag or self.dz is not None, (
             "Please provide dz for extrapolation"
         )
+        if self.dz is not None:
+            # Validate shape/values, not just length: a stray 2-D array, NaN/inf, or
+            # non-positive step would otherwise corrupt the per-axis stepping silently.
+            assert self.dz.ndim == 1, (
+                f"dz must be a scalar or 1-D vector, got ndim={self.dz.ndim}"
+            )
+            assert np.all(np.isfinite(self.dz)), "dz entries must be finite"
+            if extrapolation_flag and self.nc > 2:
+                assert self.dz.size in (1, self.nc - 1), (
+                    f"dz must be scalar or length nc-1={self.nc - 1}, got {self.dz.size}"
+                )
+                assert np.all(self.dz > 0), "dz entries must be strictly positive"
 
     def evaluate_batch(self, states, n_points, values, n_ops):
         """
@@ -105,48 +127,94 @@ class OperatorsBase(operator_set_evaluator_iface):
         ]
         dims = np.sum(nonzero_comps)
 
-        # Build supporting points by stepping −dz along subsets of the
-        # non-zero composition axes. We need `dims + 1` non-collinear points
-        # to fit the hyperplane val = a·z + c. The single-step −dz hypercube
-        # alone provides `2^dims − 1` candidates (the 0-mask is the incoming
-        # point itself, which is excluded).
-        #   dims == 1 → 1 candidate, need 2 — under-determined
-        #   dims == 2 → 3 candidates, need 3 — just enough
-        #   dims >= 3 → more than enough
-        # Stepping `-dz` increases `last_z` (moves into the simplex), so those
-        # points satisfy the `last_z >= 0` filter most reliably. To cover the
-        # under-determined case we additionally generate multi-step −k·dz
-        # candidates (k = 1, …, n_steps_max) so the under-determined cases
-        # always have enough valid reference points to fit the hyperplane.
+        # Per-axis composition cell size (length nc-1). A scalar / length-1 dz is
+        # broadcast to every composition axis, so uniform OBL grids reproduce the
+        # original behaviour exactly; a length nc-1 dz gives each composition axis
+        # its own step, i.e. non-uniform OBL cell size across composition axes.
+        dz_axis = (
+            self.dz
+            if self.dz.size == (self.nc - 1)
+            else np.full(self.nc - 1, self.dz[0])
+        )
+
+        # --- Candidate supporting points --------------------------------------
+        # Step −offset_i · dz_axis[i] along each active composition axis using
+        # INDEPENDENT per-axis offsets (0..n_steps_max), excluding the all-zero
+        # offset (the incoming point). Independent offsets are required on a
+        # non-uniform grid: a valid *physical* support can need a mixed move such
+        # as (1·dz0, 2·dz1) that a single shared multiplier never produces. Each
+        # candidate lands on a real OBL grid node.
+        #
+        # n_steps_max gives reach 2 per axis, enough to recover `dims + 1` physical
+        # supports for boundary nodes (which sit within one cell of the surface).
         n_steps_max = max(2, dims + 1 - (2**dims - 1))
-        candidates = []
-        for k in range(1, n_steps_max + 1):
-            for mask in range(1, 1 << dims):  # 1 << dims = 2^d
-                zp = z.copy()
-                for i, axis in enumerate(nonzero_comp_idxs):
-                    # binary operator & compares binary notation of 'mask' and 2^axis
-                    if mask & (1 << i):
-                        zp[axis] -= k * self.dz
-                dist2 = np.sum((zp - z) ** 2)
-                last_z = 1.0 - np.sum(zp)
-                # Tag each (k, mask) pair uniquely so the dedup below works.
-                tag = (k - 1) * (1 << dims) + mask
-                candidates.append((dist2, tag, zp, last_z >= 0.0))
+        candidates = []  # (dist2_index, offsets, zp, admissible)
+        for offsets in product(range(n_steps_max + 1), repeat=dims):
+            if not any(offsets):
+                continue
+            zp = z.copy()
+            for i, axis in enumerate(nonzero_comp_idxs):
+                if offsets[i]:
+                    zp[axis] -= offsets[i] * dz_axis[axis]
+            # Distance in grid-index units (the offset magnitude), so the selection
+            # geometry is independent of the per-axis cell sizes and not biased
+            # toward coarser axes.
+            dist2 = float(sum(o * o for o in offsets))
+            last_z = 1.0 - np.sum(zp)
+            # Admissible = the support is physical: it must lie inside the simplex
+            # on BOTH the normalization constraint (last_z = 1 − Σz ≥ 0) AND the
+            # axis-aligned constraints (every explicit composition ≥ 0). Checking
+            # last_z alone would accept a support with a negative component and
+            # flash it as physical (the paper requires *physical* supporting
+            # points). The small tolerance absorbs round-off on exactly-on-axis
+            # grid nodes. This per-node half-space test needs no explicit
+            # hypercube/normalization-surface intersection.
+            admissible = (last_z >= 0.0) and bool(np.all(zp >= -1e-12))
+            candidates.append((dist2, offsets, zp, admissible))
 
-        filtered = [c for c in candidates if c[3]]
-        if not filtered:
-            filtered = candidates
-        filtered = sorted(filtered, key=lambda c: c[0])
-
-        furthest = filtered[-1]
-        closest = [c for c in filtered if c[1] != furthest[1]][:dims]
-        selected = [furthest] + closest
-
+        # --- Rank-revealing selection of d+1 physical, independent supports ----
+        # Walk the admissible candidates nearest-first and greedily keep a point
+        # only if it adds a NEW affine direction (raises the rank). This guarantees
+        # the selected d+1 supports are affinely independent (so B is non-singular)
+        # AND physical — closing the gap where a distance-only "furthest+closest"
+        # rule can pick collinear or non-physical points. Independence is tracked by
+        # modified Gram–Schmidt on the offset vectors; because zp − z = −offset·dz
+        # (a fixed positive per-axis scaling), offset-space rank equals zp-space
+        # rank, so this is exact and scale-free.
+        admissible_sorted = sorted((c for c in candidates if c[3]), key=lambda c: c[0])
         n_supporting_points = dims + 1
+        selected = []
+        anchor = None
+        basis = []  # orthonormal directions already spanned (offset/index units)
+        for c in admissible_sorted:
+            ov = np.asarray(c[1], dtype=float)
+            if anchor is None:
+                anchor = ov
+                selected.append(c)
+                continue
+            v = ov - anchor
+            for b in basis:
+                v = v - np.dot(v, b) * b
+            nv = np.linalg.norm(v)
+            if nv > 1e-9:
+                basis.append(v / nv)
+                selected.append(c)
+            if len(selected) == n_supporting_points:
+                break
+
+        # Fallback: the admissible set genuinely spans fewer than `dims` directions
+        # (the physical neighbourhood of this node is lower-dimensional than dims).
+        # Top up nearest-first from the remaining candidates so the fit can still
+        # proceed; evaluating a non-physical top-up node recurses into another
+        # extrapolation rather than flashing it.
         if len(selected) < n_supporting_points:
-            remaining = [c for c in candidates if c[1] not in {s[1] for s in selected}]
-            remaining = sorted(remaining, key=lambda c: c[0])
-            selected.extend(remaining[: n_supporting_points - len(selected)])
+            chosen = {c[1] for c in selected}
+            for c in sorted(
+                (c for c in candidates if c[1] not in chosen), key=lambda c: c[0]
+            ):
+                selected.append(c)
+                if len(selected) == n_supporting_points:
+                    break
 
         supporting_points = [c[2] for c in selected]
 
@@ -170,7 +238,22 @@ class OperatorsBase(operator_set_evaluator_iface):
         # Build and solve B · X = vals, where B = [zps | 1]
         B = np.hstack((zps, np.ones((dims + 1, 1))))  # shape (dims+1, dims+1)
         B = np.delete(B, zero_comps, axis=1)
-        X = np.linalg.solve(B, vals)  # shape (dims+1, n_ops)
+        try:
+            X = np.linalg.solve(B, vals)  # shape (dims+1, n_ops)
+        except np.linalg.LinAlgError:
+            # A singular system means support SELECTION produced affinely-dependent
+            # points — a selection problem, not an expected numerical condition.
+            # Don't abort the run, but surface it loudly (per-process warning, which
+            # works in serial and in multiprocessing workers alike) rather than
+            # silently least-squares'ing it away, so it can be investigated.
+            warnings.warn(
+                f"OBL extrapolation: singular supporting set (dims={int(dims)}) — "
+                "falling back to least-squares. This indicates degenerate support "
+                "selection and should be investigated.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            X = np.linalg.lstsq(B, vals, rcond=None)[0]
 
         # Separate coefficients
         a = X[:-1, :]  # shape (dims, n_ops)
@@ -210,8 +293,9 @@ class WellCtrlOperators(OperatorsBase):
         :param property_container: Property container of type PropertyBase
         :param thermal: Switch to indicate if energy conservation equation is there
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
-                    (must be equal along all composition axes in current setup)
+        :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
+                    during boundary extrapolation. Scalar (uniform spacing) or a per-axis
+                    vector of length nc-1 (non-uniform cell size across composition axes).
         """
         super().__init__(
             property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
@@ -307,8 +391,9 @@ class ThermalVarOperator(OperatorsBase):
         :param thermal: Switch to indicate if energy conservation equation is there
         :param is_pt: Switch to indicate if state specification is P, PT, or PH
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
-                    (must be equal along all composition axes in current setup)
+        :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
+                    during boundary extrapolation. Scalar (uniform spacing) or a per-axis
+                    vector of length nc-1 (non-uniform cell size across composition axes).
         """
         super().__init__(property_container, thermal, extrapolation_flag, dz)
 
@@ -355,8 +440,9 @@ class PropertyOperators(OperatorsBase):
         :param thermal: Bool for thermal
         :param props: Optional dictionary of properties, default is taken from PropertyContainer
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
-                    (must be equal along all composition axes in current setup)
+        :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
+                    during boundary extrapolation. Scalar (uniform spacing) or a per-axis
+                    vector of length nc-1 (non-uniform cell size across composition axes).
         """
         super().__init__(property_container, thermal, extrapolation_flag, dz)
 

@@ -45,7 +45,8 @@ class Compositional(PhysicsBase):
         :param phases: List of phases.
         :param timer: Timer object.
         :param axes_step: Per-axis cell size [p_step, z_step_1, ..., z_step_{nc-1}, t_step?].
-            For ``extrapolation_flag=True`` the composition steps must all be equal.
+            For ``extrapolation_flag=True`` the composition steps may differ per axis
+            (non-uniform OBL cell size across composition axes); they need not be equal.
         :param axes_origin: Per-axis grid origin. Defaults match the open-DARTS unit
             conventions: pressure = 1 bar, compositions = ``epsilon_z`` (composition
             floor, avoids the simplex boundary), thermal axis = 273.15 K for
@@ -97,12 +98,16 @@ class Compositional(PhysicsBase):
         assert len(axes_origin) == n_vars
 
         self.extrapolation_flag = extrapolation_flag
-        self.dz = axes_step[1] if nc > 1 else None
+        # Per-axis composition cell sizes (length nc-1). Non-uniform OBL spacing
+        # across composition axes is supported: each axis keeps its own step and
+        # the boundary extrapolation steps onto that axis's own grid nodes. (The
+        # OBL interpolator is per-axis; equal cell size across axes is no longer
+        # required.) A uniform grid is simply the case where all entries are equal.
+        self.dz = list(axes_step[1:nc]) if nc > 1 else None
         if extrapolation_flag and nc > 1:
-            for i in range(nc - 1):
-                assert abs(axes_step[1 + i] - self.dz) < 1e-15, (
-                    "extrapolation requires equal dz across all composition axes"
-                )
+            assert all(s > 0 for s in self.dz), (
+                "composition axes_step entries must be positive for extrapolation"
+            )
 
         super().__init__(
             state_spec=state_spec,
