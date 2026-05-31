@@ -61,7 +61,8 @@ Configured hooks (`.pre-commit-config.yaml`):
 - `trailing-whitespace` — strip trailing whitespace
 - `check-yaml` — validate YAML syntax
 - `check-toml` — validate TOML syntax
-- `mixed-line-ending` — normalize line endings
+- `mixed-line-ending` — detect mixed line endings; do not use it to make
+  line-ending-only changes unless the user explicitly requests an EOL change
 - `detect-private-key` — prevent accidentally committed keys
 - `check-added-large-files` — block files > 500 KB
 - `check-merge-conflict` — detect conflict markers
@@ -140,6 +141,9 @@ pre-commit autoupdate
    `:return:`, and `:rtype:` fields.
 7. New Python directories added to the project must be included in the `files`
    glob in `.pre-commit-config.yaml`.
+8. Preserve existing file line endings. Do not manually normalize CRLF/LF style,
+   do not make line-ending-only changes, and revert accidental EOL-only rewrites
+   from formatters or hooks unless the user explicitly requested them.
 
 ---
 
