@@ -1121,7 +1121,8 @@ if __name__ == '__main__':
                     run(model_folder=case, physics_type=physics_type,
                         uniform_props=uniform_props, wells_type=wells_type,
                         decouple_geomech=True, generate_mesh=generate_mesh,
-                        report_step=report_step, sim_time=sim_time)
+                        report_step=report_step, sim_time=sim_time,
+                        plot_vtk_timesteps=[0, -1]) # plot initial and last timesteps
                 t2 = datetime.now()
                 thm_time = t2 - t1
 

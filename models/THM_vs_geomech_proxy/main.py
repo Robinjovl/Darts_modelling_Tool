@@ -116,7 +116,7 @@ def run_timestep_python(m, dt, t):
     return converged
 
 def run(model_folder, physics_type, uniform_props=False, wells_type=None,
-        decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90.):
+        decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[]):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -227,8 +227,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     #time_data_dict = m.output.store_well_time_data(save_output_files=True)
     #m.output.plot_well_time_data(phase_volumetric_rates=True)
 
-    #plot_vtk_pyvista(m.output_directory, tstep_to_plot=0)  # initial
-    #plot_vtk_pyvista(m.output_directory, tstep_to_plot=-1) # last
+    for tstep_to_plot in plot_vtk_timesteps:
+        plot_vtk_pyvista(m.output_directory, tstep_to_plot=tstep_to_plot)
 
     return m, data
 
@@ -280,4 +280,7 @@ if __name__ == '__main__':
     #sim_time = 30 # days
     #report_step = sim_time  # days
 
-    run(model_folder=mesh, physics_type=physics_type, generate_mesh=generate_mesh, wells_type=wells_type, decouple_geomech=decouple_geomech, report_step=report_step, sim_time=sim_time)
+    run(model_folder=mesh, physics_type=physics_type, generate_mesh=generate_mesh,
+        wells_type=wells_type, decouple_geomech=decouple_geomech,
+        report_step=report_step, sim_time=sim_time,
+        plot_vtk_timesteps=[0, -1]) # plot initial and last timesteps
