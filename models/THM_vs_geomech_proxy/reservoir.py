@@ -15,7 +15,7 @@ from functools import reduce
 class UnstructReservoirCustom(UnstructReservoirMech):
     def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False):
         self.idata = idata
-        
+
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         thermoporoelasticity = True if 'temperature' in fluid_vars else False
         super().__init__(timer, discretizer='mech_discretizer',
@@ -139,7 +139,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         if True:  # free Z-
             self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.FREE }
             self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.STUCK(0.,0.)}
-        else:     # free Z+ 
+        else:     # free Z+
             self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
             self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.FREE}
 
@@ -227,7 +227,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         if not hasattr(self, 'displs_initial'):
             self.displs_initial = dict()
         if not hasattr(self, 'tot_stress_initial'):
-            self.tot_stress_initial = total_stresses.copy() 
+            self.tot_stress_initial = total_stresses.copy()
 
         # Matrix
         cells = []
@@ -356,7 +356,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         rsv = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
                                       self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
                                       self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
-        
+
         # set juxtaposed rsv
         if False:
             rsv_thickness = np.fabs(self.rsv_bottom - self.rsv_top)
@@ -370,7 +370,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                                           self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
                                           self.rsv_x_middle <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
             rsv = reduce(np.logical_or, [rsv_left, rsv_right])
-        
+
         porosity_struct[rsv] = idata.rock.porosity
         permeability_struct[rsv] = idata.rock.permx # [mD]
         E_struct[rsv] = idata.rock.E #[bars]
@@ -415,7 +415,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         :param output_directory:
         :return:
         '''
-    
+
         import vtk
         well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
         # Append multiple cylinders into one polydata
@@ -450,7 +450,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             return tubeFilter.GetOutput()
 
         for w in self.wells:
-            is_first = True 
+            is_first = True
             for p in w.perforations:
                 well_block, res_block_local, well_index, well_indexD = p
                 c = np.array(self.centroids[res_block_local].values, copy=True)
@@ -472,4 +472,3 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         writer.SetFileName(well_vtk_filename)
         writer.SetInputConnection(appendFilter.GetOutputPort())
         writer.Write()
-        
