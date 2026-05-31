@@ -1,11 +1,14 @@
+import inspect
+import os
+import sys
 import time
 import warnings
 
+import meshio
 import numpy as np
 from opmcpg._cpggrid import index_vector as index_vector_cpggrid
 from opmcpg._cpggrid import process_cpg_grid
 from opmcpg._cpggrid import value_vector as value_vector_cpggrid
-from pyevtk.hl import pointsToVTK
 
 import darts
 from darts.discretizer import (
@@ -23,16 +26,6 @@ from darts.discretizer import value_vector as value_vector_discr
 from darts.engines import conn_mesh, timer_node
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
-
-try:
-    from vtk import vtkCellArray, vtkHexahedron, vtkPoints
-    from vtk.util.numpy_support import numpy_to_vtk
-except ImportError:
-    warnings.warn("No vtk module loaded.", stacklevel=2)
-
-import inspect
-import os
-import sys
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -64,12 +57,8 @@ class CPG_Reservoir(ReservoirBase):
 
         self.snap_counter = 0
 
-        self.vtk_z = 0
-        self.vtk_y = 0
-        self.vtk_x = 0
         self.vtk_filenames_and_times = {}
         self.vtkobj = 0
-        self.vtk_grid_type = 1
 
     def set_arrays(self, arrays):
         """
@@ -675,12 +664,7 @@ class CPG_Reservoir(ReservoirBase):
         :param export_grid_data: Switch for mesh properties output, default is True
         :type export_grid_data: bool
         """
-        from pyevtk.hl import gridToVTK
-
         self.vtk_initialized = True
-        self.vtk_z = 0
-        self.vtk_y = 0
-        self.vtk_x = 0
         self.vtk_filenames_and_times = {}
         self.vtkobj = 0
 
@@ -703,28 +687,17 @@ class CPG_Reservoir(ReservoirBase):
                     cell_data[key] = np.array(data)
             mesh_filename = output_directory + "/mesh"
 
-            if self.vtk_grid_type == 0:
-                gridToVTK(
-                    mesh_filename,
-                    self.vtk_x,
-                    self.vtk_y,
-                    self.vtk_z,
-                    cellData=cell_data,
-                )
-            else:
-                g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
-                for key, _value in cell_data.items():
-                    if cell_data[key].size == g_to_l.size:
-                        a = cell_data[key][g_to_l >= 0]
-                    else:
-                        a = cell_data[key]
-                    self.vtkobj.AppendScalarData(key, a)
+            g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
+            for key, _value in cell_data.items():
+                if cell_data[key].size == g_to_l.size:
+                    a = cell_data[key][g_to_l >= 0]
+                else:
+                    a = cell_data[key]
+                self.vtkobj.AppendScalarData(key, a)
 
-                self.vtkobj.Write2VTU(mesh_filename)
-                if len(self.vtk_filenames_and_times) == 0:
-                    for key, _data in self.global_data.items():
-                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray("cellNormals")
+            self.vtkobj.Write2VTU(mesh_filename)
+            if len(self.vtk_filenames_and_times) == 0:
+                self.vtkobj.cell_data.clear()
         return
 
     def output_to_vtk(
@@ -735,15 +708,13 @@ class CPG_Reservoir(ReservoirBase):
         prop_names: list,
         data: dict,
     ):
-        from pyevtk.hl import gridToVTK
-        from pyevtk.vtk import VtkGroup
-
         # only for the first export call
         os.makedirs(output_directory, exist_ok=True)
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
         vtk_file_name = output_directory + f'/solution_ts{ith_step}'
+        g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
 
         cell_data = {}
         for i, prop in enumerate(prop_names):
@@ -754,37 +725,39 @@ class CPG_Reservoir(ReservoirBase):
             )  # workaround for the issue in case of cells without active neighbours
             v = np.append(local_data[: self.mesh.n_res_blocks], dummy_zeros)
             global_array[self.discr_mesh.local_to_global] = v[:]
-            cell_data[prop_names[prop]] = global_array
+            cell_data[prop] = global_array
 
-        if self.vtk_grid_type == 0:
-            vtk_file_name = gridToVTK(
-                vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data
-            )
-        else:
-            for key, _value in cell_data.items():
-                g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
-                if cell_data[key].size == g_to_l.size:
-                    a = cell_data[key][g_to_l >= 0]
-                else:
-                    a = cell_data[key]
-                self.vtkobj.AppendScalarData(key, a)
+        for key, _value in cell_data.items():
+            if cell_data[key].size == g_to_l.size:
+                a = cell_data[key][g_to_l >= 0]
+            else:
+                a = cell_data[key]
+            self.vtkobj.AppendScalarData(key, a)
 
-            vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
-            if len(self.vtk_filenames_and_times) == 0:
-                for key, _data in self.global_data.items():
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                self.vtkobj.VTK_Grids.GetCellData().RemoveArray("cellNormals")
+        vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
+        if len(self.vtk_filenames_and_times) == 0:
+            self.vtkobj.cell_data.clear()
 
-        # in order to have correct timesteps in Paraview, write down group file
-        # since the library in use (pyevtk) requires the group file to call .save() method in the end,
-        # and does not support reading, track all written files and times and re-write the complete
-        # group file every time
-
+        # track all written files and re-write the complete PVD group file each time
+        # so Paraview can load the time series at any point during a run
         self.vtk_filenames_and_times[vtk_file_name] = t
-        vtk_group = VtkGroup(os.path.join(output_directory, "solution"))
-        for fname, t in self.vtk_filenames_and_times.items():
-            vtk_group.addFile(fname, t)
-        vtk_group.save()
+        self._write_pvd(output_directory)
+
+    def _write_pvd(self, output_directory: str):
+        pvd_path = os.path.join(output_directory, 'solution.pvd')
+        with open(pvd_path, 'w') as f:
+            f.write('<?xml version="1.0"?>\n')
+            f.write(
+                '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n'
+            )
+            f.write('  <Collection>\n')
+            for fname, t in self.vtk_filenames_and_times.items():
+                rel = os.path.basename(fname)
+                f.write(
+                    f'    <DataSet timestep="{t}" group="" part="0" file="{rel}"/>\n'
+                )
+            f.write('  </Collection>\n')
+            f.write('</VTKFile>\n')
 
     def generate_cpg_vtk_grid(self):
         from darts.tools import GRDECL2VTK
@@ -806,32 +779,17 @@ class CPG_Reservoir(ReservoirBase):
         points = nodes_1d.reshape((nodes_1d.size // 3, 3))
         points[:, 2] *= -1  # invert z-coordinate
 
-        cells_1d = np.arange(self.discr_mesh.n_cells * 8)
-        cells = cells_1d.reshape((cells_1d.size // 8, 8))
-        cells = [("hexahedron", cells)]
+        n_cells = self.discr_mesh.n_cells
+        cells_1d = np.arange(n_cells * 8, dtype=np.int64)
+        connectivity = cells_1d.reshape((n_cells, 8))
 
-        offset = np.arange(self.discr_mesh.n_cells + 1) * 8
-        offset_vtk = numpy_to_vtk(np.asarray(offset, dtype=np.int64), deep=True)
+        self.vtkobj.meshio_points = np.asarray(points, dtype=np.float32)
+        self.vtkobj.meshio_cells = [("hexahedron", connectivity)]
 
-        cells_vtk = numpy_to_vtk(np.asarray(cells_1d, dtype=np.int64), deep=True)
+        print("     NumOfPoints", points.shape[0])
+        print("     NumOfCells", n_cells)
 
-        cellArray = vtkCellArray()
-        cellArray.SetNumberOfCells(cells_1d.size)
-        cellArray.SetData(offset_vtk, cells_vtk)
-
-        Cell = vtkHexahedron()
-        self.vtkobj.VTK_Grids.SetCells(Cell.GetCellType(), cellArray)
-
-        vtk_points = vtkPoints()
-        vtk_points.SetNumberOfPoints(points.size)
-        points_vtk = numpy_to_vtk(np.asarray(points, dtype=np.float32), deep=True)
-        vtk_points.SetData(points_vtk)
-        self.vtkobj.VTK_Grids.SetPoints(vtk_points)
-
-        print("     NumOfPoints", self.vtkobj.VTK_Grids.GetNumberOfPoints())
-        print("     NumOfCells", self.vtkobj.VTK_Grids.GetNumberOfCells())
-
-        # 3. Load grid properties data if applicable
+        # Load grid properties data if applicable
         for keyword, data in self.vtkobj.GRDECL_Data.SpatialDatas.items():
             self.vtkobj.AppendScalarData(keyword, data)
 
@@ -899,64 +857,31 @@ class CPG_Reservoir(ReservoirBase):
 
     def create_vtk_wells(self, output_directory: str):
         """
-        creates a file wells.vtk with a tube per well based on its first perforation
+        Creates wells.vtu with a polyline per well based on its first perforation.
         :param output_directory:
         :return:
         """
-        import vtk
-
-        well_vtk_filename = os.path.join(output_directory, "wells.vtk")
-        # Append multiple cylinders into one polydata
-        appendFilter = vtk.vtkAppendPolyData()
-
-        def create_tube(center, prolongation=1000):
-            # Create points for the polyline
-            points = vtk.vtkPoints()
-            points.InsertNextPoint(
-                center[0], center[1], -center[2] + prolongation
-            )  # Point 1
-            points.InsertNextPoint(center[0], center[1], -center[2])  # Point 2
-
-            # Create a polyline that connects the points
-            lines = vtk.vtkCellArray()
-            line = vtk.vtkPolyLine()
-            line.GetPointIds().SetNumberOfIds(2)  # Number of points
-            line.GetPointIds().SetId(0, 0)
-            line.GetPointIds().SetId(1, 1)
-            lines.InsertNextCell(line)
-
-            # Create a polydata to hold the points and the polyline
-            polyData = vtk.vtkPolyData()
-            polyData.SetPoints(points)
-            polyData.SetLines(lines)
-
-            # Apply vtkTubeFilter to create a tube around the polyline
-            tubeFilter = vtk.vtkTubeFilter()
-            tubeFilter.SetInputData(polyData)
-            tubeFilter.SetRadius(35)  # Tube radius
-            tubeFilter.SetNumberOfSides(50)  # Smoothness of the tube
-            tubeFilter.Update()
-
-            return tubeFilter.GetOutput()
-
+        well_vtk_filename = os.path.join(output_directory, "wells.vtu")
+        points = []
+        lines = []
+        pt_idx = 0
+        prolongation = 1000
         for w in self.wells:
-            prolongation = 1000
             for p in w.perforations:
                 well_block, res_block_local, well_index, well_indexD = p
                 c = self.centroids_all_cells[res_block_local].values
-                cyl = create_tube(c, prolongation=prolongation)
-                appendFilter.AddInputData(cyl)
-                prolongation = 0
+                x, y, z = c[0], c[1], -c[2]
+                points.append([x, y, z + prolongation])
+                points.append([x, y, z])
+                lines.append([pt_idx, pt_idx + 1])
+                pt_idx += 2
                 break  # use only the first perf
-
-        # Update the append filter to combine the polydata
-        appendFilter.Update()
-
-        # Write the cylinders to a VTK file
-        writer = vtk.vtkPolyDataWriter()
-        writer.SetFileName(well_vtk_filename)
-        writer.SetInputConnection(appendFilter.GetOutputPort())
-        writer.Write()
+        if points:
+            mesh = meshio.Mesh(
+                points=np.array(points, dtype=np.float64),
+                cells=[("line", np.array(lines, dtype=np.int64))],
+            )
+            meshio.write(well_vtk_filename, mesh)
 
     def get_ijk_from_xyz(self, x, y, z):
         """
@@ -989,19 +914,23 @@ class CPG_Reservoir(ReservoirBase):
         return ijk
 
     def get_centers(self):
-        c_cpg = self.centroids_all_cells[: self.discr_mesh.n_cells]
-        c = np.zeros((self.discr_mesh.n_cells, 3))
-        for i in range(self.discr_mesh.n_cells):
+        n = self.discr_mesh.n_cells
+        c_cpg = self.centroids_all_cells[:n]
+        pts = np.zeros((n, 3))
+        for i in range(n):
             cv = c_cpg[i].values
-            c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
-        x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
-        return x, y, z
+            pts[i, 0], pts[i, 1], pts[i, 2] = cv[0], cv[1], -cv[2]
+        return pts
 
     def centers_to_vtk(self, out_dir):
         # output center points to VTK
-        fname = os.path.join(out_dir, "centers")
-        x, y, z = self.get_centers()
-        pointsToVTK(fname, x, y, z)
+        fname = os.path.join(out_dir, "centers.vtu")
+        pts = self.get_centers()
+        n = pts.shape[0]
+        mesh = meshio.Mesh(
+            points=pts, cells=[("vertex", np.arange(n, dtype=np.int64).reshape(-1, 1))]
+        )
+        meshio.write(fname, mesh)
 
     def save_grdecl(self, arrays_save, fname):
         """

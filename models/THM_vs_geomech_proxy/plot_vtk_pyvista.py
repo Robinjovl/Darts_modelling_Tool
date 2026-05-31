@@ -8,10 +8,10 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
     Plot VTK results using PyVista.
     saves 2D plots - xz slice - of specified arrays (vertic displ and stress) from the last timestep.
     '''
-    
+
     if 'sawcut' in output_dir or '2rocks' in output_dir: # contours help to see that u_z is the same along X-axes in the inclined hex mesh
         contour = True
-    
+
     #filename = os.path.join(output_dir, 'vtk', 'solution.pvd')
     #output_dir_plots = os.path.join(os.path.dirname(os.path.dirname(filename)), 'plots')
     filename = os.path.join(output_dir, 'solution.pvd')
@@ -91,7 +91,7 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
         if arr_name not in block.array_names: # skip temperature if not thermal model
             print('Warning: ', arr_name, 'not found in point data')
             continue
-        
+
         print('Plotting from vtk: ', arr_name, 'component_index', component_index)
         block.set_active_scalars(None)
         if not tensor:
@@ -119,7 +119,7 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
         values = np.array(slice_plane[arr_name_plot])
         min_val = values.min()
         max_val = values.max()
-        rel_diff = np.fabs(max_val - min_val) #/ max(np.fabs(min_val), np.fabs(max_val)) 
+        rel_diff = np.fabs(max_val - min_val) #/ max(np.fabs(min_val), np.fabs(max_val))
         if rel_diff < plot_rel_diff_threshold:
             slice_plane[arr_name_plot][:] = min_val
 
@@ -141,11 +141,11 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
 
         #arrows = slice_plane.glyph(orient="stress_vec", factor=0.05)
         #plotter.add_mesh(arrows, color="black")
-        xmin_blk = -rsv_xy_plot_bnd 
-        xmax_blk = rsv_xy_plot_bnd 
+        xmin_blk = -rsv_xy_plot_bnd
+        xmax_blk = rsv_xy_plot_bnd
         #ymin_blk = -rsv_xy_plot_bnd
-        #ymax_blk = rsv_xy_plot_bnd 
-        zmin_blk = block.bounds[4] 
+        #ymax_blk = rsv_xy_plot_bnd
+        zmin_blk = block.bounds[4]
         zmax_blk = block.bounds[5]
         y_slice = block.center[1]
         # horizontal reference lines at z=2000 and z=2400
@@ -175,7 +175,7 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
         plotter.add_text(arr_name_plot, position=(0.5, 0.93), font_size=8, viewport=True)  # title
         plotter.show(screenshot=os.path.join(output_dir_plots, arr_name_plot + "_slice.png"))
         plotter.close()
-        
+
         # Contour plot using matplotlib #################################################
         # Define desired resolution and bounds
         res_x, res_z = 1000, 1000
@@ -188,21 +188,21 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
             spacing=((xmax - xmin)/(res_x-1), y_mean, (zmax - zmin)/(res_z-1)),
             origin=(xmin, y_mean, zmin)
         )
-        
+
         # Sample the data from your original 'block' or 'slice'
         # interpolate values from the slice onto struct grid
         structured_resample = grid.sample(slice_plane)
-        
+
         # reshape to 2D
         if tensor:
             values_2d = structured_resample[arr_name][:,component_index].reshape(res_x, res_z) * scale
         else:
             values_2d = structured_resample[arr_name].reshape(res_x, res_z) * scale
-        
+
         # Get the X and Z coordinates as 2D arrays (matching the values)
         x_coords = structured_resample.points[:, 0].reshape(res_x, res_z)
         z_coords = structured_resample.points[:, 2].reshape(res_x, res_z)
-        
+
         # plot contours (don't look nice, so commented)
         if False:
             plt.figure(figsize=(8, 4))
@@ -219,7 +219,7 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
             plot_suffix = "_contour.png"
             plt.savefig(os.path.join(output_dir_plots, arr_name_plot + plot_suffix))
             plt.close()
-        
+
         # plot 1D #################################################################################
         if tstep_to_plot == -1:
             sample_resolution = 75  # number of point along Z for plotting
@@ -228,10 +228,10 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
             n_t_plot = 5
             t_indices_1d = sorted(set(
                 [1] + list(np.linspace(0, n_t - 1, n_t_plot, dtype=int)) + [n_t - 1]))
-            
+
             if 'stress' in arr_name:
                 t_indices_1d = [tstep_to_plot]
-            
+
             # Define line endpoints (x, y fixed; z varies)
             points_xy = [[50, 50, 'center'], [500, 500, 'right']] # XY
             z1, z2 = 0.0, 5000.   # vertical extent
@@ -272,19 +272,19 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
 
 if __name__ == "__main__":
     contour = False
-    
+
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_16_16_15')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_doublet_16_16_15')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_16_16_15')
-    
+
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
-    
+
     output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
-    
+
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_42_42_90')
     #output_dir = r'\\wsl.localhost\Ubuntu-24.04\root\projects\open-darts_dev_debug\models\SPE10_mech\results\sol_cpp_single_phase_inj_42_42_66'
-    
+
     plot_vtk_pyvista(output_dir, contour=contour, tstep_to_plot=0)
     plot_vtk_pyvista(output_dir, contour=contour, tstep_to_plot=-1)

@@ -68,7 +68,7 @@ class geomech():
 
         self.compaction_cpp = True  # use c++ library to compute displacements
         #self.compaction_cpp = False
-        
+
         self.deriv_step = 10. # m
 
     def set_num_threads(self, n_threads : int):
@@ -100,12 +100,12 @@ class geomech():
         from _proxygeomech import index_vector as index_vector_geomech
         v_points = value_vector_geomech(points.transpose().flatten())
         v_prisms = value_vector_geomech(prisms.flatten())
-        
+
         # to avoid TypeError: Format mismatch (Python: <d C++: d)
         # convert from dtype='<f8' (little-endian float64) to float64
         delta_pressure = delta_pressure.astype(delta_pressure.dtype.newbyteorder('='))
         delta_temperature = delta_temperature.astype(delta_temperature.dtype.newbyteorder('='))
-        
+
         v_delta_pressure = value_vector_geomech(delta_pressure)
         v_delta_temperature = value_vector_geomech(delta_temperature)
         if verbose:
@@ -304,15 +304,15 @@ class geomech():
             stress = self.young * (-strain + self.poisson / (1 - 2 * self.poisson) *
                                    volumetric_strain * kronecker) / (1 + self.poisson)
 
-            # for thermoelasticity: 
+            # for thermoelasticity:
             delta_temperature_points = gd((self.centroids[:, 1], self.centroids[:, 0], self.centroids[:, 2]), \
                 delta_temperature, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='nearest', fill_value=0.)
             stress += self.young * self.thermal_expansion * delta_temperature_points / (1 - 2 * self.poisson) * kronecker
 
-            # compute total stress from effective 
+            # compute total stress from effective
             delta_pressure_points = gd((self.centroids[:, 1], self.centroids[:, 0], self.centroids[:, 2]), \
                 delta_pressure, (fault_surface[1,:], fault_surface[0,:], fault_surface[2,:]), method='nearest', fill_value=0.)
-            stress_total = stress + self.biot * delta_pressure_points 
+            stress_total = stress + self.biot * delta_pressure_points
 
             if ui == 0:
                 stress_p, strain_p, stress_total_p = stress.copy(), strain.copy(), stress_total.copy()
@@ -320,7 +320,7 @@ class geomech():
                 stress_t, strain_t, stress_total_t = stress.copy(), strain.copy(), stress_total.copy()
             else:
                 stress_pt, strain_pt, stress_total_pt = stress.copy(), strain.copy(), stress_total.copy()
-                
+
         return stress_p, strain_p, stress_total_p, \
                stress_t, strain_t, stress_total_t, \
                stress_pt, strain_pt, stress_total_pt
