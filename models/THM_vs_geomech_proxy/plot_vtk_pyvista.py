@@ -65,6 +65,15 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
     arr_name = "delta_pressure"; tensor = False; arr_name_plot = 'delta_pressure,MPa'; scale = 0.1
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
+    arr_name = 'perm'; tensor = True; component_index = 0; arr_name_plot = 'perm_XX,mD'; scale = 1.0
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
+
+    #arr_name = 'perm'; tensor = True; component_index = 4; arr_name_plot = 'perm_YY,mD'; scale = 1.0
+    #plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
+
+    arr_name = 'perm'; tensor = True; component_index = 8; arr_name_plot = 'perm_ZZ,mD'; scale = 1.0
+    plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
+
     arr_name = 'delta_eff_stress'; tensor = True; component_index = 2; arr_name_plot = 'delta_eff_stress_ZZ,MPa'; scale = 0.1
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
