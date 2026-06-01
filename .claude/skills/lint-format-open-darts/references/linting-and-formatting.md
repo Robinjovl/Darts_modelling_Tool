@@ -68,8 +68,8 @@ Configured hooks (`.pre-commit-config.yaml`):
 - `check-merge-conflict` — detect conflict markers
 
 **Local repository policy hooks**:
-- `check-line-endings` — require tracked `.py`, `.pyi`, and `.sh` repository
-  blobs to use LF-only line endings
+- `check-line-endings` — require tracked Python/C/C++/CUDA repository blobs
+  to use LF-only line endings
 
 ---
 
@@ -149,7 +149,7 @@ pre-commit autoupdate
    do not make line-ending-only changes, and revert accidental EOL-only rewrites
    from formatters or hooks unless the user explicitly requested them.
 9. `.gitattributes` and `check-line-endings` make LF mandatory for committed
-   `.py`, `.pyi`, and `.sh` content. On Windows, this check reads Git blobs so
+   Python/C/C++/CUDA content. On Windows, this check reads Git blobs so
    checkout conversion does not create false failures.
 
 ---

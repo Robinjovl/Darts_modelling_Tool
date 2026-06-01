@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Check staged source files for repository line-ending policy violations.
+Check staged Python/C/C++/CUDA files for line-ending policy violations.
 """
 
 from __future__ import annotations
@@ -9,12 +9,26 @@ import subprocess
 import sys
 from pathlib import Path
 
-LF_ONLY_SUFFIXES = {".py", ".pyi", ".sh"}
+LF_ONLY_SUFFIXES = (
+    ".py",
+    ".pyi",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".h",
+    ".hh",
+    ".hpp",
+    ".hxx",
+    ".tpp",
+    ".cu",
+    ".cuh",
+)
 
 
 def tracked_policy_files() -> list[str]:
     output = subprocess.check_output(
-        ["git", "ls-files", "--", "*.py", "*.pyi", "*.sh"],
+        ["git", "ls-files", "--", *[f"*{suffix}" for suffix in LF_ONLY_SUFFIXES]],
         text=True,
     )
     return [line for line in output.splitlines() if line]
@@ -87,7 +101,7 @@ def main(argv: list[str]) -> int:
         for failure in failures:
             print(f"  {failure}", file=sys.stderr)
         print(
-            "Expected LF-only repository content for .py, .pyi, and .sh files.",
+            "Expected LF-only repository content for Python/C/C++/CUDA files.",
             file=sys.stderr,
         )
         return 1
