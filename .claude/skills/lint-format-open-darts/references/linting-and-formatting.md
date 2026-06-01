@@ -68,7 +68,6 @@ Configured hooks (`.pre-commit-config.yaml`):
 - `check-merge-conflict` — detect conflict markers
 
 **Local repository policy hooks**:
-- `sync-agent-skills-check` — verify `.claude/skills` mirrors `.agents/skills`
 - `check-line-endings` — require tracked `.py`, `.pyi`, and `.sh` repository
   blobs to use LF-only line endings
 

@@ -5,8 +5,8 @@
 - **Project-level commands** should be executed from the repo root.
 - **Environment rule:** for build, install, test, debug, docs, or lint commands, use a prompt-defined conda environment when one is provided. Otherwise, create and activate one session-level conda environment at the first such step and reuse it across all skills for the rest of the session.
 - **Line endings:** preserve existing file line endings. Do not make line-ending-only changes, run tools with the intent of changing EOL style, or keep accidental EOL rewrites unless the user explicitly requests them.
-- **Skills source of truth:** `.agents/skills`
-- **Claude mirror:** `.claude/skills` (keep synchronized with `helper_scripts/sync_agent_skills.py`)
+- **Skills source of truth:** `.claude/skills` — one tree of `SKILL.md` skills shared by every agent. Each `$skill-name` maps to `.claude/skills/<skill-name>/SKILL.md`; read that file (and any path under its `references/`) when the skill applies.
+- **Discovery:** Claude Code loads these skills natively from `.claude/skills`, and reads the rest of this file through `CLAUDE.md` (`@AGENTS.md`). Codex and other AGENTS.md-based agents reach the same skills through this file — one tree, no per-tool copy.
 
 ### Project overview
 
@@ -36,16 +36,10 @@
 - If exported constructor signatures, dataclass-like parameter ordering, CLI flags, file formats, or packaging requirements must change, call out the compatibility impact explicitly and add focused validation coverage.
 - Treat supported Python versions, wheel availability, and optional solver/backend requirements as release-critical compatibility surfaces.
 
-### Validate skill trees
+### Validate skills
 
 ```bash
-python helper_scripts/sync_agent_skills.py --check
-```
-
-### Sync skill trees
-
-```bash
-python helper_scripts/sync_agent_skills.py
+python helper_scripts/validate_skills.py
 ```
 
 ### Lint Python files
