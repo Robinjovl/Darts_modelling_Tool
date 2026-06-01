@@ -1353,7 +1353,7 @@ class Pipe:
 
         else:
             self.C00_filtered = 1
-            # self.C00 = np.ones(num_interfaces)
+            self.C00 = np.ones(num_interfaces)
 
     def update_drift_velocity(self):
         num_interfaces = self.geometry.num_interfaces
