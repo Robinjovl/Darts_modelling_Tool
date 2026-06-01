@@ -13,11 +13,14 @@ Notes:
         - Use 'L' as the name of the liquid phase (for a single liquid phase)
         - Use 'L_a' and 'L_b' as the names of the liquid phases (for two liquid phases)
         - Immobile phases after PropertyContainer.np_fl, or phases explicitly listed in Pipe.immobile_phase_names,
-          are returned with zero velocity. The drift-flux momentum closure itself is still gas/liquid. If an
-          immobile phase has nonzero holdup in a DFM pipe segment, the closure effectively treats that occupied
-          volume as part of the liquid fraction through terms such as (1 - sG); solid blockage or separate solid
-          holdup physics is not modeled, i.e., immobile phases are not considered in the pipe velocity calculation,
-          but their volume is still considered in the accumulation term of the conservation equations.
+          are returned with zero velocity. The drift-flux momentum closure itself is still gas/liquid.
+          Mobile-liquid holdup is tracked explicitly as sL (L or L_a + L_b). The C00-adjusted liquid saturations
+          retain the original (1 - C00 * sG) form, while explicitly mobile-liquid terms use sL. If an
+          immobile phase has nonzero holdup in a DFM pipe segment, the C00-adjusted non-gas factors can still
+          treat it as liquid-like holdup; solid blockage or separate immobile-holdup physics is not modeled.
+        - Source-boundary momentum calculations assume no immobile phase is present in the source segment. If
+          immobile holdup is present there, single-mobile-phase source velocities still use the full pipe area
+          rather than an area reduced by mobile-phase saturation.
 """
 
 import math
@@ -402,6 +405,7 @@ class Pipe:
                     xG_mass0[:, c_idx] = prop_arr0[f'x{c_name}_in_G_mass']
 
                 if self.n_mobile_phases == 2:
+                    sL0 = prop_arr0['sL']
                     rhoL0 = prop_arr0['rhoL']
                     miuL0 = prop_arr0['miuL'] * 1e-3  # convert cP to Pa.s
                     xL_mass0 = np.zeros((num_segments, pc.nc_fl))
@@ -411,6 +415,7 @@ class Pipe:
                 if self.n_mobile_phases == 3:
                     sL_a_0 = prop_arr0['sL_a']
                     sL_b_0 = prop_arr0['sL_b']
+                    sL0 = sL_a_0 + sL_b_0
                     rhoL_a_0 = prop_arr0['rhoL_a']
                     rhoL_b_0 = prop_arr0['rhoL_b']
                     miuL_a_0 = prop_arr0['miuL_a'] * 1e-3  # convert cP to Pa.s
@@ -423,17 +428,16 @@ class Pipe:
                         xL_b_mass_0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_b_mass']
 
                     # Calculate averaged liquid props
-                    den = sL_a_0 + sL_b_0
-                    mask = den > 0
+                    mask = sL0 > 0
                     rhoL0 = np.zeros(num_segments)
                     miuL0 = np.zeros(num_segments)
                     xL_mass0 = np.zeros((num_segments, pc.nc_fl))
                     rhoL0[mask] = (
                         rhoL_a_0[mask] * sL_a_0[mask] + rhoL_b_0[mask] * sL_b_0[mask]
-                    ) / den[mask]
+                    ) / sL0[mask]
                     miuL0[mask] = (
                         miuL_a_0[mask] * sL_a_0[mask] + miuL_b_0[mask] * sL_b_0[mask]
-                    ) / den[mask]
+                    ) / sL0[mask]
                     xL_mass0[mask, :] = (
                         xL_a_mass_0[mask, :] * rhoL_a_0[mask, None] * sL_a_0[mask, None]
                         + xL_b_mass_0[mask, :]
@@ -446,6 +450,7 @@ class Pipe:
 
             elif self.prop_eval_method == "direct":
                 sG0 = np.zeros(num_segments)
+                sL0 = np.zeros(num_segments)
                 rhoG0 = np.zeros(num_segments)
                 rhoL0 = np.zeros(num_segments)
                 miuG0 = np.zeros(num_segments)
@@ -473,6 +478,7 @@ class Pipe:
                     rhoG0[i] = pc.dens[g_idx]
                     miuG0[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
                     if self.n_mobile_phases == 2:
+                        sL0[i] = pc.sat[l_idx]
                         rhoL0[i] = pc.dens[l_idx]
                         miuL0[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                         # Calculate mass fractions of components in each phase
@@ -488,6 +494,7 @@ class Pipe:
 
                     if self.n_mobile_phases == 3:
                         sL_a_0[i], sL_b_0[i] = pc.sat[la_idx], pc.sat[lb_idx]
+                        sL0[i] = sL_a_0[i] + sL_b_0[i]
                         rhoL_a_0[i], rhoL_b_0[i] = pc.dens[la_idx], pc.dens[lb_idx]
                         miuL_a_0[i], miuL_b_0[i] = (
                             pc.mu[la_idx] * 1e-3,
@@ -532,6 +539,7 @@ class Pipe:
                 xG_mass0,
                 xL_mass0,
                 sG0,
+                sL0,
                 rhoG0,
                 rhoL0,
                 miuG0,
@@ -541,7 +549,9 @@ class Pipe:
         elif iter_counter == 0 and not self.is_first_first_iter and flag == 1:
             self.iter_phases_props0 = self.iter_phases_props
 
-        xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, miuG0, miuL0 = self.iter_phases_props0
+        xG_mass0, xL_mass0, sG0, sL0, rhoG0, rhoL0, miuG0, miuL0 = (
+            self.iter_phases_props0
+        )
 
         """ Calculate phase props of current time step at centroids """
         if self.prop_eval_method == "OBL":
@@ -568,6 +578,7 @@ class Pipe:
                 xG_mass[:, c_idx] = prop_arr[f'x{c_name}_in_G_mass']
 
             if self.n_mobile_phases == 2:
+                sL = prop_arr['sL']
                 rhoL = prop_arr['rhoL']
                 miuL = prop_arr['miuL'] * 1e-3  # convert cP to Pa.s
                 xL_mass = np.zeros((num_segments, pc.nc_fl))
@@ -577,6 +588,7 @@ class Pipe:
             if self.n_mobile_phases == 3:
                 sL_a = prop_arr['sL_a']
                 sL_b = prop_arr['sL_b']
+                sL = sL_a + sL_b
                 rhoL_a = prop_arr['rhoL_a']
                 rhoL_b = prop_arr['rhoL_b']
                 miuL_a = prop_arr['miuL_a'] * 1e-3  # convert cP to Pa.s
@@ -589,17 +601,16 @@ class Pipe:
                     xL_b_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_b_mass']
 
                 # Calculate averaged liquid props
-                den = sL_a + sL_b
-                mask = den > 0
+                mask = sL > 0
                 rhoL = np.zeros(num_segments)
                 miuL = np.zeros(num_segments)
                 xL_mass = np.zeros((num_segments, pc.nc_fl))
                 rhoL[mask] = (
                     rhoL_a[mask] * sL_a[mask] + rhoL_b[mask] * sL_b[mask]
-                ) / den[mask]
+                ) / sL[mask]
                 miuL[mask] = (
                     miuL_a[mask] * sL_a[mask] + miuL_b[mask] * sL_b[mask]
-                ) / den[mask]
+                ) / sL[mask]
                 xL_mass[mask, :] = (
                     xL_a_mass[mask, :] * rhoL_a[mask, None] * sL_a[mask, None]
                     + xL_b_mass[mask, :] * rhoL_b[mask, None] * sL_b[mask, None]
@@ -610,6 +621,7 @@ class Pipe:
 
         elif self.prop_eval_method == "direct":
             sG = np.zeros(num_segments)
+            sL = np.zeros(num_segments)
             rhoG = np.zeros(num_segments)
             rhoL = np.zeros(num_segments)
             miuG = np.zeros(num_segments)
@@ -637,6 +649,7 @@ class Pipe:
                 rhoG[i] = pc.dens[g_idx]
                 miuG[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
                 if self.n_mobile_phases == 2:
+                    sL[i] = pc.sat[l_idx]
                     rhoL[i] = pc.dens[l_idx]
                     miuL[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                     # Calculate mass fractions of components in each phase
@@ -647,6 +660,7 @@ class Pipe:
 
                 if self.n_mobile_phases == 3:
                     sL_a[i], sL_b[i] = pc.sat[la_idx], pc.sat[lb_idx]
+                    sL[i] = sL_a[i] + sL_b[i]
                     rhoL_a[i], rhoL_b[i] = pc.dens[la_idx], pc.dens[lb_idx]
                     miuL_a[i], miuL_b[i] = pc.mu[la_idx] * 1e-3, pc.mu[lb_idx] * 1e-3
                     # Calculate mass fractions of components in each phase
@@ -682,22 +696,24 @@ class Pipe:
                         else 0
                     )
 
-        self.iter_phases_props = [xG_mass, xL_mass, sG, rhoG, rhoL, miuG, miuL]
+        self.iter_phases_props = [xG_mass, xL_mass, sG, sL, rhoG, rhoL, miuG, miuL]
 
         # If the differentiation method is OBL, calculate phase property derivatives
         if self.diff_method == "OBL":
             sG_der = self.get_op_der_matrix(op_idx=SAT_OP + g_idx)
             rhoG_der = self.get_op_der_matrix(op_idx=GRAV_OP + g_idx)
             if self.n_mobile_phases == 2:
+                sL_der = self.get_op_der_matrix(op_idx=SAT_OP + l_idx)
                 rhoL_der = self.get_op_der_matrix(op_idx=GRAV_OP + l_idx)
             elif self.n_mobile_phases == 3:
                 rhoL_a_der = self.get_op_der_matrix(op_idx=GRAV_OP + la_idx)
                 rhoL_b_der = self.get_op_der_matrix(op_idx=GRAV_OP + lb_idx)
                 sL_a_der = self.get_op_der_matrix(op_idx=SAT_OP + la_idx)
                 sL_b_der = self.get_op_der_matrix(op_idx=SAT_OP + lb_idx)
+                sL_der = sL_a_der + sL_b_der
 
-                den = sL_a + sL_b
-                mask = den > 0
+                sL = sL_a + sL_b
+                mask = sL > 0
                 rhoL_der = np.zeros_like(rhoL_a_der)
                 num = (sL_a[:, None] + sL_b[:, None]) * (
                     sL_a[:, None] * rhoL_a_der
@@ -707,11 +723,12 @@ class Pipe:
                 ) - (
                     rhoL_a[:, None] * sL_a[:, None] + rhoL_b[:, None] * sL_b[:, None]
                 ) * (sL_a_der + sL_b_der)
-                rhoL_der[mask, :] = num[mask, :] / (den[mask, None] ** 2)
+                rhoL_der[mask, :] = num[mask, :] / (sL[mask, None] ** 2)
 
         """ Calculate phase props of previous time step at interfaces """
         if iter_counter == 0 and flag == 1:
             sG0_face = (sG0[:-1] + sG0[1:]) / 2
+            sL0_face = (sL0[:-1] + sL0[1:]) / 2
 
             # Initialize arrays to store interface properties
             rhoG0_face = np.zeros(num_segments - 1)
@@ -744,30 +761,39 @@ class Pipe:
                         + xG_mass0[i + 1] * rhoG0[i + 1] * sG0[i + 1]
                     ) / (rhoG0[i] * sG0[i] + rhoG0[i + 1] * sG0[i + 1])
 
-                if sG0[i] == 1:
+                liquid_weight_i = rhoL0[i] * sL0[i]
+                liquid_weight_ip1 = rhoL0[i + 1] * sL0[i + 1]
+                liquid_weight_sum = liquid_weight_i + liquid_weight_ip1
+
+                if liquid_weight_i == 0 and liquid_weight_ip1 > 0:
                     # If no liquid in segment i, use properties from segment i+1
                     rhoL0_face[i] = rhoL0[i + 1]
                     miuL0_face[i] = miuL0[i + 1]
                     xL_mass0_face[i] = xL_mass0[i + 1]
-                elif sG0[i + 1] == 1:
+                elif liquid_weight_ip1 == 0 and liquid_weight_i > 0:
                     # If no liquid in segment i+1, use properties from segment i
                     rhoL0_face[i] = rhoL0[i]
                     miuL0_face[i] = miuL0[i]
                     xL_mass0_face[i] = xL_mass0[i]
-                else:
+                elif liquid_weight_sum > 0:
                     # If both segments have liquid, use averaging
                     rhoL0_face[i] = (rhoL0[i] + rhoL0[i + 1]) / 2
                     miuL0_face[i] = (miuL0[i] + miuL0[i + 1]) / 2
 
                     xL_mass0_face[i] = (
-                        xL_mass0[i] * rhoL0[i] * (1 - sG0[i])
-                        + xL_mass0[i + 1] * rhoL0[i + 1] * (1 - sG0[i + 1])
-                    ) / (rhoL0[i] * (1 - sG0[i]) + rhoL0[i + 1] * (1 - sG0[i + 1]))
+                        xL_mass0[i] * rhoL0[i] * sL0[i]
+                        + xL_mass0[i + 1] * rhoL0[i + 1] * sL0[i + 1]
+                    ) / liquid_weight_sum
+                else:
+                    rhoL0_face[i] = 0.0
+                    miuL0_face[i] = 0.0
+                    xL_mass0_face[i] = 0.0
 
             self.iter_phases_props0_face = [
                 xG_mass0_face,
                 xL_mass0_face,
                 sG0_face,
+                sL0_face,
                 rhoG0_face,
                 rhoL0_face,
                 miuG0_face,
@@ -776,8 +802,10 @@ class Pipe:
 
         """ Calculate phase props of current time step at interfaces """
         sG_face = (sG[:-1] + sG[1:]) / 2
+        sL_face = (sL[:-1] + sL[1:]) / 2
         if self.diff_method == "OBL":
             sG_face_der = (sG_der[:-1, :] + sG_der[1:, :]) / 2
+            sL_face_der = (sL_der[:-1, :] + sL_der[1:, :]) / 2
 
         # Initialize arrays to store interface properties
         rhoG_face = np.zeros(num_segments - 1)
@@ -806,12 +834,12 @@ class Pipe:
                 if self.diff_method == "OBL":
                     rhoG_face_der[i, :] = (rhoG_der[i, :] + rhoG_der[i + 1, :]) / 2
 
-            if sG[i] == 1:
+            if sL[i] == 0:
                 # If no liquid in segment i, use properties from segment i+1
                 rhoL_face[i] = rhoL[i + 1]
                 if self.diff_method == "OBL":
                     rhoL_face_der[i, :] = rhoL_der[i + 1, :]
-            elif sG[i + 1] == 1:
+            elif sL[i + 1] == 0:
                 # If no liquid in segment i+1, use properties from segment i
                 rhoL_face[i] = rhoL[i]
                 if self.diff_method == "OBL":
@@ -823,10 +851,11 @@ class Pipe:
                 if self.diff_method == "OBL":
                     rhoL_face_der[i, :] = (rhoL_der[i, :] + rhoL_der[i + 1, :]) / 2
 
-        self.iter_phases_props_face = [sG_face, rhoG_face, rhoL_face]
+        self.iter_phases_props_face = [sG_face, sL_face, rhoG_face, rhoL_face]
         if self.diff_method == "OBL":
             self.iter_phases_props_face_ders = [
                 sG_face_der,
+                sL_face_der,
                 rhoG_face_der,
                 rhoL_face_der,
             ]
@@ -862,7 +891,7 @@ class Pipe:
             # To increase the numerical stability, you may need to use an upwind scheme for the momentum flux like
             # in the paper "A transient gothermal wellbore simulator (2023)
             delta_interface0 = pg.pipe_internal_A * (
-                rhoG0_face * sG0_face * vG0**2 + rhoL0_face * (1 - sG0_face) * vL0**2
+                rhoG0_face * sG0_face * vG0**2 + rhoL0_face * sL0_face * vL0**2
             )
 
             """ Add momentum boundary conditions """
@@ -891,26 +920,30 @@ class Pipe:
 
                 # The props of the fluid of the segment on which the constant mass rate source is defined are used.
                 sG0_source = sG0[segment_idx_source]
+                sL0_source = sL0[segment_idx_source]
                 rhoG0_source = rhoG0[segment_idx_source]
                 rhoL0_source = rhoL0[segment_idx_source]
 
-                if sG0_source == 0:
+                has_mobile_liquid0 = rhoL0_source > 0 and sL0_source > 1e-12
+
+                # This section is written under the assumption that there is no solid phase in the source.
+                if sG0_source == 0 and has_mobile_liquid0:
                     vG0_source = 0
                     liquid_mass_fraction0 = 1
                     liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
                     vL0_source = (
                         liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
                     )
-                elif sG0_source == 1:
+                elif sG0_source == 1 or not has_mobile_liquid0:
                     vL0_source = 0
                     gas_mass_fraction0 = 1
                     gas_mass_rate0 = mass_rate * gas_mass_fraction0
                     vG0_source = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
-                elif 0 < sG0_source < 1:
+                elif sG0_source > 0 and has_mobile_liquid0:
                     gas_mass_fraction0 = (
                         sG0_source
                         * rhoG0_source
-                        / (sG0_source * rhoG0_source + (1 - sG0_source) * rhoL0_source)
+                        / (sG0_source * rhoG0_source + sL0_source * rhoL0_source)
                     )
                     gas_mass_rate0 = mass_rate * gas_mass_fraction0
                     vG0_source = (
@@ -922,14 +955,14 @@ class Pipe:
                     vL0_source = (
                         liquid_mass_rate0
                         / rhoL0_source
-                        / (pipe_internal_A * (1 - sG0_source))
+                        / (pipe_internal_A * sL0_source)
                     )
                 else:
                     raise Exception("sG0_source is out of correct range (from 0 to 1)!")
 
                 delta_at_bc_interface0 = pipe_internal_A * (
                     rhoG0_source * sG0_source * vG0_source**2
-                    + rhoL0_source * (1 - sG0_source) * vL0_source**2
+                    + rhoL0_source * sL0_source * vL0_source**2
                 )
 
                 if segment_idx_source == 0:
@@ -1016,11 +1049,11 @@ class Pipe:
         # Liquid velocity at wellbore interfaces
         self.vL = np.zeros(num_interfaces)
         for i in range(num_interfaces):
-            if sG_face[i] != 1:
+            if sL_face[i] > 0:
                 self.vL[i] = (1 - self.C00[i] * sG_face[i]) * self.rhoM_vM[i] / (
-                    (1 - sG_face[i]) * self.rhoM_adjusted_face[i]
+                    sL_face[i] * self.rhoM_adjusted_face[i]
                 ) - sG_face[i] * rhoG_face[i] * self.vD0[i] / (
-                    (1 - sG_face[i]) * self.rhoM_adjusted_face[i]
+                    sL_face[i] * self.rhoM_adjusted_face[i]
                 )
 
                 if self.diff_method == "OBL":
@@ -1029,15 +1062,15 @@ class Pipe:
                             -self.C00[i] * sG_face_der[i, :] * self.rhoM_vM[i]
                             + (1 - self.C00[i] * sG_face[i]) * self.rhoM_vM_der[i, :]
                         )
-                        * (1 - sG_face[i])
+                        * sL_face[i]
                         * self.rhoM_adjusted_face[i]
                         - (
-                            -sG_face_der[i, :] * self.rhoM_adjusted_face[i]
-                            + (1 - sG_face[i]) * self.rhoM_adjusted_face_der[i, :]
+                            sL_face_der[i, :] * self.rhoM_adjusted_face[i]
+                            + sL_face[i] * self.rhoM_adjusted_face_der[i, :]
                         )
                         * (1 - self.C00[i] * sG_face[i])
                         * self.rhoM_vM[i]
-                    ) / (((1 - sG_face[i]) * self.rhoM_adjusted_face[i]) ** 2) - (
+                    ) / ((sL_face[i] * self.rhoM_adjusted_face[i]) ** 2) - (
                         (
                             self.vD0[i]
                             * (
@@ -1045,15 +1078,15 @@ class Pipe:
                                 + sG_face[i] * rhoG_face_der[i, :]
                             )
                         )
-                        * ((1 - sG_face[i]) * self.rhoM_adjusted_face[i])
+                        * (sL_face[i] * self.rhoM_adjusted_face[i])
                         - (
-                            -sG_face_der[i, :] * self.rhoM_adjusted_face[i]
-                            + (1 - sG_face[i]) * self.rhoM_adjusted_face_der[i, :]
+                            sL_face_der[i, :] * self.rhoM_adjusted_face[i]
+                            + sL_face[i] * self.rhoM_adjusted_face_der[i, :]
                         )
                         * sG_face[i]
                         * rhoG_face[i]
                         * self.vD0[i]
-                    ) / (((1 - sG_face[i]) * self.rhoM_adjusted_face[i]) ** 2)
+                    ) / ((sL_face[i] * self.rhoM_adjusted_face[i]) ** 2)
 
         for i in range(num_interfaces):
             if self.vG[i] > 0 and sG[i] == 0:
@@ -1065,11 +1098,11 @@ class Pipe:
                 if self.diff_method == "OBL":
                     self.vG_der[i, :] = 0
 
-            if self.vL[i] > 0 and (sG[i] - 1) == 0:
+            if self.vL[i] > 0 and sL[i] == 0:
                 self.vL[i] = 0
                 if self.diff_method == "OBL":
                     self.vL_der[i, :] = 0
-            elif self.vL[i] < 0 and (sG[i + 1] - 1) == 0:
+            elif self.vL[i] < 0 and sL[i + 1] == 0:
                 self.vL[i] = 0
                 if self.diff_method == "OBL":
                     self.vL_der[i, :] = 0
@@ -1088,28 +1121,40 @@ class Pipe:
 
     def calc_mixture_densities(self, iter_counter, flag):
         if iter_counter == 0 and self.is_first_first_iter and flag == 1:
-            _, _, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
+            _, _, sG0, sL0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
 
-            _, _, sG0_face, rhoG0_face, rhoL0_face, _, _ = self.iter_phases_props0_face
-            self.rhoM0_face = sG0_face * rhoG0_face + (1 - sG0_face) * rhoL0_face
+            _, _, sG0_face, sL0_face, rhoG0_face, rhoL0_face, _, _ = (
+                self.iter_phases_props0_face
+            )
+            self.rhoM0_face = (sG0_face * rhoG0_face + sL0_face * rhoL0_face) / (
+                sG0_face + sL0_face
+            )
 
         elif iter_counter == 0 and not self.is_first_first_iter and flag == 1:
             self.rhoM0_face = self.rhoM_face
 
         # Calculate mixture density
-        _, _, sG, rhoG, rhoL, _, _ = self.iter_phases_props
+        _, _, sG, sL, rhoG, rhoL, _, _ = self.iter_phases_props
 
-        [sG_face, rhoG_face, rhoL_face] = self.iter_phases_props_face
+        [sG_face, sL_face, rhoG_face, rhoL_face] = self.iter_phases_props_face
 
-        self.rhoM_face = sG_face * rhoG_face + (1 - sG_face) * rhoL_face
+        num = sG_face * rhoG_face + sL_face * rhoL_face
+        den = sG_face + sL_face
+        self.rhoM_face = num / den
         if self.diff_method == "OBL":
-            sG_face_der, rhoG_face_der, rhoL_face_der = self.iter_phases_props_face_ders
-            self.rhoM_face_der = (
-                sG_face_der * rhoG_face[:, None]
-                + sG_face[:, None] * rhoG_face_der
-                - sG_face_der * rhoL_face[:, None]
-                + (1 - sG_face[:, None]) * rhoL_face_der
+            sG_face_der, sL_face_der, rhoG_face_der, rhoL_face_der = (
+                self.iter_phases_props_face_ders
             )
+            self.rhoM_face_der = (
+                (
+                    sG_face_der * rhoG_face[:, None]
+                    + sG_face[:, None] * rhoG_face_der
+                    + sL_face_der * rhoL_face[:, None]
+                    + sL_face[:, None] * rhoL_face_der
+                )
+                * den[:, None]
+                - (sG_face_der + sL_face_der) * num[:, None]
+            ) / den[:, None] ** 2
 
         # Calculate adjusted-mixture density
         if iter_counter == 0 and flag == 1 and self.is_first_first_iter:
@@ -1136,18 +1181,22 @@ class Pipe:
         pg = self.geometry
 
         """ Start calculating the Reynolds number """
-        _, _, sG0, _, _, _, _ = self.iter_phases_props0
+        _, _, sG0, sL0, _, _, _, _ = self.iter_phases_props0
 
-        _, _, sG0_face, _, _, miuG0_face, miuL0_face = self.iter_phases_props0_face
+        _, _, sG0_face, sL0_face, _, _, miuG0_face, miuL0_face = (
+            self.iter_phases_props0_face
+        )
         [_, vM0, _, _] = self.velocities0
 
         # Saturation-weighted average is used to calculate the mixture viscosity of two phases. The method is used in
         # Beggs and Brill's book: Eq. 1.38
         # My production engineering notebook: Pressure drop calc in wellbore for 2-phase flow with Beggs and Brill's method
-        self.miuM0 = sG0_face * miuG0_face + (1 - sG0_face) * miuL0_face
+        self.miuM0 = (sG0_face * miuG0_face + sL0_face * miuL0_face) / (
+            sG0_face + sL0_face
+        )
 
         # Viscosity averaging method in https://doi.org/10.1016/j.ijmultiphaseflow.2021.103590
-        # _, _, _, rhoG0_face, rhoL0_face, _, _ = self.iter_phases_props0_face
+        # _, _, _, _, rhoG0_face, rhoL0_face, _, _ = self.iter_phases_props0_face
         # xg = sG0_face * rhoG0_face / (sG0_face * rhoG0_face + (1 - sG0_face) * rhoL0_face)
         # denominator_1 = xg / miuG0_face
         # denominator_1 = np.nan_to_num(denominator_1, nan=0.0)
@@ -1225,11 +1274,18 @@ class Pipe:
         pg = self.geometry
         num_interfaces = self.geometry.num_interfaces
         [rhoM0_vM0, _, _, _] = self.velocities0
-        [xG_mass0_face, xL_mass0_face, sG0_face, rhoG0_face, rhoL0_face, _, _] = (
-            self.iter_phases_props0_face
-        )
+        [
+            xG_mass0_face,
+            xL_mass0_face,
+            sG0_face,
+            sL0_face,
+            rhoG0_face,
+            rhoL0_face,
+            _,
+            _,
+        ] = self.iter_phases_props0_face
 
-        mask = (sG0_face > 0) & (sG0_face < 1)
+        mask = (sG0_face > 0) & (sL0_face > 0)
         at_least_one_true = any(mask)
         if at_least_one_true:
             indices = np.where(mask)[0]
@@ -1297,26 +1353,41 @@ class Pipe:
 
         else:
             self.C00_filtered = 1
-            # self.C00 = np.ones(num_interfaces)
+            self.C00 = np.ones(num_interfaces)
 
     def update_drift_velocity(self):
         num_interfaces = self.geometry.num_interfaces
         # if np.all(self.C00 == 1):
         #     vD0 = np.zeros(num_interfaces)
         # else:
-        if any(0 < sG < 1 for sG in self.iter_phases_props0_face[2]):
-            [_, _, sG0_face, rhoG0_face, rhoL0_face, _, _] = (
+        if any(
+            (sG > 0) and (sL > 0)
+            for sG, sL in zip(
+                self.iter_phases_props0_face[2],
+                self.iter_phases_props0_face[3],
+                strict=False,
+            )
+        ):
+            [_, _, sG0_face, sL0_face, rhoG0_face, rhoL0_face, _, _] = (
                 self.iter_phases_props0_face
             )
             [_, vM0, _, _] = self.velocities0
 
-            mask = (sG0_face > 0) & (sG0_face < 1)
+            mask = (sG0_face > 0) & (sL0_face > 0)
             indices = np.where(mask)[0]
             sG0_face_filtered = sG0_face[indices]
+            sL0_face_filtered = sL0_face[indices]
             rhoG0_face_filtered = rhoG0_face[indices]
             rhoL0_face_filtered = rhoL0_face[indices]
             vM0_filtered = vM0[indices]
             rhoM0_face_filtered = self.rhoM0_face[indices]
+
+            if not self.enable_profile_parameter:
+                # Use this function to evaluate Ku0_filtered and vC0_filtered for drift velocity;
+                # reset C00 afterward because the profile parameter itself is disabled.
+                self.update_profile_parameter()
+                self.C00 = np.ones(num_interfaces)
+                self.C00_filtered = np.ones(len(indices))
 
             # Calculate the K function to make a smooth transition of drift velocity between
             # the bubble-rise and film-flooding stages
@@ -1357,7 +1428,7 @@ class Pipe:
                 * rhoG0_face_filtered
                 / (
                     sG0_face_filtered * rhoG0_face_filtered
-                    + (1 - sG0_face_filtered) * rhoL0_face_filtered
+                    + sL0_face_filtered * rhoL0_face_filtered
                 )
             )
 
