@@ -16,6 +16,7 @@ from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.engines import value_vector, sim_params
 from darts.tools.keyword_file_tools import load_single_keyword
 from darts.physics.super.initialize import Initialize
+from darts.physics.properties.viscosity import MaoDuan2009
 
 from reservoir import UnstructReservoirCustom
 
@@ -317,7 +318,7 @@ class Model(THMCModel):
                                                                        dens0=self.idata.fluid.density,
                                                                        p0=p_ref))])
             property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
-
+            #property_container.viscosity_ev = dict([('wat', MaoDuan2009(components))])
             property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
             # rock compressibility is treated inside engine
             property_container.rock_compr_ev = ConstFunc(1.0)
@@ -335,6 +336,7 @@ class Model(THMCModel):
                                                                        dens0=self.idata.fluid.density,
                                                                        p0=p_ref))])
             property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
+            #property_container.viscosity_ev = dict([('wat', MaoDuan2009(components))])
 
             property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
             # rock compressibility is treated inside engine
