@@ -1382,6 +1382,13 @@ class Pipe:
             vM0_filtered = vM0[indices]
             rhoM0_face_filtered = self.rhoM0_face[indices]
 
+            if not self.enable_profile_parameter:
+                # Use this function to evaluate Ku0_filtered and vC0_filtered for drift velocity;
+                # reset C00 afterward because the profile parameter itself is disabled.
+                self.update_profile_parameter()
+                self.C00 = np.ones(num_interfaces)
+                self.C00_filtered = np.ones(len(indices))
+
             # Calculate the K function to make a smooth transition of drift velocity between
             # the bubble-rise and film-flooding stages
             K0_filtered = np.zeros(len(self.C00_filtered))
