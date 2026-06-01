@@ -174,7 +174,7 @@ class Model(DartsModel):
 
         # [p, z_1, ..., z_{nc-1}, T?]
         nz = len(components) - 1
-        ax_step = [0.5] + [1e-3] * nz
+        ax_step = [0.399] + [1e-3] * nz
         ax_origin = [1.0] + [epsilon] * nz
         if state_spec >= Compositional.StateSpecification.PT:
             ax_step.append(0.1)

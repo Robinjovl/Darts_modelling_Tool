@@ -118,7 +118,7 @@ class Model(THMCModel):
         self.idata.obl.p_origin = 0.0
         self.idata.obl.z_step = 2.5e-3
         self.idata.obl.z_origin = self.idata.obl.zero / 10
-        self.idata.obl.t_step = 0.5
+        self.idata.obl.t_step = 0.45
         self.idata.obl.t_origin = 273.15 + 20
         self.idata.obl.epsilon_z = self.idata.obl.zero/10
         super().set_input_data()

@@ -275,9 +275,22 @@ class Model(DartsModel):
         max_p = 500.
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        if n_comps != 20:
+            comp_axes_max = [1. - (n_comps - 1) * epsilon, 0.9]
+            if n_comps > 3:
+                comp_axes_max += [0.7]
+            if n_comps > 4:
+                comp_axes_max += [0.5]
+            if n_comps > 5:
+                comp_axes_max += (n_comps - 5) * [0.4]
+        else:
+            comp_axes_max = [1. - (n_comps - 1) * epsilon]
+            comp_axes_max += [2. * m for m in [0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
+                                               0.040, 0.035, 0.030, 0.025, 0.020, 0.015, 0.010, 0.007, 0.005]]
+        assert len(comp_axes_max) == n_comps - 1
         p_step = (max_p - 40.0) / max(self.obl_points - 1, 1)
-        z_step = 1.0 / max(self.obl_points - 1, 1)
-        axes_step = [p_step] + [z_step] * (n_comps - 1)
+        z_denom = max(self.obl_points - 1, 1)
+        axes_step = [p_step] + [m / z_denom for m in comp_axes_max]
         axes_origin = [40.0] + [epsilon] * (n_comps - 1)
         self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec,
                                      axes_step=axes_step, axes_origin=axes_origin,

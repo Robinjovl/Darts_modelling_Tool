@@ -131,7 +131,7 @@ class Model(DartsModel, OptModuleSettings):
         # [p, z_1, ..., z_{nc-1}, T]
         nz = len(components) - 1
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     axes_step=[2.5] + [2.5e-3] * nz + [0.5],
+                                     axes_step=[2.5] + [2.5e-3] * nz + [0.4511],
                                      axes_origin=[0.0] + [epsilon] * nz + [273.15 + 20],
                                      epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)

@@ -103,7 +103,7 @@ class Model(DartsModel):
         property_container.output_props = {'T,degrees': lambda: property_container.temperature - 273.15}
 
         # Geothermal: [p, e]
-        self.physics = Geothermal(self.timer, axes_step=[1.5, 50.0], axes_origin=[1.0, 1000.0], cache=False)
+        self.physics = Geothermal(self.timer, axes_step=[1.37, 35.3], axes_origin=[1.0, 1000.0], cache=False)
         self.physics.add_property_region(property_container)
         self.physics.init_physics()
 
@@ -128,7 +128,7 @@ class Model(DartsModel):
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         # 2 components → 1 z axis
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     axes_step=[5.0, 5e-3], axes_origin=[0.0, epsilon],
+                                     axes_step=[3.92, 3.92e-3], axes_origin=[0.0, epsilon],
                                      epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
@@ -167,7 +167,7 @@ class Model(DartsModel):
         """ Activate physics """
         # Black oil: 3 components → 2 z axes
         self.physics = Compositional(components, phases, self.timer,
-                                     axes_step=[2.0, 5e-3, 5e-3], axes_origin=[1.0, zero, zero],
+                                     axes_step=[1.76, 3.92e-3, 3.92e-3], axes_origin=[1.0, zero, zero],
                                      epsilon_z=zero)
         self.physics.add_property_region(property_container)
 
@@ -203,7 +203,7 @@ class Model(DartsModel):
         # 4 components → 3 z axes
         nz = len(components) - 1
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     axes_step=[2.0] + [5e-3] * nz,
+                                     axes_step=[2.0] + [3.92e-3] * nz,
                                      axes_origin=[1.0] + [zero] * nz,
                                      epsilon_z=zero)
         self.physics.add_property_region(property_container)

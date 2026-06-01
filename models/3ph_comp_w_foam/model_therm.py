@@ -83,7 +83,7 @@ class Model_therm(CICDModel):
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         # 1 p + (nc-1) z + 1 T
         nz = len(components) - 1
-        ax_step = [1.0] + [1e-3] * nz + [0.2]
+        ax_step = [1.0] + [1e-3] * nz + [0.18]
         ax_origin = [1.0] + [self.zero / 10] * nz + [273.15 + 20]
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=ax_step, axes_origin=ax_origin,

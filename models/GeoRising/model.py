@@ -125,7 +125,7 @@ class Model(CICDModel):
 
                 from darts.physics.super.physics import Compositional
                 # PH state spec: pressure + (nc-1) compositions + enthalpy
-                ax_step = [0.5] + [1e-3] * (len(components) - 1) + [0.1]
+                ax_step = [0.399] + [1e-3] * (len(components) - 1) + [0.1]
                 ax_origin = [1.0] + [zero / 10] * (len(components) - 1) + [273.15]
                 self.physics = Compositional(components, phases, self.timer,
                                              state_spec=Compositional.StateSpecification.PH,
@@ -212,7 +212,7 @@ class Model(CICDModel):
         #     self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
         # self.idata.wells.controls.inj_bht = 300  # K
 
-        self.idata.obl.p_step = 0.5  # bar
+        self.idata.obl.p_step = 2.756  # bar
         self.idata.obl.p_origin = 1.0
-        self.idata.obl.e_step = 10.0  # kJ/kmol
+        self.idata.obl.e_step = 70.87  # kJ/kmol
         self.idata.obl.e_origin = 1000.0

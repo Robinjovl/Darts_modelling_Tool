@@ -105,7 +105,7 @@ class Model(CICDModel):
 
         state_spec = Compositional.StateSpecification.PT
         # 1 p + (nc-1) z + 1 T
-        ax_step = [3.0] + [5e-3] * (len(components) - 1) + [2.0]
+        ax_step = [0.0599] + [1e-4] * (len(components) - 1) + [0.028]
         ax_origin = [1.0] + [epsilon] * (len(components) - 1) + [220.0]
         self.physics = Compositional(components, phases, self.timer,
                                      axes_step=ax_step, axes_origin=ax_origin,

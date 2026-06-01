@@ -123,7 +123,7 @@ class Model(CICDModel):
         thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                axes_step=[2.5, 2.5e-3, 0.5],  # p [bar], z, T [K]
+                                axes_step=[2.5, 2.5e-3, 0.451],  # p [bar], z, T [K]
                                 axes_origin=[0.0, epsilon, 273.15 + 20],
                                 epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)

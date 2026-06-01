@@ -84,7 +84,7 @@ class Model(CICDModel):
         # create pre-defined physics for geothermal
         property_container = PropertyContainer()
         # Geothermal: p_step [bar], e_step [kJ/mol]
-        self.physics = Geothermal(self.timer, axes_step=[0.5, 50.0], axes_origin=[1.0, 1000.0], cache=False)
+        self.physics = Geothermal(self.timer, axes_step=[2.756, 385.8], axes_origin=[1.0, 1000.0], cache=False)
         self.physics.add_property_region(property_container)
 
         return

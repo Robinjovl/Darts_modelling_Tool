@@ -82,7 +82,7 @@ class Model(CICDModel):
 
         idata.obl.zero = 1e-12
         idata.obl.epsilon_z = 1e-13
-        idata.obl.p_step = 0.1   # bar
+        idata.obl.p_step = 0.0898   # bar
         idata.obl.p_origin = 1.0
         idata.obl.z_step = 2e-4
         idata.obl.z_origin = idata.obl.epsilon_z

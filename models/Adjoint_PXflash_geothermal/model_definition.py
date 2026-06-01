@@ -132,7 +132,7 @@ class Model(CICDModel, OptModuleSettings):
             from darts.physics.super.physics import Compositional
             # PH: [p, z_1, ..., z_{nc-1}, H]
             nz = len(components) - 1
-            ax_step = [0.5] + [1e-3] * nz + [0.5]
+            ax_step = [0.4] + [1e-3] * nz + [0.1]
             ax_origin = [1.0] + [epsilon] * nz + [273.15]
             self.physics = Compositional(components, phases, self.timer,
                                          state_spec=Compositional.StateSpecification.PH,
