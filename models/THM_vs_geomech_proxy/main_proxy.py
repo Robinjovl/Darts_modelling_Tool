@@ -584,6 +584,17 @@ def run_geomech_proxy(case, physics_type='single_phase',
         rect = Rectangle((-rsv_xy, rsv_top), 2 * rsv_xy, rsv_bottom - rsv_top,
                          linewidth=2., edgecolor='red', linestyle='--', facecolor='none', zorder=3)
         ax.add_patch(rect)
+        # wells (vertical lines), same as in plot_contour XZ slice
+        z_well_top = Zc_plot.min()
+        z_well_bot = rsv_bottom
+        if wells_type in ('prod', 'doublet'):
+            ax.plot([m.idata.other.prod_well_coords[0]] * 2, [z_well_top, z_well_bot],
+                    color='red', linewidth=1.5, label='production well', zorder=4)
+        if wells_type in ('inj', 'doublet'):
+            ax.plot([m.idata.other.inj_well_coords[0]] * 2, [z_well_top, z_well_bot],
+                    color='cyan', linewidth=1.5, label='injection well', zorder=4)
+        if wells_type in ('prod', 'inj', 'doublet'):
+            ax.legend(fontsize=8, loc='upper right')
         ax.set_xlim(Xc_plot.min(), Xc_plot.max())
         ax.set_ylim(Zc_plot.min(), Zc_plot.max())
         ax.invert_yaxis()
@@ -719,6 +730,9 @@ def run_geomech_proxy(case, physics_type='single_phase',
                         row_title=array_name)
         print(f'Saved PDF report: {pdf_path}')
 
+
+    # mesh skeleton with wells (independent of modes / proxy computation)
+    plot_mesh_skeleton(output_folder)
 
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
@@ -873,8 +887,6 @@ def run_geomech_proxy(case, physics_type='single_phase',
             array_dict_diff[f'{b} - Difference'] = d
             #array_dict_diff[f'{b} - Relative Difference'] = rd
         plot_contour(array_dict_diff, points_x, points_z, output_folder=output_folder, slice='XZ', idata=m.idata)
-
-        plot_mesh_skeleton(output_folder)
 
         if False:
             print('Relative difference THM vs Proxy (% of |THM|):')
@@ -1040,7 +1052,8 @@ if __name__ == '__main__':
     #cases += ['41_41_66'] # without refinement
     #cases += ['71_71_66'] #refined middle and tips
     #cases += ['71_71_90']  # z 0 - 5 km more refined around rsv
-    cases += ['83_83_90']
+    #cases += ['83_83_90']
+    cases += ['97_97_90']
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
@@ -1106,7 +1119,8 @@ if __name__ == '__main__':
     # for proxy:
     n_threads = 24  # CPU cores
     use_gpu = False  # CUDA
-    read_from_cache = True
+    #read_from_cache = True
+    read_from_cache = False
 
     for case in cases:
         for physics_type in physics_types_list:
