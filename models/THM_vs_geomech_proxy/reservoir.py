@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import time
 import meshio
 from darts.discretizer import elem_type, elem_loc
 from darts.discretizer import matrix33 as disc_matrix33
@@ -84,7 +85,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             print('self.rsv_top', self.rsv_top)
             print('self.rsv_bottom', self.rsv_bottom)
             print('self.rsv_xy', self.rsv_xy)
-            print('Zc', self.Zc)
+            #print('Zc', self.Zc)
 
             from gen_msh import generate_box_3d
             generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=idata.mesh.tags,  # XYZ are ignored since Xc, Yc, Zc are passed
@@ -99,7 +100,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["initialization"].node["mesh_reading"].stop()
         print('Mesh reading finished')
 
-        print('Init reservoir (incl. mesh processing)...')
+        print('Init reservoir (incl. mesh processing)...', flush=True)
+        time.sleep(1)
         #self.set_uniform_initial_conditions(idata=idata)
         self.u_init = [0., 0., 0.]  # [m]
         self.p_init = None
