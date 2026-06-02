@@ -317,7 +317,7 @@ class PropertyContainer(PropertyBase):
             error_output += 1
 
         # Set present phase idxs
-        ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
+        ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0], dtype=int)
 
         if ph.size == 1:
             self.x[ph[0]] = zc_norm

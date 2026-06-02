@@ -20,10 +20,6 @@ Local project hooks:
 - `gitlab-ci-verify`: Validates selected GitLab CI YAML files.
 - `sync-agent-skills-check`: Verifies that `.agents/skills` and the mirrored
   skill tree stay synchronized.
-- `check-line-endings`: Enforces the repository line-ending policy for source
-  files. Python, C, C++, and CUDA files must be stored in Git with LF line
-  endings. This catches staged source files that are entirely CRLF as well as
-  files with mixed line endings.
 
 Ruff hooks (from `astral-sh/ruff-pre-commit`):
 - `ruff-check` (with `--fix`, `--show-fixes`): Lints Python and applies safe, non-breaking fixes.
@@ -41,10 +37,8 @@ General quality and hygiene (from `pre-commit/pre-commit-hooks`):
 - `check-added-large-files --maxkb=500`: Prevents committing very large files to the repo.
 - `check-merge-conflict`: Detects unresolved merge conflict markers.
 
-Line-ending hooks are complementary. `mixed-line-ending` fixes files that mix
-different EOL styles within one file. `check-line-endings` enforces that source
-files are stored in Git as LF, even when a file is consistently CRLF and
-therefore not "mixed".
+The `mixed-line-ending` hook only handles files that mix different EOL styles
+within one file; it does not enforce a repository-wide line-ending format.
 
 Notes:
 - Hook environments are downloaded and cached automatically on first use by pre-commit (into `.cache/pre-commit`).
@@ -60,7 +54,7 @@ Ruff is configured in `pyproject.toml` in the `[tool.ruff*]` sections.
 Automatic, on commit or push:
 ```bash
 git commit -m "..."   # hooks run automatically
-git push -m "..."     # hooks run automatically
+git push              # hooks run automatically
 ```
 
 Manually, mirror the CI job's file selection (Python, YAML, TOML in selected paths):
@@ -105,7 +99,7 @@ The job currently allows failure (`allow_failure: true`) to ease adoption; aim t
 - To update hook versions: `pre-commit autoupdate` (we also auto-update quarterly).
 - Hook environments are cached under `.cache/pre-commit`.
 - If a new directory is added for Python code, update the `files` glob for Ruff in `.pre-commit-config.yaml`.
-- In CI/CD, failures in the pre-commit job currently do not fail the pipeline; treat them as warnings to be fixed.
+- In CI/CD, failures in the pre-commit job fail the pipeline.
 
 ---
 

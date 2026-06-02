@@ -69,8 +69,6 @@ Configured hooks (`.pre-commit-config.yaml`):
 
 **Local repository policy hooks**:
 - `sync-agent-skills-check` — verify `.claude/skills` mirrors `.agents/skills`
-- `check-line-endings` — require tracked Python/C/C++/CUDA repository blobs
-  to use LF-only line endings
 
 ---
 
@@ -149,9 +147,7 @@ pre-commit autoupdate
 8. Preserve existing file line endings. Do not manually normalize CRLF/LF style,
    do not make line-ending-only changes, and revert accidental EOL-only rewrites
    from formatters or hooks unless the user explicitly requested them.
-9. `.gitattributes` and `check-line-endings` make LF mandatory for committed
-   Python/C/C++/CUDA content. On Windows, this check reads Git blobs so
-   checkout conversion does not create false failures.
+9. `.gitattributes` makes LF mandatory for committed Python/C/C++/CUDA content.
 
 ---
 

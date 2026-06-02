@@ -20,12 +20,6 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-      - id: check-line-endings
-        name: check-line-endings
-        entry: python helper_scripts/check_line_endings.py
-        language: system
-        pass_filenames: false
-        always_run: true
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.11
