@@ -16,6 +16,15 @@ Defines the set of checks ("hooks") that run automatically on `git commit` and `
 
 ## Hooks configured in `.pre-commit-config.yaml`
 
+Local project hooks:
+- `gitlab-ci-verify`: Validates selected GitLab CI YAML files.
+- `sync-agent-skills-check`: Verifies that `.agents/skills` and the mirrored
+  skill tree stay synchronized.
+- `check-line-endings`: Enforces the repository line-ending policy for source
+  files. Python, C, C++, and CUDA files must be stored in Git with LF line
+  endings. This catches staged source files that are entirely CRLF as well as
+  files with mixed line endings.
+
 Ruff hooks (from `astral-sh/ruff-pre-commit`):
 - `ruff-check` (with `--fix`, `--show-fixes`): Lints Python and applies safe, non-breaking fixes.
 - `ruff-format`: Formats Python code (Ruff formatter)
@@ -25,10 +34,17 @@ General quality and hygiene (from `pre-commit/pre-commit-hooks`):
 - `trailing-whitespace`: Removes stray trailing whitespace.
 - `check-yaml`: Validates YAML syntax for selected files.
 - `check-toml`: Validates TOML syntax (e.g., `pyproject.toml`).
-- `mixed-line-ending`: Normalizes line endings; prevents mixed CRLF/LF.
+- `mixed-line-ending`: Normalizes files that contain more than one line-ending
+  style, such as both LF and CRLF in the same file. It is a consistency check
+  within each file; it does not enforce that all source files are stored as LF.
 - `detect-private-key`: Detects accidentally committed private keys.
 - `check-added-large-files --maxkb=500`: Prevents committing very large files to the repo.
 - `check-merge-conflict`: Detects unresolved merge conflict markers.
+
+Line-ending hooks are complementary. `mixed-line-ending` fixes files that mix
+different EOL styles within one file. `check-line-endings` enforces that source
+files are stored in Git as LF, even when a file is consistently CRLF and
+therefore not "mixed".
 
 Notes:
 - Hook environments are downloaded and cached automatically on first use by pre-commit (into `.cache/pre-commit`).
