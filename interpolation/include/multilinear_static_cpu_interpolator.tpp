@@ -10,10 +10,10 @@
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinear_static_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
-                                                                                                          const std::vector<int> &axes_points,
-                                                                                                          const std::vector<double> &axes_min,
-                                                                                                          const std::vector<double> &axes_max)
-    : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max)
+                                                                                                          const std::vector<double> &axes_origin,
+                                                                                                          const std::vector<double> &axes_step,
+                                                                                                          const std::vector<int> &axes_points)
+    : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_origin, axes_step, axes_points)
 
 {
   this->n_points_used = this->n_points_total;
@@ -100,7 +100,7 @@ int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_
     txtFile << this->get_n_dims() << " " << this->get_n_ops() << std::endl;
     for (int k = 0; k < N_DIMS; k++)
     {
-      txtFile << this->axes_points[k] << " " << this->axes_min[k] << " " << this->axes_max[k] << std::endl;
+      txtFile << this->axes_points[k] << " " << this->axes_origin[k] << " " << this->axes_max[k] << std::endl;
     }
 
     for (index_t k = 0; k < point_data.size(); ++k)

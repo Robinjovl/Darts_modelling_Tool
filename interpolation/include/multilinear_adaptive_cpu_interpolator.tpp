@@ -14,10 +14,9 @@
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
     multilinear_adaptive_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator_,
-                                          const std::vector<int> &axes_points_,
-                                          const std::vector<double> &axes_min_,
-                                          const std::vector<double> &axes_max_)
-    : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator_, axes_points_, axes_min_, axes_max_)
+                                          const std::vector<double> &axes_origin_,
+                                          const std::vector<double> &axes_step_)
+    : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator_, axes_origin_, axes_step_)
 
 {
 }
@@ -25,84 +24,12 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
 // ─── multi-index key utilities ──────────────────────────────────────────────────
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-index_t multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::to_int_key_point(const key_t &k) const
-{
-  index_t int_key = 0;
-  for (uint8_t i = 0; i < N_DIMS; ++i)
-  {
-    int_key += static_cast<index_t>(k.idx[i]) * this->axis_point_mult[i];
-  }
-  return int_key;
-}
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-index_t multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::to_int_key_hypercube(const key_t &k) const
-{
-  index_t int_key = 0;
-  for (uint8_t i = 0; i < N_DIMS; ++i)
-  {
-    int_key += static_cast<index_t>(k.idx[i]) * this->axis_hypercube_mult[i];
-  }
-  return int_key;
-}
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::key_t
-multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::from_int_key_point(index_t int_key) const
-{
-  key_t k;
-  index_t remainder = int_key;
-  for (uint8_t i = 0; i < N_DIMS; ++i)
-  {
-    k.idx[i] = static_cast<int32_t>(remainder / this->axis_point_mult[i]);
-    remainder = remainder % this->axis_point_mult[i];
-  }
-  return k;
-}
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::key_t
-multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::from_int_key_hypercube(index_t int_key) const
-{
-  key_t k;
-  index_t remainder = int_key;
-  for (uint8_t i = 0; i < N_DIMS; ++i)
-  {
-    k.idx[i] = static_cast<int32_t>(remainder / this->axis_hypercube_mult[i]);
-    remainder = remainder % this->axis_hypercube_mult[i];
-  }
-  return k;
-}
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-bool multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::is_in_bounds_point(const key_t &k) const
-{
-  for (uint8_t i = 0; i < N_DIMS; ++i)
-  {
-    if (k.idx[i] < 0 || k.idx[i] >= static_cast<int32_t>(this->axes_points[i]))
-      return false;
-  }
-  return true;
-}
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-bool multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::is_in_bounds_hypercube(const key_t &k) const
-{
-  for (uint8_t i = 0; i < N_DIMS; ++i)
-  {
-    if (k.idx[i] < 0 || k.idx[i] >= static_cast<int32_t>(this->axes_points[i] - 1))
-      return false;
-  }
-  return true;
-}
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_point_coordinates_from_key(
     const key_t &k, point_coordinates_t &coordinates) const
 {
   for (uint8_t i = 0; i < N_DIMS; ++i)
   {
-    coordinates[i] = this->axes_min[i] + this->axes_step[i] * static_cast<double>(k.idx[i]);
+    coordinates[i] = this->axes_origin[i] + this->axes_step[i] * static_cast<double>(k.idx[i]);
   }
 }
 
@@ -183,28 +110,7 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hype
   return insert_result.first->second;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-const typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::hypercube_data_t &
-multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_data(const index_t hypercube_index)
-{
-  // Backward-compat shim: decode legacy integer key, forward to multi-index path.
-  return this->get_hypercube_data(this->from_int_key_hypercube(hypercube_index));
-}
-
-// ─── hypercube-index export (legacy integer view) ──────────────────────────────
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-std::vector<index_t> multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_indexes() const
-{
-  std::vector<index_t> keys;
-  keys.reserve(hypercube_data.size());
-  for (const auto &pair : hypercube_data)
-  {
-    if (this->is_in_bounds_hypercube(pair.first))
-      keys.push_back(this->to_int_key_hypercube(pair.first));
-  }
-  return keys;
-}
+// ─── hypercube-key export (multi-index view) ───────────────────────────────────
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 std::vector<typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::key_t>
@@ -237,7 +143,7 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
   {
     hc_key.idx[i] = get_axis_interval_index_low_mult_unbounded<value_t>(
         point[i],
-        this->axes_min_internal[i],
+        this->axes_origin_internal[i],
         this->axes_step_internal[i],
         this->axes_step_inv_internal[i],
         &axis_low[i], &mult[i]);
@@ -391,7 +297,7 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
       const size_t coord_index = static_cast<size_t>(offset) * N_DIMS + i;
       hc_key.idx[i] = get_axis_interval_index_unbounded<value_t>(
           points[coord_index],
-          this->axes_min_internal[i],
+          this->axes_origin_internal[i],
           this->axes_step_inv_internal[i]);
     }
     hc_keys[p] = hc_key;
@@ -446,7 +352,7 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
       {
         get_axis_interval_index_low_mult_unbounded<value_t>(
             point[i],
-            this->axes_min_internal[i],
+            this->axes_origin_internal[i],
             this->axes_step_internal[i],
             this->axes_step_inv_internal[i],
             &axis_low[i], &mult[i]);

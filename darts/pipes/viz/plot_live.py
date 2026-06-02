@@ -198,11 +198,10 @@ class DartsModelWithLivePlots(DartsModel):
             p_idx = self.physics.vars.index("pressure")
             h_idx = self.physics.vars.index("enthalpy")
 
-            # PH-diagram axes derived from (axes_origin, axes_step) and the advisory
-            # window size (PhysicsBase.ADVISORY_N_AXES_POINTS).
-            from darts.physics.base.physics_base import PhysicsBase
-
-            n_p = n_h = PhysicsBase.ADVISORY_N_AXES_POINTS
+            # PH-diagram axis sample count for the live viz window. Independent of the
+            # (now unbounded) OBL grid — it only sets the plotted P/H range resolution.
+            PH_DIAGRAM_N_POINTS = 1024
+            n_p = n_h = PH_DIAGRAM_N_POINTS
             p_range = (
                 self.physics.axes_origin[p_idx]
                 + np.arange(n_p) * self.physics.axes_step[p_idx]

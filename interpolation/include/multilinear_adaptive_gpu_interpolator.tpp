@@ -56,10 +56,9 @@ __global__ void check_if_hashmap_expansion_needed(
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinear_adaptive_gpu_interpolator(
     operator_set_evaluator_iface *supporting_point_evaluator,
-    const std::vector<int> &axes_points,
-    const std::vector<double> &axes_min,
-    const std::vector<double> &axes_max)
-    : multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max)
+    const std::vector<double> &axes_origin,
+    const std::vector<double> &axes_step)
+    : multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_origin, axes_step)
 {
   this->kernel_block_size = 128;
 
@@ -98,40 +97,6 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::writ
   return 0;
 }
 
-// ─── multi-index utilities ─────────────────────────────────────────────────────
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-index_t multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::to_int_key_point(const key_t &k) const
-{
-  index_t int_key = 0;
-  for (uint8_t i = 0; i < N_DIMS; ++i)
-    int_key += static_cast<index_t>(k.idx[i]) * this->axis_point_mult[i];
-  return int_key;
-}
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-typename multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::key_t
-multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::from_int_key_point(index_t int_key) const
-{
-  key_t k;
-  index_t remainder = int_key;
-  for (uint8_t i = 0; i < N_DIMS; ++i)
-  {
-    k.idx[i] = static_cast<int32_t>(remainder / this->axis_point_mult[i]);
-    remainder = remainder % this->axis_point_mult[i];
-  }
-  return k;
-}
-
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-bool multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::is_in_bounds_point(const key_t &k) const
-{
-  for (uint8_t i = 0; i < N_DIMS; ++i)
-    if (k.idx[i] < 0 || k.idx[i] >= static_cast<int32_t>(this->axes_points[i]))
-      return false;
-  return true;
-}
-
 // ─── supporting-point access (host) ────────────────────────────────────────────
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
@@ -145,7 +110,7 @@ multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
   // Compute physical coordinates from multi-index, evaluate, store, return.
   point_data_t new_point;
   for (uint8_t i = 0; i < N_DIMS; ++i)
-    this->new_point_coords[i] = this->axes_min[i] + this->axes_step[i] * static_cast<double>(point_key.idx[i]);
+    this->new_point_coords[i] = this->axes_origin[i] + this->axes_step[i] * static_cast<double>(point_key.idx[i]);
   this->supporting_point_evaluator->evaluate(this->new_point_coords, this->new_operator_values);
   for (int op = 0; op < N_OPS; op++)
   {
@@ -203,7 +168,7 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::eval
   multilinear_adaptive3_check_hypercube_ready_kernel<value_t, N_DIMS, N_OPS>
       KERNEL_1D_THREAD(n_states_idxs, this->kernel_block_size)(
           n_states_idxs, states_idxs_d, states_d,
-          thrust::raw_pointer_cast(this->axes_min_d.data()),
+          thrust::raw_pointer_cast(this->axes_origin_d.data()),
           thrust::raw_pointer_cast(this->axes_step_inv_d.data()),
           hypercube_data_d,
           thrust::raw_pointer_cast(state_hc_keys_d.data()));
@@ -219,7 +184,7 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::eval
   multilinear_adaptive_interpolate_thread_per_operator_stages_kernel<value_t, N_DIMS, N_OPS, true>
       KERNEL_1D_THREAD_STREAM(n_states_idxs * N_OPS, this->kernel_block_size, stage1_interpolation_stream)(
           n_states_idxs, states_idxs_d, states_d,
-          thrust::raw_pointer_cast(this->axes_min_d.data()),
+          thrust::raw_pointer_cast(this->axes_origin_d.data()),
           thrust::raw_pointer_cast(this->axes_step_d.data()),
           thrust::raw_pointer_cast(this->axes_step_inv_d.data()),
           hypercube_data_d,
@@ -229,7 +194,7 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::eval
   multilinear_adaptive_interpolate_thread_per_state_stages_kernel<value_t, N_DIMS, N_OPS, true>
       KERNEL_1D_THREAD_STREAM(n_states_idxs, this->kernel_block_size, stage1_interpolation_stream)(
           n_states_idxs, states_idxs_d, states_d,
-          thrust::raw_pointer_cast(this->axes_min_d.data()),
+          thrust::raw_pointer_cast(this->axes_origin_d.data()),
           thrust::raw_pointer_cast(this->axes_step_d.data()),
           thrust::raw_pointer_cast(this->axes_step_inv_d.data()),
           hypercube_data_d,
@@ -326,7 +291,7 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::eval
     multilinear_adaptive_interpolate_thread_per_operator_stages_kernel<value_t, N_DIMS, N_OPS, false>
         KERNEL_1D_THREAD(n_states_idxs * N_OPS, this->kernel_block_size)(
             n_states_idxs, states_idxs_d, states_d,
-            thrust::raw_pointer_cast(this->axes_min_d.data()),
+            thrust::raw_pointer_cast(this->axes_origin_d.data()),
             thrust::raw_pointer_cast(this->axes_step_d.data()),
             thrust::raw_pointer_cast(this->axes_step_inv_d.data()),
             hypercube_data_d,
@@ -336,7 +301,7 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::eval
     multilinear_adaptive_interpolate_thread_per_state_stages_kernel<value_t, N_DIMS, N_OPS, false>
         KERNEL_1D_THREAD(n_states_idxs, this->kernel_block_size)(
             n_states_idxs, states_idxs_d, states_d,
-            thrust::raw_pointer_cast(this->axes_min_d.data()),
+            thrust::raw_pointer_cast(this->axes_origin_d.data()),
             thrust::raw_pointer_cast(this->axes_step_d.data()),
             thrust::raw_pointer_cast(this->axes_step_inv_d.data()),
             hypercube_data_d,

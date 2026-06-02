@@ -29,17 +29,17 @@ public:
    using typename multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::hypercube_data_t;
    using typename multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::hypercube_points_index_t;
    /**
-     * @brief Construct the interpolator with specified parametrization space
+     * @brief Construct the interpolator with a finite dense grid (origin, step, points).
      *
      * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
-     * @param[in] axes_points               Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                  Minimum value for each axis
-     * @param[in] axes_max                  Maximum for each axis
+     * @param[in] axes_origin              Grid origin (lower corner) for each axis
+     * @param[in] axes_step                Cell size for each axis
+     * @param[in] axes_points              Number of supporting points (minimum 2) along each axis
      */
    multilinear_static_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
-                                       const std::vector<int> &axes_points,
-                                       const std::vector<double> &axes_min,
-                                       const std::vector<double> &axes_max);
+                                       const std::vector<double> &axes_origin,
+                                       const std::vector<double> &axes_step,
+                                       const std::vector<int> &axes_points);
 
    /**
      * @brief Initialize the interpolator by:

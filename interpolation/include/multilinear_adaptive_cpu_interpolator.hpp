@@ -49,17 +49,18 @@ public:
    typedef std::array<key_t, (1 << N_DIMS)> hypercube_vertex_keys_t;
 
    /**
-    * @brief Construct the interpolator with specified parametrization space
+    * @brief Construct the interpolator parametrized by (origin, step).
+    *
+    * The grid is unbounded: cells are enumerated on demand via signed multi-index
+    * keys (cell_key_t), so no axes_max / axes_points is needed.
     *
     * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
-    * @param[in] axes_points               Number of supporting points (minimum 2) along axes
-    * @param[in] axes_min                  Minimum value for each axis (interpreted as origin offset)
-    * @param[in] axes_max                  Maximum for each axis (advisory; defines axes_step together with axes_points)
+    * @param[in] axes_origin              Grid origin (lower corner) for each axis
+    * @param[in] axes_step                Cell size for each axis
     */
    multilinear_adaptive_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
-                                         const std::vector<int> &axes_points,
-                                         const std::vector<double> &axes_min,
-                                         const std::vector<double> &axes_max);
+                                         const std::vector<double> &axes_origin,
+                                         const std::vector<double> &axes_step);
 
    /**
     * @brief adaptive point storage: the values of operators at requested supporting points.
@@ -78,40 +79,13 @@ public:
    std::unordered_map<key_t, hypercube_data_t, key_hash_t> hypercube_data;
 
    /**
-    * @brief Get indexes of all evaluated hypercubes, packed as legacy integer indices.
+    * @brief Get multi-index keys of all evaluated hypercubes.
     *
-    * In-bounds cells only — out-of-bounds cells are silently dropped from this list.
-    * Use `get_hypercube_keys()` to retrieve the full multi-index list.
-    */
-   std::vector<index_t> get_hypercube_indexes() const;
-
-   /**
-    * @brief Get multi-index keys of all evaluated hypercubes (no bounds filtering).
+    * Each key is the signed lower-corner multi-index of a generated hypercube. This
+    * is the canonical (unbounded) view used for cache export and body-path output;
+    * there is no integer-key packing any more (the grid is unbounded).
     */
    std::vector<key_t> get_hypercube_keys() const;
-
-   /**
-    * @brief Translate a multi-index into the legacy packed integer key.
-    *
-    * Used by the Python-binding compatibility shim. Returns the packed index in
-    * mixed-radix form using axes_points as bases. Caller must ensure all components
-    * are non-negative; out-of-bounds packing is undefined.
-    */
-   index_t to_int_key_point(const key_t &k) const;
-   index_t to_int_key_hypercube(const key_t &k) const;
-
-   /**
-    * @brief Inverse of to_int_key_point — decode a packed integer back into a multi-index.
-    */
-   key_t from_int_key_point(index_t int_key) const;
-   key_t from_int_key_hypercube(index_t int_key) const;
-
-   /**
-    * @brief True iff every component of the multi-index is within [0, axes_points[i]-1]
-    * (point key) or [0, axes_points[i]-2] (hypercube key).
-    */
-   bool is_in_bounds_point(const key_t &k) const;
-   bool is_in_bounds_hypercube(const key_t &k) const;
 
    /**
     * @brief Number of cached supporting points / hypercubes (in-memory).
@@ -125,6 +99,12 @@ public:
    int interpolate(const std::vector<double> &point, std::vector<double> &values) override;
 
 protected:
+   // Bring the base's bounded (index_t) get_hypercube_data into scope so the cell-key
+   // overload below *overloads* rather than *hides* it (silences -Wxxx #997-D). The
+   // bounded overload is never called on this adaptive path; it only exists for the
+   // shared static-storage machinery in the base.
+   using multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_data;
+
    /**
     * @brief Cell-key-driven supporting-point access (creates on miss).
     */
@@ -134,15 +114,6 @@ protected:
     * @brief Cell-key-driven hypercube access (creates on miss, recursively materializing vertices).
     */
    const hypercube_data_t &get_hypercube_data(const key_t &hypercube_key);
-
-   /**
-    * @brief Backward-compatible integer-key API required by the base class.
-    *
-    * Decodes the packed integer back to a multi-index and forwards. Only ever
-    * called via paths that originate from the bounded base class machinery; the
-    * adaptive batch path bypasses this entirely.
-    */
-   const hypercube_data_t &get_hypercube_data(const index_t hypercube_index) override;
 
    /**
     * @brief Compute physical coordinates of a supporting point from its multi-index.

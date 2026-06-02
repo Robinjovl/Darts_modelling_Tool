@@ -26,17 +26,30 @@ public:
    typedef typename std::array<index_t, N_VERTS> hypercube_points_index_t; ///< type for indexing vertexes of a hypercube
 
    /**
-     * @brief Construct the interpolator with specified parametrization space
+     * @brief Construct an unbounded interpolator parametrized by (origin, step).
+     *        Used by adaptive GPU storage; the grid has no upper bound.
      *
      * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
-     * @param[in] axes_points               Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                  Minimum value for each axis
-     * @param[in] axes_max                  Maximum for each axis
+     * @param[in] axes_origin              Grid origin (lower corner) for each axis
+     * @param[in] axes_step                Cell size for each axis
      */
    multilinear_gpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
-                                     const std::vector<int> &axes_points,
-                                     const std::vector<double> &axes_min,
-                                     const std::vector<double> &axes_max);
+                                     const std::vector<double> &axes_origin,
+                                     const std::vector<double> &axes_step);
+
+   /**
+     * @brief Construct a bounded interpolator with a finite dense grid.
+     *        Used by static GPU storage; builds the flat mixed-radix multipliers.
+     *
+     * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
+     * @param[in] axes_origin              Grid origin (lower corner) for each axis
+     * @param[in] axes_step                Cell size for each axis
+     * @param[in] axes_points              Number of supporting points (minimum 2) along each axis
+     */
+   multilinear_gpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+                                     const std::vector<double> &axes_origin,
+                                     const std::vector<double> &axes_step,
+                                     const std::vector<int> &axes_points);
    /**
      * @brief Get the number of supporting points for the given axis
      *
@@ -107,13 +120,15 @@ protected:
 
    operator_set_evaluator_iface *supporting_point_evaluator; ///< object which computes operator values for supporting points
 
-   const std::vector<int> axes_points;       ///< number of supporting points along each axis
-   const std::vector<double> axes_min;       ///< minimum at each axis
-   const std::vector<double> axes_max;       ///< maximum of each axis
+   const std::vector<double> axes_origin;    ///< grid origin (lower corner) at each axis
    std::vector<double> axes_step;            ///< the distance between neighbor supporting points for each axis
    std::vector<double> axes_step_inv;        ///< inverse of step (to avoid division)
-   std::vector<index_t> axis_point_mult;     ///< mult factor for each axis (for points) to compute global point index
-   std::vector<index_t> axis_hypercube_mult; ///< mult factor for each axis (for hypercubes) to compute global hypercubes index
+   // The following are populated only for bounded (static) grids; empty for unbounded
+   // adaptive grids, whose kernels use only (origin, step) with signed multi-index keys.
+   const std::vector<int> axes_points;       ///< number of supporting points along each axis (bounded grids only)
+   const std::vector<double> axes_max;       ///< maximum of each axis (bounded grids only)
+   std::vector<index_t> axis_point_mult;     ///< mult factor for each axis (for points) to compute global point index (bounded grids only)
+   std::vector<index_t> axis_hypercube_mult; ///< mult factor for each axis (for hypercubes) to compute global hypercubes index (bounded grids only)
 
    uint64_t n_interpolations; ///< Number of interpolations that took place
    uint64_t n_points_total;   ///< Total number of parametrization points
@@ -123,12 +138,13 @@ protected:
    std::vector<double> new_point_coords;    ///< intermediate storage for supporting point generation
    std::vector<double> new_operator_values; ///< intermediate storage for supporting point generation
 
-   thrust::device_vector<int> axes_points_d;       ///< number of parametrization points for each axis on device
-   thrust::device_vector<value_t> axes_min_d;      ///< minimum at each axis in value_t type on device
-   thrust::device_vector<value_t> axes_max_d;      ///< maximum of each axis in value_t type on device
+   thrust::device_vector<value_t> axes_origin_d;   ///< grid origin at each axis in value_t type on device
    thrust::device_vector<value_t> axes_step_d;     ///< the distance between neighbor supporting points for each axis in value_t type on device
    thrust::device_vector<value_t> axes_step_inv_d; ///< inverse of step (to avoid division) in value_t type on device
 
+   // bounded (static) grids only:
+   thrust::device_vector<int> axes_points_d;       ///< number of parametrization points for each axis on device
+   thrust::device_vector<value_t> axes_max_d;      ///< maximum of each axis in value_t type on device
    thrust::device_vector<index_t> axis_point_mult_d;     ///< mult factor for each axis (for points) to compute global point index on device
    thrust::device_vector<index_t> axis_hypercube_mult_d; ///< mult factor for each axis (for hypercubes) to compute global hypercubes index on device
 

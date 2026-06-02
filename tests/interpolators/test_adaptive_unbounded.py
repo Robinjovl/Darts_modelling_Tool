@@ -105,20 +105,23 @@ def captured_stderr():
 
 def build_itor(axes_min, axes_max, n_points, kind="multilinear"):
     evaluator = LinearEvaluator(N_DIMS, N_OPS, seed=42)
+    # The adaptive interpolators are unbounded: parametrized by (axes_origin, axes_step).
+    # Derive them from the test's (axes_min, axes_max, n_points) window so the cell
+    # spacing is unchanged; the cache simply grows past the window on demand.
+    axes_origin = list(axes_min)
+    axes_step = [(axes_max[i] - axes_min[i]) / (n_points - 1) for i in range(N_DIMS)]
     if kind == "multilinear":
         itor = MultilinearAdaptiveCls(
             evaluator,
-            index_vector([n_points] * N_DIMS),
-            value_vector(axes_min),
-            value_vector(axes_max),
+            value_vector(axes_origin),
+            value_vector(axes_step),
         )
     elif kind == "linear":
         # Last argument is use_barycentric_interpolation; keep False for the simplex path.
         itor = LinearAdaptiveCls(
             evaluator,
-            index_vector([n_points] * N_DIMS),
-            value_vector(axes_min),
-            value_vector(axes_max),
+            value_vector(axes_origin),
+            value_vector(axes_step),
             False,
         )
     else:
@@ -283,25 +286,10 @@ def run_one(kind: str):
         print(f"\n    final cache size: {itor.get_n_cached_points():>8d} points")
 
     # ── (5) Pickle round-trip ─────────────────────────────────────────────
-    # Legacy integer-keyed view (in-bounds cells only):
-    print("\n[5a] Pickle round-trip of point_data (legacy integer-keyed view):")
-    pd = itor.point_data
-    assert isinstance(pd, dict)
+    # The adaptive interpolator is unbounded: the canonical cache format is the
+    # tuple-keyed point_data_full export. (The legacy integer-keyed point_data view
+    # was removed along with axes_points-based mixed-radix packing.)
     n_total_cache = itor.get_n_cached_points()
-    print(
-        f"    exported in-bounds points: {len(pd):>8d} "
-        f"(total cache including out-of-window: {n_total_cache})"
-    )
-    blob = pickle.dumps(pd)
-    pd2 = pickle.loads(blob)
-    assert isinstance(pd2, dict)
-    assert set(pd2.keys()) == set(pd.keys()), "pickle round-trip lost keys"
-
-    itor2, _ = build_itor(axes_min, axes_max, n_points, kind=kind)
-    itor2.point_data = pd2
-    pd_after = itor2.point_data
-    assert set(pd_after.keys()) == set(pd.keys()), "setter dropped keys"
-    print(f"    legacy round-trip OK: pickle size = {len(blob) / 1024:.1f} KiB")
 
     # Full tuple-keyed export (preserves out-of-window cells):
     print("\n[5b] Pickle round-trip of point_data_full (tuple-keyed):")

@@ -61,12 +61,12 @@ class PhysicsBase:
                 return self.value < other.value
             return NotImplemented
 
-    # Advisory cell count per axis used to derive a legacy (axes_min, axes_max) window
-    # for the C++ interpolator constructor and for the integer-keyed pickle-export filter.
-    # The adaptive interpolator cache grows past this window on demand, so the value is
-    # not load-bearing; it only affects pickle export of in-bounds cells and the legacy
-    # `axes_hypercube_mult` packing reach.
-    ADVISORY_N_AXES_POINTS = 1024
+    # Dense per-axis grid size for the rarely-used *static* interpolator mode, whose
+    # vector storage requires a finite point count. Adaptive mode is unbounded
+    # (origin + step only) and ignores this entirely — it is NOT an advisory window
+    # (the old ADVISORY_N_AXES_POINTS, whose 1024^n_dims product caused the GPU 2^70
+    # overflow, is gone now that the ctors take (axes_origin, axes_step) natively).
+    STATIC_GRID_N_POINTS = 1024
 
     def __init__(
         self,
@@ -702,10 +702,11 @@ class PhysicsBase:
         """
         Create an interpolator object using (axes_origin, axes_step) to define the grid.
 
-        Defaults to ``self.axes_step`` / ``self.axes_origin`` from PhysicsBase. The
-        legacy (axes_min, axes_max, n_axes_points) tuple passed to the C++ constructor
-        is derived from these as ``axes_min = origin``, ``axes_max = origin + (N-1)*step``
-        for an advisory N = :attr:`ADVISORY_N_AXES_POINTS`; the cache extends past freely.
+        Defaults to ``self.axes_step`` / ``self.axes_origin`` from PhysicsBase. These are
+        passed straight to the C++ interpolator constructor, which now takes
+        ``(axes_origin, axes_step)`` natively. Adaptive grids are unbounded (cells are
+        enumerated on demand via signed multi-index keys); only the ``static`` mode adds a
+        finite per-axis point count (:attr:`STATIC_GRID_N_POINTS`) for its dense storage.
 
         :param evaluator: Operator-set evaluator used to materialize supporting points.
         :param timer_name: Name of the timer subnode for this interpolator.
@@ -729,16 +730,35 @@ class PhysicsBase:
         )
         assert len(axes_origin) == self.n_vars
 
-        # Derive the (n_axes_points, axes_min, axes_max) tuple required by the C++
-        # interpolator ctor. The advisory window sets the integer-key reach for the
-        # legacy pickle export; cells past it still cache on demand via multi-index keys.
+        # The C++ interpolator ctors take (axes_origin, axes_step) natively. Adaptive
+        # grids are unbounded (origin + step only); static grids additionally need a
+        # finite per-axis point count for their dense storage.
         n_dims = self.n_vars
-        advisory_n = PhysicsBase.ADVISORY_N_AXES_POINTS
-        n_axes_points = index_vector([advisory_n] * n_dims)
-        axes_min_vec = value_vector(list(axes_origin))
-        axes_max_vec = value_vector(
-            [axes_origin[i] + (advisory_n - 1) * axes_step[i] for i in range(n_dims)]
-        )
+        axes_origin_vec = value_vector(list(axes_origin))
+        axes_step_vec = value_vector(list(axes_step))
+
+        # Build the constructor argument tuple (everything after `evaluator`) once, then
+        # reuse it across the 32-bit / 64-bit / higher-n_ops / general fallbacks.
+        if mode == 'static':
+            # Static (dense) storage needs a bounded grid. STATIC_GRID_N_POINTS sets the
+            # per-axis extent for this rarely-used mode; adaptive mode ignores it.
+            axes_n_points_vec = index_vector(
+                [PhysicsBase.STATIC_GRID_N_POINTS] * n_dims
+            )
+            if algorithm == 'linear':
+                ctor_args = (
+                    axes_origin_vec,
+                    axes_step_vec,
+                    axes_n_points_vec,
+                    is_barycentric,
+                )
+            else:
+                ctor_args = (axes_origin_vec, axes_step_vec, axes_n_points_vec)
+        else:  # adaptive (unbounded)
+            if algorithm == 'linear':
+                ctor_args = (axes_origin_vec, axes_step_vec, is_barycentric)
+            else:
+                ctor_args = (axes_origin_vec, axes_step_vec)
 
         # calculate object name using 32 bit index type (i)
         itor_name = f"{algorithm}_{mode}_{platform}_interpolator_i_{precision}_{n_dims:d}_{n_ops:d}"
@@ -748,31 +768,13 @@ class PhysicsBase:
         signature_n_ops = n_ops
         # try to create itor with 32-bit index type first (kinda a bit faster)
         try:
-            if algorithm == 'linear':
-                itor = eval(itor_name)(
-                    evaluator, n_axes_points, axes_min_vec, axes_max_vec, is_barycentric
-                )
-            else:
-                itor = eval(itor_name)(
-                    evaluator, n_axes_points, axes_min_vec, axes_max_vec
-                )
+            itor = eval(itor_name)(evaluator, *ctor_args)
         except (ValueError, NameError):
             # 32-bit index overflow or this (n_dims, n_ops) pair was not compiled.
             # Fall back to 64-bit; multi-index storage is unaffected.
             itor_name = itor_name.replace('interpolator_i', 'interpolator_l')
             try:
-                if algorithm == 'linear':
-                    itor = eval(itor_name)(
-                        evaluator,
-                        n_axes_points,
-                        axes_min_vec,
-                        axes_max_vec,
-                        is_barycentric,
-                    )
-                else:
-                    itor = eval(itor_name)(
-                        evaluator, n_axes_points, axes_min_vec, axes_max_vec
-                    )
+                itor = eval(itor_name)(evaluator, *ctor_args)
             except (ValueError, NameError) as err:
                 # Try to find a templatized interpolator with the same name pattern
                 # but with the closest possible higher n_ops available in darts.interpolators.
@@ -797,20 +799,9 @@ class PhysicsBase:
                         candidates.sort(key=lambda x: x[0])
                         selected_n_ops, selected_name = candidates[0]
                         selected_cls = getattr(engines_module, selected_name)
-                        if algorithm == 'multilinear':
-                            itor = selected_cls(
-                                evaluator, n_axes_points, axes_min_vec, axes_max_vec
-                            )
-                        elif algorithm == 'linear':
-                            itor = selected_cls(
-                                evaluator,
-                                n_axes_points,
-                                axes_min_vec,
-                                axes_max_vec,
-                                is_barycentric,
-                            )
-                        else:
+                        if algorithm not in ('multilinear', 'linear'):
                             raise ValueError("Invalid algorithm: " + algorithm)
+                        itor = selected_cls(evaluator, *ctor_args)
                         signature_n_ops = selected_n_ops
                         print(
                             "Falling back to interpolator with higher n_ops:",
@@ -825,12 +816,7 @@ class PhysicsBase:
                     # As a last resort, try the general implementation if available
                     try:
                         itor = eval("multilinear_adaptive_cpu_interpolator_general")(
-                            evaluator,
-                            n_axes_points,
-                            axes_min_vec,
-                            axes_max_vec,
-                            n_dims,
-                            n_ops,
+                            evaluator, *ctor_args, n_dims, n_ops
                         )
                         general = True
                     except Exception:
@@ -874,9 +860,10 @@ class PhysicsBase:
                 )
                 loaded_point_data = self._safe_pickle_load(itor_cache_filename)
                 if loaded_point_data is not None:
-                    # Prefer the tuple-keyed full export (preserves out-of-window cells)
-                    # when available on the interpolator; fall back to the legacy
-                    # integer-keyed view otherwise.
+                    # The canonical cache format is the tuple-keyed multi-index export
+                    # (point_data_full). Adaptive interpolators are unbounded and expose
+                    # only this view; static interpolators expose the legacy integer-keyed
+                    # point_data. Pick whichever the loaded file + interpolator support.
                     if (
                         loaded_point_data
                         and hasattr(itor, "point_data_full")
@@ -887,13 +874,26 @@ class PhysicsBase:
                             len(itor.point_data_full.keys()),
                             "points loaded (full multi-index format)",
                         )
-                    else:
+                        cache_loaded = 1
+                    elif hasattr(itor, "point_data") and not hasattr(
+                        itor, "point_data_full"
+                    ):
+                        # Static interpolator with a legacy integer-keyed cache.
                         itor.point_data = loaded_point_data
                         print(
                             len(itor.point_data.keys()),
                             "points loaded (legacy integer-key format)",
                         )
-                    cache_loaded = 1
+                        cache_loaded = 1
+                    else:
+                        # Old integer-keyed cache for an adaptive interpolator: no longer
+                        # loadable (the unbounded grid has no integer-key packing). It will
+                        # be regenerated and re-saved in the multi-index format.
+                        print(
+                            "Cached point data is in the legacy integer-key format, which "
+                            "adaptive interpolators no longer support; ignoring (it will be "
+                            "regenerated in multi-index format)."
+                        )
                 else:
                     print("Cached point data is invalid, ignoring.")
             if mode == 'adaptive':
@@ -1075,10 +1075,15 @@ class PhysicsBase:
         with open(os.path.join(output_folder, 'body_path.txt'), "a") as fp:
             fp.write(f'T={time:f}\n')
             itor = self.acc_flux_itor[0]
-            all_idxs = set(itor.get_hypercube_indexes())
+            # Unbounded grid: hypercubes are identified by signed multi-index keys
+            # (tuples of ints), not a single packed integer. Skip if the interpolator
+            # does not expose them (e.g. static/GPU variants).
+            if not hasattr(itor, "get_hypercube_keys"):
+                return
+            all_idxs = set(itor.get_hypercube_keys())
             new_idxs = all_idxs - self.processed_body_idxs
-            for i in new_idxs:
-                fp.write(f'{i:d}\n')
+            for k in new_idxs:
+                fp.write(" ".join(str(i) for i in k) + "\n")
             self.processed_body_idxs = all_idxs
 
     def __del__(self):

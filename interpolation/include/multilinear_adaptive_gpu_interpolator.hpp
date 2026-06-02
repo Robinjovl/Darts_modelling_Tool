@@ -63,9 +63,8 @@ public:
 #endif
 
   multilinear_adaptive_gpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
-                                        const std::vector<int> &axes_points,
-                                        const std::vector<double> &axes_min,
-                                        const std::vector<double> &axes_max);
+                                        const std::vector<double> &axes_origin,
+                                        const std::vector<double> &axes_step);
 
   ~multilinear_adaptive_gpu_interpolator();
 
@@ -74,26 +73,10 @@ public:
 
   /**
    * @brief Adaptive point storage on host, keyed on signed multi-index.
-   *        Out-of-bounds cells live here too; the Python `point_data` shim filters them.
+   *        The grid is unbounded; the Python `point_data_full` view exports the full
+   *        cell-key map as tuple keys.
    */
   std::unordered_map<key_t, point_data_t, key_hash_t> point_data;
-
-  /**
-   * @brief Pack a multi-index into the legacy integer key (mixed-radix on axes_points).
-   *        Used by the Python compat shim. Caller must ensure all components are
-   *        non-negative; out-of-bounds packing is undefined.
-   */
-  index_t to_int_key_point(const key_t &k) const;
-
-  /**
-   * @brief Decode a legacy integer key back into a multi-index.
-   */
-  key_t from_int_key_point(index_t int_key) const;
-
-  /**
-   * @brief True iff every component is within [0, axes_points[i]-1].
-   */
-  bool is_in_bounds_point(const key_t &k) const;
 
   size_t get_n_cached_points() const { return point_data.size(); }
   size_t get_n_cached_hypercubes() const { return generated_hypercubes.size(); }

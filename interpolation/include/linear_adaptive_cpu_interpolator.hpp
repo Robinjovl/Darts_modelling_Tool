@@ -26,9 +26,8 @@ public:
     typedef cell_key_hash<N_DIMS> key_hash_t;
 
     linear_adaptive_cpu_interpolator(operator_set_evaluator_iface *base_points_generator,
-                                     const std::vector<int> &axesPoints,
-                                     const std::vector<double> &axesMin,
-                                     const std::vector<double> &axesMax,
+                                     const std::vector<double> &axes_origin,
+                                     const std::vector<double> &axes_step,
                                      bool _use_barycentric_interpolation);
 
     /**
@@ -46,22 +45,6 @@ public:
      * @brief Build the multi-index key from a vertex (with int32 bit pattern packed in index_t).
      */
     key_t key_from_vertex(const std::array<index_t, N_DIMS> &vertex) const;
-
-    /**
-     * @brief Legacy packing: multi-index → integer key (axes_mult). Used for pickle export.
-     */
-    index_t to_int_key(const key_t &k) const;
-
-    /**
-     * @brief Legacy unpacking: integer key → multi-index. Used for pickle import.
-     */
-    key_t from_int_key(index_t int_key) const;
-
-    /**
-     * @brief True iff every component is within [0, axes_points[i]-1]. Out-of-bounds cells
-     * are kept in memory but not exported through the legacy point_data property.
-     */
-    bool is_in_bounds(const key_t &k) const;
 
     size_t get_n_cached_points() const { return point_data.size(); }
 

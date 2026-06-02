@@ -4,14 +4,13 @@
 template <typename index_t, int N_DIMS, int N_OPS>
 linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::linear_adaptive_cpu_interpolator(
     operator_set_evaluator_iface *supporting_point_evaluator_,
-    const std::vector<int> &axes_points_,
-    const std::vector<double> &axes_min_,
-    const std::vector<double> &axes_max_,
+    const std::vector<double> &axes_origin_,
+    const std::vector<double> &axes_step_,
     bool _use_barycentric_interpolation)
-    : linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>(supporting_point_evaluator_, axes_points_, axes_min_, axes_max_, _use_barycentric_interpolation)
+    : linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>(supporting_point_evaluator_, axes_origin_, axes_step_, _use_barycentric_interpolation)
 {
     // Enable signed-floor axis indexing in find_hypercube / get_point_from_vertex so the
-    // adaptive cache can grow outside the prescribed (axes_min, axes_max) window.
+    // adaptive cache can grow freely (the grid is unbounded — origin + step only).
     this->use_unbounded_axis_index = true;
 }
 
@@ -28,42 +27,6 @@ linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::key_from_vertex(const 
         k.idx[i] = static_cast<int32_t>(static_cast<uint32_t>(vertex[i]));
     }
     return k;
-}
-
-template <typename index_t, int N_DIMS, int N_OPS>
-index_t linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::to_int_key(const key_t &k) const
-{
-    index_t int_key = 0;
-    for (int i = 0; i < N_DIMS; ++i)
-    {
-        int_key += static_cast<index_t>(k.idx[i]) * this->axes_mult[i];
-    }
-    return int_key;
-}
-
-template <typename index_t, int N_DIMS, int N_OPS>
-typename linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::key_t
-linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::from_int_key(index_t int_key) const
-{
-    key_t k;
-    index_t remainder = int_key;
-    for (int i = 0; i < N_DIMS; ++i)
-    {
-        k.idx[i] = static_cast<int32_t>(remainder / this->axes_mult[i]);
-        remainder = remainder % this->axes_mult[i];
-    }
-    return k;
-}
-
-template <typename index_t, int N_DIMS, int N_OPS>
-bool linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::is_in_bounds(const key_t &k) const
-{
-    for (int i = 0; i < N_DIMS; ++i)
-    {
-        if (k.idx[i] < 0 || k.idx[i] >= static_cast<int32_t>(this->axes_points[i]))
-            return false;
-    }
-    return true;
 }
 
 // ─── adaptive supporting-point lookup ──────────────────────────────────────────

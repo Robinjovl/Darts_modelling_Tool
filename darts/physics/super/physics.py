@@ -409,6 +409,12 @@ class Compositional(PhysicsBase):
             "Flash evaluator should be DARTSFlash object to utilize this feature"
         )
 
+        # Number of base sampling points per axis for the flash pre-evaluation sweep.
+        # This only controls how finely the flash is pre-tabulated over the OBL axes; it
+        # is independent of the (now unbounded) OBL grid. obl_interval_multiplier coarsens
+        # the sweep to match the user's OBL step multiplier.
+        flash_sweep_n = 1024
+
         # Set ranges of state specification
         state_vars = [self.vars[0], self.vars[-1]] if self.thermal else [self.vars[0]]
         state_spec = state_spec if state_spec is not None else {}
@@ -421,9 +427,7 @@ class Compositional(PhysicsBase):
                 state_spec[spec]
                 if state_spec[spec] is not None
                 else (
-                    np.arange(
-                        PhysicsBase.ADVISORY_N_AXES_POINTS // obl_interval_multiplier
-                    )
+                    np.arange(flash_sweep_n // obl_interval_multiplier)
                     * (self.axes_step[spec_idx] * obl_interval_multiplier)
                     + self.axes_origin[spec_idx]
                 )
@@ -452,9 +456,7 @@ class Compositional(PhysicsBase):
                 compositions[comp]
                 if compositions[comp] is not None
                 else (
-                    np.arange(
-                        PhysicsBase.ADVISORY_N_AXES_POINTS // obl_interval_multiplier
-                    )
+                    np.arange(flash_sweep_n // obl_interval_multiplier)
                     * (self.axes_step[i + 1] * obl_interval_multiplier)
                     + self.axes_origin[i + 1]
                 )

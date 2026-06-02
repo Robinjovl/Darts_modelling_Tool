@@ -17,18 +17,18 @@ class linear_static_cpu_interpolator : public linear_cpu_interpolator_base<index
 {
 public:
     /**
-     * @brief Construct the interpolator with specified parametrization space
+     * @brief Construct the interpolator with a finite dense grid (origin, step, points).
      *
      * @param[in] supporting_point_evaluator      Object used to compute operators values at supporting points
-     * @param[in] axes_points                     Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                        Minimum value for each axis
-     * @param[in] axes_max                        Maximum for each axis
+     * @param[in] axes_origin                     Grid origin (lower corner) for each axis
+     * @param[in] axes_step                       Cell size for each axis
+     * @param[in] axes_points                     Number of supporting points (minimum 2) along each axis
      * @param[in] _use_barycentric_interpolation  Flag to turn on barycentric interpolation on Delaunay triangulation
      */
     linear_static_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
+                                   const std::vector<double> &axes_origin,
+                                   const std::vector<double> &axes_step,
                                    const std::vector<int> &axes_points,
-                                   const std::vector<double> &axes_min,
-                                   const std::vector<double> &axes_max,
                                    bool _use_barycentric_interpolation);
 
     /**

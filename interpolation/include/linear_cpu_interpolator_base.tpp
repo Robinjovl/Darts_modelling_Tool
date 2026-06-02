@@ -10,33 +10,46 @@
 namespace py = pybind11;
 typedef linalg::Matrix<double> Matrix;
 
+// Unbounded grid (adaptive linear): (origin, step). The flat mixed-radix axes_mult
+// is unused (adaptive keys on cell_key_t); zero it for safety.
 template <typename index_t, int N_DIMS, int N_OPS>
 linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
-                                                                                   const std::vector<int> &axes_points_,
-                                                                                   const std::vector<double> &axes_min_,
-                                                                                   const std::vector<double> &axes_max_,
+                                                                                   const std::vector<double> &axes_origin_,
+                                                                                   const std::vector<double> &axes_step_,
                                                                                    bool _use_barycentric_interpolation)
-    : interpolator_base(supporting_point_evaluator, axes_points_, axes_min_, axes_max_),
+    : interpolator_base(supporting_point_evaluator, axes_origin_, axes_step_),
       use_barycentric_interpolation(_use_barycentric_interpolation)
 {
+    axes_mult.fill(0);
+    init_simplex_and_barycentric();
+}
 
+// Bounded dense grid (static linear): builds the flat mixed-radix axes_mult used by
+// get_index_from_vertex for the dense storage layout.
+template <typename index_t, int N_DIMS, int N_OPS>
+linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+                                                                                   const std::vector<double> &axes_origin_,
+                                                                                   const std::vector<double> &axes_step_,
+                                                                                   const std::vector<int> &axes_points_,
+                                                                                   bool _use_barycentric_interpolation)
+    : interpolator_base(supporting_point_evaluator, axes_origin_, axes_step_, axes_points_),
+      use_barycentric_interpolation(_use_barycentric_interpolation)
+{
     axes_mult[N_DIMS - 1] = 1;
     for (int dim{N_DIMS - 2}; dim >= 0; dim--)
         axes_mult[dim] = axes_mult[dim + 1] * axes_points_[dim + 1];
+    init_simplex_and_barycentric();
+}
 
+template <typename index_t, int N_DIMS, int N_OPS>
+void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::init_simplex_and_barycentric()
+{
     // initialize the values with 0
     standard_simplex = {};
     // and then set some to 1
     for (int vertex_i = 0; vertex_i < N_DIMS; vertex_i++)
         for (int dim_i = vertex_i; dim_i < N_DIMS; dim_i++)
             standard_simplex[vertex_i][dim_i] = 1;
-
-    // n_points_total may exceed index_t range when ADVISORY_N_AXES_POINTS yields a huge
-    // hypercube product. That only matters for the static variant (dense vector storage)
-    // and the legacy integer-keyed pickle export — both of which guard themselves: the
-    // static `init()` throws on overflow; the adaptive pickle filter drops out-of-bounds
-    // cells silently. The actual per-axis index overflow (cell_key_t::idx is int32_t) is
-    // detected at evaluation time in get_axis_interval_index_unbounded.
 
     transform_last_axis = 1;
 
@@ -178,9 +191,16 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::find_hypercube(const 
         double point = points[point_index + i];
         if (transform_last_axis && i == (N_DIMS - 1))
         {
-            point = axes_max[i] - (point - axes_min[i]);
+            // Reflect the last axis. Unbounded (adaptive) grids have no axes_max, so
+            // pivot around the origin instead: supporting points stay on the
+            // origin + k*step lattice and the in-cell fraction is preserved, giving the
+            // same interpolant as the legacy (grid-aligned) axes_max pivot.
+            if (use_unbounded_axis_index)
+                point = axes_origin[i] - (point - axes_origin[i]);
+            else
+                point = axes_max[i] - (point - axes_origin[i]);
         }
-        scaled_point[i] = (point - axes_min[i]) * axes_step_inv[i];
+        scaled_point[i] = (point - axes_origin[i]) * axes_step_inv[i];
         if (use_unbounded_axis_index)
         {
             // Signed floor: stores int32 bit-pattern into index_t. Negative values become
@@ -435,8 +455,16 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::get_point_from_vertex
         {
             axis_idx_d = static_cast<double>(vertex[i]);
         }
-        point[i] = axis_idx_d * axes_step[i] + axes_min[i];
+        point[i] = axis_idx_d * axes_step[i] + axes_origin[i];
     }
     if (transform_last_axis)
-        point[N_DIMS - 1] = axes_max[N_DIMS - 1] - (point[N_DIMS - 1] - axes_min[N_DIMS - 1]);
+    {
+        // Mirror the find_hypercube reflection so the (reflect → index → un-reflect)
+        // round-trip returns the original physical coordinate. Unbounded grids pivot
+        // around the origin (no axes_max); bounded grids pivot around axes_max.
+        if (use_unbounded_axis_index)
+            point[N_DIMS - 1] = axes_origin[N_DIMS - 1] - (point[N_DIMS - 1] - axes_origin[N_DIMS - 1]);
+        else
+            point[N_DIMS - 1] = axes_max[N_DIMS - 1] - (point[N_DIMS - 1] - axes_origin[N_DIMS - 1]);
+    }
 }

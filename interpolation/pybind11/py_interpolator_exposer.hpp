@@ -66,7 +66,7 @@ struct interpolator_exposer
         using point_data_t = typename interpolator_class::point_data_t;
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
-          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>()) /*.def("benchmark", &interpolator_class::benchmark, "Init by nc and rate operators") \*/
+          .def(py::init<operator_set_evaluator_iface*, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>()) /* (evaluator, axes_origin, axes_step) */
           .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
             "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
           .def("init_timer_node", &interpolator_class::init_timer_node,
@@ -75,29 +75,9 @@ struct interpolator_exposer
           .def("write_to_file", &interpolator_class::write_to_file, "Write interpolator data to file")
           .def("evaluate", &interpolator_class::evaluate,
             "Evaluate operators", "state"_a, "values"_a)
-          // point_data: legacy integer-keyed view of the multi-index-keyed cache.
-          // Out-of-bounds cells (per-axis index outside [0, axes_points[i]-1]) are skipped on read
-          // and cannot be supplied on write. This preserves the existing pickle cache format.
-          .def_property("point_data",
-            [](const interpolator_class& self) {
-              std::unordered_map<i_t, point_data_t> result;
-              result.reserve(self.point_data.size());
-              for (const auto& kv : self.point_data) {
-                if (self.is_in_bounds_point(kv.first))
-                  result.emplace(self.to_int_key_point(kv.first), kv.second);
-              }
-              return result;
-            },
-            [](interpolator_class& self, const std::unordered_map<i_t, point_data_t>& d) {
-              self.point_data.clear();
-              self.point_data.reserve(d.size());
-              for (const auto& kv : d) {
-                self.point_data.emplace(self.from_int_key_point(kv.first), kv.second);
-              }
-            })
           // point_data_full: lossless export of the entire cell-key-indexed cache as a
-          // dict keyed on tuple-of-ints. Use this to save/restore caches that contain
-          // out-of-bounds cells (the legacy `point_data` filters those out).
+          // dict keyed on tuple-of-ints. This is the canonical cache I/O format now that
+          // the grid is unbounded (there is no integer-key packing reach any more).
           .def_property("point_data_full",
             [](const interpolator_class& self) {
               py::dict out;
@@ -132,10 +112,21 @@ struct interpolator_exposer
               }
             })
           .def("get_n_cached_points", &interpolator_class::get_n_cached_points,
-            "Number of supporting points currently in the adaptive cache (in-bounds + out-of-bounds)")
+            "Number of supporting points currently in the adaptive cache")
           .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes,
-            "Number of hypercubes currently in the adaptive cache (in-bounds + out-of-bounds)")
-          .def("get_hypercube_indexes", &interpolator_class::get_hypercube_indexes);
+            "Number of hypercubes currently in the adaptive cache")
+          // get_hypercube_keys: signed multi-index of every generated hypercube, as a
+          // list of int tuples. Replaces the legacy integer get_hypercube_indexes()
+          // (unbounded grid -> no integer packing). Used for body-path occupancy output.
+          .def("get_hypercube_keys", [](const interpolator_class& self) {
+              py::list out;
+              for (const auto& k : self.get_hypercube_keys()) {
+                py::tuple t(N_DIMS);
+                for (uint8_t d = 0; d < N_DIMS; ++d) t[d] = k.idx[d];
+                out.append(t);
+              }
+              return out;
+            }, "Multi-index keys of all generated hypercubes (list of int tuples)");
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
       {
@@ -144,7 +135,7 @@ struct interpolator_exposer
         using point_value_t = std::array<double, N_OPS>;
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
-          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &, bool>(), py::keep_alive<1, 2>())
+          .def(py::init<operator_set_evaluator_iface*, std::vector<value_t> &, std::vector<value_t> &, bool>(), py::keep_alive<1, 2>()) /* (evaluator, axes_origin, axes_step, is_barycentric) */
           .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
             "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
           .def("init_timer_node", &interpolator_class::init_timer_node,
@@ -153,25 +144,8 @@ struct interpolator_exposer
           .def("write_to_file", &interpolator_class::write_to_file, "Write interpolator data to file")
           .def("evaluate", &interpolator_class::evaluate,
             "Evaluate operators", "state"_a, "values"_a)
-          .def_property("point_data",
-            [](const interpolator_class& self) {
-              std::unordered_map<i_t, point_value_t> result;
-              result.reserve(self.point_data.size());
-              for (const auto& kv : self.point_data) {
-                if (self.is_in_bounds(kv.first))
-                  result.emplace(self.to_int_key(kv.first), kv.second);
-              }
-              return result;
-            },
-            [](interpolator_class& self, const std::unordered_map<i_t, point_value_t>& d) {
-              self.point_data.clear();
-              self.point_data.reserve(d.size());
-              for (const auto& kv : d) {
-                self.point_data.emplace(self.from_int_key(kv.first), kv.second);
-              }
-            })
-          // point_data_full: lossless export keyed on tuple-of-ints. See note above
-          // on the multilinear adaptive branch.
+          // point_data_full: lossless export keyed on tuple-of-ints. Canonical cache I/O
+          // format (unbounded grid -> no integer-key packing). See multilinear branch.
           .def_property("point_data_full",
             [](const interpolator_class& self) {
               py::dict out;
@@ -213,7 +187,7 @@ struct interpolator_exposer
       {
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
-          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &, bool>(), py::keep_alive<1, 2>())
+          .def(py::init<operator_set_evaluator_iface*, std::vector<value_t> &, std::vector<value_t> &, std::vector<index_t> &, bool>(), py::keep_alive<1, 2>()) /* (evaluator, axes_origin, axes_step, axes_points, is_barycentric) */
           .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
             "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
           .def("init_timer_node", &interpolator_class::init_timer_node,
@@ -228,12 +202,12 @@ struct interpolator_exposer
 #ifdef WITH_GPU
       else if constexpr (std::is_same_v<interpolator_class, multilinear_adaptive_gpu_interpolator<i_t, f_t, N_DIMS, N_OPS>>)
       {
-        // GPU adaptive multilinear: same point_data shim as the CPU variant —
-        // legacy integer-keyed dict for pickle cache compatibility.
+        // GPU adaptive multilinear: unbounded grid keyed on cell_key_t; cache I/O via
+        // the tuple-keyed point_data_full view (no integer-key packing).
         using point_data_t = typename interpolator_class::point_data_t;
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
-          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>())
+          .def(py::init<operator_set_evaluator_iface*, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>()) /* (evaluator, axes_origin, axes_step) */
           .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
             "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
           .def("init_timer_node", &interpolator_class::init_timer_node,
@@ -242,23 +216,6 @@ struct interpolator_exposer
           .def("write_to_file", &interpolator_class::write_to_file, "Write interpolator data to file")
           .def("evaluate", &interpolator_class::evaluate,
             "Evaluate operators", "state"_a, "values"_a)
-          .def_property("point_data",
-            [](const interpolator_class& self) {
-              std::unordered_map<i_t, point_data_t> result;
-              result.reserve(self.point_data.size());
-              for (const auto& kv : self.point_data) {
-                if (self.is_in_bounds_point(kv.first))
-                  result.emplace(self.to_int_key_point(kv.first), kv.second);
-              }
-              return result;
-            },
-            [](interpolator_class& self, const std::unordered_map<i_t, point_data_t>& d) {
-              self.point_data.clear();
-              self.point_data.reserve(d.size());
-              for (const auto& kv : d) {
-                self.point_data.emplace(self.from_int_key_point(kv.first), kv.second);
-              }
-            })
           .def_property("point_data_full",
             [](const interpolator_class& self) {
               py::dict out;
@@ -297,9 +254,10 @@ struct interpolator_exposer
       }
 #endif
       else {
+        // Fallback branch: static multilinear (dense bounded grid) — (origin, step, points).
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
-          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>()) /*.def("benchmark", &interpolator_class::benchmark, "Init by nc and rate operators") \*/
+          .def(py::init<operator_set_evaluator_iface*, std::vector<value_t> &, std::vector<value_t> &, std::vector<index_t> &>(), py::keep_alive<1, 2>()) /* (evaluator, axes_origin, axes_step, axes_points) */
           .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
             "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
           .def("init_timer_node", &interpolator_class::init_timer_node,

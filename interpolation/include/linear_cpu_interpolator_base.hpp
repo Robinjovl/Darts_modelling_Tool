@@ -19,18 +19,33 @@ class linear_cpu_interpolator_base : public interpolator_base
 {
 public:
     /**
-     * @brief Construct an interpolator with specified parametrization space
+     * @brief Construct an unbounded interpolator parametrized by (origin, step).
+     *        Used by adaptive linear storage; the grid has no upper bound.
      *
      * @param[in] supporting_point_evaluator      Object used to compute operators values at supporting points
-     * @param[in] axes_points                     Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                        Minimum value for each axis
-     * @param[in] axes_max                        Maximum for each axis
+     * @param[in] axes_origin                     Grid origin (lower corner) for each axis
+     * @param[in] axes_step                       Cell size for each axis
      * @param[in] _use_barycentric_interpolation  Flag to turn on barycentric interpolation on Delaunay triangulation
      */
     linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+                                 const std::vector<double> &axes_origin,
+                                 const std::vector<double> &axes_step,
+                                 bool _use_barycentric_interpolation);
+
+    /**
+     * @brief Construct a bounded interpolator with a finite dense grid.
+     *        Used by static linear storage; builds the mixed-radix axes_mult.
+     *
+     * @param[in] supporting_point_evaluator      Object used to compute operators values at supporting points
+     * @param[in] axes_origin                     Grid origin (lower corner) for each axis
+     * @param[in] axes_step                       Cell size for each axis
+     * @param[in] axes_points                     Number of supporting points (minimum 2) along each axis
+     * @param[in] _use_barycentric_interpolation  Flag to turn on barycentric interpolation on Delaunay triangulation
+     */
+    linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+                                 const std::vector<double> &axes_origin,
+                                 const std::vector<double> &axes_step,
                                  const std::vector<int> &axes_points,
-                                 const std::vector<double> &axes_min,
-                                 const std::vector<double> &axes_max,
                                  bool _use_barycentric_interpolation);
     /**
      * @brief Get the number of dimensions in interpolation space
@@ -157,6 +172,11 @@ protected:
      * @brief Calculate Delaunay triangulation and associated barycentric transformations.
      */
     void find_delaunay_and_barycentric();
+    /**
+     * @brief Shared constructor tail: builds the standard simplex, sets the last-axis
+     *        transform flag, and (optionally) the Delaunay/barycentric structures.
+     */
+    void init_simplex_and_barycentric();
 };
 
 #include "linear_cpu_interpolator_base.tpp"
