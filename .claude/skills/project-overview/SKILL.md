@@ -16,6 +16,9 @@ When the planned work leads to build, install, test, debug, docs, or lint comman
 
 ## Conventions
 
+- Preserve existing file line endings. Do not make line-ending-only changes or
+  run tools with the intent of changing EOL style unless the user explicitly
+  requests an EOL change.
 - Write Python docstrings with the opening and closing triple quotation marks on separate lines.
 - Document Python input and output arguments with `:param name:`, `:type name:`, `:return:`, and `:rtype:` fields.
 
