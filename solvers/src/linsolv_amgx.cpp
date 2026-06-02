@@ -133,46 +133,60 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_amgx<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
-      int /*max_iters*/,
-      double /*tolerance*/)
+    int linsolv_amgx<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix_base *A_input,
+      opendarts::config::index_t /*max_iters*/,
+      opendarts::config::mat_float /*tolerance*/)
     {
       AMGX_matrix_create((AMGX_matrix_handle_struct **)&A, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);
       AMGX_vector_create((AMGX_vector_handle_struct **)&x, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);
       AMGX_vector_create((AMGX_vector_handle_struct **)&b, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);
 
+      // The convert_to_bs1 / ELL expansion path uses csr_matrix<N>-specific
+      // members (convert_to_ELL, csrRowPtrC/csrColIndC/csrValC) which do not
+      // exist on the unified block_csr_matrix. Restrict that path to legacy
+      // typed inputs; native block matrices always use AMGX's BSR path.
       if (N_BLOCK_SIZE > 1 && convert_to_bs1)
       {
-        A_input->convert_to_ELL();
-        AMGX_matrix_upload_all((AMGX_matrix_handle)A, A_input->n_rows * N_BLOCK_SIZE,
-          A_input->rows_ptr[A_input->n_rows] * N_BLOCK_SIZE * N_BLOCK_SIZE, 1, 1,
-          A_input->csrRowPtrC, A_input->csrColIndC, A_input->csrValC, 0);
+        auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input);
+        if (A_typed != nullptr)
+        {
+          A_typed->convert_to_ELL();
+          AMGX_matrix_upload_all((AMGX_matrix_handle)A, A_typed->n_rows * N_BLOCK_SIZE,
+            A_typed->rows_ptr[A_typed->n_rows] * N_BLOCK_SIZE * N_BLOCK_SIZE, 1, 1,
+            A_typed->csrRowPtrC, A_typed->csrColIndC, A_typed->csrValC, 0);
+          return 0;
+        }
+        // Fall through to the native block path for block_csr_matrix inputs.
       }
-      else
-      {
-        AMGX_matrix_upload_all((AMGX_matrix_handle)A, A_input->n_rows,
-          A_input->rows_ptr[A_input->n_rows], N_BLOCK_SIZE, N_BLOCK_SIZE,
-          A_input->rows_ptr_d, A_input->cols_ind_d, A_input->values_d, 0);
-      }
+
+      AMGX_matrix_upload_all((AMGX_matrix_handle)A, A_input->n_rows,
+        A_input->get_rows_ptr()[A_input->n_rows], N_BLOCK_SIZE, N_BLOCK_SIZE,
+        A_input->get_rows_ptr_d(), A_input->get_cols_ind_d(), A_input->get_values_d(), 0);
       return 0;
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_amgx<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input)
+    int linsolv_amgx<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix_base *A_input)
     {
       const std::string timer_key = "AMGX<" + std::to_string((int)N_BLOCK_SIZE) + ">";
       this->timer_setup->node[timer_key].start();
 
+      bool used_bs1 = false;
       if (N_BLOCK_SIZE > 1 && convert_to_bs1)
       {
-        A_input->convert_to_ELL();
-        AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A, A_input->n_rows * N_BLOCK_SIZE,
-          A_input->rows_ptr[A_input->n_rows] * N_BLOCK_SIZE * N_BLOCK_SIZE, A_input->csrValC, 0);
+        auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input);
+        if (A_typed != nullptr)
+        {
+          A_typed->convert_to_ELL();
+          AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A, A_typed->n_rows * N_BLOCK_SIZE,
+            A_typed->rows_ptr[A_typed->n_rows] * N_BLOCK_SIZE * N_BLOCK_SIZE, A_typed->csrValC, 0);
+          used_bs1 = true;
+        }
       }
-      else
+      if (!used_bs1)
       {
         AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A, A_input->n_rows,
-          A_input->rows_ptr[A_input->n_rows], A_input->values_d, 0);
+          A_input->get_rows_ptr()[A_input->n_rows], A_input->get_values_d(), 0);
       }
       AMGX_solver_setup((AMGX_solver_handle)solver, (AMGX_matrix_handle)A);
       n_rows = A_input->n_rows;

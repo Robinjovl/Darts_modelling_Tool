@@ -643,14 +643,15 @@ namespace opendarts
     }
 
     template <uint8_t n_block_size>
-    int linsolv_bos_cpr_gpu<n_block_size>::init(opendarts::linear_solvers::csr_matrix<n_block_size> *A,
-      int /*max_iters*/,
-      double /*tolerance*/)
+    int linsolv_bos_cpr_gpu<n_block_size>::init(opendarts::linear_solvers::csr_matrix_base *A,
+      opendarts::config::index_t /*max_iters*/,
+      opendarts::config::mat_float /*tolerance*/)
     {
       index_t n_rows = A->n_rows;
+      const index_t n_nnz = A->n_non_zeros;
 
       // The pressure matrix repeats the reservoir matrix structure, block size 1.
-      P->init(n_rows, n_rows, 1, A->get_n_non_zeros());
+      P->init(n_rows, n_rows, 1, n_nnz);
       P->type = opendarts::linear_solvers::MATRIX_TYPE_CSR;
       P->is_square = 1;
 
@@ -670,7 +671,7 @@ namespace opendarts
 
       if (p_solver_setup_gpu)
       {
-        P->init_device(n_rows, A->get_n_non_zeros());
+        P->init_device(n_rows, n_nnz);
         P->copy_struct_to_device();
       }
 
@@ -716,7 +717,7 @@ namespace opendarts
         printf("Error! Can't allocate device memory in CPR\n");
         return -1;
       }
-      cudaStat = cudaMalloc((void **)&block_p_jac_idx, sizeof(index_t) * (A->get_n_non_zeros() - n_rows));
+      cudaStat = cudaMalloc((void **)&block_p_jac_idx, sizeof(index_t) * (n_nnz - n_rows));
       if (cudaStat != cudaSuccess)
       {
         printf("Error! Can't allocate device memory in CPR\n");
@@ -756,7 +757,7 @@ namespace opendarts
       }
 
       // index vector for the single-loop colsum
-      index_t *block_p_jac_idx_h = new index_t[A->get_n_non_zeros() - n_rows];
+      index_t *block_p_jac_idx_h = new index_t[n_nnz - n_rows];
       index_t *rows = A->get_rows_ptr();
       index_t *cols = A->get_cols_ind();
       index_t conn = 0;
@@ -784,7 +785,7 @@ namespace opendarts
       }
 
       cudaStat = cudaMemcpy(block_p_jac_idx, block_p_jac_idx_h,
-        sizeof(index_t) * (A->get_n_non_zeros() - n_rows), cudaMemcpyHostToDevice);
+        sizeof(index_t) * (n_nnz - n_rows), cudaMemcpyHostToDevice);
       if (cudaStat != cudaSuccess)
       {
         printf("Error! Can't copy memory to device\n");
@@ -830,13 +831,14 @@ namespace opendarts
       this->timer_setup->node["CPR"].start();
       A_base = A_;
 
-      opendarts::linear_solvers::csr_matrix<n_block_size> *A =
-        static_cast<opendarts::linear_solvers::csr_matrix<n_block_size> *>(A_);
-
-      index_t n_rows = A->n_rows;
-      index_t *rows = A->rows_ptr_d;
-      index_t *diags = A->diag_ind_d;
-      value_t *vals = A->values_d;
+      // Polymorphic device-pointer access -- works with either the legacy
+      // csr_matrix<N> or the unified block_csr_matrix. The previous code
+      // static_cast'd to csr_matrix<n_block_size>*, which is UB when the
+      // engine hands in a block_csr_matrix.
+      index_t n_rows = A_->n_rows;
+      index_t *rows = A_->get_rows_ptr_d();
+      index_t *diags = A_->get_diag_ind_d();
+      value_t *vals = A_->get_values_d();
 
 #ifdef ACCURATE_INVERSION
       cudaMemset(D_ps_ss, 0, n_rows * (n_block_size - 1) * sizeof(value_t));
@@ -871,7 +873,7 @@ namespace opendarts
       {
         value_t *p_vals_h = P->get_values();
         this->timer_setup->node["CPR"].node["P_comm"].start();
-        cudaStat = cudaMemcpy(p_vals_h, p_vals, sizeof(value_t) * A->get_n_non_zeros(), cudaMemcpyDeviceToHost);
+        cudaStat = cudaMemcpy(p_vals_h, p_vals, sizeof(value_t) * A_->n_non_zeros, cudaMemcpyDeviceToHost);
         this->timer_setup->node["CPR"].node["P_comm"].stop();
         if (cudaStat != cudaSuccess)
         {
@@ -880,8 +882,10 @@ namespace opendarts
         }
       }
 
-      // set up the second stage first to benefit from asynchronous execution
-      full_system_preconditioner->setup(A);
+      // set up the second stage first to benefit from asynchronous execution.
+      // Forward the polymorphic csr_matrix_base*; the downstream preconditioner
+      // will accept either the legacy csr_matrix<N> or block_csr_matrix.
+      full_system_preconditioner->setup(A_);
 
       // Synchronise before the first-stage setup. Removing this allows the two
       // setups to overlap when they run on different devices (CPU and GPU).

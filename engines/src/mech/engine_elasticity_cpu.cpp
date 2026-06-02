@@ -64,8 +64,12 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 	// Instantiate Jacobian
 	if (!Jacobian)
 	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		Jacobian = new block_csr_matrix; // unified block-CSR matrix (section 12)
+#else
 		Jacobian = new csr_matrix<N_VARS>;
 		Jacobian->type = MATRIX_TYPE_CSR;
+#endif
 	}
 
 	// figure out if this is GPU engine from its name.
@@ -75,7 +79,12 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 	// if (!is_gpu_engine)
 	{
 		// for CPU engines we need full init
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		(static_cast<block_csr_matrix *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+		Jacobian->type = MATRIX_TYPE_CSR; // set after init() (init resets type)
+#else
 		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+#endif
 	}
 	// else
 	// {
@@ -86,7 +95,10 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 #ifdef WITH_GPU
 	if (params->linear_type >= params->GPU_GMRES_CPR_AMGX_ILU)
 	{
+#ifndef OPENDARTS_LINEAR_SOLVERS
 		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_links);
+#endif
+		// block_csr_matrix allocates device storage lazily via dual_array.
 	}
 #endif
 

@@ -156,15 +156,42 @@ here are the post-closeout cleanups that follow naturally from the audit:
   preserved unchanged pending the SPE10 benchmark comparison Xiaoming
   promised on MR #280, 2026-05-29; once that lands the MGR-internal path
   is to be retired.
-* **GPU §12 phase C1 — partial.** The GPU engine Jacobian is now
-  `new block_csr_matrix` under `OPENDARTS_LINEAR_SOLVERS`, matching CPU.
-  Device storage is allocated lazily via `dual_array`; no `init_device`
-  call needed. The accessor shims (`jac_*_d`) already handled both layouts.
-  Remaining: routing the CUDA kernels' raw `Jacobian->values_d` /
-  `rows_ptr_d` field accesses through `csr_matrix_base::get_*_d` so the
-  matrix-free path (`assembly_kernel == 13`) can stop relying on
-  `engine_base_gpu : public csr_matrix_base`. AMGX wiring through
-  `block_csr_matrix` is a separate downstream item.
+* **GPU §12 phase C1 — landed (matrix-free inheritance kept).** The GPU
+  engine Jacobian is now `new block_csr_matrix` under
+  `OPENDARTS_LINEAR_SOLVERS`, matching CPU; device storage is allocated
+  lazily via `dual_array` (no `init_device`). Concrete downstream work:
+  - `engine_nc_gpu.cu` — raw `jacobian->rows_ptr_d / values_d / ...` field
+    accesses replaced with `get_*_d()` virtuals on `csr_matrix_base` (the
+    `assemble_jacobian_array_kernel3` and well-block memcpy call sites),
+    and the `matrix_vector_product_d0` / `calc_lin_comb_d` kernels now
+    use the `jac_*_d()` shims uniformly. `engine_nc_cg_gpu.cu` and
+    `engine_nce_g_gpu.cu` were already shim-routed.
+  - Mechanics-engine Jacobian construction migrated: `engine_pm_cpu`,
+    `engine_elasticity_cpu`, `engine_super_elastic_cpu` now instantiate
+    `block_csr_matrix` under `OPENDARTS_LINEAR_SOLVERS`; the legacy GPU
+    `init_device` is gated by `#ifndef OPENDARTS_LINEAR_SOLVERS` to honour
+    the lazy device-storage contract.
+  - GPU solvers: `linsolv_cusparse_ilu`, `linsolv_amgx`,
+    `linsolv_bos_cpr_gpu` now consume `csr_matrix_base*` polymorphically
+    (own `cusparseHandle_t` where the matrix no longer provides one;
+    accessor-based device pointers; the `convert_to_bs1` AMGX path is
+    legacy-typed only). `linsolv_cusolv` got a defensive `dynamic_cast`
+    guard with a clear error message -- full `block_csr_matrix` support
+    deferred (it's a debug/QR direct solver).
+  - **Matrix-free path kept** -- `engine_base_gpu : public csr_matrix_base`
+    is unchanged. The matrix-free `assembly_kernel == 13` path needs the
+    engine to act as the system matrix and to override
+    `matrix_vector_product_d0` with the on-the-fly Jacobian assembly
+    kernel; that responsibility cannot move to `block_csr_matrix` without
+    re-architecting matrix-free assembly. The `csr_matrix_base` storage-
+    accessor overrides on `engine_base_gpu` simply forward to the owned
+    Jacobian (now a `block_csr_matrix`).
+  - **Remaining (separate follow-ups)**: full GPU validation of MGR/CPR on
+    realistic models; AMGX `convert_to_bs1` path migrated to a
+    `block_csr_matrix` scalar device view (it currently restricts itself
+    to legacy `csr_matrix<N>` inputs); the latent
+    `engine_base_gpu.cpp:378` `matrix_vector_product_d_ell` call without
+    `convert_to_ELL` under `OPENDARTS_LINEAR_SOLVERS`.
 * **Cleanup**: `solvers/{include,src}/linsolv_iface_adapter.{hpp,cpp}`
   deleted; `han2013.pdf` relocated from the repo root to
   `docs/refs/han2013.pdf`; file modes corrected on `engine_base.cpp`,

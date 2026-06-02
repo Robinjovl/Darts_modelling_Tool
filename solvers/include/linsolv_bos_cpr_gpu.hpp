@@ -81,6 +81,13 @@ namespace opendarts
         return 0;
       }
 
+      // Polymorphic init() entry -- bypasses the linsolv_iface_bos<N>
+      // static_cast which is UB when A is a block_csr_matrix. Matches the
+      // setup() shape above.
+      int init(opendarts::linear_solvers::csr_matrix_base *A,
+        opendarts::config::index_t max_iters,
+        opendarts::config::mat_float tolerance) override;
+
       //////////////////////
       // linsolv_iface
       //////////////////////
@@ -99,7 +106,12 @@ namespace opendarts
 
       int init(opendarts::linear_solvers::csr_matrix<n_block_size> *A,
         int max_iters,
-        double tolerance) override;
+        double tolerance) override
+      {
+        return this->init(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A),
+            static_cast<opendarts::config::index_t>(max_iters),
+            static_cast<opendarts::config::mat_float>(tolerance));
+      }
 
       void setup_kernel(void);
 

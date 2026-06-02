@@ -73,22 +73,45 @@ namespace opendarts
       cusparseDestroyBsrilu02Info(info_M);
       cusparseDestroyBsrsv2Info(info_L);
       cusparseDestroyBsrsv2Info(info_U);
+      if (owns_handle_ && handle)
+        cusparseDestroy(handle);
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_cusparse_ilu<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
-      int /*max_iters*/,
-      double /*tolerance*/)
+    int linsolv_cusparse_ilu<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix_base *A_input,
+      opendarts::config::index_t /*max_iters*/,
+      opendarts::config::mat_float /*tolerance*/)
     {
       cudaError_t cudaStat;
 
       A_matrix = A_input;
-      handle = A_matrix->cus_handle;
+      // Try to share the cuSPARSE handle the matrix already owns (legacy
+      // csr_matrix<N> creates one per matrix); if the matrix is a
+      // block_csr_matrix (or any csr_matrix_base subclass without a
+      // matrix-owned handle), create our own. The owned handle is destroyed
+      // in the destructor.
+      cusparseHandle_t matrix_handle = nullptr;
+      if (auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input))
+        matrix_handle = A_typed->cus_handle;
+      if (matrix_handle != nullptr)
+      {
+        handle = matrix_handle;
+        owns_handle_ = false;
+      }
+      else
+      {
+        if (cusparseCreate(&handle) != CUSPARSE_STATUS_SUCCESS)
+        {
+          printf("Error! cusparseCreate failed (linsolv_cusparse_ilu)\n");
+          return -1;
+        }
+        owns_handle_ = true;
+      }
 
       mb = A_matrix->n_rows;
-      nnzb = A_matrix->get_n_non_zeros();
-      d_bsrRowPtr = A_matrix->rows_ptr_d;
-      d_bsrColInd = A_matrix->cols_ind_d;
+      nnzb = A_matrix->n_non_zeros;
+      d_bsrRowPtr = A_matrix->get_rows_ptr_d();
+      d_bsrColInd = A_matrix->get_cols_ind_d();
 
       if (single_precision)
       {
@@ -123,7 +146,7 @@ namespace opendarts
         if (factorize_in_place)
         {
           // Matrix-free mode: factorise into the matrix values themselves.
-          values_d_ilu = A_matrix->values_d;
+          values_d_ilu = A_matrix->get_values_d();
           printf("ILU(0): matrix-free mode\n");
         }
         else
@@ -223,7 +246,7 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_cusparse_ilu<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *matrix)
+    int linsolv_cusparse_ilu<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix_base *matrix)
     {
       cudaError_t cudaStat;
 
@@ -231,11 +254,11 @@ namespace opendarts
 
       // May still be uninitialised when invoked through the BOS interface.
       if (!A_matrix)
-        init(matrix, 0, 1);
+        init(matrix, 0, 1.0);
 
       if (single_precision)
       {
-        opendarts::linear_solvers::copy_device_data(values_d_ilu_sfp, A_matrix->values_d,
+        opendarts::linear_solvers::copy_device_data(values_d_ilu_sfp, A_matrix->get_values_d(),
           nnzb * N_BLOCK_SIZE * N_BLOCK_SIZE);
       }
       else
@@ -243,7 +266,7 @@ namespace opendarts
         if (!factorize_in_place)
         {
           // Not matrix-free: copy the matrix values into the ILU storage first.
-          cudaStat = cudaMemcpy(values_d_ilu, A_matrix->values_d,
+          cudaStat = cudaMemcpy(values_d_ilu, A_matrix->get_values_d(),
             sizeof(double) * nnzb * N_BLOCK_SIZE * N_BLOCK_SIZE, cudaMemcpyDeviceToDevice);
           if (cudaStat != cudaSuccess)
           {

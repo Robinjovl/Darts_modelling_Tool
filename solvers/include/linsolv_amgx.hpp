@@ -73,10 +73,13 @@ namespace opendarts
         return solve(v, r);
       }
 
-      int setup(opendarts::linear_solvers::csr_matrix_base *A) override
-      {
-        return this->setup(static_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A));
-      }
+      // csr_matrix_base overrides -- bypass the linsolv_iface_bos<N>
+      // static_cast, which is UB when A is a block_csr_matrix.
+      int init(opendarts::linear_solvers::csr_matrix_base *A,
+        opendarts::config::index_t max_iters,
+        opendarts::config::mat_float tolerance) override;
+
+      int setup(opendarts::linear_solvers::csr_matrix_base *A) override;
 
       //////////////////////
       // linsolv_iface
@@ -86,9 +89,17 @@ namespace opendarts
 
       int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
         int max_iters,
-        double tolerance) override;
+        double tolerance) override
+      {
+        return this->init(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_input),
+            static_cast<opendarts::config::index_t>(max_iters),
+            static_cast<opendarts::config::mat_float>(tolerance));
+      }
 
-      int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input) override;
+      int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input) override
+      {
+        return this->setup(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_input));
+      }
 
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
 

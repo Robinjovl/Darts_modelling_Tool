@@ -69,10 +69,16 @@ namespace opendarts
         return solve(v, r);
       }
 
-      int setup(opendarts::linear_solvers::csr_matrix_base *A) override
-      {
-        return this->setup(static_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A));
-      }
+      // csr_matrix_base override -- bypasses the linsolv_iface_bos<N>
+      // static_cast which is UB when A is a block_csr_matrix.
+      // The linsolv_iface_bos<N> init/setup csr_matrix<N>* overrides below
+      // remain for callers that still pass the typed pointer; they forward
+      // here so all paths share the polymorphic implementation.
+      int init(opendarts::linear_solvers::csr_matrix_base *A,
+        opendarts::config::index_t max_iters,
+        opendarts::config::mat_float tolerance) override;
+
+      int setup(opendarts::linear_solvers::csr_matrix_base *A) override;
 
       //////////////////////
       // linsolv_iface
@@ -85,9 +91,16 @@ namespace opendarts
 
       int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
         int max_iters,
-        double tolerance) override;
+        double tolerance) override
+      {
+        return this->init(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_input),
+            static_cast<opendarts::config::index_t>(max_iters), static_cast<opendarts::config::mat_float>(tolerance));
+      }
 
-      int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input) override;
+      int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input) override
+      {
+        return this->setup(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_input));
+      }
 
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
 
@@ -108,15 +121,22 @@ namespace opendarts
       // Run the ILU factorisation and solves in single precision.
       int single_precision;
 
-      opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_matrix = nullptr;
+      // Polymorphic matrix pointer -- accepts both the legacy csr_matrix<N>
+      // and the unified block_csr_matrix Jacobian. All access goes through
+      // csr_matrix_base accessors (get_values_d, get_rows_ptr_d, ...).
+      opendarts::linear_solvers::csr_matrix_base *A_matrix = nullptr;
 
       double *values_d_ilu;
 
       // Single-precision ILU storage.
       float *values_d_ilu_sfp, *ilu_rhs, *ilu_sol, *d_z_sfp;
 
-      // cuSPARSE state.
-      cusparseHandle_t handle;
+      // cuSPARSE state. Owned by this solver so the lifetime is independent
+      // of the matrix (csr_matrix<N> historically created its own per-matrix
+      // handle; block_csr_matrix routes through gpu_bsr_spmv for SpMV but
+      // does not expose a shareable handle for ILU/triangular solves).
+      cusparseHandle_t handle = nullptr;
+      bool owns_handle_ = false;
       cusparseMatDescr_t descr_M = 0;
       cusparseMatDescr_t descr_L = 0;
       cusparseMatDescr_t descr_U = 0;
