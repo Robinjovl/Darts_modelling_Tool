@@ -11,15 +11,10 @@ from pathlib import Path
 
 LF_ONLY_SUFFIXES = (
     ".py",
-    ".pyi",
     ".c",
-    ".cc",
     ".cpp",
-    ".cxx",
     ".h",
-    ".hh",
     ".hpp",
-    ".hxx",
     ".tpp",
     ".cu",
     ".cuh",
