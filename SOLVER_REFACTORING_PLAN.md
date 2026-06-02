@@ -186,12 +186,44 @@ here are the post-closeout cleanups that follow naturally from the audit:
     re-architecting matrix-free assembly. The `csr_matrix_base` storage-
     accessor overrides on `engine_base_gpu` simply forward to the owned
     Jacobian (now a `block_csr_matrix`).
-  - **Remaining (separate follow-ups)**: full GPU validation of MGR/CPR on
-    realistic models; AMGX `convert_to_bs1` path migrated to a
-    `block_csr_matrix` scalar device view (it currently restricts itself
-    to legacy `csr_matrix<N>` inputs); the latent
-    `engine_base_gpu.cpp:378` `matrix_vector_product_d_ell` call without
-    `convert_to_ELL` under `OPENDARTS_LINEAR_SOLVERS`.
+  - **GPU follow-ups landed in a third pass**:
+    - **Device-side scalar CSR view for `block_csr_matrix`** via
+      `gpu_bsr_spmv::build_scalar_csr_device()` (wraps `cusparseDbsr2csr`)
+      with lazily-allocated owned buffers and a structure-stable refresh
+      model. Forwarding accessors on `block_csr_matrix`
+      (`scalar_csr_row_ptr_device()` / `_col_ind_device()` / `_values_device()` /
+      `scalar_csr_nnz()`) provide the same triple
+      `cusolverSpDcsrlsvqr` / `AMGX_matrix_upload_all` consume from the
+      legacy `csr_matrix<N>::convert_to_ELL` path.
+    - **AMGX `convert_to_bs1` path fully migrated**: `linsolv_amgx` now
+      dispatches on `dynamic_cast` -- legacy `csr_matrix<N>` keeps using
+      `convert_to_ELL` + `csrValC/csrRowPtrC/csrColIndC`; `block_csr_matrix`
+      uses `build_scalar_csr_device()` + the scalar device accessors. Both
+      `AMGX_matrix_upload_all` (init) and `AMGX_matrix_replace_coefficients`
+      (setup) handle both backends.
+    - **`linsolv_cusolv` fully migrated**: the defensive `dynamic_cast`
+      guard is replaced by real `block_csr_matrix` support over the same
+      device scalar-CSR triple. `init/setup` dispatch on the matrix subclass;
+      `solve` pulls the scalar device pointers via the
+      `fetch_scalar_csr_device<N>` helper.
+    - **`engine_base_gpu.cpp` `test_spmv` ELL block** now sits under
+      `#ifndef OPENDARTS_LINEAR_SOLVERS` end-to-end (the cuSPARSE HYB/ELL
+      path was removed in CUDA 11, and `block_csr_matrix` only exposes the
+      block SpMV).
+  - **Functional smoke test** (open-source build, `OPENDARTS_LINEAR_SOLVERS`
+    + `WITH_GPU` enabled): `2ph_comp` model with the MGR-based CPRA profile
+    runs the full 10-step Newton sequence cleanly (`NI=12, LI=24`) --
+    Jacobian assembly, MGR ingest with `scalar_csr_adapter` value refresh,
+    HYPRE/MGR solve, well-block memcpy through the `get_*_d` accessor path,
+    and Newton update all complete without crash or NaN.
+  - **Remaining (separate follow-ups, outside §12)**: dedicated GPU model
+    runs with `linsolv_amgx` + `linsolv_cusolv` against `block_csr_matrix`
+    (the cuSPARSE-based scalar device path compiles and links but
+    functional GPU validation needs a target model that selects those
+    solvers); cuDSS migration of the `cusolverSpDcsrlsvqr` direct solver;
+    eliminating the BSR-deprecation warnings (`cusparseDbsrmv`,
+    `cusparseDbsrilu02`, `cusparseDbsrsv2`, `cusparseDbsr2csr`) by porting
+    to the generic cuSPARSE API.
 * **Cleanup**: `solvers/{include,src}/linsolv_iface_adapter.{hpp,cpp}`
   deleted; `han2013.pdf` relocated from the repo root to
   `docs/refs/han2013.pdf`; file modes corrected on `engine_base.cpp`,

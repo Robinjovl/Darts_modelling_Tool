@@ -73,12 +73,40 @@ namespace opendarts
 
       [[nodiscard]] cusparseHandle_t handle() const noexcept { return handle_; }
 
+      /** Build a scalar-CSR (point CSR) device view of the bound block
+       *  matrix, via cusparseDbsr2csr. Called by GPU solvers that consume
+       *  scalar CSR on the device -- AMGX bs1 mode, cuSOLVER QR -- in place
+       *  of the legacy csr_matrix<N>::convert_to_ELL pathway.
+       *
+       *  Structure is built once on the first call; subsequent calls
+       *  rebuild *values only* into the existing buffers (cusparseDbsr2csr
+       *  rewrites the full output, but the row_ptr/col_ind portions remain
+       *  unchanged for fixed-sparsity matrices). Returns 0 on success. */
+      int build_scalar_csr_device();
+
+      [[nodiscard]] index_t scalar_csr_nnz() const noexcept { return scalar_csr_nnz_; }
+      [[nodiscard]] index_t scalar_csr_n_rows() const noexcept { return scalar_csr_n_rows_; }
+      [[nodiscard]] const index_t *scalar_csr_row_ptr_device() const noexcept { return scalar_csr_row_ptr_d_; }
+      [[nodiscard]] const index_t *scalar_csr_col_ind_device() const noexcept { return scalar_csr_col_ind_d_; }
+      [[nodiscard]] const double *scalar_csr_values_device() const noexcept { return scalar_csr_val_d_; }
+
     private:
       int bsrmv(double alpha, const double *x_d, double beta, double *y_d) const;
+      void free_scalar_csr_device() noexcept;
 
       block_csr_matrix *matrix_;
       cusparseHandle_t handle_ = nullptr;
       cusparseMatDescr_t descr_ = nullptr;
+
+      // Lazily allocated scalar-CSR device buffers + their cuSPARSE descriptor.
+      // Built by build_scalar_csr_device() and freed in the destructor.
+      cusparseMatDescr_t scalar_csr_descr_ = nullptr;
+      index_t *scalar_csr_row_ptr_d_ = nullptr;
+      index_t *scalar_csr_col_ind_d_ = nullptr;
+      double *scalar_csr_val_d_ = nullptr;
+      index_t scalar_csr_n_rows_ = 0;
+      index_t scalar_csr_nnz_ = 0;
+      int scalar_csr_block_size_ = 0;
     };
   } // namespace linear_solvers
 } // namespace opendarts

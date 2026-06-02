@@ -24,6 +24,7 @@
 #include "amgx_c.h"
 
 #include "linsolv_amgx.hpp"
+#include "block_csr_matrix.hpp"
 #include "csr_matrix.hpp"
 
 namespace opendarts
@@ -141,10 +142,11 @@ namespace opendarts
       AMGX_vector_create((AMGX_vector_handle_struct **)&x, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);
       AMGX_vector_create((AMGX_vector_handle_struct **)&b, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);
 
-      // The convert_to_bs1 / ELL expansion path uses csr_matrix<N>-specific
-      // members (convert_to_ELL, csrRowPtrC/csrColIndC/csrValC) which do not
-      // exist on the unified block_csr_matrix. Restrict that path to legacy
-      // typed inputs; native block matrices always use AMGX's BSR path.
+      // bs1 expansion path: AMGX consumes a scalar-CSR device view. For the
+      // legacy csr_matrix<N> Jacobian this is the in-place convert_to_ELL
+      // pathway; for the unified block_csr_matrix it is the
+      // gpu_bsr_spmv-backed cusparseDbsr2csr buffer
+      // (block_csr_matrix::build_scalar_csr_device).
       if (N_BLOCK_SIZE > 1 && convert_to_bs1)
       {
         auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input);
@@ -156,7 +158,20 @@ namespace opendarts
             A_typed->csrRowPtrC, A_typed->csrColIndC, A_typed->csrValC, 0);
           return 0;
         }
-        // Fall through to the native block path for block_csr_matrix inputs.
+        auto *A_block = dynamic_cast<opendarts::linear_solvers::block_csr_matrix *>(A_input);
+        if (A_block != nullptr)
+        {
+          if (A_block->build_scalar_csr_device() != 0)
+            return -1;
+          AMGX_matrix_upload_all((AMGX_matrix_handle)A,
+            A_block->n_rows * N_BLOCK_SIZE,
+            static_cast<int>(A_block->scalar_csr_nnz()), 1, 1,
+            A_block->scalar_csr_row_ptr_device(),
+            A_block->scalar_csr_col_ind_device(),
+            A_block->scalar_csr_values_device(), 0);
+          return 0;
+        }
+        // Unknown subclass -- fall through to the native block path.
       }
 
       AMGX_matrix_upload_all((AMGX_matrix_handle)A, A_input->n_rows,
@@ -181,6 +196,20 @@ namespace opendarts
           AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A, A_typed->n_rows * N_BLOCK_SIZE,
             A_typed->rows_ptr[A_typed->n_rows] * N_BLOCK_SIZE * N_BLOCK_SIZE, A_typed->csrValC, 0);
           used_bs1 = true;
+        }
+        else
+        {
+          auto *A_block = dynamic_cast<opendarts::linear_solvers::block_csr_matrix *>(A_input);
+          if (A_block != nullptr)
+          {
+            if (A_block->build_scalar_csr_device() != 0)
+              return -1;
+            AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A,
+              A_block->n_rows * N_BLOCK_SIZE,
+              static_cast<int>(A_block->scalar_csr_nnz()),
+              A_block->scalar_csr_values_device(), 0);
+            used_bs1 = true;
+          }
         }
       }
       if (!used_bs1)

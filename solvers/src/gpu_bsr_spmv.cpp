@@ -48,23 +48,66 @@ namespace opendarts
 
     gpu_bsr_spmv::~gpu_bsr_spmv()
     {
+      free_scalar_csr_device();
       if (descr_ != nullptr)
         cusparseDestroyMatDescr(descr_);
       if (handle_ != nullptr)
         cusparseDestroy(handle_);
     }
 
+    void gpu_bsr_spmv::free_scalar_csr_device() noexcept
+    {
+      if (scalar_csr_row_ptr_d_ != nullptr)
+      {
+        cudaFree(scalar_csr_row_ptr_d_);
+        scalar_csr_row_ptr_d_ = nullptr;
+      }
+      if (scalar_csr_col_ind_d_ != nullptr)
+      {
+        cudaFree(scalar_csr_col_ind_d_);
+        scalar_csr_col_ind_d_ = nullptr;
+      }
+      if (scalar_csr_val_d_ != nullptr)
+      {
+        cudaFree(scalar_csr_val_d_);
+        scalar_csr_val_d_ = nullptr;
+      }
+      if (scalar_csr_descr_ != nullptr)
+      {
+        cusparseDestroyMatDescr(scalar_csr_descr_);
+        scalar_csr_descr_ = nullptr;
+      }
+      scalar_csr_n_rows_ = 0;
+      scalar_csr_nnz_ = 0;
+      scalar_csr_block_size_ = 0;
+    }
+
     gpu_bsr_spmv::gpu_bsr_spmv(gpu_bsr_spmv &&other) noexcept
-      : matrix_(other.matrix_), handle_(other.handle_), descr_(other.descr_)
+      : matrix_(other.matrix_), handle_(other.handle_), descr_(other.descr_),
+        scalar_csr_descr_(other.scalar_csr_descr_),
+        scalar_csr_row_ptr_d_(other.scalar_csr_row_ptr_d_),
+        scalar_csr_col_ind_d_(other.scalar_csr_col_ind_d_),
+        scalar_csr_val_d_(other.scalar_csr_val_d_),
+        scalar_csr_n_rows_(other.scalar_csr_n_rows_),
+        scalar_csr_nnz_(other.scalar_csr_nnz_),
+        scalar_csr_block_size_(other.scalar_csr_block_size_)
     {
       other.handle_ = nullptr;
       other.descr_ = nullptr;
+      other.scalar_csr_descr_ = nullptr;
+      other.scalar_csr_row_ptr_d_ = nullptr;
+      other.scalar_csr_col_ind_d_ = nullptr;
+      other.scalar_csr_val_d_ = nullptr;
+      other.scalar_csr_n_rows_ = 0;
+      other.scalar_csr_nnz_ = 0;
+      other.scalar_csr_block_size_ = 0;
     }
 
     gpu_bsr_spmv &gpu_bsr_spmv::operator=(gpu_bsr_spmv &&other) noexcept
     {
       if (this != &other)
       {
+        free_scalar_csr_device();
         if (descr_ != nullptr)
           cusparseDestroyMatDescr(descr_);
         if (handle_ != nullptr)
@@ -72,10 +115,81 @@ namespace opendarts
         matrix_ = other.matrix_;
         handle_ = other.handle_;
         descr_ = other.descr_;
+        scalar_csr_descr_ = other.scalar_csr_descr_;
+        scalar_csr_row_ptr_d_ = other.scalar_csr_row_ptr_d_;
+        scalar_csr_col_ind_d_ = other.scalar_csr_col_ind_d_;
+        scalar_csr_val_d_ = other.scalar_csr_val_d_;
+        scalar_csr_n_rows_ = other.scalar_csr_n_rows_;
+        scalar_csr_nnz_ = other.scalar_csr_nnz_;
+        scalar_csr_block_size_ = other.scalar_csr_block_size_;
         other.handle_ = nullptr;
         other.descr_ = nullptr;
+        other.scalar_csr_descr_ = nullptr;
+        other.scalar_csr_row_ptr_d_ = nullptr;
+        other.scalar_csr_col_ind_d_ = nullptr;
+        other.scalar_csr_val_d_ = nullptr;
+        other.scalar_csr_n_rows_ = 0;
+        other.scalar_csr_nnz_ = 0;
+        other.scalar_csr_block_size_ = 0;
       }
       return *this;
+    }
+
+    // Build (or refresh) the scalar-CSR device mirror of the bound block
+    // matrix via cusparseDbsr2csr. The structure is shape-stable across
+    // Newton iterations, so the buffers are allocated on the first call and
+    // reused on subsequent calls -- only the bsr2csr output is rewritten.
+    int gpu_bsr_spmv::build_scalar_csr_device()
+    {
+      const int mb = static_cast<int>(matrix_->n_block_rows());
+      const int nnzb = static_cast<int>(matrix_->n_blocks());
+      const int bs = matrix_->block_size();
+      const index_t scalar_rows = static_cast<index_t>(mb) * bs;
+      const index_t scalar_nnz = static_cast<index_t>(nnzb) * bs * bs;
+
+      // (Re)allocate if the shape changed; idempotent on stable sparsity.
+      if (scalar_csr_n_rows_ != scalar_rows ||
+          scalar_csr_nnz_ != scalar_nnz ||
+          scalar_csr_block_size_ != bs)
+      {
+        free_scalar_csr_device();
+        if (cudaMalloc(reinterpret_cast<void **>(&scalar_csr_row_ptr_d_),
+              sizeof(index_t) * (scalar_rows + 1)) != cudaSuccess ||
+            cudaMalloc(reinterpret_cast<void **>(&scalar_csr_col_ind_d_),
+              sizeof(index_t) * scalar_nnz) != cudaSuccess ||
+            cudaMalloc(reinterpret_cast<void **>(&scalar_csr_val_d_),
+              sizeof(double) * scalar_nnz) != cudaSuccess)
+        {
+          printf("gpu_bsr_spmv: scalar-CSR device allocation failed\n");
+          free_scalar_csr_device();
+          return 1;
+        }
+        if (cusparseCreateMatDescr(&scalar_csr_descr_) != CUSPARSE_STATUS_SUCCESS)
+        {
+          printf("gpu_bsr_spmv: scalar-CSR descriptor creation failed\n");
+          free_scalar_csr_device();
+          return 1;
+        }
+        cusparseSetMatType(scalar_csr_descr_, CUSPARSE_MATRIX_TYPE_GENERAL);
+        cusparseSetMatIndexBase(scalar_csr_descr_, CUSPARSE_INDEX_BASE_ZERO);
+        scalar_csr_n_rows_ = scalar_rows;
+        scalar_csr_nnz_ = scalar_nnz;
+        scalar_csr_block_size_ = bs;
+      }
+
+      // bsr2csr writes both structure and values; for fixed sparsity the
+      // structure portion is stable across calls.
+      const cusparseStatus_t status = cusparseDbsr2csr(handle_, CUSPARSE_DIRECTION_ROW,
+        mb, mb, descr_, matrix_->values_device(), matrix_->row_ptr_device(),
+        matrix_->col_ind_device(), bs, scalar_csr_descr_, scalar_csr_val_d_,
+        scalar_csr_row_ptr_d_, scalar_csr_col_ind_d_);
+      if (status != CUSPARSE_STATUS_SUCCESS)
+      {
+        printf("gpu_bsr_spmv: cusparseDbsr2csr failed (status %d)\n",
+          static_cast<int>(status));
+        return 1;
+      }
+      return 0;
     }
 
     // y_d = alpha * A * x_d + beta * y_d, A held in block-CSR on the device.

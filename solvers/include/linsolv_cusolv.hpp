@@ -36,10 +36,13 @@ namespace opendarts
   {
     /** @brief Direct sparse linear solver on the GPU via cuSOLVER QR.
 
-        Wraps cusolverSpDcsrlsvqr, the cuSOLVER sparse QR direct solve. For
-        block matrices the device matrix is first expanded to scalar CSR by
-        csr_matrix::convert_to_ELL. Useful as a robust fallback when iterative
-        GPU solvers fail to converge.
+        Wraps cusolverSpDcsrlsvqr, the cuSOLVER sparse QR direct solve. The
+        matrix is consumed in scalar-CSR form on the device: for the legacy
+        csr_matrix<N> Jacobian via csr_matrix::convert_to_ELL +
+        csrValC/csrRowPtrC/csrColIndC; for the unified block_csr_matrix via
+        block_csr_matrix::build_scalar_csr_device(), which wraps
+        cusparseDbsr2csr through gpu_bsr_spmv. Useful as a robust fallback
+        when iterative GPU solvers fail to converge.
 
         Ported from the proprietary darts-linear-solvers linsolv_cusolv.
     */
@@ -68,39 +71,14 @@ namespace opendarts
         return solve(v, r);
       }
 
-      // cuSOLVER QR depends on csr_matrix<N>-specific buffers
-      // (csrValC/csrRowPtrC/csrColIndC + convert_to_ELL), so it does not
-      // currently accept the unified block_csr_matrix. Down-cast safely via
-      // dynamic_cast and fail loudly on a mismatch instead of static_cast'ing
-      // into UB. A full migration to block_csr_matrix is tracked in
-      // SOLVER_REFACTORING_PLAN.md (§12 step C1 follow-ups, GPU).
-      int setup(opendarts::linear_solvers::csr_matrix_base *A) override
-      {
-        auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A);
-        if (A_typed == nullptr)
-        {
-          fprintf(stderr, "linsolv_cusolv: only csr_matrix<N> is supported "
-                          "(block_csr_matrix migration pending)\n");
-          return -1;
-        }
-        return this->setup(A_typed);
-      }
-
-      // Same defensive guard as setup(): dynamic_cast instead of UB
-      // static_cast when the engine hands in a block_csr_matrix.
+      // Polymorphic csr_matrix_base entry points -- accept both the legacy
+      // csr_matrix<N> Jacobian and the unified block_csr_matrix. The two
+      // paths share the same scalar-CSR solve via cusolverSpDcsrlsvqr.
       int init(opendarts::linear_solvers::csr_matrix_base *A,
         opendarts::config::index_t max_iters,
-        opendarts::config::mat_float tolerance) override
-      {
-        auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A);
-        if (A_typed == nullptr)
-        {
-          fprintf(stderr, "linsolv_cusolv: only csr_matrix<N> is supported "
-                          "(block_csr_matrix migration pending)\n");
-          return -1;
-        }
-        return this->init(A_typed, static_cast<int>(max_iters), static_cast<double>(tolerance));
-      }
+        opendarts::config::mat_float tolerance) override;
+
+      int setup(opendarts::linear_solvers::csr_matrix_base *A) override;
 
       //////////////////////
       // linsolv_iface
@@ -108,11 +86,20 @@ namespace opendarts
 
       int set_prec(opendarts::linear_solvers::linsolv_iface *prec_input) override;
 
+      // Typed overrides forward to the csr_matrix_base entry points above.
       int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
         int max_iters,
-        double tolerance) override;
+        double tolerance) override
+      {
+        return this->init(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_input),
+            static_cast<opendarts::config::index_t>(max_iters),
+            static_cast<opendarts::config::mat_float>(tolerance));
+      }
 
-      int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input) override;
+      int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input) override
+      {
+        return this->setup(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_input));
+      }
 
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
 
@@ -132,7 +119,9 @@ namespace opendarts
       cusparseHandle_t cusparseHandle;
       cudaStream_t stream;
       cusparseMatDescr_t descr;
-      opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_matrix = nullptr;
+      // Polymorphic matrix pointer -- supports both legacy csr_matrix<N>
+      // and the unified block_csr_matrix.
+      opendarts::linear_solvers::csr_matrix_base *A_matrix = nullptr;
       opendarts::config::mat_float *d_B, *d_X, *d_Z;
       int *h_Q, *d_Q;
     };

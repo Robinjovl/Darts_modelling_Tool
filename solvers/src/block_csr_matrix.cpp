@@ -251,6 +251,33 @@ namespace opendarts
       values_.sync_to_device();
       return 0;
     }
+
+    int block_csr_matrix::build_scalar_csr_device()
+    {
+      if (!gpu_spmv_)
+        gpu_spmv_ = std::make_unique<gpu_bsr_spmv>(*this);
+      return gpu_spmv_->build_scalar_csr_device();
+    }
+
+    block_csr_matrix::index_t block_csr_matrix::scalar_csr_nnz() const
+    {
+      return gpu_spmv_ ? gpu_spmv_->scalar_csr_nnz() : 0;
+    }
+
+    const block_csr_matrix::index_t *block_csr_matrix::scalar_csr_row_ptr_device() const
+    {
+      return gpu_spmv_ ? gpu_spmv_->scalar_csr_row_ptr_device() : nullptr;
+    }
+
+    const block_csr_matrix::index_t *block_csr_matrix::scalar_csr_col_ind_device() const
+    {
+      return gpu_spmv_ ? gpu_spmv_->scalar_csr_col_ind_device() : nullptr;
+    }
+
+    const block_csr_matrix::mat_float *block_csr_matrix::scalar_csr_values_device() const
+    {
+      return gpu_spmv_ ? gpu_spmv_->scalar_csr_values_device() : nullptr;
+    }
 #endif // WITH_GPU
   } // namespace linear_solvers
 } // namespace opendarts

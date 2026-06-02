@@ -365,11 +365,15 @@ int engine_base_gpu::test_spmv(int n_times, int kernel_number, int dump_result)
     write_vector_to_file(filename, RHS);
   }
 
-  // CSR
+  // CSR / ELL benchmark path -- cuSPARSE removed the HYB/ELL format in
+  // CUDA 11 and the open-source block_csr_matrix does not expose an ELL
+  // variant either (matrix_vector_product_d_ell is a no-op fallback to the
+  // block SpMV; convert_to_ELL is not on csr_matrix_base). Compile the
+  // benchmark only for the legacy csr_matrix<N> path where the ELL hooks
+  // exist; under OPENDARTS_LINEAR_SOLVERS the block SpMV above is the only
+  // measurable kernel anyway.
 #ifndef OPENDARTS_LINEAR_SOLVERS
-  Jacobian->convert_to_ELL(); // ELL path not exposed on the open-source csr_matrix_base interface
-#endif
-  // Now ELL
+  Jacobian->convert_to_ELL();
   cudaMemset(RHS_d, 0, sizeof(double) * Jacobian->n_row_size * mesh->n_blocks);
   timer->node["test_spmv"].timer = 0;
   timer->node["test_spmv"].start_gpu();
@@ -392,6 +396,7 @@ int engine_base_gpu::test_spmv(int n_times, int kernel_number, int dump_result)
     copy_data_to_host(RHS, RHS_d, Jacobian->n_row_size * mesh->n_blocks);
     write_vector_to_file(filename, RHS);
   }
+#endif // OPENDARTS_LINEAR_SOLVERS
 
   return 0;
 }

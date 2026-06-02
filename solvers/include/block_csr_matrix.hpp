@@ -156,6 +156,19 @@ namespace opendarts
       index_t *get_rows_ptr_d() override { return const_cast<index_t *>(row_ptr_device()); }
       index_t *get_cols_ind_d() override { return const_cast<index_t *>(col_ind_device()); }
       index_t *get_diag_ind_d() override { return const_cast<index_t *>(diag_ind_device()); }
+
+      // Scalar-CSR device view (cusparseDbsr2csr-based) for GPU solvers that
+      // consume scalar CSR on the device (AMGX bs1 mode, cuSOLVER QR direct
+      // solve). Replaces the legacy csr_matrix<N>::convert_to_ELL +
+      // csrValC/csrRowPtrC/csrColIndC buffers. Forwards to gpu_bsr_spmv,
+      // which owns the cuSPARSE handle and the scalar-CSR device buffers.
+      // The buffers are allocated on first call and reused for fixed-
+      // sparsity matrices; re-call after a structure change.
+      int build_scalar_csr_device();
+      [[nodiscard]] index_t scalar_csr_nnz() const;
+      [[nodiscard]] const index_t *scalar_csr_row_ptr_device() const;
+      [[nodiscard]] const index_t *scalar_csr_col_ind_device() const;
+      [[nodiscard]] const mat_float *scalar_csr_values_device() const;
 #endif
 
     private:

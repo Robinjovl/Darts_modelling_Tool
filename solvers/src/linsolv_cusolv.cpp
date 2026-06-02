@@ -21,6 +21,7 @@
 #include <cuda_runtime.h>
 
 #include "linsolv_cusolv.hpp"
+#include "block_csr_matrix.hpp"
 #include "csr_matrix.hpp"
 
 // CUDA 12+ deprecates cusolverSp dense/sparse QR entry points in favour of
@@ -33,6 +34,50 @@ namespace opendarts
 {
   namespace linear_solvers
   {
+    namespace
+    {
+      // Pull the scalar-CSR device triple out of either matrix subclass.
+      // For block_csr_matrix this requires that build_scalar_csr_device()
+      // was called this Newton iteration (init/setup do that).
+      template <uint8_t N_BLOCK_SIZE>
+      bool fetch_scalar_csr_device(opendarts::linear_solvers::csr_matrix_base *A,
+        opendarts::config::index_t &n_scalar_rows,
+        opendarts::config::index_t &n_scalar_nnz,
+        const double *&vals_d,
+        const opendarts::config::index_t *&row_ptr_d,
+        const opendarts::config::index_t *&col_ind_d)
+      {
+        if (auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A))
+        {
+          n_scalar_rows = A_typed->n_rows * N_BLOCK_SIZE;
+          n_scalar_nnz = A_typed->get_n_non_zeros() * N_BLOCK_SIZE * N_BLOCK_SIZE;
+          if (N_BLOCK_SIZE > 1)
+          {
+            vals_d = A_typed->csrValC;
+            row_ptr_d = A_typed->csrRowPtrC;
+            col_ind_d = A_typed->csrColIndC;
+          }
+          else
+          {
+            vals_d = A_typed->values_d;
+            row_ptr_d = A_typed->rows_ptr_d;
+            col_ind_d = A_typed->cols_ind_d;
+          }
+          return true;
+        }
+        if (auto *A_block = dynamic_cast<opendarts::linear_solvers::block_csr_matrix *>(A))
+        {
+          n_scalar_rows = A_block->n_rows * A_block->block_size();
+          n_scalar_nnz = A_block->scalar_csr_nnz();
+          vals_d = A_block->scalar_csr_values_device();
+          row_ptr_d = A_block->scalar_csr_row_ptr_device();
+          col_ind_d = A_block->scalar_csr_col_ind_device();
+          return true;
+        }
+        return false;
+      }
+    } // namespace
+
     template <uint8_t N_BLOCK_SIZE>
     linsolv_cusolv<N_BLOCK_SIZE>::linsolv_cusolv()
     {
@@ -60,20 +105,36 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_cusolv<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
-      int /*max_iters*/,
-      double /*tolerance*/)
+    int linsolv_cusolv<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix_base *A_input,
+      opendarts::config::index_t /*max_iters*/,
+      opendarts::config::mat_float /*tolerance*/)
     {
       A_matrix = A_input;
       n_rows = A_matrix->n_rows;
-      nnz = A_matrix->get_n_non_zeros();
+      nnz = A_matrix->n_non_zeros;
 
-      // Mirror the matrix on the device and, for block matrices, expand it to
-      // scalar CSR (cuSOLVER QR works on scalar CSR).
-      A_matrix->init_device(n_rows, nnz);
-      A_matrix->copy_struct_to_device();
-      if (N_BLOCK_SIZE > 1)
-        A_matrix->convert_to_ELL();
+      // Mirror the matrix on the device and, for block matrices, build the
+      // scalar-CSR device view that cuSOLVER QR consumes. Dispatches between
+      // the legacy csr_matrix<N> path (init_device + convert_to_ELL) and the
+      // unified block_csr_matrix path (build_scalar_csr_device, via
+      // gpu_bsr_spmv's cusparseDbsr2csr).
+      if (auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input))
+      {
+        A_typed->init_device(n_rows, nnz);
+        A_typed->copy_struct_to_device();
+        if (N_BLOCK_SIZE > 1)
+          A_typed->convert_to_ELL();
+      }
+      else if (auto *A_block = dynamic_cast<opendarts::linear_solvers::block_csr_matrix *>(A_input))
+      {
+        if (A_block->build_scalar_csr_device() != 0)
+          return -1;
+      }
+      else
+      {
+        fprintf(stderr, "linsolv_cusolv: unsupported csr_matrix_base subclass\n");
+        return -1;
+      }
 
       cudaError_t cudaStat;
       cudaStat = cudaMalloc((void **)&d_B, sizeof(opendarts::config::mat_float) * n_rows * N_BLOCK_SIZE);
@@ -120,7 +181,13 @@ namespace opendarts
         printf("Error! Can't create cusolver handle (linsolv_cusolv)\n");
         return -1;
       }
-      cusparseHandle = A_matrix->cus_handle;
+      // For the legacy csr_matrix<N> share its handle; for block_csr_matrix
+      // each call to gpu_bsr_spmv owns its own handle, so a per-solver
+      // descriptor is sufficient (no shared cuSPARSE handle needed).
+      if (auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input))
+        cusparseHandle = A_typed->cus_handle;
+      else
+        cusparseHandle = nullptr;
 
       cusparseCreateMatDescr(&descr);
       cusparseSetMatType(descr, CUSPARSE_MATRIX_TYPE_GENERAL);
@@ -135,14 +202,32 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_cusolv<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input)
+    int linsolv_cusolv<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix_base *A_input)
     {
       this->timer_setup->node["CUSOLVER"].start();
 
       A_matrix = A_input;
 
-      if (N_BLOCK_SIZE > 1)
-        A_matrix->convert_to_ELL();
+      // Refresh the scalar-CSR device view from the (re-assembled) matrix.
+      if (auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input))
+      {
+        if (N_BLOCK_SIZE > 1)
+          A_typed->convert_to_ELL();
+      }
+      else if (auto *A_block = dynamic_cast<opendarts::linear_solvers::block_csr_matrix *>(A_input))
+      {
+        if (A_block->build_scalar_csr_device() != 0)
+        {
+          this->timer_setup->node["CUSOLVER"].stop();
+          return -1;
+        }
+      }
+      else
+      {
+        fprintf(stderr, "linsolv_cusolv: unsupported csr_matrix_base subclass\n");
+        this->timer_setup->node["CUSOLVER"].stop();
+        return -1;
+      }
 
       cudaDeviceSynchronize();
 
@@ -156,7 +241,7 @@ namespace opendarts
       this->timer_solve->node["CUSOLVER"].start();
 
       n_rows = N_BLOCK_SIZE * A_matrix->n_rows;
-      nnz = N_BLOCK_SIZE * N_BLOCK_SIZE * A_matrix->get_n_non_zeros();
+      nnz = N_BLOCK_SIZE * N_BLOCK_SIZE * A_matrix->n_non_zeros;
 
       cudaError_t cudaStat;
       cusolverStatus_t cusolvStat;
@@ -168,20 +253,21 @@ namespace opendarts
         return -1;
       }
 
-      if (N_BLOCK_SIZE > 1)
+      // Pull the scalar-CSR device pointers from whichever backend is bound.
+      opendarts::config::index_t scalar_rows = 0, scalar_nnz = 0;
+      const double *vals_d = nullptr;
+      const opendarts::config::index_t *row_ptr_d = nullptr;
+      const opendarts::config::index_t *col_ind_d = nullptr;
+      if (!fetch_scalar_csr_device<N_BLOCK_SIZE>(A_matrix, scalar_rows, scalar_nnz,
+            vals_d, row_ptr_d, col_ind_d))
       {
-        // Solve via sparse QR on the expanded scalar CSR matrix.
-        cusolvStat = cusolverSpDcsrlsvqr(handle, n_rows, nnz, descr,
-          A_matrix->csrValC, A_matrix->csrRowPtrC, A_matrix->csrColIndC,
-          d_B, tol, reorder, d_Z, &singularity);
+        fprintf(stderr, "linsolv_cusolv: scalar-CSR device view unavailable\n");
+        return -1;
       }
-      else
-      {
-        // Block size 1: the device block-CSR storage is already scalar CSR.
-        cusolvStat = cusolverSpDcsrlsvqr(handle, n_rows, nnz, descr,
-          A_matrix->values_d, A_matrix->rows_ptr_d, A_matrix->cols_ind_d,
-          d_B, tol, reorder, d_Z, &singularity);
-      }
+
+      cusolvStat = cusolverSpDcsrlsvqr(handle, scalar_rows, scalar_nnz, descr,
+        vals_d, row_ptr_d, col_ind_d,
+        d_B, tol, reorder, d_Z, &singularity);
       if (cusolvStat != CUSOLVER_STATUS_SUCCESS)
       {
         printf("Error! cusolverSpDcsrlsvqr failed\n");
@@ -235,6 +321,7 @@ namespace opendarts
     template class linsolv_cusolv<11>;
     template class linsolv_cusolv<12>;
     template class linsolv_cusolv<13>;
+
   } // namespace linear_solvers
 } // namespace opendarts
 
