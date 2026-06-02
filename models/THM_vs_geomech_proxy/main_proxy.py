@@ -582,7 +582,8 @@ def run_geomech_proxy(case, physics_type='single_phase',
         # reservoir boundary rectangle (dashed red, lines clipped to their crossing points)
         from matplotlib.patches import Rectangle
         rect = Rectangle((-rsv_xy, rsv_top), 2 * rsv_xy, rsv_bottom - rsv_top,
-                         linewidth=2., edgecolor='red', linestyle='--', facecolor='none', zorder=3)
+                         linewidth=2., edgecolor='red', linestyle='--', facecolor='none', zorder=3,
+                         label='reservoir boundary')
         ax.add_patch(rect)
         # wells (vertical lines), same as in plot_contour XZ slice
         z_well_top = Zc_plot.min()
@@ -592,9 +593,9 @@ def run_geomech_proxy(case, physics_type='single_phase',
                     color='red', linewidth=1.5, label='production well', zorder=4)
         if wells_type in ('inj', 'doublet'):
             ax.plot([m.idata.other.inj_well_coords[0]] * 2, [z_well_top, z_well_bot],
-                    color='cyan', linewidth=1.5, label='injection well', zorder=4)
-        if wells_type in ('prod', 'inj', 'doublet'):
-            ax.legend(fontsize=8, loc='upper right')
+                    color='darkblue', linewidth=1.5, label='injection well', zorder=4)
+        # legend (reservoir boundary is always drawn; wells added when present)
+        ax.legend(fontsize=8, loc='upper right')
         ax.set_xlim(Xc_plot.min(), Xc_plot.max())
         ax.set_ylim(Zc_plot.min(), Zc_plot.max())
         ax.invert_yaxis()
@@ -787,6 +788,13 @@ def run_geomech_proxy(case, physics_type='single_phase',
         plot_contour(array_dict, points_x, points_z, output_folder=output_folder, slice='XZ', idata=m.idata)
         #plot_imshow(array_dict, points_x, points_z, output_folder=output_folder, slice = 'XZ')
 
+        # if caching is requested but the pkl is missing, fall back to recomputing the proxy
+        pkl_path = os.path.join(output_folder, "displs_stresses_prx.pkl")
+        if read_from_cache and not os.path.exists(pkl_path):
+            print(f'read_from_cache=True but "{pkl_path}" not found; '
+                  f'forcing read_from_cache=False (recomputing proxy)')
+            read_from_cache = False
+
         if not read_from_cache: # run proxy and save PKLs
             print('computing proxy...')
             ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
@@ -807,11 +815,11 @@ def run_geomech_proxy(case, physics_type='single_phase',
             data = {'ux_prx': ux_prx, 'uy_prx': uy_prx, 'uz_prx': uz_prx,
                     'sxx_prx': sxx_prx, 'syy_prx': syy_prx, 'szz_prx': szz_prx,
                     'sxx_total_prx': sxx_total_prx, 'syy_total_prx': syy_total_prx, 'szz_total_prx': szz_total_prx}
-            with open(os.path.join(output_folder, "displs_stresses_prx.pkl"), "wb") as f:
+            with open(pkl_path, "wb") as f:
                 pickle.dump(data, f)
         else: # do not rerun proxy, read from PKl files (if only plotting is changed)
             import pickle
-            with open(os.path.join(output_folder, "displs_stresses_prx.pkl"), "rb") as f:
+            with open(pkl_path, "rb") as f:
                 data = pickle.load(f)
             ux_prx = data['ux_prx']
             uy_prx = data['uy_prx']
@@ -1049,19 +1057,19 @@ if __name__ == '__main__':
     #cases += ['7_7_5']  # for debugging
     #cases += ['17_17_15'] # for testing
 
-    #cases += ['41_41_66'] # without refinement
+    cases += ['41_41_66'] # without refinement
     #cases += ['71_71_66'] #refined middle and tips
     #cases += ['71_71_90']  # z 0 - 5 km more refined around rsv
-    #cases += ['83_83_90']
-    cases += ['97_97_90']
+    #cases += ['83_83_90'] # mesh is horizontally refined at inj well location
+    #cases += ['97_97_90']   # mesh is horizontally refined at doublet locations
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
 
-    #thermal = False
-    thermal = True
+    thermal = False
+    #thermal = True
 
     if not thermal:
         physics_types_list += ['single_phase']
@@ -1102,8 +1110,8 @@ if __name__ == '__main__':
 
     print('timestep_list for proxy :', timestep_list)
 
-    #run_thm = True
-    run_thm = False
+    run_thm = True  # runs THM first, then Proxy
+    #run_thm = False # don't recompute THM (use vtk files from its previous run)
 
     generate_mesh=False # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
     #generate_mesh=True
@@ -1119,8 +1127,8 @@ if __name__ == '__main__':
     # for proxy:
     n_threads = 24  # CPU cores
     use_gpu = False  # CUDA
-    #read_from_cache = True
-    read_from_cache = False
+    read_from_cache = True # read stresses computed from the previous proxy run from .pkl file (useful when only ploting was changed)
+    #read_from_cache = False
 
     for case in cases:
         for physics_type in physics_types_list:
