@@ -110,11 +110,26 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     def add_columns_time_data(time_data):
         time_data['Time (years)'] = time_data['time'] / 365.25 # extra column with time in years
-        for k in time_data.keys():
+        for k in list(time_data.keys()):
             # extra column with temperature in celsius
             if 'BHT' in k:
                 time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
                 time_data.drop(columns=k, inplace=True)
+        # The geothermal flow is now driven by the Compositional engine with phases ['V','L'],
+        # so the engine.time_data columns use ' : L rate ' / ' : V rate ' instead of the
+        # legacy ' : water rate ' / ' : steam rate '. Alias the liquid (water) rate so the
+        # shared plot helpers in darts.tools.plot_darts (plot_total_inj_water_rate_darts,
+        # plot_total_prod_water_rate_darts, ...) keep working for the geothermal physics.
+        if physics_type == 'geothermal':
+            for k in list(time_data.keys()):
+                if ' : L rate ' in k:
+                    new_k = k.replace(' : L rate ', ' : water rate ')
+                    if new_k not in time_data.columns:
+                        time_data[new_k] = time_data[k]
+                elif ' : V rate ' in k:
+                    new_k = k.replace(' : V rate ', ' : steam rate ')
+                    if new_k not in time_data.columns:
+                        time_data[new_k] = time_data[k]
 
     if not(m.idata.supress_all_output):
         # compute and save well time data
