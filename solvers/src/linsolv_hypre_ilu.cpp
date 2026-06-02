@@ -138,17 +138,24 @@ namespace opendarts
                                                              // be the same as number of columns
                                                              // of system matrix
 
-      std::vector<opendarts::config::index_t> rows(n_rows);
-      std::iota(rows.begin(), rows.end(), 0);
+      if (static_cast<opendarts::config::index_t>(this->row_indices_.size()) < n_rows)
+      {
+        const opendarts::config::index_t old_size =
+            static_cast<opendarts::config::index_t>(this->row_indices_.size());
+        this->row_indices_.resize(n_rows);
+        std::iota(this->row_indices_.begin() + old_size,
+            this->row_indices_.end(), old_size);
+      }
+      opendarts::config::index_t *rows_data = this->row_indices_.data();
 
       check_result(HYPRE_IJVectorInitialize(b_ij));
-    	check_result(HYPRE_IJVectorSetValues(b_ij, n_rows, rows.data(), B));
+    	check_result(HYPRE_IJVectorSetValues(b_ij, n_rows, rows_data, B));
     	check_result(HYPRE_IJVectorAssemble(b_ij));
     	check_result(HYPRE_IJVectorGetObject(b_ij, (void **)&b_par));
 
       // Generate Hypre solution vector x_ij
       check_result(HYPRE_IJVectorInitialize(x_ij));
-    	check_result(HYPRE_IJVectorSetValues(x_ij, n_rows, rows.data(), X));
+    	check_result(HYPRE_IJVectorSetValues(x_ij, n_rows, rows_data, X));
     	check_result(HYPRE_IJVectorAssemble(x_ij));
     	check_result(HYPRE_IJVectorGetObject(x_ij, (void **)&x_par));
 
@@ -190,17 +197,23 @@ namespace opendarts
       ilower = 0;
       iupper = A.n_rows - 1;
 
-      std::vector<opendarts::config::index_t> rows(A.n_rows), n_cols(A.n_rows);
-      std::iota(rows.begin(), rows.end(), 0);
-
+      if (static_cast<opendarts::config::index_t>(this->row_indices_.size()) < A.n_rows)
+      {
+        const opendarts::config::index_t old_size =
+            static_cast<opendarts::config::index_t>(this->row_indices_.size());
+        this->row_indices_.resize(A.n_rows);
+        std::iota(this->row_indices_.begin() + old_size,
+            this->row_indices_.end(), old_size);
+      }
+      this->n_cols_.resize(A.n_rows);
       for (opendarts::config::index_t row_idx = 0; row_idx < A.n_rows; row_idx++)
-    		n_cols[row_idx] = A.rows_ptr[row_idx + 1] - A.rows_ptr[row_idx];
+        this->n_cols_[row_idx] = A.rows_ptr[row_idx + 1] - A.rows_ptr[row_idx];
 
       check_result(HYPRE_IJMatrixCreate(hypre_MPI_COMM_WORLD, ilower, iupper, ilower, iupper, &A_ij));
     	check_result(HYPRE_IJMatrixSetPrintLevel(A_ij, print_level));
     	check_result(HYPRE_IJMatrixSetObjectType(A_ij, HYPRE_PARCSR));
       check_result(HYPRE_IJMatrixInitialize(A_ij));
-    	check_result(HYPRE_IJMatrixSetValues(A_ij, A.n_rows, n_cols.data(), rows.data(), A.get_cols_ind(), A.get_values()));
+    	check_result(HYPRE_IJMatrixSetValues(A_ij, A.n_rows, this->n_cols_.data(), this->row_indices_.data(), A.get_cols_ind(), A.get_values()));
     	check_result(HYPRE_IJMatrixAssemble(A_ij));
     }
 

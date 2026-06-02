@@ -22,6 +22,8 @@
 #define OPENDARTS_LINEAR_SOLVERS_LINSOLV_HYPRE_ILU_HPP
 //--------------------------------------------------------------------------
 
+#include <vector>
+
 #include "_hypre_utilities.h"
 #include "HYPRE.h"
 #include "HYPRE_parcsr_ls.h"
@@ -75,9 +77,15 @@ namespace opendarts
       HYPRE_ParVector x_par;  // solution vector as HYPRE_ParVector
 
     private:
-      static void csr_matrix_to_hypre_ij(
+      void csr_matrix_to_hypre_ij(
         opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> &A,
         HYPRE_IJMatrix &A_ij);
+
+      // Cached scratch buffers (see linsolv_hypre_amg for rationale): the row
+      // index iota and per-row column-count arrays passed to HYPRE_IJ* never
+      // change once init() bound the matrix.
+      std::vector<opendarts::config::index_t> row_indices_;
+      std::vector<opendarts::config::index_t> n_cols_;
       // using opendarts::linear_solvers::linsolv_iface::init;
       // using opendarts::linear_solvers::linsolv_iface::setup;
     };

@@ -374,10 +374,26 @@ void bind_unified_solver_api(py::module &m)
         .def_readwrite("amg_max_iters", &cpr_solver_config::amg_max_iters)
         .def_readwrite("ilu_fill_level", &cpr_solver_config::ilu_fill_level);
 
-    // Unified solver handle returned by create_linear_solver().
+    // Unified solver handle returned by create_linear_solver(). Bound once,
+    // exposed under two names: "LinearSolver" (new, preferred) and
+    // "LinearSolverInterface" (back-compat alias). After the linear_solver /
+    // linsolv_iface merger these point to the same C++ class; pybind11
+    // rejects registering the same C++ type twice, so we share the binding
+    // and only add a Python-side attribute alias for the legacy name. The
+    // legacy class_<linsolv_iface, ...> block in PYBIND11_MODULE has been
+    // removed for the same reason.
     py::class_<linear_solver, std::shared_ptr<linear_solver>>(m, "LinearSolver",
         "Unified linear-solver handle produced by create_linear_solver().")
+        .def("get_n_iters", &linear_solver::get_n_iters)
+        .def("get_residual", &linear_solver::get_residual)
+        // set_prec stores a raw pointer to the preconditioner; tell pybind11
+        // to keep the prec alive as long as the outer solver lives.
+        .def("set_prec", &linear_solver::set_prec,
+             "Attach a preconditioner (kept alive by the outer solver).",
+             py::arg("prec"), py::keep_alive<1, 2>())
         .def("stats", &linear_solver::stats, "Outcome of the last solve.");
+    // Legacy Python name for the same handle.
+    m.attr("LinearSolverInterface") = m.attr("LinearSolver");
 
     // Registry API -- this replaces sim_params.linear_solver_t.
     m.def("register_builtin_solvers", &register_builtin_solvers,
@@ -400,17 +416,15 @@ PYBIND11_MODULE(solvers, m)
 {
     m.doc() = "openDARTS linear solvers module";
 
-    // Bind abstract base interface
-    py::class_<linsolv_iface, std::shared_ptr<linsolv_iface>>(
-        m, "LinearSolverInterface",
-        "Abstract interface for linear solvers")
-        .def("get_n_iters", &linsolv_iface::get_n_iters)
-        .def("get_residual", &linsolv_iface::get_residual)
-        // set_prec stores a raw pointer to the preconditioner; tell pybind11
-        // to keep the prec alive as long as the outer solver lives.
-        .def("set_prec", &linsolv_iface::set_prec,
-             "Attach a preconditioner (kept alive by the outer solver).",
-             py::arg("prec"), py::keep_alive<1, 2>());
+    // Unified solver-handle binding MUST come first: the linsolv_iface_bos
+    // template specialisations below name it as their base class via the
+    // ``linsolv_iface`` alias, and pybind11 requires the base C++ type to
+    // already be registered. After the linear_solver / linsolv_iface merger
+    // the two refer to the same C++ class, so a single class_<> binding is
+    // exposed under both Python names ("LinearSolver" preferred,
+    // "LinearSolverInterface" kept as a back-compat alias inside
+    // bind_unified_solver_api()).
+    bind_unified_solver_api(m);
 
     // Bind linsolv_iface_bos specializations for block sizes 1-13
     bind_linsolv_iface_bos_specialization<1>(m, "LinearSolverBOS_1");
@@ -476,9 +490,6 @@ PYBIND11_MODULE(solvers, m)
               else throw std::runtime_error("Unsupported block size: " + std::to_string(block_size));
           },
           "Create MGR solver for given block size (1-13)", py::arg("block_size"));
-
-    // ---- Unified solver API (registry-based, replaces linear_solver_t) ----
-    bind_unified_solver_api(m);
 
     // Populate the registry on module import so create_linear_solver() works.
     register_builtin_solvers();

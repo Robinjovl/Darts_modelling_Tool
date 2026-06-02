@@ -21,9 +21,9 @@
 #include <stdexcept>
 #include <string>
 
+#include "linear_solver.hpp"
 #include "linsolv_cpr.hpp"
 #include "linsolv_gmres.hpp"
-#include "linsolv_iface.hpp"
 #include "linsolv_mgr.hpp"
 #include "linsolv_superlu.hpp"
 #include "solver_config.hpp"
@@ -40,7 +40,7 @@ namespace opendarts
       constexpr int MIN_BLOCK_SIZE = 1;
       constexpr int MAX_BLOCK_SIZE = 13;
 
-      using solver_handle = std::shared_ptr<opendarts::linear_solvers::linsolv_iface>;
+      using solver_handle = std::shared_ptr<opendarts::linear_solvers::linear_solver>;
 
       // ---- MGR (HYPRE Multigrid Reduction) ---------------------------------
 

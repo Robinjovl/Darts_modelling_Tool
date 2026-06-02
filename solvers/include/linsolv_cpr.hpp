@@ -18,10 +18,12 @@
 #include "HYPRE_parcsr_ls.h"
 #include "HYPRE_parcsr_mv.h"
 
+#include "block_csr_matrix.hpp"
 #include "csr_matrix.hpp"
 #include "csr_matrix_base.hpp"
 #include "data_types.hpp"
 #include "linsolv_iface_bos.hpp"
+#include "scalar_csr_adapter.hpp"
 
 namespace opendarts
 {
@@ -54,9 +56,24 @@ namespace opendarts
      * Transpose (CPRA, Han et al. 2013) -- needed for the adjoint Newton step:
      * the same two-stage structure with the order reversed and each stage
      * applied as its transpose (``M̃^T`` then ``(A_p)^T``). Hooked up via the
-     * ``linsolv_iface::solve_transposed`` entry point. The forward CPR is
-     * implemented; the transposed solve is currently a placeholder until the
-     * transpose ILU path is in place (see :meth:`solve_transposed`).
+     * ``linear_solver::solve_transposed`` entry point. Forward CPR and the
+     * CPRA-transposed solve are both implemented: ``Ap_T_`` and ``As_T_``
+     * are materialised on first setup with their own ``HYPRE_Solver``
+     * handles (BoomerAMG, HYPRE_ILU) because ``HYPRE_BoomerAMGSolveT`` has
+     * limited compatibility with our aggressive-coarsening flow config and
+     * ``HYPRE_ILU`` has no transpose-solve entry point. See
+     * :meth:`solve_transposed`.
+     *
+     * Canonical CPRA path for the open-source adjoint Newton step
+     * ----------------------------------------------------------
+     * ``linsolv_cpr::solve_transposed`` (above) is the open-DARTS canonical
+     * CPRA implementation -- the one exposed through
+     * ``CPRSolverSpec`` / ``GMRESSolverSpec(prec=CPRSolverSpec())`` and
+     * driven by ``Adjoint_super_engine``'s ``cpra`` mode. The MGR-internal
+     * ``applyBCSRCPRTransposePreconditioner`` (``solvers/src/linearSolver.cpp``)
+     * is kept alongside it pending the SPE10 benchmark comparison Xiaoming
+     * promised on MR #280; once that lands the MGR-internal path is to be
+     * retired in favour of this one. See ``SOLVER_REFACTORING_PLAN.md``.
      *
      * The matrix is consumed through :class:`csr_matrix_base` accessors, so
      * this works against both the legacy ``csr_matrix<N>`` and the unified
@@ -141,6 +158,18 @@ namespace opendarts
 
       opendarts::linear_solvers::csr_matrix_base *A_;  // full-system matrix (kept by pointer)
 
+      // Scalar-CSR view of A_ when the engine hands us the new block_csr_matrix
+      // Jacobian (the canonical layout post-plan-§12 phase B). The adapter
+      // owns the scalar value buffer (gathered from the block values per
+      // setup() via a vectorisable O(nnz) permutation) and borrows the
+      // expanded structure from the matrix's cached sparsity_pattern. As_
+      // (below) is populated from the adapter on first setup and refreshed
+      // from adapter->values() each subsequent setup, replacing the per-
+      // Newton csr_matrix<1>::to_nb_1 nested-loop scalar expansion. Null
+      // when A_ is a legacy csr_matrix<N> (proprietary build / tests); the
+      // setup() path then falls back to the legacy to_nb_1.
+      std::unique_ptr<opendarts::linear_solvers::scalar_csr_adapter> scalar_adapter_;
+
       // Pressure subsystem A_p as a scalar matrix + its HYPRE handles.
       std::unique_ptr<opendarts::linear_solvers::csr_matrix<1>> Ap_;
       HYPRE_IJMatrix Ap_ij_;
@@ -198,6 +227,68 @@ namespace opendarts
 
       // Workspace (scalar arrays of total size n_block_rows * N).
       std::vector<opendarts::config::mat_float> wksp_;
+
+      // Cached HYPRE-IJ scratch buffers. The row index list passed to
+      // HYPRE_IJVector*/HYPRE_IJMatrix* is just [0, n). Once init() bound the
+      // matrices, both sizes (block-row and scalar-row) and the per-matrix
+      // row degrees are stable, so caching avoids two heap allocations per
+      // set_hypre_vector / build_hypre_ij / refresh_hypre_ij call.
+      // row_indices_ is grown monotonically to the max of the two sizes.
+      std::vector<opendarts::config::index_t> row_indices_;
+      std::vector<opendarts::config::index_t> n_cols_Ap_;
+      std::vector<opendarts::config::index_t> n_cols_As_;
+      std::vector<opendarts::config::index_t> n_cols_Ap_T_;
+      std::vector<opendarts::config::index_t> n_cols_As_T_;
+
+      // Grow row_indices_ (monotonic) and fill the new tail with the iota.
+      void ensure_row_indices(opendarts::config::index_t n);
+
+      // Hierarchy reuse policy. Mirrors mgr::SolverParameters' BCSR-CPR knobs:
+      //   reuse_amg_hierarchy:        skip BoomerAMG (and ILU) Setup if the
+      //                               last solve converged within
+      //                               adaptive_iter_threshold iterations.
+      //   adaptive_amg_rebuild:       once adaptive_consecutive_bad solves in
+      //                               a row exceed the threshold, force a
+      //                               rebuild on the next setup() and clear
+      //                               the bad-streak counter.
+      //   adaptive_iter_threshold:    iteration-count threshold per solve.
+      //   adaptive_consecutive_bad:   how many bad solves in a row before
+      //                               forcing a rebuild.
+      // Default: reuse OFF (preserves the current per-Newton rebuild behaviour
+      // exactly). Setters live on the Spec class; flipping reuse_amg_hierarchy
+      // is the single knob most flow runs benefit from.
+      bool reuse_amg_hierarchy_;
+      bool adaptive_amg_rebuild_;
+      int adaptive_iter_threshold_;
+      int adaptive_consecutive_bad_;
+      // Number of outer-Krylov iterations the previous solve took. The outer
+      // solver (linsolv_gmres) calls back via set_last_outer_iters() to feed
+      // the adaptive rebuild policy; 0 disables the policy (used for the
+      // first solve where no history exists).
+      int last_outer_iters_;
+      int consecutive_bad_streak_;
+      // Set to true when the next setup() must rebuild rather than reuse.
+      bool force_amg_rebuild_;
+public:
+      /// Hierarchy-reuse policy: skip BoomerAMG/ILU Setup on subsequent
+      /// Newton iterations when the previous solve converged in fewer than
+      /// adaptive_iter_threshold outer iterations. Halves the per-Newton CPR
+      /// setup cost on well-converging timesteps.
+      void set_reuse_amg_hierarchy(bool enable) { reuse_amg_hierarchy_ = enable; }
+      /// Adaptive rebuild: after `consecutive_bad` solves over the threshold
+      /// in a row, force a single rebuild on the next setup().
+      void set_adaptive_amg_rebuild(bool enable, int iter_threshold = 15,
+          int consecutive_bad = 2)
+      {
+        adaptive_amg_rebuild_ = enable;
+        adaptive_iter_threshold_ = iter_threshold;
+        adaptive_consecutive_bad_ = consecutive_bad;
+      }
+      /// Outer solver hook -- the outer Krylov (or external client) reports
+      /// the iteration count of the previous solve so the policy can decide
+      /// whether to reuse on the next setup. 0 means "no history".
+      void set_last_outer_iters(int n) { last_outer_iters_ = n; }
+private:
 
       // True until the first setup() completes. After the first setup the
       // HYPRE handles are reused -- a destroy/create cycle on every Newton

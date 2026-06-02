@@ -108,7 +108,6 @@ set(OD_LINEAR_SOLVERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_gmres.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cpr.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_registry.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_iface_adapter.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_factories.cpp
 )
 
@@ -147,7 +146,6 @@ set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_config.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linear_solver.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_registry.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_iface_adapter.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_configs.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_factories.hpp
 )

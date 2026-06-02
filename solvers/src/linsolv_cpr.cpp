@@ -205,8 +205,26 @@ namespace opendarts
         max_iters_(50),
         tolerance_(1.0e-5),
         n_iters_(0),
+        reuse_amg_hierarchy_(false),
+        adaptive_amg_rebuild_(false),
+        adaptive_iter_threshold_(15),
+        adaptive_consecutive_bad_(2),
+        last_outer_iters_(0),
+        consecutive_bad_streak_(0),
+        force_amg_rebuild_(false),
         first_setup_(true)
     {
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_cpr<N_BLOCK_SIZE>::ensure_row_indices(index_t n)
+    {
+      if (static_cast<index_t>(row_indices_.size()) < n)
+      {
+        const index_t old_size = static_cast<index_t>(row_indices_.size());
+        row_indices_.resize(n);
+        std::iota(row_indices_.begin() + old_size, row_indices_.end(), old_size);
+      }
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -289,6 +307,23 @@ namespace opendarts
       Ap_->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
     }
 
+    namespace
+    {
+      // Fill `n_cols_cache` with per-row column counts derived from A's row
+      // pointer. Only resizes on growth; values are recomputed each call (cheap
+      // and structure-stable across Newton iterations).
+      inline void compute_row_degrees(
+          opendarts::linear_solvers::csr_matrix<1> &A,
+          std::vector<index_t> &n_cols_cache)
+      {
+        const index_t n_rows = A.n_rows;
+        if (static_cast<index_t>(n_cols_cache.size()) < n_rows)
+          n_cols_cache.resize(n_rows);
+        for (index_t i = 0; i < n_rows; ++i)
+          n_cols_cache[i] = A.rows_ptr[i + 1] - A.rows_ptr[i];
+      }
+    } // namespace
+
     template <uint8_t N_BLOCK_SIZE>
     void linsolv_cpr<N_BLOCK_SIZE>::build_hypre_ij(
         opendarts::linear_solvers::csr_matrix<1> &A,
@@ -299,10 +334,17 @@ namespace opendarts
       const index_t ilower = 0;
       const index_t iupper = n_rows - 1;
 
-      std::vector<index_t> rows(n_rows), n_cols(n_rows);
-      std::iota(rows.begin(), rows.end(), 0);
-      for (index_t i = 0; i < n_rows; ++i)
-        n_cols[i] = A.rows_ptr[i + 1] - A.rows_ptr[i];
+      // Cached row-index buffer and per-matrix row-degrees. Pick the
+      // n_cols_* cache by IJMatrix handle so each of the four matrices
+      // (Ap, Ap_T, As, As_T) gets its own.
+      ensure_row_indices(n_rows);
+      std::vector<index_t> *n_cols_cache = nullptr;
+      if (&A_ij == &Ap_ij_)             n_cols_cache = &n_cols_Ap_;
+      else if (&A_ij == &Ap_T_ij_)      n_cols_cache = &n_cols_Ap_T_;
+      else if (&A_ij == &As_ij_)        n_cols_cache = &n_cols_As_;
+      else if (&A_ij == &As_T_ij_)      n_cols_cache = &n_cols_As_T_;
+      else                              n_cols_cache = &n_cols_As_;  // fallback
+      compute_row_degrees(A, *n_cols_cache);
 
       check_hypre(HYPRE_IJMatrixCreate(hypre_MPI_COMM_WORLD, ilower, iupper,
                       ilower, iupper, &A_ij),
@@ -311,8 +353,8 @@ namespace opendarts
       check_hypre(HYPRE_IJMatrixSetObjectType(A_ij, HYPRE_PARCSR),
           "IJMatrixSetObjectType");
       check_hypre(HYPRE_IJMatrixInitialize(A_ij), "IJMatrixInitialize");
-      check_hypre(HYPRE_IJMatrixSetValues(A_ij, n_rows, n_cols.data(),
-                      rows.data(), A.get_cols_ind(), A.get_values()),
+      check_hypre(HYPRE_IJMatrixSetValues(A_ij, n_rows, n_cols_cache->data(),
+                      row_indices_.data(), A.get_cols_ind(), A.get_values()),
           "IJMatrixSetValues");
       check_hypre(HYPRE_IJMatrixAssemble(A_ij), "IJMatrixAssemble");
       check_hypre(HYPRE_IJMatrixGetObject(A_ij, (void **) &A_parcsr),
@@ -329,14 +371,21 @@ namespace opendarts
       // HYPRE_IJMatrixInitialize re-opens the matrix for SetValues; the
       // sparsity pattern is preserved across calls.
       const index_t n_rows = A.n_rows;
-      std::vector<index_t> rows(n_rows), n_cols(n_rows);
-      std::iota(rows.begin(), rows.end(), 0);
-      for (index_t i = 0; i < n_rows; ++i)
-        n_cols[i] = A.rows_ptr[i + 1] - A.rows_ptr[i];
+      ensure_row_indices(n_rows);
+      std::vector<index_t> *n_cols_cache = nullptr;
+      if (&A_ij == &Ap_ij_)             n_cols_cache = &n_cols_Ap_;
+      else if (&A_ij == &Ap_T_ij_)      n_cols_cache = &n_cols_Ap_T_;
+      else if (&A_ij == &As_ij_)        n_cols_cache = &n_cols_As_;
+      else if (&A_ij == &As_T_ij_)      n_cols_cache = &n_cols_As_T_;
+      else                              n_cols_cache = &n_cols_As_;
+      // n_cols was already filled by build_hypre_ij; do nothing if structure
+      // is stable. Recompute if the matrix shrank/grew (defensive).
+      if (static_cast<index_t>(n_cols_cache->size()) < n_rows)
+        compute_row_degrees(A, *n_cols_cache);
 
       check_hypre(HYPRE_IJMatrixInitialize(A_ij), "IJMatrixInitialize(refresh)");
-      check_hypre(HYPRE_IJMatrixSetValues(A_ij, n_rows, n_cols.data(),
-                      rows.data(), A.get_cols_ind(), A.get_values()),
+      check_hypre(HYPRE_IJMatrixSetValues(A_ij, n_rows, n_cols_cache->data(),
+                      row_indices_.data(), A.get_cols_ind(), A.get_values()),
           "IJMatrixSetValues(refresh)");
       check_hypre(HYPRE_IJMatrixAssemble(A_ij), "IJMatrixAssemble(refresh)");
       check_hypre(HYPRE_IJMatrixGetObject(A_ij, (void **) &A_parcsr),
@@ -370,11 +419,10 @@ namespace opendarts
         mat_float *vals,
         HYPRE_ParVector &v_par)
     {
-      std::vector<index_t> rows(n_rows);
-      std::iota(rows.begin(), rows.end(), 0);
+      ensure_row_indices(n_rows);
 
       check_hypre(HYPRE_IJVectorInitialize(v_ij), "IJVectorInitialize");
-      check_hypre(HYPRE_IJVectorSetValues(v_ij, n_rows, rows.data(), vals),
+      check_hypre(HYPRE_IJVectorSetValues(v_ij, n_rows, row_indices_.data(), vals),
           "IJVectorSetValues");
       check_hypre(HYPRE_IJVectorAssemble(v_ij), "IJVectorAssemble");
       check_hypre(HYPRE_IJVectorGetObject(v_ij, (void **) &v_par),
@@ -400,9 +448,65 @@ namespace opendarts
       if (!Ap_T_)
         Ap_T_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
       csr_transpose_scalar(*Ap_, *Ap_T_);
+
       if (!As_)
         As_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
-      As_->to_nb_1(A_input);
+
+      // Preferred path -- bind a scalar_csr_adapter to the block Jacobian
+      // and reuse the cached scalar structure across Newton iterations. The
+      // adapter's value buffer is the source of truth; As_ is the HYPRE-
+      // facing csr_matrix<1> shell, populated once (structure) + refreshed
+      // (values) from the adapter.
+      auto *A_block = dynamic_cast<opendarts::linear_solvers::block_csr_matrix *>(A_input);
+      if (A_block != nullptr)
+      {
+        if (!scalar_adapter_
+            || scalar_adapter_->n_rows() != A_block->scalar_n_rows()
+            || scalar_adapter_->nnz()
+                   != A_block->n_blocks() * A_block->block_size() * A_block->block_size())
+        {
+          // First setup or a structure change (e.g. AMR -- not used today
+          // but the adapter binds to a specific (matrix, expansion) pair).
+          scalar_adapter_ = std::make_unique<
+              opendarts::linear_solvers::scalar_csr_adapter>(*A_block);
+        }
+        else
+        {
+          scalar_adapter_->refresh();
+        }
+
+        const auto n = scalar_adapter_->n_rows();
+        const auto nnz = scalar_adapter_->nnz();
+        if (As_->n_rows != n
+            || static_cast<opendarts::config::index_t>(As_->n_non_zeros) != nnz)
+        {
+          // (Re)allocate the HYPRE-facing csr_matrix<1> shell and copy the
+          // scalar structure once. Subsequent setups skip these copies.
+          As_->init(n, scalar_adapter_->n_cols(), nnz);
+          std::copy(scalar_adapter_->row_ptr(),
+              scalar_adapter_->row_ptr() + n + 1, As_->rows_ptr.data());
+          std::copy(scalar_adapter_->col_ind(),
+              scalar_adapter_->col_ind() + nnz, As_->cols_ind.data());
+          As_->n_non_zeros = nnz;
+          As_->n_row_size = 1;
+          As_->is_square = (n == scalar_adapter_->n_cols()) ? 1 : 0;
+          As_->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+        }
+        // Refresh values -- a contiguous std::copy of the gathered scalar
+        // values into the As_ buffer. Replaces the per-Newton nested-loop
+        // scalar expansion inside csr_matrix<1>::to_nb_1.
+        std::copy(scalar_adapter_->values(),
+            scalar_adapter_->values() + nnz, As_->values.data());
+      }
+      else
+      {
+        // Legacy path -- engine is still feeding a csr_matrix<N> (tests,
+        // GPU, proprietary build). Use the polymorphic to_nb_1, which
+        // performs both the structural rebuild and the value gather.
+        scalar_adapter_.reset();
+        As_->to_nb_1(A_input);
+      }
+
       if (!As_T_)
         As_T_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
       csr_transpose_scalar(*As_, *As_T_);
@@ -513,27 +617,61 @@ namespace opendarts
       }
       else
       {
-        // Subsequent setup -- refresh IJ matrix values, then re-run *Setup
-        // on the existing solver handles. This rebuilds the AMG hierarchy /
-        // ILU factorisation in place. Same code path the in-tree MGR uses.
+        // Subsequent setup -- refresh IJ matrix values (always: values change
+        // every Newton iteration) and then optionally re-run *Setup to rebuild
+        // the AMG hierarchy / ILU factorisation in place.
+        //
+        // Hierarchy reuse policy mirrors mgr::SolverParameters' BCSR-CPR knobs:
+        //   - default (reuse_amg_hierarchy_ == false): rebuild every Newton.
+        //     This preserves the conservative pre-policy behaviour.
+        //   - reuse_amg_hierarchy_ == true: skip *Setup; the existing
+        //     hierarchy is reused with the refreshed values. Coefficients have
+        //     changed (the IJ values have been refreshed) but the algebraic
+        //     hierarchy from the previous Newton iteration is reused -- this
+        //     is the common "AMG hierarchy reuse" trick.
+        //   - adaptive_amg_rebuild_: even with reuse on, force a rebuild when
+        //     the last solve took more than adaptive_iter_threshold_ iters
+        //     for adaptive_consecutive_bad_ solves in a row.
         refresh_hypre_ij(*Ap_, Ap_ij_, Ap_parcsr_);
         refresh_hypre_ij(*Ap_T_, Ap_T_ij_, Ap_T_parcsr_);
         refresh_hypre_ij(*As_, As_ij_, As_parcsr_);
         refresh_hypre_ij(*As_T_, As_T_ij_, As_T_parcsr_);
 
-        check_hypre(
-            HYPRE_BoomerAMGSetup(amg_, Ap_parcsr_, amg_b_par_, amg_x_par_),
-            "BoomerAMGSetup(re)");
-        check_hypre(
-            HYPRE_BoomerAMGSetup(amg_T_, Ap_T_parcsr_, amg_T_b_par_,
-                amg_T_x_par_),
-            "BoomerAMGSetup(T,re)");
-        check_hypre(
-            HYPRE_ILUSetup(ilu_, As_parcsr_, ilu_b_par_, ilu_x_par_),
-            "ILUSetup(re)");
-        check_hypre(
-            HYPRE_ILUSetup(ilu_T_, As_T_parcsr_, ilu_T_b_par_, ilu_T_x_par_),
-            "ILUSetup(T,re)");
+        bool rebuild = !reuse_amg_hierarchy_ || force_amg_rebuild_;
+        if (reuse_amg_hierarchy_ && adaptive_amg_rebuild_ && last_outer_iters_ > 0)
+        {
+          if (last_outer_iters_ > adaptive_iter_threshold_)
+          {
+            consecutive_bad_streak_++;
+            if (consecutive_bad_streak_ >= adaptive_consecutive_bad_)
+            {
+              rebuild = true;
+              consecutive_bad_streak_ = 0;
+            }
+          }
+          else
+          {
+            consecutive_bad_streak_ = 0;
+          }
+        }
+        force_amg_rebuild_ = false;
+
+        if (rebuild)
+        {
+          check_hypre(
+              HYPRE_BoomerAMGSetup(amg_, Ap_parcsr_, amg_b_par_, amg_x_par_),
+              "BoomerAMGSetup(re)");
+          check_hypre(
+              HYPRE_BoomerAMGSetup(amg_T_, Ap_T_parcsr_, amg_T_b_par_,
+                  amg_T_x_par_),
+              "BoomerAMGSetup(T,re)");
+          check_hypre(
+              HYPRE_ILUSetup(ilu_, As_parcsr_, ilu_b_par_, ilu_x_par_),
+              "ILUSetup(re)");
+          check_hypre(
+              HYPRE_ILUSetup(ilu_T_, As_T_parcsr_, ilu_T_b_par_, ilu_T_x_par_),
+              "ILUSetup(T,re)");
+        }
       }
 
       // Scratch buffers for the per-apply CPR stages.
@@ -553,6 +691,12 @@ namespace opendarts
         return -1;
 
       const index_t n_block_rows = A_->n_rows;
+      // A valid matrix never has a negative row count; asserting the invariant
+      // keeps the signed-to-size_t cast below from looking unbounded to the
+      // optimizer (otherwise n_scalar * sizeof(mat_float) trips
+      // -Wstringop-overflow on the memsets).
+      if (n_block_rows < 0)
+        return -1;
       const std::size_t n_scalar =
           static_cast<std::size_t>(n_block_rows) * N_BLOCK_SIZE;
       const std::size_t n_pressure = static_cast<std::size_t>(n_block_rows);
@@ -574,13 +718,11 @@ namespace opendarts
       set_hypre_vector(amg_x_ij_, n_block_rows, x_p, amg_x_par_);
       check_hypre(HYPRE_BoomerAMGSolve(amg_, Ap_parcsr_, amg_b_par_, amg_x_par_),
           "BoomerAMGSolve");
-      {
-        std::vector<index_t> rows(n_block_rows);
-        std::iota(rows.begin(), rows.end(), 0);
-        check_hypre(HYPRE_IJVectorGetValues(amg_x_ij_, n_block_rows,
-                        rows.data(), x_p),
-            "IJVectorGetValues(amg_x)");
-      }
+      // row_indices_ was already grown to at least n_block_rows by
+      // set_hypre_vector above; reuse it for HYPRE_IJVectorGetValues.
+      check_hypre(HYPRE_IJVectorGetValues(amg_x_ij_, n_block_rows,
+                      row_indices_.data(), x_p),
+          "IJVectorGetValues(amg_x)");
 
       std::memset(x_g, 0, n_scalar * sizeof(mat_float));
       for (index_t i = 0; i < n_block_rows; ++i)
@@ -602,9 +744,8 @@ namespace opendarts
         set_hypre_vector(ilu_x_ij_, n_s, x_f, ilu_x_par_);
         check_hypre(HYPRE_ILUSolve(ilu_, As_parcsr_, ilu_b_par_, ilu_x_par_),
             "ILUSolve");
-        std::vector<index_t> rows(n_s);
-        std::iota(rows.begin(), rows.end(), 0);
-        check_hypre(HYPRE_IJVectorGetValues(ilu_x_ij_, n_s, rows.data(), x_f),
+        check_hypre(HYPRE_IJVectorGetValues(ilu_x_ij_, n_s,
+                        row_indices_.data(), x_f),
             "IJVectorGetValues(ilu_x)");
       }
 
@@ -630,6 +771,10 @@ namespace opendarts
       //   4. x_p = (A_p^T)^{-1} r_p      -- HYPRE_BoomerAMGSolve on A_p^T
       //   5. X = C x_p + x_f             -- prolong + add
       const index_t n_block_rows = A_->n_rows;
+      // See solve(): the non-negativity guard bounds the signed-to-size_t cast
+      // so the per-stage memsets don't trip -Wstringop-overflow.
+      if (n_block_rows < 0)
+        return -1;
       const std::size_t n_scalar =
           static_cast<std::size_t>(n_block_rows) * N_BLOCK_SIZE;
       const std::size_t n_pressure = static_cast<std::size_t>(n_block_rows);
@@ -641,8 +786,7 @@ namespace opendarts
       mat_float *x_p = r_p + n_pressure;
 
       const index_t n_s = static_cast<index_t>(n_scalar);
-      std::vector<index_t> rows(n_scalar);
-      std::iota(rows.begin(), rows.end(), 0);
+      ensure_row_indices(n_s);
 
       // Step 1: x_f = (A_s^T)^{-1} r
       std::memset(x_f, 0, n_scalar * sizeof(mat_float));
@@ -650,7 +794,8 @@ namespace opendarts
       set_hypre_vector(ilu_T_x_ij_, n_s, x_f, ilu_T_x_par_);
       check_hypre(HYPRE_ILUSolve(ilu_T_, As_T_parcsr_, ilu_T_b_par_, ilu_T_x_par_),
           "ILUSolve(T)");
-      check_hypre(HYPRE_IJVectorGetValues(ilu_T_x_ij_, n_s, rows.data(), x_f),
+      check_hypre(HYPRE_IJVectorGetValues(ilu_T_x_ij_, n_s,
+                      row_indices_.data(), x_f),
           "IJVectorGetValues(ilu_T_x)");
 
       // Step 2: r_m = r - A^T x_f
@@ -673,13 +818,9 @@ namespace opendarts
       check_hypre(
           HYPRE_BoomerAMGSolve(amg_T_, Ap_T_parcsr_, amg_T_b_par_, amg_T_x_par_),
           "BoomerAMGSolve(T)");
-      {
-        std::vector<index_t> prows(n_block_rows);
-        std::iota(prows.begin(), prows.end(), 0);
-        check_hypre(HYPRE_IJVectorGetValues(amg_T_x_ij_, n_block_rows,
-                        prows.data(), x_p),
-            "IJVectorGetValues(amg_T_x)");
-      }
+      check_hypre(HYPRE_IJVectorGetValues(amg_T_x_ij_, n_block_rows,
+                      row_indices_.data(), x_p),
+          "IJVectorGetValues(amg_T_x)");
 
       // Step 5: X = C x_p + x_f (prolong pressure component, add ILU update).
       std::memcpy(X, x_f, n_scalar * sizeof(mat_float));

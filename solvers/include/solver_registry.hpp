@@ -23,20 +23,23 @@
 #include <string>
 #include <vector>
 
+#include "linear_solver.hpp"
+
 namespace opendarts
 {
   namespace linear_solvers
   {
-    class linsolv_iface;  // see linsolv_iface.hpp
     struct solver_config;  // see solver_config.hpp
 
     /** Factory that builds a solver for a configuration and a matrix block size.
      *
-     *  Returns the solver as a linsolv_iface -- the interface the engine speaks
-     *  and accepts via engine_base::set_linear_solver(). Concrete solvers
-     *  (linsolv_mgr, linsolv_superlu, ...) all derive from linsolv_iface.
+     *  Returns the solver as a ``linear_solver`` -- the unified C++ interface
+     *  every concrete solver implements (``linsolv_iface`` is a backward-
+     *  compatibility alias, see linsolv_iface.hpp). This is the interface
+     *  ``engine_base::set_linear_solver()`` consumes; concrete solvers
+     *  (linsolv_mgr, linsolv_superlu, ...) all derive from it.
      */
-    using solver_factory = std::function<std::shared_ptr<opendarts::linear_solvers::linsolv_iface>(
+    using solver_factory = std::function<std::shared_ptr<opendarts::linear_solvers::linear_solver>(
         const opendarts::linear_solvers::solver_config &, int /*block_size*/)>;
 
     /** Register a solver factory under a unique name.
@@ -54,7 +57,7 @@ namespace opendarts
      *
      *  @throws std::runtime_error if the name is not registered in this build.
      */
-    std::shared_ptr<opendarts::linear_solvers::linsolv_iface> create_linear_solver(
+    std::shared_ptr<opendarts::linear_solvers::linear_solver> create_linear_solver(
         const std::string &name,
         const opendarts::linear_solvers::solver_config &config,
         int block_size);

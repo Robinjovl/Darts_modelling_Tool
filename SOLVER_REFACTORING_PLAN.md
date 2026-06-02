@@ -85,8 +85,96 @@ What remains queued (out of MR scope, captured in Appendix C):
 * GMRES + MGR composition triggers HYPRE NaN warnings — the default flip
   to FGMRES + CPR avoids the path; no longer blocking.
 * Mechanics-engine Jacobian migration to `block_csr_matrix`.
-* `linsolv_superlu` typed `csr_matrix<N>*` assumption — latent bug on
-  `block_csr_matrix` input.
+* MGR-internal CPRA path (`548e224f`'s `applyBCSRCPRTransposePreconditioner` and
+  `m_bcsrCPRSourceMatrix` in `solvers/src/linearSolver.cpp`): retire in favour
+  of `linsolv_cpr::solve_transposed` after Xiaoming's SPE10 benchmark
+  comparison promised on MR #280, 2026-05-29.
+* Full GPU side of plan §12 phase C1 — CUDA kernels in `engine_nc_gpu.cu`,
+  `engine_nce_g_gpu.cu`, `engine_nc_cg_gpu.cu` still reach into
+  `csr_matrix<N>::values_d` / `rows_ptr_d` / `cols_ind_d` / `diag_ind_d` raw
+  fields; the `jac_*_d()` shims branch on `OPENDARTS_LINEAR_SOLVERS` so the
+  GPU build keeps working, but a follow-up pass should route them through
+  the `csr_matrix_base` accessors so the matrix-free path can stop being a
+  `csr_matrix_base`.
+
+## 0a. Follow-up work landed 2026-06-02
+
+This section lists the consolidation work landed on top of the original MR
+(commits authored after the closeout trio `72b1d901` / `296e40a0` /
+`c45ab266`). The TL;DR above describes the MR as originally scoped; the items
+here are the post-closeout cleanups that follow naturally from the audit:
+
+* **`linear_solver` interface migration finished**. The legacy `linsolv_iface`
+  and the newer orphaned `linear_solver` were the same conceptual interface
+  under two names; they are now merged. `linear_solver.hpp` is the canonical
+  header (combines the original interface's API with `stats()`);
+  `linsolv_iface.hpp` is a back-compat `using linsolv_iface = linear_solver;`
+  shim so the ~35 caller files keep compiling unchanged. The
+  `linsolv_iface_adapter` (its sole purpose was to bridge the two) is
+  removed -- `solvers/{include,src}/linsolv_iface_adapter.{hpp,cpp}` and the
+  matching CMakeLists entries are deleted. The registry
+  (`solver_registry`, `solver_factories`) now returns
+  `shared_ptr<linear_solver>`; pybind exposes the unified handle as
+  `LinearSolver` with `LinearSolverInterface` as a Python-side alias for
+  back-compat.
+* **`scalar_csr_adapter` wired into `linsolv_cpr` and `linsolv_superlu`.**
+  When the engine hands a `block_csr_matrix` Jacobian (the canonical layout
+  post-§12 phase B), both solvers now bind a `scalar_csr_adapter` once and
+  refresh-gather scalar values per setup, replacing the per-Newton
+  `csr_matrix<1>::to_nb_1` nested-loop expansion (CPR) and the per-solve
+  `new csr_matrix<1>; to_nb_1; delete` allocation cycle (SuperLU). Legacy
+  `csr_matrix<N>` callers (tests, GPU, proprietary build) fall back to the
+  existing `to_nb_1` path. See `linsolv_cpr::scalar_adapter_` and
+  `linsolv_superlu::scalar_adapter_`.
+* **CPR hierarchy-reuse policy** mirroring `mgr::SolverParameters`:
+  `linsolv_cpr::set_reuse_amg_hierarchy()` and
+  `linsolv_cpr::set_adaptive_amg_rebuild(enable, iter_threshold,
+  consecutive_bad)`. With reuse on, subsequent setups skip
+  `HYPRE_BoomerAMGSetup` and `HYPRE_ILUSetup` (forward + transpose),
+  amortising the dominant per-Newton CPR setup cost across timesteps. The
+  adaptive variant forces a rebuild after `consecutive_bad` solves over
+  `iter_threshold` iterations. Default OFF (preserves pre-policy behaviour
+  exactly). Outer Krylov reports the previous solve's iteration count via
+  `set_last_outer_iters()`.
+* **`mgr::setMatrixFromCSR` structure-skip**. All three overloads
+  (`row_ptr`/`col_ind`/`values` pointer; `setBCSRCPRSourceFromCSR`;
+  `setMatrixFromVector`) compute `structure_changed` upfront, and gate the
+  three structural `std::copy` calls on it. Values are always refreshed.
+  Halves the per-Newton MGR ingest cost on the common stable-sparsity path.
+* **HYPRE wrapper per-apply allocations hoisted** to member caches. The
+  `[0, n_rows)` row-index iota and the per-row column-count buffers fed to
+  `HYPRE_IJVectorSetValues` / `HYPRE_IJMatrixSetValues` were heap-allocated
+  on every solve / setup; they now live as `row_indices_` / `n_cols_`
+  members and grow monotonically. Mirrored across `linsolv_hypre_amg`,
+  `linsolv_hypre_ilu`, and `linsolv_cpr` (with one `n_cols_*` per IJ matrix
+  in CPR).
+* **Adjoint CPRA path -- canonical is `linsolv_cpr::solve_transposed`** (the
+  open-source path exposed through `CPRSolverSpec` /
+  `GMRESSolverSpec(prec=CPRSolverSpec())` and used by
+  `Adjoint_super_engine`'s `cpra` mode, added by Xiaoming in `c135b7c1`).
+  The MGR-internal `applyBCSRCPRTransposePreconditioner` (`548e224f`) is
+  preserved unchanged pending the SPE10 benchmark comparison Xiaoming
+  promised on MR #280, 2026-05-29; once that lands the MGR-internal path
+  is to be retired.
+* **GPU §12 phase C1 — partial.** The GPU engine Jacobian is now
+  `new block_csr_matrix` under `OPENDARTS_LINEAR_SOLVERS`, matching CPU.
+  Device storage is allocated lazily via `dual_array`; no `init_device`
+  call needed. The accessor shims (`jac_*_d`) already handled both layouts.
+  Remaining: routing the CUDA kernels' raw `Jacobian->values_d` /
+  `rows_ptr_d` field accesses through `csr_matrix_base::get_*_d` so the
+  matrix-free path (`assembly_kernel == 13`) can stop relying on
+  `engine_base_gpu : public csr_matrix_base`. AMGX wiring through
+  `block_csr_matrix` is a separate downstream item.
+* **Cleanup**: `solvers/{include,src}/linsolv_iface_adapter.{hpp,cpp}`
+  deleted; `han2013.pdf` relocated from the repo root to
+  `docs/refs/han2013.pdf`; file modes corrected on `engine_base.cpp`,
+  `linearSolver.cpp`, `linsolv_mgr.cpp`, `LinearSolver.hpp`,
+  `py_engine_base.cpp` (`0755 -> 0644`).
+* **Plan staleness fixes**: the original §10/Appendix-C claims that the
+  `linsolv_superlu` block-size down-cast bug was queued and that
+  `linsolv_cpr::solve_transposed` was a placeholder are both stale --
+  `548e224f` fixed the former, `linsolv_cpr` already implemented the
+  latter; this section captures that.
 
 ---
 

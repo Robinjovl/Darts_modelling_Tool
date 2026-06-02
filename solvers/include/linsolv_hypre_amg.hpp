@@ -22,6 +22,8 @@
 #define OPENDARTS_LINEAR_SOLVERS_LINSOLV_HYPRE_AMG_HPP
 //--------------------------------------------------------------------------
 
+#include <vector>
+
 #include "_hypre_utilities.h"
 #include "HYPRE.h"
 #include "HYPRE_parcsr_ls.h"
@@ -75,9 +77,16 @@ namespace opendarts
       HYPRE_ParVector x_par;  // solution vector as HYPRE_ParVector
 
     private:
-      static void csr_matrix_to_hypre_ij(
+      void csr_matrix_to_hypre_ij(
         opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> &A,
         HYPRE_IJMatrix &A_ij);
+
+      // Per-apply scratch -- the row index list passed to HYPRE_IJVectorSetValues
+      // is just [0, n_rows). Once n_rows is known it never changes, so cache
+      // it as a member instead of allocating + std::iota'ing per solve().
+      // Mirrored in linsolv_hypre_ilu and linsolv_cpr (set_hypre_vector).
+      std::vector<opendarts::config::index_t> row_indices_;
+      std::vector<opendarts::config::index_t> n_cols_;
       // using opendarts::linear_solvers::linsolv_iface::init;
       // using opendarts::linear_solvers::linsolv_iface::setup;
     };

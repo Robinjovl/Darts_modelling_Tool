@@ -8,6 +8,7 @@
 
 #include "engine_base.h"
 #ifdef OPENDARTS_LINEAR_SOLVERS
+#include "block_csr_matrix.hpp"
 #include "csr_matrix.hpp"
 #else
 #include "csr_matrix.h"
@@ -215,18 +216,33 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   params = params_;
   timer = timer_;
 
-  // Instantiate Jacobian
+  // Instantiate Jacobian. With the unified matrix layout (plan §12, phase B
+  // for CPU; phase C1 for GPU), the open-source build uses the new
+  // block_csr_matrix on GPU as well as on CPU -- its device storage is
+  // allocated lazily through dual_array (no init_device call needed), and
+  // the cuSPARSE BSR SpMV adapter (gpu_bsr_spmv) services
+  // csr_matrix_base::matrix_vector_product_d on the device pointers exposed
+  // through get_*_d(). The legacy csr_matrix<N> + init_device path is kept
+  // for the proprietary build, which still ships its own GPU device layer.
   if (!Jacobian)
   {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    Jacobian = new block_csr_matrix;
+#else
     Jacobian = new csr_matrix<N_VARS>;
     Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+#endif
   }
   // for GPU engines we need only structure - rows_ptr and cols_ind
   // they are filled on CPU and later copied to GPU
-  //(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_struct(mesh_->n_blocks, mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
 
   // may need full init to be able to dump csr matrix from device
+#ifdef OPENDARTS_LINEAR_SOLVERS
+  (static_cast<block_csr_matrix *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+  Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;  // init() resets type
+#else
   (static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+#endif
 
   int matrix_free = 0;
   if (params->assembly_kernel == 13)
@@ -235,7 +251,13 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     matrix_free = 1;
   }
 
+#ifndef OPENDARTS_LINEAR_SOLVERS
+  // Legacy GPU path: pre-allocate the cuSPARSE-backed device buffers
+  // (values_d, rows_ptr_d, cols_ind_d, diag_ind_d). The open-source
+  // block_csr_matrix path allocates these lazily on first access via
+  // dual_array::ensure_device_allocated().
   (static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
+#endif
   // create linear solver
   // if default CPU solver is used, silently change to default GPU solver
   if (params->linear_type == 0)

@@ -6323,29 +6323,38 @@ bool LinearSolver::setMatrixFromCSR( int_t num_rows,
   m_matrix.global_num_rows = num_rows * block_size;
   m_matrix.global_num_cols = num_cols * block_size;
 
-  // Copy row_ptr (size = num_rows + 1)
-  m_matrix.row_ptr.resize( num_rows + 1 );
-  std::copy( row_ptr, row_ptr + num_rows + 1, m_matrix.row_ptr.begin() );
+  // Structural data (row_ptr / col_ind / diag_ind) is identical across Newton
+  // iterations when the sparsity pattern is unchanged. structure_changed was
+  // already detected above by std::equal-comparing the incoming pointers
+  // against m_matrix, so when it is false we can skip the three structural
+  // std::copy calls and only refresh the values -- the dominant per-Newton
+  // ingest cost.
+  if( structure_changed )
+  {
+    // Copy row_ptr (size = num_rows + 1)
+    m_matrix.row_ptr.resize( num_rows + 1 );
+    std::copy( row_ptr, row_ptr + num_rows + 1, m_matrix.row_ptr.begin() );
 
-  // Copy col_ind (size = num_nonzero_blocks)
-  m_matrix.col_ind.resize( num_nonzero_blocks );
-  std::copy( col_ind, col_ind + num_nonzero_blocks, m_matrix.col_ind.begin() );
+    // Copy col_ind (size = num_nonzero_blocks)
+    m_matrix.col_ind.resize( num_nonzero_blocks );
+    std::copy( col_ind, col_ind + num_nonzero_blocks, m_matrix.col_ind.begin() );
 
-  // Copy values (size = num_nonzero_blocks × block_size²)
+    // Copy diag_ind if provided
+    if( diag_ind )
+    {
+      m_matrix.diag_ind.resize( num_rows );
+      std::copy( diag_ind, diag_ind + num_rows, m_matrix.diag_ind.begin() );
+    }
+    else
+    {
+      m_matrix.diag_ind.clear();
+    }
+  }
+
+  // Values change every Newton iteration -- always refresh.
   int_t values_size = num_nonzero_blocks * block_size * block_size;
   m_matrix.values.resize( values_size );
   std::copy( values, values + values_size, m_matrix.values.begin() );
-
-  // Copy diag_ind if provided
-  if( diag_ind )
-  {
-    m_matrix.diag_ind.resize( num_rows );
-    std::copy( diag_ind, diag_ind + num_rows, m_matrix.diag_ind.begin() );
-  }
-  else
-  {
-    m_matrix.diag_ind.clear();
-  }
 
   // New matrix values invalidate full-system HYPRE objects; CPR objects can be
   // reused when the block sparsity portrait above did not change.
@@ -6425,33 +6434,37 @@ bool LinearSolver::setBCSRCPRSourceFromCSR( int_t num_rows,
   m_bcsrCPRSourceMatrix.global_num_rows = num_rows * block_size;
   m_bcsrCPRSourceMatrix.global_num_cols = num_cols * block_size;
 
-  m_bcsrCPRSourceMatrix.row_ptr.resize( num_rows + 1 );
-  std::copy( row_ptr,
-             row_ptr + num_rows + 1,
-             m_bcsrCPRSourceMatrix.row_ptr.begin() );
+  if( structure_changed )
+  {
+    m_bcsrCPRSourceMatrix.row_ptr.resize( num_rows + 1 );
+    std::copy( row_ptr,
+               row_ptr + num_rows + 1,
+               m_bcsrCPRSourceMatrix.row_ptr.begin() );
 
-  m_bcsrCPRSourceMatrix.col_ind.resize( num_nonzero_blocks );
-  std::copy( col_ind,
-             col_ind + num_nonzero_blocks,
-             m_bcsrCPRSourceMatrix.col_ind.begin() );
+    m_bcsrCPRSourceMatrix.col_ind.resize( num_nonzero_blocks );
+    std::copy( col_ind,
+               col_ind + num_nonzero_blocks,
+               m_bcsrCPRSourceMatrix.col_ind.begin() );
 
+    if( diag_ind )
+    {
+      m_bcsrCPRSourceMatrix.diag_ind.resize( num_rows );
+      std::copy( diag_ind,
+                 diag_ind + num_rows,
+                 m_bcsrCPRSourceMatrix.diag_ind.begin() );
+    }
+    else
+    {
+      m_bcsrCPRSourceMatrix.diag_ind.clear();
+    }
+  }
+
+  // Values change every Newton iteration -- always refresh.
   const int_t values_size = num_nonzero_blocks * block_size * block_size;
   m_bcsrCPRSourceMatrix.values.resize( values_size );
   std::copy( values,
              values + values_size,
              m_bcsrCPRSourceMatrix.values.begin() );
-
-  if( diag_ind )
-  {
-    m_bcsrCPRSourceMatrix.diag_ind.resize( num_rows );
-    std::copy( diag_ind,
-               diag_ind + num_rows,
-               m_bcsrCPRSourceMatrix.diag_ind.begin() );
-  }
-  else
-  {
-    m_bcsrCPRSourceMatrix.diag_ind.clear();
-  }
 
   m_bcsrCPRSourceMatrixReady = true;
   m_bcsrCPRSourcePressureTranspose = transpose_pressure_matrix;
@@ -6542,25 +6555,29 @@ bool LinearSolver::setMatrixFromVector( int_t num_rows,
   m_matrix.global_num_rows = num_rows * block_size;
   m_matrix.global_num_cols = num_cols * block_size;
 
-  // Copy vectors
-  m_matrix.row_ptr = row_ptr;
-  m_matrix.col_ind = col_ind;
-  m_matrix.values = values;
+  if( structure_changed )
+  {
+    m_matrix.row_ptr = row_ptr;
+    m_matrix.col_ind = col_ind;
 
-  // Copy diag_ind if provided
-  if( !diag_ind.empty() )
-  {
-    if( static_cast<int_t>( diag_ind.size() ) < num_rows )
+    // Copy diag_ind if provided
+    if( !diag_ind.empty() )
     {
-      std::cerr << "Error: diag_ind size too small" << std::endl;
-      return false;
+      if( static_cast<int_t>( diag_ind.size() ) < num_rows )
+      {
+        std::cerr << "Error: diag_ind size too small" << std::endl;
+        return false;
+      }
+      m_matrix.diag_ind = diag_ind;
     }
-    m_matrix.diag_ind = diag_ind;
+    else
+    {
+      m_matrix.diag_ind.clear();
+    }
   }
-  else
-  {
-    m_matrix.diag_ind.clear();
-  }
+
+  // Values change every Newton iteration -- always refresh.
+  m_matrix.values = values;
 
   // New matrix values invalidate full-system HYPRE objects; CPR objects can be
   // reused when the block sparsity portrait above did not change.
