@@ -241,6 +241,83 @@ class CPRSolverSpec(LinearSolverSpec):
 
 
 @dataclass
+class FSCPRSolverSpec(LinearSolverSpec):
+    """Open-source FS-CPR (Full-System CPR) poromechanics preconditioner.
+
+    Two-stage poromechanics CPR: HYPRE BoomerAMG correction on the displacement
+    (U) subsystem followed by a second BoomerAMG correction on the flow /
+    pressure (P or PPSS) subsystem driven by a Schur-complement approximation.
+    The in-tree replacement for the proprietary ``linsolv_bos_fs_cpr``. Block
+    size 4..8 (ND = 3 hard-coded; NE = block_size - 3 in 1..5).
+
+    .. note::
+       The ``(n_res, n_fracs, n_wells)`` partition is normally set by the
+       engine at construction time -- setting it on the spec is a manual
+       override. ``n_fracs > 0`` is **not yet supported** (FS_UPG / gap
+       subsystem path is pending).
+
+    .. note::
+       Variable-layout overrides (``p_var`` / ``z_var`` / ``u_var`` / ``nc``)
+       let one spec drive either engine. Defaulting them to ``None`` keeps
+       the ``engine_super_elastic_cpu`` convention
+       (``P_VAR = 0, Z_VAR = 1, U_VAR = NE, NC = NE``). For
+       ``engine_pm_cpu`` set them explicitly:
+       ``p_var = 3, u_var = 0, z_var = 255, nc = 1``.
+
+    :param force_amg_asymmetric: workaround for HYPRE BoomerAMG's
+        symmetric-detection heuristic; doubles the first row of each scalar
+        subsystem extraction. Default ``True`` matches the proprietary code.
+    :param n_res: number of reservoir (volumetric) cells in the partition;
+        ``0`` keeps whatever the engine sets later via ``set_block_sizes``.
+    :param n_fracs: number of fracture cells; **must be 0** (FS_UPG pending).
+    :param n_wells: number of well blocks in the partition.
+    :param u_amg_max_iters: U-block BoomerAMG V-cycle budget per FS-CPR apply.
+    :param p_amg_max_iters: PPSS BoomerAMG V-cycle budget per FS-CPR apply.
+    :param p_var: explicit pressure-variable block index; ``None`` ->
+        engine_super_elastic_cpu default (``0``).
+    :param z_var: explicit composition-variable block index; ``None`` ->
+        engine_super_elastic_cpu default (``1``). For engine_pm_cpu pass
+        ``255`` (the "no composition" sentinel).
+    :param u_var: explicit displacement-block start index; ``None`` ->
+        engine_super_elastic_cpu default (``NE``). engine_pm_cpu uses ``0``.
+    :param nc: explicit composition count (``NE - THERMAL``); ``None`` ->
+        engine_super_elastic_cpu default (``NE``). engine_pm_cpu uses ``1``.
+    """
+
+    registry_name: ClassVar[str] = "fs_cpr"
+
+    force_amg_asymmetric: bool = True
+    n_res: int = 0
+    n_fracs: int = 0
+    n_wells: int = 0
+    u_amg_max_iters: int = 1
+    p_amg_max_iters: int = 1
+    p_var: int | None = None
+    z_var: int | None = None
+    u_var: int | None = None
+    nc: int | None = None
+
+    def _make_config(self) -> solvers.FSCPRSolverConfig:
+        config = solvers.FSCPRSolverConfig()
+        config.tolerance = self.tolerance
+        config.max_iterations = self.max_iterations
+        config.force_amg_asymmetric = self.force_amg_asymmetric
+        config.n_res = self.n_res
+        config.n_fracs = self.n_fracs
+        config.n_wells = self.n_wells
+        config.u_amg_max_iters = self.u_amg_max_iters
+        config.p_amg_max_iters = self.p_amg_max_iters
+        # None -> -1 sentinel on the C++ side -> fall back to the
+        # engine_super_elastic_cpu convention default derived from block_size
+        # inside the factory.
+        config.p_var = -1 if self.p_var is None else self.p_var
+        config.z_var = -1 if self.z_var is None else self.z_var
+        config.u_var = -1 if self.u_var is None else self.u_var
+        config.nc = -1 if self.nc is None else self.nc
+        return config
+
+
+@dataclass
 class PythonLinearSolverSpec(LinearSolverSpec):
     """Base spec for the Python-resident solvers (PETSc / Pardiso).
 

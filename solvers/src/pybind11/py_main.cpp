@@ -374,6 +374,27 @@ void bind_unified_solver_api(py::module &m)
         .def_readwrite("amg_max_iters", &cpr_solver_config::amg_max_iters)
         .def_readwrite("ilu_fill_level", &cpr_solver_config::ilu_fill_level);
 
+    // Open-source FS-CPR (poromechanics) preconditioner configuration.
+    py::class_<fs_cpr_solver_config, solver_config>(m, "FSCPRSolverConfig",
+        "Configuration for the open-source FS-CPR (Full-System CPR) 4-block "
+        "poromechanics preconditioner. Sub-preconditioners (HYPRE BoomerAMG "
+        "for both U and PPSS) are created by the factory using these knobs; "
+        "nested spec injection is not yet supported.")
+        .def(py::init<>())
+        .def_readwrite("force_amg_asymmetric", &fs_cpr_solver_config::force_amg_asymmetric)
+        .def_readwrite("n_res",   &fs_cpr_solver_config::n_res)
+        .def_readwrite("n_fracs", &fs_cpr_solver_config::n_fracs)
+        .def_readwrite("n_wells", &fs_cpr_solver_config::n_wells)
+        .def_readwrite("u_amg_max_iters", &fs_cpr_solver_config::u_amg_max_iters)
+        .def_readwrite("p_amg_max_iters", &fs_cpr_solver_config::p_amg_max_iters)
+        // Variable-layout overrides (-1 = use engine_super_elastic_cpu
+        // convention default). engine_pm_cpu wires through p_var/u_var/
+        // z_var/nc explicitly.
+        .def_readwrite("p_var", &fs_cpr_solver_config::p_var)
+        .def_readwrite("z_var", &fs_cpr_solver_config::z_var)
+        .def_readwrite("u_var", &fs_cpr_solver_config::u_var)
+        .def_readwrite("nc",    &fs_cpr_solver_config::nc);
+
     // Unified solver handle returned by create_linear_solver(). Bound once,
     // exposed under two names: "LinearSolver" (new, preferred) and
     // "LinearSolverInterface" (back-compat alias). After the linear_solver /

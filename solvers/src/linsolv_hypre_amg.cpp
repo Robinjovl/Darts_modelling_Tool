@@ -22,12 +22,18 @@
 #include "HYPRE.h"
 #include "HYPRE_parcsr_ls.h"
 #include "HYPRE_parcsr_mv.h"
+#include "HYPRE_utilities.h"
 #include "_hypre_parcsr_mv.h"
 
 #include "data_types.hpp"
 #include "csr_matrix.hpp"
 #include "linsolv_iface.hpp"
 #include "linsolv_hypre_amg.hpp"
+
+extern "C" {
+HYPRE_Int HYPRE_Initialize(void);
+HYPRE_Int HYPRE_Initialized(void);
+}
 
 namespace opendarts
 {
@@ -40,20 +46,52 @@ namespace opendarts
     {
       // Initialize preconditioner (not used in this case, kept for compatibility)
       this->prec = 0;  // no preconditioner for this solver
+
+      // Null-init all HYPRE handles so the destructor can safely skip Destroy
+      // calls when init()/setup() were never reached (or were partially
+      // executed). Together with the null-check in ~linsolv_hypre_amg this
+      // also makes destruction idempotent across pybind11 / interpreter
+      // shutdown orderings.
+      this->solver = nullptr;
+      this->A_ij = nullptr;
+      this->A_parcsr = nullptr;
+      this->b_ij = nullptr;
+      this->b_par = nullptr;
+      this->x_ij = nullptr;
+      this->x_par = nullptr;
     }
 
     template <uint8_t N_BLOCK_SIZE>
     linsolv_hypre_amg<N_BLOCK_SIZE>::~linsolv_hypre_amg()
     {
-      check_result(HYPRE_BoomerAMGDestroy(this->solver));
-
-      check_result(HYPRE_IJMatrixDestroy(this->A_ij));
+      // Null-safe destruction: pybind11 may destroy this wrapper at
+      // interpreter shutdown after HYPRE-side state has already been torn
+      // down (or after sibling Destroy calls), so calling HYPRE_*Destroy on
+      // a stale / null handle is a use-after-free. Check each handle, Destroy
+      // only if non-null, then null it to make any subsequent double-destroy
+      // a no-op as well.
+      if (this->solver != nullptr)
+      {
+        check_result(HYPRE_BoomerAMGDestroy(this->solver));
+        this->solver = nullptr;
+      }
+      if (this->A_ij != nullptr)
+      {
+        check_result(HYPRE_IJMatrixDestroy(this->A_ij));
+        this->A_ij = nullptr;
+      }
       // check_result(HYPRE_ParCSRMatrixDestroy(this->A_parcsr));  // gives error
-
-      check_result(HYPRE_IJVectorDestroy(this->b_ij));
+      if (this->b_ij != nullptr)
+      {
+        check_result(HYPRE_IJVectorDestroy(this->b_ij));
+        this->b_ij = nullptr;
+      }
       // check_result(HYPRE_ParVectorDestroy(this->b_par));  // gives error
-
-      check_result(HYPRE_IJVectorDestroy(this->x_ij));
+      if (this->x_ij != nullptr)
+      {
+        check_result(HYPRE_IJVectorDestroy(this->x_ij));
+        this->x_ij = nullptr;
+      }
       // check_result(HYPRE_ParVectorDestroy(this->x_par));  // gives error
     }
 
@@ -79,6 +117,16 @@ namespace opendarts
       // subsystem from the engine.
       const int print_level = 0;
 
+      // Ensure HYPRE is initialised before any HYPRE_* call. When this
+      // wrapper is used as a sub-prec (e.g. inside FS-CPR) without a prior
+      // CPR call, HYPRE_Initialize would otherwise never have been called and
+      // HYPRE_BoomerAMGCreate / the setters below would fail with HYPRE
+      // "[Generic error]". The engine calls init() before setup(), so the
+      // setup() guard is not sufficient on its own.
+      if (!HYPRE_Initialized())
+        HYPRE_Initialize();
+      HYPRE_ClearAllErrors();
+
       check_result(HYPRE_BoomerAMGCreate(&(this->solver)));
       check_result(HYPRE_BoomerAMGSetPrintLevel(this->solver, print_level));
       check_result(HYPRE_BoomerAMGSetLogging(this->solver, print_level));
@@ -102,6 +150,14 @@ namespace opendarts
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_hypre_amg<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_in)
     {
+      // Ensure HYPRE is initialised; when this wrapper is used as a sub-prec
+      // (e.g. inside FS-CPR) without a prior CPR call, HYPRE_Initialize would
+      // otherwise never have been called and BoomerAMGSetup would fail with
+      // HYPRE "[Generic error]".
+      if (!HYPRE_Initialized())
+        HYPRE_Initialize();
+      HYPRE_ClearAllErrors();
+
       // Store input system matrix
       this->A = A_in;
 
@@ -169,6 +225,14 @@ namespace opendarts
       // Solve the system
       check_result(HYPRE_BoomerAMGSolve(this->solver, this->A_parcsr, this->b_par, this->x_par));
 
+      // CRITICAL: retrieve the solution from HYPRE's internal vector back into
+      // the caller-supplied X buffer. HYPRE_IJVectorSetValues *copies* values
+      // in, so HYPRE_IJVectorGetValues is required to copy them back out --
+      // otherwise X stays at whatever it was on entry (typically zero from a
+      // caller's fill_n), and BoomerAMG appears to produce a no-op preconditioner.
+      // Mirrors the linsolv_cpr pattern (HYPRE_IJVectorGetValues after ILUSolve).
+      check_result(HYPRE_IJVectorGetValues(x_ij, n_rows, rows_data, X));
+
       return 0;
     }
 
@@ -224,6 +288,42 @@ namespace opendarts
       check_result(HYPRE_IJMatrixInitialize(A_ij));
     	check_result(HYPRE_IJMatrixSetValues(A_ij, A.n_rows, this->n_cols_.data(), this->row_indices_.data(), A.get_cols_ind(), A.get_values()));
     	check_result(HYPRE_IJMatrixAssemble(A_ij));
+    }
+
+    template<>
+    void linsolv_hypre_amg<1>::refresh(opendarts::linear_solvers::csr_matrix<1> *A)
+    {
+      // Value-only refresh of the cached IJ matrix. Re-opens the existing
+      // HYPRE IJ matrix via HYPRE_IJMatrixInitialize, pushes new values using
+      // the cached n_cols_ / row_indices_ buffers, re-assembles, and re-fetches
+      // the ParCSR object. Does NOT call HYPRE_BoomerAMGSetup -- the AMG
+      // hierarchy is reused, which is the whole point of this fast path.
+      this->A = A;
+
+      // Defensive: grow the cached [0, n_rows) index buffer if needed.
+      // Normally setup() has already populated it to the right size.
+      if (static_cast<opendarts::config::index_t>(this->row_indices_.size()) < A->n_rows)
+      {
+        const opendarts::config::index_t old_size =
+            static_cast<opendarts::config::index_t>(this->row_indices_.size());
+        this->row_indices_.resize(A->n_rows);
+        std::iota(this->row_indices_.begin() + old_size,
+            this->row_indices_.end(), old_size);
+      }
+
+      // Recompute n_cols_ defensively -- in practice the sparsity pattern is
+      // unchanged between setup() and refresh(), so this is a no-op, but it
+      // guards against the case where the structure shrank/grew.
+      if (static_cast<opendarts::config::index_t>(this->n_cols_.size()) < A->n_rows)
+        this->n_cols_.resize(A->n_rows);
+      for (opendarts::config::index_t row_idx = 0; row_idx < A->n_rows; row_idx++)
+        this->n_cols_[row_idx] = A->rows_ptr[row_idx + 1] - A->rows_ptr[row_idx];
+
+      check_result(HYPRE_IJMatrixInitialize(this->A_ij));
+      check_result(HYPRE_IJMatrixSetValues(this->A_ij, A->n_rows, this->n_cols_.data(),
+          this->row_indices_.data(), A->get_cols_ind(), A->get_values()));
+      check_result(HYPRE_IJMatrixAssemble(this->A_ij));
+      check_result(HYPRE_IJMatrixGetObject(this->A_ij, (void **)&(this->A_parcsr)));
     }
 
     inline void check_result(int res)

@@ -114,6 +114,52 @@ namespace opendarts
       // as a preconditioner stage of CPR; convergence is driven by the outer
       // Krylov, the AMG sweep budget is set by amg_max_iters.
     };
+
+    /** Configuration for the open-source FS-CPR (Full-System CPR) 4-block
+     *  poromechanics preconditioner (linsolv_fs_cpr).
+     *
+     *  FS-CPR is a two-stage poromechanics preconditioner: an HYPRE-BoomerAMG
+     *  correction on the displacement (U) subsystem followed by a second
+     *  correction on the flow / pressure (P or PPSS) subsystem driven via a
+     *  Schur-complement approximation. It is the in-tree replacement for the
+     *  proprietary ``linsolv_bos_fs_cpr``.
+     *
+     *  The sub-preconditioners (HYPRE BoomerAMG for both U and PPSS stages)
+     *  are created internally by the factory using these knobs; nested
+     *  preconditioner spec injection is not yet supported. Block sizes 4..8
+     *  are supported (ND = 3 hard-coded; NE = N_BLOCK_SIZE - 3 in 1..5).
+     *  ``n_fracs > 0`` is NOT YET SUPPORTED (FS_UPG path pending).
+     *
+     *  Variable-layout overrides (``p_var`` / ``z_var`` / ``u_var`` / ``nc``):
+     *  the engine's variable index convention is normally inferred at factory
+     *  time from the assumed ``engine_super_elastic_cpu`` layout
+     *  (``P_VAR = 0, Z_VAR = 1, U_VAR = NE, NC = NE``). Models that drive
+     *  ``engine_pm_cpu`` use a different layout (``U_VAR = 0, P_VAR = 3,
+     *  Z_VAR = 255 sentinel, NC = 1``) and need to override these fields. Any
+     *  field left at the default of ``-1`` falls back to the convention
+     *  default; only fields the model explicitly sets get used.
+     *
+     *  Inherits max_iterations / tolerance / print_level from solver_config.
+     */
+    struct fs_cpr_solver_config : opendarts::linear_solvers::solver_config
+    {
+      bool force_amg_asymmetric = true;          // BoomerAMG symmetric-detection workaround
+      opendarts::config::index_t n_res = 0;      // engine-set partition (can stay 0 here)
+      opendarts::config::index_t n_fracs = 0;    // n_fracs > 0 is currently rejected
+      opendarts::config::index_t n_wells = 0;
+      int u_amg_max_iters = 1;                   // U-block BoomerAMG V-cycle budget (1 = single sweep)
+      int p_amg_max_iters = 1;                   // PPSS BoomerAMG V-cycle budget
+
+      // Variable-index overrides; -1 = "use the engine_super_elastic_cpu
+      // convention default". Set explicitly for engine_pm_cpu (which uses
+      // p_var=3, u_var=0, z_var=255, nc=1). Stored as int because the
+      // engine_pm_cpu Z_VAR sentinel (255) collides with std::uint8_t's
+      // useful unset values.
+      int p_var = -1;
+      int z_var = -1;
+      int u_var = -1;
+      int nc    = -1;
+    };
   } // namespace linear_solvers
 } // namespace opendarts
 

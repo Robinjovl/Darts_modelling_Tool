@@ -93,6 +93,19 @@ namespace opendarts
        *  sparsity pattern is assumed unchanged across calls within a run. */
       virtual int setup(opendarts::linear_solvers::csr_matrix_base *A_input) = 0;
 
+      /** Value-only refresh after the engine has re-assembled the Jacobian
+       *  but the sparsity pattern is unchanged. Solvers that own a HYPRE IJ
+       *  matrix / AMG hierarchy / direct factorisation can override this to
+       *  reuse the structural / hierarchy work and only re-push the new
+       *  values -- significantly cheaper than a full setup() on subsequent
+       *  Newton iterations. The default implementation falls back to
+       *  setup(), so callers can always invoke refresh() safely; only
+       *  solvers with a meaningful fast path override. */
+      virtual int refresh(opendarts::linear_solvers::csr_matrix_base *A_input)
+      {
+        return this->setup(A_input);
+      }
+
       /** Solve A x = B. */
       virtual int solve(opendarts::config::mat_float *B,
           opendarts::config::mat_float *X) = 0;

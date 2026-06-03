@@ -224,6 +224,228 @@ here are the post-closeout cleanups that follow naturally from the audit:
     eliminating the BSR-deprecation warnings (`cusparseDbsrmv`,
     `cusparseDbsrilu02`, `cusparseDbsrsv2`, `cusparseDbsr2csr`) by porting
     to the generic cuSPARSE API.
+* **FS-CPR (Full-System CPR, 4-block poromechanics CPR) -- in-tree port landed structurally; numerical validation pending.**
+  Migration of the proprietary `linsolv_bos_fs_cpr` (1052 LOC at
+  `/oahu/data/avnovikov/darts/darts-linear-solvers/src/linsolv_bos_fs_cpr.cpp`)
+  into the open-source build. Structural work complete:
+
+  - `solvers/include/matrix_slice.hpp` (184 LOC) + `solvers/src/matrix_slice.cpp`
+    (572 LOC) -- port of the `MatrixSlice` / `MatrixRange` machinery plus the
+    8 algorithmic helpers (`init_rows_cols_to_unit_matrix`,
+    `extract_sub_block_to_scalar_csr`, `extract_sub_block_to_block_csr<NE>`,
+    `block_vector_product`, `apply_relaxation<NB>`, `apply_ps_relaxation<NE>`,
+    `set_diag_first<NB>`, `set_diag_in_order<NB>`). Operates on the unified
+    `block_csr_matrix` (NOT the legacy `csr_matrix<N>`). Smoke test at
+    `tests/cpp/unit/linear_solvers/matrix_slice.cpp` (280 LOC, 5 assertions,
+    all pass).
+
+  - `solvers/include/linsolv_fs_cpr.hpp` (252 LOC) + `solvers/src/linsolv_fs_cpr.cpp`
+    (830 LOC) -- the FS-CPR class, derived from `linsolv_iface_bos<N>`,
+    instantiated for N=4..8 (poromech block sizes). FS_UP path only;
+    `n_fracs > 0` (FS_UPG) returns -1 from init() pending follow-up.
+
+  - `linsolv_hypre_amg::refresh(csr_matrix<1>*)` + `linsolv_hypre_ilu::refresh(csr_matrix<1>*)`
+    -- value-only IJ matrix refresh (mirrors `linsolv_cpr::refresh_hypre_ij`)
+    so the FS-CPR sub-prec can skip full `HYPRE_BoomerAMGSetup` between
+    Newton iterations when sparsity is unchanged.
+
+  - `fs_cpr_solver_config` struct + `make_fs_cpr_solver` factory +
+    pybind11 `FSCPRSolverConfig` binding + Python `FSCPRSolverSpec` (in
+    `darts/solvers/specs.py`). Registered with the runtime solver registry
+    under name `"fs_cpr"`.
+
+  - Model migration of `models/1ph_1comp_poroelastic_analytics` and
+    `models/1ph_1comp_poroelastic_convergence`: env switch `FS_CPR=open`
+    sets `data_ts.linear_solver = GMRESSolverSpec(prec=FSCPRSolverSpec(...))`
+    with mesh-derived partition (`n_res = n_matrix + n_fracs`, `n_fracs = 0`,
+    `n_wells = n_blocks - n_res_blocks`). The proprietary `ODLS=-a` path
+    and the SuperLU fallback are preserved unchanged.
+
+  - 4 integration bugs found and fixed during end-to-end validation:
+    (1) `darts/models/darts_model.py:_apply_linear_solver_spec` now prefers
+    `engine.N_VARS` over `physics.n_vars` for the spec's `build(block_size)`
+    call -- required because for mechanics engines `physics.n_vars` (fluid
+    DOFs only) does not equal the engine block size (fluid + ND);
+    (2) added idempotent `HYPRE_Initialize` + `HYPRE_ClearAllErrors` to the
+    top of `linsolv_hypre_amg::setup` AND `linsolv_hypre_amg::init` (same
+    in `linsolv_hypre_ilu`) -- without this the engine's `init()` path
+    aborts before any solve when FS-CPR is the first HYPRE consumer;
+    (3) FS-CPR is now consumed as a preconditioner via
+    `GMRESSolverSpec(prec=FSCPRSolverSpec(...))` rather than as the engine's
+    outer solver (matches the proprietary `bos_gmres + bos_fs_cpr` pattern);
+    (4) `linsolv_fs_cpr::build_subsystem_matrices_` now hard-codes
+    `(max_iters=1, tolerance=0.0)` on the P-stage `HYPRE_BoomerAMG` init()
+    -- previously it forwarded the OUTER GMRES `(5000, 1e-5)` budget, which
+    configured the AMG as a stand-alone iterative solver and produced
+    `HYPRE_ERROR_GENERIC` from `HYPRE_BoomerAMGSolve` on the indefinite
+    Schur subsystem.
+
+  - **Known issue (numerical regression vs SuperLU; FS-CPR alone does not converge).**
+    With all 4 integration fixes applied, the mandel poroelastic case
+    (`models/1ph_1comp_poroelastic_analytics`, mesh `rect` 30x30x1,
+    `engine_super_elastic_cpu`, `N_VARS=4`) reaches the Newton loop
+    cleanly, but every outer GMRES solve runs to the iteration cap
+    (5001 iterations) with relative residual stuck at exactly 1.0 -- i.e.
+    each FS-CPR preconditioner apply produces ~0 useful correction. Newton
+    fails to converge; the SuperLU reference run on the same model
+    completes 5 timesteps cleanly in 1 Newton iter / 1 linear iter per step
+    with final `engine.X` shape `(3600,)`, max `|X|=5.634e+01`. The
+    suspected root causes (in order of likelihood) are:
+      (a) wrong sub-matrix extraction in `build_subsystem_matrices_` (U or P
+          matrix incorrect; the `asymmetric_hack` first-row scaling may be
+          mis-applied);
+      (b) Schur diagonal correction in `approx_schur_complement_`
+          producing incorrect terms (sign error, missing per-row sign-flip
+          via `u_rhs_mults_`, or wrong slice walk);
+      (c) variable-index assumption baked into `make_fs_cpr_solver` --
+          mandel uses `engine_super_elastic_cpu` which matches the assumed
+          `(P_VAR=0, Z_VAR=1, U_VAR=NE=1)` convention for single-phase
+          poroelastic, so this is the least likely culprit;
+      (d) `(n_res, n_fracs, n_wells)` partition mis-injected from the model.
+    Next debugging steps: (i) add HYPRE verbose mode + dump U and P matrices
+    to disk after extraction; (ii) compare against a hand-computed
+    sub-matrix from a 5-cell synthetic mandel; (iii) try
+    `force_amg_asymmetric=False` to rule out the first-row hack; (iv)
+    isolate Schur correction by setting `x_sch_p = 0` and comparing to
+    a pure block-Gauss-Seidel solve.
+
+  - **Cleanup deltas (landed 2026-06-03):**
+    - `FS_UPG` (contact-mechanics / gap subsystem) code paths stripped from
+      `linsolv_fs_cpr.cpp` -- removed -65 LOC of dead branches that were
+      already being skipped by the `n_fracs > 0` early-return in `init()`;
+      the path will be reintroduced as a clean follow-up when the
+      `displaced_fault_reactivation` model is migrated.
+    - `models/SPE10_mech` migrated to the same `FS_CPR=open` env-switch
+      pattern used by the mandel models; the previous hard-coded
+      `sim_params.cpu_gmres_fs_cpr` call now falls back to SuperLU and
+      can opt into the open-source FS-CPR via the env var.
+    - HYPRE shutdown segfault fixed via the null-init + null-guard
+      destructor pattern in `linsolv_hypre_amg` and `linsolv_hypre_ilu`:
+      member HYPRE handles are now zero-initialized in the constructor
+      member-init list, and the destructor null-checks each handle before
+      calling `HYPRE_*Destroy`, so a partially-constructed object (or an
+      already-destroyed HYPRE library) no longer crashes at teardown.
+
+  - **Dual-env validation (2026-06-03) -- open-source FS-CPR diverges; proprietary FS-CPR converges on the same problem.**
+    Same model (`models/1ph_1comp_poroelastic_analytics`, mandel/rect mesh,
+    `mech_discretizer`, 30x30x1 = 900 cells, 3600 DOFs, `N_VARS=4`,
+    `engine_super_elastic_cpu`) run side-by-side in two environments:
+
+    | Env | Solver | Result | Wall | NI/step | LI total | max\|X\| | Notes |
+    | --- | --- | --- | --- | --- | --- | --- | --- |
+    | solvers (open-source) | SuperLU | PASS | 3.59 s | 1 | 883 (20 steps) | 0.9218 | baseline |
+    | solvers (open-source) | FS-CPR, `force_amg_asymmetric=True` | DIVERGES | 180 s (timeout) | -- | 5001/Newton | -- | residual stuck at 1.0e+00; Newton (rp=0.0852, ru=255.66) byte-identical across 10 retries; dt cut repeatedly |
+    | solvers (open-source) | FS-CPR, `force_amg_asymmetric=False` | DIVERGES | 180 s (timeout) | -- | 5001/Newton | -- | byte-identical to `True` variant (flag has zero effect) |
+    | chemistry (proprietary, `ODLS=-a`) | SuperLU | PASS | 1.00 s | 5 | 5 (5 steps) | 11.47 | baseline |
+    | chemistry (proprietary, `ODLS=-a`) | FS-CPR (`bos_fs_cpr`) | PASS | 0.50 s | 5 | 101 (5 steps, avg 20.2/NI) | -- | per-step LI = [33, 23, 18, 14, 13]; residuals 9.8e-11 -> 2.0e-11; 5.4e-8 max abs diff vs SuperLU |
+
+    Diagnosis: the chemistry-env run proves the **FS-CPR algorithm itself
+    converges cleanly on this exact problem** with the proprietary
+    implementation -- same mesh, same physics, same block size, same
+    HYPRE library. The open-source port's failure is therefore in
+    the port's **matrix extraction / Schur correction / variable-layout
+    mapping**, NOT in the algorithm choice, the HYPRE configuration, or
+    the outer GMRES wrapping. Additionally, the `force_amg_asymmetric`
+    flag having zero effect on the open-source path is a separate
+    plumbing bug to verify.
+
+  - **Ranked next debugging steps:**
+    1. (Most likely) **Pressure-block extraction is wrong.** Dump the
+       global Jacobian + the extracted pressure block in the solvers env,
+       compare to the proprietary's pressure block dump for the same
+       Newton iter. A mis-extracted block -> BoomerAMG fits noise ->
+       residual stays at 1.0 exactly as observed.
+    2. **Variable-layout assumption mismatch.** `linsolv_fs_cpr`
+       hard-codes `ND=3` and `make_fs_cpr_solver` assumes
+       `(P_VAR=0, Z_VAR=1, U_VAR=NE, NC=NE)` -- verify this matches
+       `engine_super_elastic_cpu<NC=1, NP=1, THERMAL=false>` with
+       `N_VARS=4` (it should: `NE=1`, `U_VAR=1`).
+    3. **Verify `force_amg_asymmetric` Python -> C++ pipeline.** The flag
+       had no effect on the run; this could indicate either the spec
+       field is not being read in `make_fs_cpr_solver`, or the
+       `linsolv_fs_cpr::set_force_amg_asymmetric` setter is not being
+       called from the factory.
+    4. **Inspect the Schur correction** (`x_sch_p`) -- dump it after
+       `compute`, before being added to the pressure diagonal. If sign
+       or scaling is wrong, the preconditioner is uncorrelated with the
+       operator (which exactly matches the residual=1.0 symptom).
+    5. **Quick diagnostic: swap `linsolv_hypre_amg<1>` for
+       `linsolv_superlu<1>` as the U-prec.** If FS-CPR converges with
+       SuperLU for U, the bug is in the U-AMG configuration; if it still
+       does not converge, the bug is in extraction or Schur.
+
+  - **Variable-layout (engine_pm_cpu) and refresh fast-path lift are
+    deferred until convergence is fixed.** Both are performance / coverage
+    improvements; neither addresses the residual=1.0 regression. Optimizing
+    a broken solver is wasted work, so they are queued behind the
+    extraction / Schur / layout debugging above.
+
+  - **ROOT CAUSE FOUND + FIXED (2026-06-03, same day).** The
+    SuperLU-for-U bisection (compare-agent step #5) ran with instrumented
+    debug prints and produced the smoking gun: `max|P_X| = 0.000e+00` on
+    every solve call, while the U sub-prec returned coherent non-zero
+    `U_X`. The pressure preconditioner (BoomerAMG on the Schur-augmented
+    `PP` matrix) was producing identically-zero output for non-zero input.
+    Root cause: **`linsolv_hypre_amg::solve` and `linsolv_hypre_ilu::solve`
+    were missing the `HYPRE_IJVectorGetValues(x_ij, n_rows, rows, X)` call
+    that retrieves the solution from HYPRE's internal vector back into the
+    caller-supplied `X` buffer.** `HYPRE_IJVectorSetValues` copies values
+    *in* (it does not alias the caller's pointer); without a matching
+    `GetValues` after `HYPRE_BoomerAMGSolve` / `HYPRE_ILUSolve`, `X`
+    silently stays at whatever it was on entry (typically zero, from a
+    caller `fill_n`). The wrapper had appeared to "work" only when used
+    as an outer solver where the engine's GMRES driver supplied its own
+    GetValues elsewhere; as a CPR/FS-CPR inner stage it was a no-op.
+    `linsolv_cpr` has the correct `HYPRE_IJVectorGetValues(ilu_x_ij_, ...)`
+    call after each HYPRE solve -- see `solvers/src/linsolv_cpr.cpp` --
+    so this bug was localized to the standalone wrappers. Fix: one-line
+    `check_result(HYPRE_IJVectorGetValues(x_ij, n_rows, rows_data, X))`
+    immediately before `return 0` in both wrappers' `solve()` methods.
+    Mandel post-fix (solvers env, 20 timesteps): **CONVERGES** in 1 NI/step,
+    470 total LI (avg 23.5 LI/NI), wall 3.62 s, `max|X|=9.218377e-01`
+    matching SuperLU baseline to `max|diff|=8.46e-10` (machine precision).
+    Iteration-count parity with the chemistry-env proprietary FS-CPR
+    (avg 20.2 LI/NI on the same problem -- 5 steps, 101 LI) confirms the
+    open-source port now matches the reference algorithm. The bisection
+    swap (SuperLU for U) has been reverted; both U and P sub-precs are
+    once again `linsolv_hypre_amg<1>` via the `hypre_amg_adapter` shim.
+
+  - **Follow-on items landed 2026-06-03** (after root-cause fix above):
+    - **Variable-layout plumbing (Task C, done).**
+      `fs_cpr_solver_config` gained four new fields -- `p_var`, `z_var`,
+      `u_var`, `nc` -- each defaulting to `-1` ("use convention default").
+      `FSCPRSolverSpec` exposes them as `Optional[int] = None` and maps
+      `None` to `-1` before handing the config to C++.
+      `make_fs_cpr_solver` picks each value: any negative override falls
+      back to the `engine_super_elastic_cpu` convention derived from
+      `block_size` (`P_VAR=0, Z_VAR=1, U_VAR=NE, NC=NE`); positive
+      values are used verbatim. `engine_pm_cpu` users now wire FS-CPR
+      through with `FSCPRSolverSpec(p_var=3, u_var=0, z_var=255, nc=1)`
+      without needing a separate factory entry.
+    - **Refresh fast-path lift (Task E, done).**
+      A `virtual int refresh(csr_matrix_base*)` was added to
+      `linear_solver` (the canonical `linsolv_iface` base) with the
+      default implementation falling through to `setup()`. The
+      `hypre_amg_adapter<N>` shim now overrides that virtual,
+      downcasts the polymorphic matrix back to `csr_matrix<N_BLOCK_SIZE>*`,
+      and forwards to the wrapped `linsolv_hypre_amg<N>::refresh()` --
+      the value-only re-push of the cached IJ matrix that reuses the
+      existing BoomerAMG hierarchy. `linsolv_fs_cpr::refresh_u_prec_` /
+      `refresh_p_prec_` were simplified to a single polymorphic
+      `sub_prec->refresh(matrix)` call (the previous
+      `dynamic_cast<linsolv_hypre_amg<1>*>` always failed because the
+      stored type was the adapter, not the inner wrapper, which is why
+      every Newton iteration was paying for a full
+      `HYPRE_BoomerAMGSetup`). HYPRE-backed sub-precs now use the fast
+      path; non-HYPRE precs (e.g. SuperLU) inherit the default
+      pass-through to `setup()`, so the change is a pure performance
+      improvement with no behavior change.
+
+  - **Remaining (deferred to a separate MR)**:
+    - FS_UPG path (contact-mechanics / gap subsystem) for
+      `displaced_fault_reactivation`.
+    - `u_amg_max_iters` / `p_amg_max_iters` Spec knobs are stored in the
+      config but currently ignored (forward compatibility).
 * **Cleanup**: `solvers/{include,src}/linsolv_iface_adapter.{hpp,cpp}`
   deleted; `han2013.pdf` relocated from the repo root to
   `docs/refs/han2013.pdf`; file modes corrected on `engine_base.cpp`,

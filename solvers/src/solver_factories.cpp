@@ -21,9 +21,13 @@
 #include <stdexcept>
 #include <string>
 
+#include "csr_matrix.hpp"
 #include "linear_solver.hpp"
 #include "linsolv_cpr.hpp"
+#include "linsolv_fs_cpr.hpp"
 #include "linsolv_gmres.hpp"
+#include "linsolv_hypre_amg.hpp"
+#include "linsolv_iface_bos.hpp"
 #include "linsolv_mgr.hpp"
 #include "linsolv_superlu.hpp"
 #include "solver_config.hpp"
@@ -290,6 +294,200 @@ namespace opendarts
           cpr_config = &default_config;
         return build_cpr_for_block_size(block_size, *cpr_config);
       }
+
+      // ---- FS-CPR (4-block poromechanics CPR) -----------------------------
+      //
+      // Two-stage poromechanics CPR: HYPRE BoomerAMG correction on the
+      // displacement (U) subsystem followed by a second BoomerAMG correction
+      // on the flow / pressure (P or PPSS) subsystem driven by a Schur
+      // complement. Sub-preconditioners are created here and injected via
+      // ``set_prec`` -- nested preconditioner spec injection is not yet
+      // supported. Block sizes 4..8 are supported (ND = 3, NE = N - 3).
+      //
+      // Sub-prec adapter: linsolv_hypre_amg<N> intentionally does NOT inherit
+      // from linsolv_iface (it predates the unified interface and wraps HYPRE
+      // directly via typed csr_matrix<N>* entry points -- see comment in
+      // linsolv_hypre_amg.hpp). linsolv_fs_cpr's set_prec(shared_ptr<linsolv_iface>)
+      // therefore needs a thin adapter that surfaces hypre_amg through the
+      // linsolv_iface_bos<N> interface. The adapter owns its wrapped solver
+      // (unique_ptr -- linsolv_fs_cpr stores shared ownership of the adapter,
+      // so the adapter outlives any apply). It forwards init / setup / solve
+      // / refresh to the typed entry points, with the polymorphic
+      // csr_matrix_base downcast already handled by linsolv_iface_bos<N>.
+      //
+      // refresh() forwarding is what gives FS-CPR the HYPRE value-only fast
+      // path on subsequent Newton iterations: linsolv_fs_cpr calls
+      // u_system_preconditioner_->refresh(U_.get()) polymorphically; the
+      // adapter override below downcasts the csr_matrix_base back to
+      // csr_matrix<N>* and forwards to linsolv_hypre_amg<N>::refresh, which
+      // reuses the existing IJ matrix and BoomerAMG hierarchy and only
+      // re-pushes the new values. Without this override the call would hit
+      // linear_solver's default refresh() (full setup()), rebuilding the
+      // AMG hierarchy every Newton iteration.
+      template <std::uint8_t N_BLOCK_SIZE>
+      class hypre_amg_adapter
+          : public opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>
+      {
+       public:
+        hypre_amg_adapter()
+            : inner_(std::make_unique<opendarts::linear_solvers::linsolv_hypre_amg<N_BLOCK_SIZE>>())
+        {
+          // linsolv_iface_bos<N> stores a linear_solver_base* for legacy
+          // callers; we are not one, mirror linsolv_fs_cpr's choice.
+          this->solver = nullptr;
+        }
+
+        int set_prec(opendarts::linear_solvers::linsolv_iface *prec_in) override
+        {
+          return inner_->set_prec(prec_in);
+        }
+
+        // Keep the polymorphic csr_matrix_base overloads from linsolv_iface_bos<N>
+        // visible alongside the typed csr_matrix<N>* overloads we provide.
+        using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::init;
+        using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::setup;
+
+        int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_in,
+            int max_iters, double tolerance) override
+        {
+          return inner_->init(A_in,
+              static_cast<opendarts::config::index_t>(max_iters),
+              static_cast<opendarts::config::mat_float>(tolerance));
+        }
+
+        int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_in) override
+        {
+          return inner_->setup(A_in);
+        }
+
+        // Value-only refresh fast path. The override is on the polymorphic
+        // csr_matrix_base entry point because linsolv_fs_cpr calls
+        // u_system_preconditioner_->refresh(U_.get()) through the
+        // linear_solver base; the U_ / P_scalar_ matrices come back to us as
+        // csr_matrix_base* even though they are concretely csr_matrix<N>*.
+        int refresh(opendarts::linear_solvers::csr_matrix_base *A_in) override
+        {
+          auto *A_typed = dynamic_cast<
+              opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_in);
+          if (A_typed == nullptr)
+          {
+            // Pathological -- caller handed us something that isn't a
+            // csr_matrix<N_BLOCK_SIZE>. Fall back to a full setup() so the
+            // result is still correct; this matches linear_solver's default.
+            return this->setup(A_in);
+          }
+          inner_->refresh(A_typed);
+          return 0;
+        }
+
+        int solve(opendarts::config::mat_float *B,
+            opendarts::config::mat_float *X) override
+        {
+          return inner_->solve(B, X);
+        }
+
+        int get_n_iters() override
+        {
+          return static_cast<int>(inner_->get_n_iters());
+        }
+
+        opendarts::config::mat_float get_residual() override
+        {
+          return inner_->get_residual();
+        }
+
+       private:
+        std::unique_ptr<opendarts::linear_solvers::linsolv_hypre_amg<N_BLOCK_SIZE>> inner_;
+      };
+
+      template <std::uint8_t N_BLOCK_SIZE>
+      solver_handle build_fs_cpr(
+          const opendarts::linear_solvers::fs_cpr_solver_config &config,
+          std::uint8_t P_VAR, std::uint8_t Z_VAR,
+          std::uint8_t U_VAR, std::uint8_t NC)
+      {
+        // Default sub-preconditioners: linsolv_hypre_amg<1> for both U and
+        // PPSS stages, exposed through the linsolv_iface_bos<1> adapter above.
+        // Each is created with a single V-cycle budget (preconditioner mode
+        // -- tolerance is irrelevant); linsolv_fs_cpr drives init/setup/solve
+        // through its private p_/u_system_preconditioner_ handles.
+        // The per-stage V-cycle budgets (u_amg_max_iters / p_amg_max_iters)
+        // are honoured by linsolv_fs_cpr through the (max_iters, tolerance)
+        // it forwards into prec->init(); the spec values are stored on the
+        // config for future wiring and currently unused (linsolv_fs_cpr
+        // hard-codes 1 sweep for the U stage and forwards the outer
+        // max_iters for the P stage -- see build_subsystem_matrices_).
+        (void) config;
+        // Default U/P sub-precs: BoomerAMG via the hypre_amg_adapter shim.
+        // The bisection-diagnostic SuperLU-for-U swap that lived here while
+        // we were tracking down the divergence has been reverted -- root
+        // cause was a missing HYPRE_IJVectorGetValues call in
+        // linsolv_hypre_amg::solve (and matching in linsolv_hypre_ilu),
+        // which made the wrapper appear to return identically-zero solutions.
+        auto u_prec = std::make_shared<hypre_amg_adapter<1>>();
+        auto p_prec = std::make_shared<hypre_amg_adapter<1>>();
+
+        auto solver = std::make_shared<opendarts::linear_solvers::linsolv_fs_cpr<N_BLOCK_SIZE>>(
+            P_VAR, Z_VAR, U_VAR, NC);
+        solver->set_force_amg_asymmetric(config.force_amg_asymmetric);
+        solver->set_block_sizes(config.n_res, config.n_fracs, config.n_wells);
+        // 2-arg set_prec; G-prec is not used in the FS_UP path.
+        solver->set_prec(p_prec, u_prec);
+        return solver;
+      }
+
+      solver_handle build_fs_cpr_for_block_size(int block_size,
+          const opendarts::linear_solvers::fs_cpr_solver_config &config,
+          std::uint8_t P_VAR, std::uint8_t Z_VAR,
+          std::uint8_t U_VAR, std::uint8_t NC)
+      {
+        switch (block_size)
+        {
+          case 4: return build_fs_cpr<4>(config, P_VAR, Z_VAR, U_VAR, NC);
+          case 5: return build_fs_cpr<5>(config, P_VAR, Z_VAR, U_VAR, NC);
+          case 6: return build_fs_cpr<6>(config, P_VAR, Z_VAR, U_VAR, NC);
+          case 7: return build_fs_cpr<7>(config, P_VAR, Z_VAR, U_VAR, NC);
+          case 8: return build_fs_cpr<8>(config, P_VAR, Z_VAR, U_VAR, NC);
+          default:
+            throw std::runtime_error("FS-CPR solver: unsupported block size " +
+                std::to_string(block_size) + " (supported: 4..8)");
+        }
+      }
+
+      // Factory registered under the name "fs_cpr".
+      //
+      // The variable-index info (P_VAR, Z_VAR, U_VAR, NC) is supplied
+      // through the fs_cpr_solver_config overrides; any field left at -1
+      // falls back to the engine_super_elastic_cpu convention default
+      // derived from block_size: ND = 3, P_VAR = 0, Z_VAR = 1,
+      // U_VAR = NE, NC = NE (NE = block_size - 3, no THERMAL).
+      // engine_pm_cpu users override with p_var=3, u_var=0, z_var=255 and
+      // nc=1.
+      solver_handle make_fs_cpr_solver(
+          const opendarts::linear_solvers::solver_config &config, int block_size)
+      {
+        const opendarts::linear_solvers::fs_cpr_solver_config default_config;
+        const opendarts::linear_solvers::fs_cpr_solver_config *fs_config =
+            dynamic_cast<const opendarts::linear_solvers::fs_cpr_solver_config *>(&config);
+        if (fs_config == nullptr)
+          fs_config = &default_config;
+        const std::uint8_t ND = 3;
+        const std::uint8_t NE = static_cast<std::uint8_t>(block_size - ND);
+        // Default to engine_super_elastic_cpu convention; an explicit
+        // (non-negative) override on the config wins.
+        auto pick = [](int override_value, std::uint8_t convention_default)
+        {
+          return override_value < 0
+                     ? convention_default
+                     : static_cast<std::uint8_t>(override_value);
+        };
+        const std::uint8_t P_VAR = pick(fs_config->p_var, 0);
+        const std::uint8_t Z_VAR = pick(fs_config->z_var, 1);
+        const std::uint8_t U_VAR = pick(fs_config->u_var, NE);
+        const std::uint8_t NC    = pick(fs_config->nc, NE);
+        return build_fs_cpr_for_block_size(block_size, *fs_config,
+            P_VAR, Z_VAR, U_VAR, NC);
+      }
     } // anonymous namespace
 
     void register_builtin_solvers()
@@ -300,6 +498,7 @@ namespace opendarts
       register_solver("superlu", make_superlu_solver);
       register_solver("gmres", make_gmres_solver);
       register_solver("cpr", make_cpr_solver);
+      register_solver("fs_cpr", make_fs_cpr_solver);
     }
   } // namespace linear_solvers
 } // namespace opendarts

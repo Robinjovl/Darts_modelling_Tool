@@ -55,6 +55,13 @@ namespace opendarts
 
       int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_in);
 
+      // Value-only refresh of the cached IJ matrix without rebuilding the AMG
+      // hierarchy / ILU factorization. Call this on Newton iterations where
+      // the sparsity pattern is unchanged but matrix values have been refreshed
+      // -- significantly cheaper than setup() because the AMG hierarchy / ILU
+      // factorization is reused.
+      void refresh(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A);
+
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X);
 
       opendarts::config::index_t get_n_iters ();

@@ -115,7 +115,8 @@ namespace opendarts
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_superlu<N_BLOCK_SIZE>::setup(opendarts::linear_solvers::csr_matrix_base *A_update)
     {
-      this->timer_setup->node["SUPERLU"].start();
+      if (this->timer_setup)
+        this->timer_setup->node["SUPERLU"].start();
 
       this->A_base = A_update;
       this->A = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_update);
@@ -147,7 +148,8 @@ namespace opendarts
               opendarts::linear_solvers::scalar_csr_adapter>(*A_block);
       }
 
-      this->timer_setup->node["SUPERLU"].stop();
+      if (this->timer_setup)
+        this->timer_setup->node["SUPERLU"].stop();
       return 0;
     };
 
@@ -237,7 +239,8 @@ namespace opendarts
 
       dCreate_CompCol_Matrix(&A_superlu, n_scalar_rows, n_scalar_cols, n_scalar_nnz,
           vals_ptr, cols_ptr, rows_ptr, SLU_NR, SLU_D, SLU_GE);
-      this->timer_solve->node["SUPERLU"].start();
+      if (this->timer_solve)
+        this->timer_solve->node["SUPERLU"].start();
 
 #ifdef SLU_SIMPLE
       memcpy(X, B, A_superlu.nrow * sizeof(opendarts::config::mat_float));
@@ -266,7 +269,8 @@ namespace opendarts
       Destroy_SuperMatrix_Store(&X_superlu);
 #endif // SLU_SIMPLE
 
-      this->timer_solve->node["SUPERLU"].stop();
+      if (this->timer_solve)
+        this->timer_solve->node["SUPERLU"].stop();
 
       Destroy_SuperMatrix_Store(&B_superlu);
 

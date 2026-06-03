@@ -267,19 +267,24 @@ class DartsModel:
         # Reset adaptive-switching state whenever the solver is (re)built.
         self._adaptive_solver_index = 0
         self._adaptive_failures = 0
+        # Prefer the engine's block size for mechanics engines (N_VARS includes
+        # displacement DOFs which physics.n_vars does NOT count).
+        engine = getattr(self.physics, 'engine', None)
+        if engine is not None and hasattr(engine, 'N_VARS'):
+            block_size = engine.N_VARS
+        else:
+            block_size = self.physics.n_vars
         if isinstance(spec, PythonLinearSolverSpec):
             # PETSc / Pardiso run in the Python process and are owned by the
             # model (invoked from _solve_linear_equation). The engine still
             # needs a C++ solver to satisfy engine.init(); inject the CPU
             # default -- it is constructed but never used at solve time.
-            self._python_solver = spec.build(self.physics.n_vars)
-            self._linear_solver = default_linear_solver("cpu").build(
-                self.physics.n_vars
-            )
+            self._python_solver = spec.build(block_size)
+            self._linear_solver = default_linear_solver("cpu").build(block_size)
         else:
             # Engine-resident solver: keep a reference so it outlives the
             # engine that uses it.
-            self._linear_solver = spec.build(self.physics.n_vars)
+            self._linear_solver = spec.build(block_size)
         self.physics.engine.set_linear_solver(self._linear_solver)
 
     def _maybe_switch_linear_solver(self, timestep_converged: bool):
@@ -312,7 +317,13 @@ class DartsModel:
         new_index = spec.choose(context)
         if new_index != current_index:
             self._adaptive_solver_index = new_index
-            self._linear_solver = spec.candidates[new_index].build(self.physics.n_vars)
+            # Prefer the engine's block size for mechanics engines (N_VARS
+            # includes displacement DOFs which physics.n_vars does NOT count).
+            if hasattr(engine, 'N_VARS'):
+                block_size = engine.N_VARS
+            else:
+                block_size = self.physics.n_vars
+            self._linear_solver = spec.candidates[new_index].build(block_size)
             engine.set_linear_solver(self._linear_solver)
             print(
                 f"[adaptive solver] switched to candidate {new_index}: "
