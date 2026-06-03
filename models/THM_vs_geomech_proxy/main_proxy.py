@@ -1173,8 +1173,8 @@ if __name__ == '__main__':
 
     print('timestep_list for proxy :', timestep_list)
 
-    run_thm = True  # runs THM first, then Proxy
-    #run_thm = False # don't recompute THM (use vtk files from its previous run)
+    #run_thm = True  # runs THM first, then Proxy
+    run_thm = False # don't recompute THM (use vtk files from its previous run)
 
     generate_mesh=False # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
     #generate_mesh=True
@@ -1213,7 +1213,6 @@ if __name__ == '__main__':
                 thm_time = t2 - t1
 
                 # run geomech proxy
-                proxy_time = []
                 if 'plot_horiz_line' in modes:
                     # combined delta_pressure along X (Y=0, Z=2200) over all timesteps
                     plot_delta_pressure_along_x(case=case, physics_type=physics_type,
@@ -1227,8 +1226,8 @@ if __name__ == '__main__':
                                       timestep=timestep, n_threads=n_threads, use_gpu=use_gpu,
                                       read_from_cache=read_from_cache)
                     t2 = datetime.now()
-                    proxy_time += [t2 - t1]
+                    proxy_time = t2 - t1
 
                 print('case', case, physics_type, wells_type, 'done')
                 print('THM   time', thm_time)
-                print('proxy time', proxy_time)
+                print('proxy time', proxy_time) # counts only the last timestep

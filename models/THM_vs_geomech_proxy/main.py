@@ -265,17 +265,17 @@ if __name__ == '__main__':
 
     # nx ny nz
     #mesh='17_17_15'  # for debugging
-    #mesh='41_41_66'
+    mesh='41_41_66'
     #mesh='71_71_66'
-    mesh='83_83_90'  # for isothermal (single well)
+    #mesh='83_83_90'  # for isothermal (single well)
     #mesh='97_97_90'# for thermal (doublet)
     #mesh='71_1_66'  # 1 layer by Y; it is not correct to use this as it corresponds to plane-strain solution
 
     #generate_mesh=True
     generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
 
-    thermal = False
-    #thermal = True
+    #thermal = False
+    thermal = True
 
     if not thermal:
         physics_type = 'single_phase'
