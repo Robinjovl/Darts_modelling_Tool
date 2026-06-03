@@ -176,7 +176,7 @@ def plot_delta_pressure_along_x(case, physics_type, wells_type, timesteps,
         points_z = np.full_like(points_x, z)
         # interpolate delta_pressure [MPa] from cell centers (X,Y,Z) onto the line points
         dp_line = gd((thm_sol.centroids[:, 1], thm_sol.centroids[:, 0], thm_sol.centroids[:, 2]),
-                     thm_sol.delta_pressure, (points_x, points_y, points_z), method='nearest')
+                     thm_sol.delta_pressure, (points_x, points_y, points_z), method='linear')
         label = f't = {ts * report_step / 365.25:.3g} years' if report_step is not None else f'timestep {ts}'
         ax.plot(points_x, dp_line, label=label)
 
