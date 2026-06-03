@@ -1,4 +1,5 @@
-"""Export open-DARTS simulation data for PhysicsNeMo reservoir surrogates.
+"""
+Export open-DARTS simulation data for PhysicsNeMo reservoir surrogates.
 
 The exporter writes a compact HDF5 file that the PhysicsNeMo XMeshGraphNet
 prototype can convert into PyTorch Geometric graphs. It is intentionally
@@ -25,29 +26,34 @@ def export_physicsnemo_hdf5(
     extra_static_cell_data: dict[str, Any] | None = None,
     include_properties: bool = True,
 ) -> Path:
-    """Export an initialized open-DARTS model to PhysicsNeMo-ready HDF5.
+    """
+    Export an initialized open-DARTS model to a PhysicsNeMo-ready HDF5 file.
 
-    Parameters
-    ----------
-    model
-        Initialized ``DartsModel`` instance. The reservoir mesh must exist.
-    output_path
-        Destination HDF5 path. Defaults to ``<output_folder>/physicsnemo_export.h5``.
-    reservoir_h5_path
-        Existing open-DARTS reservoir solution HDF5. Defaults to
-        ``model.output.sol_filepath`` when available.
-    case_name
-        Optional case name stored as metadata.
-    extra_static_cell_data
-        Additional per-cell arrays to store under ``/static``.
-    include_properties
-        If True, copy the existing ``/properties`` group when present in the
-        open-DARTS reservoir solution file.
+    The export includes static reservoir features, graph connectivity, well
+    completion metadata, and dynamic state arrays copied from the reservoir
+    output file or read from the current engine state.
 
-    Returns
-    -------
-    pathlib.Path
-        Path to the exported HDF5 file.
+    :param model: Initialized ``DartsModel``-like object with
+        ``model.reservoir.mesh`` available.
+    :type model: Any
+    :param output_path: Destination HDF5 path. Defaults to
+        ``<output_folder>/physicsnemo_export.h5``.
+    :type output_path: str | Path | None
+    :param reservoir_h5_path: Existing open-DARTS reservoir solution HDF5 file.
+        Defaults to ``model.output.sol_filepath`` when available.
+    :type reservoir_h5_path: str | Path | None
+    :param case_name: Optional case name stored as file metadata.
+    :type case_name: str | None
+    :param extra_static_cell_data: Additional per-cell arrays to store under
+        ``/static``.
+    :type extra_static_cell_data: dict[str, Any] | None
+    :param include_properties: Copy the existing ``/properties`` group from the
+        source reservoir solution file when it is present.
+    :type include_properties: bool
+    :return: Path to the exported HDF5 file.
+    :rtype: Path
+    :raises ValueError: If the model has no reservoir mesh or the export path
+        matches the source reservoir HDF5 path.
     """
 
     reservoir = getattr(model, "reservoir", None)
@@ -95,11 +101,21 @@ def export_physicsnemo_hdf5(
 
 
 def validate_physicsnemo_hdf5(path: str | Path) -> dict[str, Any]:
-    """Validate an exported open-DARTS/PhysicsNeMo HDF5 file.
+    """
+    Validate an exported open-DARTS/PhysicsNeMo HDF5 file.
 
     The validator checks the structural contract consumed by the PhysicsNeMo
-    OpenDARTS graph builder. It raises ``ValueError`` on schema problems and
-    returns a compact summary on success.
+    OpenDARTS graph builder, including required datasets and shape consistency
+    between static cell data, graph edges, times, and dynamic state arrays.
+
+    :param path: Exported HDF5 file to validate.
+    :type path: str | Path
+    :return: Summary with file path, case name, dimensions, edge count, and
+        dynamic variable names.
+    :rtype: dict[str, Any]
+    :raises FileNotFoundError: If the export file does not exist.
+    :raises ValueError: If required datasets are missing or internally
+        inconsistent.
     """
 
     path = Path(path)
@@ -491,6 +507,13 @@ def _write_dataset(
 
 
 def _main() -> int:
+    """
+    Run the command-line validation helper.
+
+    :return: Process exit code.
+    :rtype: int
+    """
+
     import argparse
     import json
 

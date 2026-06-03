@@ -1,4 +1,5 @@
-"""Generate an open-DARTS dataset for the PhysicsNeMo XMGN adapter.
+"""
+Generate an open-DARTS dataset for the PhysicsNeMo XMGN adapter.
 
 This is an end-to-end plumbing script for the 1D two-phase dead-oil example. It
 runs a few short open-DARTS rollouts, saves reservoir HDF5 snapshots, and exports
@@ -17,15 +18,29 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from darts.engines import redirect_darts_output, set_gpu_device
+from model import Model
+
 from darts.tools.physicsnemo_export import (
     export_physicsnemo_hdf5,
     validate_physicsnemo_hdf5,
 )
-from darts.engines import redirect_darts_output, set_gpu_device
-from model import Model
 
 
 def _case_multiplier(case_idx: int, num_cases: int, perturbation: float) -> float:
+    """
+    Compute a symmetric multiplicative perturbation for one case.
+
+    :param case_idx: Zero-based case index.
+    :type case_idx: int
+    :param num_cases: Total number of generated cases.
+    :type num_cases: int
+    :param perturbation: Relative perturbation applied at the sweep endpoints.
+    :type perturbation: float
+    :return: Multiplicative factor for the selected case.
+    :rtype: float
+    """
+
     if num_cases <= 1 or perturbation == 0.0:
         return 1.0
     midpoint = 0.5 * (num_cases - 1)
@@ -34,6 +49,19 @@ def _case_multiplier(case_idx: int, num_cases: int, perturbation: float) -> floa
 
 
 def _smooth_case_profile(nx: int, case_idx: int, seed: int) -> np.ndarray:
+    """
+    Build a deterministic smooth random profile over the 1D grid.
+
+    :param nx: Number of reservoir cells.
+    :type nx: int
+    :param case_idx: Zero-based case index used to offset the random seed.
+    :type case_idx: int
+    :param seed: Base random seed for reproducible profile generation.
+    :type seed: int
+    :return: Normalized profile with zero mean and unit variance.
+    :rtype: np.ndarray
+    """
+
     rng = np.random.default_rng(seed + case_idx)
     x = np.linspace(0.0, 1.0, nx, dtype=np.float64)
     phase_a = rng.uniform(0.0, 2.0 * np.pi)
@@ -55,6 +83,27 @@ def _case_arrays(
     base_poro: float,
     poro_variation: float,
 ) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Create permeability and porosity arrays for one generated case.
+
+    :param nx: Number of reservoir cells.
+    :type nx: int
+    :param case_idx: Zero-based case index.
+    :type case_idx: int
+    :param seed: Base random seed for deterministic heterogeneity.
+    :type seed: int
+    :param base_perm: Base permeability before lognormal perturbation.
+    :type base_perm: float
+    :param log_perm_std: Standard deviation of the log-permeability multiplier.
+    :type log_perm_std: float
+    :param base_poro: Base porosity before spatial perturbation.
+    :type base_poro: float
+    :param poro_variation: Relative porosity variation applied by the profile.
+    :type poro_variation: float
+    :return: Permeability and porosity arrays for the case.
+    :rtype: tuple[np.ndarray, np.ndarray]
+    """
+
     profile = _smooth_case_profile(nx, case_idx, seed)
     permx = base_perm * np.exp(log_perm_std * profile)
     poro = np.clip(base_poro * (1.0 + poro_variation * profile), 0.05, 0.45)
@@ -69,6 +118,25 @@ def _static_control_features(
     initial_pressure: float,
     initial_water: float,
 ) -> dict[str, np.ndarray]:
+    """
+    Create per-cell static arrays for controls and initial conditions.
+
+    :param nx: Number of reservoir cells.
+    :type nx: int
+    :param inj_rate: Injector molar-rate target.
+    :type inj_rate: float
+    :param prd_bhp: Producer bottom-hole pressure target.
+    :type prd_bhp: float
+    :param inj_bhp_limit: Injector bottom-hole pressure constraint.
+    :type inj_bhp_limit: float
+    :param initial_pressure: Initial reservoir pressure.
+    :type initial_pressure: float
+    :param initial_water: Initial first-component composition.
+    :type initial_water: float
+    :return: Mapping from static feature names to per-cell arrays.
+    :rtype: dict[str, np.ndarray]
+    """
+
     well_role = np.zeros(nx, dtype=np.float64)
     inj_rate_target = np.zeros(nx, dtype=np.float64)
     prd_bhp_target = np.zeros(nx, dtype=np.float64)
@@ -108,6 +176,47 @@ def _run_case(
     platform: str,
     gpu_device: int,
 ) -> dict:
+    """
+    Run one open-DARTS case and export its validated PhysicsNeMo HDF5 file.
+
+    :param case_name: Name used for the run folder and exported HDF5 file.
+    :type case_name: str
+    :param output_root: Directory where raw open-DARTS run folders are written.
+    :type output_root: Path
+    :param export_dir: Directory where PhysicsNeMo HDF5 files are written.
+    :type export_dir: Path
+    :param report_steps: Number of report intervals to simulate and save.
+    :type report_steps: int
+    :param days_per_report_step: Simulation days advanced per report interval.
+    :type days_per_report_step: float
+    :param nx: Number of reservoir cells.
+    :type nx: int
+    :param inj_rate: Injector molar-rate target.
+    :type inj_rate: float
+    :param prd_bhp: Producer bottom-hole pressure target.
+    :type prd_bhp: float
+    :param inj_bhp_limit: Injector bottom-hole pressure constraint.
+    :type inj_bhp_limit: float
+    :param max_ts: Maximum open-DARTS timestep in days.
+    :type max_ts: float
+    :param permx: Per-cell x-direction permeability.
+    :type permx: np.ndarray
+    :param poro: Per-cell porosity.
+    :type poro: np.ndarray
+    :param initial_pressure: Initial reservoir pressure.
+    :type initial_pressure: float
+    :param initial_water: Initial first-component composition.
+    :type initial_water: float
+    :param platform: open-DARTS execution platform, either ``"cpu"`` or
+        ``"gpu"``.
+    :type platform: str
+    :param gpu_device: Visible GPU device index used when ``platform`` is
+        ``"gpu"``.
+    :type gpu_device: int
+    :return: Validation summary for the exported HDF5 file.
+    :rtype: dict
+    """
+
     run_dir = output_root / case_name
     run_dir.mkdir(parents=True, exist_ok=True)
     redirect_darts_output(str(run_dir / "run.log"))
@@ -156,6 +265,13 @@ def _run_case(
 
 
 def main() -> int:
+    """
+    Parse command-line options and generate the requested export cases.
+
+    :return: Process exit code.
+    :rtype: int
+    """
+
     parser = argparse.ArgumentParser(
         description="Run 2ph_do and export an OpenDARTS PhysicsNeMo dataset."
     )
