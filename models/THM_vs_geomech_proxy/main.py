@@ -116,7 +116,8 @@ def run_timestep_python(m, dt, t):
     return converged
 
 def run(model_folder, physics_type, uniform_props=False, wells_type=None,
-        decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[]):
+        decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[],
+        clear_output_dir=False):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -157,7 +158,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     # Properties for writing to vtk format:
     m.output_directory = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
 
-    if os.path.exists(m.output_directory):
+    if clear_output_dir and os.path.exists(m.output_directory):
         try:
             shutil.rmtree(m.output_directory)
         except:
@@ -190,6 +191,17 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
+    # Set up darts output to evaluate secondary properties (e.g. viscosity) from the
+    # primary variables via the property interpolator. all_phase_props=True registers the
+    # phase properties (incl. 'mu_<phase>') in output.properties and builds property_itor.
+    # THMCModel.init() does not set some attributes that DartsModel.init() sets but which
+    # set_output() reads (self.restart, self.has_dfm_well), so set them explicitly here.
+    m.restart = False
+    from darts.engines import ms_well
+    m.has_dfm_well = any(well.ms_type == ms_well.MS_Type.DFM for well in m.reservoir.wells)
+    m.set_output(output_folder=m.output_directory, all_phase_props=True, save_initial=False)
+    visc_key = f'mu_{m.physics.phases[0]}'  # state-dependent viscosity property key, e.g. 'mu_wat'
+
     m.timer.node["run_python"] = timer_node()
     m.timer.node["run_python"].start()
 
@@ -200,7 +212,13 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     t_wall_tsteps_start = time.time()
     while m.physics.engine.t < sim_time:
         run_python(m=m, days=report_step)
-        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
+        # compute state-dependent viscosity [cP] from the current engine state (primary vars).
+        # engine=True evaluates the property interpolator at the live engine.X; the returned
+        # array is shaped (n_timesteps=1, n_res_blocks), so [0] picks the single current step.
+        # It is indexed by reservoir block id, which matches the cell_ids used in write_to_vtk.
+        _, prop_arr = m.output.output_properties(output_properties=[visc_key], engine=True)
+        viscosity = prop_arr[visc_key][0]
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine, viscosity=viscosity)
         ith_step += 1
         m.time_steps.append(m.physics.engine.t)
         data.append(m.get_performance_data(is_last_ts=(m.physics.engine.t >= sim_time)))
@@ -249,15 +267,15 @@ if __name__ == '__main__':
     #mesh='17_17_15'  # for debugging
     #mesh='41_41_66'
     #mesh='71_71_66'
-    #mesh='83_83_90'  # for isothermal (single well)
-    mesh='97_97_90'# for thermal (doublet)
+    mesh='83_83_90'  # for isothermal (single well)
+    #mesh='97_97_90'# for thermal (doublet)
     #mesh='71_1_66'  # 1 layer by Y; it is not correct to use this as it corresponds to plane-strain solution
 
     #generate_mesh=True
     generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
 
-    #thermal = False
-    thermal = True
+    thermal = False
+    #thermal = True
 
     if not thermal:
         physics_type = 'single_phase'

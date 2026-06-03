@@ -212,13 +212,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.discr.heat_conductions.append(disc_matrix33(idata.rock.thermal_conductivity))
                 self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn))#[cell_id]))
 
-    def write_to_vtk(self, output_directory, ith_step, engine):
+    def write_to_vtk(self, output_directory, ith_step, engine, viscosity=None):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
         :param property_array: np.array containing all cell properties (N_cells x N_prop)
         :param cell_property: list with property names (visible in ParaView (format strings)
         :param ith_step: integer containing the output step
+        :param viscosity: optional per-(reservoir-block) viscosity array [cP] computed from the
+                          current state via darts output property interpolator. If None, the
+                          constant idata.fluid.viscosity is written instead.
         :return:
         """
         # First check if output directory already exists:
@@ -310,7 +313,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     cell_data['E'].append(np.zeros(len(cell_ids), dtype=np.float64))
                     cell_data['poisson'].append(np.zeros(len(cell_ids), dtype=np.float64))
                     cell_data['poro'].append(np.array(self.mesh.poro, copy=False)[:self.n_matrix])
-                    cell_data['viscosity'] = [np.full(len(cell_ids), self.idata.fluid.viscosity)]
+                    if 'viscosity' not in cell_data: cell_data['viscosity'] = []
+                    if viscosity is not None:
+                        # state-dependent viscosity computed via darts output property interpolator;
+                        # 'viscosity' is per reservoir block, so index it by cell_ids to align with
+                        # this geometry group's cells (same indexing as pressure/temperature above).
+                        cell_data['viscosity'].append(np.asarray(viscosity)[cell_ids])
+                    else:
+                        # fallback for the initial frame (written by THMCModel.reinit before the
+                        # output property interpolator exists): constant fluid viscosity.
+                        cell_data['viscosity'].append(np.full(len(cell_ids), self.idata.fluid.viscosity))
                     for i, cell_id in enumerate(cell_ids):
                         cell_data['perm'][-1][i] = np.array(self.discr.perms[cell_id].values)
                         stf = np.array(self.discr.stfs[cell_id].values)

@@ -130,6 +130,69 @@ def read_thm_solution_from_vtk(m, folder : str, timestep: int):
     thm_sol.rsv_centroids = centroids[rsv, :]
     return thm_sol
 
+def plot_delta_pressure_along_x(case, physics_type, wells_type, timesteps,
+                                y=0.0, z=2200.0, x_range=None, n_points=200,
+                                report_step=None, output_folder=None, generate_mesh=False):
+    """Plot THM delta_pressure [MPa] along the X axis at fixed Y, Z, overlaying several timesteps.
+
+    Reads the THM solution vtk for each timestep, interpolates delta_pressure from the cell
+    centers onto a line of points running along X (at the given Y and Z), and draws all
+    timesteps on a single combined figure.
+
+    :param case: mesh case name, e.g. '41_41_66'
+    :param physics_type: 'single_phase' or 'single_phase_thermal'
+    :param wells_type: 'inj', 'prod', 'doublet', ...
+    :param timesteps: list of vtk timestep indices to overlay
+    :param y, z: fixed coordinates [m] of the line; it runs along X (defaults Y=0, Z=2200)
+    :param x_range: optional (x_min, x_max) [m]; defaults to the THM centroid X-extent
+    :param n_points: number of sample points along X
+    :param report_step: optional [days] per vtk step; if given, legend labels show time in years
+    :param output_folder: where to save the png; defaults to <results folder>/plots_delta_pressure_x
+    :param generate_mesh: passed to Model (kept False to reuse an existing mesh)
+    """
+    folder = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + case)
+
+    # lightweight model just to provide idata (rsv filtering etc.) to the vtk reader
+    from model import Model
+    m = Model(model_folder=case, physics_type=physics_type, uniform_props=False,
+              wells_type=wells_type, decouple_geomech=True, generate_mesh=generate_mesh,
+              dummy='yes')
+    m.set_input_data()
+
+    if output_folder is None:
+        output_folder = os.path.join(folder, 'plots_delta_pressure_x')
+    os.makedirs(output_folder, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for ts in timesteps:
+        thm_sol = read_thm_solution_from_vtk(m, folder=folder, timestep=ts)
+        # sample points along X at fixed Y, Z
+        if x_range is None:
+            x_min, x_max = thm_sol.centroids[:, 1].min(), thm_sol.centroids[:, 1].max()
+        else:
+            x_min, x_max = x_range
+        points_x = np.linspace(x_min, x_max, n_points)
+        points_y = np.full_like(points_x, y)
+        points_z = np.full_like(points_x, z)
+        # interpolate delta_pressure [MPa] from cell centers (X,Y,Z) onto the line points
+        dp_line = gd((thm_sol.centroids[:, 1], thm_sol.centroids[:, 0], thm_sol.centroids[:, 2]),
+                     thm_sol.delta_pressure, (points_x, points_y, points_z), method='nearest')
+        label = f't = {ts * report_step / 365.25:.3g} years' if report_step is not None else f'timestep {ts}'
+        ax.plot(points_x, dp_line, label=label)
+
+    ax.set_xlabel('X, m.')
+    ax.set_ylabel('Pressure change, MPa.')
+    ax.set_title(f'Pressure change along X (Y={y:g}, Z={z:g})')
+    ax.legend(fontsize=8)
+    ax.minorticks_on()
+    ax.grid(which='major', linestyle='-', linewidth=0.8)
+    ax.grid(which='minor', linestyle=':', linewidth=0.5)
+    fig.tight_layout()
+    out = os.path.join(output_folder, 'delta_pressure_along_x.png')
+    fig.savefig(out)
+    plt.close(fig)
+    print('Saved', out)
+
 def run_geomech_proxy(case, physics_type='single_phase',
                       wells_type=None, timestep=1, modes=[],
                       generate_mesh=True, n_threads=1, use_gpu=False, read_from_cache=False):
@@ -569,7 +632,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         rsv_top = m.idata.other.rsv_top
         rsv_bottom = m.idata.other.rsv_bottom
 
-        Xc_plot = Xc[(Xc >= -1700) & (Xc <= 1700)]
+        Xc_plot = Xc[(Xc >= -2100) & (Xc <= 2100)]
         Zc_plot = Zc[(Zc >= rsv_top - 500) & (Zc <= rsv_bottom + 500)]
 
         rsv_xy = m.idata.other.rsv_xy
@@ -1057,10 +1120,10 @@ if __name__ == '__main__':
     #cases += ['7_7_5']  # for debugging
     #cases += ['17_17_15'] # for testing
 
-    cases += ['41_41_66'] # without refinement
+    #cases += ['41_41_66'] # without refinement
     #cases += ['71_71_66'] #refined middle and tips
     #cases += ['71_71_90']  # z 0 - 5 km more refined around rsv
-    #cases += ['83_83_90'] # mesh is horizontally refined at inj well location
+    cases += ['83_83_90'] # mesh is horizontally refined at inj well location
     #cases += ['97_97_90']   # mesh is horizontally refined at doublet locations
 
     #uniform_props = True
@@ -1119,6 +1182,7 @@ if __name__ == '__main__':
     modes = []
     #modes += ['check_initial'] # check initial pressure and stress for THM
     #modes += ['print_at_point'] # compare both THM and proxy versus analytical solution
+    modes += ['plot_horiz_line']
     modes += ['plot_vertic_line']
     modes += ['plot_2d_slices']
     #modes += ['2d_slices_41_71'] # coarse mesh THM (nx=41) => finer eval points in proxy (nx=71) and compare it against finer THM (nx=71); only if case ='41_41_66'
@@ -1149,6 +1213,12 @@ if __name__ == '__main__':
                 thm_time = t2 - t1
 
                 # run geomech proxy
+                proxy_time = []
+                if 'plot_horiz_line' in modes:
+                    # combined delta_pressure along X (Y=0, Z=2200) over all timesteps
+                    plot_delta_pressure_along_x(case=case, physics_type=physics_type,
+                                                wells_type=wells_type, timesteps=[1,2,3,4],
+                                                y=0.0, z=2200.0, report_step=report_step)
                 for timestep in timestep_list:
                     print('The timestep for plots and proxy-apply:', timestep)
                     t1 = datetime.now()
@@ -1157,7 +1227,7 @@ if __name__ == '__main__':
                                       timestep=timestep, n_threads=n_threads, use_gpu=use_gpu,
                                       read_from_cache=read_from_cache)
                     t2 = datetime.now()
-                    proxy_time = t2 - t1
+                    proxy_time += [t2 - t1]
 
                 print('case', case, physics_type, wells_type, 'done')
                 print('THM   time', thm_time)

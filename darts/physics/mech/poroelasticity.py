@@ -117,6 +117,49 @@ class Poroelasticity(Compositional):
             self.n_ops = 2 * self.n_vars
             assert not self.thermal
 
+    def get_engine_interpolator_state(self, n_blocks: int = None) -> np.ndarray:
+        """
+        Return the OBL interpolator state for the mechanics engine.
+
+        Unlike the flow engines, the poroelastic ``engine.X`` stores ``n_dim`` displacement
+        DOFs per cell in addition to the ``n_vars`` flow unknowns, so the per-cell stride is
+        ``n_vars + n_dim`` (not ``n_vars`` as the base implementation assumes -- that would
+        mix displacements into the state and fail to reshape). The position of the flow block
+        within a cell depends on the discretizer, matching ``UnstructReservoirMech.cell_property``:
+
+        * ``mech_discretizer``: ``[flow_vars..., u_x, u_y, u_z]`` -> flow vars come first.
+        * ``pm_discretizer``:   ``[u_x, u_y, u_z, p]``            -> flow var comes last.
+
+        We reshape to ``(-1, n_vars + n_dim)``, slice out the flow columns accordingly, and
+        append any history fields before flattening (so the layout matches the reservoir/well
+        interpolators that consume ``[X | Xhistory]``).
+
+        :param n_blocks: Number of reservoir blocks. When ``None``, inferred from
+                         ``engine.X.size // (n_vars + n_dim)``
+        :type n_blocks: int, optional
+        :returns: One-dimensional array of length ``n_blocks * n_state`` with primary flow vars
+                  and history values interleaved per cell (displacements stripped)
+        :rtype: numpy.ndarray
+        """
+        stride = self.n_vars + self.n_dim
+        if n_blocks is None:
+            n_blocks = self.engine.X.size // stride
+        # flow columns within each cell: leading for mech_discretizer, trailing for pm_discretizer
+        flow_cols = (
+            slice(self.n_dim, self.n_dim + self.n_vars)
+            if self.discretizer_name == 'pm_discretizer'
+            else slice(0, self.n_vars)
+        )
+        X = np.asarray(self.engine.X, copy=False).reshape(-1, stride)[
+            :n_blocks, flow_cols
+        ]
+        if not self.history_fields:
+            return X.flatten()
+        Xhistory = np.asarray(self.engine.Xhistory, copy=False).reshape(
+            -1, self.n_history
+        )[:n_blocks]
+        return np.concatenate([X, Xhistory], axis=1).flatten()
+
     def set_engine(self, discretizer: str = 'mech_discretizer', platform: str = 'cpu'):
         """
         Function to set :class:`engine_super` object.

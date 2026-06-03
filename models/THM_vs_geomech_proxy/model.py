@@ -20,6 +20,43 @@ from darts.physics.properties.viscosity import MaoDuan2009
 
 from reservoir import UnstructReservoirCustom
 
+class MaoDuan2009Shifted(MaoDuan2009):
+    """MaoDuan2009 viscosity driven by the model's relative temperature scale.
+
+    MaoDuan2009 requires ABSOLUTE temperature in Kelvin, but this model runs on a
+    relative temperature scale with baseline 0 (OBL range -50..50). This wrapper maps
+    the model baseline T=0 to t_abs0 (default 373.15 K), so MaoDuan2009 always sees a
+    physical absolute temperature (~323..423 K over the OBL range) and returns a
+    positive viscosity instead of the negative values that previously stalled the well
+    residual. See set_input_data() t_ref note.
+    """
+    def __init__(self, components, t_abs0=373.15, ions=None, combined_ions=None):
+        super().__init__(components, ions, combined_ions)
+        self.t_abs0 = t_abs0
+
+    def evaluate(self, pressure, temperature, x, rho):
+        return super().evaluate(pressure, temperature + self.t_abs0, x, rho)
+
+
+class DensityBasicTdep(DensityBasic):
+    """DensityBasic + linear thermal expansion.
+    rho(p,T) = dens0 * (1 + compr*(p - p0) - thermal_expn*(T - t0))
+    Unlike MaoDuan2009/Spivey2004, it does NOT need absolute Kelvin: t0 is the
+    model's baseline temperature (this model uses a relative scale with baseline 0),
+    so it stays well-behaved over the operating range and converges.
+    """
+    def __init__(self, dens0, compr=0.0, p0=1.0, thermal_expn=0.0, t0=0.0):
+        super().__init__(dens0, compr, p0)
+        self.thermal_expn = thermal_expn
+        self.t0 = t0
+
+    def evaluate(self, pressure, temperature: float = None, x: list = None):
+        rho = super().evaluate(pressure, temperature, x)
+        if temperature is not None and self.thermal_expn != 0.0:
+            rho *= (1.0 - self.thermal_expn * (temperature - self.t0))
+        return rho
+
+
 def fmt_e(x : float):
     return "{:.3e}".format(x) if np.isscalar(x) else str(x)
 
@@ -151,6 +188,7 @@ class Model(THMCModel):
         self.idata.fluid.compressibility = 4.4e-5  # [1/bar]
         self.idata.fluid.viscosity = 1.0  # [cP]
         self.idata.fluid.density = 1000. # [kg/m^3]
+        #self.idata.fluid.thermal_expansion = 2.1e-4  # [1/K] volumetric thermal expansion of water, can be used in DensityBasicTdep
 
         # branch ilshat/fluid_heat_cond
         self.idata.fluid.thermal_conductivity = 0. # It is not used in the engine # [kJ/m/day/K]
@@ -196,7 +234,7 @@ class Model(THMCModel):
 
         # well controls
         self.idata.other.delta_temp_inj = 40 # [K] - delta for temperature control
-        if not self.thermal: # BHP control
+        if False:#not self.thermal: # BHP control
             self.idata.other.delta_p = 10 # bars
             self.idata.other.wctrl_type = well_control_iface.BHP
             self.idata.other.well_rate = None
@@ -338,11 +376,23 @@ class Model(THMCModel):
 
             """ properties correlations """
             property_container.flash_ev = SinglePhase(nc=1)
+
             property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
                                                                        dens0=self.idata.fluid.density,
                                                                        p0=p_ref))])
-            property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
-            #property_container.viscosity_ev = dict([('wat', MaoDuan2009(components))])
+            # temperature-dependent density (linear thermal expansion around baseline t0=0)
+            #property_container.density_ev = dict([('wat', DensityBasicTdep(compr=self.idata.fluid.compressibility,
+            #                                                               dens0=self.idata.fluid.density,
+            #                                                               p0=p_ref,
+            #                                                               thermal_expn=self.idata.fluid.thermal_expansion,
+            #                                                               t0=0.0))])
+
+            # MaoDuan2009 requires ABSOLUTE temperature in Kelvin; this model runs on a relative
+            # temperature scale with baseline 0 (OBL range -50..50). MaoDuan2009Shifted maps the
+            # model baseline T=0 to 373.15 K (assume 100 degrees C in the reservoir)
+            # so the correlation always sees a physical absolute temperature
+            # and returns a positive viscosity. See set_input_data() t_ref note.
+            property_container.viscosity_ev = dict([('wat', MaoDuan2009Shifted(components, t_abs0=373.15))])
 
             property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
             # rock compressibility is treated inside engine
@@ -455,6 +505,7 @@ class Model(THMCModel):
                 wi_y = 0.0
                 wi_z = 2 * np.pi * np.sqrt(mean_perm_xx * mean_perm_yy) * dz / np.log(rp_z / rw)
                 well_index = np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
+                #well_index = 100.
                 # add perforation
                 self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
                 #self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=cell_id, well_index=well_index, well_indexD=0., ms_epm=True, verbose=True)

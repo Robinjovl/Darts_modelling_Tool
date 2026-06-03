@@ -1163,7 +1163,14 @@ class Output:
                 dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
 
                 for region, prop_itor in self.physics.property_itor.items():
-                    block_idx = np.where(self.op_num == region)[0].astype(np.int32)
+                    # Restrict to the nb reservoir blocks. op_num spans reservoir + well blocks,
+                    # and on meshes that put well blocks in the reservoir region (e.g. the
+                    # mechanics reservoir, where wells share region 0) where(op_num==region)
+                    # returns well indices >= nb. The state, values buffer and property_array
+                    # only span the reservoir blocks, so indexing past them reads out of bounds
+                    # (segfault in the interpolator). Clipping is a no-op when wells already have
+                    # a distinct op_num region (typical structured flow meshes).
+                    block_idx = np.where(self.op_num[:nb] == region)[0].astype(np.int32)
                     prop_itor.evaluate_with_derivatives(
                         state, index_vector(block_idx), values, dvalues
                     )
