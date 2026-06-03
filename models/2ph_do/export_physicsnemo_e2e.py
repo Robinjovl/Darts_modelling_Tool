@@ -21,7 +21,7 @@ from darts.tools.physicsnemo_export import (
     export_physicsnemo_hdf5,
     validate_physicsnemo_hdf5,
 )
-from darts.engines import redirect_darts_output
+from darts.engines import redirect_darts_output, set_gpu_device
 from model import Model
 
 
@@ -105,6 +105,8 @@ def _run_case(
     poro: np.ndarray,
     initial_pressure: float,
     initial_water: float,
+    platform: str,
+    gpu_device: int,
 ) -> dict:
     run_dir = output_root / case_name
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +123,9 @@ def _run_case(
         initial_pressure=initial_pressure,
         initial_water=initial_water,
     )
-    model.init()
+    if platform == "gpu":
+        set_gpu_device(gpu_device)
+    model.init(platform=platform)
 
     model.set_output(output_folder=str(run_dir), save_initial=True)
 
@@ -217,6 +221,18 @@ def main() -> int:
         type=float,
         default=5.0,
         help="Maximum open-DARTS timestep in days.",
+    )
+    parser.add_argument(
+        "--platform",
+        choices=("cpu", "gpu"),
+        default="cpu",
+        help="open-DARTS execution platform used while generating cases.",
+    )
+    parser.add_argument(
+        "--gpu-device",
+        type=int,
+        default=0,
+        help="Visible GPU device index for open-DARTS when --platform=gpu.",
     )
     parser.add_argument(
         "--base-perm",
@@ -321,6 +337,8 @@ def main() -> int:
                 poro=poro,
                 initial_pressure=initial_pressure,
                 initial_water=initial_water,
+                platform=args.platform,
+                gpu_device=args.gpu_device,
             )
         )
 
