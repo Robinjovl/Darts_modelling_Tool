@@ -85,6 +85,7 @@ class RampUpRate:
         )
         assert ramp_up_period >= 0, "ramp_up_period must not be negative!"
         self.ramp_up_period = ramp_up_period
+        pc = physics.property_containers[0]
 
         if inflow_or_outflow == "inflow":
             assert isinstance(inj_fluid_props, dict), "inj_fluid_props must be a dict!"
@@ -124,17 +125,17 @@ class RampUpRate:
                     assert isinstance(inj_fluid_props["temperature"], float), (
                         "Specified temperature must be a float!"
                     )
-                    assert inj_fluid_props["temperature"] > 273.15, (
+                    assert inj_fluid_props["temperature"] > 200.0, (
                         "Specified temperature must be in Kelvin!"
                     )
 
                 if "phase_name" in inj_fluid_props:
                     ph_name = inj_fluid_props["phase_name"]
                     assert isinstance(ph_name, str), (
-                        "Specified phase_name is not a string!"
+                        "The specified phase is not a string!"
                     )
-                    assert ph_name in physics.phases, (
-                        "Specified phase_name is not in the list of the phase names in physics!"
+                    assert ph_name in pc.phases_name[: pc.np_fl], (
+                        f'The specified phase "{ph_name}" is not in the list of mobile phases defined in the physics!'
                     )
 
                 if "molar_enthalpy" in inj_fluid_props:
@@ -156,7 +157,7 @@ class RampUpRate:
                         .evaluate(
                             inj_fluid_props["pressure"],
                             inj_fluid_props["temperature"],
-                            inj_fluid_props["composition"],
+                            inj_fluid_props["composition"][: pc.nc_fl],
                         )
                     )
                     inj_fluid_props["molar_enthalpy"] = injected_fluid_molar_enthalpy

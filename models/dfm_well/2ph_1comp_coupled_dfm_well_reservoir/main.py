@@ -15,6 +15,7 @@ from darts.engines import redirect_darts_output
 from darts.pipes.save_results import save_dfm_well_props
 from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
 from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
+from darts.pipes.viz.plot_line_graphs import plot_line_graphs
 
 from model import Model
 
@@ -59,6 +60,7 @@ if 1:
     ]
 
     for i, dt in enumerate(report_steps):
+
         if i == 1:
             coupled_model.data_ts.dt_max = 5 / (24 * 60 * 60)
         elif i == 4:
@@ -77,6 +79,13 @@ if 1:
             coupled_model.data_ts.dt_max = 10 / 24
         elif i == 21:
             coupled_model.data_ts.dt_max = 1
+
+        # # For injection at a constant WHP
+        # if i == 1:
+        #     coupled_model.data_ts.dt_max = 1 / (24 * 60 * 60)
+        # elif i == 2:
+        #     coupled_model.data_ts.dt_max = 5 / (24 * 60 * 60)
+
         coupled_model.run(dt)
         coupled_model.output.output_to_vtk(ith_step=i+1, output_properties=output_props)
         coupled_model.output.well_output_to_vtp(ith_step=i+1, output_properties=output_props)
@@ -87,3 +96,7 @@ else:
 
     plot_heat_map_pcolormesh('I1', coupled_model)
     plot_heat_map_contourf('I1', coupled_model, y_axis_tick_interval=250)
+
+    # Use line graphs if injection rate is controlled because the wellhead state might change a lot (for numerical reasons)
+    # at the beginning of simulation and this may create confusion if plot_heat_map_pcolormesh or plot_heat_map_contourf is used.
+    plot_line_graphs('I1', coupled_model)

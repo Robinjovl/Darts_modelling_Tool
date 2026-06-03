@@ -44,11 +44,13 @@ public:
 
     ms_well();
 
-    void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-        operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_ = 0);
+    void init_physics(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+        operator_set_gradient_evaluator_iface* well_ctrl_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_,
+        int thermal_ = 0);
 
-    void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-        operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_ = 0);
+    void init_mech_physics(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+        operator_set_gradient_evaluator_iface* well_ctrl_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_,
+        int thermal_ = 0);
 
     // the function changes (overwrites) jacobian equations for well_head_idx block
     // since well_head_idx has exactly 1 connection, it is assumed that
@@ -75,15 +77,16 @@ public:
         this->constraint.set_rate_control(is_inj, control_type, phase_idx, target, inj_comp, inj_temp);
     }
 
-    int add_to_jacobian(double dt, std::vector<value_t>& X, value_t* jac_well_head, std::vector<value_t>& RHS);
+    int initialize_control_epm(std::vector<value_t>& X);
+    int initialize_control_dfm(std::vector<value_t>& X);
 
     int check_constraints(double dt, std::vector<value_t>& X);
+
+    int add_to_jacobian(double dt, std::vector<value_t>& X, value_t* jac_well_head, std::vector<value_t>& RHS);
 
     int calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data);
 
     int calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data, index_t n_blocks);
-
-    int initialize_control(std::vector<value_t>& X);
 
     void addSegment();
 
@@ -97,12 +100,9 @@ public:
     // segment data type
     std::vector<segment> segments;
 
-    std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
-    bool with_lateral_heat_transfer = false;   // only used for a DFM well. If true, lateral heat transfer between the DFM well segments and reservoir blocks is considered.
-    std::vector<std::tuple<index_t, index_t, value_t>> connections_for_lateral_heat_transfer; // tuple of (dfm_segment_index, reservoir_block_index, geometric_part_of_the_heat_transfer_equation)
-
+    int n_segments = -1;
     value_t segment_volume;
-    value_t well_transmissibility;   // used for multi-segment wells of the type EPM
+    value_t well_transmissibility;
     value_t well_head_depth;
     value_t well_body_depth;
     value_t segment_depth_increment;
@@ -114,33 +114,41 @@ public:
     std::vector<value_t> segment_depths;
     index_t num_segments;
 
-    std::vector<value_t> init_state;
-
     index_t well_head_idx;        // index of the wellhead segment, where well controls apply
     index_t well_body_idx;        // index of the well segment right below the wellhead segment
     index_t well_bottom_idx;      // index of the well bottom segment
     index_t well_head_conn_idx;   // index of the connection between the two well segments at the top of the well (for EPM wells, connection is between the ghost segment and the lower segment)
 
+    std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
+    bool with_lateral_heat_transfer = false;   // only used for a DFM well. If true, lateral heat transfer between the DFM well segments and reservoir blocks is considered.
+    std::vector<std::tuple<index_t, index_t, value_t>> connections_for_lateral_heat_transfer; // tuple of (dfm_segment_index, reservoir_block_index, geometric_part_of_the_heat_transfer_equation)
+
     well_control_iface control;
     well_control_iface constraint;
+
+    std::vector<value_t> init_state;
 
     std::vector<value_t> phases_vels;        // phases velocities used for a DFM well
     std::vector<value_t> phases_vels_ders;   // phases velocities derivatives used for a DFM well
 
-    operator_set_evaluator_iface* rate_evaluator;
-    operator_set_gradient_evaluator_iface* rate_etor_ad;  //adjoint method
+    std::vector<value_t> well_ctrl_ops;
+    operator_set_evaluator_iface* well_ctrl_etor;
+    operator_set_gradient_evaluator_iface* well_ctrl_etor_ad;  //adjoint method
 
-    std::vector<std::string> phase_names;
     std::vector<value_t> state;
     std::vector<value_t> state_neighbour;
     std::vector<value_t> rates;
-    int n_vars;
-    int n_ops;
-    int n_segments = -1;
-    int n_phases;
-    int thermal;
+    // History values appended to the well state when the physics uses OBL history variables
+    // (analogous to mesh->Xhistory_bounds for boundary cells). Empty unless history axes are active.
+    std::vector<value_t> Xhistory_well_default;
+
     // n_block_size -- size of the full block, P_VAR -- index of the start of the state variables within block
     uint8_t n_block_size, P_VAR;
+    int n_vars;
+    int n_ops;
+    int n_phases;
+    std::vector<std::string> phase_names;
+    int thermal;
 };
 
 #endif /* MS_WELL_H */

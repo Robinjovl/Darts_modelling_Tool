@@ -83,7 +83,6 @@ public:
   uint8_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_comps() const override { return NC; };
   uint8_t get_z_var_idx() const override { return Z_VAR; };
-  uint8_t get_n_state() const { return N_STATE; };
 
   engine_super_mp_cpu()
   {
@@ -109,8 +108,6 @@ public:
 
   int init_jacobian_structure_mpfa(csr_matrix_base *jacobian);
 
-  /// @brief vector of variables in the current timestep provided for operator evaluation
-  std::vector<value_t> Xop;
   void extract_Xop();
 
   // vector of fluxes for every unknown per connection, assembled in jacobian assembly

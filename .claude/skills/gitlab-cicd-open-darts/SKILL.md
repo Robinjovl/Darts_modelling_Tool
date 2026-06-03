@@ -6,7 +6,7 @@ description: Operate and troubleshoot the open-DARTS GitLab CI/CD pipeline, incl
 # GitLab CI/CD
 
 Use this skill when pipeline behavior is part of the task.
-Use the session conda environment. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
+Use the session conda environment. If the prompt defines one, use it. Otherwise, create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 

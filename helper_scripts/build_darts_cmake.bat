@@ -46,6 +46,11 @@ if %bos_solvers_artifact%==true (
     set testing=false
   )
 )
+if not %config%==Release if not %config%==Debug if not %config%==RelWithDebInfo (
+  echo Error: Invalid build configuration "%config%". Valid options: Release, Debug, RelWithDebInfo.
+  exit /b 1
+)
+
 REM ODLS version does not support OpenMP yet.
 REM GPU builds default to the in-tree open-source solvers darts.solvers,
 REM including the GPU wrappers; pass -b ^<path^> to build against bos_solvers.
@@ -155,8 +160,7 @@ echo ========================================================================
 echo   Building openDARTS: START
 echo ========================================================================
 
-rmdir /s /q build 2>NUL
-mkdir build
+if not exist build mkdir build
 cd build
 
 REM Setup build with CMake
@@ -179,13 +183,16 @@ if %phreeqc%==true (
 if not %bos_solvers_dir%=="" (
   set cmake_options=%cmake_options% -D BOS_SOLVERS_DIR=%bos_solvers_dir%
 )
+if defined OD_CMAKE_ARGS (
+  set cmake_options=%cmake_options% %OD_CMAKE_ARGS%
+)
 
 echo CMake options: %cmake_options%
 cmake %cmake_options% ..
 
 REM build and install
-msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts.log || goto :error
-msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts_install.log || goto :error
+cmake --build . --config %config% --parallel %NT% > ..\make_darts.log || goto :error
+cmake --build . --config %config% --target INSTALL --parallel %NT% >> ..\make_darts.log || goto :error
 
 if %testing%==true ctest -C %config%  || goto :error
 
@@ -285,7 +292,7 @@ echo    -G               : Enable GPU build. Uses the in-tree open-source solver
 echo    -r               : Skip building thirdparty libraries (if you have them already compiled). Default: false
 echo    -a               : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
 echo    -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
-echo    -d MODE          : Configuration for C++ code [Release, Debug]. Example: -d Debug
+echo    -d MODE          : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo
 echo    -j N             : Set number of threads (N) for compilation. Default: 8. Example: -j 4
 echo    -p               : Enable Phreeqc + Reaktoro (requires Conda). Default: false
 echo    --rebuild-hypre  : Force rebuild of HYPRE library. Default: false

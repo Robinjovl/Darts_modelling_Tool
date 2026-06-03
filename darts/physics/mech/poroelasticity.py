@@ -4,7 +4,7 @@ from darts.engines import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
     ThermalVarOperator,
-    WellControlOperators,
+    WellCtrlOperators,
 )
 from darts.physics.super.operator_evaluator import *
 from darts.physics.super.physics import Compositional, PhysicsBase
@@ -142,7 +142,7 @@ class Poroelasticity(Compositional):
     def set_operators(self):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellControlOperators` for well control
+        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         if self.discretizer_name == "pm_discretizer":
@@ -186,12 +186,13 @@ class Poroelasticity(Compositional):
                 dz=self.dz,
             )
 
-        self.well_ctrl_operators = WellControlOperators(
+        self.well_ctrl_operators = WellCtrlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
+
         self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
@@ -204,13 +205,13 @@ class Poroelasticity(Compositional):
 
     def init_wells(self, wells):
         """ ""
-        Function to initialize the well rates for each well
-        Arguments:
-            -wells: well_object array
+        Function to initialize physics of wells for poromechanics
+
+        :param wells: List of :class:`ms_well` objects
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_mech_rate_parameters(
+            w.init_mech_physics(
                 self.engine.N_VARS,
                 self.engine.P_VAR,
                 self.n_vars,

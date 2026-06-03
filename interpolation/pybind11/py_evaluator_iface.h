@@ -67,6 +67,30 @@ public:
       &values
     );
   }
+
+  /* Trampoline for batch evaluation — non-pure, has C++ default.
+     Manual implementation instead of PYBIND11_OVERLOAD to correctly pass
+     values by pointer (so Python writes back to C++ vector) while still
+     falling back to C++ default when no Python override exists. */
+  int evaluate_batch(
+    const std::vector<value_t> &states,   // INPUT: flat [n_points * n_dims]
+    int n_points,                         // INPUT: number of points
+    std::vector<value_t> &values,         // OUTPUT: flat [n_points * n_ops]
+    int n_ops                             // INPUT: operators per point
+  )
+  {
+    py::gil_scoped_acquire acquire;
+
+    // Check if Python subclass overrides evaluate_batch
+    pybind11::function overload = pybind11::get_overload(
+        static_cast<const operator_set_evaluator_iface *>(this), "evaluate_batch");
+    if (overload) {
+      auto o = overload(states, n_points, &values, n_ops);
+      return o.cast<int>();
+    }
+    // No Python override — call C++ default
+    return operator_set_evaluator_iface::evaluate_batch(states, n_points, values, n_ops);
+  }
 };
 
 #endif

@@ -54,7 +54,7 @@ class Model(CICDModel):
         self.well_1_ID = 0.1
         self.reservoir = StructRadialReservoir(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, poro=poro.flatten(order='F'),
                                                permr=permr.flatten(order='F'), permz=permz.flatten(order='F'),
-                                               R0=self.well_1_ID / 2, R1=10, logspace=True, rcond=181.44, hcap=2200,
+                                               R0=self.well_1_ID / 2, R1=10, logspace=True,
                                                depth=975)  # depth is the depth of the centroid of the top reservoir cell
         self.reservoir.boundary_volumes['yz_minus'] = 1e20
 
@@ -84,8 +84,6 @@ class Model(CICDModel):
         epsilon = self.zero / 10
 
         """ Define state specification and initialize physics object """
-        # ph = True
-        # state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
         state_spec = Compositional.StateSpecification.P
         self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
                                      n_points=10000, min_p=1, max_p=500, min_z=0, max_z=1, epsilon_z=epsilon,
@@ -117,8 +115,8 @@ class Model(CICDModel):
                                                 ('L', Islam2012(components_names)),
                                                 ])
 
-        property_container.rel_perm_ev = dict([('G', PhaseRelPerm("gas", swc=0, sgr=0)),
-                                               ('L', PhaseRelPerm("oil", swc=0, sgr=0))])
+        property_container.rel_perm_ev = dict([('G', PhaseRelPerm("gas", swc=0, sgr=0, n=1)),
+                                               ('L', PhaseRelPerm("oil", swc=0, sgr=0, n=1))])
 
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
 

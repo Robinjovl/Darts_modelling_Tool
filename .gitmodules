@@ -1,6 +1,6 @@
 [submodule "thirdparty/MshIO"]
 	path = thirdparty/MshIO
-	url = https://github.com/qnzhou/MshIO.git
+	url = https://gitlab.com/open-darts/MshIO-fork
 
 [submodule "thirdparty/pybind11"]
 	path = thirdparty/pybind11

@@ -64,8 +64,6 @@ public:
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
-  /// @brief vector of variables in the current timestep provided for operator evaluation
-  std::vector<value_t> Xop;
   void extract_Xop();
 
 public:

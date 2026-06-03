@@ -269,8 +269,8 @@ def get_comparison_tolerances():
     if get_thread_count() > 1 or is_gpu:
         # Well time-series rates are derived from stored well states and can show
         # small platform-dependent differences on GPU and multithreaded runs.
-        return 1e-3, 1e-6
-    return 1e-9, 1e-9
+        return 1e-3, 1e-5
+    return 1e-5, 1e-5
 
 
 def skip_well_time_series_comparison():

@@ -50,6 +50,7 @@ engine_base_gpu::~engine_base_gpu()
   free_device_data(Xn_d);
   free_device_data(dX_d);
   free_device_data(RHS_d);
+  free_device_data(Xop_d);
   free_device_data(RHS_wells_d);
   free_device_data(PV_d);
   free_device_data(mesh_tran_d);
@@ -57,10 +58,41 @@ engine_base_gpu::~engine_base_gpu()
   free_device_data(op_vals_arr_d);
   free_device_data(op_vals_arr_n_d);
   free_device_data(op_ders_arr_d);
+  free_device_data(op_ders_arr_ext_d);
   for (int op_region = 0; op_region < block_idxs.size(); op_region++)
   {
     free_device_data(block_idxs_d[op_region]);
   }
+}
+
+int engine_base_gpu::evaluate_operators_d()
+{
+  if (get_n_history() > 0)
+  {
+    build_Xop();
+    copy_data_to_device(Xop, Xop_d);
+    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+    {
+      int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(
+          block_idxs[r].size(), Xop_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_ext_d);
+      if (result < 0)
+        return result;
+    }
+
+    copy_data_to_host(op_ders_arr_ext, op_ders_arr_ext_d);
+    project_xop_ders();
+    copy_data_to_device(op_ders_arr, op_ders_arr_d);
+    return 0;
+  }
+
+  for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+  {
+    int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(
+        block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
+    if (result < 0)
+      return result;
+  }
+  return 0;
 }
 
 int engine_base_gpu::post_newtonloop(value_t deltat, value_t time)
@@ -91,12 +123,8 @@ int engine_base_gpu::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start_gpu();
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
-		if (result < 0)
-			return 0;
-	}
+	if (evaluate_operators_d() < 0)
+		return 0;
 
 	timer->node["jacobian assembly"].node["interpolation"].stop_gpu();
 
@@ -292,12 +320,8 @@ int engine_base_gpu::test_assembly(int n_times, int kernel_number, int dump_jaco
   timer->node["jacobian assembly"].node["interpolation"].start_gpu();
   for (int i = 0; i < n_times; i++)
   {
-    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-    {
-      int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
-      if (result < 0)
-        return 0;
-    }
+    if (evaluate_operators_d() < 0)
+      return 0;
   }
   timer->node["jacobian assembly"].node["interpolation"].stop_gpu();
   for (int i = 0; i < n_times; i++)

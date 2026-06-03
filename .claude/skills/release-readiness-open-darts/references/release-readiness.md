@@ -15,7 +15,7 @@ The output should be a release call backed by evidence, not a generic summary.
 Pure git-diff review does not require a new environment, but any build, install,
 test, docs, or debug validation that is part of the release review should run
 from the session conda environment. If the prompt defines one, use it.
-Otherwise create and activate one session-level environment once, then reuse it
+Otherwise, create and activate one session-level environment once, then reuse it
 across all skills for the rest of the session.
 
 Default session environment:

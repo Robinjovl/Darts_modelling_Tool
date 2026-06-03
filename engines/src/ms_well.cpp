@@ -16,68 +16,140 @@ ms_well::ms_well()
 {
 }
 
-void ms_well::init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_)
+void ms_well::init_physics(int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+    operator_set_gradient_evaluator_iface* well_ctrl_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_,
+    int thermal_)
 {
     n_block_size = n_vars_;
     P_VAR = 0;
     n_vars = n_vars_;
-    n_phases = int(phase_names_.size());
     n_ops = n_ops_;
+    n_phases = int(phase_names_.size());
     phase_names = phase_names_;
     thermal = thermal_;
 
-    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
-    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
-
-    rate_evaluator = well_controls_etor;
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
-    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
 
-    rate_etor_ad = well_controls_etor;  //adjoint method
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_ctrl_etor_, thermal_var_etor_);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_ctrl_etor_, thermal_var_etor_);
+
+    // Store well control evaluators for calculation of wellhead and perforation rates and adjoint
+    well_ctrl_ops.resize(control.get_n_well_ctrl_ops());
+    well_ctrl_etor = well_ctrl_etor_;
+    well_ctrl_etor_ad = well_ctrl_etor_;  // adjoint method
 }
 
-void ms_well::init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
-    operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* thermal_var_etor, int thermal_)
+void ms_well::init_mech_physics(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_,
+    operator_set_gradient_evaluator_iface* well_ctrl_etor_, operator_set_gradient_evaluator_iface* thermal_var_etor_,
+    int thermal_)
 {
     n_block_size = N_VARS_;
     P_VAR = P_VAR_;
     n_vars = n_vars_;
-    n_phases = int(phase_names_.size());
     n_ops = n_ops_;
+    n_phases = int(phase_names_.size());
     phase_names = phase_names_;
     thermal = thermal_;
 
-    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
-    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, thermal_var_etor);
-
-    rate_evaluator = well_controls_etor;
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
-    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
 
-    rate_etor_ad = well_controls_etor;  //adjoint method
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_ctrl_etor_, thermal_var_etor_);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_ctrl_etor_, thermal_var_etor_);
+
+    // Store well control evaluators for calculation of wellhead and perforation rates and adjoint
+    well_ctrl_ops.resize(control.get_n_well_ctrl_ops());
+    well_ctrl_etor = well_ctrl_etor_;
+    well_ctrl_etor_ad = well_ctrl_etor_;  // adjoint method
+}
+
+int ms_well::initialize_control_epm(std::vector<value_t>& X)
+{
+    if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
+    {
+        std::cout << "Well " << name << " has uninitialized well control\n";
+        exit(1);
+    }
+    std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
+
+    // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
+    for (auto& p : perforations)
+    {
+        index_t i_w, i_r;
+        value_t wi, wid;
+        std::tie(i_w, i_r, wi, wid) = p;
+        i_w += well_body_idx;
+
+        // move the state from X
+        std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
+        // copy neighbour state
+        std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+        // initialize
+        control.initialize_well_block(state, state_neighbour, false);
+        // move initialized state back to X
+        std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
+    }
+    // Initialize state in well head - state neighbour is well body, state is well head
+    // move the state from X
+    std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
+    // copy neighbour state
+    std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+    // initialize
+    control.initialize_well_block(state, state_neighbour, false);
+    // move initialized state back to X
+    std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
+    return 0;
+}
+
+int ms_well::initialize_control_dfm(std::vector<value_t>& X)
+{
+    if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
+    {
+        std::cout << "Well " << name << " has uninitialized well control\n";
+        exit(1);
+    }
+    std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
+
+    // Initialize all the well blocks. Wellhead state will be overwritten later.
+    std::copy(init_state.begin(), init_state.end(), X.begin() + well_head_idx * n_block_size);
+
+    // Initialize state in well head - state neighbour is well body, state is well head
+    // move the state from X
+    std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
+    // copy neighbour state
+    std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+    // initialize
+    control.initialize_well_block(state, state_neighbour, true);
+    // move initialized state back to X
+    std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
+    return 0;
 }
 
 int ms_well::check_constraints(double dt, std::vector<value_t>& X)
 {
     if (constraint.get_well_control_type() > well_control_iface::WellControlType::NONE)
+    {
+        if (ms_type == ms_well::MS_Type::DFM)
+            throw std::runtime_error("DFM wells do not support well constraints yet!");
+
         if (constraint.check_constraint_violation(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X))
         {
             // constraint violation occured, switch control and constrain
             std::swap(control, constraint);
             std::cout << "Well " << name << " switched to " << control.get_well_control_type_str() << " (target: " << control.get_well_control_target_str() << ")\n";
-            //initialize_control(X);
+            //initialize_control_epm(X);
         }
+    }
 
     return 0;
 }
 
 int ms_well::add_to_jacobian(double dt, std::vector<value_t>& X, value_t* jac_well_head, std::vector<value_t>& RHS)
 {
-
-    control.add_to_jacobian(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
+    const bool is_dfm_well = ms_type == ms_well::MS_Type::DFM;
+    control.add_to_jacobian(dt, well_head_idx, well_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS,
+        phases_vels, phases_vels_ders, is_dfm_well);
 
     return 0;
 }
@@ -94,15 +166,16 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
         upstream_idx = well_body_idx; // producer
 
     state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+    state.insert(state.end(), Xhistory_well_default.begin(), Xhistory_well_default.end());
 
-    rate_evaluator->evaluate(state, rates);
+    well_ctrl_etor->evaluate(state, well_ctrl_ops);
 
     // Energy and volumetric rates
     value_t total_energy = 0.;
     for (int i = 0; i < n_phases; i++)
     {
-        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * p_diff * well_transmissibility);
-        total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
+        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(well_ctrl_ops[control.get_rate_ctrl_op_idx(well_control_iface::VOLUMETRIC_RATE, i, false)] * p_diff * well_transmissibility);
+        total_energy += well_ctrl_ops[control.get_rate_ctrl_op_idx(well_control_iface::ADVECTIVE_HEAT_RATE, i, false)] * p_diff * well_transmissibility;
     }
     time_data[name + " : energy (kJ/day)"].push_back(total_energy);
 
@@ -155,7 +228,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
     // BHP and temperature
     time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_block_size + P_VAR]);
-    time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
+    time_data[name + " : temperature (K)"].push_back(well_ctrl_ops[control.get_temp_ctrl_op_idx()]);
 
     return 0;
 }
@@ -163,6 +236,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>>& time_data, index_t n_blocks)
 {
     // calculate rate based on velocity unknown; use for decouple velocity engine.
+    const bool is_dfm_well = ms_type == ms_well::MS_Type::DFM;
 
     index_t upstream_idx;
 
@@ -178,15 +252,16 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
         upstream_idx = well_body_idx; // producer
 
     state.assign(X.begin() + upstream_idx * n_block_size + P_VAR, X.begin() + upstream_idx * n_block_size + P_VAR + n_vars);
+    state.insert(state.end(), Xhistory_well_default.begin(), Xhistory_well_default.end());
 
-    rate_evaluator->evaluate(state, rates);
+    well_ctrl_etor->evaluate(state, well_ctrl_ops);
 
     // Energy and volumetric rates
     value_t total_energy = 0.;
     for (int i = 0; i < n_phases; i++)
     {
-        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * velocity);
-        total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * well_transmissibility;
+        time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(well_ctrl_ops[control.get_rate_ctrl_op_idx(well_control_iface::VOLUMETRIC_RATE, i, is_dfm_well)] * velocity);
+        total_energy += well_ctrl_ops[control.get_rate_ctrl_op_idx(well_control_iface::ADVECTIVE_HEAT_RATE, i, is_dfm_well)] * p_diff * well_transmissibility;
     }
     time_data[name + " : energy (kJ/day)"].push_back(total_energy);
 
@@ -239,46 +314,8 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
 
     // BHP and temperature
     time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_vars + P_VAR]);
-    time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
+    time_data[name + " : temperature (K)"].push_back(well_ctrl_ops[control.get_temp_ctrl_op_idx()]);
 
-    return 0;
-}
-
-int ms_well::initialize_control(std::vector<value_t>& X)
-{
-    if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
-    {
-        std::cout << "Well " << name << " has uninitialized well control\n";
-        exit(1);
-    }
-    std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
-
-    // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
-    for (auto& p : perforations)
-    {
-        index_t i_w, i_r;
-        value_t wi, wid;
-        std::tie(i_w, i_r, wi, wid) = p;
-        i_w += well_body_idx;
-
-        // move the state from X
-        std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
-        // copy neighbour state
-        std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-        // initialize
-        control.initialize_well_block(state, state_neighbour);
-        // move initialized state back to X
-        std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
-    }
-    // Initialize state in well head - state neighbour is well body, state is well head
-    // move the state from X
-    std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
-    // copy neighbour state
-    std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-    // initialize
-    control.initialize_well_block(state, state_neighbour);
-    // move initialized state back to X
-    std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
     return 0;
 }
 

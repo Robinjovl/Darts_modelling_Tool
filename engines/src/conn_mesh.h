@@ -313,6 +313,10 @@ public:
   std::vector<value_t> bc_ref;
   /// [nc * n_bounds] array of pressures and (inflow) fractions at boundaries
   std::vector<value_t> pz_bounds;
+  /// [n_history * n_bounds] array of boundary history-variable values used in the extended OBL
+  /// state (currently sg_max for Killough hysteresis). Empty when the physics has no OBL
+  /// history axes.
+  std::vector<value_t> Xhistory_bounds;
   /// [n_blocks] array of rock compressibility of mesh blocks for mechanical models
   std::vector<value_t> rock_compressibility;
   /// [n_blocks] array of calculated fluxes

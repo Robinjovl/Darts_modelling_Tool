@@ -1,15 +1,22 @@
-import darts.engines as darts_engines
-from darts.engines import print_build_info as engines_pbi
-from darts.print_build_info import print_build_info as package_pbi
-from for_each_model import for_each_model, run_tests, abort_redirection, redirect_all_output, for_each_model_adjoint
-import sys, os, shutil
+import os
+import shutil
 import subprocess
+import sys
 from contextlib import redirect_stdout
+
 from darts.engines import sim_params
+from darts.engines import print_build_info as engines_pbi
 from compare_well_time_series import (
     compare_generated_well_time_series,
     create_well_time_series_snapshot,
     get_pkl_suffix,
+)
+from for_each_model import (
+    abort_redirection,
+    for_each_model,
+    for_each_model_adjoint,
+    redirect_all_output,
+    run_tests,
 )
 
 
@@ -59,6 +66,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         '2ph_do',
         '2ph_geothermal',
         '2ph_geothermal_mass_flux',
+        '2ph_hysteresis',
         '3ph_comp_w',
         '3ph_do',
         '3ph_bo',
@@ -81,11 +89,11 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         # Tests for drift-flux well model (DFM) (implemented only for CPU)
         accepted_dirs += [
             # Coupled well-reservoir modeling using DFM wells is
-            os.path.join('dfm_well', 'coupled_dfm_well_reservoir'),
+            os.path.join('dfm_well', '2ph_1comp_coupled_dfm_well_reservoir'),
             # Single-phase thermal well flow in a DFM well
-            os.path.join('dfm_well', 'single_phase_thermal_dfm_well_flow'),
+            os.path.join('dfm_well', '1ph_1comp_thermal_dfm_well_vs_dwell'),
             # Two-phase isothermal well flow in a DFM well
-            os.path.join('dfm_well', 'two_phase_isothermal_dfm_well_flow'),
+            os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_vertical_well_vs_dwell'),
         ]
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
@@ -276,6 +284,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
     # test for adjoint ------------------start---------------------------------
     print('\nAdjoint tests:')
+    failed_models_adj = []
     if len(accepted_dirs_adjoint):
         failed_models_adj = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
     n_total_adj = len(accepted_dirs_adjoint)

@@ -6,7 +6,7 @@ description: Review release readiness for open-DARTS when preparing a version bu
 # Release Readiness
 
 Use this skill for diff-based release review before tagging or approving release-critical changes.
-Use the session conda environment for any local verification commands. If the prompt defines one, use it. Otherwise create and activate one session-level conda environment once, then reuse it across the rest of the session.
+Use the session conda environment for any local verification commands. If the prompt defines one, use it. Otherwise, create and activate one session-level conda environment once, then reuse it across the rest of the session.
 
 ## Steps
 
