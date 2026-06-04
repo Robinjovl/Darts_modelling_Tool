@@ -20,7 +20,8 @@ class Model(CICDModel):
         permx=300,
         poro=0.2,
         initial_pressure: float = 400.0,
-        initial_water: float = 1.0 - 1e-13,
+        initial_water: float = 1e-8,
+        injection_water: float = 1.0 - 1e-8,
     ):
         # call base class constructor
         super().__init__()
@@ -33,6 +34,7 @@ class Model(CICDModel):
         self.poro = poro
         self.initial_pressure = float(initial_pressure)
         self.initial_water = float(initial_water)
+        self.injection_water = float(injection_water)
 
         # measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -63,7 +65,7 @@ class Model(CICDModel):
         components = ["w", "o"]
         phases = ["wat", "oil"]
 
-        self.inj = value_vector([zero])
+        self.inj = value_vector([self.injection_water])
         self.ini = value_vector([self.initial_water])
 
         property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
@@ -97,7 +99,7 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
-                                               is_inj=True, target=self.inj_rate, phase_name='oil', inj_composition=self.inj)
+                                               is_inj=True, target=self.inj_rate, phase_name='wat', inj_composition=self.inj)
                 self.physics.set_well_controls(wctrl=w.constraint, control_type=well_control_iface.BHP,
                                                is_inj=True, target=self.inj_bhp_limit, inj_composition=self.inj)
             else:

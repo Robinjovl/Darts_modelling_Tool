@@ -117,6 +117,7 @@ def _static_control_features(
     inj_bhp_limit: float,
     initial_pressure: float,
     initial_water: float,
+    injection_water: float,
 ) -> dict[str, np.ndarray]:
     """
     Create per-cell static arrays for controls and initial conditions.
@@ -133,6 +134,8 @@ def _static_control_features(
     :type initial_pressure: float
     :param initial_water: Initial first-component composition.
     :type initial_water: float
+    :param injection_water: Injector first-component composition.
+    :type injection_water: float
     :return: Mapping from static feature names to per-cell arrays.
     :rtype: dict[str, np.ndarray]
     """
@@ -155,6 +158,7 @@ def _static_control_features(
         "INJ_BHP_LIMIT": inj_bhp_limit_feature,
         "INITIAL_PRESSURE": np.full(nx, initial_pressure, dtype=np.float64),
         "INITIAL_WATER": np.full(nx, initial_water, dtype=np.float64),
+        "INJECTION_WATER": np.full(nx, injection_water, dtype=np.float64),
     }
 
 
@@ -173,6 +177,7 @@ def _run_case(
     poro: np.ndarray,
     initial_pressure: float,
     initial_water: float,
+    injection_water: float,
     platform: str,
     gpu_device: int,
 ) -> dict:
@@ -207,6 +212,8 @@ def _run_case(
     :type initial_pressure: float
     :param initial_water: Initial first-component composition.
     :type initial_water: float
+    :param injection_water: Injector first-component composition.
+    :type injection_water: float
     :param platform: open-DARTS execution platform, either ``"cpu"`` or
         ``"gpu"``.
     :type platform: str
@@ -231,6 +238,7 @@ def _run_case(
         poro=poro,
         initial_pressure=initial_pressure,
         initial_water=initial_water,
+        injection_water=injection_water,
     )
     if platform == "gpu":
         set_gpu_device(gpu_device)
@@ -259,6 +267,7 @@ def _run_case(
             inj_bhp_limit=inj_bhp_limit,
             initial_pressure=initial_pressure,
             initial_water=initial_water,
+            injection_water=injection_water,
         ),
     )
     return validate_physicsnemo_hdf5(export_path)
@@ -306,7 +315,7 @@ def main() -> int:
         "--report-steps",
         type=int,
         default=5,
-        help="Number of one-day report steps saved after the initial state.",
+        help="Number of report steps saved after the initial state.",
     )
     parser.add_argument(
         "--days-per-report-step",
@@ -389,14 +398,20 @@ def main() -> int:
     parser.add_argument(
         "--initial-water",
         type=float,
-        default=1.0 - 1e-13,
-        help="Base initial first-component composition.",
+        default=1e-8,
+        help="Base initial water-component composition. The default is an oil reservoir.",
     )
     parser.add_argument(
         "--initial-water-variation",
         type=float,
         default=0.02,
         help="Relative +/- initial composition perturbation across cases.",
+    )
+    parser.add_argument(
+        "--injection-water",
+        type=float,
+        default=1.0 - 1e-8,
+        help="Injector water-component composition. The default is water-rich.",
     )
     parser.add_argument(
         "--case-perturbation",
@@ -453,6 +468,7 @@ def main() -> int:
                 poro=poro,
                 initial_pressure=initial_pressure,
                 initial_water=initial_water,
+                injection_water=args.injection_water,
                 platform=args.platform,
                 gpu_device=args.gpu_device,
             )
