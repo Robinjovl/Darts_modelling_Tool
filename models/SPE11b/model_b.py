@@ -96,9 +96,20 @@ class Model(DartsModel):
 
         """Define physics"""
         self.set_physics(temperature=specs['temperature'])
+        # OBL is unbounded in this branch (axes_origin/axes_step, no clamp). In the
+        # post-injection migration phase the Newton solver overshoots compositions toward
+        # the simplex boundary (z->0/1); the unbounded interpolator then extrapolates into
+        # unphysical state (z<0, with cascading p/T excursions that reach t<0 K -> NaN),
+        # which stalls Newton ("stationary point") and triggers many timestep cuts (~2x
+        # slower migration phase vs the bounded reference). A *local* (composition) chop
+        # caps |dz| per Newton step and removes those stalls: newton_local_chop[0.01]
+        # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
+        # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
+        # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4, tol_newton=1e-3,
-                            it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
-        self.params.newton_params[0] = 0.05
+                            it_linear=50, it_newton=12,
+                            newton_type=sim_params.newton_local_chop,
+                            newton_params=value_vector([0.01]))
         # self.data_ts.eta = np.ones(self.physics.n_vars)
         self.params.nonlinear_norm_type = self.params.L2  # linf if you use m.set_rhs() for injection
 
