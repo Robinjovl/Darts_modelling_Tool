@@ -15,7 +15,6 @@ set config=Release
 set NT=8
 set skip_req=false
 set phreeqc=false
-set rebuild_hypre=false
 
 :parse_args
 if "%~1"=="" goto :process_input
@@ -33,7 +32,6 @@ if "%option%"=="-j" set NT=%1 & shift & goto parse_args
 if "%option%"=="-a" set bos_solvers_artifact=true & set iter_solvers=true & goto parse_args
 if "%option%"=="-b" set bos_solvers_dir=%1 & set iter_solvers=true & shift & goto parse_args
 if "%option%"=="-p" set phreeqc=true & goto parse_args
-if "%option%"=="--rebuild-hypre" set rebuild_hypre=true & goto parse_args
 goto parse_args
 
 :process_input
@@ -76,7 +74,6 @@ echo    generate python wheel = %wheel%
 echo    Multi thread = %MT%
 echo    Phreeqc support = %phreeqc%
 echo    MGR support = enabled (default)
-echo    rebuild_hypre = %rebuild_hypre%
 echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
@@ -92,19 +89,28 @@ del /s /q darts\*.dll 2>NUL
 rmdir /s /q dist 2>NUL
 
 if %clean_mode%==true (
-  echo - Cleaning up
+  echo - Cleaning up ^(darts build + thirdparty HYPRE; -c forces a complete rebuild^)
   rmdir /s /q build 2>NUL
+  rmdir /s /q thirdparty\hypre\src\cmbuild 2>NUL
+  rmdir /s /q thirdparty\install 2>NUL
   REM goto :eof
+)
+
+REM Reuse an existing thirdparty build when one is present: if HYPRE is already
+REM installed and this is not a clean (-c) rebuild, skip rebuilding requirements.
+REM -a (CI bos artifact) and -p (IPhreeqc) still run the full requirements step.
+set hypre_built=false
+if exist thirdparty\install\lib\HYPRE.lib set hypre_built=true
+if exist thirdparty\install\lib64\HYPRE.lib set hypre_built=true
+if exist thirdparty\install\lib\libHYPRE.a set hypre_built=true
+if exist thirdparty\install\lib64\libHYPRE.a set hypre_built=true
+if %skip_req%==false if %clean_mode%==false if %bos_solvers_artifact%==false if %phreeqc%==false if %hypre_built%==true (
+  echo - Reusing existing thirdparty build ^(HYPRE found^); use -c for a fresh rebuild.
+  set skip_req=true
 )
 
 if %skip_req%==false (
   echo - Update submodules: START
-
-  if %rebuild_hypre%==true (
-      echo Cleaning HYPRE build for rebuild...
-      rmdir /s /q thirdparty\hypre\src\cmbuild 2>NUL
-      rmdir /s /q thirdparty\install 2>NUL
-  )
 
   rmdir /s /q thirdparty\eigen thirdparty\pybind11 thirdparty\MshIO thirdparty\hypre
   git submodule sync --recursive
@@ -287,11 +293,11 @@ exit /b 0
 
 REM Help info --------------------------------------------------------
 :help_info
-echo helper_scripts\build_darts_cmake.bat [-h] [-c] [-t] [-w] [-m] [-G] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-p] [--rebuild-hypre]
+echo helper_scripts\build_darts_cmake.bat [-h] [-c] [-t] [-w] [-m] [-G] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-p]
 echo    Script to install opendarts on Windows with MGR support.
 echo USAGE:
 echo    -h               : displays this help menu.
-echo    -c               : cleans up build to prepare a new fresh build. Default: don't clean
+echo    -c               : clean rebuild of everything, including thirdparty (HYPRE/SuperLU). Default: reuse existing thirdparty build if present
 echo    -t               : Enable testing: ctest of solvers. Default: don't test
 echo    -w               : Enable generation of python wheel. Default: false
 echo    -m               : Enable Multi-thread MT (OpenMP) build. Engines, interpolators and the in-tree GMRES kernels run in parallel; HYPRE preconditioners (CPR/MGR) are sequential. Default: true
@@ -302,7 +308,6 @@ echo    -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), e
 echo    -d MODE          : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo
 echo    -j N             : Set number of threads (N) for compilation. Default: 8. Example: -j 4
 echo    -p               : Enable Phreeqc + Reaktoro (requires Conda). Default: false
-echo    --rebuild-hypre  : Force rebuild of HYPRE library. Default: false
 goto :eof
 REM ----------------------------------------------------------------
 

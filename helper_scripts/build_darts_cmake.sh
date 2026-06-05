@@ -11,11 +11,11 @@ set -o pipefail
 ################################################################################
 Help_Info()
 {
-  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v] [--rebuild-hypre]"
+  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v]"
   echo "   Script to install opendarts on unix (linux and macOS)."
   echo "USAGE: "
   echo "   -h               : displays this help menu."
-  echo "   -c               : cleans up build to prepare a new fresh build. Default: don't clean"
+  echo "   -c               : clean rebuild of everything, including thirdparty (HYPRE/SuperLU). Default: reuse existing thirdparty build if present"
   echo "   -t               : Enable testing: ctest of solvers. Default: don't test"
   echo "   -w               : Enable generation of python wheel. Default: false"
   echo "   -m               : Enable Multi-thread MT (OpenMP) build. Engines, interpolators and the in-tree GMRES kernels run in parallel; HYPRE preconditioners (CPR/MGR) are sequential. Default: true"
@@ -28,7 +28,6 @@ Help_Info()
   echo "   -g g++VER        : Specify a compiler (g++) version. Example: -g g++-13"
   echo "   -p               : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
   echo "   -v               : Enable build with valgrind support (OFF by default)"
-  echo "   --rebuild-hypre  : Force rebuild of HYPRE library. Default: false"
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
 }
 
@@ -96,20 +95,6 @@ gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 valgrind=false    # Whether support valgrind profiling or not
 CUDA_ARCH="${CUDA_ARCH:-}"
-rebuild_hypre=false # Force rebuild of HYPRE library
-
-# Handle long options before getopts
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --rebuild-hypre)
-            rebuild_hypre=true
-            shift
-            ;;
-        *)
-            break
-            ;;
-    esac
-done
 
 while getopts ":chtwmrab:d:j:g:Gpv" option; do
     case "$option" in
@@ -202,9 +187,24 @@ rm -rf dist
 # libstdc++.so.6 (a copied runtime dependency, re-installed by CMake).
 find darts -type f \( -name '*.so' -o -name '*.pyd' -o -name '*.dylib' \) -delete 2>/dev/null || true
 if [[ "$clean_mode" == true ]]; then
-    # Cleaning build to prepare a fresh build
+    # Cleaning build to prepare a fresh build: darts build/ plus the thirdparty
+    # HYPRE build tree and install prefix, so -c forces a complete rebuild from
+    # scratch (including thirdparty).
     echo -e '\n   Cleaning build folder'
     rm -rf build
+    rm -rf thirdparty/hypre/src/cmbuild thirdparty/install
+fi
+
+# Reuse an existing thirdparty build when one is present: if HYPRE is already
+# installed and this is not a clean (-c) rebuild, skip rebuilding the
+# requirements. -a (CI bos artifact) and -p (IPhreeqc) still run the full
+# requirements step. Use -c to force a fresh thirdparty rebuild.
+if [[ "$skip_req" == false && "$clean_mode" == false \
+      && "$bos_solvers_artifact" == false && "${phreeqc:-false}" != true ]]; then
+    if compgen -G "thirdparty/install/lib*/libHYPRE.*" >/dev/null 2>&1; then
+        echo -e "\n- Reusing existing thirdparty build (HYPRE found); use -c for a fresh rebuild."
+        skip_req=true
+    fi
 fi
 
 
@@ -212,13 +212,6 @@ fi
 if [[ "$skip_req" == false ]]; then
     # update submodules
     echo -e "\n- Update submodules: START \n"
-
-    # Clean HYPRE build if --rebuild-hypre is specified
-    if [[ "$rebuild_hypre" == true ]]; then
-        echo "Cleaning HYPRE build for rebuild..."
-        rm -rf thirdparty/hypre/src/cmbuild
-        rm -rf thirdparty/install
-    fi
 
     # clean-up previous versions.
     rm -rf thirdparty/pybind11 \
