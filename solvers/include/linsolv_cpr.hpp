@@ -35,9 +35,16 @@ namespace opendarts
      * with an outer Krylov solver (typically :class:`linsolv_gmres`) it forms
      * the open-source equivalent of the legacy ``bos_gmres + bos_cpr`` stack.
      *
-     * Algorithm (forward, quasi-IMPES variant; Wallis 1983):
-     *   1. Extract the scalar pressure subsystem ``A_p`` from the block-CSR
-     *      Jacobian -- the (0,0) entry of each block, same sparsity pattern.
+     * Algorithm (forward, true-IMPES variant; Wallis 1983):
+     *   1. Extract the scalar pressure subsystem ``A_p = R A C`` from the
+     *      block-CSR Jacobian (same sparsity pattern). The restriction
+     *      ``R_i = w_i^T`` uses per-row true-IMPES weights
+     *      ``w_i = [1, -D_pf D_ff^{-1}]`` that decouple the non-pressure
+     *      unknowns from the diagonal block ``D = A[i,i]``, so
+     *      ``A_p[i,j] = sum_v w_i[v] * A[i,j][v, P_VAR]`` (quasi-IMPES, the bare
+     *      (0,0) entry, is the per-row fallback when ``D_ff`` is singular). The
+     *      stronger decoupling is what makes CPR converge on wide-stencil MPFA
+     *      Jacobians, where quasi-IMPES stalls.
      *   2. Apply HYPRE BoomerAMG to ``A_p`` for the pressure correction
      *      ``x_p``; prolong to ``x_g`` (pressure component, zero elsewhere).
      *   3. Apply HYPRE ILU(0) to the full-system residual ``r_m = b - A x_g``
@@ -227,6 +234,13 @@ namespace opendarts
 
       // Workspace (scalar arrays of total size n_block_rows * N).
       std::vector<opendarts::config::mat_float> wksp_;
+
+      // True-IMPES pressure-decoupling weights, one row of N per block-row:
+      // cpr_weights_[i*N + v] is the weight of variable v in block-row i's
+      // decoupled pressure equation (cpr_weights_[i*N + P_VAR] == 1). Built in
+      // build_pressure_subsystem() and applied to the residual restriction
+      // (forward solve) and the prolongation (transposed CPRA solve).
+      std::vector<opendarts::config::mat_float> cpr_weights_;
 
       // Cached HYPRE-IJ scratch buffers. The row index list passed to
       // HYPRE_IJVector*/HYPRE_IJMatrix* is just [0, n). Once init() bound the

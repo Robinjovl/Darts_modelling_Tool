@@ -18,8 +18,11 @@
 // the elasticity engines (mechanical systems) and would be the wrong AMG
 // setup for flow.
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -61,6 +64,55 @@ namespace opendarts
                     << std::string(msg) << std::endl;
           std::exit(-1);
         }
+      }
+
+      // Solve the small dense system M x = b (row-major, n x n, n <= block
+      // size - 1) by Gaussian elimination with partial pivoting. Used to build
+      // the true-IMPES pressure-decoupling weights from a cell's diagonal
+      // block. Returns false if the f-block is (near-)singular -- the caller
+      // then falls back to quasi-IMPES for that row. M and b are overwritten.
+      inline bool solve_dense_gepp(mat_float *M, mat_float *b, int n,
+          mat_float *x)
+      {
+        mat_float scale = 1.0;
+        for (int k = 0; k < n * n; ++k)
+          scale = std::max(scale, std::abs(M[k]));
+        const mat_float piv_tol =
+            std::numeric_limits<mat_float>::epsilon() * scale * 100.0;
+        for (int col = 0; col < n; ++col)
+        {
+          int piv = col;
+          mat_float best = std::abs(M[col * n + col]);
+          for (int r = col + 1; r < n; ++r)
+          {
+            const mat_float v = std::abs(M[r * n + col]);
+            if (v > best) { best = v; piv = r; }
+          }
+          if (best <= piv_tol)
+            return false;
+          if (piv != col)
+          {
+            for (int c = 0; c < n; ++c)
+              std::swap(M[col * n + c], M[piv * n + c]);
+            std::swap(b[col], b[piv]);
+          }
+          const mat_float d = M[col * n + col];
+          for (int r = col + 1; r < n; ++r)
+          {
+            const mat_float f = M[r * n + col] / d;
+            for (int c = col; c < n; ++c)
+              M[r * n + c] -= f * M[col * n + c];
+            b[r] -= f * b[col];
+          }
+        }
+        for (int r = n - 1; r >= 0; --r)
+        {
+          mat_float s = b[r];
+          for (int c = r + 1; c < n; ++c)
+            s -= M[r * n + c] * x[c];
+          x[r] = s / M[r * n + r];
+        }
+        return true;
       }
 
       // r += A * v  (block-CSR, host, polymorphic via csr_matrix_base).
@@ -295,11 +347,91 @@ namespace opendarts
       std::copy(rows, rows + n_block_rows + 1, Ap_->rows_ptr.data());
       std::copy(cols, cols + nnz, Ap_->cols_ind.data());
 
-      // Extract the (0, 0) entry of every block as the A_p value.
+      // True-IMPES pressure decoupling (Wallis 1983). For each block-row i,
+      // build a weight row w_i (1 x N) that eliminates the non-pressure ("f")
+      // unknowns from the diagonal block D = A[i,i]:
+      //   w_i = [1 (at P_VAR), -D_pf D_ff^{-1}],
+      // obtained by solving (D_ff)^T s = -(D_pf)^T for s = the f-weights. The
+      // scalar pressure system is then A_p = R A C with R_i = w_i^T (weighted
+      // row restriction) and C = e_P (pressure prolongation):
+      //   A_p[i,j] = sum_v w_i[v] * A[i,j][v, P_VAR].
+      // This is the open-source standalone equivalent of the in-tree
+      // mgr_linear_solver BCSR-CPR true-IMPES reduction, and a strict upgrade
+      // over the previous quasi-IMPES extraction (just the (P_VAR, P_VAR)
+      // entry), which is too weak a pressure operator for the wider, strongly
+      // coupled MPFA Jacobian -- there FlexGMRES stalls and Newton diverges.
+      // Quasi-IMPES (w_i = e_P) is recovered per-row as a fallback whenever the
+      // local f-block is missing / singular / yields non-finite or oversized
+      // weights, so the result is never worse than before.
+      constexpr int Ni = static_cast<int>(N_BLOCK_SIZE);
+      constexpr int n_f = Ni - 1;             // non-pressure variables per cell
+      constexpr int NF = (n_f > 0) ? n_f : 1; // array sizing (avoid zero-length)
+      const mat_float weight_max = 1e6;       // reject pathological f-weights
+
+      cpr_weights_.assign(static_cast<std::size_t>(n_block_rows) * Ni, 0.0);
+
+      int f_vars[NF];
+      for (int v = 0, a = 0; v < Ni; ++v)
+        if (v != P_VAR)
+          f_vars[a++] = v;
+
+      for (index_t i = 0; i < n_block_rows; ++i)
+      {
+        mat_float *w = &cpr_weights_[static_cast<std::size_t>(i) * Ni];
+        w[P_VAR] = 1.0;  // f-weights stay 0 == quasi-IMPES unless replaced below
+
+        if (n_f > 0)
+        {
+          // Locate the diagonal block (col == i) of block-row i.
+          index_t diag = -1;
+          for (index_t jb = rows[i]; jb < rows[i + 1]; ++jb)
+            if (cols[jb] == i) { diag = jb; break; }
+
+          if (diag >= 0)
+          {
+            const mat_float *D = vals + static_cast<std::size_t>(diag) * b2;
+            mat_float M[NF * NF];
+            mat_float rhs[NF];
+            for (int a = 0; a < n_f; ++a)
+            {
+              rhs[a] = -D[static_cast<std::size_t>(P_VAR) * Ni + f_vars[a]];
+              for (int bb = 0; bb < n_f; ++bb)
+                M[a * n_f + bb] =
+                    D[static_cast<std::size_t>(f_vars[bb]) * Ni + f_vars[a]];
+            }
+            mat_float sol[NF];
+            if (solve_dense_gepp(M, rhs, n_f, sol))
+            {
+              bool ok = true;
+              for (int a = 0; a < n_f; ++a)
+                if (!std::isfinite(sol[a]) || std::abs(sol[a]) > weight_max)
+                {
+                  ok = false;
+                  break;
+                }
+              if (ok)
+                for (int a = 0; a < n_f; ++a)
+                  w[f_vars[a]] = sol[a];
+            }
+          }
+        }
+      }
+
+      // Weighted pressure column of every block: A_p[jb] = sum_v w_i[v]
+      // * block[v, P_VAR], where w_i is the weight row of jb's block-row.
       mat_float *ap_vals = Ap_->values.data();
-      for (index_t jb = 0; jb < nnz; ++jb)
-        ap_vals[jb] = vals[static_cast<std::size_t>(jb) * b2
-            + static_cast<std::size_t>(P_VAR) * N_BLOCK_SIZE + P_VAR];
+      for (index_t i = 0; i < n_block_rows; ++i)
+      {
+        const mat_float *w = &cpr_weights_[static_cast<std::size_t>(i) * Ni];
+        for (index_t jb = rows[i]; jb < rows[i + 1]; ++jb)
+        {
+          const mat_float *blk = vals + static_cast<std::size_t>(jb) * b2;
+          mat_float acc = 0.0;
+          for (int v = 0; v < Ni; ++v)
+            acc += w[v] * blk[static_cast<std::size_t>(v) * Ni + P_VAR];
+          ap_vals[jb] = acc;
+        }
+      }
 
       Ap_->n_non_zeros = nnz;
       Ap_->n_row_size = 1;
@@ -707,11 +839,19 @@ namespace opendarts
       mat_float *r_p = x_f + n_scalar;
       mat_float *x_p = r_p + n_pressure;
 
-      // Stage 1: pressure correction. Restrict B to the pressure subsystem,
-      // solve A_p x_p = r_p with AMG, prolong to x_g (pressure component;
-      // zero elsewhere).
+      // Stage 1: pressure correction. Restrict B to the pressure subsystem
+      // with the true-IMPES weights (R_i = w_i^T): r_p[i] = sum_v w_i[v] B[i,v]
+      // (consistent with A_p = R A C built in build_pressure_subsystem), solve
+      // A_p x_p = r_p with AMG, prolong to x_g (pressure component; zero
+      // elsewhere).
       for (index_t i = 0; i < n_block_rows; ++i)
-        r_p[i] = B[static_cast<std::size_t>(i) * N_BLOCK_SIZE + P_VAR];
+      {
+        const mat_float *w = &cpr_weights_[static_cast<std::size_t>(i) * N_BLOCK_SIZE];
+        mat_float acc = 0.0;
+        for (int v = 0; v < static_cast<int>(N_BLOCK_SIZE); ++v)
+          acc += w[v] * B[static_cast<std::size_t>(i) * N_BLOCK_SIZE + v];
+        r_p[i] = acc;
+      }
       std::memset(x_p, 0, n_pressure * sizeof(mat_float));
 
       set_hypre_vector(amg_b_ij_, n_block_rows, r_p, amg_b_par_);
@@ -822,10 +962,16 @@ namespace opendarts
                       row_indices_.data(), x_p),
           "IJVectorGetValues(amg_T_x)");
 
-      // Step 5: X = C x_p + x_f (prolong pressure component, add ILU update).
+      // Step 5: X = R^T x_p + x_f. The transpose of the forward weighted
+      // restriction R_i = w_i^T is a weighted prolongation: X[i,v] += w_i[v]
+      // x_p[i] (consistent with Ap_T_ = transpose of the weighted A_p).
       std::memcpy(X, x_f, n_scalar * sizeof(mat_float));
       for (index_t i = 0; i < n_block_rows; ++i)
-        X[static_cast<std::size_t>(i) * N_BLOCK_SIZE + P_VAR] += x_p[i];
+      {
+        const mat_float *w = &cpr_weights_[static_cast<std::size_t>(i) * N_BLOCK_SIZE];
+        for (int v = 0; v < static_cast<int>(N_BLOCK_SIZE); ++v)
+          X[static_cast<std::size_t>(i) * N_BLOCK_SIZE + v] += w[v] * x_p[i];
+      }
 
       n_iters_ = 1;
       return 0;
