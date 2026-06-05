@@ -94,18 +94,16 @@ endif()
 if(${OPENDARTS_CONFIG} STREQUAL "ST")
   set(OPENDARTS_CONFIG "ST")
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
-  # MT still depends on the proprietary multi-threaded bos_solvers. GPU, on the
-  # other hand, can now be built either against bos_solvers or entirely from
-  # the in-tree open-source solvers (the GPU solver wrappers in solvers/),
-  # so a GPU build without BOS_SOLVERS_DIR is allowed.
-  if(NOT DEFINED BOS_SOLVERS_DIR AND NOT GPU_CONFIG)
-    message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
-  endif()
+  # MT and GPU both build against the in-tree open-source solvers by default.
+  # The in-tree block_csr_matrix now provides a real multi-threaded row
+  # partition (see solvers/include/omp_partition.hpp), so an MT build no longer
+  # depends on the proprietary multi-threaded bos_solvers. Pass
+  # -D BOS_SOLVERS_DIR=<path> to link the proprietary bos_solvers instead.
   if (GPU_CONFIG)
     set(CUDA 1)
-    if(NOT DEFINED BOS_SOLVERS_DIR)
-      message(STATUS "  GPU build using the in-tree open-source solvers (no BOS_SOLVERS_DIR)")
-    endif()
+  endif()
+  if(NOT DEFINED BOS_SOLVERS_DIR)
+    message(STATUS "  openDARTS ${OPENDARTS_CONFIG} build using the in-tree open-source solvers (no BOS_SOLVERS_DIR)")
   endif()
 else()
   message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} is an invalid configuration use: ST, MT or GPU.")

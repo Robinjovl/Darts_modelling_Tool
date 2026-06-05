@@ -24,6 +24,7 @@
 
 #include "csr_matrix.hpp"
 #include "linear_solvers_data_types.hpp"
+#include "omp_partition.hpp"
 
 namespace opendarts
 {
@@ -85,9 +86,16 @@ namespace opendarts
         this->is_square = 0;
       }
 
-      this->row_thread_starts.resize(2);          // set row_thread_starts to the value
-      this->row_thread_starts[0] = 0;             // of single thread, since multi-threads
-      this->row_thread_starts[1] = this->n_rows;  //  are not supported
+      // Even-row thread partition sized to the engine's OpenMP assembly team, so
+      // the matrix the engine assembles into (forward Jacobian for csr_matrix<N>,
+      // adjoint dg_dx for csr_matrix<1>) is multi-threading-ready. Single range
+      // when built without OpenMP. See omp_partition.hpp.
+      {
+        const int n_threads = opendarts::linear_solvers::omp_assembly_n_threads();
+        this->row_thread_starts.resize(static_cast<std::size_t>(n_threads) + 1);
+        opendarts::linear_solvers::fill_even_row_partition(
+            this->row_thread_starts.data(), this->n_rows, n_threads);
+      }
 
       // Allocate memory for storage vectors containing block csr matrix representation
       this->values.assign(this->n_total_non_zeros,

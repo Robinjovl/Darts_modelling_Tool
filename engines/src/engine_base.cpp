@@ -39,6 +39,12 @@ int engine_base::print_header()
 {
 	std::cout << "Engine: \t" << engine_name << "\n";
 #ifdef _OPENMP
+	// Every CPU engine calls print_header() at init, before assembling. The
+	// Jacobian's row_thread_starts partition is sized for omp_get_max_threads()
+	// (see solvers/include/omp_partition.hpp); disable dynamic teams so every
+	// assembly / NUMA first-touch parallel region runs with exactly that many
+	// threads -- a smaller team would leave the tail block rows unassembled.
+	omp_set_dynamic(0);
 	std::cout << "OpenMP threads: \t" << omp_get_max_threads() << std::endl;
 #endif
 	//  std::cout << "\tResolution: \t" << acc_flux_op_set->axis_points[0] << std::endl;

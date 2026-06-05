@@ -18,7 +18,7 @@ Help_Info()
   echo "   -c               : cleans up build to prepare a new fresh build. Default: don't clean"
   echo "   -t               : Enable testing: ctest of solvers. Default: don't test"
   echo "   -w               : Enable generation of python wheel. Default: false"
-  echo "   -m               : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true"
+  echo "   -m               : Enable Multi-thread MT (OpenMP) build. Engines, interpolators and the in-tree GMRES kernels run in parallel; HYPRE preconditioners (CPR/MGR) are sequential. Default: true"
   echo "   -G               : Enable GPU build. Uses the in-tree open-source solvers unless -b is given. Default: false"
   echo "   -r               : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a               : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
@@ -171,8 +171,14 @@ if [ "$iter_solvers" == false ]; then
     # proprietary bos_solvers instead.
     echo -e '\n openDARTS GPU build using the in-tree open-source solvers (no bos_solvers).'
   elif [ "$MT" == true ]; then
-   echo -e '\n Warning: Open-DARTS linear solvers do not support multi-threading. Switched to the sequentional build.'
-   MT=false
+    # The in-tree open-source build now supports OpenMP: the engines assemble the
+    # block_csr_matrix Jacobian in parallel over a real multi-threaded row
+    # partition, the interpolators evaluate in parallel, and the in-tree GMRES
+    # Krylov kernels (SpMV, dot, axpy) run in parallel. The HYPRE-based
+    # preconditioner stages (CPR/MGR BoomerAMG/ILU) still run sequentially. No
+    # bos_solvers needed -- see solvers/include/omp_partition.hpp and
+    # solvers/src/linsolv_gmres.cpp.
+    echo -e '\n openDARTS multi-threaded (OpenMP) build using the in-tree open-source solvers (no bos_solvers).'
   fi
 fi
 #

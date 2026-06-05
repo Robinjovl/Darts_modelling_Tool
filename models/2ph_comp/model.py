@@ -213,7 +213,7 @@ class Model(CICDModel):
         if hasattr(self, 'solver') and self.solver is not None:
             if hasattr(self.physics, 'engine') and self.physics.engine is not None:
                 self.solver.set_n_reservoir_blocks(self.reservoir.mesh.n_res_blocks)
-                self.physics.engine.set_linear_solver(self.solver)
+                self.physics.engine.set_linear_solver(self.solver, "mgr (bcsr-cpr)")
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 50,

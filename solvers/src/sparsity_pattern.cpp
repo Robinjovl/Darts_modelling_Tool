@@ -19,6 +19,7 @@
 #include <string>
 
 #include "csr_expansion.hpp"
+#include "omp_partition.hpp"
 #include "sparsity_pattern.hpp"
 
 namespace opendarts
@@ -56,9 +57,10 @@ namespace opendarts
       compute_diag_ind();
 
       // The thread partition and the cached scalar-CSR expansion are derived
-      // products; reset them so a rebuild does not leave stale data.
-      row_thread_starts_.resize(0);
-      n_thread_partitions_ = 0;
+      // products; rebuild/reset them so a rebuild does not leave stale data.
+      // Install an even-row partition sized to the assembly team so the matrix
+      // is multi-threading-ready out of the box (see omp_partition.hpp).
+      install_even_row_partition();
       global_row_start_ = 0;
       global_n_rows_ = n_block_rows;
       csr_view_.reset();
@@ -77,17 +79,23 @@ namespace opendarts
       col_ind_.resize(static_cast<std::size_t>(nnzb));
       diag_ind_.resize(static_cast<std::size_t>(n_block_rows));
 
-      // Single-partition default; an MT caller may overwrite it before use.
-      row_thread_starts_.resize(2);
-      index_t *ts = row_thread_starts_.host_data();
-      ts[0] = 0;
-      ts[1] = n_block_rows;
-      n_thread_partitions_ = 1;
+      // Even-row partition sized to the assembly team: the engine fills this
+      // structure in place and then assembles into it under OpenMP, so the
+      // partition must already be multi-thread-ready (see omp_partition.hpp).
+      install_even_row_partition();
 
       global_row_start_ = 0;
       global_n_rows_ = n_block_rows;
       csr_view_.reset();
       csr_view_block_size_ = 0;
+    }
+
+    void sparsity_pattern::install_even_row_partition()
+    {
+      const int n_threads = omp_assembly_n_threads();
+      n_thread_partitions_ = n_threads;
+      row_thread_starts_.resize(static_cast<std::size_t>(n_threads) + 1);
+      fill_even_row_partition(row_thread_starts_.host_data(), n_block_rows_, n_threads);
     }
 
     void sparsity_pattern::compute_diag_ind()

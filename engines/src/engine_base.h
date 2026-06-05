@@ -185,8 +185,11 @@ public:
 	template <uint8_t N_VARS>
 	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_);
 
-	// Set external linear solver (from Python)
-	void set_linear_solver(std::shared_ptr<linsolv_iface> solver)
+	// Set external linear solver (from Python). The optional name is a
+	// human-readable label (e.g. the LinearSolverSpec registry name) used for
+	// the "Linear solver type is ..." log line in the open-source build, where
+	// the solver is injected rather than selected by the linear_type enum.
+	void set_linear_solver(std::shared_ptr<linsolv_iface> solver, const std::string &name = "")
 	{
 		// If we previously owned a solver, delete it
 		if (linear_solver != nullptr && linear_solver_owned)
@@ -198,6 +201,7 @@ public:
 		linear_solver_external = solver;
 		linear_solver = solver.get();
 		linear_solver_owned = false;  // We don't own it, Python does
+		external_solver_name = name;
 
 		// If engine is already initialized, wire timers and initialize solver
 		if (linear_solver != nullptr && Jacobian != nullptr && params != nullptr)
@@ -207,6 +211,12 @@ public:
 				linear_solver->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
 			}
 			linear_solver->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+			// The engine was already initialised, so this call replaces the
+			// solver selected at init time (e.g. a model that swaps in MGR after
+			// init()). Report the new type so the log reflects the solver that
+			// is actually used.
+			if (!name.empty())
+				std::cout << "Linear solver type is " << name << std::endl;
 		}
 	}
 
@@ -451,6 +461,7 @@ public:
 
 	linsolv_iface *linear_solver;
 	std::shared_ptr<linsolv_iface> linear_solver_external;  // For externally provided solvers (Python)
+	std::string external_solver_name;  // human-readable label for an injected solver (open-source build)
 	bool linear_solver_owned;  // True if we own the solver (need to delete), false if external
 
 	// operator interfaces
@@ -1026,6 +1037,16 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 #endif // OPENDARTS_LINEAR_SOLVERS
 	}
 
+	// In the open-source build the solver is injected via set_linear_solver()
+	// (built from data_ts.linear_solver through the darts.solvers registry), so
+	// the enum-based naming above never ran and linear_solver_type_str is empty.
+	// Fall back to the injected label, or a generic note if none was provided.
+	if (linear_solver_type_str.empty())
+	{
+		linear_solver_type_str = external_solver_name.empty()
+		    ? std::string("external (injected via set_linear_solver)")
+		    : external_solver_name;
+	}
 	std::cout << "Linear solver type is " << linear_solver_type_str << std::endl;
 
 	n_vars = get_n_vars();

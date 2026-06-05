@@ -15,6 +15,10 @@
 #include <cstring>
 #include <iostream>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include "linsolv_gmres.hpp"
 
 namespace opendarts
@@ -40,6 +44,13 @@ namespace opendarts
         const index_t n_block_rows = A->n_rows;
         constexpr int Ni = static_cast<int>(N);
         const std::size_t b2 = static_cast<std::size_t>(Ni) * Ni;
+        // Parallel over block rows: thread for row i writes only its own output
+        // block ri = r + i*Ni, so the decomposition is write-disjoint and
+        // race-free. Deterministic across thread counts -- the per-output
+        // accumulation order (over jb, w) is unchanged by the row split.
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
         for (index_t i = 0; i < n_block_rows; ++i)
         {
           mat_float *ri = r + static_cast<std::size_t>(i) * Ni;
@@ -60,6 +71,11 @@ namespace opendarts
 
       // Block-CSR transpose mat-vec: r += A^T * v.
       // Walking the rows of A scatters each block contribution to A^T's rows.
+      // Intentionally left serial: the destination rj = r + cols[jb]*Ni is the
+      // *column* of A, so different source rows i can write the same rj -- a
+      // parallel split over i would race. This path is only used by the adjoint
+      // (solve_transposed); parallelising it would need atomics or graph
+      // colouring and is deferred.
       template <uint8_t N>
       inline void block_csr_spmv_t_add(csr_matrix_base *A,
           const mat_float *v,
@@ -102,12 +118,16 @@ namespace opendarts
           bool transpose = false)
       {
         const mat_float eps = 1.0e-12;
+        const std::ptrdiff_t nn = static_cast<std::ptrdiff_t>(n_scalar);
         if (std::fabs(beta) > eps)
         {
           mat_float d = beta;
           if (std::fabs(alpha) > eps)
             d /= alpha;
-          for (std::size_t i = 0; i < n_scalar; ++i)
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+          for (std::ptrdiff_t i = 0; i < nn; ++i)
             r[i] = v[i] * d;
         }
         else
@@ -121,28 +141,78 @@ namespace opendarts
           else
             block_csr_spmv_add<N>(A, u, r);
           if (alpha != 1.0)
-            for (std::size_t i = 0; i < n_scalar; ++i)
+          {
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+            for (std::ptrdiff_t i = 0; i < nn; ++i)
               r[i] *= alpha;
+          }
         }
       }
 
+      // Deterministic parallel inner product.
+      //
+      // A bare `#pragma omp parallel for reduction(+:s)` combines the per-thread
+      // partial sums in nondeterministic completion order; since FP addition is
+      // not associative, its result is not reproducible run-to-run -- two runs
+      // with the same thread count can differ at the ULP level, which then
+      // amplifies through the Krylov iteration. Instead each thread sums its
+      // static chunk into a private slot and the slots are combined in fixed
+      // thread-index order: the result is reproducible at a fixed thread count.
+      // (Across *different* thread counts the summation is grouped differently,
+      // so the value still differs from the serial result at the ULP level --
+      // that is inherent to any parallel reduction and stays within the solver
+      // tolerance; the iteration still converges.) The signed std::ptrdiff_t
+      // loop counter is required by MSVC's OpenMP 2.0 (the Windows /openmp build).
       inline mat_float dot(const mat_float *a, const mat_float *b, std::size_t n)
       {
+        const std::ptrdiff_t nn = static_cast<std::ptrdiff_t>(n);
+#ifdef _OPENMP
+        constexpr int max_slots = 256;
+        const int nt = omp_get_max_threads();
+        if (nt > 1 && nt <= max_slots)
+        {
+          mat_float partial[max_slots];
+          for (int t = 0; t < nt; ++t)
+            partial[t] = 0.0;
+#pragma omp parallel num_threads(nt)
+          {
+            mat_float local = 0.0;
+#pragma omp for schedule(static) nowait
+            for (std::ptrdiff_t i = 0; i < nn; ++i)
+              local += a[i] * b[i];
+            partial[omp_get_thread_num()] = local;
+          }
+          mat_float s = 0.0;
+          for (int t = 0; t < nt; ++t) // fixed-order combine -> reproducible
+            s += partial[t];
+          return s;
+        }
+#endif
         mat_float s = 0;
-        for (std::size_t i = 0; i < n; ++i)
+        for (std::ptrdiff_t i = 0; i < nn; ++i)
           s += a[i] * b[i];
         return s;
       }
 
       inline void axpy(mat_float *y, mat_float a, const mat_float *x, std::size_t n)
       {
-        for (std::size_t i = 0; i < n; ++i)
+        const std::ptrdiff_t nn = static_cast<std::ptrdiff_t>(n);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (std::ptrdiff_t i = 0; i < nn; ++i)
           y[i] += a * x[i];
       }
 
       inline void scale(mat_float *y, mat_float a, std::size_t n)
       {
-        for (std::size_t i = 0; i < n; ++i)
+        const std::ptrdiff_t nn = static_cast<std::ptrdiff_t>(n);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (std::ptrdiff_t i = 0; i < nn; ++i)
           y[i] *= a;
       }
     } // namespace

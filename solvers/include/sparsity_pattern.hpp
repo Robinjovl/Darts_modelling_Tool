@@ -136,6 +136,11 @@ namespace opendarts
     private:
       void compute_diag_ind();
 
+      // Installs an even-row thread partition (row_thread_starts) sized to the
+      // engine's OpenMP assembly team, so a freshly built/allocated pattern is
+      // multi-threading-ready. See omp_partition.hpp.
+      void install_even_row_partition();
+
       index_t n_block_rows_ = 0;
       index_t n_block_cols_ = 0;
       index_t nnzb_ = 0;

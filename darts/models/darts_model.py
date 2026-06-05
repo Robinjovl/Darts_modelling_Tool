@@ -45,6 +45,23 @@ except ImportError:  # proprietary build without the open-source solvers
     _HAVE_SOLVER_REGISTRY = False
 
 
+def _describe_solver_spec(spec) -> str:
+    """A short human-readable label for a LinearSolverSpec, e.g. ``gmres+cpr``.
+
+    Used only for the engine's "Linear solver type is ..." log line; falls back
+    to the class name and tolerates arbitrary specs.
+    """
+    try:
+        name = getattr(spec, "registry_name", "") or type(spec).__name__
+        prec = getattr(spec, "prec", None)
+        if prec is not None:
+            inner = getattr(prec, "registry_name", "") or type(prec).__name__
+            return f"{name}+{inner}"
+        return name
+    except Exception:
+        return ""
+
+
 class DataTS:
     def __init__(self, n_vars):
         self.eta = (
@@ -347,7 +364,13 @@ class DartsModel:
             # Engine-resident solver: keep a reference so it outlives the
             # engine that uses it.
             self._linear_solver = spec.build(block_size)
-        self.physics.engine.set_linear_solver(self._linear_solver)
+        # Pass a human-readable label so the engine's "Linear solver type is ..."
+        # log line names the injected solver (otherwise it prints empty in the
+        # open-source build, which selects the solver via the registry rather
+        # than the linear_type enum).
+        self.physics.engine.set_linear_solver(
+            self._linear_solver, _describe_solver_spec(spec)
+        )
 
     def _maybe_switch_linear_solver(self, timestep_converged: bool):
         """Adaptive linear-solver switching, evaluated after each timestep.
@@ -386,7 +409,9 @@ class DartsModel:
             else:
                 block_size = self.physics.n_vars
             self._linear_solver = spec.candidates[new_index].build(block_size)
-            engine.set_linear_solver(self._linear_solver)
+            engine.set_linear_solver(
+                self._linear_solver, _describe_solver_spec(spec.candidates[new_index])
+            )
             print(
                 f"[adaptive solver] switched to candidate {new_index}: "
                 f"{type(spec.candidates[new_index]).__name__}"

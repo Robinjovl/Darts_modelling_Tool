@@ -10,6 +10,11 @@
 [submodule "thirdparty/hypre"]
 	path = thirdparty/hypre
 	url = https://github.com/hypre-space/hypre.git
+	# The HYPRE build writes its CMake build tree into thirdparty/hypre/src/cmbuild
+	# (an untracked dir HYPRE's own .gitignore does not cover), which otherwise
+	# makes `git status` report the submodule dirty after every build. Ignore
+	# work-tree changes here; pinned-commit (gitlink) changes are still reported.
+	ignore = dirty
 
 [submodule "thirdparty/iphreeqc"]
 	path = thirdparty/iphreeqc

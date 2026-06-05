@@ -51,15 +51,18 @@ if not %config%==Release if not %config%==Debug if not %config%==RelWithDebInfo 
   exit /b 1
 )
 
-REM ODLS version does not support OpenMP yet.
+REM The in-tree open-source build now supports OpenMP: the engines assemble the
+REM block_csr_matrix Jacobian in parallel over a real multi-threaded row partition
+REM (solvers\include\omp_partition.hpp), the interpolators evaluate in parallel,
+REM and the in-tree GMRES Krylov kernels (solvers\src\linsolv_gmres.cpp) run in
+REM parallel. The HYPRE preconditioner stages (CPR/MGR) still run sequentially.
 REM GPU builds default to the in-tree open-source solvers darts.solvers,
 REM including the GPU wrappers; pass -b ^<path^> to build against bos_solvers.
 if %iter_solvers%==false (
   if %GPU%==true (
     echo openDARTS GPU build using the in-tree open-source solvers ^(no bos_solvers^).
   ) else if %MT%==true (
-    echo Warning: ODLS version does not support OpenMP yet. Switched to the sequentional build.
-    set MT=false
+    echo openDARTS multi-threaded ^(OpenMP^) build using the in-tree open-source solvers ^(no bos_solvers^).
   )
 )
 
@@ -209,10 +212,14 @@ python darts\print_build_info.py
 if %wheel%==true (
   echo -- build darts.whl for windows started
   copy CHANGELOG.md darts
-  rem copy VS redist libraries
-  rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
-  rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
-  rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
+  rem Copy VS redist libraries into the wheel. The OpenMP runtime vcomp140.dll is
+  rem REQUIRED now that the default build is /openmp (MT) -- without it the
+  rem compiled extensions fail to load on machines lacking the VC++ redistributable.
+  rem Uncomment and point %%VCToolsRedistDir%% at your VS install (cmd syntax, not
+  rem PowerShell $env:). Left commented because the redist path is environment-specific.
+  rem copy "%%VCToolsRedistDir%%\x64\Microsoft.VC143.CRT\msvcp140.dll" .\darts
+  rem copy "%%VCToolsRedistDir%%\x64\Microsoft.VC143.CRT\vcruntime140.dll" .\darts
+  rem copy "%%VCToolsRedistDir%%\x64\Microsoft.VC143.OpenMP\vcomp140.dll" .\darts
   python -m pip install --upgrade build > make_wheel.log || goto :error
   python -m build --wheel >> make_wheel.log || goto :error
   echo -- Python wheel generated!
@@ -287,7 +294,7 @@ echo    -h               : displays this help menu.
 echo    -c               : cleans up build to prepare a new fresh build. Default: don't clean
 echo    -t               : Enable testing: ctest of solvers. Default: don't test
 echo    -w               : Enable generation of python wheel. Default: false
-echo    -m               : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true
+echo    -m               : Enable Multi-thread MT (OpenMP) build. Engines, interpolators and the in-tree GMRES kernels run in parallel; HYPRE preconditioners (CPR/MGR) are sequential. Default: true
 echo    -G               : Enable GPU build. Uses the in-tree open-source solvers unless -b is given. Default: false
 echo    -r               : Skip building thirdparty libraries (if you have them already compiled). Default: false
 echo    -a               : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
