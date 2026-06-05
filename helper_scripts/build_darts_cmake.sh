@@ -225,7 +225,8 @@ if [[ "$skip_req" == false ]]; then
     git submodule update --init --recursive -- \
             thirdparty/pybind11 \
             thirdparty/MshIO \
-            thirdparty/hypre
+            thirdparty/hypre \
+            thirdparty/superlu
 
     if [[ $phreeqc == "true" ]]; then
         git submodule update --init --recursive thirdparty/iphreeqc
@@ -269,20 +270,49 @@ if [[ "$skip_req" == false ]]; then
     cd ../../../
     echo -e "\n--- Building Hypre: DONE!\n"
 
-    echo -e "\n-- Install SuperLU \n"
-    cd SuperLU_5.2.1
-
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        cp conf_gcc-11_macOS_m1.mk conf.mk
-        cp make_gcc-11_macOS_m1.inc make.inc
-    else
-        cp conf_gcc_linux.mk conf.mk
-        cp make_gcc_linux.inc make.inc
-    fi
-
-    make -j $NT &> ../../make_superlu.log
-    make install -j $NT &>> ../../make_superlu.log
-    cd ../../
+    echo -e "\n-- Install SuperLU: START\n"
+    # Build upstream SuperLU (pinned git submodule thirdparty/superlu) with its
+    # own CMake and install into thirdparty/install -- the same prefix and
+    # pattern as HYPRE above. Notes on the options:
+    #   * double precision only (enable_single/complex/complex16 OFF) -- matches
+    #     the previous vendored `make double` behaviour; the wrapper only calls
+    #     the d* routines.
+    #   * enable_internal_blaslib=ON builds SuperLU's bundled reference CBLAS, so
+    #     no system BLAS is required and the build stays self-contained/hermetic
+    #     (functionally identical to the old vendored libblas.a). enable_blaslib=ON
+    #     is the companion flag: SuperLU v7.0.1's superluConfig.cmake.in templates
+    #     @enable_blaslib@ but the build only defines enable_internal_blaslib, so
+    #     without this the installed CONFIG package wrongly takes the
+    #     find_dependency(BLAS) branch and find_package(superlu) fails on the
+    #     missing internal `blas` target.
+    #   * enable_fortran/tests/examples OFF -- SuperLU is pure C; we need none of
+    #     these (also keeps macOS/Apple Clang happy, no gfortran needed).
+    #   * XSDK_INDEX_SIZE=32 keeps int_t == int. The C++ wrapper allocates int[]
+    #     for perm_r/perm_c and passes opendarts::config::index_t (== int); 64-bit
+    #     indexing would silently break those call sites.
+    #   * PIC ON + static so the archive embeds into the shared opendarts_solvers
+    #     Python extension.
+    rm -rf build/superlu
+    mkdir -p build/superlu
+    cd build/superlu
+    cmake -D enable_single=OFF \
+          -D enable_complex=OFF \
+          -D enable_complex16=OFF \
+          -D enable_double=ON \
+          -D enable_internal_blaslib=ON \
+          -D enable_blaslib=ON \
+          -D enable_fortran=OFF \
+          -D enable_tests=OFF \
+          -D enable_examples=OFF \
+          -D XSDK_INDEX_SIZE=32 \
+          -D BUILD_SHARED_LIBS=OFF \
+          -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
+          -D CMAKE_BUILD_TYPE=${config} \
+          -D CMAKE_INSTALL_PREFIX=../../install \
+          ../../superlu &> ../../../make_superlu.log
+    make install -j $NT &>> ../../../make_superlu.log
+    cd ../../../
+    echo -e "\n--- Building SuperLU: DONE!\n"
 
     if [[ "$bos_solvers_artifact" == true ]]; then
         cd engines

@@ -35,36 +35,18 @@ Execute `build_windows.bat`. This will build all thirdparty dependencies and `op
 
 The tests and the library `linear_solvers` are built using `cmake`. Before building `linear_solvers` the user must build SuperLU.
 
-### Building SuperLU 
-#### Windows 
-In the subfolder `thirdparty/SuperLU_5.2.1/` open the `SuperLU.sln` file with Visual studio (you need to have Visual Studio 2022). Build in `Release` mode.
-
-After these two steps you need to have the following files to proceed to the next steps:
-
-1. `thirdparty/SuperLU_5.2.1/x64/Release/SuperLU.lib`
-2. `thirdparty/SuperLU_5.2.1/x64/Release/slu_blas.lib`
-
-
-#### Linux and macOS
-In the subfolder `thirdparty/SuperLU_5.2.1` copy the Makefile configuration files for your system.
-You need to create a `conf.mk` and a `make.inc` files from the following templates:
-- `conf.mk`
-  - `conf_gcc_linux.mk`: for linux systems
-  - `conf_gcc-11_macOS_m1.mk`: for macOS with M1 processors (still experimental, use with care)
-  
-- `make.inc`
-  - `make_gcc_linux.inc`: for linux systems
-  - `make_gcc-11_macOS_m1.mk`: for macOS with M1 processors (still experimental, use with care)
-
-Run make
-```bash
-make all
-make install
-```
-
-After this step you need to have the following files to proceed to the next steps:
-1. `thirdparty/SuperLU_5.2.1/libsuperlu_5.1.a`
-2. `thirdparty/SuperLU_5.2.1/libblas.a`
+### Building SuperLU
+SuperLU is consumed as a pinned git submodule (`thirdparty/superlu`, upstream
+[xiaoyeli/superlu](https://github.com/xiaoyeli/superlu)) and is built
+automatically by `helper_scripts/build_darts_cmake.sh` (Linux/macOS) and
+`helper_scripts/build_darts_cmake.bat` (Windows) using SuperLU's own CMake. It is
+configured double-precision-only with its bundled reference CBLAS
+(`enable_internal_blaslib`), so no system BLAS is required, and installed into
+`thirdparty/install` (same prefix as HYPRE). No manual `SuperLU.sln` /
+`conf.mk`/`make.inc` step is needed any more. After the build you will find
+`thirdparty/install/lib(64)/libsuperlu.a` + `libblas.a` and the CMake package
+config under `thirdparty/install/lib(64)/cmake/superlu`, which the project
+imports as the `superlu::superlu` target (see `thirdparty/thirdparty_superlu.cmake`).
 
 ### Building `opendarts_linear_solvers`
 #### Setup build system with cmake (all OSes)
@@ -143,7 +125,7 @@ You can just run `make` to make all targets.
 
 You can then run `make install` to install to the install folder you specified.
 
-### Running tests 
+### Running tests
 #### CMake with Makefiles
 If you are using `cmake` in the default mode (`Unix Makefiles`) then you can just run `ctest` and all tests will run.
 
@@ -155,12 +137,12 @@ To compile `opendarts_solvers` on linux to integrate with `open-darts`, you can 
 
 ```
 some_path
-   |-open-darts  
+   |-open-darts
        |- engines
-       |     |- lib 
+       |     |- lib
        |         |- solvers
        |- solvers
-       |- build 
+       |- build
 ```
 
 Then you can do:

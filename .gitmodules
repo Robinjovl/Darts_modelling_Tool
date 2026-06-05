@@ -23,3 +23,6 @@
 [submodule "thirdparty/AMGX"]
 	path = thirdparty/AMGX
 	url = https://github.com/NVIDIA/AMGX.git
+[submodule "thirdparty/superlu"]
+	path = thirdparty/superlu
+	url = https://github.com/xiaoyeli/superlu.git

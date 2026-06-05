@@ -215,8 +215,7 @@ target_link_libraries(linear_solvers
     opendarts_compiler_flags
     config
     auxiliary
-    SuperLU
-    cblas
+    superlu::superlu
     HYPRE::HYPRE
 )
 

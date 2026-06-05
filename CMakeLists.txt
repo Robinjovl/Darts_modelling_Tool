@@ -204,6 +204,23 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 
 endif()
 
+# macOS linker hygiene ---------------------------------------------------------
+# The Xcode 15+ "ld_prime" linker warns about libraries appearing more than once
+# on a link line ("ignoring duplicate libraries"). open-DARTS work item #52
+# suggested forcing the classic linker with -ld_classic, but that flag is now
+# DEPRECATED on Xcode 16+ (it warns and is slated for removal), so we do NOT
+# force it. The portable fix is to suppress the duplicate-library warning via the
+# CMake LINKER: prefix (-> -Wl,/-Xlinker as appropriate), gated to Apple only.
+# (Collapsing SuperLU+cblas into the single superlu::superlu target already
+# removes the main duplicate-archive source.) If an older-Xcode escape hatch is
+# ever needed, add an opt-in cache var rather than defaulting -ld_classic on.
+# NOTE: untestable from the Linux/RHEL dev box -- correct-by-construction; must
+# be validated on a macOS (Apple Silicon) runner.
+if(APPLE)
+  add_link_options("LINKER:-no_warn_duplicate_libraries")
+endif()
+# ------------------------------------------------------------------------------
+
 set(opendarts_cxx_warning_suppression_flags "")
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(opendarts_cxx_warning_suppression_flags

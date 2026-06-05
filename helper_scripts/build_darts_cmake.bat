@@ -117,7 +117,8 @@ if %skip_req%==false (
   git submodule update --init --recursive -- ^
              thirdparty\pybind11 ^
              thirdparty\MshIO ^
-             thirdparty\hypre || goto :error
+             thirdparty\hypre ^
+             thirdparty\superlu || goto :error
 
   if %phreeqc%==true (
     git submodule update --init --recursive thirdparty\iphreeqc || goto :error
@@ -153,10 +154,29 @@ if %skip_req%==false (
   msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\make_hypre.log || goto :error
   cd ..\..\
 
+  rem -- Install SuperLU (pinned git submodule thirdparty\superlu, built with its
+  rem own CMake + MSVC generator into thirdparty\install, mirroring HYPRE). Double
+  rem precision only + internal reference CBLAS keeps it self-contained; replaces
+  rem the old bespoke superlu.sln / SuperLU.vcxproj msbuild step.
   echo -- Install SuperLU
-  cd SuperLU_5.2.1
-  msbuild superlu.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\..\make_superlu.log || goto :error
-  cd ..\..
+  if not exist build\superlu mkdir build\superlu
+  cd build\superlu
+  cmake -D enable_single=OFF ^
+        -D enable_complex=OFF ^
+        -D enable_complex16=OFF ^
+        -D enable_double=ON ^
+        -D enable_internal_blaslib=ON ^
+        -D enable_blaslib=ON ^
+        -D enable_fortran=OFF ^
+        -D enable_tests=OFF ^
+        -D enable_examples=OFF ^
+        -D XSDK_INDEX_SIZE=32 ^
+        -D BUILD_SHARED_LIBS=OFF ^
+        -D CMAKE_POSITION_INDEPENDENT_CODE=ON ^
+        -D CMAKE_INSTALL_PREFIX=..\..\install ^
+        ..\..\superlu > ..\..\..\make_superlu.log || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% >> ..\..\..\make_superlu.log || goto :error
+  cd ..\..\..
 
   if %phreeqc%==true (
     echo -- Install IPhreeqc: START
