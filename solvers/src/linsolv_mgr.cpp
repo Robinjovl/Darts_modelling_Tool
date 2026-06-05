@@ -12,7 +12,7 @@
 //--------------------------------------------------------------------------
 #include "linsolv_mgr.hpp"
 #include "csr_matrix_base.hpp"
-#include "LinearSolver.hpp"
+#include "mgr_linear_solver.hpp"
 #include "CompositionalFlowStrategy.hpp"
 #include "Types.hpp"
 #include <iostream>
@@ -123,7 +123,13 @@ namespace opendarts
       , tolerance_cached(1e-3)
       , kdim_cached(30)
       , use_mgr_cached(true)
-      , log_level_cached(1)
+      // Default OFF: at level 1 the BCSR-CPR diagnostic line fires every
+      // setup (mgr_linear_solver.cpp:2188) -- with many models and many Newton
+      // iters this produced ~3 000 [MGR] lines per model in CI on MR 280,
+      // masking real errors and adding noticeable formatting overhead.
+      // Set log_level explicitly (Python MGRSolverSpec.log_level) to opt
+      // back into the per-apply diagnostics.
+      , log_level_cached(0)
       , use_physics_scaling_cached(true)
       , scaling_type_cached(static_cast<int>(mgr::ScalingType::physics))
       , use_flex_gmres_cached(true)
@@ -170,13 +176,16 @@ namespace opendarts
     {
       this->timer_setup = nullptr;
       this->timer_solve = nullptr;
-      std::cout << "[MGR] linsolv_mgr created with N_BLOCK_SIZE = " << (int)N_BLOCK_SIZE << std::endl;
+      if (log_level_cached >= 1)
+        std::cout << "[MGR] linsolv_mgr created with N_BLOCK_SIZE = "
+                  << (int)N_BLOCK_SIZE << std::endl;
     }
 
     template <uint8_t N_BLOCK_SIZE>
     linsolv_mgr<N_BLOCK_SIZE>::~linsolv_mgr()
     {
-      std::cout << "[MGR] linsolv_mgr destroyed" << std::endl;
+      if (log_level_cached >= 1)
+        std::cout << "[MGR] linsolv_mgr destroyed" << std::endl;
     }
 
     template <uint8_t N_BLOCK_SIZE>

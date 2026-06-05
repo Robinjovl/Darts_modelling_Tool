@@ -25,9 +25,13 @@ from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatT
 from darts.print_build_info import print_build_info as package_pbi
 
 # Open-source linear-solver registry (the darts.solvers package). It is absent
-# in proprietary (-a) builds, where the engine's built-in factory selects the
-# solver from params.linear_type; the import is therefore guarded.
+# in proprietary (-a / -b) builds, where the engine's built-in factory selects
+# the solver from params.linear_type; the import is therefore guarded.
+# The Python helpers (specs, adaptive policy) still import in proprietary
+# builds, but their build() calls reach into the compiled extension --
+# guard on _have_compiled_solvers, not just the import succeeding.
 try:
+    from darts import solvers as _darts_solvers_pkg
     from darts.solvers import (
         AdaptiveSolverSpec,
         LinearSolverSpec,
@@ -36,7 +40,7 @@ try:
         default_linear_solver,
     )
 
-    _HAVE_SOLVER_REGISTRY = True
+    _HAVE_SOLVER_REGISTRY = getattr(_darts_solvers_pkg, "_have_compiled_solvers", True)
 except ImportError:  # proprietary build without the open-source solvers
     _HAVE_SOLVER_REGISTRY = False
 

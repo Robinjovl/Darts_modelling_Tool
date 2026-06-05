@@ -11,7 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-from . import solvers
+# The compiled ``solvers`` extension is absent in proprietary builds that
+# link the prebuilt ``darts-linear-solvers`` library; the spec classes
+# below still import (only their ``build()`` calls will fail at runtime).
+try:
+    from . import solvers
+except ImportError:
+    solvers = None  # type: ignore[assignment]
 from .enums import CoarseGrid, FRelaxation, GlobalSmoother, Interpolation, Restriction
 
 

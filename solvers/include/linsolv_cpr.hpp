@@ -70,7 +70,7 @@ namespace opendarts
      * CPRA implementation -- the one exposed through
      * ``CPRSolverSpec`` / ``GMRESSolverSpec(prec=CPRSolverSpec())`` and
      * driven by ``Adjoint_super_engine``'s ``cpra`` mode. The MGR-internal
-     * ``applyBCSRCPRTransposePreconditioner`` (``solvers/src/linearSolver.cpp``)
+     * ``applyBCSRCPRTransposePreconditioner`` (``solvers/src/mgr_linear_solver.cpp``)
      * is kept alongside it pending the SPE10 benchmark comparison Xiaoming
      * promised on MR #280; once that lands the MGR-internal path is to be
      * retired in favour of this one. See ``SOLVER_REFACTORING_PLAN.md``.

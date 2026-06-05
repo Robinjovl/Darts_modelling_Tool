@@ -663,11 +663,20 @@ engine_base::calc_adjoint_gradient_dirac_all()
 	// assemble dg_dx_n, dg_dT, dj_dx, while dg_dx_n is a dummy matrix here. Because there is no dg_dx_n in eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
 	adjoint_gradient_assembly(dt, X, dg_dx_n, RHS);
 
+#ifdef OPENDARTS_LINEAR_SOLVERS
 	csr_matrix_base *adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
-	linear_solver_ad->init(adjoint_matrix, params->max_i_linear, params->tolerance_linear);
 	const bool setup_adjoint_solver =
 		!linear_solver_ad_uses_jacobian_transpose ||
 		linear_solver_ad->requires_setup_for_transposed_solve();
+#else
+	// Proprietary linsolv_iface (engines/lib/darts_linear_solvers) predates
+	// the transposed-solve API -- no requires_setup_for_transposed_solve(),
+	// no solve_transposed(). Always run the classic path: build dg_dx_T,
+	// re-setup every step, dispatch through plain solve().
+	csr_matrix_base *adjoint_matrix = dg_dx_T;
+	const bool setup_adjoint_solver = true;
+#endif
+	linear_solver_ad->init(adjoint_matrix, params->max_i_linear, params->tolerance_linear);
 
 	// solve lambda and adjoint gradient at the last time step
 	if (setup_adjoint_solver)
@@ -678,9 +687,11 @@ engine_base::calc_adjoint_gradient_dirac_all()
 	}
 
     timer->node["linear solver for adjoint method - solve"].start();
+#ifdef OPENDARTS_LINEAR_SOLVERS
 	if (linear_solver_ad_uses_jacobian_transpose)
 		linear_solver_ad->solve_transposed(&Temp_dj_dx[0], &lambda_temp[0]);
 	else
+#endif
 		linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
     timer->node["linear solver for adjoint method - solve"].stop();
 
@@ -762,7 +773,11 @@ engine_base::calc_adjoint_gradient_dirac_all()
 		std::transform(Temp_dj_dx.begin(), Temp_dj_dx.end(), Temp_4.begin(), Temp_dj_dx.begin(), std::minus<double>());
 
         timer->node["linear solver for adjoint method - setup"].start();
+#ifdef OPENDARTS_LINEAR_SOLVERS
 		adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
+#else
+		adjoint_matrix = dg_dx_T;
+#endif
 		if (setup_adjoint_solver)
 		{
 			linear_solver_ad->setup(adjoint_matrix);
@@ -770,9 +785,11 @@ engine_base::calc_adjoint_gradient_dirac_all()
         timer->node["linear solver for adjoint method - setup"].stop();
 
         timer->node["linear solver for adjoint method - solve"].start();
+#ifdef OPENDARTS_LINEAR_SOLVERS
 		if (linear_solver_ad_uses_jacobian_transpose)
 			linear_solver_ad->solve_transposed(&Temp_dj_dx[0], &lambda_temp[0]);
 		else
+#endif
 			linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
         timer->node["linear solver for adjoint method - solve"].stop();
 

@@ -2,7 +2,7 @@
  * MGR Linear Solver - Linear Solver Implementation
  */
 
-#include "LinearSolver.hpp"
+#include "mgr_linear_solver.hpp"
 #include "OpendartsJacobian.hpp"
 #include "CompositionalFlowStrategy.hpp"
 #include "timer_node.h"
@@ -2065,23 +2065,6 @@ void LinearSolver::computeBCSRCPRPressureWeights()
 
     real_type norm = 0.0;
     const int_t block_offset = diag * block_size * block_size;
-    for( int_t r = 0; r < block_size; ++r )
-    {
-      const int_t scalar_row = row * block_size + r;
-      const real_type row_scale =
-          apply_scaling && scalar_row < static_cast<int_t>( m_rowScaling.size() )
-          ? m_rowScaling[scalar_row] : 1.0;
-      for( int_t c = 0; c < block_size; ++c )
-      {
-        const int_t scalar_col = row * block_size + c;
-        const real_type col_scale =
-            apply_scaling && scalar_col < static_cast<int_t>( m_colScaling.size() )
-            ? m_colScaling[scalar_col] : 1.0;
-        const real_type value =
-            m_matrix.values[block_offset + r * block_size + c] * row_scale * col_scale;
-        norm = std::max( norm, std::abs( value ) );
-      }
-    }
 
     for( int_t a = 0; a < n_f; ++a )
     {
@@ -2096,6 +2079,13 @@ void LinearSolver::computeBCSRCPRPressureWeights()
           ? m_colScaling[scalar_col] : 1.0;
       rhs[a] = -m_matrix.values[block_offset + pressure_var * block_size + f_col] *
                row_scale * col_scale;
+      // Track the RHS magnitude as part of the dense-system norm: the pivot
+      // tolerance must reflect the scale of the matrix the dense solver
+      // actually sees, NOT the full A_pp+A_pf+A_fp+A_ff diagonal block.
+      // (Including A_pp inflated the norm by orders of magnitude for
+      // compositional physics, which made any well-conditioned f-block
+      // pivot ~1 look "too small" and dense_solve failed on every row.)
+      norm = std::max( norm, std::abs( rhs[a] ) );
       for( int_t b = 0; b < n_f; ++b )
       {
         const int_t f_row = f_vars[b];
@@ -2107,9 +2097,11 @@ void LinearSolver::computeBCSRCPRPressureWeights()
         const real_type ff_col_scale =
             apply_scaling && ff_scalar_col < static_cast<int_t>( m_colScaling.size() )
             ? m_colScaling[ff_scalar_col] : 1.0;
-        matrix_ff_t[a * n_f + b] =
+        const real_type ff_value =
             m_matrix.values[block_offset + f_row * block_size + f_col] *
             ff_row_scale * ff_col_scale;
+        matrix_ff_t[a * n_f + b] = ff_value;
+        norm = std::max( norm, std::abs( ff_value ) );
       }
     }
 
@@ -2172,7 +2164,7 @@ void LinearSolver::computeBCSRCPRPressureWeights()
 
   if( m_params.bcsrCPRDiagnostics )
   {
-    std::cerr << "[MGR] BCSR CPR pressure weight diagnostics: rows="
+    std::cout << "[MGR] BCSR CPR pressure weight diagnostics: rows="
               << m_cprPressureRows
               << ", true_impes=" << m_cprWeightTrueIMPESRows
               << ", fallback=" << m_cprWeightFallbackRows
@@ -2185,7 +2177,7 @@ void LinearSolver::computeBCSRCPRPressureWeights()
   }
   else if( m_params.logLevel >= 1 )
   {
-    std::cerr << "[MGR] BCSR CPR pressure weights: rows=" << m_cprPressureRows
+    std::cout << "[MGR] BCSR CPR pressure weights: rows=" << m_cprPressureRows
               << ", true_impes=" << m_cprWeightTrueIMPESRows
               << ", pressure_row_fallback=" << m_cprWeightFallbackRows
               << "." << std::endl;
@@ -2605,7 +2597,7 @@ void LinearSolver::fillBCSRCPRPressureMatrixValues()
   if( use_well_elimination &&
       ( m_params.bcsrCPRDiagnostics || m_params.logLevel >= 1 ) )
   {
-    std::cerr << "[MGR] BCSR CPR well elimination diagnostics: links="
+    std::cout << "[MGR] BCSR CPR well elimination diagnostics: links="
               << m_cprWellEliminationLinks
               << ", schur_contributions=" << m_cprWellEliminationContributions
               << ", missing_diag=" << m_cprWellEliminationMissingDiag
@@ -2766,7 +2758,7 @@ void LinearSolver::logBCSRCPRPressureMatrixDiagnostics() const
       << ", max=" << max_row_sum_ratio
       << "), nonfinite_values=" << nonfinite_values
       << ".";
-  std::cerr << out.str() << std::endl;
+  std::cout << out.str() << std::endl;
 }
 
 void LinearSolver::logBCSRCPRAMGHierarchyDiagnostics() const
@@ -2945,7 +2937,7 @@ void LinearSolver::logBCSRCPRAMGHierarchyDiagnostics() const
   }
 
   const int_t coarsest_rows = level_rows.empty() ? 0 : level_rows.back();
-  std::cerr << "[MGR] BCSR CPR pressure AMG hierarchy: setup_call="
+  std::cout << "[MGR] BCSR CPR pressure AMG hierarchy: setup_call="
             << m_cprPressureSetupCount
             << ", amg_setups=" << m_cprPressureAMGSetupCount
             << ", reason=" << m_cprLastAMGRebuildReason
@@ -3290,7 +3282,7 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
     ++m_cprPressureStructureResetCount;
     if( m_params.logLevel >= 2 )
     {
-      std::cerr << "[MGR] BCSR CPR structure reset: reservoir_rows="
+      std::cout << "[MGR] BCSR CPR structure reset: reservoir_rows="
                 << reservoir_rows
                 << ", previous_rows=" << m_cprPressureRows
                 << ", reuse_amg=" << m_params.bcsrCPRReuseAMGHierarchy
@@ -3482,7 +3474,7 @@ bool LinearSolver::setupBCSRCPRPreconditioner()
 
   if( m_params.logLevel >= 1 )
   {
-    std::cerr << "[MGR] BCSR CPR reuse diagnostics: setup_call="
+    std::cout << "[MGR] BCSR CPR reuse diagnostics: setup_call="
               << m_cprPressureSetupCount
               << ", local_setup_index=" << ( setup_count_before + 1 )
               << ", structure="
@@ -3614,7 +3606,7 @@ void LinearSolver::setupBlockLocalPreconditioner()
   const int_t shifted_fallback_pivots = m_blockLocalPreconditioner->shiftedDenseFallbackPivots();
   if( shifted_fallback_pivots > 0 )
   {
-    std::cerr << "[MGR] Info: " << m_blockLocalPreconditioner->name()
+    std::cout << "[MGR] Info: " << m_blockLocalPreconditioner->name()
               << " used shifted dense fallback for " << shifted_fallback_pivots
               << " diagonal block(s), shifts="
               << m_blockLocalPreconditioner->shiftedDenseShiftSummary()
@@ -3624,7 +3616,7 @@ void LinearSolver::setupBlockLocalPreconditioner()
   const int_t diagonal_fallback_pivots = m_blockLocalPreconditioner->diagonalFallbackPivots();
   if( diagonal_fallback_pivots > 0 )
   {
-    std::cerr << "[MGR] Info: " << m_blockLocalPreconditioner->name()
+    std::cout << "[MGR] Info: " << m_blockLocalPreconditioner->name()
               << " used bounded diagonal fallback for " << diagonal_fallback_pivots
               << " diagonal block(s), variables(diagonal_inverse="
               << m_blockLocalPreconditioner->boundedDiagonalInverseVariables()
@@ -3644,7 +3636,7 @@ void LinearSolver::setupBlockLocalPreconditioner()
   const int_t total_fallback_pivots = m_blockLocalPreconditioner->totalFallbackPivots();
   if( total_fallback_pivots > 0 )
   {
-    std::cerr << "[MGR] Info: " << m_blockLocalPreconditioner->name()
+    std::cout << "[MGR] Info: " << m_blockLocalPreconditioner->name()
               << " fallback diagnostics: total=" << total_fallback_pivots
               << ", ratio=" << m_blockLocalPreconditioner->fallbackRatio()
               << ", reservoir=" << m_blockLocalPreconditioner->reservoirFallbackPivots()
@@ -4084,7 +4076,7 @@ int LinearSolver::applyBCSRCPRPreconditioner(HYPRE_ParCSRMatrix,
         << ", final_proxy_norm=" << final_residual_norm
         << ", final_proxy_rel=" << safeRatio( final_residual_norm, input_norm )
         << ".";
-    std::cerr << out.str() << std::endl;
+    std::cout << out.str() << std::endl;
   }
 
   return 0;
@@ -4460,7 +4452,7 @@ int LinearSolver::applyBCSRCPRTransposePreconditioner(HYPRE_ParCSRMatrix,
         << ", final_proxy_norm=" << final_residual_norm
         << ", final_proxy_rel=" << safeRatio( final_residual_norm, input_norm )
         << ".";
-    std::cerr << out.str() << std::endl;
+    std::cout << out.str() << std::endl;
   }
 
   return 0;
@@ -4759,7 +4751,7 @@ bool LinearSolver::createHYPREMatrix()
   {
     if( m_params.logLevel >= 1 )
     {
-      std::cerr << "[MGR] HYPRE system matrix direct ParCSR value update used."
+      std::cout << "[MGR] HYPRE system matrix direct ParCSR value update used."
                 << std::endl;
     }
     return true;
