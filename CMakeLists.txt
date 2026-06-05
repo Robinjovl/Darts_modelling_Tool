@@ -1,5 +1,9 @@
 cmake_minimum_required (VERSION 3.26)
-project (openDARTS LANGUAGES CXX VERSION 0.2)
+# C is enabled (in addition to CXX) so find_package(OpenMP) provides the
+# OpenMP::OpenMP_C imported target that an OpenMP-enabled HYPRE (a C library,
+# built with HYPRE_OPENMP=1) links against. No first-party C sources are
+# compiled; this only makes the C toolchain + OpenMP_C component available.
+project (openDARTS LANGUAGES C CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Set C++ standard

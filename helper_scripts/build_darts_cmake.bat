@@ -134,10 +134,20 @@ if %skip_req%==false (
   cd hypre\build
   rem For debugging: -DHYPRE_ENABLE_PRINT
   rem Building with MGR support by default (MGR is always built in HYPRE)
+  rem Optionally build HYPRE with its own OpenMP threading (parallel BoomerAMG /
+  rem HYPRE_ILU smoothers + SpMV) via HYPRE_OPENMP=1. Opt-in for MT builds; it
+  rem changes solver numerics (HYPRE's hybrid smoothers go processor-local).
+  rem See SOLVER_REFACTORING_PLAN.md.
+  set hypre_omp_flag=
+  if /i "%HYPRE_OPENMP%"=="1" set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
+  if /i "%HYPRE_OPENMP%"=="true" set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
+  if /i "%HYPRE_OPENMP%"=="on" set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
+  if defined hypre_omp_flag echo -- HYPRE OpenMP enabled ^(HYPRE_ENABLE_OPENMP=ON^)
   cmake -D HYPRE_TIMING=OFF ^
         -D HYPRE_BUILD_TESTS=OFF ^
         -D HYPRE_BUILD_EXAMPLES=OFF ^
         -D HYPRE_ENABLE_MPI=OFF ^
+        %hypre_omp_flag% ^
         -D CMAKE_INSTALL_PREFIX=..\..\install ^
         -D HYPRE_SEQUENTIAL=ON ../src > ..\..\..\..\make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\make_hypre.log || goto :error
@@ -308,6 +318,7 @@ echo    -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), e
 echo    -d MODE          : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo
 echo    -j N             : Set number of threads (N) for compilation. Default: 8. Example: -j 4
 echo    -p               : Enable Phreeqc + Reaktoro (requires Conda). Default: false
+echo    HYPRE_OPENMP env : Build HYPRE with OpenMP (parallel BoomerAMG/ILU in CPR/MGR). Opt-in, for MT builds; changes solver numerics. Default: false. Requires -c to (re)build HYPRE.
 goto :eof
 REM ----------------------------------------------------------------
 

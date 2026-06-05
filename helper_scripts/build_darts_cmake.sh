@@ -29,6 +29,7 @@ Help_Info()
   echo "   -p               : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
   echo "   -v               : Enable build with valgrind support (OFF by default)"
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
+  echo "   HYPRE_OPENMP env : Build HYPRE with OpenMP (parallel BoomerAMG/ILU in CPR/MGR). Opt-in, for MT builds; changes solver numerics. Default: false. Requires -c to (re)build HYPRE."
 }
 
 ensure_reaktoro_conda()
@@ -95,6 +96,7 @@ gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 valgrind=false    # Whether support valgrind profiling or not
 CUDA_ARCH="${CUDA_ARCH:-}"
+HYPRE_OPENMP="${HYPRE_OPENMP:-false}" # Build HYPRE with its own OpenMP threading (opt-in env var)
 
 while getopts ":chtwmrab:d:j:g:Gpv" option; do
     case "$option" in
@@ -244,9 +246,21 @@ if [[ "$skip_req" == false ]]; then
     # The MGR (Multiplicative Grid Reduction) solver is always built in HYPRE
     # Request build of tests and examples just to be sure everything is fine in the build
     # For debugging: -DHYPRE_ENABLE_PRINT
+    # Optionally build HYPRE with its own OpenMP threading (parallel BoomerAMG /
+    # HYPRE_ILU smoothers + SpMV). Opt-in via HYPRE_OPENMP=1; it parallelises the
+    # CPR/MGR preconditioner stages that otherwise run sequentially, but changes
+    # solver numerics (HYPRE's hybrid smoothers go processor-local, so results
+    # are no longer bit-identical to the serial build and iteration counts may
+    # shift). Intended for MT builds. See SOLVER_REFACTORING_PLAN.md.
+    hypre_omp_flag=""
+    if [[ "$HYPRE_OPENMP" == "true" || "$HYPRE_OPENMP" == "1" || "$HYPRE_OPENMP" == "ON" ]]; then
+        echo "-- HYPRE OpenMP enabled (HYPRE_ENABLE_OPENMP=ON)"
+        hypre_omp_flag="-D HYPRE_ENABLE_OPENMP=ON"
+    fi
     cmake -D HYPRE_BUILD_TESTS=OFF \
           -D HYPRE_BUILD_EXAMPLES=OFF \
           -D HYPRE_ENABLE_MPI=OFF \
+          ${hypre_omp_flag} \
           -D CMAKE_BUILD_TYPE=${config} \
           -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
           -D CMAKE_INSTALL_PREFIX=../../../install \

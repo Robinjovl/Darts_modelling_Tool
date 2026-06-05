@@ -459,6 +459,93 @@ here are the post-closeout cleanups that follow naturally from the audit:
 
 ---
 
+## 0b. OpenMP / multi-threading restoration (open-source build, landed 2026-06-05)
+
+**Context.** The open-source (`OPENDARTS_LINEAR_SOLVERS`) build shipped
+single-threaded: the in-tree `csr_matrix` / `sparsity_pattern` hard-coded the
+engine's per-thread row partition (`row_thread_starts`) to a single thread, so
+`OPENDARTS_CONFIG=MT` was force-disabled in the build scripts and FATAL_ERRORed
+in CMake without `BOS_SOLVERS_DIR`. The proprietary `bos` matrix computed the
+partition; the open-source port stubbed it. This is the memory bug reported in
+**GitLab open-darts#40** ("Multithreading support in ODLS configuration"): the
+engine's OpenMP first-touch / assembly regions index `row_thread_starts[id]` /
+`[id+1]`, which is an out-of-bounds read (→ OOB write via `numa_set`) when the
+array has only the single-thread length-2 entry and a team of >1 thread runs.
+
+Restoration is layered. **Tier 1 + Tier 2 landed in `baf81be4`.**
+
+### Tier 1 — engine assembly partition (landed)
+Restores the proven upstream default (the reference `CALCULATE_START_END`
+even-row split, `darts-linear-solvers` `omp_tools.h`):
+* `solvers/include/omp_partition.hpp` — `omp_assembly_n_threads()` +
+  `fill_even_row_partition()` (write-disjoint even block-row split).
+* `sparsity_pattern::allocate()`/`build()` and `csr_matrix<N>::init()` install
+  an even-row partition sized to `omp_get_max_threads()` at allocate/init, so
+  the first-touch and assembly index a valid array (closes open-darts#40).
+* `engine_base::print_header()` calls `omp_set_dynamic(0)` (universal engine
+  init hook) so every assembly team == the partition size.
+* CMake `MT`-requires-`bos` FATAL_ERROR relaxed; `MT=false` downgrade dropped in
+  `build_darts_cmake.{sh,bat}` → **MT (OpenMP) is the open-source default**.
+* Validated **bit-for-bit** at `OMP_NUM_THREADS=1` vs 4 (super / thermal /
+  dead-oil / MGR models) — assembly writes disjoint rows, so it is deterministic.
+
+### Tier 2 — in-tree GMRES kernels (landed)
+`solvers/src/linsolv_gmres.cpp` block-CSR SpMV / `axpy` / `scale` / lin-comb
+parallelised; `dot` is a **deterministic** parallel reduction (fixed-order
+partial combine — run-to-run reproducible, unlike a bare `reduction(+:)`).
+Transpose SpMV left serial (scatter race; adjoint-only). Validated:
+within-tolerance vs ST and bitwise-reproducible across runs at a fixed thread
+count. The HYPRE-based preconditioner stages (CPR / MGR) remained **sequential**.
+
+### Tier 3 — HYPRE OpenMP (recovered; opt-in, validation-gated)
+The remaining serial frontier is HYPRE itself — the BoomerAMG / `HYPRE_ILU`
+smoothers and SpMV that dominate a CPR / MGR solve. HYPRE was built with
+`HYPRE_USING_OPENMP` undefined (sequential). Recovered as an **opt-in** build
+option (NOT default):
+* **`HYPRE_OPENMP=1` env var** on `build_darts_cmake.{sh,bat}` adds
+  `-D HYPRE_ENABLE_OPENMP=ON` to the HYPRE CMake → HYPRE builds with its own
+  OpenMP threading (`HYPRE_USING_OPENMP 1` in `HYPRE_config.h`).
+* **`thirdparty/thirdparty_hypre.cmake` now calls `find_package(OpenMP)`** before
+  `find_package(HYPRE)`. An OpenMP-enabled HYPRE exports a link dependency on the
+  `OpenMP::OpenMP_C` imported target; open-DARTS' first-party CMake otherwise
+  adds `-fopenmp` only as a raw flag and never defines that target, so consuming
+  an OpenMP HYPRE failed CMake generation (`target "HYPRE::HYPRE" ... contains
+  OpenMP::OpenMP_C but the target was not found`). The `find_package(OpenMP)` is
+  harmless for a sequential HYPRE (target unused) and not `REQUIRED`.
+* Use `-c` (or a fresh `thirdparty/install`) to (re)build HYPRE after toggling
+  the option — the build-script thirdparty-reuse logic otherwise keeps the
+  existing HYPRE.
+
+**Caveats (why it is opt-in, not default):**
+1. **Non-deterministic / changed numerics.** HYPRE's hybrid Gauss-Seidel
+   smoothers go processor-local (Jacobi-like) under OpenMP, so results are no
+   longer bit-identical to the sequential HYPRE and CPR/MGR iteration counts can
+   shift. Within solver tolerance, but a regression-reference refresh is needed.
+2. **Nested-OpenMP oversubscription.** The solve is called serially (not nested
+   in an engine parallel region), but HYPRE spawns its own teams on top of the
+   engine/GMRES OpenMP; `omp_set_dynamic(0)` is set, so size the team to the
+   cores and avoid `OMP_NESTED`.
+3. **Scaling is memory-bandwidth bound** — modest speedup, and overhead can make
+   small systems slower; worthwhile mainly for large CPR/MGR solves.
+
+**Status:** builds and links cleanly (HYPRE `HYPRE_USING_OPENMP 1`; consumed via
+the `find_package(OpenMP)` + C-language fix; 0 build warnings). Functional
+validation **passed**: `2ph_comp` (MGR) runs at `OMP_NUM_THREADS=1` vs 4 and
+converges within tolerance (1-vs-4 relative diff 3.8e-11; the 1-thread run
+matches the serial-HYPRE baseline `sumX` to 16 digits, 4-thread differs at
+~1e-11 from the parallel smoothers). Performance validation on large CPR/MGR
+solves + a regression-reference refresh remain the gate before default-on.
+
+### Remaining
+* HYPRE-OpenMP default-on after the validation campaign + regression-reference
+  refresh.
+* **`superlu_mt`** (parallel SuperLU, open-darts#40 point 3) — only the direct
+  fallback solver; lower priority than HYPRE.
+* Transpose-SpMV parallelisation (GMRES adjoint) and `linsolv_cpr` host-side
+  gather loops — Amdahl-limited behind HYPRE until Tier 3 lands by default.
+
+---
+
 ## 1. Objective
 
 Deliver a **unified, extensible linear-solver subsystem** for open-DARTS that:
