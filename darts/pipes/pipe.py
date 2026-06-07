@@ -1573,12 +1573,14 @@ class Pipe:
                 beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
                 beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
                 eta0 = (beta0 - self.B) / (1 - self.B)
+                eta0 = np.clip(eta0, 0, 1)  # Shi et al. impose 0 <= eta <= 1
                 C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
             elif self.drift_flux_model == "tang_2019":
                 flooding_fraction = sG0_face_filtered * abs(vM0) / v_sgf0
                 beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
                 beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
                 eta0 = (beta0 - self.B) / (1 - self.B)
+                eta0 = np.clip(eta0, 0, 1)  # Shi et al. impose 0 <= eta <= 1
                 C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
             elif self.drift_flux_model == "bai_2023":
                 miuG0_face = self.iter_phases_props0_face[5]
