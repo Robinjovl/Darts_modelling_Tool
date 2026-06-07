@@ -98,16 +98,16 @@ class Pipe:
                                  - "tang_2019" uses the unified all-inclination Tang et al. (2019) closure
                                  - "bai_2023" uses the CO2-specific Bai et al. (2023) closure
                                  Important: in transient pipe/wellbore tests for liquid CO2 injection into an
-                                 initially gas-filled CO2 well, Bai friction alone is stable, but enabling the full
+                                 initially gas-filled CO2 well, Wang friction alone is stable, but enabling the full
                                  Bai drift-flux closure can destabilize the wellhead flashing/start-up state.
         :type drift_flux_model: str
         :param tang_parameter_set: If tang_2019 is used as the drift-flux model, parameterization of the
                                    Tang et al. (2019) unified model. Allowed values are "olgas" and "tuffp".
         :type tang_parameter_set: str
         :param friction_model: Friction-factor closure to use:
-                               - None selects "bai_2023" for drift_flux_model="bai_2023" and ""colebrook_white"" otherwise
+                               - None selects "wang_2014" for drift_flux_model="bai_2023" and "colebrook_white" otherwise
                                - "colebrook_white" uses Colebrook-White correlation to calculate the friction factor
-                               - "bai_2023" uses the Wang et al. supercritical-CO2 friction factor adopted by Bai et al.
+                               - "wang_2014" uses the Wang et al. supercritical-CO2 friction factor adopted by Bai et al.
         :type friction_model: str or None
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
                      could have a value between 1.0 and 1.5. It is set to:
@@ -214,11 +214,13 @@ class Pipe:
 
         if friction_model is None:
             friction_model = (
-                "bai_2023" if self.drift_flux_model == "bai_2023" else "colebrook_white"
+                "wang_2014"
+                if self.drift_flux_model == "bai_2023"
+                else "colebrook_white"
             )
-        if friction_model not in ("colebrook_white", "bai_2023"):
+        if friction_model not in ("colebrook_white", "wang_2014"):
             raise ValueError(
-                "friction_model must be either 'colebrook_white' or 'bai_2023'."
+                "friction_model must be either 'colebrook_white' or 'wang_2014'."
             )
         self.friction_model = friction_model
 
@@ -1257,11 +1259,11 @@ class Pipe:
         """ End calculating the Reynolds number """
 
         self.ff0 = np.zeros(pg.num_interfaces)
-        if self.friction_model == "bai_2023":
+        if self.friction_model == "wang_2014":
             relative_roughness = pg.wall_roughness / pg.pipe_ID
             for i, Re in enumerate(Re0):
                 self.ff0[i] = (
-                    self.bai_darcy_friction_factor(Re, relative_roughness) / 4.0
+                    self.wang_darcy_friction_factor(Re, relative_roughness) / 4.0
                 )
             return self.ff0
 
@@ -1327,13 +1329,19 @@ class Pipe:
         )
 
     @staticmethod
-    def bai_darcy_friction_factor(Re: float, relative_roughness: float) -> float:
+    def wang_darcy_friction_factor(Re: float, relative_roughness: float) -> float:
         """
-        Darcy friction factor correlation used by Bai et al. (2023) for
-        two-phase pure-CO2 pressure-gradient calculations.
+        Calculate the Darcy friction factor with the Wang et al. (2014)
+        supercritical-CO2 correlation adopted by Bai et al. (2023).
+
+        Bai et al. use this correlation in their two-phase pure-CO2
+        pressure-gradient model because it was developed for CO2 pipe
+        flow. The returned value is a Darcy friction factor; callers that
+        use the historical open-DARTS Fanning-friction convention must
+        divide this value by 4.
 
         :param Re: Mixture Reynolds number.
-        :param relative_roughness: Pipe relative roughness (i.e., wall roughness divided by pipe diameter).
+        :param relative_roughness: Pipe relative roughness, wall roughness divided by pipe diameter.
         :return: Darcy friction factor.
         """
         if Re <= 0.0:
@@ -1424,7 +1432,7 @@ class Pipe:
             * self.geometry.pipe_ID
             / max(mu_m, np.finfo(float).eps)
         )
-        darcy_f = self.bai_darcy_friction_factor(
+        darcy_f = self.wang_darcy_friction_factor(
             Re, self.geometry.wall_roughness / self.geometry.pipe_ID
         )
         fanning_f = darcy_f / 4.0
