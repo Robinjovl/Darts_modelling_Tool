@@ -11,9 +11,9 @@ from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
-from dartsflash.libflash import NegativeFlash
-from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, EoSParams
+from dartsflash.libflash import EoS, EoSParams
 from dartsflash.components import CompData
+from dartsflash.mixtures import DARTSFlash, VLAq
 
 
 class Model(CICDModel):
@@ -56,10 +56,6 @@ class Model(CICDModel):
 
     def set_physics(self, n_points):
         """Physical properties"""
-        from dartsflash.libflash import EoS
-        from dartsflash.components import CompData
-        from dartsflash.mixtures import DARTSFlash, VLAq
-        # Fluid components, ions and solid
         components = ["H2O", "CO2"]
         self.components = components
         phases = ["aq", "CO2_rich_phase"]
