@@ -70,6 +70,7 @@ class Pipe:
         source_sinks: dict = None,
         drift_flux_model: str = "shi_t2well",
         tang_parameter_set: str = "olgas",
+        friction_model: str | None = None,
         Cmax: float = 1.2,
         Fv: float = 1,
         prop_eval_method: str = "direct",
@@ -95,10 +96,19 @@ class Pipe:
         :param drift_flux_model: Drift-flux closure to use:
                                  - "shi_t2well" retains the historical Holmes/Shi/T2Well style closure
                                  - "tang_2019" uses the unified all-inclination Tang et al. (2019) closure
+                                 - "bai_2023" uses the CO2-specific Bai et al. (2023) closure
+                                 Important: in transient pipe/wellbore tests for liquid CO2 injection into an
+                                 initially gas-filled CO2 well, Bai friction alone is stable, but enabling the full
+                                 Bai drift-flux closure can destabilize the wellhead flashing/start-up state.
         :type drift_flux_model: str
         :param tang_parameter_set: If tang_2019 is used as the drift-flux model, parameterization of the
                                    Tang et al. (2019) unified model. Allowed values are "olgas" and "tuffp".
         :type tang_parameter_set: str
+        :param friction_model: Friction-factor closure to use:
+                               - None selects "bai_2023" for drift_flux_model="bai_2023" and ""colebrook_white"" otherwise
+                               - "colebrook_white" uses Colebrook-White correlation to calculate the friction factor
+                               - "bai_2023" uses the Wang et al. supercritical-CO2 friction factor adopted by Bai et al.
+        :type friction_model: str or None
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
                      could have a value between 1.0 and 1.5. It is set to:
                      --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
@@ -196,13 +206,22 @@ class Pipe:
             )
         self.source_sinks = source_sinks
 
-        self.drift_flux_model = drift_flux_model.lower()
-        if self.drift_flux_model not in ("shi_t2well", "tang_2019"):
+        if drift_flux_model not in ("shi_t2well", "tang_2019", "bai_2023"):
             raise ValueError(
-                "drift_flux_model must be either 'shi_t2well' or 'tang_2019'."
+                "drift_flux_model must be either 'shi_t2well', 'tang_2019', or 'bai_2023'."
             )
+        self.drift_flux_model = drift_flux_model
 
-        tang_parameter_set = tang_parameter_set.lower()
+        if friction_model is None:
+            friction_model = (
+                "bai_2023" if self.drift_flux_model == "bai_2023" else "colebrook_white"
+            )
+        if friction_model not in ("colebrook_white", "bai_2023"):
+            raise ValueError(
+                "friction_model must be either 'colebrook_white' or 'bai_2023'."
+            )
+        self.friction_model = friction_model
+
         if tang_parameter_set not in ("olgas", "tuffp"):
             raise ValueError("tang_parameter_set must be either 'olgas' or 'tuffp'.")
         self.tang_parameter_set = tang_parameter_set
@@ -300,6 +319,20 @@ class Pipe:
                 ) * np.ones(pipe_geometry.num_interfaces)
             else:
                 self.tang_theta = pipe_geometry.inclination_angle_radian - math.pi / 2.0
+
+        elif self.drift_flux_model == "bai_2023":
+            self.profile_A = None
+            self.B = None
+            self.a1 = None
+            self.a2 = None
+            self.m = np.ones(pipe_geometry.num_interfaces)
+            self.tang_df_params = None
+            if isinstance(pipe_geometry.inclination_angle_radian, float):
+                self.bai_theta = (
+                    pipe_geometry.inclination_angle_radian - math.pi / 2.0
+                ) * np.ones(pipe_geometry.num_interfaces)
+            else:
+                self.bai_theta = pipe_geometry.inclination_angle_radian - math.pi / 2.0
 
         self.g_cos_theta = self.g * np.cos(pipe_geometry.inclination_angle_radian)
         if isinstance(self.g_cos_theta, float):
@@ -1224,6 +1257,13 @@ class Pipe:
         """ End calculating the Reynolds number """
 
         self.ff0 = np.zeros(pg.num_interfaces)
+        if self.friction_model == "bai_2023":
+            relative_roughness = pg.wall_roughness / pg.pipe_ID
+            for i, Re in enumerate(Re0):
+                self.ff0[i] = (
+                    self.bai_darcy_friction_factor(Re, relative_roughness) / 4.0
+                )
+            return self.ff0
 
         # Laminar connections (Re==0 stays 0)
         lam = (Re0 > 0.0) & (Re0 < 2400.0)
@@ -1286,10 +1326,186 @@ class Pipe:
             relative_roughness / 3.7065 + (1.2613 / (Re * sqrt_f))
         )
 
+    @staticmethod
+    def bai_darcy_friction_factor(Re: float, relative_roughness: float) -> float:
+        """
+        Darcy friction factor correlation used by Bai et al. (2023) for
+        two-phase pure-CO2 pressure-gradient calculations.
+
+        :param Re: Mixture Reynolds number.
+        :param relative_roughness: Pipe relative roughness (i.e., wall roughness divided by pipe diameter).
+        :return: Darcy friction factor.
+        """
+        if Re <= 0.0:
+            return 0.0
+        if Re < 2400.0:
+            return 64.0 / Re
+
+        inner = (relative_roughness / 29.36) ** 0.95 + (18.35 / Re) ** 1.108
+        argument = relative_roughness / 1.72 - (9.26 / Re) * math.log10(inner)
+        if argument <= 0.0:
+            # Fall back to the existing Colebrook Fanning form converted to Darcy.
+            return float(
+                4.0 * fsolve(Pipe.colebrook, 0.005, args=(Re, relative_roughness))[0]
+            )
+        return (-2.34 * math.log10(argument)) ** -2.0
+
+    @staticmethod
+    def bai_gas_froude_number(j_g: float, pipe_ID: float) -> float:
+        """
+        Calculate the gas superficial Froude number used by Bai et al. (2023).
+
+        :param j_g: Gas superficial velocity [m/s].
+        :param pipe_ID: Pipe internal diameter [m].
+        :return: Gas superficial Froude number.
+        """
+        return abs(j_g) / math.sqrt(Pipe.g * pipe_ID)
+
+    @staticmethod
+    def bai_gas_volumetric_fraction(j_g: float, j_l: float) -> float:
+        """
+        Calculate gas volumetric flow fraction from superficial velocities.
+
+        :param j_g: Gas superficial velocity [m/s].
+        :param j_l: Liquid superficial velocity [m/s].
+        :return: Gas volumetric flow fraction.
+        """
+        total = abs(j_g) + abs(j_l)
+        return 0.0 if total <= 0.0 else abs(j_g) / total
+
+    @staticmethod
+    def bai_gas_quality(j_g: float, j_l: float, rho_g: float, rho_l: float) -> float:
+        """
+        Calculate gas mass quality from superficial velocities and densities.
+
+        :param j_g: Gas superficial velocity [m/s].
+        :param j_l: Liquid superficial velocity [m/s].
+        :param rho_g: Gas density [kg/m3].
+        :param rho_l: Liquid density [kg/m3].
+        :return: Gas mass quality.
+        """
+        gas_mass_flux = rho_g * abs(j_g)
+        liquid_mass_flux = rho_l * abs(j_l)
+        total = gas_mass_flux + liquid_mass_flux
+        return 0.0 if total <= 0.0 else gas_mass_flux / total
+
+    def bai_profile_parameter(
+        self,
+        alpha_g: float,
+        j_g: float,
+        j_l: float,
+        mixture_velocity: float,
+        rho_g: float,
+        rho_l: float,
+        mu_g: float,
+        mu_l: float,
+        theta: float,
+    ) -> float:
+        """
+        Calculate the Bai et al. (2023) distribution coefficient.
+
+        :param alpha_g: Gas void fraction.
+        :param j_g: Gas superficial velocity [m/s].
+        :param j_l: Liquid superficial velocity [m/s].
+        :param mixture_velocity: Mixture velocity magnitude [m/s].
+        :param rho_g: Gas density [kg/m3].
+        :param rho_l: Liquid density [kg/m3].
+        :param mu_g: Gas viscosity [Pa.s].
+        :param mu_l: Liquid viscosity [Pa.s].
+        :param theta: Bai pipe inclination angle [rad], measured from horizontal.
+        :return: Distribution coefficient C0.
+        """
+        alpha_l = 1.0 - alpha_g
+        rho_m = alpha_g * rho_g + alpha_l * rho_l
+        mu_m = alpha_g * mu_g + alpha_l * mu_l
+        Re = (
+            rho_m
+            * abs(mixture_velocity)
+            * self.geometry.pipe_ID
+            / max(mu_m, np.finfo(float).eps)
+        )
+        darcy_f = self.bai_darcy_friction_factor(
+            Re, self.geometry.wall_roughness / self.geometry.pipe_ID
+        )
+        fanning_f = darcy_f / 4.0
+        beta = self.bai_gas_volumetric_fraction(j_g, j_l)
+        quality = self.bai_gas_quality(j_g, j_l, rho_g, rho_l)
+        Fr_sg = self.bai_gas_froude_number(j_g, self.geometry.pipe_ID)
+        theta_deg = math.degrees(theta)
+
+        if -50.0 <= theta_deg <= 0.0 and Fr_sg <= 0.1:
+            C01 = 0.0
+        else:
+            C01 = (
+                0.2
+                * (1.0 - math.sqrt(rho_g / rho_l))
+                * ((2.6 - beta) ** 0.15 - math.sqrt(max(fanning_f, 0.0)))
+                * (1.0 - quality) ** 1.5
+            )
+
+        density_ratio = rho_g / rho_l
+        cos_theta = math.cos(theta)
+        denominator = max(1.0 + cos_theta, np.finfo(float).eps)
+        base = math.sqrt(
+            max(
+                (1.0 + density_ratio**2 * cos_theta) / denominator,
+                np.finfo(float).eps,
+            )
+        )
+        exponent = alpha_l ** (2.0 / 5.0)
+        low_re_term = (2.0 - density_ratio**2) / (1.0 + (Re / 1000.0) ** 2)
+        high_re_term = (base**exponent + C01) / (
+            1.0 + (1000.0 / max(Re, np.finfo(float).eps)) ** 2
+        )
+        return low_re_term + high_re_term
+
+    def bai_drift_velocity(
+        self,
+        alpha_g: float,
+        j_g: float,
+        rho_g: float,
+        rho_l: float,
+        mu_l: float,
+        sigma: float,
+        theta: float,
+    ) -> float:
+        """
+        Calculate the Bai et al. (2023) drift velocity.
+
+        :param alpha_g: Gas void fraction.
+        :param j_g: Gas superficial velocity [m/s].
+        :param rho_g: Gas density [kg/m3].
+        :param rho_l: Liquid density [kg/m3].
+        :param mu_l: Liquid dynamic viscosity [Pa.s].
+        :param sigma: Gas-liquid surface tension [N/m].
+        :param theta: Bai pipe inclination angle [rad], measured from horizontal.
+        :return: Drift velocity [m/s] in the pipe coordinate system.
+        """
+        alpha_l = 1.0 - alpha_g
+        viscosity_ratio = mu_l / 0.001
+        if viscosity_ratio > 10.0:
+            C2 = (0.434 / math.log(viscosity_ratio)) ** 0.15
+        else:
+            C2 = 1.0
+
+        La = math.sqrt(sigma / (self.g * (rho_l - rho_g))) / self.geometry.pipe_ID
+        C3 = (La / 0.025) ** 0.9 if La > 0.025 else 1.0
+        theta_deg = math.degrees(theta)
+        Fr_sg = self.bai_gas_froude_number(j_g, self.geometry.pipe_ID)
+        C4 = -1.0 if -50.0 <= theta_deg <= 0.0 and Fr_sg <= 0.1 else 1.0
+        return (
+            (0.35 * math.sin(theta) + 0.45 * math.cos(theta))
+            * math.sqrt(self.g * self.geometry.pipe_ID * (rho_l - rho_g) / rho_l)
+            * alpha_l
+            * C2
+            * C3
+            * C4
+        )
+
     def update_profile_parameter(self):
         pg = self.geometry
         num_interfaces = self.geometry.num_interfaces
-        [rhoM0_vM0, _, _, _] = self.velocities0
+        [rhoM0_vM0, vM0_all, vG0, vL0] = self.velocities0
         [xG_mass0_face, xL_mass0_face, sG0_face, rhoG0_face, rhoL0_face, _, _] = (
             self.iter_phases_props0_face
         )
@@ -1346,12 +1562,37 @@ class Pipe:
 
             if self.drift_flux_model == "shi_t2well":
                 flooding_fraction = self.Fv * sG0_face_filtered * abs(vM0) / v_sgf0
+                beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
+                beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
+                eta0 = (beta0 - self.B) / (1 - self.B)
+                C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
             elif self.drift_flux_model == "tang_2019":
                 flooding_fraction = sG0_face_filtered * abs(vM0) / v_sgf0
-            beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
-            beta0 = np.clip(beta0, 0, 1)  # beta0 is subject to limits 0 <= beta0 <= 1
-            eta0 = (beta0 - self.B) / (1 - self.B)
-            C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
+                beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
+                beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
+                eta0 = (beta0 - self.B) / (1 - self.B)
+                C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
+            elif self.drift_flux_model == "bai_2023":
+                miuG0_face = self.iter_phases_props0_face[5]
+                miuL0_face = self.iter_phases_props0_face[6]
+                C00_filtered = np.zeros(len(indices))
+                for i, idx in enumerate(indices):
+                    jG0 = sG0_face[idx] * vG0[idx]
+                    jL0 = (1.0 - sG0_face[idx]) * vL0[idx]
+                    if jG0 == 0.0 and jL0 == 0.0:
+                        jG0 = sG0_face[idx] * vM0_all[idx]
+                        jL0 = (1.0 - sG0_face[idx]) * vM0_all[idx]
+                    C00_filtered[i] = self.bai_profile_parameter(
+                        sG0_face[idx],
+                        jG0,
+                        jL0,
+                        abs(vM0_all[idx]),
+                        rhoG0_face[idx],
+                        rhoL0_face[idx],
+                        miuG0_face[idx],
+                        miuL0_face[idx],
+                        self.bai_theta[idx],
+                    )
 
             C00 = np.ones(num_interfaces)  # C00 all ones first
             self.C00 = np.ones(num_interfaces)
@@ -1387,6 +1628,26 @@ class Pipe:
             rhoL0_face_filtered = rhoL0_face[indices]
             vM0_filtered = vM0[indices]
             rhoM0_face_filtered = self.rhoM0_face[indices]
+
+            if self.drift_flux_model == "bai_2023":
+                vD0 = np.zeros(num_interfaces)
+                for index, value in enumerate(indices):
+                    jG0 = sG0_face[value] * self.velocities0[2][value]
+                    jL0 = (1.0 - sG0_face[value]) * self.velocities0[3][value]
+                    if jG0 == 0.0 and jL0 == 0.0:
+                        jG0 = sG0_face[value] * vM0[value]
+                        jL0 = (1.0 - sG0_face[value]) * vM0[value]
+                    vD0[value] = self.bai_drift_velocity(
+                        sG0_face[value],
+                        jG0,
+                        rhoG0_face[value],
+                        rhoL0_face[value],
+                        miuL0_face[value],
+                        self.IFT_face_filtered[index],
+                        self.bai_theta[value],
+                    )
+                self.vD0 = vD0
+                return
 
             # Calculate the K function to make a smooth transition of drift velocity between
             # the bubble-rise and film-flooding stages
