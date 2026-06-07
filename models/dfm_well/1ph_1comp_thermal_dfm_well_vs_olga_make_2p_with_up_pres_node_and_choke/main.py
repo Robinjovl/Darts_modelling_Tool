@@ -1,6 +1,6 @@
 """
-Injection of pure gaseous CO₂ at a constant mass injection rate with a constant temperature into a well containing
-gaseous CO₂ using a standalone well model to compare its results with those in OLGA for a thermal single-phase scenario.
+Injection of pure gaseous CO₂ at a constant mass injection rate with a constant enthalpy into a well containing
+gaseous CO₂ using a standalone well model to compare its results with those in OLGA for a thermal two-phase scenario.
 
 Lessons learned:
     1- TODO
