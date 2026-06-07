@@ -724,7 +724,7 @@ class StructReservoirWithLGR(ReservoirBase):
                 "rcond": self.rcond,
                 "hcap": self.hcap,
                 "depth": self.depth,
-                "volume": np.asarray(self.volume, dtype=float),
+                "volume": np.asarray([cell.volume for cell in self.cells], dtype=float),
                 "op_num": self.op_num,
                 "actnum": self.actnum,
             }
