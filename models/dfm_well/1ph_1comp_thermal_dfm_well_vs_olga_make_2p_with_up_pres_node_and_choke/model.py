@@ -221,7 +221,7 @@ class Model(CICDModel):
         #     verbose=verbose,
         # )
 
-        # For SINTEF_HEM
+        # For SINTEF_DHEM
         inlet_node = UpstreamPressureNodeWithChoke(
             well_1_name,
             well_1_geometry,
@@ -235,15 +235,15 @@ class Model(CICDModel):
             injected_fluid_pressure,
             injected_fluid_temperature,
             inj_phase_name,
-            # Use the SINTEF-style HEM model for dense/liquid CO2 injection
-            # when the restriction can flash internally. Perkins keeps the
-            # liquid path effectively frozen and is not reliable for this
-            # flashing CO2 application.
-            hydraulic_model="SINTEF_HEM",
+            # Use the SINTEF-style D-HEM model for pure liquid CO2 injection
+            # when flashing can be delayed until the superheat limit. Perkins
+            # keeps the liquid path effectively frozen and HEM flashes
+            # immediately at saturation.
+            hydraulic_model="SINTEF_DHEM",
             valve_geometry="ORIFICE",
             equilibrium_model="EQUILIBRIUM",
             diameter=0.03,
-            # For SINTEF_HEM this coefficient is an effective-area multiplier.
+            # For SINTEF_DHEM this coefficient is an effective-area multiplier.
             # Use a nozzle value near 1.0, an orifice contraction coefficient,
             # or a calibrated value for the installed choke.
             discharge_coefficient=0.84,
@@ -252,10 +252,11 @@ class Model(CICDModel):
             gas_liquid_sizing_ratio=26.8465,
             thermal_phase_equilibrium=True,
             # The downstream pressure passed to the choke is the pressure of the
-            # top well segment. SINTEF_HEM evaluates the isentropic
-            # equilibrium path to the downstream pressure for subcritical flow
-            # and internally selects the critical throat pressure for choked
-            # flow, so no Perkins/Perry pressure-recovery correction is used.
+            # top well segment. SINTEF_DHEM evaluates the metastable liquid or
+            # post-SHL equilibrium path to the downstream pressure for
+            # subcritical flow and internally selects the critical throat
+            # pressure for choked flow, so no Perkins/Perry recovery correction
+            # is used.
             recovery="OFF",
             recovery_tuning=1.0,
             slip_model="NOSLIP",
