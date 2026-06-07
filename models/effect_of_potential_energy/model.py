@@ -12,7 +12,7 @@ from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
 from dartsflash.libflash import NegativeFlash
-from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
+from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, EoSParams
 from dartsflash.components import CompData
 
 
@@ -68,7 +68,7 @@ class Model(CICDModel):
         """ Define flash """
         flash_ev = VLAq(comp_data, hybrid=True)
         flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE],
-                            trial_comps=[InitialGuess.Yi.Wilson],
+                            trial_comps=[EoSParams.Yi.Wilson],
                             stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
                             )
         flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)

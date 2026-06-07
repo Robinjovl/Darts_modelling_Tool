@@ -171,7 +171,7 @@ Physics are defined in the ``DartsModel.physics`` object,
         property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
                                                eps_z=zero / 10, temperature=temperature)
 
-        property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
+        property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [NegativeFlash.Ki.Henry_VA])
         property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw)),
                                               ('Aq', Garcia2001(self.components)), ])
         property_container.viscosity_ev = dict([('V', Fenghour1998()),

@@ -18,7 +18,7 @@ from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-from dartsflash.libflash import NegativeFlash, FlashParams, InitialGuess
+from dartsflash.libflash import NegativeFlash, FlashParams
 from dartsflash.libflash import CubicEoS, AQEoS
 from dartsflash.components import CompData
 
@@ -99,7 +99,7 @@ class ModelCCS(Model_CPG):
                                                min_z=self.zero, temperature=350)
 
         # property_container.flash_ev = ConstantK(nc=2, ki=[0.001, 100])
-        property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
+        property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [NegativeFlash.Ki.Henry_VA])
         property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw)),
                                               ('wat', Garcia2001(self.components)), ])
         property_container.viscosity_ev = dict([('gas', Fenghour1998()),

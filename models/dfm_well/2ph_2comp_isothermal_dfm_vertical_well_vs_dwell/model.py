@@ -75,7 +75,7 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
-        from dartsflash.libflash import CubicEoS, FlashParams, EoS, InitialGuess
+        from dartsflash.libflash import CubicEoS, FlashParams, EoS, NegativeFlash
         from dartsflash.components import CompData
         from dartsflash.mixtures import DARTSFlash, VLAq
         components_names = ['CO2', 'H2O']
@@ -104,7 +104,7 @@ class Model(CICDModel):
         aq = flash_ev.eos["Aq"]
 
         flash_ev.init_flash(flash_type=DARTSFlash.FlashType.NegativeFlash,
-                            eos_order=["VL", "Aq"], nf_initial_guess=[InitialGuess.Henry_VA])
+                            eos_order=["VL", "Aq"], nf_initial_guess=[NegativeFlash.Ki.Henry_VA])
         property_container.flash_ev = flash_ev
 
         property_container.density_ev = dict([('G', EoSDensity(eos=pr, Mw=comp_data.Mw)),
