@@ -110,7 +110,9 @@ class Pipe:
         :param drift_flux_model: Drift-flux closure to use:
                                  - "shi_t2well" retains the historical Holmes/Shi/T2Well style closure
                                  - "tang_2019" uses the unified all-inclination Tang et al. (2019) closure
-                                 - "bai_2023" uses the CO2-specific Bai et al. (2023) closure
+                                 - "bai_2023" uses the CO2-specific Bai, Lou, and Lu (2023) pipe-flow model, which adopts:
+                                   - the Bhagwat and Ghajar (2014) drift-flux correlation and
+                                   - the Wang et al. (2014) supercritical-CO2 friction-factor correlation
                                  Important: in transient pipe/wellbore tests for liquid CO2 injection into an
                                  initially gas-filled CO2 well, Wang friction alone is stable, but enabling the full
                                  Bai drift-flux closure can destabilize the wellhead flashing/start-up state.
@@ -121,7 +123,7 @@ class Pipe:
         :param friction_model: Friction-factor closure to use:
                                - None selects "wang_2014" for drift_flux_model="bai_2023" and "colebrook_white" otherwise
                                - "colebrook_white" uses Colebrook-White correlation to calculate the friction factor
-                               - "wang_2014" uses the Wang et al. supercritical-CO2 friction factor adopted by Bai et al.
+                               - "wang_2014" uses the Wang et al. (2014) supercritical-CO2 friction factor adopted by Bai et al.
         :type friction_model: str or None
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
                      could have a value between 1.0 and 1.5. It is set to:
