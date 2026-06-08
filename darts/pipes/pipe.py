@@ -1457,51 +1457,51 @@ class Pipe:
         return 0.0 if total <= 0.0 else abs(j_g) / total
 
     @staticmethod
-    def bai_gas_quality(j_g: float, j_l: float, rho_g: float, rho_l: float) -> float:
+    def bai_gas_quality(j_g: float, j_l: float, rhoG: float, rhoL: float) -> float:
         """
         Calculate gas mass quality from superficial velocities and densities.
 
         :param j_g: Gas superficial velocity [m/s].
         :param j_l: Liquid superficial velocity [m/s].
-        :param rho_g: Gas density [kg/m3].
-        :param rho_l: Liquid density [kg/m3].
+        :param rhoG: Gas density [kg/m3].
+        :param rhoL: Liquid density [kg/m3].
         :return: Gas mass quality.
         """
-        gas_mass_flux = rho_g * abs(j_g)
-        liquid_mass_flux = rho_l * abs(j_l)
+        gas_mass_flux = rhoG * abs(j_g)
+        liquid_mass_flux = rhoL * abs(j_l)
         total = gas_mass_flux + liquid_mass_flux
         return 0.0 if total <= 0.0 else gas_mass_flux / total
 
     def bai_profile_parameter(
         self,
-        alpha_g: float,
-        alpha_l: float,
+        sG: float,
+        sL: float,
         j_g: float,
         j_l: float,
         mixture_velocity: float,
-        rho_g: float,
-        rho_l: float,
-        mu_g: float,
-        mu_l: float,
+        rhoG: float,
+        rhoL: float,
+        muG: float,
+        muL: float,
         theta: float,
     ) -> float:
         """
         Calculate the Bai et al. (2023) distribution coefficient.
 
-        :param alpha_g: Gas void fraction.
-        :param alpha_l: Liquid volume fraction.
+        :param sG: Gas volume fraction.
+        :param sL: Liquid volume fraction.
         :param j_g: Gas superficial velocity [m/s].
         :param j_l: Liquid superficial velocity [m/s].
         :param mixture_velocity: Mixture velocity magnitude [m/s].
-        :param rho_g: Gas density [kg/m3].
-        :param rho_l: Liquid density [kg/m3].
-        :param mu_g: Gas viscosity [Pa.s].
-        :param mu_l: Liquid viscosity [Pa.s].
+        :param rhoG: Gas density [kg/m3].
+        :param rhoL: Liquid density [kg/m3].
+        :param muG: Gas viscosity [Pa.s].
+        :param muL: Liquid viscosity [Pa.s].
         :param theta: Bai pipe inclination angle [rad], measured from horizontal.
         :return: Distribution coefficient C0.
         """
-        rho_m = (alpha_g * rho_g + alpha_l * rho_l) / (alpha_g + alpha_l)
-        mu_m = (alpha_g * mu_g + alpha_l * mu_l) / (alpha_g + alpha_l)
+        rho_m = (sG * rhoG + sL * rhoL) / (sG + sL)
+        mu_m = (sG * muG + sL * muL) / (sG + sL)
         Re = (
             rho_m
             * abs(mixture_velocity)
@@ -1513,7 +1513,7 @@ class Pipe:
         )
         fanning_f = darcy_f / 4.0
         beta = self.bai_gas_volumetric_fraction(j_g, j_l)
-        quality = self.bai_gas_quality(j_g, j_l, rho_g, rho_l)
+        quality = self.bai_gas_quality(j_g, j_l, rhoG, rhoL)
         Fr_sg = self.bai_gas_froude_number(j_g, self.geometry.pipe_ID)
         theta_deg = math.degrees(theta)
 
@@ -1522,12 +1522,12 @@ class Pipe:
         else:
             C01 = (
                 0.2
-                * (1.0 - math.sqrt(rho_g / rho_l))
+                * (1.0 - math.sqrt(rhoG / rhoL))
                 * ((2.6 - beta) ** 0.15 - math.sqrt(max(fanning_f, 0.0)))
                 * (1.0 - quality) ** 1.5
             )
 
-        density_ratio = rho_g / rho_l
+        density_ratio = rhoG / rhoL
         cos_theta = math.cos(theta)
         denominator = max(1.0 + cos_theta, np.finfo(float).eps)
         base = math.sqrt(
@@ -1536,7 +1536,7 @@ class Pipe:
                 np.finfo(float).eps,
             )
         )
-        exponent = alpha_l ** (2.0 / 5.0)
+        exponent = sL ** (2.0 / 5.0)
         low_re_term = (2.0 - density_ratio**2) / (1.0 + (Re / 1000.0) ** 2)
         high_re_term = (base**exponent + C01) / (
             1.0 + (1000.0 / max(Re, np.finfo(float).eps)) ** 2
@@ -1545,41 +1545,41 @@ class Pipe:
 
     def bai_drift_velocity(
         self,
-        alpha_l: float,
+        sL: float,
         j_g: float,
-        rho_g: float,
-        rho_l: float,
-        mu_l: float,
+        rhoG: float,
+        rhoL: float,
+        muL: float,
         sigma: float,
         theta: float,
     ) -> float:
         """
         Calculate the Bai et al. (2023) drift velocity.
 
-        :param alpha_l: Liquid volume fraction.
+        :param sL: Liquid volume fraction.
         :param j_g: Gas superficial velocity [m/s].
-        :param rho_g: Gas density [kg/m3].
-        :param rho_l: Liquid density [kg/m3].
-        :param mu_l: Liquid dynamic viscosity [Pa.s].
+        :param rhoG: Gas density [kg/m3].
+        :param rhoL: Liquid density [kg/m3].
+        :param muL: Liquid dynamic viscosity [Pa.s].
         :param sigma: Gas-liquid surface tension [N/m].
         :param theta: Bai pipe inclination angle [rad], measured from horizontal.
         :return: Drift velocity [m/s] in the pipe coordinate system.
         """
-        viscosity_ratio = mu_l / 0.001
+        viscosity_ratio = muL / 0.001
         if viscosity_ratio > 10.0:
             C2 = (0.434 / math.log(viscosity_ratio)) ** 0.15
         else:
             C2 = 1.0
 
-        La = math.sqrt(sigma / (self.g * (rho_l - rho_g))) / self.geometry.pipe_ID
+        La = math.sqrt(sigma / (self.g * (rhoL - rhoG))) / self.geometry.pipe_ID
         C3 = (La / 0.025) ** 0.9 if La > 0.025 else 1.0
         theta_deg = math.degrees(theta)
         Fr_sg = self.bai_gas_froude_number(j_g, self.geometry.pipe_ID)
         C4 = -1.0 if -50.0 <= theta_deg <= 0.0 and Fr_sg <= 0.1 else 1.0
         return (
             (0.35 * math.sin(theta) + 0.45 * math.cos(theta))
-            * math.sqrt(self.g * self.geometry.pipe_ID * (rho_l - rho_g) / rho_l)
-            * alpha_l
+            * math.sqrt(self.g * self.geometry.pipe_ID * (rhoL - rhoG) / rhoL)
+            * sL
             * C2
             * C3
             * C4
