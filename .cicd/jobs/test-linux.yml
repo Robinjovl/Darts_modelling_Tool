@@ -30,10 +30,8 @@
         - darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
-        # test interpolators
-        - cd tests/interpolators
-        - darts test_interpolation.py
-        - cd ../..
+        - python -m pip install pytest
+        - python -m pytest tests/interpolators -v
         # test discretizer
         - cd discretizer/tests/compare_discretizers
         - darts main.py

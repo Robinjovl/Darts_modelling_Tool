@@ -121,10 +121,11 @@ struct cell_key_hash
  * future model needs cells past this range, widen cell_key_t::idx to int64_t
  * (key size doubles, accompanying hashmap memory grows linearly).
  *
- * Overflow is detected at runtime: the floor()ed value is range-checked against
- * INT32_MIN/MAX before the cast. If a cell falls outside the representable
- * range we emit a once-per-process warning (host only) and clamp the index to
- * the limit so the hash/map operation stays well-defined.
+ * Overflow handling is defined in every build mode: the floor()ed value is
+ * saturated to [INT32_MIN, INT32_MAX] with a branchless fmin/fmax clamp before the
+ * cast, so the float->int conversion is never out of range (which would be UB).
+ * Debug builds additionally emit a once-per-process host warning when the clamp
+ * actually fires; Release saturates silently.
  */
 #ifndef __CUDA_ARCH__
 inline void warn_axis_index_overflow_once(double scaled, double axis_value, double axis_origin, double axis_step_inv)
@@ -155,36 +156,29 @@ __forceinline__ __host__ __device__ static int32_t get_axis_interval_index_unbou
     const double scaled = (axis_value - static_cast<double>(axis_origin)) * static_cast<double>(axis_step_inv);
     // floor() handles negative values correctly; int() would truncate toward zero
     const double floored = floor(scaled);
-#ifndef NDEBUG
-    // Debug-only int32 overflow guard. The check is only meaningful when a model's
-    // axes_step is so small relative to the visited range that the cell index
-    // approaches ±2^31 — this has not been observed in any test model. Keeping the
-    // guard in Release builds adds two compare+branch operations per axis per
-    // interpolation call, which measurably contributes to the cache_lookup
-    // sub-timer on hot workloads (see MR313 perf comparison vs the chemistry
-    // baseline). The Debug-build variant retains the diagnostic.
     const double i32_min = static_cast<double>(std::numeric_limits<int32_t>::min());
     const double i32_max = static_cast<double>(std::numeric_limits<int32_t>::max());
-    if (floored < i32_min)
+#ifndef NDEBUG
+    // Debug-only diagnostic: warn once if a cell index leaves the int32 range. This
+    // is only reachable with a pathologically small axes_step (the int32 range spans
+    // ~2.1e9 cells per axis, far beyond any realistic reservoir state); Release
+    // saturates silently via the clamp below.
+    if (floored < i32_min || floored > i32_max)
     {
 #ifndef __CUDA_ARCH__
         warn_axis_index_overflow_once(floored, axis_value,
                                       static_cast<double>(axis_origin),
                                       static_cast<double>(axis_step_inv));
 #endif
-        return std::numeric_limits<int32_t>::min();
-    }
-    if (floored > i32_max)
-    {
-#ifndef __CUDA_ARCH__
-        warn_axis_index_overflow_once(floored, axis_value,
-                                      static_cast<double>(axis_origin),
-                                      static_cast<double>(axis_step_inv));
-#endif
-        return std::numeric_limits<int32_t>::max();
     }
 #endif // NDEBUG
-    return static_cast<int32_t>(floored);
+    // Unconditional branchless saturating clamp: keeps the float->int conversion in
+    // range so the cast is defined behaviour in EVERY build mode (out-of-range
+    // float->int is UB per [conv.fpint], and also maps NaN to a defined value).
+    // fmin/fmax lower to SSE MINSD/MAXSD with no branch, so this is at least as
+    // cheap as the previous (Release-stripped) compare+branch guard — an A/B of the
+    // cache-lookup timer showed no measurable difference.
+    return static_cast<int32_t>(fmin(fmax(floored, i32_min), i32_max));
 }
 
 /**

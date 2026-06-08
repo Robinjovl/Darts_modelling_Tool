@@ -7,6 +7,9 @@
         - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
+        # test interpolators (pytest; on a GPU build the GPU interpolator test
+        - python -m pip install pytest
+        - python -m pytest tests/interpolators -v
         # test discretizer
         - cd discretizer/tests/compare_discretizers
         - python main.py
@@ -123,6 +126,9 @@ test-linux-tahiti-image-gpu:
             darts run_test_suite2.py LOG && \
             echo 'run_test_suite2 returned' $? && \
             cd .. && \
+            # test interpolators (pytest; GPU interpolator test runs here)
+            python -m pip install pytest && \
+            python -m pytest tests/interpolators -v && \
             # test discretizer
             cd discretizer/tests/compare_discretizers && \
             python main.py && \

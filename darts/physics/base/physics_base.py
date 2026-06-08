@@ -119,11 +119,22 @@ class PhysicsBase:
 
         # OBL grid: cell size + origin per axis. With multi-index-keyed adaptive
         # interpolators these two are the only state the cache needs; no max/n_points.
-        assert axes_step is not None, "axes_step is required"
-        assert len(axes_step) == self.n_vars, (
-            f"axes_step must have {self.n_vars} entries, got {len(axes_step)}"
-        )
+        # Validate with exceptions (not assert, which `python -O` strips): each step
+        # is divided into on the C++ hot path, so a missing/zero/negative/NaN value
+        # would silently produce inf/NaN indices instead of a clear error.
+        if axes_step is None:
+            raise ValueError("axes_step is required (per-axis OBL cell size)")
+        if len(axes_step) != self.n_vars:
+            raise ValueError(
+                f"axes_step must have {self.n_vars} entries, got {len(axes_step)}"
+            )
         self.axes_step = [float(s) for s in axes_step]
+        for i, s in enumerate(self.axes_step):
+            # rejects NaN, +/-inf and <= 0 in one expression
+            if not (0.0 < s < float("inf")):
+                raise ValueError(
+                    f"axes_step[{i}]={s!r} must be finite and strictly positive"
+                )
 
         self.sim_eps = sim_eps if sim_eps is not None else 1e-12
 
@@ -813,16 +824,17 @@ class PhysicsBase:
                             "No higher n_ops templatized interpolator found"
                         )
                 except Exception:
-                    # As a last resort, try the general implementation if available
-                    try:
-                        itor = eval("multilinear_adaptive_cpu_interpolator_general")(
-                            evaluator, *ctor_args, n_dims, n_ops
-                        )
-                        general = True
-                    except Exception:
-                        raise ValueError(
-                            "Number of operators is incorrect, no templatized interpolator exists"
-                        ) from err
+                    # No compiled template for this (n_dims, n_ops). Name the two real
+                    # causes instead of the old misleading "operators" message (there is
+                    # no '*_general' interpolator — that fallback was always dead).
+                    raise ValueError(
+                        f"No compiled OBL interpolator template for "
+                        f"(n_dims={n_dims}, n_ops={n_ops}). "
+                        f"If n_dims exceeds the compiled maximum, rebuild with a larger "
+                        f"-DOPENDARTS_MAX_DIMS (must be >= n_dims). The interpolator "
+                        f"family is selected by -DOPENDARTS_INTERPOLATOR_PROFILE "
+                        f"(MINIMAL omits the 'linear' templates). Tried: {itor_name}."
+                    ) from err
 
         if self.cache:
             # create unique signature for interpolator

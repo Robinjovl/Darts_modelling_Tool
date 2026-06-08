@@ -1,6 +1,7 @@
 import functools
 
 import numpy as np
+import pytest
 
 from darts.engines import *
 from darts.interpolators import *
@@ -78,9 +79,15 @@ def get_interpolator_name(algorithm, mode, platform, precision, n_dims, n_ops):
     return itor_name
 
 
-def test_interpolator_convergence(
-    itor_type, itor_mode, n_dim, is_barycentric: bool = None, norm=None
-):
+@pytest.mark.parametrize(
+    "itor_type, itor_mode, n_dim, is_barycentric, norm",
+    [
+        ("multilinear", "adaptive", 4, None, np.inf),
+        ("linear", "adaptive", 4, False, np.inf),
+        ("linear", "adaptive", 4, True, np.inf),
+    ],
+)
+def test_interpolator_convergence(itor_type, itor_mode, n_dim, is_barycentric, norm):
     zero = 1.0e-9
     n_ops = 6 * n_dim + 17
     axes_min = n_dim * [-1 - zero]
@@ -123,21 +130,24 @@ def test_interpolator_convergence(
     # calculate interpolated values with interpolators of multiple resolutions
     diff = np.zeros((2, len(resolutions)))
     for i in range(len(resolutions)):
-        # initialize interpolator
+        # initialize interpolator. New adaptive ctor is (evaluator, axes_origin,
+        # axes_step); derive per-axis step from this resolution so the convergence
+        # sweep still refines the cell size as before.
+        axes_step = [
+            (axes_max[d] - axes_min[d]) / (resolutions[i][d] - 1) for d in range(n_dim)
+        ]
         if itor_type == 'linear':
             itor = eval(itor_name)(
                 evaluator,
-                index_vector(resolutions[i]),
                 value_vector(axes_min),
-                value_vector(axes_max),
+                value_vector(axes_step),
                 is_barycentric,
             )
         else:
             itor = eval(itor_name)(
                 evaluator,
-                index_vector(resolutions[i]),
                 value_vector(axes_min),
-                value_vector(axes_max),
+                value_vector(axes_step),
             )
         timer = timer_node()
         itor.init()
@@ -174,9 +184,15 @@ def test_interpolator_convergence(
     assert success, 'Conv. order: val = ' + str(orders[0]) + ', der = ' + str(orders[1])
 
 
-def test_linearity_preservation(
-    itor_type, itor_mode, n_dim, is_barycentric: bool = None
-):
+@pytest.mark.parametrize(
+    "itor_type, itor_mode, n_dim, is_barycentric",
+    [
+        ("multilinear", "adaptive", 4, None),
+        ("linear", "adaptive", 4, False),
+        ("linear", "adaptive", 4, True),
+    ],
+)
+def test_linearity_preservation(itor_type, itor_mode, n_dim, is_barycentric):
     zero = 1.0e-9
     n_ops = 6 * n_dim + 17
     n_axes_points = n_dim * [128]
@@ -184,22 +200,24 @@ def test_linearity_preservation(
     axes_max = [300] + (n_dim - 1) * [1.0 - zero]
     evaluator = Linear(n_dim, n_ops)
 
-    # initialize interpolator
+    # initialize interpolator. New adaptive ctor is (evaluator, axes_origin,
+    # axes_step); derive step from the (n_axes_points, axes_min, axes_max) window.
     itor_name = get_interpolator_name(itor_type, itor_mode, 'cpu', 'd', n_dim, n_ops)
+    axes_step = [
+        (axes_max[d] - axes_min[d]) / (n_axes_points[d] - 1) for d in range(n_dim)
+    ]
     if itor_type == 'linear':
         itor = eval(itor_name)(
             evaluator,
-            index_vector(n_axes_points),
             value_vector(axes_min),
-            value_vector(axes_max),
+            value_vector(axes_step),
             is_barycentric,
         )
     else:
         itor = eval(itor_name)(
             evaluator,
-            index_vector(n_axes_points),
             value_vector(axes_min),
-            value_vector(axes_max),
+            value_vector(axes_step),
         )
     timer = timer_node()
     itor.init()
@@ -287,11 +305,15 @@ def _build_multilinear_adaptive(
     itor_name = get_interpolator_name(
         'multilinear', 'adaptive', 'cpu', 'd', n_dim, n_ops
     )
+    # New adaptive ctor is (evaluator, axes_origin, axes_step); derive step from the
+    # legacy (n_axes_points, axes_min, axes_max) window so cell spacing is unchanged.
+    axes_step = [
+        (axes_max[d] - axes_min[d]) / (n_axes_points[d] - 1) for d in range(n_dim)
+    ]
     itor = eval(itor_name)(
         evaluator,
-        index_vector(n_axes_points),
-        value_vector(axes_min),
-        value_vector(axes_max),
+        value_vector(list(axes_min)),
+        value_vector(axes_step),
     )
     itor.init()
     return itor
@@ -328,7 +350,8 @@ def test_evaluate_batch_consistency(n_dim=4):
     assert success
 
 
-def test_parallel_evaluator(n_dim=4, start_method=None):
+@pytest.mark.parametrize("start_method", [None, "spawn"])
+def test_parallel_evaluator(start_method, n_dim=4):
     """ParallelEvaluator.evaluate_batch() must reproduce serial evaluation.
 
     The factory is functools.partial(Linear, ...) — a top-level picklable
@@ -500,11 +523,10 @@ def test_interpolator_thread_consistency(n_dim=4):
     if not (
         hasattr(_engines, 'set_num_threads') and hasattr(_engines, 'get_num_threads')
     ):
-        print(
-            'interpolator thread-count consistency: SKIPPED '
-            '(single-threaded build — no OpenMP thread control)'
+        pytest.skip(
+            'single-threaded build — no OpenMP thread control '
+            '(set/get_num_threads absent)'
         )
-        return
 
     zero = 1.0e-9
     n_ops = 4 * n_dim  # 16 for n_dim=4: an instantiated (N_DIMS, N_OPS) template
@@ -544,39 +566,6 @@ def test_interpolator_thread_consistency(n_dim=4):
 
 
 if __name__ == '__main__':
-    print('Linearity-preserving tests for interpolators:')
-    test_linearity_preservation(itor_type='multilinear', itor_mode='adaptive', n_dim=4)
-    test_linearity_preservation(
-        itor_type='linear', itor_mode='adaptive', n_dim=4, is_barycentric=False
-    )
-    test_linearity_preservation(
-        itor_type='linear', itor_mode='adaptive', n_dim=4, is_barycentric=True
-    )
+    import sys
 
-    print('Convergence tests for interpolators:')
-    test_interpolator_convergence(
-        itor_type='multilinear', itor_mode='adaptive', n_dim=4, norm=np.inf
-    )
-    # test_interpolator_convergence(itor_type='multilinear', itor_mode='static', n_dim=4, norm=np.inf)
-    test_interpolator_convergence(
-        itor_type='linear',
-        itor_mode='adaptive',
-        n_dim=4,
-        is_barycentric=False,
-        norm=np.inf,
-    )
-    test_interpolator_convergence(
-        itor_type='linear',
-        itor_mode='adaptive',
-        n_dim=4,
-        is_barycentric=True,
-        norm=np.inf,
-    )
-
-    print('Parallel operator update tests:')
-    test_evaluate_batch_consistency(n_dim=4)
-    test_parallel_evaluator(n_dim=4, start_method=None)
-    test_parallel_evaluator(n_dim=4, start_method='spawn')
-    test_shared_evaluator_pool(n_dim=4)
-    test_parallel_interpolator(n_dim=4)
-    test_interpolator_thread_consistency(n_dim=4)
+    sys.exit(pytest.main([__file__, '-v']))

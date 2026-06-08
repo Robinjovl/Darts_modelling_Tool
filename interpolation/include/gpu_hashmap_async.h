@@ -28,9 +28,11 @@ namespace gpu_hashmap_async
     ///
     /// Each slot stores a 64-bit content hash of the multi-index (cell_key_t) as the
     /// lookup key. Bucket selection AND match comparison use the same 63-bit hash —
-    /// the slot does NOT store the full multi-index. This trades a theoretical
-    /// collision rate (~N^2 / 2^64 ≈ 6e-8 at N=10^7 unique cells) for a much
-    /// simpler concurrent-insert protocol that doesn't require multi-stage CAS or
+    /// the slot does NOT store the full multi-index, so unlike the CPU
+    /// std::unordered_map<cell_key_t> path this is collision-PRONE, not
+    /// collision-safe. This trades a birthday collision rate (~N^2 / 2^64, i.e.
+    /// ~5e-6 at N=10^7 and ~5e-10 at N=10^5 unique cells) for a much simpler
+    /// concurrent-insert protocol that doesn't require multi-stage CAS or
     /// inter-thread spin-waits.
     ///
     /// If a future workload requires strict collision-freedom, switch the slot

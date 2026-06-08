@@ -392,7 +392,9 @@ __global__ void multilinear_adaptive_interpolate_thread_per_state_stages_kernel(
   }
 
   value_t *hypercube_data;
-  // hashmap looks up by cell_key_t directly (collision-safe)
+  // hashmap is keyed by the 63-bit content hash of cell_key_t (key_from_cell);
+  // this GPU path is collision-PRONE, not collision-safe — unlike the CPU
+  // std::unordered_map<cell_key_t> path. See gpu_hashmap_async.h for the tradeoff.
   if (lookup_data(hypercube_data_d, gpu_hashmap_async::key_from_cell<N_DIMS>(hc_key), &hypercube_data))
   {
     if (FIRST_STAGE)
@@ -449,7 +451,9 @@ __global__ void multilinear_adaptive_interpolate_thread_per_operator_stages_kern
   }
 
   value_t *hypercube_data;
-  // hashmap looks up by cell_key_t directly (collision-safe)
+  // hashmap is keyed by the 63-bit content hash of cell_key_t (key_from_cell);
+  // this GPU path is collision-PRONE, not collision-safe — unlike the CPU
+  // std::unordered_map<cell_key_t> path. See gpu_hashmap_async.h for the tradeoff.
   if (lookup_data(hypercube_data_d, gpu_hashmap_async::key_from_cell<N_DIMS>(hc_key), &hypercube_data))
   {
     if (FIRST_STAGE)

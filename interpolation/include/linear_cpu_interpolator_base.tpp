@@ -206,7 +206,12 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::find_hypercube(const 
             // Signed floor: stores int32 bit-pattern into index_t. Negative values become
             // large unsigned values, which is intended — the adaptive cell_key map decodes
             // them back as int32 in get_supporting_point.
-            const int32_t floor_idx = static_cast<int32_t>(std::floor(scaled_point[i]));
+            // Saturating clamp keeps the float->int cast in range so it is defined
+            // behaviour (out-of-range float->int is UB; also maps NaN to a defined
+            // value). Mirrors the branchless clamp in multi_index_key.hpp.
+            const double floored = std::floor(scaled_point[i]);
+            const int32_t floor_idx = static_cast<int32_t>(
+                std::fmin(std::fmax(floored, -2147483648.0), 2147483647.0));
             hypercube[i] = static_cast<index_t>(static_cast<uint32_t>(floor_idx));
             scaled_point[i] -= static_cast<double>(floor_idx);
         }

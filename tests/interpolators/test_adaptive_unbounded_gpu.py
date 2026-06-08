@@ -16,6 +16,7 @@ Run with the obl_bounds conda env, GPU build:
 import time
 
 import numpy as np
+import pytest
 
 import darts.interpolators as _itor
 from darts.engines import index_vector, timer_node, value_vector
@@ -24,17 +25,14 @@ from darts.interpolators import operator_set_evaluator_iface
 N_DIMS = 3
 N_OPS = 4
 
-# GPU adaptive multilinear: try uint32 index first, fall back to uint64.
-for tag in ("i", "l"):
-    cls_name = f"multilinear_adaptive_gpu_interpolator_{tag}_d_{N_DIMS}_{N_OPS}"
-    if hasattr(_itor, cls_name):
-        GpuItor = getattr(_itor, cls_name)
-        break
-else:
-    raise SystemExit(
-        f"No multilinear_adaptive_gpu_interpolator template for "
-        f"(N_DIMS={N_DIMS}, N_OPS={N_OPS}) — is this a GPU build?"
-    )
+
+def _resolve_gpu_cls():
+    """Return the (uint32- or uint64-index) GPU adaptive template, or None on a CPU build."""
+    for tag in ("i", "l"):
+        cls_name = f"multilinear_adaptive_gpu_interpolator_{tag}_d_{N_DIMS}_{N_OPS}"
+        if hasattr(_itor, cls_name):
+            return getattr(_itor, cls_name)
+    return None
 
 
 class LinearEvaluator(operator_set_evaluator_iface):
@@ -56,7 +54,7 @@ class LinearEvaluator(operator_set_evaluator_iface):
         return (s @ self.A[:, : self.n_dim].T + self.A[:, self.n_dim]).reshape(-1)
 
 
-def run():
+def run(GpuItor):
     print("=" * 78)
     print(f"GPU smoke test: {GpuItor.__name__}")
     print(f"  N_DIMS={N_DIMS}, N_OPS={N_OPS}")
@@ -66,11 +64,12 @@ def run():
     axes_min = [0.0, 0.0, 0.0]
     axes_max = [1.0, 1.0, 1.0]
     n_points = 11
+    # New adaptive GPU ctor is (evaluator, axes_origin, axes_step).
+    axes_step = [(axes_max[d] - axes_min[d]) / (n_points - 1) for d in range(N_DIMS)]
     itor = GpuItor(
         evaluator,
-        index_vector([n_points] * N_DIMS),
         value_vector(axes_min),
-        value_vector(axes_max),
+        value_vector(axes_step),
     )
 
     # GPU itor uses get_axis_n_points etc. via init; assume it's been set up by Python wrapper.
@@ -134,5 +133,17 @@ def run():
     print("\nGPU smoke test passed.")
 
 
+def test_adaptive_unbounded_gpu():
+    GpuItor = _resolve_gpu_cls()
+    if GpuItor is None:
+        pytest.skip(
+            f"no multilinear_adaptive_gpu_interpolator template for "
+            f"(N_DIMS={N_DIMS}, N_OPS={N_OPS}) — not a GPU build"
+        )
+    run(GpuItor)
+
+
 if __name__ == "__main__":
-    run()
+    import sys
+
+    sys.exit(pytest.main([__file__, "-v"]))

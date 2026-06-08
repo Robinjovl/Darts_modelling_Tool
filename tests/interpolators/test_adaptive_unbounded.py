@@ -22,6 +22,7 @@ import time
 from contextlib import contextmanager
 
 import numpy as np
+import pytest
 
 # Probe which N_DIMS / N_OPS templates were built.
 import darts.interpolators as _itor_module
@@ -30,14 +31,24 @@ from darts.interpolators import operator_set_evaluator_iface
 
 N_DIMS = 3
 N_OPS = 4
-ML_CLS_NAME = f"multilinear_adaptive_cpu_interpolator_i_d_{N_DIMS}_{N_OPS}"
-LIN_CLS_NAME = f"linear_adaptive_cpu_interpolator_l_d_{N_DIMS}_{N_OPS}"
-for n in (ML_CLS_NAME, LIN_CLS_NAME):
-    if not hasattr(_itor_module, n):
-        raise SystemExit(
-            f"Template {n} not exposed in darts.interpolators — "
-            f"rebuild with this (n_dims, n_ops) pair."
-        )
+
+
+def _resolve_cls(base):
+    # The CPU adaptive templates are stamped per index type: '_l_' (uint64 index,
+    # the one currently built) and '_i_' (uint32, legacy/not compiled). Pick
+    # whichever is exposed so the test is robust to that build choice.
+    for tag in ("l", "i"):
+        name = f"{base}_{tag}_d_{N_DIMS}_{N_OPS}"
+        if hasattr(_itor_module, name):
+            return name
+    raise SystemExit(
+        f"No {base}_[l|i]_d_{N_DIMS}_{N_OPS} template exposed in darts.interpolators — "
+        f"rebuild with this (n_dims, n_ops) pair."
+    )
+
+
+ML_CLS_NAME = _resolve_cls("multilinear_adaptive_cpu_interpolator")
+LIN_CLS_NAME = _resolve_cls("linear_adaptive_cpu_interpolator")
 MultilinearAdaptiveCls = getattr(_itor_module, ML_CLS_NAME)
 LinearAdaptiveCls = getattr(_itor_module, LIN_CLS_NAME)
 
@@ -322,12 +333,11 @@ def run_one(kind: str):
 
 
 def run_axes_step_helper_test():
-    """axes_step-only construction (no axes_min / axes_max in user code).
+    """(axes_origin, axes_step)-only construction (no axes_min / axes_max / n_points).
 
-    The C++ adaptive interpolator constructor still takes (axes_points, axes_min, axes_max)
-    for backward compatibility, but with multi-index keys those values are advisory: any
-    (axes_origin, axes_step) combination produces a valid grid; axes_max = origin + N*step
-    is computed once at construction and never re-read on the hot path.
+    With multi-index keys the adaptive interpolator is unbounded: its constructor
+    takes exactly (evaluator, axes_origin, axes_step) — there is no point count or
+    upper bound. The cache grows on demand wherever the solver lands.
     """
     print("=" * 78)
     print(
@@ -340,20 +350,17 @@ def run_axes_step_helper_test():
         f"\nConstructing multilinear adaptive itor with axes_step={axes_step} only..."
     )
 
-    advisory_n = 1024
     origin = [0.0] * N_DIMS
-    derived_max = [origin[i] + (advisory_n - 1) * axes_step[i] for i in range(N_DIMS)]
     evaluator = LinearEvaluator(N_DIMS, N_OPS, seed=42)
     itor_ml = MultilinearAdaptiveCls(
         evaluator,
-        index_vector([advisory_n] * N_DIMS),
         value_vector(origin),
-        value_vector(derived_max),
+        value_vector(axes_step),
     )
     itor_ml.init()
 
-    # Query at a mix of in-bounds and far-out-of-bounds states (the default
-    # advisory window goes 1024 * 0.1 = 102.4 cells per axis; we'll wander far past).
+    # Query at a mix of in-bounds and far-out-of-bounds states; the unbounded cache
+    # materializes cells on demand far past any nominal window.
     rng = np.random.default_rng(seed=7)
     n_q = 4096
     s = rng.uniform(low=-500.0, high=500.0, size=(n_q, N_DIMS))
@@ -373,9 +380,8 @@ def run_axes_step_helper_test():
     evaluator2 = LinearEvaluator(N_DIMS, N_OPS, seed=42)
     itor_l = LinearAdaptiveCls(
         evaluator2,
-        index_vector([advisory_n] * N_DIMS),
         value_vector(origin),
-        value_vector(derived_max),
+        value_vector(axes_step),
         False,
     )
     itor_l.init()
@@ -398,16 +404,16 @@ def run_axes_step_helper_test():
     )
 
 
-def run_test():
-    for kind in ("multilinear", "linear"):
-        run_one(kind)
-        print()
+@pytest.mark.parametrize("kind", ["multilinear", "linear"])
+def test_adaptive_unbounded(kind):
+    run_one(kind)
+
+
+def test_axes_step_helper():
     run_axes_step_helper_test()
-    print()
-    print(
-        "All assertions passed (multilinear adaptive, linear adaptive, axes_step helper)."
-    )
 
 
 if __name__ == "__main__":
-    run_test()
+    import sys
+
+    sys.exit(pytest.main([__file__, "-v"]))
