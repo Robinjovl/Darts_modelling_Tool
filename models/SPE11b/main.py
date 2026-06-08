@@ -41,7 +41,7 @@ def output(m, ts, property_data : int = None):
     property_array[last_comp] = 1.
     for name in m.physics.components[:-1]:
         property_array[last_comp] -= property_array[name]
-    
+
     # compute mass per component
     mass_per_component, mass_vapor, mass_aqueous = m.get_mass_components(property_array)
     nb = m.reservoir.mesh.n_res_blocks
@@ -86,9 +86,9 @@ def output(m, ts, property_data : int = None):
             # m.plot_fluxes(property_array, time_vector, ts)  # plot fluxes
     if m.specs['ny'] == 1:
         m.plot_properties(property_array, time_vector, ts)  # plot properties
-    else: 
+    else:
         pass
-    
+
     m.output.output_to_vtk(ith_step = ts, output_data = [time_vector, property_array])
 
     # save properties to HDF5 file
@@ -198,7 +198,7 @@ def post_process(m, specs):
 def run(m, specs):
     if specs['ny'] == 1:
         m.plot_reservoir()
-        
+
     output_props = m.physics.vars + m.output.properties
     time_vector, property_array = m.output.output_properties(output_properties=output_props, ts_idx=0)
     m.output.output_to_vtk(ith_step = 0, output_data = [time_vector, property_array])
@@ -258,10 +258,10 @@ def run(m, specs):
 #%%
 
 """Define realization ID"""
-Nt = 2
+Nt = 1
 Dt = 365
-nx = 840//2
-nz = 120//2
+nx = 840//4
+nz = 120//4
 zero = 1e-10
 
 if 0:
@@ -302,19 +302,26 @@ else:
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
        platform = 'gpu'
 
+    # ---- model specs
     # please read the README file for an explanation of the input parameters :
     model_specs = [
-        # SPE11b 
+        # SPE11b
         {'check_rates': True, 'temperature': None, '1000years': 10, 'RHS': True,
-             'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024, 
-                 'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'OUTPUT',
-                     'post_process': None, 'platform': 'cpu'},
-        
+             'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024,
+                 'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'MY_OUTPUT_V2',
+                     'post_process': None, 'platform': platform},
+
+        # # SPE11c (this model uses msh files compiled with the code made by the repo)
+        # {'check_rates': False, 'temperature': None, '1000years': False, 'RHS': True,
+        #     'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 50 * 24 * 60 * 60,
+        #         'nx': 50, 'nz': 50, 'ny': 10, 'dispersion': False, 'output_dir': 'SPE11c_results',
+        #             'post_process': None, 'platform': 'cpu'},
+
         # restart model
         # {'check_rates': True, 'temperature': None, '1000years': None, 'RHS': True,
-        #         'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 3024, 
+        #         'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 3024,
         #             'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'OUTPUT',
-        #                 'post_process': 'POST', 'platform': 'cpu'},
+        #                 'post_process': 'POST', 'platform': platform},
     ]
 
 if __name__ == '__main__':
@@ -343,24 +350,24 @@ if __name__ == '__main__':
             from darts.tools.logging import redirect_all_output
             log_stream = redirect_all_output(os.path.join(output_dir, 'model.log'))
 
-        m = Model(specs) 
+        m = Model(specs)
         m.output_dir = output_dir
         m.print_darts()
 
         if specs['post_process'] is None:
             # ---- RUN MODEL
             m.init(discr_type='tpfa', platform=m.platform, verbose = True)
-            
+
             # if specs['reservoir_type'] == '11c':
                 # m.set_boundary_conditions_11c()
-            
+
             m.print_stat()
             m.set_output(output_folder = m.output_dir, sol_filename = 'reservoir_solution.h5',
                          save_initial = not specs['1000years'], precision = 'd', verbose = False)
             # m.output.set_phase_properties()
-            m.output.set_units() # adds unit labels to the vtk files 
+            m.output.set_units() # adds unit labels to the vtk files
             # m.output.print_simulation_parameters()
-            
+
             if specs['dispersion']:
                 m.init_dispersion()
                 if specs['platform'] == 'cpu' and specs['RHS'] is True:
@@ -374,13 +381,13 @@ if __name__ == '__main__':
                     print(f"-------- Year {i}/{n_years} --------")
                     m.run(365, restart_dt=365,
                           save_reservoir_data=False,
-                          save_well_data_after_run = True, 
+                          save_well_data_after_run = True,
                           save_well_data=False
                           )
                 m.physics.engine.t = 0.0
                 m.output.save_data_to_h5(kind="reservoir")
                 m.inj_rate = [specs['inj_rate'], 0]
-                if m.specs['RHS'] is False: 
+                if m.specs['RHS'] is False:
                     m.set_well_controls()
             # m.output.verbose = False
 
