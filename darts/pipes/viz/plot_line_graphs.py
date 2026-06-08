@@ -411,18 +411,16 @@ def plot_line_graphs(
     plt.figure(figsize=(12, 6))
 
     for ts_counter in list_of_time_steps:
-        miuG_profile = data_frame["miuG"][
+        muG_profile = data_frame["muG"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
         ]
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuG_profile_masked = np.ma.masked_where(
-            miuG_profile == threshold, miuG_profile
-        )
+        muG_profile_masked = np.ma.masked_where(muG_profile == threshold, muG_profile)
 
         plt.plot(
-            miuG_profile_masked, list(range(num_segments)), color=colors[ts_counter]
+            muG_profile_masked, list(range(num_segments)), color=colors[ts_counter]
         )
 
     # Reverse the y-axis
@@ -457,18 +455,16 @@ def plot_line_graphs(
     plt.figure(figsize=(12, 6))
 
     for ts_counter in list_of_time_steps:
-        miuL_profile = data_frame["miuL"][
+        muL_profile = data_frame["muL"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
         ]
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuL_profile_masked = np.ma.masked_where(
-            miuL_profile == threshold, miuL_profile
-        )
+        muL_profile_masked = np.ma.masked_where(muL_profile == threshold, muL_profile)
 
         plt.plot(
-            miuL_profile_masked, list(range(num_segments)), color=colors[ts_counter]
+            muL_profile_masked, list(range(num_segments)), color=colors[ts_counter]
         )
 
     # Reverse the y-axis

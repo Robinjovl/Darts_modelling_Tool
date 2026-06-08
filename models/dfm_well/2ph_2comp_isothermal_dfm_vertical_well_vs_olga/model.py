@@ -134,7 +134,7 @@ class Model(CICDModel):
         for j, ph in enumerate(phases_names):
             property_container.output_props['s' + ph] = lambda jj=j: property_container.sat[jj]
             property_container.output_props['rho' + ph] = lambda jj=j: property_container.dens[jj]
-            property_container.output_props['miu' + ph] = lambda jj=j: property_container.mu[jj]
+            property_container.output_props['mu' + ph] = lambda jj=j: property_container.mu[jj]
             for i, comp in enumerate(components_names):
                 property_container.output_props[f'x{comp}_in_{ph}_mass'] = lambda jj=j, ii=i: property_container.x_mass[jj, ii]
 

@@ -202,8 +202,8 @@ x_max = 1e3
 y_min_gas, y_max_gas = 10, 90
 y_min_liq, y_max_liq = -5, 1050
 
-# gas_matrix = to_matrix("miu_gas")
-# liq_matrix = to_matrix("miu_LCO2")
+# gas_matrix = to_matrix("mu_gas")
+# liq_matrix = to_matrix("mu_LCO2")
 # y_label_1 = "Gas viscosity [cP]"
 # y_label_2 = "Liquid viscosity [cP]"
 # output_name = "reservoir_viscosity"

@@ -27,7 +27,7 @@ def plot_heat_map_contourf(
     n_cmap_bins_t: int = 10,
     n_cmap_bins_s: int = 10,
     n_cmap_bins_rho: int = 10,
-    n_cmap_bins_miu: int = 10,
+    n_cmap_bins_mu: int = 10,
     n_cmap_bins_v: int = 10,
     font_size: float = 14,
     with_title: bool = True,
@@ -65,8 +65,8 @@ def plot_heat_map_contourf(
     :type n_cmap_bins_s: int
     :param n_cmap_bins_rho: Number of bins of the colorbar and colormap of density
     :type n_cmap_bins_rho: int
-    :param n_cmap_bins_miu: Number of bins of the colorbar and colormap of viscosity
-    :type n_cmap_bins_miu: int
+    :param n_cmap_bins_mu: Number of bins of the colorbar and colormap of viscosity
+    :type n_cmap_bins_mu: int
     :param n_cmap_bins_v: Number of bins of the colorbar and colormap of velocity
     :type n_cmap_bins_v: int
     :param font_size: Size of the fonts
@@ -1204,25 +1204,25 @@ def plot_heat_map_contourf(
     # Update figure counter for name of the saved figure
     figure_counter += 1
     # Initialize the gas viscosity matrix
-    miuG_matrix = np.zeros((num_segments, num_selected_ts))
+    muG_matrix = np.zeros((num_segments, num_selected_ts))
 
     # Fill the gas viscosity matrix
     for ts_idx, ts_counter in enumerate(time_step_idx_range):
-        miuG = data_frame["miuG"][
+        muG = data_frame["muG"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
         ]
-        miuG_matrix[:, ts_idx] = miuG
+        muG_matrix[:, ts_idx] = muG
 
     # Apply a mask to hide values equal to zero
     threshold = 0  # Set your threshold here
-    miuG_matrix_masked = np.ma.masked_where(miuG_matrix == threshold, miuG_matrix)
+    muG_matrix_masked = np.ma.masked_where(muG_matrix == threshold, muG_matrix)
 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create a discrete colorbar and colormap
-    miug_min, miug_max = np.min(miuG_matrix_masked), np.max(miuG_matrix_masked)
-    levels = np.linspace(miug_min, miug_max, n_cmap_bins_miu + 1)
+    muG_min, muG_max = np.min(muG_matrix_masked), np.max(muG_matrix_masked)
+    levels = np.linspace(muG_min, muG_max, n_cmap_bins_mu + 1)
     cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1230,7 +1230,7 @@ def plot_heat_map_contourf(
     cf = ax.contourf(
         x,
         y_segments,
-        miuG_matrix_masked,
+        muG_matrix_masked,
         levels=levels,
         cmap=cmap,
         norm=norm,
@@ -1239,7 +1239,7 @@ def plot_heat_map_contourf(
 
     # Overlay the exact same contour lines
     _cs = ax.contour(
-        x, y_segments, miuG_matrix_masked, levels=levels, colors='k', linewidths=0.7
+        x, y_segments, muG_matrix_masked, levels=levels, colors='k', linewidths=0.7
     )
     # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
 
@@ -1292,25 +1292,25 @@ def plot_heat_map_contourf(
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid viscosity matrix
-        miuL_matrix = np.zeros((num_segments, num_selected_ts))
+        muL_matrix = np.zeros((num_segments, num_selected_ts))
 
         # Fill the liquid viscosity matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
-            miuL = data_frame["miuL"][
+            muL = data_frame["muL"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
             ]
-            miuL_matrix[:, ts_idx] = miuL
+            muL_matrix[:, ts_idx] = muL
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuL_matrix_masked = np.ma.masked_where(miuL_matrix == threshold, miuL_matrix)
+        muL_matrix_masked = np.ma.masked_where(muL_matrix == threshold, muL_matrix)
 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create a discrete colorbar and colormap
-        miul_min, miul_max = np.min(miuL_matrix_masked), np.max(miuL_matrix_masked)
-        levels = np.linspace(miul_min, miul_max, n_cmap_bins_miu + 1)
+        muL_min, muL_max = np.min(muL_matrix_masked), np.max(muL_matrix_masked)
+        levels = np.linspace(muL_min, muL_max, n_cmap_bins_mu + 1)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1318,7 +1318,7 @@ def plot_heat_map_contourf(
         cf = ax.contourf(
             x,
             y_segments,
-            miuL_matrix_masked,
+            muL_matrix_masked,
             levels=levels,
             cmap=cmap,
             norm=norm,
@@ -1327,7 +1327,7 @@ def plot_heat_map_contourf(
 
         # Overlay the exact same contour lines
         _cs = ax.contour(
-            x, y_segments, miuL_matrix_masked, levels=levels, colors='k', linewidths=0.7
+            x, y_segments, muL_matrix_masked, levels=levels, colors='k', linewidths=0.7
         )
         # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
 
@@ -1385,30 +1385,30 @@ def plot_heat_map_contourf(
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the L_a viscosity matrix
-        miuL_a_matrix = np.zeros((num_segments, num_selected_ts))
+        muL_a_matrix = np.zeros((num_segments, num_selected_ts))
 
         # Fill the L_a viscosity matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
-            miuL_a = data_frame["miuL_a"][
+            muL_a = data_frame["muL_a"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
             ]
-            miuL_a_matrix[:, ts_idx] = miuL_a
+            muL_a_matrix[:, ts_idx] = muL_a
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuL_a_matrix_masked = np.ma.masked_where(
-            miuL_a_matrix == threshold, miuL_a_matrix
+        muL_a_matrix_masked = np.ma.masked_where(
+            muL_a_matrix == threshold, muL_a_matrix
         )
 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create a discrete colorbar and colormap
-        miula_min, miula_max = (
-            np.min(miuL_a_matrix_masked),
-            np.max(miuL_a_matrix_masked),
+        muLa_min, muLa_max = (
+            np.min(muL_a_matrix_masked),
+            np.max(muL_a_matrix_masked),
         )
-        levels = np.linspace(miula_min, miula_max, n_cmap_bins_miu + 1)
+        levels = np.linspace(muLa_min, muLa_max, n_cmap_bins_mu + 1)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1416,7 +1416,7 @@ def plot_heat_map_contourf(
         cf = ax.contourf(
             x,
             y_segments,
-            miuL_a_matrix_masked,
+            muL_a_matrix_masked,
             levels=levels,
             cmap=cmap,
             norm=norm,
@@ -1427,7 +1427,7 @@ def plot_heat_map_contourf(
         _cs = ax.contour(
             x,
             y_segments,
-            miuL_a_matrix_masked,
+            muL_a_matrix_masked,
             levels=levels,
             colors='k',
             linewidths=0.7,
@@ -1488,30 +1488,30 @@ def plot_heat_map_contourf(
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the L_b viscosity matrix
-        miuL_b_matrix = np.zeros((num_segments, num_selected_ts))
+        muL_b_matrix = np.zeros((num_segments, num_selected_ts))
 
         # Fill the L_b viscosity matrix
         for ts_idx, ts_counter in enumerate(time_step_idx_range):
-            miuL_b = data_frame["miuL_b"][
+            muL_b = data_frame["muL_b"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
             ]
-            miuL_b_matrix[:, ts_idx] = miuL_b
+            muL_b_matrix[:, ts_idx] = muL_b
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuL_b_matrix_masked = np.ma.masked_where(
-            miuL_b_matrix == threshold, miuL_b_matrix
+        muL_b_matrix_masked = np.ma.masked_where(
+            muL_b_matrix == threshold, muL_b_matrix
         )
 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create a discrete colorbar and colormap
-        miulb_min, miulb_max = (
-            np.min(miuL_b_matrix_masked),
-            np.max(miuL_b_matrix_masked),
+        muLb_min, muLb_max = (
+            np.min(muL_b_matrix_masked),
+            np.max(muL_b_matrix_masked),
         )
-        levels = np.linspace(miulb_min, miulb_max, n_cmap_bins_miu + 1)
+        levels = np.linspace(muLb_min, muLb_max, n_cmap_bins_mu + 1)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1519,7 +1519,7 @@ def plot_heat_map_contourf(
         cf = ax.contourf(
             x,
             y_segments,
-            miuL_b_matrix_masked,
+            muL_b_matrix_masked,
             levels=levels,
             cmap=cmap,
             norm=norm,
@@ -1530,7 +1530,7 @@ def plot_heat_map_contourf(
         _cs = ax.contour(
             x,
             y_segments,
-            miuL_b_matrix_masked,
+            muL_b_matrix_masked,
             levels=levels,
             colors='k',
             linewidths=0.7,

@@ -421,7 +421,7 @@ def _get_property_axis_label(prop_name, phase_labels, property_labels):
     if prop_name.startswith("rho") and len(prop_name) > 3:
         phase = prop_name[3:]
         return rf"{_get_phase_label(phase, phase_labels)} density [kg/m$^3$]"
-    if prop_name.startswith("miu") and len(prop_name) > 3:
+    if prop_name.startswith("mu") and len(prop_name) > 3:
         phase = prop_name[3:]
         return f"{_get_phase_label(phase, phase_labels)} viscosity [cP]"
     if prop_name.startswith("s") and len(prop_name) > 1:

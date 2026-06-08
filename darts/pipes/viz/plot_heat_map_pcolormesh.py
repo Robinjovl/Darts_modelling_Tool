@@ -837,25 +837,25 @@ def plot_heat_map_pcolormesh(
     # Update figure counter for name of the saved figure
     figure_counter += 1
     # Initialize the gas viscosity matrix
-    miuG_matrix = np.zeros((num_segments, num_selected_ts))
+    muG_matrix = np.zeros((num_segments, num_selected_ts))
 
     # Fill the liquid density matrix
     for ts_counter in time_step_idx_range:
-        miuG = data_frame["miuG"][
+        muG = data_frame["muG"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
         ]
-        miuG_matrix[:, ts_counter] = miuG
+        muG_matrix[:, ts_counter] = muG
 
     # Apply a mask to hide values equal to zero
     threshold = 0  # Set your threshold here
-    miuG_matrix_masked = np.ma.masked_where(miuG_matrix == threshold, miuG_matrix)
+    muG_matrix_masked = np.ma.masked_where(muG_matrix == threshold, muG_matrix)
 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
     cax = ax.pcolormesh(
-        x, y_segments, miuG_matrix_masked, cmap=cmap_color, shading="auto"
+        x, y_segments, muG_matrix_masked, cmap=cmap_color, shading="auto"
     )
 
     # Set the y-axis ticks
@@ -898,25 +898,25 @@ def plot_heat_map_pcolormesh(
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the liquid viscosity matrix
-        miuL_matrix = np.zeros((num_segments, num_selected_ts))
+        muL_matrix = np.zeros((num_segments, num_selected_ts))
 
         # Fill the liquid density matrix
         for ts_counter in time_step_idx_range:
-            miuL = data_frame["miuL"][
+            muL = data_frame["muL"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
             ]
-            miuL_matrix[:, ts_counter] = miuL
+            muL_matrix[:, ts_counter] = muL
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuL_matrix_masked = np.ma.masked_where(miuL_matrix == threshold, miuL_matrix)
+        muL_matrix_masked = np.ma.masked_where(muL_matrix == threshold, muL_matrix)
 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
         cax = ax.pcolormesh(
-            x, y_segments, miuL_matrix_masked, cmap=cmap_color, shading="auto"
+            x, y_segments, muL_matrix_masked, cmap=cmap_color, shading="auto"
         )
 
         # Set the y-axis ticks
@@ -964,19 +964,19 @@ def plot_heat_map_pcolormesh(
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the L_a viscosity matrix
-        miuL_a_matrix = np.zeros((num_segments, num_selected_ts))
+        muL_a_matrix = np.zeros((num_segments, num_selected_ts))
 
         # Fill the L_a density matrix
         for ts_counter in time_step_idx_range:
-            miuL_a = data_frame["miuL_a"][
+            muL_a = data_frame["muL_a"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
             ]
-            miuL_a_matrix[:, ts_counter] = miuL_a
+            muL_a_matrix[:, ts_counter] = muL_a
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuL_a_matrix_masked = np.ma.masked_where(
-            miuL_a_matrix == threshold, miuL_a_matrix
+        muL_a_matrix_masked = np.ma.masked_where(
+            muL_a_matrix == threshold, muL_a_matrix
         )
 
         # Initialize the plot
@@ -984,7 +984,7 @@ def plot_heat_map_pcolormesh(
 
         # Create the heatmap
         cax = ax.pcolormesh(
-            x, y_segments, miuL_a_matrix_masked, cmap=cmap_color, shading="auto"
+            x, y_segments, muL_a_matrix_masked, cmap=cmap_color, shading="auto"
         )
 
         # Set the y-axis ticks
@@ -1032,19 +1032,19 @@ def plot_heat_map_pcolormesh(
         # Update figure counter for name of the saved figure
         figure_counter += 1
         # Initialize the L_b viscosity matrix
-        miuL_b_matrix = np.zeros((num_segments, num_selected_ts))
+        muL_b_matrix = np.zeros((num_segments, num_selected_ts))
 
         # Fill the L_b density matrix
         for ts_counter in time_step_idx_range:
-            miuL_b = data_frame["miuL_b"][
+            muL_b = data_frame["muL_b"][
                 ts_counter * num_segments : (ts_counter + 1) * num_segments
             ]
-            miuL_b_matrix[:, ts_counter] = miuL_b
+            muL_b_matrix[:, ts_counter] = muL_b
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuL_b_matrix_masked = np.ma.masked_where(
-            miuL_b_matrix == threshold, miuL_b_matrix
+        muL_b_matrix_masked = np.ma.masked_where(
+            muL_b_matrix == threshold, muL_b_matrix
         )
 
         # Initialize the plot
@@ -1052,7 +1052,7 @@ def plot_heat_map_pcolormesh(
 
         # Create the heatmap
         cax = ax.pcolormesh(
-            x, y_segments, miuL_b_matrix_masked, cmap=cmap_color, shading="auto"
+            x, y_segments, muL_b_matrix_masked, cmap=cmap_color, shading="auto"
         )
 
         # Set the y-axis ticks
