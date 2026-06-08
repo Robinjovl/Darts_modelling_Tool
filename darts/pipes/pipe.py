@@ -1321,7 +1321,7 @@ class Pipe:
 
         # Viscosity averaging method in https://doi.org/10.1016/j.ijmultiphaseflow.2021.103590
         # _, _, _, _, rhoG0_face, rhoL0_face, _, _ = self.iter_phases_props0_face
-        # xg = sG0_face * rhoG0_face / (sG0_face * rhoG0_face + (1 - sG0_face) * rhoL0_face)
+        # xg = sG0_face * rhoG0_face / (sG0_face * rhoG0_face + sL0_face * rhoL0_face)
         # denominator_1 = xg / miuG0_face
         # denominator_1 = np.nan_to_num(denominator_1, nan=0.0)
         # denominator_2 = (1 - xg) / miuL0_face
@@ -1473,6 +1473,7 @@ class Pipe:
     def bai_profile_parameter(
         self,
         alpha_g: float,
+        alpha_l: float,
         j_g: float,
         j_l: float,
         mixture_velocity: float,
@@ -1486,6 +1487,7 @@ class Pipe:
         Calculate the Bai et al. (2023) distribution coefficient.
 
         :param alpha_g: Gas void fraction.
+        :param alpha_l: Liquid volume fraction.
         :param j_g: Gas superficial velocity [m/s].
         :param j_l: Liquid superficial velocity [m/s].
         :param mixture_velocity: Mixture velocity magnitude [m/s].
@@ -1496,9 +1498,8 @@ class Pipe:
         :param theta: Bai pipe inclination angle [rad], measured from horizontal.
         :return: Distribution coefficient C0.
         """
-        alpha_l = 1.0 - alpha_g
-        rho_m = alpha_g * rho_g + alpha_l * rho_l
-        mu_m = alpha_g * mu_g + alpha_l * mu_l
+        rho_m = (alpha_g * rho_g + alpha_l * rho_l) / (alpha_g + alpha_l)
+        mu_m = (alpha_g * mu_g + alpha_l * mu_l) / (alpha_g + alpha_l)
         Re = (
             rho_m
             * abs(mixture_velocity)
@@ -1542,7 +1543,7 @@ class Pipe:
 
     def bai_drift_velocity(
         self,
-        alpha_g: float,
+        alpha_l: float,
         j_g: float,
         rho_g: float,
         rho_l: float,
@@ -1553,7 +1554,7 @@ class Pipe:
         """
         Calculate the Bai et al. (2023) drift velocity.
 
-        :param alpha_g: Gas void fraction.
+        :param alpha_l: Liquid volume fraction.
         :param j_g: Gas superficial velocity [m/s].
         :param rho_g: Gas density [kg/m3].
         :param rho_l: Liquid density [kg/m3].
@@ -1562,7 +1563,6 @@ class Pipe:
         :param theta: Bai pipe inclination angle [rad], measured from horizontal.
         :return: Drift velocity [m/s] in the pipe coordinate system.
         """
-        alpha_l = 1.0 - alpha_g
         viscosity_ratio = mu_l / 0.001
         if viscosity_ratio > 10.0:
             C2 = (0.434 / math.log(viscosity_ratio)) ** 0.15
@@ -1674,6 +1674,7 @@ class Pipe:
                         jL0 = sL0_face[idx] * vM0_all[idx]
                     C00_filtered[i] = self.bai_profile_parameter(
                         sG0_face[idx],
+                        sL0_face[idx],
                         jG0,
                         jL0,
                         abs(vM0_all[idx]),
@@ -1743,7 +1744,7 @@ class Pipe:
                         jG0 = sG0_face[value] * vM0[value]
                         jL0 = sL0_face[value] * vM0[value]
                     vD0[value] = self.bai_drift_velocity(
-                        sG0_face[value],
+                        sL0_face[value],
                         jG0,
                         rhoG0_face[value],
                         rhoL0_face[value],
@@ -1825,7 +1826,7 @@ class Pipe:
                         )
                     )
                     * sG0_face_filtered
-                    * (1 - sG0_face_filtered)
+                    * sL0_face_filtered
                 )
 
                 transition_argument = 50.0 * (
