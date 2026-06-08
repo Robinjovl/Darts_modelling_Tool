@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 import darts
+from darts.physics.properties.flash_exceptions import FlashError
 
 try:
     from phreeqpy.iphreeqc.phreeqc_dll import IPhreeqc
@@ -14,6 +15,16 @@ except ImportError:
 
 # Databases directory co-located with this module
 _DEFAULT_DB_DIR = Path(__file__).parent / 'databases'
+
+
+class PhreeqcFlashError(FlashError):
+    """Raised when PHREEQC cannot equilibrate a state.
+
+    A :class:`FlashError` subclass so callers (e.g. the model's Newton loop) can catch
+    *any* flash non-convergence and convert it into a timestep cut, without masking
+    unrelated bugs. Raised when the primary and backup databases both fail AND either the
+    dilution fallback is disabled or even maximal dilution does not converge.
+    """
 
 
 def _resolve_phreeqc_db_path(db_spec: str | os.PathLike) -> str:
@@ -72,6 +83,10 @@ class Flash:
         tolerance: float = 1e-10,
         database_filename: str = "phreeqc.dat",
         backup_database_filename: str = "pitzer.dat",
+        dilution_fallback: bool = True,
+        dilution_step: float = 1.5,
+        dilution_max_steps: int = 14,
+        dilution_refine_steps: int = 8,
     ):
         """
         :param min_z: minimal composition value
@@ -81,6 +96,16 @@ class Flash:
         :param gas_species: gas species to include in the GAS_PHASE section
         :param database_filename: path to PHREEQC database file for primary engine
         :param backup_database_filename: path to database file as a backup for primary database
+        :param dilution_fallback: if True, when both databases fail (typically at an
+            unreachable, over-concentrated OBL supporting point), retry with progressively
+            more solvent water until PHREEQC converges, and report the diluted-edge result
+            instead of raising. If False, raise :class:`PhreeqcFlashError` on failure.
+        :param dilution_step: geometric factor by which the solvent water mass is scaled up
+            each escalation step while searching for a converging dilution.
+        :param dilution_max_steps: max number of geometric escalation steps before giving up
+            (dilution_step ** dilution_max_steps is the largest factor tried).
+        :param dilution_refine_steps: number of bisection steps used to refine the dilution
+            factor back toward the convergence edge (smoother operators, closer to physical).
         """
         self.minerals = minerals
         self.components = components
@@ -267,6 +292,46 @@ class Flash:
                 END
                 """
 
+        # Dilution fallback configuration (see __init__ docstring)
+        self.dilution_fallback = dilution_fallback
+        self.dilution_step = dilution_step
+        self.dilution_max_steps = dilution_max_steps
+        self.dilution_refine_steps = dilution_refine_steps
+        # Per-nonlinear-iteration dilution tracker. Accumulated across all
+        # diluted supporting points within one assembly pass; the model reads
+        # and clears it once per Newton iteration to emit a single warning.
+        self.reset_dilution_tracker()
+
+    def reset_dilution_tracker(self):
+        """Clear the accumulated record of diluted states (call once per Newton iteration)."""
+        self._diluted_states = []
+        self._diluted_factors = []
+        self._diluted_molality = []
+
+    def pop_dilution_report(self):
+        """Return per-iteration dilution statistics and clear the tracker.
+
+        :return: ``None`` if no dilution occurred since the last reset, otherwise a dict with
+            ``count`` (number of diluted supporting points), component-wise ``state_min`` /
+            ``state_max`` of those states, ``factor_min`` / ``factor_max`` (dilution factors
+            applied) and ``molality_min`` / ``molality_max`` (nominal pre-dilution molalities).
+        :rtype: dict | None
+        """
+        if not self._diluted_states:
+            return None
+        states = np.array(self._diluted_states)
+        report = {
+            'count': len(self._diluted_states),
+            'state_min': states.min(axis=0),
+            'state_max': states.max(axis=0),
+            'factor_min': float(min(self._diluted_factors)),
+            'factor_max': float(max(self._diluted_factors)),
+            'molality_min': float(min(self._diluted_molality)),
+            'molality_max': float(max(self._diluted_molality)),
+        }
+        self.reset_dilution_tracker()
+        return report
+
     def load_database(self, database, db_path):
         """
         Loads a PHREEQC database into the given database object.
@@ -429,9 +494,9 @@ class Flash:
             fluid_moles[self.fc_idx['O']] = 0
 
         # Check if solvent (water) is enough
-        ion_strength = np.sum(fluid_moles) / (water_mass + 1.0e-8)
-        if ion_strength > 20:
-            print(f'ion_strength = {ion_strength}')
+        # ion_strength = np.sum(fluid_moles) / (water_mass + 1.0e-8)
+        # if ion_strength > 20:
+        #     print(f'ion_strength = {ion_strength}')
         # assert ion_strength < 7, "Not enough water to form a realistic brine"
 
         # Generate and execute PHREEQC input
@@ -449,47 +514,57 @@ class Flash:
             reaction_lines_list.append(f"{el:<9}{fluid_moles[self.fc_idx[el]]:.12f}")
         reaction_lines = "\n                    ".join(reaction_lines_list)
 
-        input_string = self.phreeqc_template.format(
-            temperature=self.temperature,
-            pressure=pressure_atm,
-            water_mass=water_mass,
-            gas_phase_entries=gas_phase_entries,
-            reaction_lines=reaction_lines,
-        )
+        # Solve PHREEQC equilibrium. The element moles (reaction_lines) are fixed; only the
+        # solvent water mass is scaled by the dilution fallback, so build the input lazily.
+        def _build_input(wm):
+            return self.phreeqc_template.format(
+                temperature=self.temperature,
+                pressure=pressure_atm,
+                water_mass=wm,
+                gas_phase_entries=gas_phase_entries,
+                reaction_lines=reaction_lines,
+            )
 
         try:
-            self.phreeqc.run_string(input_string)
-            (
-                nu_v,
-                x,
-                y,
-                rho_phases,
-                kin_state,
-                fluid_volume,
-                species_aq_molar_fractions,
-                species_gas_molar_fractions,
-            ) = self.interpret_results(self.phreeqc, water_mass)
-        except Exception as e:
-            warnings.warn(f"Failed to run PHREEQC: {e}", Warning, stacklevel=2)
-            if self.spec == 0:
-                print(
-                    f"h20_mass={water_mass}, p={state[0]}, Ca={fluid_moles[self.fc_idx['Ca']]}, C={fluid_moles[self.fc_idx['C']]}, O={fluid_moles[self.fc_idx['O']]}, H={fluid_moles[self.fc_idx['H']]}"
+            self.phreeqc.run_string(_build_input(water_mass))
+            results = self.interpret_results(self.phreeqc, water_mass)
+        except Exception as e_primary:
+            # Primary database (e.g. phreeqc.dat) failed to converge. Try the backup
+            # database (e.g. pitzer.dat) at the same solvent mass first.
+            try:
+                self.backup_phreeqc.run_string(_build_input(water_mass))
+                results = self.interpret_results(self.backup_phreeqc, water_mass)
+            except Exception as e_backup:
+                if not self.dilution_fallback:
+                    raise PhreeqcFlashError(
+                        f"PHREEQC did not converge (primary+backup) at p={state[0]:.6g} bar, "
+                        f"water={water_mass:.6g} kg, "
+                        f"fluid_moles={dict(zip(self.components, np.round(fluid_moles, 4), strict=False))}: "
+                        f"{e_primary}"
+                    ) from e_backup
+                # Over-concentrated point (typically an unreachable OBL composition-box
+                # corner). Dilute with extra solvent water until the primary database
+                # converges, report the diluted-edge result, and record it for the model's
+                # per-nonlinear-iteration warning instead of raising/spamming per point.
+                results, factor = self._solve_with_dilution(
+                    _build_input, water_mass, state
                 )
-            elif self.spec == 1 or self.spec == 2:
-                print(
-                    f"h20_mass={water_mass}, p={state[0]}, Ca={fluid_moles[self.fc_idx['Ca']]}, Mg={fluid_moles[self.fc_idx['Mg']]}, C={fluid_moles[self.fc_idx['C']]}, O={fluid_moles[self.fc_idx['O']]}, H={fluid_moles[self.fc_idx['H']]}"
+                self._diluted_states.append(np.asarray(state, dtype=float).copy())
+                self._diluted_factors.append(factor)
+                self._diluted_molality.append(
+                    float(np.sum(fluid_moles) / max(water_mass, 1.0e-30))
                 )
-            self.backup_phreeqc.run_string(input_string)
-            (
-                nu_v,
-                x,
-                y,
-                rho_phases,
-                kin_state,
-                fluid_volume,
-                species_aq_molar_fractions,
-                species_gas_molar_fractions,
-            ) = self.interpret_results(self.backup_phreeqc)
+
+        (
+            nu_v,
+            x,
+            y,
+            rho_phases,
+            kin_state,
+            fluid_volume,
+            species_aq_molar_fractions,
+            species_gas_molar_fractions,
+        ) = results
 
         return (
             nu_v,
@@ -501,6 +576,51 @@ class Flash:
             species_aq_molar_fractions,
             species_gas_molar_fractions,
         )
+
+    def _solve_with_dilution(self, build_input, water_mass, state):
+        """Find the smallest extra-solvent dilution at which PHREEQC converges.
+
+        Geometric escalation brackets a converging dilution factor, then a few bisection
+        steps refine it back toward the convergence edge so the reported speciation stays as
+        close as possible to the (unreachable) physical point. The diluted solvent mass is
+        used for result interpretation so species fractions remain self-consistent. Densities
+        and volumes are returned exactly as PHREEQC reports them (they are intensive and vary
+        smoothly with the dilution factor); no 1/factor rescaling is applied.
+
+        :param build_input: callable mapping a solvent water mass [kg] to a PHREEQC input string
+        :param water_mass: base (undiluted) solvent water mass [kg]
+        :param state: original state vector (for diagnostics only)
+        :return: tuple ``(results, dilution_factor)`` where results is the interpret_results tuple
+        :rtype: tuple
+        """
+        factor = 1.0
+        results = None
+        for _ in range(self.dilution_max_steps):
+            factor *= self.dilution_step
+            try:
+                self.phreeqc.run_string(build_input(water_mass * factor))
+                results = self.interpret_results(self.phreeqc, water_mass * factor)
+                break
+            except Exception:
+                continue
+        if results is None:
+            raise PhreeqcFlashError(
+                f"PHREEQC did not converge even after diluting solvent water by "
+                f"x{factor:.1f} (base water={water_mass:.6g} kg) at p={state[0]:.6g} bar"
+            )
+        # Refine toward the convergence edge: bisect between the last failing factor
+        # (factor / step) and the first converging factor.
+        f_lo = factor / self.dilution_step
+        f_hi = factor
+        for _ in range(self.dilution_refine_steps):
+            f_mid = 0.5 * (f_lo + f_hi)
+            try:
+                self.phreeqc.run_string(build_input(water_mass * f_mid))
+                results = self.interpret_results(self.phreeqc, water_mass * f_mid)
+                f_hi = f_mid
+            except Exception:
+                f_lo = f_mid
+        return results, f_hi
 
     def set_gas_partial_pressures(self, gas_to_pressure_atm):
         """Set/update initial guess partial pressures [atm] for gas species in GAS_PHASE.

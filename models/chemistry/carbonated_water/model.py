@@ -20,8 +20,9 @@ from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
 )
-from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
+from darts.physics.properties.phreeqc import Flash as PhreeqcFlash, PhreeqcFlashError
 from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
+from darts.physics.properties.flash_exceptions import FlashError
 
 from iapws._iapws import _Viscosity
 from conversions import convert_composition, correct_composition, calculate_injection_stream, \
@@ -155,13 +156,19 @@ class Model(CICDModel):
         self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=200)
         self.params.newton_type = sim_params.newton_local_chop
         # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
-        # self.params.linear_type = sim_params.cpu_superlu
+        self.params.linear_type = sim_params.cpu_superlu
         self.params.newton_params[0] = 0.2
         self.runtime = 1
         # default timestep control thresholds (overridable by callers)
         self.ni_dt_increase_cutoff = 5
         self.ni_dt_decrease_cutoff = 8
         self.n_good_ts = 10
+        # Max number of Newton iterations within a timestep that may rely on the PHREEQC
+        # dilution fallback before the timestep is abandoned and cut. The fallback handles
+        # unreachable, over-concentrated OBL supporting points; if more than this many
+        # nonlinear iterations need it, the step is not converging healthily -> cut dt.
+        self.dilution_max_newton_iters = 3
+        self._n_diluted_newton_iters = 0
 
         self.timer.node["initialization"].stop()
 
@@ -213,9 +220,9 @@ class Model(CICDModel):
             self.fc_mask = np.array([False, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Ca': 40.078, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
 
-            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 101, 101, 101], dtype=np.intp))
-            self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.3]
-            self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.04, 0.04, 0.39]
+            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 251, 251, 401], dtype=np.intp))
+            self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.2]
+            self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.1, 0.1, 0.6]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                                [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
@@ -354,8 +361,18 @@ class Model(CICDModel):
         self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name,
                                                 n_points=self.n_points, axes_min=self.axes_min, axes_max=self.axes_max,
                                                 epsilon_z=property_container.eps_z, extrapolation_flag=False,
-                                                cache=False)
+                                                cache=True)
         self.physics.add_property_region(property_container, output_property_container, 0)
+
+        # Flashes whose per-iteration dilution fallback we police in run_timestep /
+        # apply_rhs_flux. Only those exposing pop_dilution_report() (PHREEQC) qualify; the
+        # reaktoro flash is silently ignored. NOTE: with parallel_evaluation=True the engine
+        # uses per-worker flash copies (see get_evaluator_factory), so the budget/warning are
+        # only enforced in the default in-process (parallel_evaluation=False) path; the flash
+        # still degrades gracefully per worker regardless.
+        self._tracked_flashes = [
+            property_container.flash_ev
+        ] if hasattr(property_container.flash_ev, 'pop_dilution_report') else []
 
         # Compute injection stream
         mole_water, mole_co2 = calculate_injection_stream(self.h2o_injection, self.co2_injection, self.temperature, self.pressure_init) # input - m3 of water, co2
@@ -680,6 +697,91 @@ class Model(CICDModel):
         w = self.reservoir.wells[0]
         self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, is_inj=False,
                                        target=self.pressure_init)
+
+    def run_timestep(self, dt: float, t: float, verbose: bool = True):
+        """Newton loop with PHREEQC dilution-fallback policing.
+
+        Delegates to the base Newton loop but (1) resets the per-timestep dilution budget
+        and the flashes' per-iteration trackers, and (2) converts any :class:`FlashError`
+        into a non-convergence so the existing dt-cut machinery in :meth:`run` reduces dt
+        and retries from the last converged state. This covers a PHREEQC failure (when even
+        maximal dilution fails, or when the dilution fallback was needed in more than
+        ``self.dilution_max_newton_iters`` nonlinear iterations — see :meth:`apply_rhs_flux`)
+        as well as a Reaktoro solver failure (``ReaktoroFlashError``), keeping the
+        simulation alive in either case.
+        """
+        self._n_diluted_newton_iters = 0
+        for fl in getattr(self, '_tracked_flashes', []):
+            fl.reset_dilution_tracker()
+        try:
+            return super().run_timestep(dt, t, verbose)
+        except FlashError as e:
+            if verbose:
+                print(f"Flash non-convergence -> cutting timestep (dt={dt:.6g}): {e}")
+            # The simulation timer was started inside the base run_timestep and is not
+            # stopped on the exception path; stop it so timing/print_timers stay consistent.
+            try:
+                self.timer.node["simulation"].stop()
+            except Exception:
+                pass
+            # post_newtonloop (which does X = Xn on non-convergence) is skipped on the
+            # exception path, so restore the last converged iterate explicitly; the
+            # smaller-dt retry then starts clean and stays clear of the unreachable corner.
+            try:
+                X = np.array(self.physics.engine.X, copy=False)
+                Xn = np.array(self.physics.engine.Xn, copy=False)
+                X[:] = Xn
+            except Exception:
+                pass
+            # Mirror the base method's per-step history bookkeeping for the failed step.
+            try:
+                self.time.append(t)
+                self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
+                self.time_step_size.append(dt)
+            except Exception:
+                pass
+            return 0  # converged = False -> run() else-branch cuts dt
+
+    def apply_rhs_flux(self, dt: float, t: float):
+        """Apply the injection RHS flux, then police the PHREEQC dilution fallback.
+
+        Called once per Newton iteration immediately after ``assemble_linear_system`` (so any
+        supporting-point dilution that happened during this assembly is now recorded in the
+        tracked flashes). Emits a single accumulated warning per nonlinear iteration with
+        min/max state statistics, and enforces the per-timestep dilution-iteration budget by
+        raising :class:`PhreeqcFlashError` (caught in :meth:`run_timestep`) once exceeded.
+        """
+        super().apply_rhs_flux(dt, t)
+
+        tracked = getattr(self, '_tracked_flashes', [])
+        reports = [r for r in (fl.pop_dilution_report() for fl in tracked) if r]
+        if not reports:
+            return
+
+        count = sum(r['count'] for r in reports)
+        state_min = np.min([r['state_min'] for r in reports], axis=0)
+        state_max = np.max([r['state_max'] for r in reports], axis=0)
+        factor_min = min(r['factor_min'] for r in reports)
+        factor_max = max(r['factor_max'] for r in reports)
+        molality_min = min(r['molality_min'] for r in reports)
+        molality_max = max(r['molality_max'] for r in reports)
+
+        self._n_diluted_newton_iters += 1
+        print(
+            f"[flash dilution] t={t:.6g} dt={dt:.3g} NL-iter "
+            f"#{self._n_diluted_newton_iters}/{self.dilution_max_newton_iters}: "
+            f"diluted {count} supporting point(s); nominal molality "
+            f"{molality_min:.1f}-{molality_max:.1f}, dilution factor "
+            f"{factor_min:.2f}-{factor_max:.2f}; state min="
+            f"{np.array2string(state_min, precision=4, suppress_small=True)} max="
+            f"{np.array2string(state_max, precision=4, suppress_small=True)}"
+        )
+
+        if self._n_diluted_newton_iters > self.dilution_max_newton_iters:
+            raise PhreeqcFlashError(
+                f"dilution fallback needed in more than {self.dilution_max_newton_iters} "
+                f"nonlinear iterations this timestep (dt={dt:.6g})"
+            )
 
     def run(self,
             days: float = None,
