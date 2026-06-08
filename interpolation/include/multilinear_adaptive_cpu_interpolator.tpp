@@ -47,6 +47,8 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
       }
     }
     point_data[point_index] = new_point;
+    // Mark for append-only cache flush after this new point is materialized.
+    dirty_point_data.insert(point_index);
     this->n_points_used++;
     if (this->timer) this->timer->node["body generation"].node["point generation"].stop();
     return point_data[point_index];
@@ -171,6 +173,8 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::mat
         }
       }
       point_data[pt_idx] = new_point;
+      // Mark for append-only cache flush after this new point is materialized.
+      dirty_point_data.insert(pt_idx);
       this->n_points_used++;
     }
 
