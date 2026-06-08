@@ -29,10 +29,15 @@ docker-image-builder:
     # Check if image with this content hash already exists in registry.
     # Uses crane (bundled in kaniko debug image) with the same docker config
     # that kaniko uses for pushing — more reliable than a manual wget auth check.
+    # Probe the registry with /kaniko/warmer (bundled in the kaniko:debug image
+    # and sharing the same DOCKER_CONFIG auth as /kaniko/executor). A successful
+    # warm means the manifest exists; any non-zero exit means we need to build.
     - |
       NEEDS_BUILD=1
       if [ "${UPDATE_DOCKER_IMAGE:-0}" != "1" ]; then
-        if DOCKER_CONFIG=/kaniko/.docker crane manifest "${FULL_IMAGE}:${IMAGE_TAG}" >/dev/null 2>&1; then
+        if DOCKER_CONFIG=/kaniko/.docker /kaniko/warmer \
+             --image="${FULL_IMAGE}:${IMAGE_TAG}" \
+             --cache-dir=/tmp/kaniko-probe >/dev/null; then
           echo "Image ${FULL_IMAGE}:${IMAGE_TAG} already exists — skipping build"
           NEEDS_BUILD=0
         else

@@ -76,6 +76,18 @@ class DartsModel:
     :type params: :class:`darts.engines.sim_params`
     """
 
+    def __new__(cls, *args, **kwargs):
+        """
+        Capture the constructor arguments so the model can be reconstructed in a
+        worker process by :class:`ModelEvaluatorFactory` (the default mechanism
+        behind :meth:`get_evaluator_factory`). The arguments are stored verbatim;
+        they must be picklable for ``parallel_evaluation=True`` to work.
+        """
+        instance = super().__new__(cls)
+        instance._init_args = args
+        instance._init_kwargs = kwargs
+        return instance
+
     def __init__(self):
         """
         Initialize DartsModel class.
@@ -123,23 +135,31 @@ class DartsModel:
     def get_evaluator_factory(self, region):
         """
         Return a picklable factory callable ``() -> operator_set_evaluator_iface``
-        that constructs a fresh, independent evaluator for the given region.
-        Each call must return a new instance with its own PropertyContainer,
-        flash solver, and other stateful objects.
+        that constructs a fresh, independent evaluator for the given region, used
+        by :class:`ParallelEvaluator` when ``parallel_evaluation=True``.
 
-        Override this method in your Model subclass to enable ``parallel_evaluation=True``.
+        The default implementation returns a :class:`ModelEvaluatorFactory`, which
+        reconstructs this model from its constructor arguments (captured in
+        :meth:`__new__`) and returns ``physics.reservoir_operators[region]``. This
+        reuses the model's own ``set_physics``/``PropertyContainer`` build, so no
+        per-model duplication of the property stack is required and it works for
+        any model whose constructor arguments are picklable.
+
+        Override this method only if model reconstruction is too expensive to
+        repeat per worker, or if the constructor arguments are not picklable.
 
         :param region: Region index
         :type region: int
-        :return: Factory callable that creates a fresh evaluator
+        :return: Picklable factory callable that creates a fresh evaluator
         :rtype: callable
-        :raises NotImplementedError: If not overridden in a subclass
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not implement get_evaluator_factory(). "
-            "Override this method in your Model subclass to enable parallel_evaluation. "
-            "The factory must return a fresh operator_set_evaluator_iface instance "
-            "with independent PropertyContainer and flash solver per call."
+        from darts.physics.base.parallel_evaluator import ModelEvaluatorFactory
+
+        return ModelEvaluatorFactory(
+            type(self),
+            getattr(self, '_init_args', ()),
+            getattr(self, '_init_kwargs', {}),
+            region,
         )
 
     def init(
@@ -238,6 +258,7 @@ class DartsModel:
         if restart is False:
             self.set_initial_conditions()
             self.reset()
+            self.initialize_history_fields()
         self.data_ts.print()
         if (
             self.params.linear_type == sim_params.linear_solver_t.cpu_superlu
@@ -263,6 +284,49 @@ class DartsModel:
             self.timer.node["simulation"],
         )
 
+    def initialize_history_fields(self):
+        """Seed ``engine.Xhistory`` with the per-field default value for every reservoir cell.
+
+        No-op when the physics has no ``history_fields`` configured (the engine then also has
+        ``n_history_runtime == 0`` and no ``Xhistory`` buffer). Called by :meth:`init` right after
+        :meth:`reset`, which is where the C++ engine allocates ``Xhistory``.
+
+        :returns: None
+        """
+        if not getattr(self.physics, "history_fields", None):
+            return
+
+        n_blocks = self.reservoir.mesh.n_blocks
+        for field in self.physics.history_fields:
+            self.physics.set_engine_history_array(
+                field.label,
+                field.default,
+                n_blocks=n_blocks,
+            )
+
+    def after_converged_timestep(self):
+        """Hook called after each converged Newton timestep. Advances history fields by default.
+
+        Subclasses that override this should call ``super().after_converged_timestep()`` to
+        preserve the history-field update. The base implementation simply delegates to
+        :meth:`update_history_fields_after_timestep`.
+
+        :returns: None
+        """
+        self.update_history_fields_after_timestep()
+
+    def update_history_fields_after_timestep(self):
+        """User hook to advance OBL history variables (e.g. ``sg_max``) between timesteps.
+
+        The base implementation is a no-op. Subclasses backing a hysteretic physics should
+        override this to read the current Newton state, compute the updated history value
+        per cell, and write it back via :meth:`PhysicsBase.set_engine_history_array` (or by
+        mutating the underlying ``engine.Xhistory`` vector directly).
+
+        :returns: None
+        """
+        return
+
     def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
@@ -286,16 +350,40 @@ class DartsModel:
             reservoir_filepath, ts_idx
         )
 
-        # load data as initial conditions
+        # Split columns: primary Newton unknowns (self.physics.vars) go through
+        # set_initial_conditions_from_array; OBL history columns (self.physics.history_fields)
+        # go through set_engine_history_array so sg_max and friends survive restart.
+        primary_names = list(self.physics.vars)
+        history_labels = set()
+        if hasattr(self.physics, "history_fields"):
+            history_labels = {h.label for h in self.physics.history_fields}
+
         initial_values = {}
+        history_values = {}
         for i, name in enumerate(var_names):
-            initial_values[name] = Xres[:, :, i].flatten()
+            key = name.decode() if isinstance(name, bytes) else name
+            col = Xres[:, :, i].flatten()
+            if key in primary_names:
+                initial_values[key] = col
+            elif key in history_labels:
+                history_values[key] = col
+            else:
+                initial_values[key] = col  # unknown key: preserve legacy routing
         self.physics.set_initial_conditions_from_array(
             mesh=self.reservoir.mesh, input_distribution=initial_values
         )
 
         self.reset()
         self.physics.engine.t = time_res[0]
+
+        # Push the restored history columns into engine.Xhistory. reset() has already allocated
+        # the buffer, so set_engine_history_array only needs to overwrite its contents.
+        for label, values in history_values.items():
+            self.physics.set_engine_history_array(
+                label,
+                values,
+                n_blocks=self.reservoir.mesh.n_res_blocks,
+            )
 
         # save initial conditions to *.h5 file
         print(rf'Restarting model from {reservoir_filepath} at day {time_res[0]}.')
@@ -557,6 +645,7 @@ class DartsModel:
             if converged:
                 t += dt
                 ts += 1
+                self.after_converged_timestep()
                 if verbose:
                     print(
                         f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}"
@@ -670,6 +759,7 @@ class DartsModel:
                 t += dt
                 self.physics.engine.t = t
                 ts_counter += 1
+                self.after_converged_timestep()
 
                 x = np.array(self.physics.engine.X, copy=False)[: nb * nc]
                 dt_mult_new = data_ts.dt_mult
@@ -855,7 +945,9 @@ class DartsModel:
             ):
                 coef = np.array([0.0, 1.0])
                 history = np.array([residual_history[-2], residual_history[-1]])
-                residual_history[-1] = self.line_search(dt, t, coef, history, verbose)
+                residual_history[-1] = self.line_search(
+                    dt, t, coef, history, verbose, iter_counter=i
+                )
                 max_residual[i] = residual_history[-1][0]
 
                 # check stationary point after line search
@@ -886,15 +978,8 @@ class DartsModel:
                             "Unknown linear solver type", self.data_ts.linear_type
                         )
                 else:
-                    # compile-tyme C++ linear solvers
-                    rc = self.physics.engine.solve_linear_equation()
-                    if rc != 0:
-                        # Abort the Newton loop on a failed linear solve so that
-                        # post_newtonloop sees linear_solver_error_last_dt != 0
-                        # and returns converged=0 without burning the full
-                        # max_newt budget on stale dX updates.
-                        self._linear_solver_rc_last = rc
-                        break
+                    # compile-time C++ linear solvers
+                    self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
@@ -985,23 +1070,34 @@ class DartsModel:
                         f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
                     )
 
-    def line_search(self, dt, t, coef, history, verbose: bool = False):
+    def line_search(
+        self,
+        dt: float,
+        t: float,
+        coef: np.ndarray,
+        history: list | np.ndarray,
+        verbose: bool = False,
+        iter_counter: int = None,
+    ):
         """
-        Performs a line search to find the optimal coefficient that minimizes residuals.
+        Perform a line search to find the optimal coefficient that minimizes residuals.
 
         :param dt: Time step for the update process.
-        :type dt: float
         :param t: Current time.
-        :type t: float
         :param coef: Array of current coefficients used in the line search.
-        :type coef: numpy.ndarray
         :param history: Historical residuals, where each entry contains residuals for 'r_mat' and 'r_well'.
-        :type history: list or numpy.ndarray
         :param verbose: If True, prints detailed debug information during execution.
-        :type verbose: bool
-        :return: Tuple containing the minimum residual achieved, a placeholder value (0.0), and the coefficient corresponding to the minimum residual.
+        :param iter_counter: Newton-Raphson iteration counter for the current time step. Used by DFM well velocity updates.
+
+        :return: Tuple containing the minimum residual achieved, a placeholder value (0.0), and the coefficient
+                 corresponding to the minimum residual.
         :rtype: tuple(float, float, float)
         """
+        newton_iter_counter = (
+            self.physics.engine.n_newton_last_dt
+            if iter_counter is None
+            else iter_counter
+        )
 
         if verbose:
             print(
@@ -1072,16 +1168,28 @@ class DartsModel:
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
+            if self.has_dfm_well:
+                self.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
             self.physics.engine.assemble_linear_system(dt)
             self.apply_rhs_flux(dt, t)
+            if self.has_dfm_well:
+                self.apply_dfm_well_lateral_heat_flux(dt, t)
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
-            res = (
-                self.physics.engine.calc_newton_residual(),
-                self.physics.engine.calc_well_residual(),
-            )
+            if self.has_dfm_well:
+                res = (
+                    self.physics.engine.calc_coupled_well_reservoir_residual(
+                        self.data_ts.coupled_well_res_norm_method
+                    ),
+                    self.physics.engine.calc_well_residual(),
+                )
+            else:
+                res = (
+                    self.physics.engine.calc_newton_residual(),
+                    self.physics.engine.calc_well_residual(),
+                )
             res_history = np.append(res_history, res[0])
             if verbose:
                 print(
@@ -1099,6 +1207,10 @@ class DartsModel:
         self.timer.node["newton update"].start()
         self.physics.engine.apply_newton_update(dt)
         self.timer.node["newton update"].stop()
+        if self.has_dfm_well:
+            # The accepted line-search coefficient can differ from the last tested coefficient.
+            # Recompute DFM velocities and derivatives so stored well data matches the accepted state.
+            self.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
 
         return res_history[final_id], 0.0, coef[final_id]
 

@@ -1,25 +1,26 @@
 """
 ParallelEvaluator: multiprocessing-based parallel batch evaluation of supporting points.
 
-Wraps an existing operator_set_evaluator_iface (or factory thereof) and dispatches
-evaluate_batch() calls to a pool of worker processes, each with its own reconstructed
-evaluator instance. This provides true CPU parallelism for flash/property calculations
-that are CPU-bound and not thread-safe.
+Wraps an evaluator factory and dispatches evaluate_batch() calls to a pool of worker
+processes, each holding its own reconstructed evaluator instance. This gives true CPU
+parallelism for flash/property calculations that are CPU-bound and not thread-safe.
 
-Usage:
-    from darts.physics.base.parallel_evaluator import ParallelEvaluator
+Two pieces are exported:
 
-    def my_factory():
-        pc = PropertyContainer(...)
-        # ... attach flash, density, viscosity evaluators ...
-        return ReservoirOperators(pc, thermal=False)
+* :class:`ModelEvaluatorFactory` -- the default, picklable factory. It reconstructs a
+  model from its constructor arguments and returns ``physics.reservoir_operators[region]``,
+  reusing the model's own ``set_physics``/``PropertyContainer`` build. No per-model
+  duplication of the property stack is required.
+* :class:`ParallelEvaluator` -- the evaluator wrapper holding the worker pool.
 
-    par_eval = ParallelEvaluator(evaluator_factory=my_factory, n_workers=4)
-    # par_eval can be passed to create_interpolator() as the evaluator
+Both the factory and the module-level worker functions are top-level objects (not
+closures), so they pickle correctly under the ``fork`` start method (Linux default)
+*and* the ``spawn`` start method (Windows and macOS default).
 """
 
 import multiprocessing
 import os
+import pickle
 import warnings
 
 import numpy as np
@@ -66,6 +67,61 @@ def _worker_evaluate_chunk(coords_flat, n_dims, n_ops):
     return results
 
 
+# ── Default picklable factory: rebuild the model's region evaluator ─────────
+
+
+class ModelEvaluatorFactory:
+    """
+    Picklable factory that rebuilds a model's reservoir operator evaluator.
+
+    This is the default mechanism behind :meth:`DartsModel.get_evaluator_factory`.
+    It stores the model class and the (plain-data) constructor arguments captured
+    at construction time. On every call it reconstructs the model and returns
+    ``physics.reservoir_operators[region]``. Because it reuses the model's own
+    ``set_physics``/``PropertyContainer`` build, there is no per-model duplication
+    of the property/flash/kinetics stack.
+
+    It is a plain top-level class (not a closure), so it pickles correctly under
+    both the ``fork`` and the ``spawn`` multiprocessing start methods -- the latter
+    being the default on Windows and macOS.
+
+    :param model_cls: The :class:`DartsModel` subclass to reconstruct.
+    :param init_args: Positional arguments the model was constructed with.
+    :param init_kwargs: Keyword arguments the model was constructed with.
+    :param region: Region index whose ``reservoir_operators`` entry is returned.
+    """
+
+    def __init__(self, model_cls, init_args, init_kwargs, region):
+        self.model_cls = model_cls
+        self.init_args = tuple(init_args)
+        self.init_kwargs = dict(init_kwargs)
+        self.region = region
+
+    def __call__(self):
+        # Reconstruct the model: runs the model's own set_reservoir/set_physics.
+        # init() is intentionally NOT called -- no engine, no nested worker pool.
+        model = self.model_cls(*self.init_args, **self.init_kwargs)
+        # reservoir_operators are normally populated by init_physics(); build just
+        # the operator objects here from the property containers set in set_physics.
+        model.physics.set_operators()
+        return model.physics.reservoir_operators[self.region]
+
+
+def _check_picklable(factory):
+    """Raise a clear error if the factory cannot be pickled (required for spawn)."""
+    try:
+        pickle.dumps(factory)
+    except Exception as e:
+        raise ValueError(
+            "evaluator_factory must be picklable so the multiprocessing pool can "
+            "ship it to worker processes under the 'spawn' start method "
+            "(the default on Windows and macOS). "
+            f"Pickling failed with: {type(e).__name__}: {e}. "
+            "Use a top-level callable or ModelEvaluatorFactory instead of a "
+            "nested function / lambda / closure."
+        ) from e
+
+
 # ── ParallelEvaluator class ─────────────────────────────────────────────────
 
 
@@ -77,21 +133,32 @@ class ParallelEvaluator(operator_set_evaluator_iface):
     isolation of PropertyContainer state, flash solvers, and third-party libraries.
     Single-point evaluate() delegates to a local serial evaluator instance.
 
-    :param evaluator_factory: Callable ``() -> operator_set_evaluator_iface``.
-        Must be picklable (required by multiprocessing). Called once per worker.
+    :param evaluator_factory: Picklable callable ``() -> operator_set_evaluator_iface``.
+        Called once per worker process and once in the parent for the serial path.
+        Must be picklable -- use a top-level callable or :class:`ModelEvaluatorFactory`,
+        never a nested function / lambda / closure.
     :param n_workers: Number of worker processes. Defaults to ``os.cpu_count()``.
+    :param start_method: Optional multiprocessing start method (``'fork'``, ``'spawn'``,
+        ``'forkserver'``). ``None`` uses the platform default. Mainly useful to force
+        ``'spawn'`` for Windows-parity testing on Linux.
     """
 
-    def __init__(self, evaluator_factory, n_workers=None):
+    def __init__(self, evaluator_factory, n_workers=None, start_method=None):
         super().__init__()
+
+        # Fail early with a clear message if the factory is not spawn-safe.
+        _check_picklable(evaluator_factory)
+
         self._factory = evaluator_factory
         self._n_workers = n_workers or os.cpu_count()
 
         # Local serial evaluator for single-point evaluate() calls
         self._serial_evaluator = evaluator_factory()
 
-        # Create persistent worker pool — amortizes process creation cost
-        self._pool = multiprocessing.Pool(
+        # Create persistent worker pool — amortizes process creation cost.
+        # get_context(None) returns the platform-default context.
+        ctx = multiprocessing.get_context(start_method)
+        self._pool = ctx.Pool(
             processes=self._n_workers,
             initializer=_worker_init,
             initargs=(evaluator_factory,),

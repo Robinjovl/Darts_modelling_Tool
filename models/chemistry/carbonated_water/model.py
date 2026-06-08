@@ -496,9 +496,9 @@ class Model(CICDModel):
                 self.solid_sat[:, 0] = (1 - true_initial_mean_poro) * 0.45
                 self.solid_sat[:, 1] = (1 - true_initial_mean_poro) * 0.55
             elif set(self.minerals) == {'calcite', 'dolomite', 'magnesite'}:
-                self.solid_sat[:, 0] = (1 - true_initial_mean_poro) * 0.35
-                self.solid_sat[:, 1] = (1 - true_initial_mean_poro) * 0.45
-                self.solid_sat[:, 2] = (1 - true_initial_mean_poro) * 0.2
+                self.solid_sat[:, 0] = (1 - true_initial_mean_poro) * 0.4
+                self.solid_sat[:, 1] = (1 - true_initial_mean_poro) * 0.2
+                self.solid_sat[:, 2] = (1 - true_initial_mean_poro) * 0.4
             self.inj_cells = np.array([0])
 
             self.volume = np.prod(self.domain_sizes)

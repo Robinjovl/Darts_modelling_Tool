@@ -1,2 +1,12 @@
 .zenodo.json       export-ignore
 .gitlab-ci.yml     export-ignore
+
+# Cross-platform Python/C/C++/CUDA files must be stored with LF endings.
+*.py               text eol=lf
+*.c                text eol=lf
+*.cpp              text eol=lf
+*.h                text eol=lf
+*.hpp              text eol=lf
+*.tpp              text eol=lf
+*.cu               text eol=lf
+*.cuh              text eol=lf

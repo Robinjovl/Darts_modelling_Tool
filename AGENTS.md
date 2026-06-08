@@ -3,7 +3,8 @@
 - **Use absolute paths**
 - **Run non-interactively** and print the command before execution.
 - **Project-level commands** should be executed from the repo root.
-- **Environment rule:** for build, install, test, debug, docs, or lint commands, use a prompt-defined conda environment when one is provided; otherwise create and activate one session-level conda environment at the first such step and reuse it across all skills for the rest of the session.
+- **Environment rule:** for build, install, test, debug, docs, or lint commands, use a prompt-defined conda environment when one is provided. Otherwise, create and activate one session-level conda environment at the first such step and reuse it across all skills for the rest of the session.
+- **Line endings:** preserve existing file line endings. Do not make line-ending-only changes, run tools with the intent of changing EOL style, or keep accidental EOL rewrites unless the user explicitly requests them.
 - **Skills source of truth:** `.agents/skills`
 - **Claude mirror:** `.claude/skills` (keep synchronized with `helper_scripts/sync_agent_skills.py`)
 

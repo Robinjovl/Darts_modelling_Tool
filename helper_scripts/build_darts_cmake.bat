@@ -44,6 +44,11 @@ if %bos_solvers_artifact%==true (
     set testing=false
   )
 )
+if not %config%==Release if not %config%==Debug if not %config%==RelWithDebInfo (
+  echo Error: Invalid build configuration "%config%". Valid options: Release, Debug, RelWithDebInfo.
+  exit /b 1
+)
+
 REM ODLS version does not support OpenMP yet
 if %iter_solvers%==false (
   if %GPU%==true (
@@ -262,7 +267,7 @@ echo    -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT
 echo    -r : Skip building thirdparty libraries (if you have them already compiled). Default: false
 echo    -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
 echo    -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
-echo    -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug
+echo    -d MODE   : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo
 echo    -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4
 echo    -p : Enable Phreeqc + Reaktoro (requires Conda). Default: false
 goto :eof

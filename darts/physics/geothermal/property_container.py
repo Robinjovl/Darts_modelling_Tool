@@ -114,7 +114,7 @@ class PropertyContainer(PropertyBase):
         self.enthalpy = np.zeros(2)
         self.dens = np.zeros(2)
         self.dens_m = np.zeros(2)
-        self.saturation = np.zeros(2)
+        self.sat = np.zeros(2)
         self.mu = np.zeros(2)
         self.conduction = np.zeros(2)
         self.kr = np.zeros(2)
@@ -128,12 +128,12 @@ class PropertyContainer(PropertyBase):
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
             self.dens[j] = self.density_ev[phase].evaluate(state)
             self.dens_m[j] = self.dens[j] / self.Mw[0]
-            self.saturation[j] = self.saturation_ev[phase].evaluate(state)
+            self.sat[j] = self.saturation_ev[phase].evaluate(state)
             self.mu[j] = self.viscosity_ev[phase].evaluate(state)
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
             self.kr[j] = self.relperm_ev[phase].evaluate(state)
 
-        self.ph = np.array([j for j in range(self.nph) if self.saturation[j] > 0])
+        self.ph = np.array([j for j in range(self.nph) if self.sat[j] > 0])
         return
 
     def compute_total_enthalpy(self, state_pt):
@@ -208,7 +208,7 @@ class PropertyContainerPH(PropertyBase):
         self.x = np.zeros((self.np_fl, self.nc_fl))
         self.dens = np.zeros(self.nph)
         self.dens_m = np.zeros(self.nph)
-        self.saturation = np.zeros(self.nph)
+        self.sat = np.zeros(self.nph)
         self.mu = np.zeros(self.np_fl)
         self.kr = np.zeros(self.np_fl)
         self.pc = np.zeros(self.np_fl)
@@ -222,7 +222,7 @@ class PropertyContainerPH(PropertyBase):
         self.phase_props = [
             self.dens,
             self.dens_m,
-            self.saturation,
+            self.sat,
             self.nu,
             self.mu,
             self.kr,
@@ -264,10 +264,10 @@ class PropertyContainerPH(PropertyBase):
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
         if len(ph) == 1:
-            self.saturation[ph] = 1.0
+            self.sat[ph] = 1.0
         else:
             vol = [self.nu[j] / self.dens_m[j] for j in ph]
-            self.saturation[ph] = vol / np.sum(vol)
+            self.sat[ph] = vol / np.sum(vol)
 
         return
 
@@ -300,8 +300,6 @@ class PropertyContainerPH(PropertyBase):
 
         # self.pc = self.capillary_pressure_ev.evaluate(self.sat)
         for j in self.ph:
-            self.kr[j] = self.relperm_ev[self.phases_name[j]].evaluate(
-                self.saturation[j]
-            )
+            self.kr[j] = self.relperm_ev[self.phases_name[j]].evaluate(self.sat[j])
 
         return

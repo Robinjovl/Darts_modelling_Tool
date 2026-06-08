@@ -136,6 +136,31 @@ public:
 	// get the number of solid/mineral species
 	virtual uint8_t get_n_solid() const { return n_solid; };
 
+	// Number of per-cell history variables fed to OBL interpolation but not part of the Newton
+	// system (e.g. trapped/max-gas saturation for Killough hysteresis). Python sets this before
+	// engine.init() via `engine.n_history_runtime = k`; 0 disables the Xop / Xhistory code paths.
+	uint8_t n_history_runtime = 0;
+
+	virtual uint8_t get_n_history() const { return n_history_runtime; };
+
+	// get the dimension of the OBL interpolation state: Newton unknowns + history variables
+	virtual uint8_t get_n_state() const { return get_n_vars() + get_n_history(); };
+
+	// Allocate / resize the history-aware scratch buffers used by build_Xop and project_xop_ders.
+	// No-op when no history variables are active.
+	void ensure_history_buffers(const index_t n_total, const uint8_t n_ops_)
+	{
+		const uint8_t n_history = get_n_history();
+		if (n_history == 0)
+			return;
+
+		const uint8_t n_state = get_n_state();
+		if (Xhistory.size() < (size_t)n_total * n_history)
+			Xhistory.assign((size_t)n_total * n_history, 0.0);
+		Xop.resize((size_t)n_total * n_state);
+		op_ders_arr_ext.resize((size_t)n_total * n_ops_ * n_state);
+	}
+
 	// initialization
 	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_) = 0;
 
@@ -189,6 +214,16 @@ public:
 	virtual int print_timestep(value_t time, value_t deltat);
 
 	int print_header();
+
+	// Build Xop = [X | Xhistory] for reservoir + boundary cells when n_history > 0. No-op otherwise.
+	// mesh->Xhistory_bounds supplies the history values to use at boundary cells.
+	void build_Xop();
+
+	// After interpolating into op_ders_arr_ext (sized by n_state), copy the first n_vars derivative
+	// columns into op_ders_arr (the Newton-sized buffer) so the assembly kernels can consume it
+	// with the standard compile-time N_VARS stride. Derivatives w.r.t. history are dropped, which is
+	// correct because history values are not Newton unknowns.
+	void project_xop_ders();
 
 	/// @brief report for one newton iteration
 	virtual int assemble_linear_system(value_t deltat);
@@ -379,6 +414,12 @@ public:
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
 	std::vector<value_t> dispersivity;		// [n_regions * NP * NC] dispersion coefficients
+	// History variables: per-cell quantities that feed OBL interpolation but are not Newton unknowns.
+	// Used for path-dependent state such as sg_max in Killough hysteresis, while keeping the storage
+	// generic for future OBL history variables.
+	std::vector<value_t> Xhistory;				// [(n_blocks + n_bounds) * n_history] history values (reservoir cells then boundary cells)
+	std::vector<value_t> Xop;				// [(n_blocks + n_bounds) * n_state] extended state vector fed to interpolator; empty unless n_history > 0
+	std::vector<value_t> op_ders_arr_ext;	// [(n_blocks + n_bounds) * n_ops * n_state] scratch for interpolator derivative output when n_history > 0
 
 	// rates, bhps, FIPs, etc
 	std::unordered_map<std::string, std::vector<value_t>> time_data_report;
@@ -931,6 +972,11 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	op_vals_arr.resize(n_ops * mesh->n_blocks);
 	op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);
 
+	// History buffers: allocated only if the engine reports n_history > 0 (see engine_base::get_n_history).
+	// Xhistory stores per-cell history values for reservoir cells followed by boundary cells; boundary
+	// entries are seeded from mesh->Xhistory_bounds by build_Xop.
+	ensure_history_buffers(mesh->n_blocks + mesh->n_bounds, n_ops);
+
 	t = 0;
 
 	time(&rawtime);
@@ -967,11 +1013,12 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	for (ms_well *w : wells)
 	{
-		// initialize the state of well blocks of the type EPM
+		// initialize the state of well segments
 		if (w->ms_type == ms_well::MS_Type::EPM)
-			w->initialize_control(X_init);
-		// initialize the state of well blocks of the type DFM
-		else if (w->ms_type == ms_well::MS_Type::DFM)
+			w->initialize_control_epm(X_init);
+		else if (w->ms_type == ms_well::MS_Type::DFM && w->control.get_well_control_type() > well_control_iface::WellControlType::NONE)
+			w->initialize_control_dfm(X_init);
+		else if (w->ms_type == ms_well::MS_Type::DFM && w->control.get_well_control_type() == well_control_iface::WellControlType::NONE)
 			std::copy(w->init_state.begin(), w->init_state.end(), X_init.begin() + w->well_head_idx * n_vars);
 	}
 
@@ -1005,8 +1052,18 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		block_idxs[op_region].emplace_back(idx++);
 	}
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+	if (get_n_history() > 0)
+	{
+		build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+		project_xop_ders();
+	}
+	else
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+	}
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();
