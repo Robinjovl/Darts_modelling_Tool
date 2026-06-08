@@ -28,45 +28,45 @@ class Model(THMCModel):
         Xref[:] = 0.0
         Xn_ref[:] = 0.0
 
-    def set_solver_params(self):
-        super().set_solver_params()
+    def set_solver(self):
+        super().set_solver()
 
-        if os.getenv('FS_CPR') == 'open':
-            # Open-source FS-CPR -- inject the spec; engine bypasses sim_params.linear_type.
-            # FS-CPR is a PRECONDITIONER (single application), not an outer
-            # Krylov loop -- wrap it in GMRES to mirror the proprietary path
-            # (bos_gmres + bos_fs_cpr).
-            from darts.models.darts_model import DataTS
-            from darts.solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
-            if not hasattr(self, 'data_ts') or self.data_ts is None:
-                self.data_ts = DataTS(self.physics.n_vars)
-            mesh = self.reservoir.mesh
-            n_blocks = mesh.n_blocks
-            n_res_blks = mesh.n_res_blocks
-            n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
-            n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
-            # Match proprietary engine_pm_cpu.cpp:136 convention:
-            #   n_res  = n_matrix + n_fracs  (matrix + fracture cells treated as "reservoir")
-            #   n_fracs= 0   (zero gap-DOF rows -- FS_UPG not yet supported)
-            #   n_wells= n_blocks - n_res_blocks
-            fs_cpr = FSCPRSolverSpec(
-                force_amg_asymmetric=True,
-                n_res=n_matrix + n_fracs_mesh,
-                n_fracs=0,
-                n_wells=n_blocks - n_res_blks,
-            )
-            self.data_ts.linear_solver = GMRESSolverSpec(
-                prec=fs_cpr,
-                tolerance=1e-8,
-                max_iterations=200,
-                restart=50,
-            )
-            # Bypass the engine's enum-driven factory (the spec drives _apply_linear_solver_spec).
-            linear_type = sim_params.cpu_superlu  # placeholder; never reached
-        elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-            linear_type = sim_params.cpu_gmres_fs_cpr
-        else:
-            linear_type = sim_params.cpu_superlu
+        # Open-source FS-CPR by default -- inject the spec; the engine bypasses
+        # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
+        # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
+        # path (bos_gmres + bos_fs_cpr).
+        from darts.models.darts_model import DataTS
+        from darts.solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        if not hasattr(self, 'data_ts') or self.data_ts is None:
+            self.data_ts = DataTS(self.physics.n_vars)
+        mesh = self.reservoir.mesh
+        n_blocks = mesh.n_blocks
+        n_res_blks = mesh.n_res_blocks
+        n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
+        n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        # Match proprietary engine_pm_cpu.cpp:136 convention:
+        #   n_res  = n_matrix + n_fracs  (matrix + fracture cells treated as "reservoir")
+        #   n_fracs= 0   (zero gap-DOF rows -- FS_UPG not yet supported)
+        #   n_wells= n_blocks - n_res_blocks
+        fs_cpr = FSCPRSolverSpec(
+            force_amg_asymmetric=True,
+            n_res=n_matrix + n_fracs_mesh,
+            n_fracs=0,
+            n_wells=n_blocks - n_res_blks,
+        )
+        self.data_ts.linear_solver = GMRESSolverSpec(
+            prec=fs_cpr,
+            tolerance=1e-8,
+            max_iterations=200,
+            restart=50,
+        )
+        # params.linear_type is only a placeholder in the open-source build -- the
+        # FS-CPR spec above drives _apply_linear_solver_spec, so it must stay a
+        # factory-safe value (cpu_superlu); the neutralised cpu_gmres_fs_cpr factory
+        # path crashes there. In the proprietary build it is the real selector
+        # (bos_fs_cpr).
+        linear_type = (sim_params.cpu_superlu if self.open_source_solvers_available()
+                       else sim_params.cpu_gmres_fs_cpr)
 
         if self.discretizer_name == 'mech_discretizer':
             self.params.linear_type = linear_type

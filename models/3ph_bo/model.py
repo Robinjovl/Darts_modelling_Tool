@@ -20,10 +20,13 @@ class Model(CICDModel):
         idata = self.set_input_data('')
         self.set_physics(idata)
 
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=100, tol_newton=1e-3, tol_linear=1e-7,
-                            it_newton=10, it_linear=50)
+        # Solver/time-stepping configuration moved to set_solver() (called from base reset())
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=100, tol_newton=1e-3, tol_linear=1e-7,
+                            it_newton=10, it_linear=50)
 
     def set_reservoir(self):
         """Reservoir"""

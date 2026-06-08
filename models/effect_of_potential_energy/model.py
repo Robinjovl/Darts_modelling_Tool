@@ -29,12 +29,17 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics(n_points=10001)
 
+        # Solver configuration moved to set_solver() (called from DartsModel.reset()).
+
+        self.timer.node["initialization"].stop()
+
+        return
+
+    def set_solver(self):
         self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3,
                             tol_linear=1e-5, it_newton=10, it_linear=50,
                             runtime=50, # This runtime will be used when CI test is conducted without the main file
                             )
-
-        self.timer.node["initialization"].stop()
 
         return
 

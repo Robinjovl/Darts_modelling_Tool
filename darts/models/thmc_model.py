@@ -43,7 +43,8 @@ class THMCModel(DartsModel):
         if hasattr(self, 'idata'):
             if self.idata.type_mech == 'thermoporoelasticity':
                 self.reservoir.T_VAR = self.physics.engine.T_VAR
-        self.set_solver_params()
+        # Solver/Newton config is set by set_solver(), called from the base
+        # DartsModel.reset() (at the top, before engine.init).
         self.timer.node["initialization"].stop()
 
     def reinit(self, zero_conduction):
@@ -70,7 +71,12 @@ class THMCModel(DartsModel):
             fluid_vars=self.physics.vars,
         )
 
-    def set_solver_params(self):
+    def set_solver(self):
+        # Mechanics models drive the linear solver through params.linear_type /
+        # engine.ls_params (a direct cpu_superlu by default), NOT through
+        # data_ts.linear_solver -- so they do NOT call super().set_solver() (which
+        # would select the flow CPR/AMG default). Called from the base reset(),
+        # before engine.init.
         self.params.tolerance_newton = (
             1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
         )
@@ -89,11 +95,16 @@ class THMCModel(DartsModel):
             )  # cpu_gmres_fs_cpr # cpu_superlu
             self.params.max_i_linear = 5000
         elif self.discretizer_name == 'pm_discretizer':
-            ls1 = linear_solver_params()
-            ls1.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
-            ls1.tolerance_linear = 1.0e-12
-            ls1.max_i_linear = 500
-            self.physics.engine.ls_params.append(ls1)
+            # Idempotent: set_solver() runs on every reset(), but ls_params is
+            # appended once (subclasses then tune ls_params[-1]).
+            if len(self.physics.engine.ls_params) == 0:
+                ls1 = linear_solver_params()
+                ls1.linear_type = (
+                    sim_params.cpu_superlu
+                )  # cpu_gmres_fs_cpr # cpu_superlu
+                ls1.tolerance_linear = 1.0e-12
+                ls1.max_i_linear = 500
+                self.physics.engine.ls_params.append(ls1)
 
     def set_input_data(self):
         self.idata.check()

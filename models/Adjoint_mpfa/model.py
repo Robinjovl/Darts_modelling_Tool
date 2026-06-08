@@ -34,9 +34,12 @@ class Model(DartsModel, OptModuleSettings):
         self.set_physics()
         self.set_reservoir(mesh_file)
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, tol_newton=1e-3, tol_linear=1e-6)
+        # solver / time-stepping config moved to set_solver() (called at top of reset())
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, tol_newton=1e-3, tol_linear=1e-6)
 
     def set_reservoir(self, mesh_file):
         self.reservoir = UnstructReservoir(self.discr_type, mesh_file, n_vars=self.physics.n_vars)

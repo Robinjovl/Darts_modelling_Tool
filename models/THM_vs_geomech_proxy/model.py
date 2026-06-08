@@ -48,10 +48,33 @@ class Model(THMCModel):
         super().__init__()
 
 
-    def set_solver_params(self):
-        super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_gmres_fs_cpr
-        #self.params.linear_type = sim_params.cpu_superlu
+    def set_solver(self):
+        super().set_solver()
+
+        # Open-source FS-CPR by default (mech_discretizer / engine_super_elastic_cpu).
+        # The spec drives _apply_linear_solver_spec in the open-source build; in the
+        # proprietary build it is ignored and the engine factory uses
+        # params.linear_type (bos_fs_cpr).
+        from darts.models.darts_model import DataTS
+        from darts.solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        if not hasattr(self, 'data_ts') or self.data_ts is None:
+            self.data_ts = DataTS(self.physics.n_vars)
+        mesh = self.reservoir.mesh
+        n_res_blks = mesh.n_res_blocks
+        n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
+        n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        fs_cpr = FSCPRSolverSpec(
+            force_amg_asymmetric=True,
+            n_res=n_matrix + n_fracs_mesh,
+            n_fracs=0,
+            n_wells=mesh.n_blocks - n_res_blks,
+        )
+        self.data_ts.linear_solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-8, max_iterations=200, restart=50)
+        # Placeholder in the open-source build (the spec drives the solve, and the
+        # neutralised cpu_gmres_fs_cpr factory path crashes there); real selector
+        # (bos_fs_cpr) in the proprietary build.
+        self.params.linear_type = (sim_params.cpu_superlu if self.open_source_solvers_available()
+                                   else sim_params.cpu_gmres_fs_cpr)
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5

@@ -21,11 +21,14 @@ class Model(CICDModel):
         self.set_input_data(n_points)
         self.set_physics()
 
+        # solver configuration moved to set_solver() (called by base reset())
+
+        self.timer.node["initialization"].stop()
+
+    def set_solver(self):
         self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
                             it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
                             newton_params=value_vector([1]))
-
-        self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
         (nx, ny, nz) = (60, 60, 3)

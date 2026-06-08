@@ -402,11 +402,15 @@ def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
     :param platform: ``"cpu"`` or ``"gpu"``.
 
     .. note::
-       The GPU default -- the open-source GPU BiCGStab + cuSPARSE-ILU outer
-       solver -- is wired directly in the GPU engine factory (``engine_base_gpu``);
-       it does not flow through a ``LinearSolverSpec`` and ``data_ts.linear_solver``
-       is unused on GPU. Requesting the GPU default through this function
-       therefore raises :class:`NotImplementedError`.
+       The GPU default is ``gpu_gmres_cpr_amgx_ilu`` -- GMRES + AMGX-CPR (NVIDIA
+       AMGX algebraic multigrid on the pressure subsystem + ILU on the full
+       system) -- with the in-tree BiCGStab + cuSPARSE-ILU solver as the
+       fallback. It is selected by ``DartsModel.init()`` (which sets
+       ``params.linear_type`` on the GPU platform) and wired in the GPU engine
+       factory (``engine_base_gpu``); it does not flow through a
+       ``LinearSolverSpec`` and ``data_ts.linear_solver`` is unused on GPU.
+       Requesting the GPU default through this function therefore raises
+       :class:`NotImplementedError`.
     """
     if platform.lower() == "gpu":
         raise NotImplementedError(

@@ -104,16 +104,26 @@ class Model(CICDModel):
 
         self.physics = Geothermal(self.idata, self.timer)
 
-        # Some tuning parameters:
-        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4, tol_linear=1e-5)
-        self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
-        self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
-        # direct linear solver
-        #if int(input_data['overburden_layers']) + int(input_data['underburden_layers']) > 0:
-        #    self.params.linear_type = sim_params.cpu_superlu
+        # Time-stepping / Newton / linear-solver settings live in set_solver(),
+        # called from the base reset() (see DartsModel.set_solver).
 
         # End timer for model initialization:
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        # Time-stepping and Newton tuning.
+        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4, tol_linear=1e-5)
+        self.params.newton_type = sim_params.newton_local_chop  # chopping strategy
+        self.params.newton_params = value_vector([0.2])         # chop criterion
+
+        # Linear solver: this is a Geothermal DFM (discrete fracture matrix) model.
+        # The default FGMRES+CPR (and MGR) stall on its wide, strongly-coupled
+        # fracture-matrix Jacobian -- the open-source builds (ODLS/GPU) hang.
+        # A direct solve is robust and fast here (the mesh is small); use it in the
+        # open-source build. In the proprietary build a Spec is ignored and the
+        # engine factory keeps using its iterative default (which converges there).
+        from darts.solvers import SuperLUSolverSpec
+        self.data_ts.linear_solver = SuperLUSolverSpec()
 
     def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)

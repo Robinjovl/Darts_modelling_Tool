@@ -152,11 +152,8 @@ class Model(CICDModel):
         # initialize wormhole propagation ratio
         self.reservoir.wh_propagation_ratio = 0.0
 
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=200)
-        self.params.newton_type = sim_params.newton_local_chop
-        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
-        # self.params.linear_type = sim_params.cpu_superlu
-        self.params.newton_params[0] = 0.2
+        # Time-stepping / Newton / linear-solver config (see DartsModel.set_solver,
+        # called from reset()).
         self.runtime = 1
         # default timestep control thresholds (overridable by callers)
         self.ni_dt_increase_cutoff = 5
@@ -164,6 +161,19 @@ class Model(CICDModel):
         self.n_good_ts = 10
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=200)
+        self.params.newton_type = sim_params.newton_local_chop
+        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
+        self.params.newton_params[0] = 0.2
+        # Reactive-transport (PHREEQC) Jacobian: the default FGMRES+CPR struggles
+        # here (it_linear=200) and risks the same open-source-build hang as the DFM
+        # fracture_network model. A direct solve is robust for this small 1D model;
+        # in the proprietary build the spec is ignored and the engine factory keeps
+        # its iterative default. (Mirrors the long-standing `cpu_superlu` hint here.)
+        from darts.solvers import SuperLUSolverSpec
+        self.data_ts.linear_solver = SuperLUSolverSpec()
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,

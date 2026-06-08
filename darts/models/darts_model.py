@@ -162,6 +162,12 @@ class DartsModel:
         # Create sim_params object to set simulation parameters
         self.params = sim_params()
 
+        # Explicit linear solver object built by a model's set_solver() override
+        # (e.g. an MGR solver from darts.solvers); injected into the engine after
+        # engine.init, overriding the data_ts.linear_solver spec / engine factory.
+        self.solver = None
+        self.solver_label = None  # short name for self.solver, shown in the engine log
+
         self.time = []
         self.n_newton_iters = []
         self.time_step_size = []
@@ -310,8 +316,16 @@ class DartsModel:
 
     def reset(self):
         """
-        Function to initialize the engine by calling 'engine.init()' method.
+        Configure the solver/time-stepping via set_solver(), then initialize the engine.
+
+        set_solver() runs first -- the reservoir/mesh and the engine object already
+        exist (so block sizes and n_res_blocks are final), but engine.init() has not
+        run yet. So any timestepping/Newton/linear params it sets feed engine.init(),
+        and any ``data_ts.linear_solver`` spec it sets is picked up by
+        _apply_linear_solver_spec(). A raw ``self.solver`` object (if a model builds
+        one) is injected after engine.init() by _apply_set_solver().
         """
+        self.set_solver()
         self._apply_linear_solver_spec()
         self.physics.engine.init(
             self.reservoir.mesh,
@@ -321,14 +335,18 @@ class DartsModel:
             self.params,
             self.timer.node["simulation"],
         )
+        # Inject a model-built raw solver object (self.solver) after engine.init,
+        # overriding the spec/factory choice.
+        self._apply_set_solver()
 
     def _apply_linear_solver_spec(self):
         """Build the linear solver from ``data_ts.linear_solver`` and inject it.
 
         Active only in the open-source build (the ``darts.solvers`` registry is
         present) on the CPU platform. When ``data_ts.linear_solver`` is unset,
-        the CPU default (HYPRE MGR) is used. The solver is injected before
-        ``engine.init()``, so the engine's built-in factory is bypassed.
+        the CPU default (FGMRES + open-source CPR/AMG, see ``default_linear_solver``)
+        is used. The solver is injected before ``engine.init()``, so the engine's
+        built-in factory is bypassed.
 
         In proprietary builds, or on GPU, this is a no-op and the engine's
         factory selects the solver from ``params.linear_type``.
@@ -338,7 +356,13 @@ class DartsModel:
         self._python_solver = None
         if not _HAVE_SOLVER_REGISTRY or getattr(self, "platform", "cpu") != "cpu":
             return
-        spec = getattr(self.data_ts, "linear_solver", None)
+        # Models that never call set_sim_params (e.g. THMC/mechanics models that
+        # configure self.params + engine.ls_params directly) have no self.data_ts;
+        # leave the engine factory / ls_params in charge rather than crashing.
+        data_ts = getattr(self, "data_ts", None)
+        if data_ts is None:
+            return
+        spec = getattr(data_ts, "linear_solver", None)
         if spec is None:
             spec = default_linear_solver("cpu")
         if not isinstance(spec, LinearSolverSpec):
@@ -371,6 +395,71 @@ class DartsModel:
         self.physics.engine.set_linear_solver(
             self._linear_solver, _describe_solver_spec(spec)
         )
+
+    def set_solver(self):
+        """Configure the model's solver and time-stepping (override hook).
+
+        This is the single per-model place to declare all time-stepping / Newton /
+        linear-solver settings. It is called at the start of :meth:`reset` (after
+        the reservoir/mesh and engine object exist, before ``engine.init``), so it
+        may freely:
+
+        * call ``self.set_sim_params(...)`` and set ``self.params.* / self.data_ts.*``
+          (these feed ``engine.init`` and the run);
+        * set ``self.data_ts.linear_solver = <LinearSolverSpec>`` -- the preferred,
+          **build-safe** way to pick a solver (``SuperLUSolverSpec``,
+          ``GMRESSolverSpec(prec=CPRSolverSpec())``, ``MGRSolverSpec``, ...). In
+          proprietary / GPU builds the spec is ignored and the engine factory uses
+          ``params.linear_type``, so a spec is safe in any build;
+        * build a raw solver object into ``self.solver`` (e.g.
+          ``solvers.create_mgr_solver_for_block_size(...)``) for fine MGR control --
+          only valid in the open-source build, so guard it with
+          :meth:`open_source_solvers_available`. ``self.solver`` is injected into the
+          engine after ``engine.init`` (see :meth:`_apply_set_solver`), overriding
+          the spec/factory choice; set ``self.solver_label`` to name it in the log.
+
+        Default implementation: select **FGMRES + open-source CPR/AMG** -- the
+        in-tree restart-GMRES around the two-stage CPR preconditioner (HYPRE
+        BoomerAMG on the pressure subsystem + ILU(0) on the full system), the
+        open-source equivalent of the legacy ``bos_gmres + bos_cpr_amg`` default.
+        A subclass that wants a different solver overrides this method; one that
+        wants CPR/AMG plus its own time-stepping calls ``super().set_solver()``
+        after ``set_sim_params(...)``.
+        """
+        data_ts = getattr(self, "data_ts", None)
+        if data_ts is None:
+            # No data_ts (e.g. a model that never calls set_sim_params); leave the
+            # engine factory / params.linear_type in charge.
+            return
+        if getattr(data_ts, "linear_solver", None) is None:
+            data_ts.linear_solver = default_linear_solver("cpu")
+
+    @staticmethod
+    def open_source_solvers_available() -> bool:
+        """True when the compiled ``darts.solvers`` registry is present (open-source
+        build). False in proprietary ``-a`` builds and where the extension failed to
+        load -- there ``create_mgr_solver_*`` / specs are unavailable and the engine
+        factory selects the solver from ``params.linear_type`` instead. Use this to
+        guard raw-object solver builds in :meth:`set_solver`."""
+        try:
+            from darts import solvers
+
+            return bool(getattr(solvers, "_have_compiled_solvers", False))
+        except Exception:
+            return False
+
+    def _apply_set_solver(self):
+        """Inject the raw ``self.solver`` object (built by :meth:`set_solver`) into
+        the engine, after ``engine.init``. No-op when no raw solver was built (the
+        common case -- most models pick a solver via ``data_ts.linear_solver``)."""
+        solver = getattr(self, "solver", None)
+        if solver is None:
+            return
+        engine = getattr(self.physics, "engine", None)
+        if engine is None:
+            return
+        label = getattr(self, "solver_label", None) or "custom (set_solver)"
+        engine.set_linear_solver(solver, label)
 
     def _maybe_switch_linear_solver(self, timestep_converged: bool):
         """Adaptive linear-solver switching, evaluated after each timestep.

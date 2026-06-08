@@ -105,6 +105,10 @@ class Model(CICDModel):
             start_injection_h2o_days=self.start_injection_h2o_days,
             water_injection_rate=self.water_injection_rate,
         )
+        # Solver/time-stepping config moved to set_solver() (called at top of reset()).
+        self.timer.node["initialization"].stop()
+
+    def set_solver(self):
         self.set_sim_params(
             first_ts=1e-4,
             mult_ts=1.5,
@@ -116,7 +120,6 @@ class Model(CICDModel):
             it_linear=20,
         )
         self.data_ts.eta[-1] = 0.05
-        self.timer.node["initialization"].stop()
 
     def setup_case(
         self,

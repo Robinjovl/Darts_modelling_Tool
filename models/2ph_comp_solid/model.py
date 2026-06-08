@@ -24,11 +24,14 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
+        # Solver/time-stepping configuration moved to set_solver() (called from base reset()).
+
+        self.timer.node["initialization"].stop()
+
+    def set_solver(self):
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-5, tol_linear=1e-6,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
         self.data_ts.newton_tol_stationary = 1e-5
-
-        self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
         perm = 100

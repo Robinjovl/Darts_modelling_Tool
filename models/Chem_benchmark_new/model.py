@@ -52,10 +52,13 @@ class Model(CICDModel):
         self.set_reservoir(grid_1D, res, solid_init)
         self.set_physics(grid_1D, solid_init, custom_physics)
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=0.1, runtime=50, tol_newton=1e-3, tol_linear=1e-5,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+        # Solver/time-stepping config moved to set_solver() (called at the top of reset()).
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=0.1, runtime=50, tol_newton=1e-3, tol_linear=1e-5,
+                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
     def init(self, *args, **kwargs):
         """Initialize the model with parallel operator evaluation enabled by default.

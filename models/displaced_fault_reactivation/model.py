@@ -83,7 +83,10 @@ class Model(THMCModel):
                 if cell.centroid[1] >= -150.0 and cell.centroid[1] <= 150.0:
                     X[4 * cell_id + 3] += p(cell.centroid[0])
                     Xn[4 * cell_id + 3] += p(cell.centroid[0])
-    def set_solver_params(self):
+    def set_solver(self):
+        # Mechanics model: solver via params.linear_type / engine.ls_params
+        # (no super().set_solver(), which would pick the flow CPR/AMG default).
+        # Called from the base reset(), before engine.init.
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
@@ -92,21 +95,46 @@ class Model(THMCModel):
         else:
             self.params.max_i_newton = 8
 
-        ls1 = linear_solver_params()
-        ls1.linear_type = sim_params.cpu_superlu
-        self.physics.engine.ls_params.append(ls1)
+        # Open-source FS-CPR by default (pm_discretizer / engine_pm_cpu). The spec
+        # drives _apply_linear_solver_spec in the open-source build; ls_params is the
+        # proprietary-build / factory path.
+        from darts.models.darts_model import DataTS
+        from darts.solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        if not hasattr(self, 'data_ts') or self.data_ts is None:
+            self.data_ts = DataTS(self.physics.n_vars)
+        mesh = self.reservoir.mesh
+        n_res_blks = mesh.n_res_blocks
+        n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
+        n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        fs_cpr = FSCPRSolverSpec(
+            force_amg_asymmetric=True,
+            n_res=n_matrix + n_fracs_mesh,
+            n_fracs=0,
+            n_wells=mesh.n_blocks - n_res_blks,
+        )
+        self.data_ts.linear_solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-8, max_iterations=200, restart=50)
 
-        # for iterative preconditioner need to repeat AMG setup as Juu is changing
-        if ls1.linear_type == sim_params.cpu_gmres_fs_cpr:
-            m.physics.engine.update_uu_jacobian()
+        # Idempotent: ls_params is appended once even though set_solver() runs on every reset().
+        if len(self.physics.engine.ls_params) == 0:
+            ls1 = linear_solver_params()
+            # Placeholder in the open-source build (the FS-CPR spec drives the solve,
+            # and the neutralised cpu_gmres_fs_cpr factory path crashes there); real
+            # selector (bos_fs_cpr) in the proprietary build.
+            ls1.linear_type = (sim_params.cpu_superlu if self.open_source_solvers_available()
+                               else sim_params.cpu_gmres_fs_cpr)
+            self.physics.engine.ls_params.append(ls1)
 
-        # different solver for dynamic simulation
-        if self.enable_dynamic_mode:
-            ls2 = linear_solver_params()
-            ls2.linear_type = sim_params.cpu_gmres_ilu0
-            ls2.tolerance_linear = 1.e-12
-            ls2.max_i_linear = 500
-            self.physics.engine.ls_params.append(ls2)
+            # for iterative preconditioner need to repeat AMG setup as Juu is changing
+            if ls1.linear_type == sim_params.cpu_gmres_fs_cpr:
+                self.physics.engine.update_uu_jacobian()
+
+            # different solver for dynamic simulation
+            if self.enable_dynamic_mode:
+                ls2 = linear_solver_params()
+                ls2.linear_type = sim_params.cpu_gmres_ilu0
+                ls2.tolerance_linear = 1.e-12
+                ls2.max_i_linear = 500
+                self.physics.engine.ls_params.append(ls2)
     def set_wells(self):
         if self.depletion_mode == 'well':
             well_index = 1.E+10

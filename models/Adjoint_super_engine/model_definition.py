@@ -328,6 +328,18 @@ class Model(CICDModel, OptModuleSettings):
         return self._reservoir_block_count()
 
     def set_solver(self):
+        # Idempotent: the forward solver is built once (before engine.init, so the
+        # adjoint solver can hold a reference to it). The base reset() calls
+        # set_solver() again at its top -- skip the rebuild so that reference stays
+        # valid.
+        if self.solver is not None:
+            return
+        # The raw MGR build below is open-source-only. In the proprietary -a build
+        # (no compiled darts.solvers registry) fall back to the engine factory.
+        if not self.open_source_solvers_available():
+            self.solver = None
+            self.params.linear_type = sim_params.cpu_gmres_cpr
+            return
         block_size = self.physics.n_vars
         self.solver = solvers.create_mgr_solver_for_block_size(block_size)
 
@@ -401,6 +413,12 @@ class Model(CICDModel, OptModuleSettings):
 
     def set_adjoint_solver(self):
         if getattr(self, "adjoint_solver_mode", "mgr") == "superlu":
+            self.adjoint_solver = None
+            self._adjoint_solver_spec = None
+            return
+        # MGR / CPRA adjoint solvers use the open-source-only registry; in the
+        # proprietary -a build leave the adjoint solver unset (engine factory).
+        if not self.open_source_solvers_available():
             self.adjoint_solver = None
             self._adjoint_solver_spec = None
             return

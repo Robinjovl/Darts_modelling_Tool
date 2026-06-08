@@ -28,7 +28,8 @@ class Model(CICDModel):
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic (default), 2 = verbose
         self.solver = None
         self.use_bcsr_cpr_pressureguard_thr10_profile()
-        self.set_solver()
+        # self.solver is built and injected by the base DartsModel.set_solver()
+        # hook during init() (reset -> _apply_set_solver), after engine.init.
 
         self.timer.node["initialization"].stop()
 
@@ -115,10 +116,18 @@ class Model(CICDModel):
             self.set_solver()
 
     def set_solver(self):
+        # The raw MGR build below is open-source-only (compiled darts.solvers
+        # registry). In the proprietary -a build fall back to the engine factory
+        # so the model runs instead of raising AttributeError.
+        if not self.open_source_solvers_available():
+            self.solver = None
+            self.params.linear_type = sim_params.cpu_gmres_cpr
+            return
         # Create MGR solver with correct block size (pressure + n_components - 1)
         # n_vars = 1 (pressure) + len(components) - 1 (component fractions)
         block_size = self.physics.n_vars  # pressure + (n_components - 1) fractions = n_components
         self.solver = solvers.create_mgr_solver_for_block_size(block_size)
+        self.solver_label = "mgr (bcsr-cpr)"
 
         mesh = getattr(self.reservoir, "mesh", None)
         reservoir_blocks = mesh.n_res_blocks if mesh is not None else None
@@ -192,28 +201,9 @@ class Model(CICDModel):
 
         return
 
-    def init(self, *args, **kwargs):
-        """Override init to set solver before engine initialization"""
-        # The engine is created during physics.init_physics() in the base init()
-        # init_base() checks for linear_solver_external, so if we set it before init_base runs,
-        # it will use our solver. However, engine.init() -> init_base() is called from within
-        # super().init(), so we can't easily intercept.
-        #
-        # Solution: The C++ code now checks for linear_solver_external in init_base,
-        # so we need to set it before init_base runs. Since we can't do that directly,
-        # we'll set it as early as possible - right after physics.init_physics() creates the engine.
-        # But that happens inside super().init().
-        #
-        # For now, we'll set it after super().init() completes. The init_base will have
-        # already created a solver, but set_linear_solver will replace it. This works
-        # because set_linear_solver handles cleanup of the old solver.
-        super().init(*args, **kwargs)
-
-        # Set the solver on the engine - this replaces any solver created in init_base
-        if hasattr(self, 'solver') and self.solver is not None:
-            if hasattr(self.physics, 'engine') and self.physics.engine is not None:
-                self.solver.set_n_reservoir_blocks(self.reservoir.mesh.n_res_blocks)
-                self.physics.engine.set_linear_solver(self.solver, "mgr (bcsr-cpr)")
+    # The forward MGR solver built above is injected into the engine by the base
+    # DartsModel._apply_set_solver() hook (called from reset(), after engine.init).
+    # No init() override is needed -- self.solver_label names it in the engine log.
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 50,

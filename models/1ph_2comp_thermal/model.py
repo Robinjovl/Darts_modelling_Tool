@@ -58,10 +58,13 @@ class Model(DartsModel):
                                      n_points=400, min_p=0, max_p=1000, min_z=0.0, max_z=1.0, epsilon_z=epsilon,
                                      min_t=273.15 + 20, max_t=273.15 + 200)
         self.physics.add_property_region(property_container)
-        self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=1)
+        # solver/time-stepping configuration moved to set_solver()
 
         # end of initialization
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=1)
 
 
     def set_wells(self):
