@@ -36,8 +36,8 @@ if(ENABLE_VALGRIND)
     # Limit SIMD to SSE4.2 (supported by Valgrind 3.24) to avoid SIGILL on AVX-512
     # -mno-avx512f disables AVX-512 foundation instructions
     # -march=x86-64-v2 targets SSE4.2 level (compatible with Valgrind)
-    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
-    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
+    set(CMAKE_CXX_FLAGS_DEBUG          "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
+    set(CMAKE_C_FLAGS_DEBUG            "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
 endif()
 
 # Load cmake modules -----------------------------------------------------------
@@ -108,7 +108,6 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 
 # Determine the type of compiler we have and set compiler flags and other compiler
 # specific flags
-
 if(DEFINED BOS_SOLVERS_DIR)
   add_compile_definitions(WITH_HYPRE)
 endif()
@@ -154,7 +153,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # Using LTO as it seems to reduce compile time
   # No need for manual optimization flag, CMake build types automatically handle it.
   # Debug: O0    Release: 03
-  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-pipe;-std=c++20")
 
   # Linker flags
   set(opendarts_cxx_linker_flags "")

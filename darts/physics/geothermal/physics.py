@@ -7,7 +7,7 @@ from darts.engines import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
     ThermalVarOperator,
-    WellControlOperators,
+    WellCtrlOperators,
 )
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.geothermal.operator_evaluator import *
@@ -120,17 +120,9 @@ class Geothermal(PhysicsBase):
             self.property_containers[self.regions[0]]
         )
 
-        # Create well control operator evaluators for EPM and DFM wells
-        self.epm_well_ctrl_operators = WellControlOperators(
+        self.well_ctrl_operators = WellCtrlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
-            is_dfm_well=False,
-            extrapolation_flag=False,
-        )
-        self.dfm_well_ctrl_operators = WellControlOperators(
-            self.property_containers[self.regions[0]],
-            self.thermal,
-            is_dfm_well=True,
             extrapolation_flag=False,
         )
 

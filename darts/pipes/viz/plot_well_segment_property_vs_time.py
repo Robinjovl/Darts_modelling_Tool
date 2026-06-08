@@ -30,7 +30,7 @@ legend_labels = [
     "OBL resolution = 1000",
 ]
 
-property_key = "Pressure"
+property_key = "pressure"
 desired_well_segment_idx = (
     num_segments - 1
 )  # For bottomhole = num_segments - 1, for wellhead = 0
@@ -41,7 +41,7 @@ y_tick_increment = 5
 output_name = "BHP_time_series_obl_resolution_sens_ana"
 
 # # Note that the temperature stored is in Kelvin
-# property_key = "Temperature"
+# property_key = "temperature"
 # desired_well_segment_idx = (
 #     num_segments - 1
 # )  # For bottomhole = num_segments - 1, for wellhead = 0

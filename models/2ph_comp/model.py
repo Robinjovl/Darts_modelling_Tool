@@ -40,15 +40,14 @@ class Model(CICDModel):
         self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
-        """Physical properties"""
         zero = 1e-8
         epsilon = 1e-9
-        # Create property containers:
+
         components = ['CO2', 'C1', 'H2O']
         phases = ['gas', 'aqueous']
-        thermal = 0
         Mw = [44.01, 16.04, 18.015]
 
+        # Create a property container
         property_container = PropertyContainer(phases_name=phases, components_name=components,
                                                Mw=Mw, eps_z=epsilon, temperature=1.)
 

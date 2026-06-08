@@ -20,13 +20,13 @@ void pybind_ms_well(py::module& m)
         .def("init_physics", &ms_well::init_physics,
             "Initialize well physics",
             "n_vars"_a, "n_ops"_a, "phase_names"_a,
-            "epm_well_ctrl_etor"_a, "dfm_well_ctrl_etor"_a, "thermal_var_etor"_a,
-            "thermal"_a = 0, py::keep_alive<1, 7>())
+            "well_ctrl_etor"_a, "thermal_var_etor"_a,
+            "thermal"_a = 0, py::keep_alive<1, 6>())
         .def("init_mech_physics", &ms_well::init_mech_physics,
             "Initialize well physics for poromechanics",
             "N_VARS"_a, "P_VAR"_a, "n_vars"_a, "n_ops"_a, "phase_names"_a,
-            "epm_well_ctrl_etor"_a, "dfm_well_ctrl_etor"_a, "thermal_var_etor"_a,
-            "thermal"_a = 0, py::keep_alive<1, 9>())
+            "well_ctrl_etor"_a, "thermal_var_etor"_a,
+            "thermal"_a = 0, py::keep_alive<1, 8>())
 
         // properties
         .def_readwrite("name", &ms_well::name)
@@ -53,6 +53,7 @@ void pybind_ms_well(py::module& m)
         // For lateral heat transfer in DFM wells
         .def_readwrite("with_lateral_heat_transfer", &ms_well::with_lateral_heat_transfer)
         .def_readwrite("connections_for_lateral_heat_transfer", &ms_well::connections_for_lateral_heat_transfer)
+        .def_readwrite("Xhistory_well_default", &ms_well::Xhistory_well_default)
 
         .def_readwrite("control", &ms_well::control)
         .def_readwrite("constraint", &ms_well::constraint)

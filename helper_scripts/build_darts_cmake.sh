@@ -23,7 +23,7 @@ Help_Info()
   echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
   echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
-  echo "   -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug"
+  echo "   -d MODE   : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo"
   echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
   echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
@@ -133,6 +133,11 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
     esac
 done
 
+if [[ "$config" != "Release" && "$config" != "Debug" && "$config" != "RelWithDebInfo" ]]; then
+    echo "Error: Invalid build configuration \"$config\". Valid options: Release, Debug, RelWithDebInfo."
+    exit 1
+fi
+
 # Amend possible contradictory inputs
 if [ "$iter_solvers" == true ] && [ "$testing" == true ]; then
     # tests are only available in open-DARTS, bos_solvers do not have testing
@@ -159,12 +164,14 @@ if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
 fi
 # ------------------------------------------------------------------------------
 
-rm -rf dist
-rm -rf darts/*.so
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
-    echo '\n   Cleaning build folder'
+    echo -e '\n   Cleaning build folder'
     rm -rf build
+    rm -rf dist
+    rm -rf darts/*.so
+else
+    rm -rf dist
 fi
 
 
@@ -262,7 +269,6 @@ echo -e "=======================================================================
 # Setup build folder
 mkdir -p build
 cd build
-rm -f CMakeCache.txt  # ensures Cmake doesn't work on outdated configuration
 
 # If valgrind requested, force Debug
 if [[ "$valgrind" = true ]]; then
@@ -306,6 +312,10 @@ if [[ ! -z "$CUDA_ARCH" ]]; then
     cmake_options+=" -D CUDA_ARCH=${CUDA_ARCH}"
 fi
 
+if [[ -n "${OD_CMAKE_ARGS:-}" ]]; then
+    cmake_options+=" ${OD_CMAKE_ARGS}"
+fi
+
 echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
@@ -318,7 +328,7 @@ if [[ "$valgrind" == true && "$NT" -gt 1 ]]; then
     echo "-- Pre-building interpolators target with -j $HEAVY_NT (valgrind OOM mitigation)"
     make interpolators -j $HEAVY_NT 2>> ../make_darts.log
 fi
-make install -j $NT 2>> ../make_darts.log
+cmake --build . --target install --parallel "$NT" 2>&1 | tee -a ../make_darts.log
 
 # Test
 if [[ "$testing" == true ]]; then

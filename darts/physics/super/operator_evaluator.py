@@ -92,9 +92,12 @@ class OperatorsSuper(OperatorsBase):
 class ReservoirOperators(OperatorsSuper):
     def evaluate(self, state, values):
         """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
+        Evaluate the non-thermal reservoir operators for the super engine
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
+        :type state: value_vector in open-darts, pylvarray.Array in GEOS
+        :param values: values of the operators (used for storing the operator values)
+        :type values: value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
         # Check if extrapolation needs to be applied
@@ -204,7 +207,7 @@ class ReservoirOperators(OperatorsSuper):
 
     def evaluate_thermal(self, state, values):
         """
-        Method to evaluate operators for energy conservation equation
+        Evaluate the thermal reservoir operators for the super engine
 
         :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
         :param values: values of the operators (used for storing the operator values)
@@ -270,9 +273,12 @@ class ReservoirOperators(OperatorsSuper):
 class WellOperators(OperatorsSuper):
     def evaluate(self, state, values):
         """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
+        Evaluate the non-thermal well operators for the super engine
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
+        :type state: value_vector in open-darts, pylvarray.Array in GEOS
+        :param values: values of the operators (used for storing the operator values)
+        :type state: value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
         # Check if extrapolation needs to be applied
@@ -365,7 +371,7 @@ class WellOperators(OperatorsSuper):
 
     def evaluate_thermal(self, state, values):
         """
-        Method to evaluate operators for energy conservation equation
+        Evaluate the thermal well operators for the super engine
 
         :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
         :param values: values of the operators (used for storing the operator values)
@@ -447,9 +453,12 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
 
     def evaluate(self, state, values):
         """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
+        Evaluate the geomechanical reservoir operators for the super engine
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
+        :type state: value_vector in open-darts, pylvarray.Array in GEOS
+        :param values: values of the operators (used for storing the operator values)
+        :type values: value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
         # Reservoir operators
@@ -472,9 +481,12 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
 class SinglePhaseGeomechanicsOperators(OperatorsBase):
     def evaluate(self, state, values):
         """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
+        Evaluate the single-phase geomechanical operators for the super engine
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
+        :type state: value_vector in open-darts, pylvarray.Array in GEOS
+        :param values: values of the operators (used for storing the operator values)
+        :type values: value_vector in open-darts, pylvarray.Array in GEOS
         :return: updated value for operators, stored in values
         """
         # Check if extrapolation needs to be applied

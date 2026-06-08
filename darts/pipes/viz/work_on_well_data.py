@@ -18,9 +18,9 @@ depth = np.linspace(0 + 25, well_length - 25, num_segments)
 y_min = 0
 y_max = well_length
 
-property_0 = df_0["Temperature"][-41::] - 273.15  # initial property profile
-property_1 = df_1["Temperature"][-41::] - 273.15
-property_2 = df_2["Temperature"][-41::] - 273.15
+property_0 = df_0["temperature"][-41::] - 273.15  # initial property profile
+property_1 = df_1["temperature"][-41::] - 273.15
+property_2 = df_2["temperature"][-41::] - 273.15
 x_label = "Wellbore temperature [\u00b0C]"
 output_name = "well_temperature"
 x_min = -7

@@ -150,7 +150,8 @@ class Model(CICDModel):
         inj_fluid_molar_enthalpy = - 2000
 
         inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[cell_idx]
-        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * self.physics.property_containers[0].Mw[co2_idx]
+        Mw_avg = np.sum(self.physics.property_containers[0].Mw * inj_comp)
+        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * Mw_avg
         inj_fluid_molar_energy = inj_fluid_molar_enthalpy + inj_fluid_molar_potential_energy
 
         injected_heat_rate = inj_rate * inj_fluid_molar_energy

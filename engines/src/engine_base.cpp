@@ -1007,33 +1007,25 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
             else
                 upstream_idx = w->well_body_idx; // producer
 
-            //index_t nc = n_vars;
-            //index_t n_ops = 2 * nc;
-
             std::vector<value_t> state;
             std::vector<index_t> block_idx = { 0 };
-            std::vector<value_t> rates;
-            std::vector<value_t> rates_derivs;
+            std::vector<value_t> well_ctrl_ops;
+            std::vector<value_t> well_ctrl_ops_derivs;
 
-            //rates.resize(w->n_phases);
-            //rates_derivs.resize(w->n_phases * n_vars);
+			index_t n_well_ctrl_ops = w->control.get_n_well_ctrl_ops();
 
+			well_ctrl_ops.resize(n_well_ctrl_ops);
+			well_ctrl_ops_derivs.resize(n_well_ctrl_ops * n_vars);
 
-			index_t n_ops_well = w->control.get_well_n_ops();
-			index_t n_vars_well = w->control.get_well_n_vars();
-
-			rates.resize(n_ops_well);
-			rates_derivs.resize(n_ops_well * n_vars_well);
-
-            state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars_well);
-            w->epm_well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
+            state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
+            w->well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
 
 
 
 
             //uint8_t c = component_index[0];
             double ders_term, vals_term;
-            for (uint8_t v = 0; v < n_vars_well; v++)
+            for (uint8_t v = 0; v < n_vars; v++)
             {
                 ders_term = 0.0;
                 vals_term = 0.0;
@@ -1047,8 +1039,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                         if (opt_phase == phase)
                         {
                             // adding minus sign on "q_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-                            ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->well_transmissibility * (-q_Q[ww][p]);
-                            vals_term += rates[p_idx] * w->well_transmissibility * (-q_Q[ww][p]);
+                            ders_term += well_ctrl_ops_derivs[p_idx * n_vars + v] * p_diff * w->well_transmissibility * (-q_Q[ww][p]);
+                            vals_term += well_ctrl_ops[p_idx] * w->well_transmissibility * (-q_Q[ww][p]);
                         }
                         p++;
                     }
@@ -1060,21 +1052,21 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                 // corresponding to ms_well::check_constraints
 				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
                 {
-                    Temp_dj_dx[upstream_idx * n_vars_well + v] += -ders_term;
+                    Temp_dj_dx[upstream_idx * n_vars + v] += -ders_term;
                     if (v == 0)  // derivatives w.r.t. pressure
                     {
-                        Temp_dj_dx[w->well_body_idx * n_vars_well + v] += vals_term;
+                        Temp_dj_dx[w->well_body_idx * n_vars + v] += vals_term;
                     }
                 }
                 else  // rate control
                 {
                     //;  // all zero
 
-                    Temp_dj_dx[upstream_idx * n_vars_well + v] += -ders_term;
+                    Temp_dj_dx[upstream_idx * n_vars + v] += -ders_term;
                     if (v == 0)  // derivatives w.r.t. pressure
                     {
-                        Temp_dj_dx[w->well_body_idx * n_vars_well + v] += vals_term;
-                        Temp_dj_dx[w->well_head_idx * n_vars_well + v] += -vals_term; // add extra term on well head
+                        Temp_dj_dx[w->well_body_idx * n_vars + v] += vals_term;
+                        Temp_dj_dx[w->well_head_idx * n_vars + v] += -vals_term; // add extra term on well head
                     }
                 }
 
@@ -1122,32 +1114,25 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			else
 				upstream_idx = w->well_body_idx; // producer
 
-			//index_t nc = n_vars;
-			//index_t n_ops = 2 * nc;
-
 			std::vector<value_t> state;
 			std::vector<index_t> block_idx = { 0 };
-			std::vector<value_t> rates;
-			std::vector<value_t> rates_derivs;
+			std::vector<value_t> well_ctrl_ops;
+			std::vector<value_t> well_ctrl_ops_derivs;
 
-			//rates.resize(w->n_phases);
-			//rates_derivs.resize(w->n_phases * n_vars);
+			index_t n_well_ctrl_ops = w->control.get_n_well_ctrl_ops();
 
-			index_t n_ops_well = w->control.get_well_n_ops();
-			index_t n_vars_well = w->control.get_well_n_vars();
+			well_ctrl_ops.resize(n_well_ctrl_ops);
+			well_ctrl_ops_derivs.resize(n_well_ctrl_ops * n_vars);
 
-			rates.resize(n_ops_well);
-			rates_derivs.resize(n_ops_well* n_vars_well);
-
-			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars_well);
-			w->epm_well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
+			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
+			w->well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
 
 
 
 
 			//uint8_t c = component_index[0];
 			double ders_term, vals_term;
-			for (uint8_t v = 0; v < n_vars_well; v++)
+			for (uint8_t v = 0; v < n_vars; v++)
 			{
 				ders_term = 0.0;
 				vals_term = 0.0;
@@ -1161,8 +1146,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 						if (opt_phase == phase)
 						{
                             // adding minus sign on "q_inj_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-							ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->well_transmissibility * (-q_inj_Q[ww][p]);
-							vals_term += rates[p_idx] * w->well_transmissibility * (-q_inj_Q[ww][p]);
+							ders_term += well_ctrl_ops_derivs[p_idx * n_vars + v] * p_diff * w->well_transmissibility * (-q_inj_Q[ww][p]);
+							vals_term += well_ctrl_ops[p_idx] * w->well_transmissibility * (-q_inj_Q[ww][p]);
 						}
                         p++;
 					}
@@ -1171,21 +1156,21 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
 				{
-					Temp_dj_dx[upstream_idx * n_vars_well + v] += ders_term;
+					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
 					if (v == 0)  // derivatives w.r.t. pressure
 					{
-						Temp_dj_dx[w->well_body_idx * n_vars_well + v] += -vals_term;
+						Temp_dj_dx[w->well_body_idx * n_vars + v] += -vals_term;
 					}
 				}
 				else  // rate control
 				{
 					//;  // all zero
 
-					Temp_dj_dx[upstream_idx * n_vars_well + v] += ders_term;
+					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
 					if (v == 0)  // derivatives w.r.t. pressure
 					{
-						Temp_dj_dx[w->well_body_idx * n_vars_well + v] += -vals_term;
-						Temp_dj_dx[w->well_head_idx * n_vars_well + v] += vals_term;
+						Temp_dj_dx[w->well_body_idx * n_vars + v] += -vals_term;
+						Temp_dj_dx[w->well_head_idx * n_vars + v] += vals_term;
 					}
 				}
 			}
@@ -1274,20 +1259,18 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			}
 			else
 			{
-				//index_t nc = n_vars;
-				//index_t n_ops = 2 * nc;
-
 				std::vector<value_t> state;
 				std::vector<index_t> block_idx = { 0 };
-				std::vector<value_t> rates;
-				std::vector<value_t> rates_derivs;
+				std::vector<value_t> well_ctrl_ops;
+				std::vector<value_t> well_ctrl_ops_derivs;
 
-				rates.resize(w->n_phases);
-				rates_derivs.resize(w->n_phases * n_vars);
+				index_t n_well_ctrl_ops = w->control.get_n_well_ctrl_ops();
+
+				well_ctrl_ops.resize(n_well_ctrl_ops);
+				well_ctrl_ops_derivs.resize(n_well_ctrl_ops * n_vars);
 
 				state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
-				w->epm_well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
-
+				w->well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
 
 				double ders_term, vals_term;
 				for (uint8_t v = 0; v < n_vars; v++)
@@ -1301,7 +1284,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 						if (phase == "temperature")
 						{
 							// adding minus sign on "wt_WT" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-							ders_term += rates_derivs[p_idx * n_vars + v] * (-wt_WT[ww]);
+							ders_term += well_ctrl_ops_derivs[p_idx * n_vars + v] * (-wt_WT[ww]);
 							//vals_term += rates[p] * (-wt_WT[ww]);
 						}
 						p_idx++;
@@ -2008,6 +1991,72 @@ int engine_base::apply_newton_update(value_t dt)
 void engine_base::apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
 	// Hook method: The classes that need this method will override it (e.g., engine_super_cpu)
+}
+
+void engine_base::build_Xop()
+{
+	// Compose the extended OBL state Xop = [X | Xhistory] for every reservoir cell and every boundary cell.
+	// Reservoir entries take their Newton unknowns from X and their history values from Xhistory;
+	// boundary entries take unknowns from mesh->pz_bounds and history values from mesh->Xhistory_bounds.
+	// No-op when the engine reports n_history == 0.
+	const uint8_t n_history = get_n_history();
+	if (n_history == 0)
+		return;
+
+	const uint8_t n_vars_ = get_n_vars();
+	const uint8_t n_state = n_vars_ + n_history;
+	const index_t n_blocks = mesh->n_blocks;
+	const index_t n_bounds = mesh->n_bounds;
+
+	// Reservoir cells: copy the primary Newton variables in their native order, then append
+	// history slots from Xhistory.
+	for (index_t i = 0; i < n_blocks; i++)
+	{
+		for (uint8_t v = 0; v < n_vars_; v++)
+			Xop[i * n_state + v] = X[i * n_vars_ + v];
+		for (uint8_t h = 0; h < n_history; h++)
+			Xop[i * n_state + n_vars_ + h] = Xhistory[i * n_history + h];
+	}
+
+	// Boundary cells: the Python/physics side is responsible for filling mesh->pz_bounds with
+	// the n_vars boundary primary values (P, Z_1..Z_{NC-1}, [T]) and mesh->Xhistory_bounds with the
+	// n_history history values. If Xhistory_bounds is empty, fall back to zero history at the boundary.
+	if (n_bounds > 0)
+	{
+		const bool have_bound_his = mesh->Xhistory_bounds.size() >= (size_t)n_bounds * n_history;
+		for (index_t i = 0; i < n_bounds; i++)
+		{
+			const index_t dst = (n_blocks + i) * n_state;
+			for (uint8_t v = 0; v < n_vars_; v++)
+				Xop[dst + v] = mesh->pz_bounds[i * n_vars_ + v];
+			for (uint8_t h = 0; h < n_history; h++)
+				Xop[dst + n_vars_ + h] = have_bound_his ? mesh->Xhistory_bounds[i * n_history + h] : 0.0;
+		}
+	}
+}
+
+void engine_base::project_xop_ders()
+{
+	// Drop derivatives w.r.t. history columns. History values are not Newton unknowns, so the
+	// assembly kernels only need the n_vars-wide column block per operator per cell.
+	// The destination op_ders_arr is sized by the derived engine (n_blocks for FVM engines,
+	// n_blocks + n_bounds for MPFA/mech engines); derive the cell count from that size.
+	const uint8_t n_history = get_n_history();
+	if (n_history == 0)
+		return;
+
+	const uint8_t n_ops_ = get_n_ops();
+	const uint8_t n_vars_ = get_n_vars();
+	const uint8_t n_state = n_vars_ + n_history;
+	const index_t row_small = n_ops_ * n_vars_;
+	const index_t row_full  = n_ops_ * n_state;
+	const index_t n_cells = (index_t)(op_ders_arr.size() / row_small);
+
+	for (index_t i = 0; i < n_cells; i++)
+		for (index_t op = 0; op < n_ops_; op++)
+			for (index_t v = 0; v < n_vars_; v++)
+				op_ders_arr[i * row_small + op * n_vars_ + v] =
+					op_ders_arr_ext[i * row_full + op * n_state + v];
 }
 
 void engine_base::apply_composition_correction(std::vector<value_t>& Xi)
@@ -2963,11 +3012,25 @@ int engine_base::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start();
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	if (get_n_history() > 0)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
-		if (result < 0)
-			return 0;
+		build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+			if (result < 0)
+				return 0;
+		}
+		project_xop_ders();
+	}
+	else
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+			if (result < 0)
+				return 0;
+		}
 	}
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();

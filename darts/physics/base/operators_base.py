@@ -42,6 +42,27 @@ class OperatorsBase(operator_set_evaluator_iface):
             "Please provide dz for extrapolation"
         )
 
+    def evaluate_batch(self, states, n_points, values, n_ops):
+        """
+        Default serial batch evaluation: loops calling evaluate() per point.
+        Override in a subclass or wrapper (e.g. ParallelEvaluator) for parallel dispatch.
+
+        :param states: Flat array of coordinates [n_points * n_dims]
+        :param n_points: Number of points to evaluate
+        :param values: Flat output array [n_points * n_ops], pre-allocated
+        :param n_ops: Number of operators per point
+        :return: 0 if successful
+        """
+        states_np = np.asarray(states)
+        values_np = np.asarray(values)
+        n_dims = len(states_np) // n_points
+        for i in range(n_points):
+            sv = value_vector(states_np[i * n_dims : (i + 1) * n_dims].copy())
+            vv = value_vector(np.zeros(n_ops))
+            self.evaluate(sv, vv)
+            values_np[i * n_ops : (i + 1) * n_ops] = np.asarray(vv)
+        return 0
+
     def apply_extrapolation(self, state, values):
         """
         Method that determines whether or not extrapolation should be applied to current state (z[-1] < 0).
@@ -151,22 +172,26 @@ class OperatorsBase(operator_set_evaluator_iface):
         return out
 
 
-class WellControlOperators(OperatorsBase):
+class WellCtrlOperators(OperatorsBase):
     """
-    Set of operators for well controls of EPM and DFM wells. It contains a set of operators for different types of
-    rate controls: molar-, mass-, volumetric- or advective heat rate controls, plus pressure and temperature.
+    Set of operators for well controls of EPM and DFM wells.
+
+    Operator layout:
+    NP EPM molar-rate, NP EPM mass-rate, NP EPM volumetric-rate,
+    NP EPM advective-heat-rate, pressure, temperature,
+    NP DFM molar-rate, NP DFM mass-rate, NP DFM volumetric-rate,
+    NP DFM advective-heat-rate.
     """
 
     def __init__(
         self,
         property_container: PropertyBase,
         thermal: bool,
-        is_dfm_well: bool,
         extrapolation_flag: bool = True,
         dz: float = None,
     ):
         """
-        Constructor of WellControlOperators class
+        Constructor of WellCtrlOperators class
 
         :param property_container: Property container of type PropertyBase
         :param thermal: Switch to indicate if energy conservation equation is there
@@ -178,16 +203,39 @@ class WellControlOperators(OperatorsBase):
             property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
         )
 
-        self.n_ops = 2 + self.nph * 4
+        self.n_rate_ctrl_types = 4  # molar, mass, volumetric, and advective heat rates
+        self.n_state_ctrl_ops = 2  # pressure and temperature
+        self.epm_rate_ctrl_ops_offset = 0
+        self.state_ctrl_ops_offset = self.n_rate_ctrl_types * self.nph
+        self.dfm_rate_ctrl_ops_offset = (
+            self.state_ctrl_ops_offset + self.n_state_ctrl_ops
+        )
+        self.n_ops = self.n_state_ctrl_ops + 2 * self.n_rate_ctrl_types * self.nph
 
-        if is_dfm_well:
-            # For the EPM well, the flow factor is phase saturation
-            self.get_rate_factor = lambda: self.property.sat[self.property.ph]
-        else:
-            # For the EPM well, the flow factor is phase mobility
-            self.get_rate_factor = (
-                lambda: self.property.kr[self.property.ph]
-                / self.property.mu[self.property.ph]
+    def _fill_rate_ctrl_ops(self, values, offset, rate_factor):
+        # Molar rate ctrl operator
+        idx = offset
+        values[idx + self.property.ph] = (
+            self.property.dens_m[self.property.ph] * rate_factor
+        )
+
+        # Mass rate ctrl operator
+        idx += self.nph
+        values[idx + self.property.ph] = (
+            self.property.dens[self.property.ph] * rate_factor
+        )
+
+        # Volumetric rate ctrl operator
+        idx += self.nph
+        values[idx + self.property.ph] = rate_factor
+
+        # Advective heat rate ctrl operator
+        idx += self.nph
+        if self.thermal:
+            values[idx + self.property.ph] = (
+                self.property.enthalpy[self.property.ph]
+                * self.property.dens_m[self.property.ph]
+                * rate_factor
             )
 
     def evaluate(self, state, values):
@@ -200,41 +248,27 @@ class WellControlOperators(OperatorsBase):
         values_np[:] = 0
 
         self.property.evaluate(state_np)
-
-        rate_factor = self.get_rate_factor()
-
-        # Molar rate operator
-        idx = 0
-        values_np[idx + self.property.ph] = (
-            self.property.dens_m[self.property.ph] * rate_factor
-        )
-
-        # Mass rate operator
-        idx += self.nph
-        values_np[idx + self.property.ph] = (
-            self.property.dens[self.property.ph] * rate_factor
-        )
-
-        # Volumetric rate operator
-        idx += self.nph
-        values_np[idx + self.property.ph] = rate_factor
-
-        # Advective heat rate operator
-        idx += self.nph
         if self.thermal:
             self.property.evaluate_thermal(state_np)
-            values_np[idx + self.property.ph] = (
-                self.property.enthalpy[self.property.ph]
-                * self.property.dens_m[self.property.ph]
-                * rate_factor
-            )
+
+        epm_rate_factor = (
+            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        )
+        self._fill_rate_ctrl_ops(
+            values_np, self.epm_rate_ctrl_ops_offset, epm_rate_factor
+        )
 
         # Store pressure (P) and temperature (T) of the current state for a generic state specification.
         # This is needed when pressure or temperature is not part of the state variables
         # (e.g., volume instead of pressure, or enthalpy instead of temperature).
-        idx += self.nph
+        idx = self.state_ctrl_ops_offset
         values_np[idx + 0] = state[0]
         values_np[idx + 1] = self.property.temperature
+
+        dfm_rate_factor = self.property.sat[self.property.ph]
+        self._fill_rate_ctrl_ops(
+            values_np, self.dfm_rate_ctrl_ops_offset, dfm_rate_factor
+        )
 
         return 0
 

@@ -258,7 +258,6 @@ class Model(DartsModel):
         K = [K_comps[c] for c in self.components]
 
         phases = ['gas', 'oil']
-        thermal = 0
 
         property_container = ModelProperties(phases_name=phases, components_name=self.components,
                                              Mw=Mw, eps_z=epsilon, temperature=1.)
