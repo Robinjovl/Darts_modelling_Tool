@@ -6,6 +6,7 @@ from dartsflash.libflash import (
     AQEoS,
     CubicEoS,
     FlashParams,
+    InitialGuess,
     NegativeFlash,
 )
 from matplotlib import pyplot as plt
@@ -249,7 +250,7 @@ def run_darts_flash(pressure, temperature, z_h2o_init):
                                                  AQEoS.CompType.ion: AQEoS.Jager2003
                                                  }))
     flash_params.eos_order = ["PR", "AQ"]
-    darts_flash = NegativeFlash(flash_params, ["PR", "AQ"], [NegativeFlash.Ki.Henry_VA])
+    darts_flash = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
     darts_flash.evaluate(pressure, temperature, zc)
     flash_results = darts_flash.get_flash_results()
     nu = np.array(flash_results.nu)

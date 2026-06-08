@@ -13,6 +13,10 @@ from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
+from dartsflash.libflash import CubicEoS, FlashParams, EoS, InitialGuess
+from dartsflash.components import CompData
+from dartsflash.mixtures import DARTSFlash, VLAq
+
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import SingleAmbientTemperature
 from darts.pipes.ramp_up_rate import RampUpRate
@@ -75,9 +79,6 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
-        from dartsflash.libflash import CubicEoS, FlashParams, EoS, NegativeFlash
-        from dartsflash.components import CompData
-        from dartsflash.mixtures import DARTSFlash, VLAq
         components_names = ['CO2', 'H2O']
         phases_names = ['G', 'L']   # G is the CO2-rich phase and L is the aqueous phase
         comp_data = CompData(components_names, setprops=True)
@@ -104,7 +105,7 @@ class Model(CICDModel):
         aq = flash_ev.eos["Aq"]
 
         flash_ev.init_flash(flash_type=DARTSFlash.FlashType.NegativeFlash,
-                            eos_order=["VL", "Aq"], nf_initial_guess=[NegativeFlash.Ki.Henry_VA])
+                            eos_order=["VL", "Aq"], nf_initial_guess=[InitialGuess.Henry_VA])
         property_container.flash_ev = flash_ev
 
         property_container.density_ev = dict([('G', EoSDensity(eos=pr, Mw=comp_data.Mw)),
